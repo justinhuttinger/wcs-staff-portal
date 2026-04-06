@@ -3,34 +3,30 @@
 .SYNOPSIS
     WCS Kiosk Full Setup Script
 .DESCRIPTION
-    One-shot script to configure a front desk computer as a WCS kiosk.
-    Creates Staff + Admin Windows users. Places a logon script on the
-    Staff account that applies Chrome lockdown and opens the portal
-    every time Staff logs in. Admin is completely unrestricted.
+    Creates Staff + Admin Windows users.
+    Applies Chrome lockdown via HKLM (machine-wide — reliable).
+    Gives Admin an "Unlocked Chrome" shortcut that uses a separate
+    user-data directory, bypassing the machine policies.
 
-    BEFORE RUNNING: Set the three variables below for this machine.
+    BEFORE RUNNING: Set the variables below for this machine.
 .NOTES
-    Idempotent — safe to run multiple times on the same machine.
+    Idempotent — safe to run multiple times.
     Run as SYSTEM or local admin via Action1.
 #>
 
 # ============================================================
 # CONFIGURE THESE FOR EACH MACHINE
 # ============================================================
-$LocationName    = 'Salem'                              # Salem, Keizer, Eugene, Springfield, Clackamas, Milwaukie, Medford
+$LocationName    = 'Salem'
 $PortalBaseURL   = 'https://wcs-staff-portal.onrender.com'
-$ABCFinancialURL = ''                                   # Leave empty if not known yet, or set per-machine ABC URL
 # ============================================================
 
 $ErrorActionPreference = 'Stop'
-
-# Build the full portal URL with params
-$portalURL = "$PortalBaseURL`?location=$LocationName"
-if ($ABCFinancialURL) {
-    $portalURL += "&abc_url=$([uri]::EscapeDataString($ABCFinancialURL))"
-}
-
 $chromePath = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+$wcsDir = 'C:\WCS'
+
+# Build portal URL (ABC URL read dynamically at Staff logon)
+$portalURL = "$PortalBaseURL`?location=$LocationName"
 
 Write-Host "=== WCS Kiosk Setup ==="
 Write-Host "Location:   $LocationName"
@@ -40,8 +36,6 @@ Write-Host ""
 # ============================================================
 # 1. CREATE WINDOWS USERS
 # ============================================================
-
-# Staff user (kiosk — locked down)
 $staffUser = 'Staff'
 $staffPass = ConvertTo-SecureString 'wcs1' -AsPlainText -Force
 
@@ -50,10 +44,9 @@ if (-not (Get-LocalUser -Name $staffUser -ErrorAction SilentlyContinue)) {
     Add-LocalGroupMember -Group 'Users' -Member $staffUser
     Write-Host "Created local user: $staffUser"
 } else {
-    Write-Host "User '$staffUser' already exists — skipping"
+    Write-Host "User '$staffUser' already exists"
 }
 
-# Admin user (IT access — unrestricted)
 $adminUser = 'Admin'
 $adminPass = ConvertTo-SecureString '!31JellybeaN31!' -AsPlainText -Force
 
@@ -62,15 +55,18 @@ if (-not (Get-LocalUser -Name $adminUser -ErrorAction SilentlyContinue)) {
     Add-LocalGroupMember -Group 'Administrators' -Member $adminUser
     Write-Host "Created local user: $adminUser (Administrators group)"
 } else {
-    Write-Host "User '$adminUser' already exists — skipping"
+    Write-Host "User '$adminUser' already exists"
 }
 
 # ============================================================
-# 2. CREATE ADMIN DESKTOP TOOLS
+# 2. CREATE C:\WCS DIRECTORY AND SCRIPTS
 # ============================================================
+if (-not (Test-Path $wcsDir)) {
+    New-Item -Path $wcsDir -ItemType Directory -Force | Out-Null
+}
 
-# ABC URL setter script (runs a dialog box)
-$abcSetterScript = @'
+# --- ABC URL setter (dialog box) ---
+$abcSetterContent = @'
 Add-Type -AssemblyName Microsoft.VisualBasic
 Add-Type -AssemblyName System.Windows.Forms
 
@@ -82,7 +78,7 @@ if (Test-Path $abcFile) {
 
 $newURL = [Microsoft.VisualBasic.Interaction]::InputBox(
     "Enter the ABC Financial URL for this machine:`n`nCurrent: $currentURL",
-    'WCS Portal — Set ABC URL',
+    'WCS Portal - Set ABC URL',
     $currentURL
 )
 
@@ -91,84 +87,20 @@ if ($newURL -and $newURL.Trim()) {
     Set-Content -Path $abcFile -Value $newURL.Trim() -Force
     [System.Windows.Forms.MessageBox]::Show(
         "ABC URL saved!`n`n$($newURL.Trim())`n`nThis will take effect next time Staff logs in.",
-        'WCS Portal',
-        'OK',
-        'Information'
-    )
-} else {
-    [System.Windows.Forms.MessageBox]::Show(
-        'No changes made.',
-        'WCS Portal',
-        'OK',
-        'Information'
+        'WCS Portal', 'OK', 'Information'
     )
 }
 '@
+Set-Content -Path "$wcsDir\set-abc-url.ps1" -Value $abcSetterContent -Force
+Write-Host "Created: $wcsDir\set-abc-url.ps1"
 
-$abcSetterPath = Join-Path $wcsScriptDir 'set-abc-url.ps1'
-Set-Content -Path $abcSetterPath -Value $abcSetterScript -Force
-Write-Host "Created ABC URL setter: $abcSetterPath"
-
-# Create Admin desktop shortcut (need to target Admin's profile folder)
-# The shortcut will be created when Admin first logs in via a scheduled task
-$adminLogonScript = @"
-`$desktopPath = [Environment]::GetFolderPath('Desktop')
-`$shortcutPath = Join-Path `$desktopPath 'Set ABC URL.lnk'
-if (-not (Test-Path `$shortcutPath)) {
-    `$shell = New-Object -ComObject WScript.Shell
-    `$shortcut = `$shell.CreateShortcut(`$shortcutPath)
-    `$shortcut.TargetPath = 'powershell.exe'
-    `$shortcut.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "C:\WCS\set-abc-url.ps1"'
-    `$shortcut.Description = 'Set ABC Financial URL for this machine'
-    `$shortcut.Save()
-}
-"@
-
-$adminLogonPath = Join-Path $wcsScriptDir 'admin-logon.ps1'
-Set-Content -Path $adminLogonPath -Value $adminLogonScript -Force
-
-$adminLogonTaskName = 'WCS-Admin-Logon'
-if (Get-ScheduledTask -TaskName $adminLogonTaskName -ErrorAction SilentlyContinue) {
-    Unregister-ScheduledTask -TaskName $adminLogonTaskName -Confirm:$false
-}
-
-$adminLogonAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$adminLogonPath`""
-$adminLogonTrigger = New-ScheduledTaskTrigger -AtLogOn
-$adminLogonTrigger.UserId = $adminUser
-$adminLogonPrincipal = New-ScheduledTaskPrincipal -UserId $adminUser -LogonType Interactive
-Register-ScheduledTask -TaskName $adminLogonTaskName -Action $adminLogonAction -Trigger $adminLogonTrigger -Principal $adminLogonPrincipal -Description 'WCS Admin — create desktop shortcuts on login'
-Write-Host "Registered Admin logon task (creates desktop shortcut)"
-
-# ============================================================
-# 3. REMOVE ANY OLD MACHINE-WIDE CHROME POLICIES
-# ============================================================
-$hklmChrome = 'HKLM:\SOFTWARE\Policies\Google\Chrome'
-if (Test-Path $hklmChrome) {
-    Remove-Item -Path $hklmChrome -Recurse -Force
-    Write-Host "Removed old HKLM Chrome policies"
-}
-
-# ============================================================
-# 3. CREATE STAFF LOGON SCRIPT
-# ============================================================
-# This script runs every time Staff logs in. It:
-#   a) Applies Chrome policies to HKCU (current user = Staff)
-#   b) Creates a desktop shortcut to the portal
-#   c) Opens Chrome to the portal (regular mode with tabs)
-
-$wcsScriptDir = 'C:\WCS'
-if (-not (Test-Path $wcsScriptDir)) {
-    New-Item -Path $wcsScriptDir -ItemType Directory -Force | Out-Null
-}
-
-$logonScriptContent = @"
-# WCS Staff Logon Script — applies Chrome lockdown and opens portal
-# This runs as the Staff user (HKCU = Staff's registry)
-
+# --- Staff logon script ---
+# Reads ABC URL from file, builds full portal URL, opens Chrome
+$staffLogonContent = @"
 `$ErrorActionPreference = 'SilentlyContinue'
 
-# ---- Build portal URL (read ABC URL from local config if it exists) ----
-`$portalURL = '$PortalBaseURL`?location=$LocationName'
+# Build portal URL with ABC if configured
+`$portalURL = '$portalURL'
 `$abcFile = 'C:\WCS\abc-url.txt'
 if (Test-Path `$abcFile) {
     `$abcURL = (Get-Content `$abcFile -First 1).Trim()
@@ -177,61 +109,7 @@ if (Test-Path `$abcFile) {
     }
 }
 
-# ---- Apply Chrome policies to current user ----
-`$chromePolicyRoot = 'HKCU:\SOFTWARE\Policies\Google\Chrome'
-
-function Ensure-Path {
-    param([string]`$P)
-    if (-not (Test-Path `$P)) { New-Item -Path `$P -Force | Out-Null }
-}
-
-Ensure-Path `$chromePolicyRoot
-
-# Core lockdown policies
-Set-ItemProperty -Path `$chromePolicyRoot -Name 'BrowserSignin' -Value 2 -Type DWord
-Set-ItemProperty -Path `$chromePolicyRoot -Name 'RestrictSigninToPattern' -Value '*@westcoaststrength.com' -Type String
-Set-ItemProperty -Path `$chromePolicyRoot -Name 'BrowserAddPersonEnabled' -Value 0 -Type DWord
-Set-ItemProperty -Path `$chromePolicyRoot -Name 'BrowserGuestModeEnabled' -Value 0 -Type DWord
-Set-ItemProperty -Path `$chromePolicyRoot -Name 'SyncDisabled' -Value 1 -Type DWord
-Set-ItemProperty -Path `$chromePolicyRoot -Name 'ClearBrowsingDataOnExit' -Value 1 -Type DWord
-Set-ItemProperty -Path `$chromePolicyRoot -Name 'PasswordManagerEnabled' -Value 0 -Type DWord
-Set-ItemProperty -Path `$chromePolicyRoot -Name 'AutofillAddressEnabled' -Value 0 -Type DWord
-Set-ItemProperty -Path `$chromePolicyRoot -Name 'AutofillCreditCardEnabled' -Value 0 -Type DWord
-Set-ItemProperty -Path `$chromePolicyRoot -Name 'IncognitoModeAvailability' -Value 1 -Type DWord
-Set-ItemProperty -Path `$chromePolicyRoot -Name 'RestoreOnStartup' -Value 4 -Type DWord
-
-# Startup URL
-`$startupPath = "`$chromePolicyRoot\RestoreOnStartupURLs"
-Ensure-Path `$startupPath
-Set-ItemProperty -Path `$startupPath -Name '1' -Value `$portalURL -Type String
-
-# Pinned tab
-`$pinnedPath = "`$chromePolicyRoot\PinnedTabs"
-Ensure-Path `$pinnedPath
-Set-ItemProperty -Path `$pinnedPath -Name '1' -Value `$portalURL -Type String
-
-# Block all URLs except allowlist
-`$blockPath = "`$chromePolicyRoot\URLBlocklist"
-Ensure-Path `$blockPath
-Set-ItemProperty -Path `$blockPath -Name '1' -Value '*' -Type String
-
-`$allowPath = "`$chromePolicyRoot\URLAllowlist"
-Ensure-Path `$allowPath
-`$allowed = @(
-    '$($PortalBaseURL.Replace("https://","").Replace("http://",""))',
-    'app.gohighlevel.com',
-    'mail.google.com',
-    'drive.google.com',
-    'docs.google.com',
-    'app.wheniwork.com',
-    'myapps.paychex.com',
-    'accounts.google.com'
-)
-for (`$i = 0; `$i -lt `$allowed.Count; `$i++) {
-    Set-ItemProperty -Path `$allowPath -Name (`$i + 1).ToString() -Value `$allowed[`$i] -Type String
-}
-
-# ---- Create desktop shortcut ----
+# Create desktop shortcut
 `$desktopPath = [Environment]::GetFolderPath('Desktop')
 `$shortcutPath = Join-Path `$desktopPath 'WCS Staff Portal.lnk'
 if (-not (Test-Path `$shortcutPath)) {
@@ -243,31 +121,140 @@ if (-not (Test-Path `$shortcutPath)) {
     `$shortcut.Save()
 }
 
-# ---- Launch Chrome to portal (regular mode with tabs) ----
+# Launch Chrome
 Start-Process -FilePath '$chromePath' -ArgumentList "--start-maximized `$portalURL"
 "@
+Set-Content -Path "$wcsDir\staff-logon.ps1" -Value $staffLogonContent -Force
+Write-Host "Created: $wcsDir\staff-logon.ps1"
 
-$logonScriptPath = Join-Path $wcsScriptDir 'staff-logon.ps1'
-Set-Content -Path $logonScriptPath -Value $logonScriptContent -Force
-Write-Host "Created logon script: $logonScriptPath"
+# --- Admin logon script ---
+# Creates desktop shortcuts for ABC setter and unlocked Chrome
+$adminLogonContent = @"
+`$desktopPath = [Environment]::GetFolderPath('Desktop')
+`$shell = New-Object -ComObject WScript.Shell
 
-# ============================================================
-# 4. REGISTER LOGON SCRIPT AS SCHEDULED TASK (runs at Staff login)
-# ============================================================
-$logonTaskName = 'WCS-Staff-Logon'
-if (Get-ScheduledTask -TaskName $logonTaskName -ErrorAction SilentlyContinue) {
-    Unregister-ScheduledTask -TaskName $logonTaskName -Confirm:$false
+# ABC URL setter shortcut
+`$abcPath = Join-Path `$desktopPath 'Set ABC URL.lnk'
+if (-not (Test-Path `$abcPath)) {
+    `$s = `$shell.CreateShortcut(`$abcPath)
+    `$s.TargetPath = 'powershell.exe'
+    `$s.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "C:\WCS\set-abc-url.ps1"'
+    `$s.Description = 'Set ABC Financial URL for this machine'
+    `$s.Save()
 }
 
-$logonAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$logonScriptPath`""
-$logonTrigger = New-ScheduledTaskTrigger -AtLogOn
-$logonTrigger.UserId = $staffUser
-$logonPrincipal = New-ScheduledTaskPrincipal -UserId $staffUser -LogonType Interactive
-Register-ScheduledTask -TaskName $logonTaskName -Action $logonAction -Trigger $logonTrigger -Principal $logonPrincipal -Description 'WCS Staff Portal — apply Chrome lockdown and open portal on login'
-Write-Host "Registered logon task for '$staffUser'"
+# Unlocked Chrome shortcut (separate user-data dir bypasses HKLM policies)
+`$chromePath = Join-Path `$desktopPath 'Chrome (Unlocked).lnk'
+if (-not (Test-Path `$chromePath)) {
+    `$s = `$shell.CreateShortcut(`$chromePath)
+    `$s.TargetPath = '$chromePath'
+    `$s.Arguments = '--user-data-dir="C:\WCS\AdminChromeData" --no-first-run'
+    `$s.Description = 'Unrestricted Chrome for IT admin'
+    `$s.Save()
+}
+"@
+Set-Content -Path "$wcsDir\admin-logon.ps1" -Value $adminLogonContent -Force
+Write-Host "Created: $wcsDir\admin-logon.ps1"
 
 # ============================================================
-# 5. SCHEDULE NIGHTLY PROFILE CLEANUP (2 AM)
+# 3. APPLY CHROME LOCKDOWN (HKLM — all users, reliable)
+# ============================================================
+$chromePolicyRoot = 'HKLM:\SOFTWARE\Policies\Google\Chrome'
+
+function Ensure-RegistryPath {
+    param([string]$Path)
+    if (-not (Test-Path $Path)) {
+        New-Item -Path $Path -Force | Out-Null
+    }
+}
+
+Ensure-RegistryPath $chromePolicyRoot
+
+# Core policies
+$policies = @{
+    'BrowserSignin'              = @{ Value = 2;  Type = 'DWord' }
+    'RestrictSigninToPattern'    = @{ Value = '*@westcoaststrength.com'; Type = 'String' }
+    'BrowserAddPersonEnabled'    = @{ Value = 0;  Type = 'DWord' }
+    'BrowserGuestModeEnabled'    = @{ Value = 0;  Type = 'DWord' }
+    'SyncDisabled'               = @{ Value = 1;  Type = 'DWord' }
+    'ClearBrowsingDataOnExit'    = @{ Value = 1;  Type = 'DWord' }
+    'PasswordManagerEnabled'     = @{ Value = 0;  Type = 'DWord' }
+    'AutofillAddressEnabled'     = @{ Value = 0;  Type = 'DWord' }
+    'AutofillCreditCardEnabled'  = @{ Value = 0;  Type = 'DWord' }
+    'IncognitoModeAvailability'  = @{ Value = 1;  Type = 'DWord' }
+    'RestoreOnStartup'           = @{ Value = 4;  Type = 'DWord' }
+}
+
+foreach ($key in $policies.Keys) {
+    Set-ItemProperty -Path $chromePolicyRoot -Name $key -Value $policies[$key].Value -Type $policies[$key].Type
+}
+Write-Host "Applied Chrome lockdown policies (HKLM)"
+
+# Startup URL
+$startupPath = "$chromePolicyRoot\RestoreOnStartupURLs"
+Ensure-RegistryPath $startupPath
+Set-ItemProperty -Path $startupPath -Name '1' -Value $portalURL -Type String
+
+# Pinned tab
+$pinnedPath = "$chromePolicyRoot\PinnedTabs"
+Ensure-RegistryPath $pinnedPath
+Set-ItemProperty -Path $pinnedPath -Name '1' -Value $portalURL -Type String
+
+# URL blocklist
+$blockPath = "$chromePolicyRoot\URLBlocklist"
+Ensure-RegistryPath $blockPath
+Set-ItemProperty -Path $blockPath -Name '1' -Value '*' -Type String
+
+# URL allowlist
+$allowPath = "$chromePolicyRoot\URLAllowlist"
+Ensure-RegistryPath $allowPath
+
+$allowedURLs = @(
+    $PortalBaseURL.Replace('https://','').Replace('http://',''),
+    'app.gohighlevel.com',
+    'mail.google.com',
+    'drive.google.com',
+    'docs.google.com',
+    'app.wheniwork.com',
+    'myapps.paychex.com',
+    'accounts.google.com'
+)
+
+for ($i = 0; $i -lt $allowedURLs.Count; $i++) {
+    Set-ItemProperty -Path $allowPath -Name ($i + 1).ToString() -Value $allowedURLs[$i] -Type String
+}
+Write-Host "Set URL allowlist: $($allowedURLs.Count) domains"
+
+# ============================================================
+# 4. REGISTER LOGON TASKS
+# ============================================================
+
+# Staff logon task
+$taskName = 'WCS-Staff-Logon'
+if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+}
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$wcsDir\staff-logon.ps1`""
+$trigger = New-ScheduledTaskTrigger -AtLogOn
+$trigger.UserId = $staffUser
+$principal = New-ScheduledTaskPrincipal -UserId $staffUser -LogonType Interactive
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Description 'Open portal on Staff login'
+Write-Host "Registered Staff logon task"
+
+# Admin logon task
+$taskName = 'WCS-Admin-Logon'
+if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+}
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$wcsDir\admin-logon.ps1`""
+$trigger = New-ScheduledTaskTrigger -AtLogOn
+$trigger.UserId = $adminUser
+$principal = New-ScheduledTaskPrincipal -UserId $adminUser -LogonType Interactive
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Description 'Create Admin desktop shortcuts on login'
+Write-Host "Registered Admin logon task"
+
+# ============================================================
+# 5. SCHEDULE NIGHTLY CLEANUP (2 AM)
 # ============================================================
 $cleanupScript = @'
 $profileRoot = "C:\Users\Staff\AppData\Local\Google\Chrome\User Data"
@@ -278,15 +265,14 @@ if (Test-Path $profileRoot) {
 }
 '@
 
-$cleanupTaskName = 'WCS-Nightly-Chrome-Cleanup'
-if (Get-ScheduledTask -TaskName $cleanupTaskName -ErrorAction SilentlyContinue) {
-    Unregister-ScheduledTask -TaskName $cleanupTaskName -Confirm:$false
+$taskName = 'WCS-Nightly-Chrome-Cleanup'
+if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
 }
-
-$cleanupAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"$cleanupScript`""
-$cleanupTrigger = New-ScheduledTaskTrigger -Daily -At '2:00AM'
-$cleanupPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
-Register-ScheduledTask -TaskName $cleanupTaskName -Action $cleanupAction -Trigger $cleanupTrigger -Principal $cleanupPrincipal -Description 'WCS nightly Chrome profile cleanup'
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"$cleanupScript`""
+$trigger = New-ScheduledTaskTrigger -Daily -At '2:00AM'
+$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Description 'WCS nightly Chrome profile cleanup'
 Write-Host "Scheduled nightly cleanup at 2:00 AM"
 
 # ============================================================
@@ -295,18 +281,15 @@ Write-Host "Scheduled nightly cleanup at 2:00 AM"
 Write-Host ""
 Write-Host "=== Setup complete — rebooting in 30 seconds ==="
 Write-Host ""
-Write-Host "After reboot:"
-Write-Host "  STAFF login (password: wcs1):"
-Write-Host "    - Chrome opens automatically to portal in app mode"
-Write-Host "    - Desktop shortcut 'WCS Staff Portal' created"
-Write-Host "    - Chrome locked down (allowlist only, no passwords, no incognito)"
-Write-Host "    - Sessions wiped when Chrome closes"
+Write-Host "STAFF login (password: wcs1):"
+Write-Host "  - Chrome opens to portal (locked down, tabs for allowed sites only)"
+Write-Host "  - Portal is a pinned tab, tool buttons open in new tabs"
 Write-Host ""
-Write-Host "  ADMIN login (IT password):"
-Write-Host "    - Chrome is completely unrestricted"
-Write-Host "    - Full admin access to the machine"
+Write-Host "ADMIN login (IT password):"
+Write-Host "  - 'Set ABC URL' shortcut on desktop (dialog box)"
+Write-Host "  - 'Chrome (Unlocked)' shortcut — unrestricted browsing"
+Write-Host "  - Regular Chrome is still locked (use the shortcut)"
 Write-Host ""
-Write-Host "To undo: run chrome-unlock.ps1"
+Write-Host "To undo everything: run chrome-unlock.ps1 via Action1"
 
-# Reboot
 shutdown /r /t 30 /c "WCS Kiosk setup complete — rebooting to apply changes"
