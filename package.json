@@ -1,0 +1,10 @@
+{
+  "name": "wcs-staff-portal",
+  "private": true,
+  "scripts": {
+    "portal:dev": "cd portal && npm run dev",
+    "portal:build": "cd portal && npm run build",
+    "launcher:dev": "cd launcher && npm start",
+    "launcher:build": "cd launcher && npm run build"
+  }
+}
