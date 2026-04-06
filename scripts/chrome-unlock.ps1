@@ -19,11 +19,7 @@ if (Test-Path $chromePolicyRoot) {
     Write-Host "No Chrome policies found — nothing to remove"
 }
 
-# Remove auto-login
-$winlogonPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
-Set-ItemProperty -Path $winlogonPath -Name 'AutoAdminLogon' -Value '0'
-Remove-ItemProperty -Path $winlogonPath -Name 'DefaultPassword' -ErrorAction SilentlyContinue
-Write-Host "Disabled auto-login"
+Write-Host "No auto-login configured — nothing to remove"
 
 # Remove nightly cleanup task
 $taskName = 'WCS-Nightly-Chrome-Cleanup'

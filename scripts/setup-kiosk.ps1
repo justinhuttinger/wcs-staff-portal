@@ -49,13 +49,9 @@ if (-not (Get-LocalUser -Name $staffUser -ErrorAction SilentlyContinue)) {
 }
 
 # ============================================================
-# 2. SET AUTO-LOGIN TO STAFF ACCOUNT
+# 2. WINDOWS LOGIN — no auto-login, staff must select profile
 # ============================================================
-$winlogonPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
-Set-ItemProperty -Path $winlogonPath -Name 'AutoAdminLogon' -Value '1'
-Set-ItemProperty -Path $winlogonPath -Name 'DefaultUserName' -Value $staffUser
-Set-ItemProperty -Path $winlogonPath -Name 'DefaultPassword' -Value 'wcs1'
-Write-Host "Set auto-login for '$staffUser'"
+Write-Host "Staff user '$staffUser' created — manual login required at Windows lock screen"
 
 # ============================================================
 # 3. CHROME LOCKDOWN POLICIES (HKLM — applies to all users)
