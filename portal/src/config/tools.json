@@ -1,0 +1,58 @@
+[
+  {
+    "id": "ghl",
+    "label": "GHL CRM",
+    "url": "https://app.gohighlevel.com",
+    "icon": "📋",
+    "category": "Sales"
+  },
+  {
+    "id": "checkin",
+    "label": "Member Check-In",
+    "url": "https://wcs-mmp-portal.onrender.com/checkin",
+    "icon": "🏋️",
+    "category": "Operations"
+  },
+  {
+    "id": "pt-dashboard",
+    "label": "PT Dashboard",
+    "url": "https://wcs-mmp-portal.onrender.com/pt",
+    "icon": "💪",
+    "category": "Training"
+  },
+  {
+    "id": "book",
+    "label": "Book Appointment",
+    "url": "https://wcs-mmp-portal.onrender.com/book",
+    "icon": "🗓",
+    "category": "Sales"
+  },
+  {
+    "id": "abc",
+    "label": "ABC Financial",
+    "url": "https://abc-financial.example.com",
+    "icon": "💳",
+    "category": "Operations"
+  },
+  {
+    "id": "gmail",
+    "label": "Gmail",
+    "url": "https://mail.google.com",
+    "icon": "✉️",
+    "category": "Communication"
+  },
+  {
+    "id": "drive",
+    "label": "Google Drive",
+    "url": "https://drive.google.com",
+    "icon": "📁",
+    "category": "Communication"
+  },
+  {
+    "id": "day-one",
+    "label": "Day One Training",
+    "url": "https://day-one-training.example.com",
+    "icon": "📝",
+    "category": "Training"
+  }
+]
