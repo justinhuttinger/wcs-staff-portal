@@ -203,8 +203,8 @@ Ensure-RegistryPath $chromePolicyRoot
 
 # Core policies
 $policies = @{
-    'BrowserSignin'              = @{ Value = 2;  Type = 'DWord' }
-    'RestrictSigninToPattern'    = @{ Value = '*@westcoaststrength.com'; Type = 'String' }
+    'BrowserSignin'              = @{ Value = 0;  Type = 'DWord' }  # Disable Chrome profile sign-in (staff use website sign-in for Gmail etc)
+    # RestrictSigninToPattern not needed — BrowserSignin=0 blocks all Chrome sign-in
     # BrowserAddPersonEnabled — applied later via lock-profile.ps1 after first sign-in
     'DeveloperToolsAvailability' = @{ Value = 1;  Type = 'DWord' }  # Allow extensions to load
     # BrowserGuestModeEnabled — applied later via lock-profile.ps1 after first sign-in
