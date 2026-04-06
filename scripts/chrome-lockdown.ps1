@@ -13,7 +13,7 @@
 $ErrorActionPreference = 'Stop'
 
 $chromePolicyRoot = 'HKLM:\SOFTWARE\Policies\Google\Chrome'
-$portalURL = 'https://wcs-portal.westcoaststrength.com'
+$portalURL = 'https://wcs-staff-portal.onrender.com'
 
 # ---- Ensure base registry path exists ----
 function Ensure-RegistryPath {
@@ -92,12 +92,14 @@ $allowPath = "$chromePolicyRoot\URLAllowlist"
 Ensure-RegistryPath $allowPath
 
 $allowedURLs = @(
-    'wcs-portal.westcoaststrength.com',
+    'wcs-staff-portal.onrender.com',
     'app.gohighlevel.com',
     'mail.google.com',
     'drive.google.com',
     'docs.google.com',
-    'wcs-mmp-portal.onrender.com'
+    'accounts.google.com',
+    'app.wheniwork.com',
+    'myapps.paychex.com'
 )
 
 for ($i = 0; $i -lt $allowedURLs.Count; $i++) {
