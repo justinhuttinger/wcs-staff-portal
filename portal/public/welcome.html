@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WCS — Next Steps</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root { --red: #cc0000; --red-hover: #aa0000; --red-glow: rgba(204,0,0,0.15); --black: #111111; --surface: #f8f8f8; --surface2: #f0f0f0; --border: #e0e0e0; --text: #111111; --muted: #888888; --white: #ffffff; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; background: var(--white); color: var(--text); font-family: 'DM Sans', sans-serif; overflow: hidden; }
+    .screen { position: absolute; inset: 0; display: flex; flex-direction: column; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+    .screen.active { opacity: 1; pointer-events: all; }
+    .intro-accent { height: 4px; background: var(--red); flex-shrink: 0; }
+    .intro-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 48px; animation: rise 0.4s cubic-bezier(0.16,1,0.3,1) both; }
+    @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+    .intro-tag { display: inline-block; background: var(--red); color: white; font-size: 10px; font-weight: 600; letter-spacing: 3px; padding: 4px 14px; text-transform: uppercase; margin-bottom: 16px; }
+    .intro-heading { font-family: 'Bebas Neue', sans-serif; font-size: clamp(32px, 5vw, 48px); line-height: 1.1; letter-spacing: 2px; color: var(--black); text-align: center; margin-bottom: 6px; }
+    .intro-heading span { color: var(--red); }
+    .intro-member-name { font-family: 'Bebas Neue', sans-serif; font-size: clamp(20px, 3vw, 28px); color: var(--muted); letter-spacing: 1px; margin-bottom: 16px; }
+    .member-chips { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 32px; flex-wrap: wrap; }
+    .chip { background: var(--surface2); border: 1px solid var(--border); color: #666; font-size: 12px; padding: 5px 12px; display: flex; align-items: center; gap: 5px; border-radius: 2px; }
+    .chip-icon { color: var(--red); font-size: 11px; }
+    .steps-list { display: flex; gap: 20px; margin-bottom: 32px; }
+    .step-card { background: var(--surface); border: 2px solid var(--border); padding: 28px 40px; text-align: center; min-width: 220px; cursor: pointer; transition: all 0.2s; }
+    .step-card:hover { border-color: var(--red); transform: translateY(-2px); box-shadow: 0 6px 24px var(--red-glow); }
+    .step-icon { font-size: 28px; margin-bottom: 8px; }
+    .step-label { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 1px; color: var(--black); }
+    .step-desc { font-size: 12px; color: var(--muted); margin-top: 6px; }
+    .screen-header { background: var(--white); border-bottom: 2px solid var(--red); padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .screen-header-left { display: flex; align-items: center; gap: 10px; }
+    .screen-header-right { display: flex; align-items: center; gap: 10px; }
+    .screen-badge { background: var(--red); color: white; font-family: 'Bebas Neue', sans-serif; font-size: 11px; letter-spacing: 2px; padding: 2px 8px; }
+    .screen-title { font-family: 'Bebas Neue', sans-serif; font-size: 15px; letter-spacing: 2px; color: var(--black); }
+    .member-name-small { font-size: 12px; color: var(--muted); font-weight: 300; }
+    .btn-nav { background: transparent; border: 1px solid var(--border); color: var(--muted); font-size: 12px; padding: 5px 12px; cursor: pointer; transition: all 0.2s; font-family: 'DM Sans', sans-serif; }
+    .btn-nav:hover { border-color: var(--red); color: var(--red); }
+    .screen-iframe { flex: 1; width: 100%; border: none; background: white; }
+  </style>
+</head>
+<body>
+  <!-- SCREEN 1: Next Steps Intro -->
+  <div class="screen active" id="screen-intro">
+    <div class="intro-accent"></div>
+    <div class="intro-body">
+      <div class="intro-tag">Signup Complete</div>
+      <div class="intro-heading">NEXT STEPS</div>
+      <div class="intro-member-name" id="intro-member-name"></div>
+      <div class="member-chips" id="member-chips"></div>
+      <div class="steps-list">
+        <div class="step-card" id="card-book">
+          <div class="step-icon">📅</div>
+          <div class="step-label">BOOK DAY ONE</div>
+          <div class="step-desc">Schedule first session</div>
+        </div>
+        <div class="step-card" id="card-vip">
+          <div class="step-icon">🎟</div>
+          <div class="step-label">SUBMIT VIPS</div>
+          <div class="step-desc">Send VIP guest passes</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 2: Book Day One -->
+  <div class="screen" id="screen-booking">
+    <div class="screen-header">
+      <div class="screen-header-left">
+        <div class="screen-badge" id="booking-badge">1 OF 2</div>
+        <div class="screen-title">BOOK DAY ONE</div>
+        <div class="member-name-small" id="booking-name"></div>
+      </div>
+      <div class="screen-header-right">
+        <button class="btn-nav" id="btn-booking-back" style="display:none">← Back</button>
+        <button class="btn-nav" id="btn-booking-next"></button>
+      </div>
+    </div>
+    <iframe class="screen-iframe" id="booking-frame" src="about:blank"></iframe>
+  </div>
+
+  <!-- SCREEN 3: Submit VIPs -->
+  <div class="screen" id="screen-vip">
+    <div class="screen-header">
+      <div class="screen-header-left">
+        <div class="screen-badge" id="vip-badge">1 OF 2</div>
+        <div class="screen-title">SUBMIT VIPS</div>
+        <div class="member-name-small" id="vip-name"></div>
+      </div>
+      <div class="screen-header-right">
+        <button class="btn-nav" id="btn-vip-back" style="display:none">← Back</button>
+        <button class="btn-nav" id="btn-vip-next"></button>
+      </div>
+    </div>
+    <iframe class="screen-iframe" id="vip-frame" src="about:blank"></iframe>
+  </div>
+
+  <script>
+    const WCS_LOCATIONS = {
+      Salem: { booking: 'https://api.westcoaststrength.com/widget/booking/Gq92GXsDRAgTGZeHh7mx', vip: 'https://api.westcoaststrength.com/widget/survey/FkrsORfLFVMiVS26LV9V' },
+      Springfield: { booking: 'https://api.westcoaststrength.com/widget/booking/PEyaqnkjmBN5tLpo6I9F', vip: 'https://api.westcoaststrength.com/widget/survey/uM48yWzOBhXhUBsG1fhW' },
+      Eugene: { booking: 'https://api.westcoaststrength.com/widget/booking/0c9CNdZ65NainMcStWXo', vip: 'https://api.westcoaststrength.com/widget/survey/xKYTE6V7QXKVpkUfWTFi' },
+      Keizer: { booking: 'https://api.westcoaststrength.com/widget/booking/8qFo1GnePy0mCgV9avWW', vip: 'https://api.westcoaststrength.com/widget/survey/HXB00WKKe6srvgSmfwI7' },
+      Clackamas: { booking: 'https://api.westcoaststrength.com/widget/booking/yOvDLsZMAboTVjv9c2HC', vip: 'https://api.westcoaststrength.com/widget/survey/Z9zEHwjGfQaMIYy9OueF' },
+      Milwaukie: { booking: 'https://api.westcoaststrength.com/widget/booking/Gq92GXsDRAgTGZeHh7mx', vip: 'https://api.westcoaststrength.com/widget/survey/FkrsORfLFVMiVS26LV9V' },
+      Medford: { booking: 'https://api.westcoaststrength.com/widget/booking/Gq92GXsDRAgTGZeHh7mx', vip: 'https://api.westcoaststrength.com/widget/survey/FkrsORfLFVMiVS26LV9V' },
+    };
+
+    const params = new URLSearchParams(window.location.search);
+    const member = {
+      firstName: params.get('firstName') || '',
+      lastName: params.get('lastName') || '',
+      email: params.get('email') || '',
+      phone: params.get('phone') || '',
+      salesperson: params.get('salesperson') || '',
+    };
+    const locationName = params.get('location') || 'Salem';
+    const loc = WCS_LOCATIONS[locationName] || WCS_LOCATIONS['Salem'];
+
+    const fullName = [member.firstName, member.lastName].filter(Boolean).join(' ').toUpperCase();
+    const displayName = fullName || 'NEW MEMBER';
+
+    // Populate intro
+    document.getElementById('intro-member-name').textContent = displayName;
+    document.getElementById('booking-name').textContent = displayName;
+    document.getElementById('vip-name').textContent = displayName;
+
+    const chipsEl = document.getElementById('member-chips');
+    if (member.email) chipsEl.innerHTML += '<div class="chip"><span class="chip-icon">✉</span>' + member.email + '</div>';
+    if (member.phone) chipsEl.innerHTML += '<div class="chip"><span class="chip-icon">☎</span>' + member.phone + '</div>';
+    if (member.salesperson) chipsEl.innerHTML += '<div class="chip"><span class="chip-icon">●</span>' + member.salesperson + '</div>';
+
+    function cleanPhone(raw) {
+      const digits = raw.replace(/\D/g, '');
+      if (digits.length === 10) return '+1' + digits;
+      if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;
+      return '+' + digits;
+    }
+
+    function buildUrl(base) {
+      const url = new URL(base);
+      if (member.firstName) url.searchParams.set('first_name', member.firstName);
+      if (member.lastName) url.searchParams.set('last_name', member.lastName);
+      if (member.email) url.searchParams.set('email', member.email);
+      if (member.phone) url.searchParams.set('phone', cleanPhone(member.phone));
+      if (member.salesperson) url.searchParams.set('day_one_booking_team_member', member.salesperson.replace(/\s+[A-Za-z]\s+/g, ' ').trim());
+      return url.toString();
+    }
+
+    // Preload frames
+    document.getElementById('booking-frame').src = buildUrl(loc.booking);
+    document.getElementById('vip-frame').src = buildUrl(loc.vip);
+
+    function showScreen(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    let currentStep = null;
+
+    function goToBooking(asStep) {
+      currentStep = asStep;
+      document.getElementById('booking-badge').textContent = asStep === 'step1' ? '1 OF 2' : '2 OF 2';
+      document.getElementById('btn-booking-next').textContent = asStep === 'step1' ? 'Next: Submit VIPs →' : 'Done ✕';
+      document.getElementById('btn-booking-back').style.display = asStep === 'step1' ? 'none' : '';
+      showScreen('screen-booking');
+    }
+
+    function goToVip(asStep) {
+      currentStep = asStep;
+      document.getElementById('vip-badge').textContent = asStep === 'step1' ? '1 OF 2' : '2 OF 2';
+      document.getElementById('btn-vip-next').textContent = asStep === 'step1' ? 'Next: Book Day One →' : 'Done ✕';
+      document.getElementById('btn-vip-back').style.display = asStep === 'step1' ? 'none' : '';
+      showScreen('screen-vip');
+    }
+
+    function closeOverlay() {
+      window.parent.postMessage({ type: 'WCS_CLOSE_OVERLAY' }, '*');
+    }
+
+    document.getElementById('card-book').addEventListener('click', () => goToBooking('step1'));
+    document.getElementById('card-vip').addEventListener('click', () => goToVip('step1'));
+    document.getElementById('btn-booking-next').addEventListener('click', () => { if (currentStep === 'step1') goToVip('step2'); else closeOverlay(); });
+    document.getElementById('btn-vip-next').addEventListener('click', () => { if (currentStep === 'step1') goToBooking('step2'); else closeOverlay(); });
+    document.getElementById('btn-booking-back').addEventListener('click', () => goToVip('step1'));
+    document.getElementById('btn-vip-back').addEventListener('click', () => goToBooking('step1'));
+  </script>
+</body>
+</html>

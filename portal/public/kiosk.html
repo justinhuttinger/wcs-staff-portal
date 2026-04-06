@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ABC Financial — WCS Kiosk</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --red: #cc0000;
+      --red-hover: #aa0000;
+      --red-glow: rgba(204,0,0,0.15);
+      --black: #111111;
+      --surface: #f8f8f8;
+      --surface2: #f0f0f0;
+      --border: #e0e0e0;
+      --text: #111111;
+      --muted: #888888;
+      --white: #ffffff;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; font-family: 'DM Sans', sans-serif; overflow: hidden; background: var(--white); }
+
+    /* ABC iframe - fullscreen */
+    #abc-frame { position: fixed; inset: 0; width: 100%; height: 100%; border: none; z-index: 1; }
+
+    /* Setup screen */
+    #setup-screen {
+      position: fixed; inset: 0; z-index: 100;
+      background: var(--white);
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 20px;
+    }
+    #setup-screen.hidden { display: none; }
+    .setup-tag { background: var(--red); color: white; font-size: 10px; font-weight: 600; letter-spacing: 3px; padding: 4px 14px; text-transform: uppercase; }
+    .setup-heading { font-family: 'Bebas Neue', sans-serif; font-size: 36px; letter-spacing: 2px; color: var(--black); }
+    .setup-input { width: 400px; padding: 12px 16px; border: 2px solid var(--border); font-size: 14px; font-family: 'DM Sans', sans-serif; outline: none; }
+    .setup-input:focus { border-color: var(--red); }
+    .setup-btn { background: var(--red); color: white; border: none; padding: 12px 32px; font-family: 'Bebas Neue', sans-serif; font-size: 18px; letter-spacing: 2px; cursor: pointer; transition: background 0.2s; }
+    .setup-btn:hover { background: var(--red-hover); }
+    .setup-note { font-size: 12px; color: var(--muted); }
+
+    /* New Signup FAB */
+    #signup-fab {
+      position: fixed; bottom: 24px; right: 24px; z-index: 50;
+      background: var(--red); color: white; border: none;
+      padding: 14px 28px; font-family: 'Bebas Neue', sans-serif;
+      font-size: 18px; letter-spacing: 2px; cursor: pointer;
+      box-shadow: 0 4px 24px rgba(204,0,0,0.4);
+      transition: all 0.2s;
+    }
+    #signup-fab:hover { background: var(--red-hover); transform: translateY(-2px); box-shadow: 0 8px 32px rgba(204,0,0,0.5); }
+
+    /* Settings gear */
+    #settings-btn {
+      position: fixed; bottom: 24px; left: 24px; z-index: 50;
+      background: rgba(0,0,0,0.05); border: none;
+      width: 36px; height: 36px; font-size: 18px;
+      cursor: pointer; color: var(--muted); border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    #settings-btn:hover { background: rgba(0,0,0,0.1); color: var(--black); }
+
+    /* Overlay backdrop */
+    #overlay-backdrop {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,0.85);
+      display: none; align-items: center; justify-content: center;
+    }
+    #overlay-backdrop.visible { display: flex; }
+
+    /* Overlay modal */
+    #overlay-modal {
+      width: 860px; height: 600px;
+      background: var(--white);
+      border: 2px solid var(--red);
+      box-shadow: 0 0 60px rgba(204,0,0,0.4);
+      position: relative;
+    }
+    #overlay-modal iframe { width: 100%; height: 100%; border: none; }
+
+    /* Overlay close */
+    #overlay-close {
+      position: absolute; top: 12px; right: 12px; z-index: 210;
+      background: rgba(0,0,0,0.6); color: white;
+      width: 28px; height: 28px; border: none;
+      cursor: pointer; font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #overlay-close:hover { background: rgba(0,0,0,0.8); }
+
+    /* Member data form in FAB popup */
+    #member-form {
+      position: fixed; bottom: 80px; right: 24px; z-index: 60;
+      background: white; border: 2px solid var(--border);
+      padding: 20px; width: 320px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+      display: none;
+    }
+    #member-form.visible { display: block; }
+    #member-form h3 { font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 1px; margin-bottom: 12px; }
+    #member-form input { width: 100%; padding: 8px 10px; margin-bottom: 8px; border: 1px solid var(--border); font-size: 13px; font-family: 'DM Sans', sans-serif; }
+    #member-form input:focus { border-color: var(--red); outline: none; }
+    #member-form button { width: 100%; background: var(--red); color: white; border: none; padding: 10px; font-family: 'Bebas Neue', sans-serif; font-size: 16px; letter-spacing: 2px; cursor: pointer; margin-top: 4px; }
+    #member-form button:hover { background: var(--red-hover); }
+  </style>
+</head>
+<body>
+
+  <!-- Setup Screen (first time) -->
+  <div id="setup-screen">
+    <div class="setup-tag">KIOSK SETUP</div>
+    <div class="setup-heading">PASTE YOUR ABC FINANCIAL URL</div>
+    <input class="setup-input" id="abc-url-input" type="url" placeholder="https://prod02.abcfinancial.com/..." />
+    <input class="setup-input" id="location-input" placeholder="Location name (e.g. Salem)" />
+    <button class="setup-btn" id="setup-save">SAVE & LAUNCH</button>
+    <div class="setup-note">This is saved locally. You can change it later via the ⚙ icon.</div>
+  </div>
+
+  <!-- ABC iframe -->
+  <iframe id="abc-frame" src="about:blank"></iframe>
+
+  <!-- New Signup FAB -->
+  <button id="signup-fab" style="display:none">🎉 NEW SIGNUP</button>
+
+  <!-- Member data form -->
+  <div id="member-form">
+    <h3>MEMBER INFO</h3>
+    <input id="mf-first" placeholder="First Name" />
+    <input id="mf-last" placeholder="Last Name" />
+    <input id="mf-email" placeholder="Email" type="email" />
+    <input id="mf-phone" placeholder="Phone" type="tel" />
+    <input id="mf-salesperson" placeholder="Salesperson" />
+    <button id="mf-submit">START ONBOARDING</button>
+  </div>
+
+  <!-- Settings gear -->
+  <button id="settings-btn" style="display:none">⚙</button>
+
+  <!-- Onboarding Overlay -->
+  <div id="overlay-backdrop">
+    <div id="overlay-modal">
+      <button id="overlay-close">✕</button>
+      <iframe id="overlay-frame" src="about:blank"></iframe>
+    </div>
+  </div>
+
+  <!-- Locations config -->
+  <script>
+    const WCS_LOCATIONS = {
+      Salem: { booking: 'https://api.westcoaststrength.com/widget/booking/Gq92GXsDRAgTGZeHh7mx', vip: 'https://api.westcoaststrength.com/widget/survey/FkrsORfLFVMiVS26LV9V' },
+      Springfield: { booking: 'https://api.westcoaststrength.com/widget/booking/PEyaqnkjmBN5tLpo6I9F', vip: 'https://api.westcoaststrength.com/widget/survey/uM48yWzOBhXhUBsG1fhW' },
+      Eugene: { booking: 'https://api.westcoaststrength.com/widget/booking/0c9CNdZ65NainMcStWXo', vip: 'https://api.westcoaststrength.com/widget/survey/xKYTE6V7QXKVpkUfWTFi' },
+      Keizer: { booking: 'https://api.westcoaststrength.com/widget/booking/8qFo1GnePy0mCgV9avWW', vip: 'https://api.westcoaststrength.com/widget/survey/HXB00WKKe6srvgSmfwI7' },
+      Clackamas: { booking: 'https://api.westcoaststrength.com/widget/booking/yOvDLsZMAboTVjv9c2HC', vip: 'https://api.westcoaststrength.com/widget/survey/Z9zEHwjGfQaMIYy9OueF' },
+      Milwaukie: { booking: 'https://api.westcoaststrength.com/widget/booking/Gq92GXsDRAgTGZeHh7mx', vip: 'https://api.westcoaststrength.com/widget/survey/FkrsORfLFVMiVS26LV9V' },
+      Medford: { booking: 'https://api.westcoaststrength.com/widget/booking/Gq92GXsDRAgTGZeHh7mx', vip: 'https://api.westcoaststrength.com/widget/survey/FkrsORfLFVMiVS26LV9V' },
+    };
+  </script>
+
+  <script>
+    // ── State ──
+    const params = new URLSearchParams(window.location.search);
+    let abcUrl = params.get('abc_url') || localStorage.getItem('wcs_abc_url') || '';
+    let locationName = params.get('location') || localStorage.getItem('wcs_location') || '';
+
+    const setupScreen = document.getElementById('setup-screen');
+    const abcFrame = document.getElementById('abc-frame');
+    const signupFab = document.getElementById('signup-fab');
+    const settingsBtn = document.getElementById('settings-btn');
+    const memberForm = document.getElementById('member-form');
+    const overlayBackdrop = document.getElementById('overlay-backdrop');
+    const overlayFrame = document.getElementById('overlay-frame');
+
+    // ── Setup flow ──
+    if (abcUrl) {
+      launchKiosk();
+    } else {
+      setupScreen.classList.remove('hidden');
+    }
+
+    // Pre-fill from URL params
+    if (abcUrl) document.getElementById('abc-url-input').value = abcUrl;
+    if (locationName) document.getElementById('location-input').value = locationName;
+
+    document.getElementById('setup-save').addEventListener('click', () => {
+      const url = document.getElementById('abc-url-input').value.trim();
+      const loc = document.getElementById('location-input').value.trim();
+      if (!url) { alert('Please enter the ABC Financial URL'); return; }
+      abcUrl = url;
+      locationName = loc || 'Salem';
+      localStorage.setItem('wcs_abc_url', abcUrl);
+      localStorage.setItem('wcs_location', locationName);
+      launchKiosk();
+    });
+
+    function launchKiosk() {
+      setupScreen.classList.add('hidden');
+      abcFrame.src = abcUrl;
+      signupFab.style.display = '';
+      settingsBtn.style.display = '';
+      document.title = 'ABC Financial — ' + (locationName || 'WCS Kiosk');
+    }
+
+    // ── Settings (reset URL) ──
+    settingsBtn.addEventListener('click', () => {
+      setupScreen.classList.remove('hidden');
+      document.getElementById('abc-url-input').value = abcUrl;
+      document.getElementById('location-input').value = locationName;
+    });
+
+    // ── New Signup flow ──
+    let formVisible = false;
+    signupFab.addEventListener('click', () => {
+      formVisible = !formVisible;
+      memberForm.classList.toggle('visible', formVisible);
+      if (formVisible) document.getElementById('mf-first').focus();
+    });
+
+    document.getElementById('mf-submit').addEventListener('click', () => {
+      const member = {
+        firstName: document.getElementById('mf-first').value.trim(),
+        lastName: document.getElementById('mf-last').value.trim(),
+        email: document.getElementById('mf-email').value.trim(),
+        phone: document.getElementById('mf-phone').value.trim(),
+        salesperson: document.getElementById('mf-salesperson').value.trim(),
+      };
+
+      // Build welcome URL
+      const loc = WCS_LOCATIONS[locationName] || WCS_LOCATIONS['Salem'];
+      const welcomeParams = new URLSearchParams();
+      if (member.firstName) welcomeParams.set('firstName', member.firstName);
+      if (member.lastName) welcomeParams.set('lastName', member.lastName);
+      if (member.email) welcomeParams.set('email', member.email);
+      if (member.phone) welcomeParams.set('phone', member.phone);
+      if (member.salesperson) welcomeParams.set('salesperson', member.salesperson);
+      welcomeParams.set('location', locationName);
+
+      overlayFrame.src = '/welcome.html?' + welcomeParams.toString();
+      overlayBackdrop.classList.add('visible');
+      memberForm.classList.remove('visible');
+      formVisible = false;
+
+      // Clear form
+      ['mf-first','mf-last','mf-email','mf-phone','mf-salesperson'].forEach(id => document.getElementById(id).value = '');
+    });
+
+    // ── Overlay close ──
+    document.getElementById('overlay-close').addEventListener('click', closeOverlay);
+    overlayBackdrop.addEventListener('click', (e) => { if (e.target === overlayBackdrop) closeOverlay(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeOverlay(); });
+
+    // Listen for close messages from welcome.html
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'WCS_CLOSE_OVERLAY') closeOverlay();
+    });
+
+    function closeOverlay() {
+      overlayBackdrop.classList.remove('visible');
+      overlayFrame.src = 'about:blank';
+    }
+  </script>
+</body>
+</html>

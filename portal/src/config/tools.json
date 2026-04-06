@@ -10,7 +10,7 @@
     "id": "abc",
     "label": "ABC",
     "description": "ABC Financial",
-    "url": "https://abc-financial.example.com",
+    "url": "/kiosk.html",
     "icon": "abc"
   },
   {

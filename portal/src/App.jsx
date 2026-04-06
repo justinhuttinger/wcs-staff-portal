@@ -51,7 +51,7 @@ export default function App() {
 
       {/* Tool Grid */}
       <main className="flex-1 flex items-start pt-4">
-        <ToolGrid abcUrl={abcUrl} />
+        <ToolGrid abcUrl={abcUrl} location={location} />
       </main>
 
       {/* Idle Overlay */}
