@@ -65,25 +65,28 @@ if (-not (Test-Path $wcsDir)) {
     New-Item -Path $wcsDir -ItemType Directory -Force | Out-Null
 }
 
-# Copy WCS ABC overlay extension (if source exists alongside this script)
-$extSource = Join-Path (Split-Path -Parent $PSScriptRoot) 'extension'
-if (-not (Test-Path $extSource)) {
-    # Also check next to this script
-    $extSource = Join-Path $PSScriptRoot 'extension'
-}
-if (-not (Test-Path $extSource)) {
-    # Check common download location
-    $extSource = 'C:\WCS\extension'
-}
+# Download WCS ABC overlay extension from GitHub
 $extDest = "$wcsDir\extension"
-if ((Test-Path $extSource) -and ($extSource -ne $extDest)) {
-    if (Test-Path $extDest) { Remove-Item -Path $extDest -Recurse -Force }
-    Copy-Item -Path $extSource -Destination $extDest -Recurse -Force
-    Write-Host "Copied extension to: $extDest"
-} elseif (Test-Path $extDest) {
-    Write-Host "Extension already at: $extDest"
+if (-not (Test-Path $extDest)) {
+    Write-Host "Downloading extension from GitHub..."
+    $zipUrl = 'https://github.com/justinhuttinger/wcs-staff-portal/archive/refs/heads/master.zip'
+    $zipPath = "$env:TEMP\wcs-repo.zip"
+    $extractPath = "$env:TEMP\wcs-repo"
+
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing
+    Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+
+    # Copy just the extension folder
+    $repoExtPath = Get-ChildItem -Path $extractPath -Directory | Select-Object -First 1
+    Copy-Item -Path "$($repoExtPath.FullName)\extension" -Destination $extDest -Recurse -Force
+    Write-Host "Extension installed to: $extDest"
+
+    # Cleanup
+    Remove-Item -Path $zipPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path $extractPath -Recurse -Force -ErrorAction SilentlyContinue
 } else {
-    Write-Host "WARNING: Extension not found. Copy wcs-abc-overlay-v2 folder to C:\WCS\extension manually."
+    Write-Host "Extension already at: $extDest"
 }
 
 # --- ABC URL setter (dialog box) ---
