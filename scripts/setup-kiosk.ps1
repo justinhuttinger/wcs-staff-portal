@@ -38,7 +38,7 @@ Write-Host ""
 # 1. CREATE STAFF WINDOWS USER (if it doesn't exist)
 # ============================================================
 $staffUser = 'Staff'
-$staffPass = ConvertTo-SecureString '!31JellybeaN31!' -AsPlainText -Force
+$staffPass = ConvertTo-SecureString 'wcs1' -AsPlainText -Force
 
 if (-not (Get-LocalUser -Name $staffUser -ErrorAction SilentlyContinue)) {
     New-LocalUser -Name $staffUser -Password $staffPass -FullName 'WCS Staff' -Description 'Kiosk account' -PasswordNeverExpires
@@ -54,7 +54,7 @@ if (-not (Get-LocalUser -Name $staffUser -ErrorAction SilentlyContinue)) {
 $winlogonPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
 Set-ItemProperty -Path $winlogonPath -Name 'AutoAdminLogon' -Value '1'
 Set-ItemProperty -Path $winlogonPath -Name 'DefaultUserName' -Value $staffUser
-Set-ItemProperty -Path $winlogonPath -Name 'DefaultPassword' -Value '!31JellybeaN31!'
+Set-ItemProperty -Path $winlogonPath -Name 'DefaultPassword' -Value 'wcs1'
 Write-Host "Set auto-login for '$staffUser'"
 
 # ============================================================
