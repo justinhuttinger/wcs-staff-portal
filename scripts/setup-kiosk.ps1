@@ -251,7 +251,8 @@ $allowedURLs = @(
     'myapps.paychex.com',
     'accounts.google.com',
     '*.abcfinancial.com',
-    'api.westcoaststrength.com'
+    'api.westcoaststrength.com',
+    'chrome://*'
 )
 
 for ($i = 0; $i -lt $allowedURLs.Count; $i++) {
