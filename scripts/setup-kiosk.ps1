@@ -160,10 +160,13 @@ Write-Host "Scheduled nightly cleanup at 2:00 AM"
 # DONE
 # ============================================================
 Write-Host ""
-Write-Host "=== Setup complete ==="
-Write-Host "Next steps:"
-Write-Host "  1. Restart the machine — it will auto-login as '$staffUser'"
-Write-Host "  2. Open Chrome — it should load the portal automatically"
+Write-Host "=== Setup complete — rebooting in 30 seconds ==="
+Write-Host "After reboot:"
+Write-Host "  1. Machine will auto-login as '$staffUser'"
+Write-Host "  2. Chrome will open to the portal automatically"
 Write-Host "  3. Sign in the kiosk Google account for this location"
 Write-Host ""
 Write-Host "To undo: run chrome-unlock.ps1 (removes all Chrome policies)"
+
+# Reboot after 30 seconds to apply all changes
+shutdown /r /t 30 /c "WCS Kiosk setup complete — rebooting to apply changes"
