@@ -80,7 +80,7 @@ if (Test-Path $hklmChrome) {
 # This script runs every time Staff logs in. It:
 #   a) Applies Chrome policies to HKCU (current user = Staff)
 #   b) Creates a desktop shortcut to the portal
-#   c) Opens Chrome in app mode to the portal
+#   c) Opens Chrome to the portal (regular mode with tabs)
 
 $wcsScriptDir = 'C:\WCS'
 if (-not (Test-Path $wcsScriptDir)) {
@@ -154,13 +154,13 @@ if (-not (Test-Path `$shortcutPath)) {
     `$shell = New-Object -ComObject WScript.Shell
     `$shortcut = `$shell.CreateShortcut(`$shortcutPath)
     `$shortcut.TargetPath = '$chromePath'
-    `$shortcut.Arguments = '--app=$portalURL'
+    `$shortcut.Arguments = '--start-maximized $portalURL'
     `$shortcut.Description = 'WCS Staff Portal'
     `$shortcut.Save()
 }
 
-# ---- Launch portal in Chrome app mode ----
-Start-Process -FilePath '$chromePath' -ArgumentList '--app=$portalURL'
+# ---- Launch Chrome to portal (regular mode with tabs) ----
+Start-Process -FilePath '$chromePath' -ArgumentList '--start-maximized $portalURL'
 "@
 
 $logonScriptPath = Join-Path $wcsScriptDir 'staff-logon.ps1'
