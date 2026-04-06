@@ -19,5 +19,6 @@ if (-not (Test-Path $chromePolicyRoot)) {
 }
 
 Set-ItemProperty -Path $chromePolicyRoot -Name 'BrowserAddPersonEnabled' -Value 0 -Type DWord
+Set-ItemProperty -Path $chromePolicyRoot -Name 'BrowserGuestModeEnabled' -Value 0 -Type DWord
 Write-Host "Chrome profile picker is now LOCKED."
-Write-Host "No new profiles can be created."
+Write-Host "No new profiles or guest sessions can be created."

@@ -207,7 +207,7 @@ $policies = @{
     'RestrictSigninToPattern'    = @{ Value = '*@westcoaststrength.com'; Type = 'String' }
     # BrowserAddPersonEnabled — applied later via lock-profile.ps1 after first sign-in
     'DeveloperToolsAvailability' = @{ Value = 1;  Type = 'DWord' }  # Allow extensions to load
-    'BrowserGuestModeEnabled'    = @{ Value = 0;  Type = 'DWord' }
+    # BrowserGuestModeEnabled — applied later via lock-profile.ps1 after first sign-in
     'SyncDisabled'               = @{ Value = 1;  Type = 'DWord' }
     'ClearBrowsingDataOnExit'    = @{ Value = 1;  Type = 'DWord' }
     'PasswordManagerEnabled'     = @{ Value = 0;  Type = 'DWord' }
