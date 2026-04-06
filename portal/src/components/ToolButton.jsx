@@ -32,27 +32,12 @@ const ICONS = {
 }
 
 export default function ToolButton({ label, description, icon, url }) {
-  const openTool = () => {
-    const popup = window.open(
-      url,
-      label,
-      'width=1400,height=900,toolbar=0,menubar=0,location=0'
-    )
-    if (!popup) {
-      window.location.href = url
-      return
-    }
-    const timer = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(timer)
-      }
-    }, 500)
-  }
-
   return (
-    <button
-      onClick={openTool}
-      className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)] no-underline"
     >
       <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg text-wcs-red group-hover:bg-wcs-red group-hover:text-white transition-all duration-200">
         {ICONS[icon]}
@@ -61,6 +46,6 @@ export default function ToolButton({ label, description, icon, url }) {
         <span className="block text-base font-semibold text-text-primary">{label}</span>
         <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">{description}</span>
       </div>
-    </button>
+    </a>
   )
 }
