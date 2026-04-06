@@ -174,7 +174,7 @@ Ensure-RegistryPath $chromePolicyRoot
 $policies = @{
     'BrowserSignin'              = @{ Value = 2;  Type = 'DWord' }
     'RestrictSigninToPattern'    = @{ Value = '*@westcoaststrength.com'; Type = 'String' }
-    'BrowserAddPersonEnabled'    = @{ Value = 1;  Type = 'DWord' }
+    # BrowserAddPersonEnabled is set by lock-profile.ps1 AFTER first-time Chrome setup
     'BrowserGuestModeEnabled'    = @{ Value = 0;  Type = 'DWord' }
     'SyncDisabled'               = @{ Value = 1;  Type = 'DWord' }
     'ClearBrowsingDataOnExit'    = @{ Value = 1;  Type = 'DWord' }
