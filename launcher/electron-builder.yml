@@ -1,5 +1,5 @@
-appId: com.westcoaststrength.portal-launcher
-productName: WCS Portal Launcher
+appId: com.westcoaststrength.wcs-app
+productName: WCS App
 directories:
   output: dist
 

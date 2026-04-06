@@ -2,6 +2,8 @@ const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const { PORTAL_URL, getAbcUrl, getLocation } = require('./config')
 const TabManager = require('./tabs')
+const { showOverlay } = require('./overlay')
+const { createTray } = require('./tray')
 
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) app.quit()
@@ -26,6 +28,13 @@ app.on('ready', () => {
 
   mainWindow.maximize()
 
+  createTray(mainWindow)
+
+  app.setLoginItemSettings({
+    openAtLogin: true,
+    path: app.getPath('exe'),
+  })
+
   tabManager = new TabManager(mainWindow, TAB_BAR_HEIGHT)
   tabManager.initTabBar()
 
@@ -36,6 +45,19 @@ app.on('ready', () => {
   ipcMain.on('switch-tab', (e, id) => tabManager.switchTo(id))
   ipcMain.on('close-tab', (e, id) => tabManager.closeTab(id))
   ipcMain.on('tabs-ready', () => tabManager.notifyTabBar())
+
+  // ABC scraper IPC
+  let latestMemberData = {}
+
+  ipcMain.on('abc-member-data', (e, data) => {
+    latestMemberData = data
+  })
+
+  ipcMain.on('abc-signup-detected', (e, data) => {
+    latestMemberData = { ...latestMemberData, ...data }
+    showOverlay(latestMemberData)
+    latestMemberData = {}
+  })
 
   // Intercept new windows from any tab — open as tabs instead
   app.on('web-contents-created', (event, contents) => {
