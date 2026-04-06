@@ -13,6 +13,16 @@ let mainWindow = null
 let tabManager = null
 
 app.on('ready', () => {
+  const { session } = require('electron')
+
+  // Strip X-Frame-Options from ABC Financial so it loads in iframes
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const headers = { ...details.responseHeaders }
+    delete headers['x-frame-options']
+    delete headers['X-Frame-Options']
+    callback({ responseHeaders: headers })
+  })
+
   const location = getLocation()
   const abcUrl = getAbcUrl()
   const portalUrl = `${PORTAL_URL}?location=${location}` + (abcUrl ? `&abc_url=${encodeURIComponent(abcUrl)}` : '')
@@ -38,13 +48,21 @@ app.on('ready', () => {
   tabManager = new TabManager(mainWindow, TAB_BAR_HEIGHT)
   tabManager.initTabBar()
 
-  // Home tab (portal) — not closable
-  tabManager.createTab(portalUrl, 'Portal', { closable: false })
+  // Home tab (portal) — not closable, with preload for link interception
+  tabManager.createTab(portalUrl, 'Portal', {
+    closable: false,
+    preload: path.join(__dirname, 'portal-preload.js'),
+  })
 
   // Tab IPC
   ipcMain.on('switch-tab', (e, id) => tabManager.switchTo(id))
   ipcMain.on('close-tab', (e, id) => tabManager.closeTab(id))
   ipcMain.on('tabs-ready', () => tabManager.notifyTabBar())
+
+  // Link click IPC from preload scripts
+  ipcMain.on('open-in-tab', (e, url) => {
+    if (tabManager.onNewWindow) tabManager.onNewWindow(url)
+  })
 
   // Window control IPC
   ipcMain.on('window-minimize', () => mainWindow.minimize())
@@ -69,13 +87,12 @@ app.on('ready', () => {
 
   // Route new windows into tabs
   tabManager.onNewWindow = (url) => {
-    if (url.includes('abcfinancial.com')) {
-      tabManager.createTab(url, 'ABC Financial', {
+    if (url.includes('abcfinancial.com') || url.includes('kiosk.html')) {
+      // Open ABC directly as a tab (not in an iframe — avoids X-Frame-Options)
+      const abcDirect = abcUrl || 'https://prod02.abcfinancial.com'
+      tabManager.createTab(abcDirect, 'ABC Financial', {
         preload: path.join(__dirname, 'abc-scraper.js'),
       })
-    } else if (url.includes('kiosk.html')) {
-      // Kiosk setup page — open as-is (it has its own ABC URL input)
-      tabManager.createTab(url, 'ABC Kiosk')
     } else if (url.includes('gohighlevel.com') || url.includes('westcoaststrength.com/')) {
       tabManager.createTab(url, 'Grow')
     } else if (url.includes('wheniwork.com')) {
@@ -88,6 +105,16 @@ app.on('ready', () => {
   }
 
   mainWindow.on('resize', () => tabManager.layoutViews())
+
+  // F12 opens DevTools on active tab
+  const { globalShortcut } = require('electron')
+  globalShortcut.register('F12', () => {
+    const active = tabManager.tabs.get(tabManager.activeTabId)
+    if (active) active.view.webContents.openDevTools()
+  })
 })
 
-app.on('window-all-closed', () => app.quit())
+app.on('window-all-closed', (e) => {
+  // Only quit if the main window is gone
+  if (!mainWindow || mainWindow.isDestroyed()) app.quit()
+})

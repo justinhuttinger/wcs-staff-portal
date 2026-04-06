@@ -9,7 +9,7 @@ class TabManager {
     this.activeTabId = null
     this.nextId = 1
     this.tabBarView = null
-    this.onNewWindow = null // callback: (url) => void
+    this.onNewWindow = null
   }
 
   initTabBar() {
@@ -39,18 +39,22 @@ class TabManager {
 
     view.webContents.loadURL(url)
 
-    // Intercept target="_blank" links — open as tabs
-    view.webContents.setWindowOpenHandler(({ url }) => {
-      if (this.onNewWindow) this.onNewWindow(url)
-      return { action: 'deny' }
-    })
-
-    view.webContents.on('page-title-updated', (e, pageTitle) => {
+    // Update tab title from page
+    view.webContents.on('page-title-updated', (e, newTitle) => {
       const tab = this.tabs.get(id)
       if (tab) {
-        tab.title = pageTitle.substring(0, 30)
+        tab.title = newTitle.substring(0, 30)
         this.notifyTabBar()
       }
+    })
+
+    // Block all popups — ABC internal links should navigate in-place, not open new windows
+    view.webContents.setWindowOpenHandler(({ url }) => {
+      // Navigate the current tab to the URL instead of opening a popup
+      if (url && url !== 'about:blank') {
+        view.webContents.loadURL(url)
+      }
+      return { action: 'deny' }
     })
 
     this.tabs.set(id, { view, title, closable, id })
