@@ -4,15 +4,14 @@
     WCS Kiosk Full Setup Script
 .DESCRIPTION
     One-shot script to configure a front desk computer as a WCS kiosk.
-    Creates Staff + Admin Windows users, applies Chrome lockdown to Staff only.
-    Admin gets an unrestricted Chrome experience.
-    Push via Action1 RMM or run manually on the machine.
+    Creates Staff + Admin Windows users. Places a logon script on the
+    Staff account that applies Chrome lockdown and opens the portal
+    every time Staff logs in. Admin is completely unrestricted.
 
     BEFORE RUNNING: Set the three variables below for this machine.
 .NOTES
     Idempotent — safe to run multiple times on the same machine.
-    Run as SYSTEM or local admin.
-    Chrome policies are applied to Staff's HKCU (not HKLM) so Admin is unaffected.
+    Run as SYSTEM or local admin via Action1.
 #>
 
 # ============================================================
@@ -31,20 +30,12 @@ if ($ABCFinancialURL) {
     $portalURL += "&abc_url=$([uri]::EscapeDataString($ABCFinancialURL))"
 }
 
+$chromePath = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+
 Write-Host "=== WCS Kiosk Setup ==="
 Write-Host "Location:   $LocationName"
 Write-Host "Portal URL: $portalURL"
 Write-Host ""
-
-# ============================================================
-# HELPER: Ensure registry path exists
-# ============================================================
-function Ensure-RegistryPath {
-    param([string]$Path)
-    if (-not (Test-Path $Path)) {
-        New-Item -Path $Path -Force | Out-Null
-    }
-}
 
 # ============================================================
 # 1. CREATE WINDOWS USERS
@@ -57,7 +48,7 @@ $staffPass = ConvertTo-SecureString 'wcs1' -AsPlainText -Force
 if (-not (Get-LocalUser -Name $staffUser -ErrorAction SilentlyContinue)) {
     New-LocalUser -Name $staffUser -Password $staffPass -FullName 'WCS Staff' -Description 'Kiosk account' -PasswordNeverExpires
     Add-LocalGroupMember -Group 'Users' -Member $staffUser
-    Write-Host "Created local user: $staffUser (password: wcs1)"
+    Write-Host "Created local user: $staffUser"
 } else {
     Write-Host "User '$staffUser' already exists — skipping"
 }
@@ -74,120 +65,125 @@ if (-not (Get-LocalUser -Name $adminUser -ErrorAction SilentlyContinue)) {
     Write-Host "User '$adminUser' already exists — skipping"
 }
 
-Write-Host "Both profiles available at Windows lock screen"
-
 # ============================================================
-# 2. REMOVE ANY MACHINE-WIDE CHROME POLICIES (clean slate)
+# 2. REMOVE ANY OLD MACHINE-WIDE CHROME POLICIES
 # ============================================================
 $hklmChrome = 'HKLM:\SOFTWARE\Policies\Google\Chrome'
 if (Test-Path $hklmChrome) {
     Remove-Item -Path $hklmChrome -Recurse -Force
-    Write-Host "Removed old HKLM Chrome policies (so Admin is unrestricted)"
+    Write-Host "Removed old HKLM Chrome policies"
 }
 
 # ============================================================
-# 3. APPLY CHROME LOCKDOWN TO STAFF USER ONLY (HKCU)
+# 3. CREATE STAFF LOGON SCRIPT
 # ============================================================
-# Load Staff's registry hive so we can write to their HKCU
-$staffNtuser = "C:\Users\$staffUser\NTUSER.DAT"
+# This script runs every time Staff logs in. It:
+#   a) Applies Chrome policies to HKCU (current user = Staff)
+#   b) Creates a desktop shortcut to the portal
+#   c) Opens Chrome in app mode to the portal
 
-# First login may not have created the profile yet — force it
-if (-not (Test-Path "C:\Users\$staffUser")) {
-    Write-Host "Creating Staff profile (first-time login simulation)..."
-    $cred = New-Object System.Management.Automation.PSCredential($staffUser, $staffPass)
-    Start-Process -FilePath 'cmd.exe' -ArgumentList '/c echo.' -Credential $cred -Wait -NoNewWindow -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 3
+$wcsScriptDir = 'C:\WCS'
+if (-not (Test-Path $wcsScriptDir)) {
+    New-Item -Path $wcsScriptDir -ItemType Directory -Force | Out-Null
 }
 
-# Load the hive
-$hivePath = "HKU\StaffProfile"
-$loaded = $false
-if (Test-Path $staffNtuser) {
-    reg load $hivePath $staffNtuser 2>$null
-    $loaded = $true
-    Write-Host "Loaded Staff registry hive"
-} else {
-    Write-Host "WARNING: Staff NTUSER.DAT not found at $staffNtuser"
-    Write-Host "Chrome policies will be applied on first Staff login instead."
-    Write-Host "Re-run this script after Staff has logged in once."
+$logonScriptContent = @"
+# WCS Staff Logon Script — applies Chrome lockdown and opens portal
+# This runs as the Staff user (HKCU = Staff's registry)
+
+`$ErrorActionPreference = 'SilentlyContinue'
+
+# ---- Apply Chrome policies to current user ----
+`$chromePolicyRoot = 'HKCU:\SOFTWARE\Policies\Google\Chrome'
+
+function Ensure-Path {
+    param([string]`$P)
+    if (-not (Test-Path `$P)) { New-Item -Path `$P -Force | Out-Null }
 }
 
-if ($loaded) {
-    $chromePolicyRoot = "Registry::$hivePath\SOFTWARE\Policies\Google\Chrome"
+Ensure-Path `$chromePolicyRoot
 
-    Ensure-RegistryPath $chromePolicyRoot
+# Core lockdown policies
+Set-ItemProperty -Path `$chromePolicyRoot -Name 'BrowserSignin' -Value 2 -Type DWord
+Set-ItemProperty -Path `$chromePolicyRoot -Name 'RestrictSigninToPattern' -Value '*@westcoaststrength.com' -Type String
+Set-ItemProperty -Path `$chromePolicyRoot -Name 'BrowserAddPersonEnabled' -Value 0 -Type DWord
+Set-ItemProperty -Path `$chromePolicyRoot -Name 'BrowserGuestModeEnabled' -Value 0 -Type DWord
+Set-ItemProperty -Path `$chromePolicyRoot -Name 'SyncDisabled' -Value 1 -Type DWord
+Set-ItemProperty -Path `$chromePolicyRoot -Name 'ClearBrowsingDataOnExit' -Value 1 -Type DWord
+Set-ItemProperty -Path `$chromePolicyRoot -Name 'PasswordManagerEnabled' -Value 0 -Type DWord
+Set-ItemProperty -Path `$chromePolicyRoot -Name 'AutofillAddressEnabled' -Value 0 -Type DWord
+Set-ItemProperty -Path `$chromePolicyRoot -Name 'AutofillCreditCardEnabled' -Value 0 -Type DWord
+Set-ItemProperty -Path `$chromePolicyRoot -Name 'IncognitoModeAvailability' -Value 1 -Type DWord
+Set-ItemProperty -Path `$chromePolicyRoot -Name 'RestoreOnStartup' -Value 4 -Type DWord
 
-    # Core policies
-    $policies = @{
-        'BrowserSignin'              = @{ Value = 2;  Type = 'DWord' }
-        'RestrictSigninToPattern'    = @{ Value = '*@westcoaststrength.com'; Type = 'String' }
-        'BrowserAddPersonEnabled'    = @{ Value = 0;  Type = 'DWord' }
-        'BrowserGuestModeEnabled'    = @{ Value = 0;  Type = 'DWord' }
-        'SyncDisabled'               = @{ Value = 1;  Type = 'DWord' }
-        'ClearBrowsingDataOnExit'    = @{ Value = 1;  Type = 'DWord' }
-        'PasswordManagerEnabled'     = @{ Value = 0;  Type = 'DWord' }
-        'AutofillAddressEnabled'     = @{ Value = 0;  Type = 'DWord' }
-        'AutofillCreditCardEnabled'  = @{ Value = 0;  Type = 'DWord' }
-        'IncognitoModeAvailability'  = @{ Value = 1;  Type = 'DWord' }
-        'RestoreOnStartup'           = @{ Value = 4;  Type = 'DWord' }
-    }
+# Startup URL
+`$startupPath = "`$chromePolicyRoot\RestoreOnStartupURLs"
+Ensure-Path `$startupPath
+Set-ItemProperty -Path `$startupPath -Name '1' -Value '$portalURL' -Type String
 
-    foreach ($key in $policies.Keys) {
-        Set-ItemProperty -Path $chromePolicyRoot -Name $key -Value $policies[$key].Value -Type $policies[$key].Type
-    }
-    Write-Host "Applied Chrome core policies (Staff only)"
+# Pinned tab
+`$pinnedPath = "`$chromePolicyRoot\PinnedTabs"
+Ensure-Path `$pinnedPath
+Set-ItemProperty -Path `$pinnedPath -Name '1' -Value '$portalURL' -Type String
 
-    # Startup URL
-    $startupPath = "$chromePolicyRoot\RestoreOnStartupURLs"
-    Ensure-RegistryPath $startupPath
-    Set-ItemProperty -Path $startupPath -Name '1' -Value $portalURL -Type String
-    Write-Host "Set startup URL: $portalURL"
+# Block all URLs except allowlist
+`$blockPath = "`$chromePolicyRoot\URLBlocklist"
+Ensure-Path `$blockPath
+Set-ItemProperty -Path `$blockPath -Name '1' -Value '*' -Type String
 
-    # Pinned tab
-    $pinnedPath = "$chromePolicyRoot\PinnedTabs"
-    Ensure-RegistryPath $pinnedPath
-    Set-ItemProperty -Path $pinnedPath -Name '1' -Value $portalURL -Type String
-
-    # URL blocklist — block everything
-    $blockPath = "$chromePolicyRoot\URLBlocklist"
-    Ensure-RegistryPath $blockPath
-    Set-ItemProperty -Path $blockPath -Name '1' -Value '*' -Type String
-
-    # URL allowlist — only approved sites
-    $allowPath = "$chromePolicyRoot\URLAllowlist"
-    Ensure-RegistryPath $allowPath
-
-    $allowedURLs = @(
-        $PortalBaseURL.Replace('https://','').Replace('http://',''),
-        'app.gohighlevel.com',
-        'mail.google.com',
-        'drive.google.com',
-        'docs.google.com',
-        'app.wheniwork.com',
-        'myapps.paychex.com',
-        'accounts.google.com'
-    )
-
-    # Add ABC domain to allowlist if set
-    if ($ABCFinancialURL) {
-        $abcDomain = ([uri]$ABCFinancialURL).Host
-        $allowedURLs += $abcDomain
-    }
-
-    for ($i = 0; $i -lt $allowedURLs.Count; $i++) {
-        Set-ItemProperty -Path $allowPath -Name ($i + 1).ToString() -Value $allowedURLs[$i] -Type String
-    }
-    Write-Host "Set URL allowlist: $($allowedURLs.Count) domains"
-
-    # Unload the hive
-    [gc]::Collect()
-    Start-Sleep -Seconds 1
-    reg unload $hivePath 2>$null
-    Write-Host "Unloaded Staff registry hive"
+`$allowPath = "`$chromePolicyRoot\URLAllowlist"
+Ensure-Path `$allowPath
+`$allowed = @(
+    '$($PortalBaseURL.Replace("https://","").Replace("http://",""))',
+    'app.gohighlevel.com',
+    'mail.google.com',
+    'drive.google.com',
+    'docs.google.com',
+    'app.wheniwork.com',
+    'myapps.paychex.com',
+    'accounts.google.com'
+)
+for (`$i = 0; `$i -lt `$allowed.Count; `$i++) {
+    Set-ItemProperty -Path `$allowPath -Name (`$i + 1).ToString() -Value `$allowed[`$i] -Type String
 }
+
+# ---- Create desktop shortcut ----
+`$desktopPath = [Environment]::GetFolderPath('Desktop')
+`$shortcutPath = Join-Path `$desktopPath 'WCS Staff Portal.lnk'
+if (-not (Test-Path `$shortcutPath)) {
+    `$shell = New-Object -ComObject WScript.Shell
+    `$shortcut = `$shell.CreateShortcut(`$shortcutPath)
+    `$shortcut.TargetPath = '$chromePath'
+    `$shortcut.Arguments = '--app=$portalURL'
+    `$shortcut.Description = 'WCS Staff Portal'
+    `$shortcut.Save()
+}
+
+# ---- Launch portal in Chrome app mode ----
+Start-Process -FilePath '$chromePath' -ArgumentList '--app=$portalURL'
+"@
+
+$logonScriptPath = Join-Path $wcsScriptDir 'staff-logon.ps1'
+Set-Content -Path $logonScriptPath -Value $logonScriptContent -Force
+Write-Host "Created logon script: $logonScriptPath"
 
 # ============================================================
-# 4. SCHEDULE NIGHTLY PROFILE CLEANUP (2 AM)
+# 4. REGISTER LOGON SCRIPT AS SCHEDULED TASK (runs at Staff login)
+# ============================================================
+$logonTaskName = 'WCS-Staff-Logon'
+if (Get-ScheduledTask -TaskName $logonTaskName -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName $logonTaskName -Confirm:$false
+}
+
+$logonAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$logonScriptPath`""
+$logonTrigger = New-ScheduledTaskTrigger -AtLogOn
+$logonTrigger.UserId = $staffUser
+$logonPrincipal = New-ScheduledTaskPrincipal -UserId $staffUser -LogonType Interactive
+Register-ScheduledTask -TaskName $logonTaskName -Action $logonAction -Trigger $logonTrigger -Principal $logonPrincipal -Description 'WCS Staff Portal — apply Chrome lockdown and open portal on login'
+Write-Host "Registered logon task for '$staffUser'"
+
+# ============================================================
+# 5. SCHEDULE NIGHTLY PROFILE CLEANUP (2 AM)
 # ============================================================
 $cleanupScript = @'
 $profileRoot = "C:\Users\Staff\AppData\Local\Google\Chrome\User Data"
@@ -198,15 +194,15 @@ if (Test-Path $profileRoot) {
 }
 '@
 
-$taskName = 'WCS-Nightly-Chrome-Cleanup'
-if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
-    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+$cleanupTaskName = 'WCS-Nightly-Chrome-Cleanup'
+if (Get-ScheduledTask -TaskName $cleanupTaskName -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName $cleanupTaskName -Confirm:$false
 }
 
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"$cleanupScript`""
-$trigger = New-ScheduledTaskTrigger -Daily -At '2:00AM'
-$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Description 'WCS nightly Chrome profile cleanup'
+$cleanupAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"$cleanupScript`""
+$cleanupTrigger = New-ScheduledTaskTrigger -Daily -At '2:00AM'
+$cleanupPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
+Register-ScheduledTask -TaskName $cleanupTaskName -Action $cleanupAction -Trigger $cleanupTrigger -Principal $cleanupPrincipal -Description 'WCS nightly Chrome profile cleanup'
 Write-Host "Scheduled nightly cleanup at 2:00 AM"
 
 # ============================================================
@@ -214,11 +210,19 @@ Write-Host "Scheduled nightly cleanup at 2:00 AM"
 # ============================================================
 Write-Host ""
 Write-Host "=== Setup complete — rebooting in 30 seconds ==="
+Write-Host ""
 Write-Host "After reboot:"
-Write-Host "  - Log in as 'Staff' (password: wcs1) — locked Chrome with portal"
-Write-Host "  - Log in as 'Admin' (IT password) — unrestricted Chrome"
+Write-Host "  STAFF login (password: wcs1):"
+Write-Host "    - Chrome opens automatically to portal in app mode"
+Write-Host "    - Desktop shortcut 'WCS Staff Portal' created"
+Write-Host "    - Chrome locked down (allowlist only, no passwords, no incognito)"
+Write-Host "    - Sessions wiped when Chrome closes"
+Write-Host ""
+Write-Host "  ADMIN login (IT password):"
+Write-Host "    - Chrome is completely unrestricted"
+Write-Host "    - Full admin access to the machine"
 Write-Host ""
 Write-Host "To undo: run chrome-unlock.ps1"
 
-# Reboot after 30 seconds to apply all changes
+# Reboot
 shutdown /r /t 30 /c "WCS Kiosk setup complete — rebooting to apply changes"
