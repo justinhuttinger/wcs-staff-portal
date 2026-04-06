@@ -147,13 +147,14 @@ if (-not (Test-Path `$shortcutPath)) {
     `$shortcut.Save()
 }
 
-# Launch Chrome with extension loaded
-`$extPath = 'C:\WCS\extension'
-if (Test-Path `$extPath) {
-    Start-Process -FilePath '$chromePath' -ArgumentList "--start-maximized --load-extension=`$extPath `$portalURL"
-} else {
-    Start-Process -FilePath '$chromePath' -ArgumentList "--start-maximized `$portalURL"
+# Launch WCS App (Electron browser for work tools)
+`$wcsApp = 'C:\Program Files\WCS App\WCS App.exe'
+if (Test-Path `$wcsApp) {
+    Start-Process -FilePath `$wcsApp -ArgumentList "--location=$LocationName"
 }
+
+# Also launch Chrome for personal browsing
+Start-Process -FilePath '$chromePath' -ArgumentList "--start-maximized `$portalURL"
 "@
 Set-Content -Path "$wcsDir\staff-logon.ps1" -Value $staffLogonContent -Force
 Write-Host "Created: $wcsDir\staff-logon.ps1"
@@ -186,6 +187,23 @@ if (-not (Test-Path `$chromePath)) {
 "@
 Set-Content -Path "$wcsDir\admin-logon.ps1" -Value $adminLogonContent -Force
 Write-Host "Created: $wcsDir\admin-logon.ps1"
+
+# ============================================================
+# INSTALL WCS APP (Electron browser for work tools)
+# ============================================================
+$wcsAppInstaller = "$env:TEMP\WCS-App-Setup.exe"
+$wcsAppUrl = 'https://github.com/justinhuttinger/wcs-staff-portal/releases/latest/download/WCS-App-Setup.exe'
+
+Write-Host "Downloading WCS App installer..."
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+try {
+    Invoke-WebRequest -Uri $wcsAppUrl -OutFile $wcsAppInstaller -UseBasicParsing
+    Start-Process -FilePath $wcsAppInstaller -ArgumentList '/S' -Wait
+    Write-Host "WCS App installed"
+    Remove-Item -Path $wcsAppInstaller -Force -ErrorAction SilentlyContinue
+} catch {
+    Write-Host "WARNING: Could not download WCS App. Install manually."
+}
 
 # ============================================================
 # 3. APPLY CHROME LOCKDOWN (HKLM — all users, reliable)
