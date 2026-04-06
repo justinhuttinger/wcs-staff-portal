@@ -1,16 +1,13 @@
-const { BrowserView } = require('electron')
+const { BrowserWindow } = require('electron')
 const { PORTAL_URL, getLocation } = require('./config')
 
-let overlayView = null
-let parentWindow = null
+let overlayWindow = null
 
-function showOverlay(memberData, mainWindow) {
-  if (overlayView) {
-    // Already showing — bring to front
+function showOverlay(memberData, mainWindow, tabManager) {
+  if (overlayWindow) {
+    overlayWindow.focus()
     return
   }
-
-  parentWindow = mainWindow
 
   const location = getLocation()
   const welcomeUrl = new URL(`${PORTAL_URL}/welcome.html`)
@@ -21,34 +18,39 @@ function showOverlay(memberData, mainWindow) {
   if (memberData.salesperson) welcomeUrl.searchParams.set('salesperson', memberData.salesperson)
   welcomeUrl.searchParams.set('location', location)
 
-  overlayView = new BrowserView({
+  // Child window of main — appears on top like a modal, can't go behind
+  overlayWindow = new BrowserWindow({
+    parent: mainWindow,
+    modal: true,
+    width: 1100,
+    height: 750,
+    title: 'WCS — Next Steps',
+    autoHideMenuBar: true,
+    resizable: false,
+    center: true,
+    frame: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
   })
 
-  mainWindow.addBrowserView(overlayView)
-  layoutOverlay()
-  overlayView.webContents.loadURL(welcomeUrl.toString())
+  overlayWindow.loadURL(welcomeUrl.toString())
 
-  // Listen for close message from welcome.html
-  overlayView.webContents.on('console-message', (e, level, msg) => {
-    // welcome.html sends WCS_CLOSE_OVERLAY via postMessage, which we can't catch
-    // So we also watch for a custom console message
+  overlayWindow.on('closed', () => {
+    overlayWindow = null
+  })
+
+  // Listen for close from welcome.html
+  overlayWindow.webContents.on('console-message', (e, level, msg) => {
     if (msg.includes('WCS_CLOSE_OVERLAY')) closeOverlay()
   })
 
-  // Inject close-on-escape and backdrop click handler
-  overlayView.webContents.on('dom-ready', () => {
-    overlayView.webContents.executeJavaScript(`
-      // Listen for close messages from welcome.html iframes
+  overlayWindow.webContents.on('dom-ready', () => {
+    overlayWindow.webContents.executeJavaScript(`
       window.addEventListener('message', (e) => {
-        if (e.data && e.data.type === 'WCS_CLOSE_OVERLAY') {
-          console.log('WCS_CLOSE_OVERLAY')
-        }
+        if (e.data && e.data.type === 'WCS_CLOSE_OVERLAY') console.log('WCS_CLOSE_OVERLAY')
       })
-      // Escape key closes overlay
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') console.log('WCS_CLOSE_OVERLAY')
       })
@@ -56,23 +58,13 @@ function showOverlay(memberData, mainWindow) {
   })
 }
 
-function layoutOverlay() {
-  if (!overlayView || !parentWindow) return
-  const bounds = parentWindow.getContentBounds()
-  // Full screen overlay — covers everything including tab bar
-  overlayView.setBounds({ x: 0, y: 0, width: bounds.width, height: bounds.height })
-}
-
 function closeOverlay() {
-  if (overlayView && parentWindow) {
-    parentWindow.removeBrowserView(overlayView)
-    overlayView.webContents.destroy()
-    overlayView = null
+  if (overlayWindow) {
+    overlayWindow.close()
+    overlayWindow = null
   }
 }
 
-function onResize() {
-  layoutOverlay()
-}
+function onResize() {}
 
 module.exports = { showOverlay, closeOverlay, onResize }

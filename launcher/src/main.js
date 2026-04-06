@@ -1,5 +1,9 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
+const fs = require('fs')
+const LOG_FILE = 'C:\\WCS\\app.log'
+function log(msg) { fs.appendFileSync(LOG_FILE, new Date().toISOString() + ' ' + msg + '\n') }
+log('=== APP STARTING ===')
 const { PORTAL_URL, getAbcUrl, getLocation } = require('./config')
 const TabManager = require('./tabs')
 const { showOverlay, closeOverlay, onResize: onOverlayResize } = require('./overlay')
@@ -81,7 +85,8 @@ app.on('ready', () => {
 
   ipcMain.on('abc-signup-detected', (e, data) => {
     latestMemberData = { ...latestMemberData, ...data }
-    showOverlay(latestMemberData, mainWindow)
+    log('SIGNUP DETECTED - calling showOverlay')
+    showOverlay(latestMemberData, mainWindow, tabManager)
     latestMemberData = {}
   })
 
@@ -103,6 +108,21 @@ app.on('ready', () => {
       tabManager.createTab(url, 'Loading...')
     }
   }
+
+  // Log EVERY new window/webContents that gets created
+  app.on('web-contents-created', (event, contents) => {
+    log('NEW WEBCONTENT: ' + contents.getType() + ' ' + contents.getURL())
+    contents.on('did-finish-load', () => {
+      log('LOADED: ' + contents.getType() + ' ' + contents.getURL())
+    })
+  })
+
+  app.on('browser-window-created', (event, win) => {
+    log('NEW WINDOW: ' + win.getTitle())
+    win.webContents.on('did-finish-load', () => {
+      log('WINDOW LOADED: ' + win.webContents.getURL())
+    })
+  })
 
   mainWindow.on('resize', () => {
     tabManager.layoutViews()
