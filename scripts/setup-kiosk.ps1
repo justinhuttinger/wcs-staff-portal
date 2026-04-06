@@ -174,7 +174,7 @@ Ensure-RegistryPath $chromePolicyRoot
 $policies = @{
     'BrowserSignin'              = @{ Value = 2;  Type = 'DWord' }
     'RestrictSigninToPattern'    = @{ Value = '*@westcoaststrength.com'; Type = 'String' }
-    'BrowserAddPersonEnabled'    = @{ Value = 0;  Type = 'DWord' }
+    'BrowserAddPersonEnabled'    = @{ Value = 1;  Type = 'DWord' }
     'BrowserGuestModeEnabled'    = @{ Value = 0;  Type = 'DWord' }
     'SyncDisabled'               = @{ Value = 1;  Type = 'DWord' }
     'ClearBrowsingDataOnExit'    = @{ Value = 1;  Type = 'DWord' }
