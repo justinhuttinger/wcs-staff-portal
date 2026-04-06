@@ -46,6 +46,14 @@ app.on('ready', () => {
   ipcMain.on('close-tab', (e, id) => tabManager.closeTab(id))
   ipcMain.on('tabs-ready', () => tabManager.notifyTabBar())
 
+  // Window control IPC
+  ipcMain.on('window-minimize', () => mainWindow.minimize())
+  ipcMain.on('window-maximize', () => {
+    if (mainWindow.isMaximized()) mainWindow.unmaximize()
+    else mainWindow.maximize()
+  })
+  ipcMain.on('window-close', () => mainWindow.close())
+
   // ABC scraper IPC
   let latestMemberData = {}
 
@@ -59,28 +67,23 @@ app.on('ready', () => {
     latestMemberData = {}
   })
 
-  // Intercept new windows from any tab — open as tabs instead
-  app.on('web-contents-created', (event, contents) => {
-    contents.setWindowOpenHandler(({ url }) => {
-      if (url.includes('kiosk.html') || url.includes('abcfinancial.com')) {
-        const abcPageUrl = abcUrl || 'about:blank'
-        tabManager.createTab(abcPageUrl, 'ABC Financial', {
-          preload: path.join(__dirname, 'abc-scraper.js'),
-        })
-      } else if (url.includes('gohighlevel.com')) {
-        tabManager.createTab(url, 'Grow')
-      } else if (url.includes('wheniwork.com')) {
-        tabManager.createTab(url, 'WhenIWork')
-      } else if (url.includes('paychex.com')) {
-        tabManager.createTab(url, 'Paychex')
-      } else if (url === 'about:blank' || url.startsWith('chrome')) {
-        return { action: 'deny' }
-      } else {
-        tabManager.createTab(url, 'Loading...')
-      }
-      return { action: 'deny' }
-    })
-  })
+  // Route new windows into tabs
+  tabManager.onNewWindow = (url) => {
+    if (url.includes('kiosk.html') || url.includes('abcfinancial.com')) {
+      const abcPageUrl = abcUrl || url
+      tabManager.createTab(abcPageUrl, 'ABC Financial', {
+        preload: path.join(__dirname, 'abc-scraper.js'),
+      })
+    } else if (url.includes('gohighlevel.com')) {
+      tabManager.createTab(url, 'Grow')
+    } else if (url.includes('wheniwork.com')) {
+      tabManager.createTab(url, 'WhenIWork')
+    } else if (url.includes('paychex.com')) {
+      tabManager.createTab(url, 'Paychex')
+    } else if (url !== 'about:blank' && !url.startsWith('chrome')) {
+      tabManager.createTab(url, 'Loading...')
+    }
+  }
 
   mainWindow.on('resize', () => tabManager.layoutViews())
 })

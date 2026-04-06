@@ -9,6 +9,7 @@ class TabManager {
     this.activeTabId = null
     this.nextId = 1
     this.tabBarView = null
+    this.onNewWindow = null // callback: (url) => void
   }
 
   initTabBar() {
@@ -37,6 +38,12 @@ class TabManager {
     })
 
     view.webContents.loadURL(url)
+
+    // Intercept target="_blank" links — open as tabs
+    view.webContents.setWindowOpenHandler(({ url }) => {
+      if (this.onNewWindow) this.onNewWindow(url)
+      return { action: 'deny' }
+    })
 
     view.webContents.on('page-title-updated', (e, pageTitle) => {
       const tab = this.tabs.get(id)

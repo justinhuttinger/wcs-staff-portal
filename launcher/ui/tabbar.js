@@ -21,3 +21,8 @@ ipcRenderer.on('tabs-updated', (event, tabs) => {
 })
 
 ipcRenderer.send('tabs-ready')
+
+// Window controls
+document.getElementById('btn-minimize').addEventListener('click', () => ipcRenderer.send('window-minimize'))
+document.getElementById('btn-maximize').addEventListener('click', () => ipcRenderer.send('window-maximize'))
+document.getElementById('btn-close').addEventListener('click', () => ipcRenderer.send('window-close'))
