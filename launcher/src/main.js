@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const { PORTAL_URL, getAbcUrl, getLocation } = require('./config')
 const TabManager = require('./tabs')
-const { showOverlay } = require('./overlay')
+const { showOverlay, closeOverlay, onResize: onOverlayResize } = require('./overlay')
 const { createTray } = require('./tray')
 
 const gotLock = app.requestSingleInstanceLock()
@@ -81,7 +81,7 @@ app.on('ready', () => {
 
   ipcMain.on('abc-signup-detected', (e, data) => {
     latestMemberData = { ...latestMemberData, ...data }
-    showOverlay(latestMemberData)
+    showOverlay(latestMemberData, mainWindow)
     latestMemberData = {}
   })
 
@@ -104,7 +104,10 @@ app.on('ready', () => {
     }
   }
 
-  mainWindow.on('resize', () => tabManager.layoutViews())
+  mainWindow.on('resize', () => {
+    tabManager.layoutViews()
+    onOverlayResize()
+  })
 
   // F12 opens DevTools on active tab
   const { globalShortcut } = require('electron')

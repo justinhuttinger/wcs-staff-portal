@@ -1,13 +1,16 @@
-const { BrowserWindow } = require('electron')
+const { BrowserView } = require('electron')
 const { PORTAL_URL, getLocation } = require('./config')
 
-let overlayWindow = null
+let overlayView = null
+let parentWindow = null
 
-function showOverlay(memberData) {
-  if (overlayWindow) {
-    overlayWindow.focus()
+function showOverlay(memberData, mainWindow) {
+  if (overlayView) {
+    // Already showing — bring to front
     return
   }
+
+  parentWindow = mainWindow
 
   const location = getLocation()
   const welcomeUrl = new URL(`${PORTAL_URL}/welcome.html`)
@@ -18,31 +21,58 @@ function showOverlay(memberData) {
   if (memberData.salesperson) welcomeUrl.searchParams.set('salesperson', memberData.salesperson)
   welcomeUrl.searchParams.set('location', location)
 
-  overlayWindow = new BrowserWindow({
-    width: 860,
-    height: 620,
-    title: 'WCS — Next Steps',
-    autoHideMenuBar: true,
-    resizable: false,
-    center: true,
+  overlayView = new BrowserView({
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
   })
 
-  overlayWindow.loadURL(welcomeUrl.toString())
+  mainWindow.addBrowserView(overlayView)
+  layoutOverlay()
+  overlayView.webContents.loadURL(welcomeUrl.toString())
 
-  overlayWindow.on('closed', () => {
-    overlayWindow = null
+  // Listen for close message from welcome.html
+  overlayView.webContents.on('console-message', (e, level, msg) => {
+    // welcome.html sends WCS_CLOSE_OVERLAY via postMessage, which we can't catch
+    // So we also watch for a custom console message
+    if (msg.includes('WCS_CLOSE_OVERLAY')) closeOverlay()
+  })
+
+  // Inject close-on-escape and backdrop click handler
+  overlayView.webContents.on('dom-ready', () => {
+    overlayView.webContents.executeJavaScript(`
+      // Listen for close messages from welcome.html iframes
+      window.addEventListener('message', (e) => {
+        if (e.data && e.data.type === 'WCS_CLOSE_OVERLAY') {
+          console.log('WCS_CLOSE_OVERLAY')
+        }
+      })
+      // Escape key closes overlay
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') console.log('WCS_CLOSE_OVERLAY')
+      })
+    `).catch(() => {})
   })
 }
 
+function layoutOverlay() {
+  if (!overlayView || !parentWindow) return
+  const bounds = parentWindow.getContentBounds()
+  // Full screen overlay — covers everything including tab bar
+  overlayView.setBounds({ x: 0, y: 0, width: bounds.width, height: bounds.height })
+}
+
 function closeOverlay() {
-  if (overlayWindow) {
-    overlayWindow.close()
-    overlayWindow = null
+  if (overlayView && parentWindow) {
+    parentWindow.removeBrowserView(overlayView)
+    overlayView.webContents.destroy()
+    overlayView = null
   }
 }
 
-module.exports = { showOverlay, closeOverlay }
+function onResize() {
+  layoutOverlay()
+}
+
+module.exports = { showOverlay, closeOverlay, onResize }

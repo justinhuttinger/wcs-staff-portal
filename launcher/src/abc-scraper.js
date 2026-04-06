@@ -69,7 +69,23 @@ function watchMainFrame() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  setInterval(scrapeAll, 500)
+  console.log('[WCS Scraper] Loaded on:', window.location.href)
+
+  setInterval(() => {
+    scrapeAll()
+    const doc = getDoc()
+    if (doc !== document) {
+      console.log('[WCS Scraper] Found #main iframe, scraping...')
+    }
+  }, 500)
+
   watchMainFrame()
   setInterval(watchMainFrame, 1000)
+
+  // Log when member data is found
+  setInterval(() => {
+    if (Object.keys(memberData).length > 0) {
+      console.log('[WCS Scraper] Member data:', JSON.stringify(memberData))
+    }
+  }, 3000)
 })

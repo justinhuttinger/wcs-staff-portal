@@ -39,6 +39,13 @@ class TabManager {
 
     view.webContents.loadURL(url)
 
+    // Pipe console.log from renderer to main process (for debugging preload scripts)
+    if (preload) {
+      view.webContents.on('console-message', (e, level, msg) => {
+        if (msg.includes('[WCS')) console.log(msg)
+      })
+    }
+
     // Update tab title from page
     view.webContents.on('page-title-updated', (e, newTitle) => {
       const tab = this.tabs.get(id)
