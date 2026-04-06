@@ -69,11 +69,13 @@ app.on('ready', () => {
 
   // Route new windows into tabs
   tabManager.onNewWindow = (url) => {
-    if (url.includes('kiosk.html') || url.includes('abcfinancial.com')) {
-      const abcPageUrl = abcUrl || url
-      tabManager.createTab(abcPageUrl, 'ABC Financial', {
+    if (url.includes('abcfinancial.com')) {
+      tabManager.createTab(url, 'ABC Financial', {
         preload: path.join(__dirname, 'abc-scraper.js'),
       })
+    } else if (url.includes('kiosk.html')) {
+      // Kiosk setup page — open as-is (it has its own ABC URL input)
+      tabManager.createTab(url, 'ABC Kiosk')
     } else if (url.includes('gohighlevel.com')) {
       tabManager.createTab(url, 'Grow')
     } else if (url.includes('wheniwork.com')) {
