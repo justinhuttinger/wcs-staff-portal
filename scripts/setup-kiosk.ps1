@@ -209,7 +209,8 @@ $policies = @{
     'DeveloperToolsAvailability' = @{ Value = 1;  Type = 'DWord' }  # Allow extensions to load
     # BrowserGuestModeEnabled — applied later via lock-profile.ps1 after first sign-in
     'SyncDisabled'               = @{ Value = 1;  Type = 'DWord' }
-    'ClearBrowsingDataOnExit'    = @{ Value = 1;  Type = 'DWord' }
+    # ClearBrowsingDataOnExit removed — kiosk account must stay signed in
+    # Nightly cleanup script handles stale data instead
     'PasswordManagerEnabled'     = @{ Value = 0;  Type = 'DWord' }
     'AutofillAddressEnabled'     = @{ Value = 0;  Type = 'DWord' }
     'AutofillCreditCardEnabled'  = @{ Value = 0;  Type = 'DWord' }
