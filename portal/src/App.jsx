@@ -8,15 +8,19 @@ const LOCATIONS = [
   'Clackamas', 'Milwaukie', 'Medford'
 ]
 
+function getParam(key) {
+  return new URLSearchParams(window.location.search).get(key)
+}
+
 function getLocation() {
-  const params = new URLSearchParams(window.location.search)
-  const loc = params.get('location')
+  const loc = getParam('location')
   if (loc && LOCATIONS.includes(loc)) return loc
   return import.meta.env.VITE_LOCATION || 'Salem'
 }
 
 export default function App() {
   const location = getLocation()
+  const abcUrl = getParam('abc_url')
   const { isIdle, resetTimer } = useIdleTimer(10 * 60 * 1000)
 
   useEffect(() => {
@@ -33,16 +37,21 @@ export default function App() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-navy text-white flex flex-col">
+    <div className="min-h-screen bg-bg flex flex-col">
       {/* Header */}
-      <header className="flex items-center justify-between px-8 py-4">
-        <img src="/wcs-logo.svg" alt="West Coast Strength" className="h-12" />
-        <span className="text-xl font-semibold text-white/80">{location}</span>
+      <header className="flex items-center justify-between px-8 py-6 max-w-3xl mx-auto w-full">
+        <div>
+          <h1 className="text-2xl font-black text-text-primary tracking-[-0.5px]">
+            <span className="bg-gradient-to-r from-wcs-red to-[#fc8181] bg-clip-text text-transparent">WCS</span>
+            {' '}Staff Portal
+          </h1>
+        </div>
+        <span className="text-sm font-semibold text-text-muted uppercase tracking-[0.8px]">{location}</span>
       </header>
 
       {/* Tool Grid */}
-      <main className="flex-1 flex items-center">
-        <ToolGrid />
+      <main className="flex-1 flex items-start pt-4">
+        <ToolGrid abcUrl={abcUrl} />
       </main>
 
       {/* Idle Overlay */}

@@ -1,58 +1,44 @@
 [
   {
-    "id": "ghl",
-    "label": "GHL CRM",
+    "id": "grow",
+    "label": "Grow",
+    "description": "CRM",
     "url": "https://app.gohighlevel.com",
-    "icon": "📋",
-    "category": "Sales"
-  },
-  {
-    "id": "checkin",
-    "label": "Member Check-In",
-    "url": "https://wcs-mmp-portal.onrender.com/checkin",
-    "icon": "🏋️",
-    "category": "Operations"
-  },
-  {
-    "id": "pt-dashboard",
-    "label": "PT Dashboard",
-    "url": "https://wcs-mmp-portal.onrender.com/pt",
-    "icon": "💪",
-    "category": "Training"
-  },
-  {
-    "id": "book",
-    "label": "Book Appointment",
-    "url": "https://wcs-mmp-portal.onrender.com/book",
-    "icon": "🗓",
-    "category": "Sales"
+    "icon": "grow"
   },
   {
     "id": "abc",
-    "label": "ABC Financial",
+    "label": "ABC",
+    "description": "ABC Financial",
     "url": "https://abc-financial.example.com",
-    "icon": "💳",
-    "category": "Operations"
+    "icon": "abc"
+  },
+  {
+    "id": "wheniwork",
+    "label": "WhenIWork",
+    "description": "Scheduling",
+    "url": "https://app.wheniwork.com",
+    "icon": "wheniwork"
+  },
+  {
+    "id": "paychex",
+    "label": "Paychex",
+    "description": "Payroll",
+    "url": "https://myapps.paychex.com",
+    "icon": "paychex"
   },
   {
     "id": "gmail",
     "label": "Gmail",
+    "description": "Email",
     "url": "https://mail.google.com",
-    "icon": "✉️",
-    "category": "Communication"
+    "icon": "gmail"
   },
   {
     "id": "drive",
     "label": "Google Drive",
+    "description": "Files",
     "url": "https://drive.google.com",
-    "icon": "📁",
-    "category": "Communication"
-  },
-  {
-    "id": "day-one",
-    "label": "Day One Training",
-    "url": "https://day-one-training.example.com",
-    "icon": "📝",
-    "category": "Training"
+    "icon": "drive"
   }
 ]
