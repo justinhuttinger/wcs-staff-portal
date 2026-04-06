@@ -66,7 +66,81 @@ if (-not (Get-LocalUser -Name $adminUser -ErrorAction SilentlyContinue)) {
 }
 
 # ============================================================
-# 2. REMOVE ANY OLD MACHINE-WIDE CHROME POLICIES
+# 2. CREATE ADMIN DESKTOP TOOLS
+# ============================================================
+
+# ABC URL setter script (runs a dialog box)
+$abcSetterScript = @'
+Add-Type -AssemblyName Microsoft.VisualBasic
+Add-Type -AssemblyName System.Windows.Forms
+
+$currentURL = ''
+$abcFile = 'C:\WCS\abc-url.txt'
+if (Test-Path $abcFile) {
+    $currentURL = (Get-Content $abcFile -First 1).Trim()
+}
+
+$newURL = [Microsoft.VisualBasic.Interaction]::InputBox(
+    "Enter the ABC Financial URL for this machine:`n`nCurrent: $currentURL",
+    'WCS Portal — Set ABC URL',
+    $currentURL
+)
+
+if ($newURL -and $newURL.Trim()) {
+    if (-not (Test-Path 'C:\WCS')) { New-Item -Path 'C:\WCS' -ItemType Directory -Force | Out-Null }
+    Set-Content -Path $abcFile -Value $newURL.Trim() -Force
+    [System.Windows.Forms.MessageBox]::Show(
+        "ABC URL saved!`n`n$($newURL.Trim())`n`nThis will take effect next time Staff logs in.",
+        'WCS Portal',
+        'OK',
+        'Information'
+    )
+} else {
+    [System.Windows.Forms.MessageBox]::Show(
+        'No changes made.',
+        'WCS Portal',
+        'OK',
+        'Information'
+    )
+}
+'@
+
+$abcSetterPath = Join-Path $wcsScriptDir 'set-abc-url.ps1'
+Set-Content -Path $abcSetterPath -Value $abcSetterScript -Force
+Write-Host "Created ABC URL setter: $abcSetterPath"
+
+# Create Admin desktop shortcut (need to target Admin's profile folder)
+# The shortcut will be created when Admin first logs in via a scheduled task
+$adminLogonScript = @"
+`$desktopPath = [Environment]::GetFolderPath('Desktop')
+`$shortcutPath = Join-Path `$desktopPath 'Set ABC URL.lnk'
+if (-not (Test-Path `$shortcutPath)) {
+    `$shell = New-Object -ComObject WScript.Shell
+    `$shortcut = `$shell.CreateShortcut(`$shortcutPath)
+    `$shortcut.TargetPath = 'powershell.exe'
+    `$shortcut.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "C:\WCS\set-abc-url.ps1"'
+    `$shortcut.Description = 'Set ABC Financial URL for this machine'
+    `$shortcut.Save()
+}
+"@
+
+$adminLogonPath = Join-Path $wcsScriptDir 'admin-logon.ps1'
+Set-Content -Path $adminLogonPath -Value $adminLogonScript -Force
+
+$adminLogonTaskName = 'WCS-Admin-Logon'
+if (Get-ScheduledTask -TaskName $adminLogonTaskName -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName $adminLogonTaskName -Confirm:$false
+}
+
+$adminLogonAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$adminLogonPath`""
+$adminLogonTrigger = New-ScheduledTaskTrigger -AtLogOn
+$adminLogonTrigger.UserId = $adminUser
+$adminLogonPrincipal = New-ScheduledTaskPrincipal -UserId $adminUser -LogonType Interactive
+Register-ScheduledTask -TaskName $adminLogonTaskName -Action $adminLogonAction -Trigger $adminLogonTrigger -Principal $adminLogonPrincipal -Description 'WCS Admin — create desktop shortcuts on login'
+Write-Host "Registered Admin logon task (creates desktop shortcut)"
+
+# ============================================================
+# 3. REMOVE ANY OLD MACHINE-WIDE CHROME POLICIES
 # ============================================================
 $hklmChrome = 'HKLM:\SOFTWARE\Policies\Google\Chrome'
 if (Test-Path $hklmChrome) {

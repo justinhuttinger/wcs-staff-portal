@@ -16,13 +16,11 @@ if (Test-Path $hklmChrome) {
     Write-Host "Removed HKLM Chrome policies"
 }
 
-# Remove logon scheduled task
+# Remove scheduled tasks
 Unregister-ScheduledTask -TaskName 'WCS-Staff-Logon' -Confirm:$false
-Write-Host "Removed Staff logon task"
-
-# Remove nightly cleanup task
+Unregister-ScheduledTask -TaskName 'WCS-Admin-Logon' -Confirm:$false
 Unregister-ScheduledTask -TaskName 'WCS-Nightly-Chrome-Cleanup' -Confirm:$false
-Write-Host "Removed nightly cleanup task"
+Write-Host "Removed scheduled tasks"
 
 # Remove logon script
 if (Test-Path 'C:\WCS') {
