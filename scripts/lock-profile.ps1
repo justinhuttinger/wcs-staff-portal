@@ -1,17 +1,14 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    Lock Chrome profile — run AFTER first-time setup
+    Lock Chrome profile picker — run AFTER first-time sign-in
 .DESCRIPTION
-    Run this after you've:
-    1. Signed into Chrome with the kiosk Google account
-    2. Installed the required Chrome extension
-    3. Verified everything works
+    Push this via Action1 AFTER you have:
+    1. Logged into Staff profile
+    2. Signed into Chrome with the kiosk Google account
+    3. Verified the extension is working
 
-    This blocks creating new Chrome profiles, locking users into
-    the pre-configured profile with the extension installed.
-
-    Push via Action1 or run manually from Admin PowerShell.
+    This prevents anyone from creating new Chrome profiles.
 #>
 
 $chromePolicyRoot = 'HKLM:\SOFTWARE\Policies\Google\Chrome'
@@ -23,4 +20,4 @@ if (-not (Test-Path $chromePolicyRoot)) {
 
 Set-ItemProperty -Path $chromePolicyRoot -Name 'BrowserAddPersonEnabled' -Value 0 -Type DWord
 Write-Host "Chrome profile picker is now LOCKED."
-Write-Host "No new profiles can be created. Existing profile with extension is preserved."
+Write-Host "No new profiles can be created."
