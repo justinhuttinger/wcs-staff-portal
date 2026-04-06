@@ -93,6 +93,16 @@ $logonScriptContent = @"
 
 `$ErrorActionPreference = 'SilentlyContinue'
 
+# ---- Build portal URL (read ABC URL from local config if it exists) ----
+`$portalURL = '$PortalBaseURL`?location=$LocationName'
+`$abcFile = 'C:\WCS\abc-url.txt'
+if (Test-Path `$abcFile) {
+    `$abcURL = (Get-Content `$abcFile -First 1).Trim()
+    if (`$abcURL) {
+        `$portalURL += "&abc_url=`$([uri]::EscapeDataString(`$abcURL))"
+    }
+}
+
 # ---- Apply Chrome policies to current user ----
 `$chromePolicyRoot = 'HKCU:\SOFTWARE\Policies\Google\Chrome'
 
@@ -119,12 +129,12 @@ Set-ItemProperty -Path `$chromePolicyRoot -Name 'RestoreOnStartup' -Value 4 -Typ
 # Startup URL
 `$startupPath = "`$chromePolicyRoot\RestoreOnStartupURLs"
 Ensure-Path `$startupPath
-Set-ItemProperty -Path `$startupPath -Name '1' -Value '$portalURL' -Type String
+Set-ItemProperty -Path `$startupPath -Name '1' -Value `$portalURL -Type String
 
 # Pinned tab
 `$pinnedPath = "`$chromePolicyRoot\PinnedTabs"
 Ensure-Path `$pinnedPath
-Set-ItemProperty -Path `$pinnedPath -Name '1' -Value '$portalURL' -Type String
+Set-ItemProperty -Path `$pinnedPath -Name '1' -Value `$portalURL -Type String
 
 # Block all URLs except allowlist
 `$blockPath = "`$chromePolicyRoot\URLBlocklist"
@@ -154,13 +164,13 @@ if (-not (Test-Path `$shortcutPath)) {
     `$shell = New-Object -ComObject WScript.Shell
     `$shortcut = `$shell.CreateShortcut(`$shortcutPath)
     `$shortcut.TargetPath = '$chromePath'
-    `$shortcut.Arguments = '--start-maximized $portalURL'
+    `$shortcut.Arguments = "--start-maximized `$portalURL"
     `$shortcut.Description = 'WCS Staff Portal'
     `$shortcut.Save()
 }
 
 # ---- Launch Chrome to portal (regular mode with tabs) ----
-Start-Process -FilePath '$chromePath' -ArgumentList '--start-maximized $portalURL'
+Start-Process -FilePath '$chromePath' -ArgumentList "--start-maximized `$portalURL"
 "@
 
 $logonScriptPath = Join-Path $wcsScriptDir 'staff-logon.ps1'
