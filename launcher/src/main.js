@@ -76,7 +76,7 @@ app.on('ready', () => {
     } else if (url.includes('kiosk.html')) {
       // Kiosk setup page — open as-is (it has its own ABC URL input)
       tabManager.createTab(url, 'ABC Kiosk')
-    } else if (url.includes('gohighlevel.com')) {
+    } else if (url.includes('gohighlevel.com') || url.includes('westcoaststrength.com/')) {
       tabManager.createTab(url, 'Grow')
     } else if (url.includes('wheniwork.com')) {
       tabManager.createTab(url, 'WhenIWork')

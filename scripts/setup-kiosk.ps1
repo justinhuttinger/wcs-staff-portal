@@ -262,7 +262,7 @@ Ensure-RegistryPath $allowPath
 
 $allowedURLs = @(
     $PortalBaseURL.Replace('https://','').Replace('http://',''),
-    'app.gohighlevel.com',
+    'app.westcoaststrength.com',
     'mail.google.com',
     'drive.google.com',
     'docs.google.com',

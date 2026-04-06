@@ -93,7 +93,7 @@ Ensure-RegistryPath $allowPath
 
 $allowedURLs = @(
     'wcs-staff-portal.onrender.com',
-    'app.gohighlevel.com',
+    'app.westcoaststrength.com',
     'mail.google.com',
     'drive.google.com',
     'docs.google.com',

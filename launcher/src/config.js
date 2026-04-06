@@ -23,7 +23,7 @@ module.exports = {
   getAbcUrl,
   getLocation: getLocationFromArgs,
   TOOLS: {
-    grow: 'https://app.gohighlevel.com',
+    grow: 'https://app.westcoaststrength.com',
     wheniwork: 'https://app.wheniwork.com',
     paychex: 'https://myapps.paychex.com',
   },
