@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WCS Staff Tools</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --red: #cc0000;
+      --red-hover: #aa0000;
+      --red-glow: rgba(204,0,0,0.15);
+      --black: #111111;
+      --surface: #f8f8f8;
+      --surface2: #f0f0f0;
+      --border: #e0e0e0;
+      --text: #111111;
+      --muted: #888888;
+      --white: #ffffff;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; background: var(--white); color: var(--text); font-family: 'DM Sans', sans-serif; overflow: hidden; }
+
+    .screen { position: absolute; inset: 0; display: flex; flex-direction: column; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+    .screen.active { opacity: 1; pointer-events: all; }
+
+    /* ── NEXT STEPS INTRO ── */
+    #screen-intro { background: var(--white); }
+
+    .intro-accent { height: 4px; background: var(--red); flex-shrink: 0; }
+
+    .intro-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 48px;
+      animation: rise 0.4s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .intro-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+
+    .logo-bar { width: 3px; height: 24px; background: var(--red); }
+    .logo-text { font-family: 'Bebas Neue', sans-serif; font-size: 16px; letter-spacing: 4px; color: var(--black); }
+
+    .intro-tag {
+      display: inline-block;
+      background: var(--red);
+      color: white;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 3px;
+      padding: 4px 14px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .intro-heading {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(32px, 5vw, 48px);
+      line-height: 1.1;
+      letter-spacing: 2px;
+      color: var(--black);
+      text-align: center;
+      margin-bottom: 6px;
+    }
+
+    .intro-heading span { color: var(--red); }
+
+    .intro-member-name {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(20px, 3vw, 28px);
+      color: var(--muted);
+      letter-spacing: 1px;
+      margin-bottom: 16px;
+    }
+
+    .member-chips {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: #666;
+      font-size: 12px;
+      padding: 5px 12px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      border-radius: 2px;
+    }
+
+    .chip-icon { color: var(--red); font-size: 11px; }
+
+    .steps-list {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .steps-list { gap: 20px; }
+
+    .step-card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      padding: 28px 40px;
+      text-align: center;
+      min-width: 220px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .step-card:hover { border-color: var(--red); transform: translateY(-2px); box-shadow: 0 6px 24px var(--red-glow); }
+
+    .step-icon {
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+
+    .step-label {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 22px;
+      letter-spacing: 1px;
+      color: var(--black);
+    }
+
+    .step-desc {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    /* ── LOCATION PICKER ── */
+    #screen-location { background: var(--white); }
+
+    .location-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+      max-width: 480px;
+    }
+
+    .location-btn {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      padding: 18px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 18px;
+      letter-spacing: 1px;
+      color: var(--black);
+    }
+
+    .location-btn:hover { border-color: var(--red); transform: translateY(-2px); box-shadow: 0 4px 16px var(--red-glow); }
+    .location-btn.selected { border-color: var(--red); background: var(--red); color: white; }
+
+    .location-note {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    /* ── STEP SCREENS ── */
+    .screen-header {
+      background: var(--white);
+      border-bottom: 2px solid var(--red);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .screen-header-left { display: flex; align-items: center; gap: 10px; }
+    .screen-header-right { display: flex; align-items: center; gap: 10px; }
+
+    .screen-badge {
+      background: var(--red);
+      color: white;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 11px;
+      letter-spacing: 2px;
+      padding: 2px 8px;
+    }
+
+    .screen-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 15px;
+      letter-spacing: 2px;
+      color: var(--black);
+    }
+
+    .member-name-small {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 300;
+    }
+
+    .btn-nav {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+      padding: 5px 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'DM Sans', sans-serif;
+    }
+
+    .btn-nav:hover { border-color: var(--red); color: var(--red); }
+
+    .steps-dots { display: flex; align-items: center; gap: 5px; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
+    .dot.active { background: var(--red); }
+    .dot.done { background: var(--muted); }
+
+    .screen-iframe { flex: 1; width: 100%; border: none; background: white; }
+  </style>
+</head>
+<body>
+
+  <!-- SCREEN 0: Location Picker (first time only) -->
+  <div class="screen" id="screen-location">
+    <div class="intro-accent"></div>
+    <div class="intro-body">
+      <div class="intro-tag">Setup</div>
+      <div class="intro-heading">SELECT YOUR LOCATION</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:24px;">This only needs to be done once per computer.</div>
+      <div class="location-grid" id="location-grid"></div>
+      <div class="location-note">You can change this later by clicking the extension icon.</div>
+    </div>
+  </div>
+
+  <!-- SCREEN 1: Next Steps Intro (Staff-facing) -->
+  <div class="screen active" id="screen-intro">
+    <div class="intro-accent"></div>
+    <div class="intro-body">
+      <div class="intro-tag">Signup Complete</div>
+      <div class="intro-heading">NEXT STEPS</div>
+      <div class="intro-member-name" id="intro-member-name"></div>
+      <div class="member-chips" id="member-chips"></div>
+      <div class="steps-list">
+        <div class="step-card" id="card-book">
+          <div class="step-icon">📅</div>
+          <div class="step-label">BOOK DAY ONE</div>
+          <div class="step-desc">Schedule first session</div>
+        </div>
+        <div class="step-card" id="card-vip">
+          <div class="step-icon">🎟</div>
+          <div class="step-label">SUBMIT VIPS</div>
+          <div class="step-desc">Send VIP guest passes</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 2: Book Day One -->
+  <div class="screen" id="screen-booking">
+    <div class="screen-header">
+      <div class="screen-header-left">
+        <div class="screen-badge" id="booking-badge">1 OF 2</div>
+        <div class="screen-title">BOOK DAY ONE</div>
+        <div class="member-name-small" id="booking-name"></div>
+      </div>
+      <div class="screen-header-right">
+        <button class="btn-nav" id="btn-booking-back" style="display:none">← Back</button>
+        <button class="btn-nav" id="btn-booking-next"></button>
+      </div>
+    </div>
+    <iframe class="screen-iframe" id="booking-frame" src="about:blank"></iframe>
+  </div>
+
+  <!-- SCREEN 3: Submit VIPs -->
+  <div class="screen" id="screen-vip">
+    <div class="screen-header">
+      <div class="screen-header-left">
+        <div class="screen-badge" id="vip-badge">1 OF 2</div>
+        <div class="screen-title">SUBMIT VIPS</div>
+        <div class="member-name-small" id="vip-name"></div>
+      </div>
+      <div class="screen-header-right">
+        <button class="btn-nav" id="btn-vip-back" style="display:none">← Back</button>
+        <button class="btn-nav" id="btn-vip-next"></button>
+      </div>
+    </div>
+    <iframe class="screen-iframe" id="vip-frame" src="about:blank"></iframe>
+  </div>
+
+  <script src="locations.js"></script>
+  <script src="welcome.js"></script>
+</body>
+</html>

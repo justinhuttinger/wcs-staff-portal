@@ -59,10 +59,31 @@ if (-not (Get-LocalUser -Name $adminUser -ErrorAction SilentlyContinue)) {
 }
 
 # ============================================================
-# 2. CREATE C:\WCS DIRECTORY AND SCRIPTS
+# 2. CREATE C:\WCS DIRECTORY, COPY EXTENSION, CREATE SCRIPTS
 # ============================================================
 if (-not (Test-Path $wcsDir)) {
     New-Item -Path $wcsDir -ItemType Directory -Force | Out-Null
+}
+
+# Copy WCS ABC overlay extension (if source exists alongside this script)
+$extSource = Join-Path (Split-Path -Parent $PSScriptRoot) 'extension'
+if (-not (Test-Path $extSource)) {
+    # Also check next to this script
+    $extSource = Join-Path $PSScriptRoot 'extension'
+}
+if (-not (Test-Path $extSource)) {
+    # Check common download location
+    $extSource = 'C:\WCS\extension'
+}
+$extDest = "$wcsDir\extension"
+if ((Test-Path $extSource) -and ($extSource -ne $extDest)) {
+    if (Test-Path $extDest) { Remove-Item -Path $extDest -Recurse -Force }
+    Copy-Item -Path $extSource -Destination $extDest -Recurse -Force
+    Write-Host "Copied extension to: $extDest"
+} elseif (Test-Path $extDest) {
+    Write-Host "Extension already at: $extDest"
+} else {
+    Write-Host "WARNING: Extension not found. Copy wcs-abc-overlay-v2 folder to C:\WCS\extension manually."
 }
 
 # --- ABC URL setter (dialog box) ---
@@ -116,13 +137,20 @@ if (-not (Test-Path `$shortcutPath)) {
     `$shell = New-Object -ComObject WScript.Shell
     `$shortcut = `$shell.CreateShortcut(`$shortcutPath)
     `$shortcut.TargetPath = '$chromePath'
-    `$shortcut.Arguments = "--start-maximized `$portalURL"
+    `$extArg = ''
+    if (Test-Path 'C:\WCS\extension') { `$extArg = '--load-extension=C:\WCS\extension' }
+    `$shortcut.Arguments = "--start-maximized `$extArg `$portalURL"
     `$shortcut.Description = 'WCS Staff Portal'
     `$shortcut.Save()
 }
 
-# Launch Chrome
-Start-Process -FilePath '$chromePath' -ArgumentList "--start-maximized `$portalURL"
+# Launch Chrome with extension loaded
+`$extPath = 'C:\WCS\extension'
+if (Test-Path `$extPath) {
+    Start-Process -FilePath '$chromePath' -ArgumentList "--start-maximized --load-extension=`$extPath `$portalURL"
+} else {
+    Start-Process -FilePath '$chromePath' -ArgumentList "--start-maximized `$portalURL"
+}
 "@
 Set-Content -Path "$wcsDir\staff-logon.ps1" -Value $staffLogonContent -Force
 Write-Host "Created: $wcsDir\staff-logon.ps1"
@@ -174,7 +202,8 @@ Ensure-RegistryPath $chromePolicyRoot
 $policies = @{
     'BrowserSignin'              = @{ Value = 2;  Type = 'DWord' }
     'RestrictSigninToPattern'    = @{ Value = '*@westcoaststrength.com'; Type = 'String' }
-    # BrowserAddPersonEnabled is set by lock-profile.ps1 AFTER first-time Chrome setup
+    'BrowserAddPersonEnabled'    = @{ Value = 0;  Type = 'DWord' }
+    'DeveloperToolsAvailability' = @{ Value = 1;  Type = 'DWord' }  # Allow extensions to load
     'BrowserGuestModeEnabled'    = @{ Value = 0;  Type = 'DWord' }
     'SyncDisabled'               = @{ Value = 1;  Type = 'DWord' }
     'ClearBrowsingDataOnExit'    = @{ Value = 1;  Type = 'DWord' }
@@ -217,7 +246,9 @@ $allowedURLs = @(
     'docs.google.com',
     'app.wheniwork.com',
     'myapps.paychex.com',
-    'accounts.google.com'
+    'accounts.google.com',
+    '*.abcfinancial.com',
+    'api.westcoaststrength.com'
 )
 
 for ($i = 0; $i -lt $allowedURLs.Count; $i++) {

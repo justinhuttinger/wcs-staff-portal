@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "WCS Staff Tools",
+  "version": "2.1",
+  "description": "Detects ABC Financial signup completion and shows next step overlay",
+  "permissions": ["webRequest", "tabs", "storage", "webNavigation"],
+  "host_permissions": ["*://*.abcfinancial.com/*", "*://*.westcoaststrength.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.abcfinancial.com/*"],
+      "js": ["content.js"],
+      "css": ["overlay.css"]
+    },
+    {
+      "matches": ["*://api.westcoaststrength.com/widget/*"],
+      "js": ["widget-fill.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [{
+    "resources": ["injected.js", "welcome.html", "welcome.js", "locations.js"],
+    "matches": ["*://*.abcfinancial.com/*"]
+  }]
+}
