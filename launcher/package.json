@@ -1,5 +1,5 @@
 {
-  "name": "wcs-portal-launcher",
+  "name": "wcs-app",
   "version": "1.0.0",
   "main": "src/main.js",
   "scripts": {
