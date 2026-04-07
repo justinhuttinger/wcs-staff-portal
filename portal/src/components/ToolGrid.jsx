@@ -30,9 +30,17 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId })
     return tool.url
   }
 
+  // Filter custom tiles by role visibility
+  const visibleCustomTiles = customTiles.filter(t => {
+    const tileKey = 'tile:' + t.id
+    // If no visibility data yet, show all. Otherwise check.
+    if (!visibleTools || visibleTools.length === 0) return true
+    return visibleTools.includes(tileKey)
+  })
+
   // Separate parent tiles (groups) and top-level tiles (no parent)
-  const topLevelTiles = customTiles.filter(t => !t.parent_id)
-  const childTiles = activeGroup ? customTiles.filter(t => t.parent_id === activeGroup.id) : []
+  const topLevelTiles = visibleCustomTiles.filter(t => !t.parent_id)
+  const childTiles = activeGroup ? visibleCustomTiles.filter(t => t.parent_id === activeGroup.id) : []
 
   // If viewing a group's children
   if (activeGroup) {

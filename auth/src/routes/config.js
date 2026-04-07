@@ -125,6 +125,11 @@ router.post('/tiles', requireRole('admin'), async (req, res) => {
       await supabaseAdmin.from('tile_locations').insert(links)
     }
 
+    // Auto-create role_tool_visibility rows for this tile (all roles, visible by default)
+    const ROLES = ['front_desk', 'personal_trainer', 'manager', 'director', 'admin']
+    const visRows = ROLES.map(role => ({ role, tool_key: 'tile:' + tile.id, visible: true }))
+    await supabaseAdmin.from('role_tool_visibility').upsert(visRows, { onConflict: 'role,tool_key' })
+
     res.status(201).json({ tile })
   } catch (err) {
     res.status(500).json({ error: 'Failed to create tile' })
@@ -179,13 +184,52 @@ router.delete('/tiles/:id', requireRole('admin'), async (req, res) => {
 
 // GET /config/role-visibility — admin only, returns all role/tool visibility settings
 router.get('/role-visibility', requireRole('admin'), async (req, res) => {
-  const { data, error } = await supabaseAdmin
-    .from('role_tool_visibility')
-    .select('id, role, tool_key, visible')
-    .order('role')
+  try {
+    // Get existing visibility rows
+    const { data: visibility, error } = await supabaseAdmin
+      .from('role_tool_visibility')
+      .select('id, role, tool_key, visible')
+      .order('role')
 
-  if (error) return res.status(500).json({ error: 'Failed to fetch role visibility' })
-  res.json({ visibility: data })
+    if (error) return res.status(500).json({ error: 'Failed to fetch role visibility' })
+
+    // Get all custom tiles to ensure they have visibility rows
+    const { data: tiles } = await supabaseAdmin
+      .from('custom_tiles')
+      .select('id, label, icon, parent_id')
+      .order('label')
+
+    // Auto-create missing visibility rows for tiles
+    const ROLES = ['front_desk', 'personal_trainer', 'manager', 'director', 'admin']
+    const missing = []
+    for (const tile of (tiles || [])) {
+      const tileKey = 'tile:' + tile.id
+      for (const role of ROLES) {
+        if (!visibility.find(v => v.role === role && v.tool_key === tileKey)) {
+          missing.push({ role, tool_key: tileKey, visible: true })
+        }
+      }
+    }
+    if (missing.length > 0) {
+      await supabaseAdmin.from('role_tool_visibility').insert(missing)
+    }
+
+    // Re-fetch with any new rows
+    const { data: allVisibility } = await supabaseAdmin
+      .from('role_tool_visibility')
+      .select('id, role, tool_key, visible')
+      .order('tool_key')
+
+    // Attach tile metadata for the frontend
+    const tileMap = {}
+    for (const tile of (tiles || [])) {
+      tileMap['tile:' + tile.id] = { label: tile.label, icon: tile.icon, parent_id: tile.parent_id }
+    }
+
+    res.json({ visibility: allVisibility, tile_labels: tileMap })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch role visibility' })
+  }
 })
 
 // PUT /config/role-visibility — admin only, batch update visibility
@@ -199,9 +243,7 @@ router.put('/role-visibility', requireRole('admin'), async (req, res) => {
     for (const { role, tool_key, visible } of updates) {
       await supabaseAdmin
         .from('role_tool_visibility')
-        .update({ visible })
-        .eq('role', role)
-        .eq('tool_key', tool_key)
+        .upsert({ role, tool_key, visible }, { onConflict: 'role,tool_key' })
     }
     res.json({ message: 'Visibility updated' })
   } catch (err) {
