@@ -105,9 +105,7 @@ function showLoginOverlay(serviceName) {
   overlayEl.id = 'wcs-login-overlay'
   overlayEl.innerHTML = `
     <div style="position:fixed;inset:0;z-index:999999;background:#f4f5f7;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Inter',-apple-system,sans-serif;">
-      <div style="width:80px;height:80px;border-radius:50%;background:#1a1a2e;display:flex;align-items:center;justify-content:center;margin-bottom:24px;">
-        <div style="font-size:28px;font-weight:900;background:linear-gradient(to right,#e53e3e,#fc8181);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">WCS</div>
-      </div>
+      <img src="https://wcs-staff-portal.onrender.com/wcs-logo.svg" style="width:80px;height:80px;margin-bottom:24px;" onerror="this.style.display='none'" />
       <p style="font-size:16px;font-weight:600;color:#1a1a2e;margin-bottom:8px;">Signing you in</p>
       <p style="font-size:13px;color:#8b90a5;">${serviceName || 'Please wait...'}</p>
       <div style="margin-top:24px;width:40px;height:40px;border:3px solid #e2e4e8;border-top-color:#e53e3e;border-radius:50%;animation:wcs-spin 0.8s linear infinite;"></div>
@@ -124,15 +122,21 @@ function hideLoginOverlay() {
   }
 }
 
-// Auto-remove overlay on navigation (login succeeded) or after timeout
+// Auto-remove overlay on navigation, MFA screen, or timeout
 let initialUrl = window.location.href
 setInterval(() => {
-  if (overlayEl && window.location.href !== initialUrl) {
-    hideLoginOverlay()
-  }
+  if (!overlayEl) return
+  // Hide on URL change (login succeeded)
+  if (window.location.href !== initialUrl) { hideLoginOverlay(); return }
+  // Hide if MFA/2FA screen appears (no password field but has a code/OTP input)
+  const mfaInput = document.querySelector('input[type="tel"], input[autocomplete="one-time-code"], input[name*="code" i], input[name*="otp" i], input[name*="mfa" i], input[name*="verification" i]')
+  if (mfaInput && mfaInput.offsetParent) { hideLoginOverlay(); return }
+  // Hide if the page has no login form at all (already logged in)
+  const hasLoginFields = document.querySelector('input[type="password"], input[type="email"]')
+  if (!hasLoginFields) { hideLoginOverlay(); return }
 }, 500)
-// Safety timeout — hide overlay after 10 seconds regardless
-setTimeout(() => hideLoginOverlay(), 10000)
+// Safety timeout — hide overlay after 5 seconds regardless
+setTimeout(() => hideLoginOverlay(), 5000)
 
 // Auto-fill saved credentials
 let autoFillDone = false
@@ -239,10 +243,12 @@ function tryAutoClickSSO() {
 window.addEventListener('DOMContentLoaded', () => {
   console.log('[WCS CredCapture] Loaded on:', window.location.href)
 
-  // Check for SSO button first (e.g. GHL login page)
+  // Check for SSO button first (e.g. GHL login page) — no overlay for SSO
   if (!tryAutoClickSSO()) {
-    // No SSO button found, try regular auto-fill
+    // No SSO button found, try regular auto-fill with overlay
     tryAutoFill()
+  } else {
+    autoFillDone = true // Don't try auto-fill after SSO click
   }
 
   // Scan for login forms to capture new credentials
