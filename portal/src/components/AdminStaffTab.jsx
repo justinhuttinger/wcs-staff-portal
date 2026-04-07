@@ -13,6 +13,7 @@ const defaultForm = {
 }
 
 const defaultEditForm = {
+  email: '',
   first_name: '',
   last_name: '',
   role: 'front_desk',
@@ -86,6 +87,7 @@ export default function AdminStaffTab() {
   function startEdit(member) {
     setEditingId(member.id)
     setEditForm({
+      email: member.email || '',
       first_name: member.first_name || '',
       last_name: member.last_name || '',
       role: member.role || 'front_desk',
@@ -269,7 +271,14 @@ export default function AdminStaffTab() {
                         />
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-text-muted">{member.email}</td>
+                    <td className="px-4 py-3">
+                      <input
+                        type="email"
+                        value={editForm.email}
+                        onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
+                        className="w-full px-2 py-1 bg-bg border border-border rounded text-sm text-text-primary focus:outline-none focus:border-wcs-red"
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <select
                         value={editForm.role}
