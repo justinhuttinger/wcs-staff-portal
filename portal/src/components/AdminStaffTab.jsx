@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getStaff, createStaff, updateStaff, deleteStaff, getLocations } from '../lib/api'
 
-const ROLES = ['front_desk', 'personal_trainer', 'manager', 'director', 'admin']
+const ROLES = ['front_desk', 'personal_trainer', 'lead', 'manager', 'director', 'admin']
 
 const defaultForm = {
   email: '',

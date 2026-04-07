@@ -1,4 +1,4 @@
-const ROLE_HIERARCHY = ['front_desk', 'personal_trainer', 'manager', 'director', 'admin']
+const ROLE_HIERARCHY = ['front_desk', 'personal_trainer', 'lead', 'manager', 'director', 'admin']
 
 function requireRole(minimumRole) {
   const minLevel = ROLE_HIERARCHY.indexOf(minimumRole)
