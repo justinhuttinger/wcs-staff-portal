@@ -104,23 +104,32 @@ async function tryAutoFill() {
     const creds = await ipcRenderer.invoke('get-credentials', service)
     if (!creds) return
 
-    const passwordField = document.querySelector('input[type="password"]')
-    if (!passwordField || !passwordField.offsetParent) return
-
-    const container = passwordField.closest('form') || document.body
-    const usernameField = findUsernameField(container)
-    if (!usernameField) return
-
-    // Don't auto-fill if fields already have values
-    if (usernameField.value && passwordField.value) return
-
     const nativeSet = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
-    nativeSet.call(usernameField, creds.username)
-    usernameField.dispatchEvent(new Event('input', { bubbles: true }))
-    usernameField.dispatchEvent(new Event('change', { bubbles: true }))
-    nativeSet.call(passwordField, creds.password)
-    passwordField.dispatchEvent(new Event('input', { bubbles: true }))
-    passwordField.dispatchEvent(new Event('change', { bubbles: true }))
+    const passwordField = document.querySelector('input[type="password"]')
+
+    if (passwordField && passwordField.offsetParent) {
+      // Standard login: both username + password visible
+      const container = passwordField.closest('form') || document.body
+      const usernameField = findUsernameField(container)
+      if (!usernameField) return
+      if (usernameField.value && passwordField.value) return
+
+      nativeSet.call(usernameField, creds.username)
+      usernameField.dispatchEvent(new Event('input', { bubbles: true }))
+      usernameField.dispatchEvent(new Event('change', { bubbles: true }))
+      nativeSet.call(passwordField, creds.password)
+      passwordField.dispatchEvent(new Event('input', { bubbles: true }))
+      passwordField.dispatchEvent(new Event('change', { bubbles: true }))
+    } else {
+      // Two-step login: username-only screen (e.g. Paychex)
+      const usernameField = findUsernameField(document.body)
+      if (!usernameField || !usernameField.offsetParent) return
+      if (usernameField.value) return
+
+      nativeSet.call(usernameField, creds.username)
+      usernameField.dispatchEvent(new Event('input', { bubbles: true }))
+      usernameField.dispatchEvent(new Event('change', { bubbles: true }))
+    }
 
     console.log('[WCS CredCapture] Auto-filled login for:', service)
 
