@@ -54,10 +54,13 @@ app.listen(PORT, () => {
     }
   })
 
-  // Also run initial sync on startup (one location at a time)
+  // On startup: full sync only if DB is empty, otherwise incremental
   setTimeout(async () => {
-    console.log('Startup: running initial GHL sync...')
     try {
+      const { count } = await supabaseAdmin.from('ghl_contacts').select('*', { count: 'exact', head: true })
+      const isFull = !count || count === 0
+      console.log('Startup: ' + (isFull ? 'DB empty, running full sync...' : count + ' contacts exist, running incremental sync...'))
+
       const { data: locations } = await supabaseAdmin
         .from('locations')
         .select('id, name, ghl_location_id, ghl_api_key')
@@ -65,19 +68,20 @@ app.listen(PORT, () => {
       const active = locations.filter(l => l.ghl_api_key && l.ghl_location_id)
       for (const loc of active) {
         try {
+          const fullParam = isFull ? '&full=true' : ''
           console.log('Startup sync: ' + loc.name + '...')
-          await fetch(`http://localhost:${PORT}/sync/contacts?location_id=${loc.id}&full=true`, { method: 'POST' })
+          await fetch(`http://localhost:${PORT}/sync/contacts?location_id=${loc.id}${fullParam}`, { method: 'POST' })
           await fetch(`http://localhost:${PORT}/sync/opportunities?location_id=${loc.id}`, { method: 'POST' })
           console.log('Startup sync: ' + loc.name + ' done')
         } catch (err) {
           console.error('Startup sync: ' + loc.name + ' failed:', err.message)
         }
       }
-      console.log('Startup: initial sync complete')
+      console.log('Startup: sync complete')
     } catch (err) {
       console.error('Startup sync failed:', err.message)
     }
-  }, 5000) // Wait 5s after startup
+  }, 5000)
 
   console.log('Cron: hourly GHL sync scheduled')
 })
