@@ -18,6 +18,12 @@ app.use('/webhooks', require('./routes/webhooks'))
 app.use('/appointments', require('./routes/appointments'))
 app.use('/tours', require('./routes/tours'))
 app.use('/sync', require('./routes/sync'))
+app.use('/oidc', require('./routes/oidc'))
+
+// OIDC discovery at root level (some providers look here)
+app.get('/.well-known/openid-configuration', (req, res) => {
+  res.redirect('/oidc/.well-known/openid-configuration')
+})
 app.use('/reports', require('./routes/reports'))
 
 const PORT = process.env.PORT || 3001
