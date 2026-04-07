@@ -20,4 +20,10 @@ contextBridge.exposeInMainWorld('wcsElectron', {
   // Kiosk config
   getConfig: () => ipcRenderer.invoke('get-kiosk-config'),
   setConfig: (config) => ipcRenderer.invoke('set-kiosk-config', config),
+  // Credential save prompt
+  onSavePrompt: (callback) => {
+    const { ipcRenderer: ipc } = require('electron')
+    ipc.on('show-save-prompt', (e, data) => callback(data))
+  },
+  respondSavePrompt: (accepted) => ipcRenderer.send('save-credential-response', { accepted }),
 })

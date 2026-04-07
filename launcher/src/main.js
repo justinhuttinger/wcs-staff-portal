@@ -73,6 +73,37 @@ app.on('ready', () => {
     auth.logout()
   })
 
+  // Credential capture — save prompt flow
+  ipcMain.on('credential-captured', (e, { service, username, password }) => {
+    if (!auth.isLoggedIn()) return
+
+    const existing = auth.getCachedCredential(service)
+    if (existing && existing.username === username && existing.password === password) return
+
+    log('Credential captured for: ' + service)
+
+    const portalTab = tabManager.tabs.get(1)
+    if (portalTab) {
+      mainWindow._pendingCredential = { service, username, password }
+      portalTab.view.webContents.send('show-save-prompt', { service, username })
+    }
+  })
+
+  ipcMain.on('save-credential-response', async (e, { accepted }) => {
+    const pending = mainWindow._pendingCredential
+    if (!pending) return
+    mainWindow._pendingCredential = null
+
+    if (accepted) {
+      try {
+        await auth.storeCredential(pending.service, pending.username, pending.password)
+        log('Credential saved for: ' + pending.service)
+      } catch (err) {
+        log('Failed to save credential: ' + err.message)
+      }
+    }
+  })
+
   // Tab IPC
   ipcMain.on('switch-tab', (e, id) => tabManager.switchTo(id))
   ipcMain.on('close-tab', (e, id) => tabManager.closeTab(id))
@@ -129,11 +160,11 @@ app.on('ready', () => {
         preload: path.join(__dirname, 'abc-scraper.js'),
       })
     } else if (url.includes('gohighlevel.com') || url.includes('westcoaststrength.com/')) {
-      tabManager.createTab(url, 'Grow')
+      tabManager.createTab(url, 'Grow', { preload: path.join(__dirname, 'credential-capture.js') })
     } else if (url.includes('wheniwork.com')) {
-      tabManager.createTab(url, 'WhenIWork')
+      tabManager.createTab(url, 'WhenIWork', { preload: path.join(__dirname, 'credential-capture.js') })
     } else if (url.includes('paychex.com')) {
-      tabManager.createTab(url, 'Paychex')
+      tabManager.createTab(url, 'Paychex', { preload: path.join(__dirname, 'credential-capture.js') })
     } else if (url !== 'about:blank' && !url.startsWith('chrome')) {
       tabManager.createTab(url, 'Loading...')
     }

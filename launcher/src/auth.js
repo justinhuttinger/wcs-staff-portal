@@ -80,8 +80,20 @@ function logout() {
   cachedCredentials = {}
 }
 
+async function storeCredential(service, username, password) {
+  const data = await request('POST', '/vault/credentials', {
+    staff_id: currentStaff?.id,
+    service,
+    username,
+    password,
+  })
+  cachedCredentials[service] = { service, username, password }
+  return data
+}
+
 module.exports = {
   login, logout, isLoggedIn,
   setToken, getStaff, getToken,
   fetchCredentials, fetchAllCredentials, getCachedCredential,
+  storeCredential,
 }

