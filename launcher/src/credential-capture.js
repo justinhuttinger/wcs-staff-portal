@@ -97,14 +97,53 @@ function captureCredentials() {
   }
 }
 
+// Auto-fill saved credentials
+async function tryAutoFill() {
+  try {
+    const service = getServiceName()
+    const creds = await ipcRenderer.invoke('get-credentials', service)
+    if (!creds) return
+
+    const passwordField = document.querySelector('input[type="password"]')
+    if (!passwordField || !passwordField.offsetParent) return
+
+    const container = passwordField.closest('form') || document.body
+    const usernameField = findUsernameField(container)
+    if (!usernameField) return
+
+    // Don't auto-fill if fields already have values
+    if (usernameField.value && passwordField.value) return
+
+    usernameField.value = creds.username
+    usernameField.dispatchEvent(new Event('input', { bubbles: true }))
+    usernameField.dispatchEvent(new Event('change', { bubbles: true }))
+    passwordField.value = creds.password
+    passwordField.dispatchEvent(new Event('input', { bubbles: true }))
+    passwordField.dispatchEvent(new Event('change', { bubbles: true }))
+
+    console.log('[WCS CredCapture] Auto-filled login for:', service)
+  } catch (err) {
+    console.log('[WCS CredCapture] Auto-fill skipped:', err.message)
+  }
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   console.log('[WCS CredCapture] Loaded on:', window.location.href)
 
-  // Scan immediately and keep scanning for SPA-rendered login forms
+  // Try auto-fill first
+  tryAutoFill()
+
+  // Scan for login forms to capture new credentials
   captureCredentials()
-  const observer = new MutationObserver(() => captureCredentials())
+  const observer = new MutationObserver(() => {
+    captureCredentials()
+    tryAutoFill()
+  })
   observer.observe(document.body, { childList: true, subtree: true })
 
   // Fallback: periodic scan
   setInterval(captureCredentials, 2000)
+  // Retry auto-fill for SPA-rendered forms
+  setTimeout(tryAutoFill, 1000)
+  setTimeout(tryAutoFill, 3000)
 })

@@ -69,7 +69,16 @@ function getCachedCredential(service) {
   return cachedCredentials[service] || null
 }
 
-function setToken(token) { currentToken = token }
+async function setToken(token) {
+  currentToken = token
+  // Fetch staff profile so we have the ID for vault operations
+  try {
+    const data = await request('GET', '/auth/me')
+    currentStaff = data.staff
+  } catch (err) {
+    // Token might be invalid, but we still set it for other operations
+  }
+}
 function getStaff() { return currentStaff }
 function getToken() { return currentToken }
 function isLoggedIn() { return !!currentToken }
