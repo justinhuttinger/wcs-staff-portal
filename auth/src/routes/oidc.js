@@ -221,6 +221,7 @@ router.post('/token', express.urlencoded({ extended: false }), async (req, res) 
     iat: now,
     nonce: codeData.nonce,
     email: codeData.email,
+    email_verified: true,
     name: codeData.displayName,
     given_name: codeData.firstName,
     family_name: codeData.lastName,
@@ -271,6 +272,7 @@ router.get('/userinfo', async (req, res) => {
     res.json({
       sub: staff.id,
       email: staff.email,
+      email_verified: true,
       name: staff.display_name || (staff.first_name + ' ' + staff.last_name).trim(),
       given_name: staff.first_name || '',
       family_name: staff.last_name || '',
