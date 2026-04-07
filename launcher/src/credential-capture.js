@@ -129,6 +129,16 @@ async function tryAutoFill() {
       nativeSet.call(usernameField, creds.username)
       usernameField.dispatchEvent(new Event('input', { bubbles: true }))
       usernameField.dispatchEvent(new Event('change', { bubbles: true }))
+
+      // Auto-submit the username step
+      setTimeout(() => {
+        const form = usernameField.closest('form')
+        const submitBtn = (form || document.body).querySelector(
+          'button[type="submit"], input[type="submit"], button:not([type])'
+        )
+        if (submitBtn) submitBtn.click()
+        else if (form) form.submit()
+      }, 300)
     }
 
     console.log('[WCS CredCapture] Auto-filled login for:', service)
