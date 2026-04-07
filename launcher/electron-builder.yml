@@ -5,10 +5,8 @@ directories:
 
 win:
   target: nsis
-  icon: assets/tray-icon.png
 
 nsis:
   oneClick: true
   perMachine: true
   allowToChangeInstallationDirectory: false
-  installerIcon: assets/tray-icon.png
