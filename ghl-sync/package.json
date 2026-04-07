@@ -1,0 +1,16 @@
+{
+  "name": "wcs-ghl-sync",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
+    "axios": "^1.7.0",
+    "node-cron": "^3.0.0",
+    "express": "^4.21.0",
+    "dotenv": "^16.4.0"
+  }
+}
