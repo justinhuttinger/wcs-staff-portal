@@ -22,7 +22,7 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
+  padding: 10px 20px;
   background: rgba(255,255,255,0.05);
   color: rgba(255,255,255,0.6);
   font-size: 13px;
@@ -31,7 +31,8 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
   border-radius: 8px 8px 0 0;
   transition: all 0.15s;
   white-space: nowrap;
-  max-width: 180px;
+  min-width: 120px;
+  max-width: 200px;
 }
 
 .tab span:first-child {

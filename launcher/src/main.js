@@ -177,6 +177,33 @@ app.on('ready', () => {
     return { success: true }
   })
 
+  // Map URLs to tab names
+  const URL_TAB_NAMES = {
+    'abcfinancial.com': 'ABC Financial',
+    'app.westcoaststrength.com': 'Grow',
+    'gohighlevel.com': 'Grow',
+    'wheniwork.com': 'WhenIWork',
+    'paychex.com': 'Paychex',
+    'myapps.paychex.com': 'Paychex',
+    'operandio.com': 'Operandio',
+    'ourproshop.com': 'VistaPrint',
+    'memberservices.westcoaststrength.com': 'Cancel Tool',
+    'forms.clickup.com': 'Form',
+    'reporting.strengthcoastwest.com': 'Tickets',
+  }
+
+  function getTabName(url) {
+    try {
+      const hostname = new URL(url).hostname
+      for (const [domain, name] of Object.entries(URL_TAB_NAMES)) {
+        if (hostname.includes(domain) || hostname === domain) return name
+      }
+      // Fallback: use hostname without www/app prefix
+      return hostname.replace(/^(www|app)\./, '').split('.')[0]
+        .charAt(0).toUpperCase() + hostname.replace(/^(www|app)\./, '').split('.')[0].slice(1)
+    } catch { return 'Tab' }
+  }
+
   tabManager.onNewWindow = (url) => {
     const abcUrl = getAbcUrl()
     if (url.includes('abcfinancial.com') || url.includes('kiosk.html')) {
@@ -184,14 +211,8 @@ app.on('ready', () => {
       tabManager.createTab(abcDirect, 'ABC Financial', {
         preload: path.join(__dirname, 'abc-scraper.js'),
       })
-    } else if (url.includes('gohighlevel.com') || url.includes('westcoaststrength.com/')) {
-      tabManager.createTab(url, 'Grow', { preload: path.join(__dirname, 'credential-capture.js') })
-    } else if (url.includes('wheniwork.com')) {
-      tabManager.createTab(url, 'WhenIWork', { preload: path.join(__dirname, 'credential-capture.js') })
-    } else if (url.includes('paychex.com')) {
-      tabManager.createTab(url, 'Paychex', { preload: path.join(__dirname, 'credential-capture.js') })
     } else if (url !== 'about:blank' && !url.startsWith('chrome')) {
-      tabManager.createTab(url, 'Loading...', { preload: path.join(__dirname, 'credential-capture.js') })
+      tabManager.createTab(url, getTabName(url), { preload: path.join(__dirname, 'credential-capture.js') })
     }
   }
 
