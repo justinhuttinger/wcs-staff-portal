@@ -10,6 +10,7 @@ const defaultForm = {
   location_ids: [],
   all_locations: false,
   sort_order: 0,
+  section: 'management',
 }
 
 export default function AdminTilesTab() {
@@ -53,6 +54,7 @@ export default function AdminTilesTab() {
         parent_id: form.parent_id || null,
         location_ids: form.location_ids,
         sort_order: form.sort_order,
+        section: form.section,
       })
       setForm(defaultForm)
       setShowAdd(false)
@@ -71,6 +73,7 @@ export default function AdminTilesTab() {
         url: editForm.url,
         icon: editForm.icon,
         location_ids: editForm.location_ids,
+        section: editForm.section,
         sort_order: editForm.sort_order,
       })
       setEditingId(null)
@@ -100,6 +103,7 @@ export default function AdminTilesTab() {
       location_ids: (t.locations || []).map(l => l.id),
       all_locations: (t.locations || []).length === locations.length,
       sort_order: t.sort_order || 0,
+      section: t.section || 'management',
     })
   }
 
@@ -207,6 +211,15 @@ export default function AdminTilesTab() {
                 className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red"
                 placeholder="0" />
             </div>
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Section</label>
+              <select value={form.section}
+                onChange={e => setForm(f => ({ ...f, section: e.target.value }))}
+                className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red">
+                <option value="main">Main</option>
+                <option value="management">Management</option>
+              </select>
+            </div>
           </div>
           <div>
             <label className="block text-xs text-text-muted mb-2">Locations</label>
@@ -234,13 +247,14 @@ export default function AdminTilesTab() {
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">Label</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">URL</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">Group</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">Section</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">Locations</th>
               <th className="text-right px-4 py-3 text-xs font-semibold text-text-muted">Actions</th>
             </tr>
           </thead>
           <tbody>
             {tiles.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-text-muted text-sm">No tiles yet</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-text-muted text-sm">No tiles yet</td></tr>
             )}
             {tiles.map(t => (
               <tr key={t.id} className="border-b border-border last:border-0 hover:bg-bg transition-colors">
@@ -283,6 +297,7 @@ export default function AdminTilesTab() {
                     <td className="px-4 py-3 text-text-muted text-xs">
                       {(() => { const p = tiles.find(x => x.id === t.parent_id); return p ? p.label : '—' })()}
                     </td>
+                    <td className="px-4 py-3 text-text-muted text-xs capitalize">{t.section || 'management'}</td>
                     <td className="px-4 py-3 text-text-muted text-xs">
                       {t.locations?.length === locations.length ? 'All' : t.locations?.map(l => l.name).join(', ') || '—'}
                     </td>

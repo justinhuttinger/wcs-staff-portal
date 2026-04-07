@@ -69,7 +69,7 @@ router.get('/tiles', async (req, res) => {
 
       const { data, error } = await supabaseAdmin
         .from('custom_tiles')
-        .select('id, label, description, url, icon, parent_id, sort_order, created_by, created_at')
+        .select('id, label, description, url, icon, parent_id, sort_order, section, created_by, created_at')
         .in('id', tileIds)
         .order('sort_order').order('label')
 
@@ -80,7 +80,7 @@ router.get('/tiles', async (req, res) => {
     // Admin view — get all tiles with their locations
     const { data: tiles, error } = await supabaseAdmin
       .from('custom_tiles')
-      .select('id, label, description, url, icon, parent_id, sort_order, created_by, created_at')
+      .select('id, label, description, url, icon, parent_id, sort_order, section, created_by, created_at')
       .order('sort_order').order('label')
 
     if (error) return res.status(500).json({ error: 'Failed to fetch tiles' })
@@ -105,7 +105,7 @@ router.get('/tiles', async (req, res) => {
 
 // POST /config/tiles — admin only
 router.post('/tiles', requireRole('admin'), async (req, res) => {
-  const { label, description, url, icon, parent_id, location_ids, sort_order } = req.body
+  const { label, description, url, icon, parent_id, location_ids, sort_order, section } = req.body
   if (!label) {
     return res.status(400).json({ error: 'label is required' })
   }
@@ -113,7 +113,7 @@ router.post('/tiles', requireRole('admin'), async (req, res) => {
   try {
     const { data: tile, error } = await supabaseAdmin
       .from('custom_tiles')
-      .insert({ label, description, url, icon, created_by: req.staff.id, parent_id: parent_id || null, sort_order: sort_order || 0 })
+      .insert({ label, description, url, icon, created_by: req.staff.id, parent_id: parent_id || null, sort_order: sort_order || 0, section: section || 'management' })
       .select()
       .single()
 
@@ -138,7 +138,7 @@ router.post('/tiles', requireRole('admin'), async (req, res) => {
 
 // PUT /config/tiles/:id — admin only
 router.put('/tiles/:id', requireRole('admin'), async (req, res) => {
-  const { label, description, url, icon, parent_id, location_ids, sort_order } = req.body
+  const { label, description, url, icon, parent_id, location_ids, sort_order, section } = req.body
   const updates = {}
   if (label !== undefined) updates.label = label
   if (description !== undefined) updates.description = description
@@ -146,6 +146,7 @@ router.put('/tiles/:id', requireRole('admin'), async (req, res) => {
   if (icon !== undefined) updates.icon = icon
   if (parent_id !== undefined) updates.parent_id = parent_id
   if (sort_order !== undefined) updates.sort_order = sort_order
+  if (section !== undefined) updates.section = section
 
   try {
     if (Object.keys(updates).length > 0) {

@@ -43,8 +43,9 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
     return false
   })
 
-  // Separate parent tiles (groups) and top-level tiles (no parent)
-  const topLevelTiles = visibleCustomTiles.filter(t => !t.parent_id)
+  // Separate tiles by section and parent
+  const mainTiles = visibleCustomTiles.filter(t => !t.parent_id && t.section === 'main')
+  const topLevelTiles = visibleCustomTiles.filter(t => !t.parent_id && t.section !== 'main')
   const childTiles = activeGroup ? visibleCustomTiles.filter(t => t.parent_id === activeGroup.id) : []
 
   // If viewing a group's children
@@ -89,6 +90,15 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           description={tool.description}
           icon={tool.icon}
           url={getUrl(tool)}
+        />
+      ))}
+      {mainTiles.map((tile) => (
+        <ToolButton
+          key={'main-' + tile.id}
+          label={tile.label}
+          description={tile.description || ''}
+          emoji={tile.icon}
+          url={tile.url}
         />
       ))}
       {onDayOne && (
