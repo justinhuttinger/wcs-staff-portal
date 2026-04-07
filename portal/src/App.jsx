@@ -98,7 +98,7 @@ export default function App() {
           <p className="text-xs text-text-muted mt-0.5">{user.staff.display_name}</p>
         </div>
         <div className="flex items-center gap-4">
-          {isAdmin && (
+          {isAdmin && (<>
             <button
               onClick={() => setShowConfig(true)}
               className="text-text-muted hover:text-wcs-red transition-colors"
@@ -115,7 +115,7 @@ export default function App() {
             >
               Admin
             </button>
-          )}
+          </>)}
           <span className="text-sm font-semibold text-text-muted uppercase tracking-[0.8px]">{location}</span>
           <button
             onClick={handleLogout}
