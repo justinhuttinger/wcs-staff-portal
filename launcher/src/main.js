@@ -177,7 +177,7 @@ app.on('ready', () => {
     } else if (url.includes('paychex.com')) {
       tabManager.createTab(url, 'Paychex', { preload: path.join(__dirname, 'credential-capture.js') })
     } else if (url !== 'about:blank' && !url.startsWith('chrome')) {
-      tabManager.createTab(url, 'Loading...')
+      tabManager.createTab(url, 'Loading...', { preload: path.join(__dirname, 'credential-capture.js') })
     }
   }
 
