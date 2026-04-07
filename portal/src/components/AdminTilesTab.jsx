@@ -9,6 +9,7 @@ const defaultForm = {
   parent_id: '',
   location_ids: [],
   all_locations: false,
+  sort_order: 0,
 }
 
 export default function AdminTilesTab() {
@@ -19,7 +20,7 @@ export default function AdminTilesTab() {
   const [editingId, setEditingId] = useState(null)
   const [error, setError] = useState(null)
   const [form, setForm] = useState(defaultForm)
-  const [editForm, setEditForm] = useState({ label: '', description: '', url: '', icon: '', location_ids: [], all_locations: false })
+  const [editForm, setEditForm] = useState({ label: '', description: '', url: '', icon: '', location_ids: [], all_locations: false, sort_order: 0 })
 
   useEffect(() => { loadData() }, [])
 
@@ -51,6 +52,7 @@ export default function AdminTilesTab() {
         icon: form.icon,
         parent_id: form.parent_id || null,
         location_ids: form.location_ids,
+        sort_order: form.sort_order,
       })
       setForm(defaultForm)
       setShowAdd(false)
@@ -69,6 +71,7 @@ export default function AdminTilesTab() {
         url: editForm.url,
         icon: editForm.icon,
         location_ids: editForm.location_ids,
+        sort_order: editForm.sort_order,
       })
       setEditingId(null)
       await loadData()
@@ -96,6 +99,7 @@ export default function AdminTilesTab() {
       icon: t.icon || '',
       location_ids: (t.locations || []).map(l => l.id),
       all_locations: (t.locations || []).length === locations.length,
+      sort_order: t.sort_order || 0,
     })
   }
 
@@ -196,6 +200,13 @@ export default function AdminTilesTab() {
                 ))}
               </select>
             </div>
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Order</label>
+              <input type="number" value={form.sort_order}
+                onChange={e => setForm(f => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))}
+                className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red"
+                placeholder="0" />
+            </div>
           </div>
           <div>
             <label className="block text-xs text-text-muted mb-2">Locations</label>
@@ -219,6 +230,7 @@ export default function AdminTilesTab() {
           <thead>
             <tr className="border-b border-border">
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">Icon</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted w-16">Order</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">Label</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">URL</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">Group</th>
@@ -228,7 +240,7 @@ export default function AdminTilesTab() {
           </thead>
           <tbody>
             {tiles.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-text-muted text-sm">No tiles yet</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-text-muted text-sm">No tiles yet</td></tr>
             )}
             {tiles.map(t => (
               <tr key={t.id} className="border-b border-border last:border-0 hover:bg-bg transition-colors">
@@ -237,6 +249,11 @@ export default function AdminTilesTab() {
                     <td className="px-4 py-3">
                       <input value={editForm.icon} onChange={e => setEditForm(f => ({ ...f, icon: e.target.value }))}
                         className="px-2 py-1 rounded border border-border bg-bg text-sm w-12 text-center" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <input type="number" value={editForm.sort_order}
+                        onChange={e => setEditForm(f => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))}
+                        className="px-2 py-1 rounded border border-border bg-bg text-sm w-16 text-center" />
                     </td>
                     <td className="px-4 py-3">
                       <input value={editForm.label} onChange={e => setEditForm(f => ({ ...f, label: e.target.value }))}
@@ -260,6 +277,7 @@ export default function AdminTilesTab() {
                 ) : (
                   <>
                     <td className="px-4 py-3 text-xl">{t.icon || '🔗'}</td>
+                    <td className="px-4 py-3 text-text-muted text-xs">{t.sort_order || 0}</td>
                     <td className="px-4 py-3 text-text-primary font-medium">{t.label}</td>
                     <td className="px-4 py-3 text-text-muted text-xs truncate max-w-48">{t.url || '(group)'}</td>
                     <td className="px-4 py-3 text-text-muted text-xs">
