@@ -120,3 +120,24 @@ export async function getTours(params = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/tours' + (qs ? '?' + qs : ''))
 }
+
+// Reports
+export async function getMembershipReport(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/membership' + (qs ? '?' + qs : ''))
+}
+
+export async function getPTReport(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/pt' + (qs ? '?' + qs : ''))
+}
+
+export async function getVIPReport(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/vip' + (qs ? '?' + qs : ''))
+}
+
+export async function getPipelineReport(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/pipelines' + (qs ? '?' + qs : ''))
+}
