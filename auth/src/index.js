@@ -16,6 +16,7 @@ app.use('/admin', require('./routes/admin'))
 app.use('/config', require('./routes/config'))
 app.use('/webhooks', require('./routes/webhooks'))
 app.use('/appointments', require('./routes/appointments'))
+app.use('/tours', require('./routes/tours'))
 
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => console.log(`WCS Auth API listening on port ${PORT}`))

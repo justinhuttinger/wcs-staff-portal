@@ -114,3 +114,9 @@ export async function getAppointments(params = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/appointments' + (qs ? '?' + qs : ''))
 }
+
+// Tours
+export async function getTours(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/tours' + (qs ? '?' + qs : ''))
+}

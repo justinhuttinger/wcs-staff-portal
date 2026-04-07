@@ -6,6 +6,7 @@ import AdminConfig from './components/AdminConfig'
 import AdminPanel from './components/AdminPanel'
 import SaveCredentialToast from './components/SaveCredentialToast'
 import DayOneView from './components/DayOneView'
+import ToursView from './components/ToursView'
 import useIdleTimer from './hooks/useIdleTimer'
 import { getMe, getToken, clearToken } from './lib/api'
 
@@ -22,6 +23,7 @@ export default function App() {
   const [showConfig, setShowConfig] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
   const [showDayOne, setShowDayOne] = useState(false)
+  const [showTours, setShowTours] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
   const isElectron = !!window.wcsElectron
   const isAdmin = user?.staff?.role === 'admin' || user?.staff?.role === 'director'
@@ -132,9 +134,11 @@ export default function App() {
         <AdminPanel onBack={() => setShowAdmin(false)} />
       ) : showDayOne ? (
         <DayOneView user={user} onBack={() => setShowDayOne(false)} />
+      ) : showTours ? (
+        <ToursView user={user} onBack={() => setShowTours(false)} />
       ) : (
         <main className="flex-1 flex items-start pt-4">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onDayOne={() => setShowDayOne(true)} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onDayOne={() => setShowDayOne(true)} onTours={() => setShowTours(true)} />
         </main>
       )}
 
