@@ -4,8 +4,8 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 #tabbar {
   display: flex;
   align-items: center;
-  height: 40px;
-  padding: 0 8px;
+  height: 52px;
+  padding: 0 10px;
   background: #111111;
   -webkit-app-region: drag;
 }
@@ -22,10 +22,10 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 8px 14px;
   background: rgba(255,255,255,0.05);
   color: rgba(255,255,255,0.6);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   border-radius: 8px 8px 0 0;
@@ -66,8 +66,8 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
   border: none;
   color: rgba(255,255,255,0.6);
   width: 46px;
-  height: 40px;
-  font-size: 13px;
+  height: 52px;
+  font-size: 14px;
   cursor: pointer;
   transition: background 0.1s;
 }

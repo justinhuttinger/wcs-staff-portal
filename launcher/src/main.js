@@ -13,7 +13,7 @@ const auth = require('./auth')
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) app.quit()
 
-const TAB_BAR_HEIGHT = 40
+const TAB_BAR_HEIGHT = 52
 let mainWindow = null
 let tabManager = null
 
