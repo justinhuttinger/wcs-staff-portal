@@ -4,29 +4,39 @@
 const { ipcRenderer } = require('electron')
 
 // Auto-fill ABC login form with vault credentials
+let autoFilled = false
 async function tryAutoFill() {
+  if (autoFilled) return
   try {
     const creds = await ipcRenderer.invoke('get-credentials', 'abc')
     if (!creds) return
 
-    // Look for ABC login form fields
-    const usernameField = document.querySelector('#Username, #username, input[name="Username"], input[name="username"]')
-    const passwordField = document.querySelector('#Password, #password, input[name="Password"], input[name="password"]')
-    const submitBtn = document.querySelector('input[type="submit"], button[type="submit"]')
+    // Look for any password field on the page (not just in forms)
+    const passwordField = document.querySelector('input[type="password"]')
+    if (!passwordField || !passwordField.offsetParent) return
 
-    if (usernameField && passwordField) {
-      usernameField.value = creds.username
-      usernameField.dispatchEvent(new Event('input', { bubbles: true }))
-      passwordField.value = creds.password
-      passwordField.dispatchEvent(new Event('input', { bubbles: true }))
+    // Find username field nearby
+    const container = passwordField.closest('form') || document.body
+    const usernameField = container.querySelector('input[type="email"], input[type="text"], input[name*="user" i], input[name*="User"], input[name*="email" i], #Username, #username')
+    if (!usernameField) return
+    if (usernameField.value && passwordField.value) return
 
-      // Auto-submit after a brief delay
-      if (submitBtn) {
-        setTimeout(() => submitBtn.click(), 300)
-      }
+    usernameField.value = creds.username
+    usernameField.dispatchEvent(new Event('input', { bubbles: true }))
+    usernameField.dispatchEvent(new Event('change', { bubbles: true }))
+    passwordField.value = creds.password
+    passwordField.dispatchEvent(new Event('input', { bubbles: true }))
+    passwordField.dispatchEvent(new Event('change', { bubbles: true }))
+    autoFilled = true
 
-      console.log('[WCS Scraper] Auto-filled ABC login')
-    }
+    // Auto-submit
+    setTimeout(() => {
+      const submitBtn = container.querySelector('button[type="submit"], input[type="submit"], button:not([type])')
+      if (submitBtn) submitBtn.click()
+      else if (container.tagName === 'FORM') container.submit()
+    }, 500)
+
+    console.log('[WCS Scraper] Auto-filled ABC login')
   } catch (err) {
     console.log('[WCS Scraper] Auto-fill skipped:', err.message)
   }
@@ -120,23 +130,42 @@ window.addEventListener('DOMContentLoaded', () => {
   }, 3000)
 
   // Credential capture for ABC login form
+  let captured = false
   function captureAbcLogin() {
-    const form = document.querySelector('form')
-    if (!form || form._wcsCapture) return
-    const passwordField = form.querySelector('input[type="password"]')
-    if (!passwordField) return
-    form._wcsCapture = true
+    if (captured) return
+    const passwordField = document.querySelector('input[type="password"]')
+    if (!passwordField || !passwordField.offsetParent) return
 
-    form.addEventListener('submit', () => {
-      const usernameField = form.querySelector('input[type="email"], input[type="text"], input[name*="user" i], input[name*="User"]')
+    const container = passwordField.closest('form') || document.body
+    if (container._wcsCapture) return
+    container._wcsCapture = true
+
+    function trySend() {
+      const usernameField = container.querySelector('input[type="email"], input[type="text"], input[name*="user" i], input[name*="User"], input[name*="email" i]')
       const username = usernameField?.value?.trim()
       const password = passwordField?.value
-      if (username && password) {
+      if (username && password && !captured) {
+        captured = true
         console.log('[WCS Scraper] Captured ABC login credentials')
         ipcRenderer.send('credential-captured', { service: 'abc', username, password })
+        setTimeout(() => { captured = false }, 5000)
       }
+    }
+
+    if (container.tagName === 'FORM') container.addEventListener('submit', trySend)
+    const buttons = container.querySelectorAll('button, input[type="submit"], [role="button"]')
+    buttons.forEach(btn => {
+      if (btn._wcsCapture) return
+      btn._wcsCapture = true
+      btn.addEventListener('click', () => setTimeout(trySend, 100))
     })
+    passwordField.addEventListener('keydown', (e) => { if (e.key === 'Enter') setTimeout(trySend, 100) })
   }
+
+  // Retry auto-fill for SPA-rendered login pages
+  tryAutoFill()
+  setTimeout(tryAutoFill, 1000)
+  setTimeout(tryAutoFill, 3000)
 
   captureAbcLogin()
   setInterval(captureAbcLogin, 2000)
