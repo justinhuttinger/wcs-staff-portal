@@ -65,8 +65,47 @@ router.get('/authorize', async (req, res) => {
     return res.status(400).send('Only response_type=code is supported')
   }
 
-  // Show login page or check if user is already authenticated
-  // For now, render a simple login form
+  // Check if user is already authenticated via session cookie
+  const sessionToken = req.cookies?.wcs_session
+  if (sessionToken) {
+    try {
+      const { data: { user }, error } = await supabaseAdmin.auth.getUser(sessionToken)
+      if (!error && user) {
+        // User is already logged in — auto-authorize
+        const { data: staff } = await supabaseAdmin
+          .from('staff')
+          .select('id, email, display_name, first_name, last_name, role')
+          .eq('id', user.id)
+          .single()
+
+        if (staff) {
+          const code = crypto.randomBytes(32).toString('hex')
+          authCodes.set(code, {
+            staffId: staff.id,
+            email: staff.email,
+            firstName: staff.first_name || staff.display_name?.split(' ')[0] || '',
+            lastName: staff.last_name || staff.display_name?.split(' ')[1] || '',
+            displayName: staff.display_name || (staff.first_name + ' ' + staff.last_name).trim(),
+            nonce,
+            scope,
+            redirectUri: redirect_uri,
+            expiresAt: Date.now() + 5 * 60 * 1000,
+          })
+
+          const redirectUrl = new URL(redirect_uri)
+          redirectUrl.searchParams.set('code', code)
+          if (state) redirectUrl.searchParams.set('state', state)
+
+          console.log('OIDC: auto-authorized ' + staff.email + ' via session cookie')
+          return res.redirect(redirectUrl.toString())
+        }
+      }
+    } catch (err) {
+      console.log('OIDC: session cookie check failed, showing login form')
+    }
+  }
+
+  // No valid session — show login form
   res.send(`
     <!DOCTYPE html>
     <html>

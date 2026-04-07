@@ -44,6 +44,15 @@ router.post('/login', async (req, res) => {
     is_primary: sl.is_primary,
   }))
 
+  // Set SSO session cookie so OIDC authorize can auto-authenticate
+  res.cookie('wcs_session', authData.session.access_token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    path: '/',
+  })
+
   res.json({
     token: authData.session.access_token,
     staff: {
