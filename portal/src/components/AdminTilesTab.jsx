@@ -37,8 +37,8 @@ export default function AdminTilesTab() {
     setError(null)
     try {
       const [tilesData, locData] = await Promise.all([getTiles(), getLocations()])
-      setTiles(tilesData)
-      setLocations(locData)
+      setTiles(tilesData.tiles || [])
+      setLocations(locData.locations || [])
     } catch (e) {
       setError(e.message || 'Failed to load data')
     } finally {

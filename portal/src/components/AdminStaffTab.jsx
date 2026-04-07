@@ -36,8 +36,8 @@ export default function AdminStaffTab() {
     setError(null)
     try {
       const [staffData, locData] = await Promise.all([getStaff(), getLocations()])
-      setStaff(staffData)
-      setLocations(locData)
+      setStaff(staffData.staff || [])
+      setLocations(locData.locations || [])
     } catch (e) {
       setError(e.message || 'Failed to load data')
     } finally {
@@ -86,7 +86,7 @@ export default function AdminStaffTab() {
     setEditForm({
       display_name: member.display_name || '',
       role: member.role || 'front_desk',
-      location_ids: member.location_ids || [],
+      location_ids: (member.locations || []).map(l => l.id),
     })
   }
 
@@ -301,11 +301,8 @@ export default function AdminStaffTab() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-text-muted text-xs">
-                      {member.location_ids?.length
-                        ? locations
-                            .filter(l => member.location_ids.includes(l.id))
-                            .map(l => l.name)
-                            .join(', ')
+                      {member.locations?.length
+                        ? member.locations.map(l => l.name).join(', ')
                         : '—'}
                     </td>
                     <td className="px-4 py-3 text-right">
