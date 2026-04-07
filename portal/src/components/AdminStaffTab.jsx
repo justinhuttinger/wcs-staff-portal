@@ -5,14 +5,16 @@ const ROLES = ['front_desk', 'personal_trainer', 'manager', 'director', 'admin']
 
 const defaultForm = {
   email: '',
-  display_name: '',
+  first_name: '',
+  last_name: '',
   role: 'front_desk',
   location_ids: [],
   temp_password: '',
 }
 
 const defaultEditForm = {
-  display_name: '',
+  first_name: '',
+  last_name: '',
   role: 'front_desk',
   location_ids: [],
 }
@@ -84,7 +86,8 @@ export default function AdminStaffTab() {
   function startEdit(member) {
     setEditingId(member.id)
     setEditForm({
-      display_name: member.display_name || '',
+      first_name: member.first_name || '',
+      last_name: member.last_name || '',
       role: member.role || 'front_desk',
       location_ids: (member.locations || []).map(l => l.id),
     })
@@ -145,14 +148,25 @@ export default function AdminStaffTab() {
               />
             </div>
             <div>
-              <label className="block text-xs text-text-muted mb-1">Display Name</label>
+              <label className="block text-xs text-text-muted mb-1">First Name</label>
               <input
                 type="text"
                 required
-                value={form.display_name}
-                onChange={e => setForm(f => ({ ...f, display_name: e.target.value }))}
+                value={form.first_name}
+                onChange={e => setForm(f => ({ ...f, first_name: e.target.value }))}
                 className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red"
-                placeholder="Jane Smith"
+                placeholder="Jane"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Last Name</label>
+              <input
+                type="text"
+                required
+                value={form.last_name}
+                onChange={e => setForm(f => ({ ...f, last_name: e.target.value }))}
+                className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red"
+                placeholder="Smith"
               />
             </div>
             <div>
@@ -238,12 +252,22 @@ export default function AdminStaffTab() {
                 {editingId === member.id ? (
                   <>
                     <td className="px-4 py-3">
-                      <input
-                        type="text"
-                        value={editForm.display_name}
-                        onChange={e => setEditForm(f => ({ ...f, display_name: e.target.value }))}
-                        className="w-full px-2 py-1 bg-bg border border-border rounded text-sm text-text-primary focus:outline-none focus:border-wcs-red"
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={editForm.first_name}
+                          onChange={e => setEditForm(f => ({ ...f, first_name: e.target.value }))}
+                          className="w-full px-2 py-1 bg-bg border border-border rounded text-sm text-text-primary focus:outline-none focus:border-wcs-red"
+                          placeholder="First"
+                        />
+                        <input
+                          type="text"
+                          value={editForm.last_name}
+                          onChange={e => setEditForm(f => ({ ...f, last_name: e.target.value }))}
+                          className="w-full px-2 py-1 bg-bg border border-border rounded text-sm text-text-primary focus:outline-none focus:border-wcs-red"
+                          placeholder="Last"
+                        />
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-text-muted">{member.email}</td>
                     <td className="px-4 py-3">
@@ -292,7 +316,7 @@ export default function AdminStaffTab() {
                 ) : (
                   <>
                     <td className="px-4 py-3 text-text-primary font-medium">
-                      {member.display_name || '—'}
+                      {[member.first_name, member.last_name].filter(Boolean).join(' ') || member.display_name || '—'}
                     </td>
                     <td className="px-4 py-3 text-text-muted">{member.email}</td>
                     <td className="px-4 py-3">

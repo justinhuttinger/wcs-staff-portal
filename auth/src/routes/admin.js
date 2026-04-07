@@ -21,7 +21,7 @@ router.get('/staff', requireRole('manager'), async (req, res) => {
 
     const { data: staffList } = await supabaseAdmin
       .from('staff')
-      .select('id, email, display_name, role, must_change_password, created_at')
+      .select('id, email, display_name, first_name, last_name, role, must_change_password, created_at')
       .in('id', staffIds)
       .order('display_name')
 
@@ -45,10 +45,10 @@ router.get('/staff', requireRole('manager'), async (req, res) => {
 
 // POST /admin/staff — director+
 router.post('/staff', requireRole('director'), async (req, res) => {
-  const { email, display_name, role, location_ids, temp_password } = req.body
+  const { email, display_name, first_name, last_name, role, location_ids, temp_password } = req.body
 
-  if (!email || !display_name || !role || !location_ids?.length || !temp_password) {
-    return res.status(400).json({ error: 'email, display_name, role, location_ids, and temp_password are required' })
+  if (!email || !role || !location_ids?.length || !temp_password) {
+    return res.status(400).json({ error: 'email, role, location_ids, and temp_password are required' })
   }
 
   try {
@@ -65,7 +65,9 @@ router.post('/staff', requireRole('director'), async (req, res) => {
     const { error: staffError } = await supabaseAdmin.from('staff').insert({
       id: authUser.user.id,
       email,
-      display_name,
+      display_name: display_name || ((first_name || '') + ' ' + (last_name || '')).trim(),
+      first_name: first_name || null,
+      last_name: last_name || null,
       role,
       must_change_password: true,
     })
@@ -102,13 +104,17 @@ router.post('/staff', requireRole('director'), async (req, res) => {
 
 // PUT /admin/staff/:id — director+
 router.put('/staff/:id', requireRole('director'), async (req, res) => {
-  const { role, location_ids, display_name } = req.body
+  const { role, location_ids, display_name, first_name, last_name } = req.body
   const staffId = req.params.id
 
   try {
     const updates = {}
     if (role) updates.role = role
-    if (display_name) updates.display_name = display_name
+    if (first_name !== undefined) updates.first_name = first_name
+    if (last_name !== undefined) updates.last_name = last_name
+    if (first_name !== undefined || last_name !== undefined || display_name) {
+      updates.display_name = display_name || ((first_name || '') + ' ' + (last_name || '')).trim()
+    }
 
     if (Object.keys(updates).length > 0) {
       const { error } = await supabaseAdmin.from('staff').update(updates).eq('id', staffId)
