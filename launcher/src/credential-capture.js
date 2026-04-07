@@ -130,14 +130,29 @@ async function tryAutoFill() {
       usernameField.dispatchEvent(new Event('input', { bubbles: true }))
       usernameField.dispatchEvent(new Event('change', { bubbles: true }))
 
-      // Auto-submit the username step
+      // Auto-submit the username step — search broadly for any clickable button
       setTimeout(() => {
-        const form = usernameField.closest('form')
-        const submitBtn = (form || document.body).querySelector(
-          'button[type="submit"], input[type="submit"], button:not([type])'
-        )
+        const container = usernameField.closest('form') || document.body
+        let submitBtn = container.querySelector('button[type="submit"], input[type="submit"]')
+        if (!submitBtn) {
+          // Look for buttons by text content (Continue, Next, Submit, Sign In, Log In)
+          const allBtns = container.querySelectorAll('button, [role="button"], a.btn, a.button')
+          for (const btn of allBtns) {
+            const text = (btn.textContent || btn.value || '').trim().toLowerCase()
+            if (['continue', 'next', 'submit', 'sign in', 'log in', 'login'].includes(text)) {
+              submitBtn = btn
+              break
+            }
+          }
+        }
+        if (!submitBtn) {
+          // Last resort: find the first visible button
+          const btns = container.querySelectorAll('button')
+          for (const btn of btns) {
+            if (btn.offsetParent) { submitBtn = btn; break }
+          }
+        }
         if (submitBtn) submitBtn.click()
-        else if (form) form.submit()
       }, 300)
     }
 
