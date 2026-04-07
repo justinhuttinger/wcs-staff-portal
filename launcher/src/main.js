@@ -90,19 +90,24 @@ app.on('ready', () => {
     log('Credential captured for: ' + service)
 
     const serviceName = SERVICE_NAMES[service] || service
+    const isUpdate = !!existing
     const { response } = await dialog.showMessageBox(mainWindow, {
       type: 'question',
-      buttons: ['Save', 'Not now'],
+      buttons: [isUpdate ? 'Update' : 'Save', 'Not now'],
       defaultId: 0,
-      title: 'Save Login',
-      message: `Save login for ${serviceName}?`,
-      detail: `Username: ${username}`,
+      title: isUpdate ? 'Update Login' : 'Save Login',
+      message: isUpdate
+        ? `Update login for ${serviceName}?`
+        : `Save login for ${serviceName}?`,
+      detail: isUpdate
+        ? `Username: ${username}\nYour stored credentials will be updated.`
+        : `Username: ${username}`,
     })
 
     if (response === 0) {
       try {
         await auth.storeCredential(service, username, password)
-        log('Credential saved for: ' + service)
+        log('Credential ' + (isUpdate ? 'updated' : 'saved') + ' for: ' + service)
       } catch (err) {
         log('Failed to save credential: ' + err.message)
       }
