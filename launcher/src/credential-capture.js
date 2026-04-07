@@ -97,12 +97,54 @@ function captureCredentials() {
   }
 }
 
+// Loading overlay — shown during auto-fill login
+let overlayEl = null
+function showLoginOverlay(serviceName) {
+  if (overlayEl) return
+  overlayEl = document.createElement('div')
+  overlayEl.id = 'wcs-login-overlay'
+  overlayEl.innerHTML = `
+    <div style="position:fixed;inset:0;z-index:999999;background:#f4f5f7;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Inter',-apple-system,sans-serif;">
+      <div style="width:80px;height:80px;border-radius:50%;background:#1a1a2e;display:flex;align-items:center;justify-content:center;margin-bottom:24px;">
+        <div style="font-size:28px;font-weight:900;background:linear-gradient(to right,#e53e3e,#fc8181);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">WCS</div>
+      </div>
+      <p style="font-size:16px;font-weight:600;color:#1a1a2e;margin-bottom:8px;">Signing you in</p>
+      <p style="font-size:13px;color:#8b90a5;">${serviceName || 'Please wait...'}</p>
+      <div style="margin-top:24px;width:40px;height:40px;border:3px solid #e2e4e8;border-top-color:#e53e3e;border-radius:50%;animation:wcs-spin 0.8s linear infinite;"></div>
+      <style>@keyframes wcs-spin{to{transform:rotate(360deg)}}</style>
+    </div>
+  `
+  document.body.appendChild(overlayEl)
+}
+
+function hideLoginOverlay() {
+  if (overlayEl) {
+    overlayEl.remove()
+    overlayEl = null
+  }
+}
+
+// Auto-remove overlay on navigation (login succeeded) or after timeout
+let initialUrl = window.location.href
+setInterval(() => {
+  if (overlayEl && window.location.href !== initialUrl) {
+    hideLoginOverlay()
+  }
+}, 500)
+// Safety timeout — hide overlay after 10 seconds regardless
+setTimeout(() => hideLoginOverlay(), 10000)
+
 // Auto-fill saved credentials
+let autoFillDone = false
 async function tryAutoFill() {
+  if (autoFillDone) return
   try {
     const service = getServiceName()
     const creds = await ipcRenderer.invoke('get-credentials', service)
     if (!creds) return
+
+    const SERVICE_LABELS = { abc: 'ABC Financial', ghl: 'Grow CRM', wheniwork: 'WhenIWork', paychex: 'Paychex', operandio: 'Operandio' }
+    showLoginOverlay(SERVICE_LABELS[service] || service)
 
     const nativeSet = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
     const passwordField = document.querySelector('input[type="password"]')
@@ -156,6 +198,7 @@ async function tryAutoFill() {
       }, 300)
     }
 
+    autoFillDone = true
     console.log('[WCS CredCapture] Auto-filled login for:', service)
 
     // Auto-click the login/submit button
