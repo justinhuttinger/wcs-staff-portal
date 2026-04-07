@@ -3,6 +3,7 @@ import ToolGrid from './components/ToolGrid'
 import IdleOverlay from './components/IdleOverlay'
 import LoginScreen from './components/LoginScreen'
 import AdminConfig from './components/AdminConfig'
+import AdminPanel from './components/AdminPanel'
 import useIdleTimer from './hooks/useIdleTimer'
 import { getMe, getToken, clearToken } from './lib/api'
 
@@ -17,6 +18,7 @@ export default function App() {
   const locationParam = getParam('location')
 
   const [showConfig, setShowConfig] = useState(false)
+  const [showAdmin, setShowAdmin] = useState(false)
   const isElectron = !!window.wcsElectron
   const isAdmin = user?.staff?.role === 'admin' || user?.staff?.role === 'director'
 
@@ -97,6 +99,12 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
               </svg>
             </button>
+            <button
+              onClick={() => setShowAdmin(true)}
+              className="text-xs font-semibold text-text-muted hover:text-wcs-red transition-colors"
+            >
+              Admin
+            </button>
           )}
           <span className="text-sm font-semibold text-text-muted uppercase tracking-[0.8px]">{location}</span>
           <button
@@ -108,9 +116,13 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 flex items-start pt-4">
-        <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} />
-      </main>
+      {showAdmin ? (
+        <AdminPanel onBack={() => setShowAdmin(false)} />
+      ) : (
+        <main className="flex-1 flex items-start pt-4">
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} />
+        </main>
+      )}
 
       {isIdle && <IdleOverlay onDismiss={resetTimer} />}
       {showConfig && <AdminConfig isElectron={isElectron} onClose={() => setShowConfig(false)} />}

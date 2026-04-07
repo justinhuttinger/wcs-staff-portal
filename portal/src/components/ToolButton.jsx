@@ -31,7 +31,7 @@ const ICONS = {
   ),
 }
 
-export default function ToolButton({ label, description, icon, url }) {
+export default function ToolButton({ label, description, icon, emoji, url }) {
   return (
     <a
       href={url}
@@ -40,7 +40,11 @@ export default function ToolButton({ label, description, icon, url }) {
       className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)] no-underline"
     >
       <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg text-wcs-red group-hover:bg-wcs-red group-hover:text-white transition-all duration-200">
-        {ICONS[icon]}
+        {emoji ? (
+          <span className="text-2xl">{emoji}</span>
+        ) : (
+          ICONS[icon]
+        )}
       </div>
       <div className="text-center">
         <span className="block text-base font-semibold text-text-primary">{label}</span>
