@@ -2,11 +2,13 @@ import { useState } from 'react'
 import AdminStaffTab from './AdminStaffTab'
 import AdminTilesTab from './AdminTilesTab'
 import AdminRolesTab from './AdminRolesTab'
+import AdminReferencesTab from './AdminReferencesTab'
 
 const TABS = [
   { key: 'staff', label: 'Staff' },
   { key: 'tiles', label: 'Tiles' },
   { key: 'roles', label: 'Roles' },
+  { key: 'references', label: 'References' },
 ]
 
 export default function AdminPanel({ onBack }) {
@@ -34,6 +36,7 @@ export default function AdminPanel({ onBack }) {
       {activeTab === 'staff' && <AdminStaffTab />}
       {activeTab === 'tiles' && <AdminTilesTab />}
       {activeTab === 'roles' && <AdminRolesTab />}
+      {activeTab === 'references' && <AdminReferencesTab />}
     </div>
   )
 }
