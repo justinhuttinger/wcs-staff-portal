@@ -2,9 +2,28 @@ const path = require('path')
 const fs = require('fs')
 
 const WCS_DIR = 'C:\\WCS'
+const CONFIG_FILE = path.join(WCS_DIR, 'config.json')
 const ABC_URL_FILE = path.join(WCS_DIR, 'abc-url.txt')
 
+function readConfig() {
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'))
+    }
+  } catch (e) {}
+  return {}
+}
+
+function writeConfig(config) {
+  try {
+    if (!fs.existsSync(WCS_DIR)) fs.mkdirSync(WCS_DIR, { recursive: true })
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2))
+  } catch (e) {}
+}
+
 function getAbcUrl() {
+  const config = readConfig()
+  if (config.abc_url) return config.abc_url
   try {
     if (fs.existsSync(ABC_URL_FILE)) {
       return fs.readFileSync(ABC_URL_FILE, 'utf8').trim()
@@ -15,13 +34,18 @@ function getAbcUrl() {
 
 function getLocationFromArgs() {
   const arg = process.argv.find(a => a.startsWith('--location='))
-  return arg ? arg.split('=')[1] : 'Salem'
+  if (arg) return arg.split('=')[1]
+  const config = readConfig()
+  return config.location || 'Salem'
 }
 
 module.exports = {
+  API_URL: process.env.WCS_API_URL || 'https://wcs-auth-api.onrender.com',
   PORTAL_URL: process.env.WCS_PORTAL_URL || 'https://wcs-staff-portal.onrender.com',
   getAbcUrl,
   getLocation: getLocationFromArgs,
+  readConfig,
+  writeConfig,
   TOOLS: {
     grow: 'https://app.westcoaststrength.com',
     wheniwork: 'https://app.wheniwork.com',
@@ -38,4 +62,5 @@ module.exports = {
   },
   WCS_DIR,
   ABC_URL_FILE,
+  CONFIG_FILE,
 }
