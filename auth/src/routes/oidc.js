@@ -1,4 +1,5 @@
-const { Router } = require('express')
+const express = require('express')
+const { Router } = express
 const crypto = require('crypto')
 const jwt = require('jsonwebtoken')
 const { supabaseAdmin } = require('../services/supabase')
@@ -169,9 +170,6 @@ router.post('/authorize', express.urlencoded({ extended: false }), async (req, r
     res.status(500).send('Authentication failed')
   }
 })
-
-// Need express for urlencoded parsing
-const express = require('express')
 
 // 4. Token endpoint — GHL exchanges auth code for tokens
 router.post('/token', express.urlencoded({ extended: false }), async (req, res) => {
