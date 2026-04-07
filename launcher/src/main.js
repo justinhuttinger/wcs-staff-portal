@@ -16,79 +16,6 @@ if (!gotLock) app.quit()
 const TAB_BAR_HEIGHT = 40
 let mainWindow = null
 let tabManager = null
-let loginWindow = null
-let idleTimeout = null
-
-function resetIdleTimer() {
-  if (idleTimeout) clearTimeout(idleTimeout)
-  if (!auth.isLoggedIn()) return
-  idleTimeout = setTimeout(() => {
-    log('IDLE TIMEOUT — logging out')
-    handleLogout()
-  }, 10 * 60 * 1000)
-}
-
-function handleLogout() {
-  auth.logout()
-  if (idleTimeout) clearTimeout(idleTimeout)
-  if (tabManager) {
-    for (const [id] of tabManager.tabs) {
-      tabManager.closeTab(id)
-    }
-  }
-  showLoginWindow()
-}
-
-function showLoginWindow() {
-  if (loginWindow && !loginWindow.isDestroyed()) {
-    loginWindow.focus()
-    return
-  }
-
-  loginWindow = new BrowserWindow({
-    width: 450,
-    height: 500,
-    parent: mainWindow,
-    modal: true,
-    frame: false,
-    resizable: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'login-preload.js'),
-      contextIsolation: true,
-    },
-  })
-
-  const loginUrl = PORTAL_URL + '?mode=electron-login'
-  loginWindow.loadURL(loginUrl)
-}
-
-function closeLoginWindow() {
-  if (loginWindow && !loginWindow.isDestroyed()) {
-    loginWindow.close()
-    loginWindow = null
-  }
-}
-
-function startAuthenticatedSession() {
-  closeLoginWindow()
-
-  const location = getLocation()
-  const abcUrl = getAbcUrl()
-  const portalUrl = `${PORTAL_URL}?location=${location}` + (abcUrl ? `&abc_url=${encodeURIComponent(abcUrl)}` : '')
-
-  tabManager.createTab(portalUrl, 'Portal', {
-    closable: false,
-    preload: path.join(__dirname, 'portal-preload.js'),
-  })
-
-  auth.fetchAllCredentials().then(() => {
-    log('Credentials cached for session')
-  }).catch(err => {
-    log('Failed to cache credentials: ' + err.message)
-  })
-
-  resetIdleTimer()
-}
 
 app.on('ready', () => {
   const { session } = require('electron')
@@ -120,24 +47,30 @@ app.on('ready', () => {
   tabManager = new TabManager(mainWindow, TAB_BAR_HEIGHT)
   tabManager.initTabBar()
 
-  showLoginWindow()
+  // Load portal tab immediately — portal handles its own login UI
+  const location = getLocation()
+  const abcUrl = getAbcUrl()
+  const portalUrl = `${PORTAL_URL}?location=${location}` + (abcUrl ? `&abc_url=${encodeURIComponent(abcUrl)}` : '')
 
-  // Auth IPC from login preload
-  ipcMain.handle('auth-login', async (e, email, password) => {
-    try {
-      const data = await auth.login(email, password)
-      return { success: true, data }
-    } catch (err) {
-      return { success: false, error: err.message }
-    }
+  tabManager.createTab(portalUrl, 'Portal', {
+    closable: false,
+    preload: path.join(__dirname, 'portal-preload.js'),
   })
 
-  ipcMain.on('auth-login-complete', () => {
-    startAuthenticatedSession()
+  // Auth state bridge — portal notifies us when user logs in/out
+  ipcMain.on('portal-auth-login', (e, token) => {
+    log('Portal auth: user logged in')
+    auth.setToken(token)
+    auth.fetchAllCredentials().then(() => {
+      log('Credentials cached for session')
+    }).catch(err => {
+      log('Failed to cache credentials: ' + err.message)
+    })
   })
 
-  ipcMain.on('auth-logout', () => {
-    handleLogout()
+  ipcMain.on('portal-auth-logout', () => {
+    log('Portal auth: user logged out')
+    auth.logout()
   })
 
   // Tab IPC
@@ -188,10 +121,7 @@ app.on('ready', () => {
     return { success: true }
   })
 
-  mainWindow.on('focus', resetIdleTimer)
-
   tabManager.onNewWindow = (url) => {
-    resetIdleTimer()
     const abcUrl = getAbcUrl()
     if (url.includes('abcfinancial.com') || url.includes('kiosk.html')) {
       const abcDirect = abcUrl || 'https://prod02.abcfinancial.com'

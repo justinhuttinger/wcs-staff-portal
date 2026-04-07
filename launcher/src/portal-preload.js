@@ -1,5 +1,5 @@
 // Preload script for the Portal tab
-// Intercepts link clicks and sends them to main process via IPC
+// Intercepts link clicks and bridges auth/config to main process via IPC
 const { ipcRenderer, contextBridge } = require('electron')
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -13,7 +13,11 @@ window.addEventListener('DOMContentLoaded', () => {
   }, true)
 })
 
-contextBridge.exposeInMainWorld('wcsConfig', {
+contextBridge.exposeInMainWorld('wcsElectron', {
+  // Auth bridge — portal tells main process about auth state changes
+  onLogin: (token) => ipcRenderer.send('portal-auth-login', token),
+  onLogout: () => ipcRenderer.send('portal-auth-logout'),
+  // Kiosk config
   getConfig: () => ipcRenderer.invoke('get-kiosk-config'),
   setConfig: (config) => ipcRenderer.invoke('set-kiosk-config', config),
 })

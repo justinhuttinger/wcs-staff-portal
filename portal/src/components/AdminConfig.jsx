@@ -9,8 +9,8 @@ export default function AdminConfig({ isElectron, onClose }) {
   const LOCATIONS = ['Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
 
   useEffect(() => {
-    if (isElectron && window.wcsConfig) {
-      window.wcsConfig.getConfig().then(config => {
+    if (isElectron && window.wcsElectron) {
+      window.wcsElectron.getConfig().then(config => {
         setLocation(config.location || '')
         setAbcUrl(config.abc_url || '')
       })
@@ -23,8 +23,8 @@ export default function AdminConfig({ isElectron, onClose }) {
     setMessage('')
 
     try {
-      if (isElectron && window.wcsConfig) {
-        await window.wcsConfig.setConfig({ location, abc_url: abcUrl })
+      if (isElectron && window.wcsElectron) {
+        await window.wcsElectron.setConfig({ location, abc_url: abcUrl })
         setMessage('Saved! Restart the app for changes to take effect.')
       }
     } catch {

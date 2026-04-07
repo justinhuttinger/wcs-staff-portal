@@ -4,7 +4,7 @@ import IdleOverlay from './components/IdleOverlay'
 import LoginScreen from './components/LoginScreen'
 import AdminConfig from './components/AdminConfig'
 import useIdleTimer from './hooks/useIdleTimer'
-import { getMe, clearToken } from './lib/api'
+import { getMe, getToken, clearToken } from './lib/api'
 
 function getParam(key) {
   return new URLSearchParams(window.location.search).get(key)
@@ -17,7 +17,7 @@ export default function App() {
   const locationParam = getParam('location')
 
   const [showConfig, setShowConfig] = useState(false)
-  const isElectron = !!window.wcsConfig
+  const isElectron = !!window.wcsElectron
   const isAdmin = user?.staff?.role === 'admin' || user?.staff?.role === 'director'
 
   const { isIdle, resetTimer } = useIdleTimer(10 * 60 * 1000)
@@ -52,6 +52,10 @@ export default function App() {
         visible_tools: [],
       })
     }
+    // Notify Electron main process about the login
+    if (window.wcsElectron) {
+      window.wcsElectron.onLogin(getToken())
+    }
     setLoading(false)
     resetTimer()
   }
@@ -59,6 +63,10 @@ export default function App() {
   function handleLogout() {
     clearToken()
     setUser(null)
+    // Notify Electron main process about logout
+    if (window.wcsElectron) {
+      window.wcsElectron.onLogout()
+    }
   }
 
   if (!user) {

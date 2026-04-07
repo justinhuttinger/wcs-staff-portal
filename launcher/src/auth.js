@@ -69,6 +69,7 @@ function getCachedCredential(service) {
   return cachedCredentials[service] || null
 }
 
+function setToken(token) { currentToken = token }
 function getStaff() { return currentStaff }
 function getToken() { return currentToken }
 function isLoggedIn() { return !!currentToken }
@@ -81,6 +82,6 @@ function logout() {
 
 module.exports = {
   login, logout, isLoggedIn,
-  getStaff, getToken,
+  setToken, getStaff, getToken,
   fetchCredentials, fetchAllCredentials, getCachedCredential,
 }
