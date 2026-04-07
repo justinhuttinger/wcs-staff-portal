@@ -177,17 +177,36 @@ async function tryAutoFill() {
   }
 }
 
+// Auto-click SSO button on login pages (e.g. GHL)
+function tryAutoClickSSO() {
+  const buttons = document.querySelectorAll('button, a, [role="button"]')
+  for (const btn of buttons) {
+    const text = (btn.textContent || '').trim().toLowerCase()
+    if (text.includes('sso') || text.includes('single sign') || text.includes('sign in with sso') || text.includes('login with sso')) {
+      if (btn.offsetParent) {
+        console.log('[WCS CredCapture] Auto-clicking SSO button:', text)
+        setTimeout(() => btn.click(), 500)
+        return true
+      }
+    }
+  }
+  return false
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   console.log('[WCS CredCapture] Loaded on:', window.location.href)
 
-  // Try auto-fill first
-  tryAutoFill()
+  // Check for SSO button first (e.g. GHL login page)
+  if (!tryAutoClickSSO()) {
+    // No SSO button found, try regular auto-fill
+    tryAutoFill()
+  }
 
   // Scan for login forms to capture new credentials
   captureCredentials()
   const observer = new MutationObserver(() => {
     captureCredentials()
-    tryAutoFill()
+    if (!tryAutoClickSSO()) tryAutoFill()
   })
   observer.observe(document.body, { childList: true, subtree: true })
 
