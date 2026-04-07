@@ -30,7 +30,8 @@ app.on('ready', () => {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: 'WCS App',
+    title: 'Portal',
+    icon: require('path').join(__dirname, '..', 'assets', 'icon-256.png'),
     autoHideMenuBar: true,
     frame: false,
     titleBarStyle: 'hidden',

@@ -1,10 +1,11 @@
-appId: com.westcoaststrength.wcs-app
-productName: WCS App
+appId: com.westcoaststrength.portal
+productName: Portal
 directories:
   output: dist
 
 win:
   target: nsis
+  icon: assets/icon-256.png
 
 nsis:
   oneClick: true
