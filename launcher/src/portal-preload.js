@@ -1,6 +1,6 @@
 // Preload script for the Portal tab
 // Intercepts link clicks and sends them to main process via IPC
-const { ipcRenderer } = require('electron')
+const { ipcRenderer, contextBridge } = require('electron')
 
 window.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', (e) => {
@@ -11,4 +11,9 @@ window.addEventListener('DOMContentLoaded', () => {
       ipcRenderer.send('open-in-tab', link.href)
     }
   }, true)
+})
+
+contextBridge.exposeInMainWorld('wcsConfig', {
+  getConfig: () => ipcRenderer.invoke('get-kiosk-config'),
+  setConfig: (config) => ipcRenderer.invoke('set-kiosk-config', config),
 })
