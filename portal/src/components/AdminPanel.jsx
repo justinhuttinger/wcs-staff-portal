@@ -15,7 +15,7 @@ export default function AdminPanel({ onBack }) {
   const [activeTab, setActiveTab] = useState('staff')
 
   return (
-    <div className="max-w-4xl mx-auto w-full px-8 py-6">
+    <div className="w-full px-8 py-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-bold text-text-primary">Admin Panel</h2>
         <button onClick={onBack}

@@ -238,8 +238,8 @@ export default function AdminTilesTab() {
         </form>
       )}
 
-      <div className="bg-surface border border-border rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-surface border border-border rounded-xl overflow-x-auto">
+        <table className="w-full text-sm min-w-[900px]">
           <thead>
             <tr className="border-b border-border">
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">Icon</th>
