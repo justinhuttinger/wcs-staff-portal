@@ -67,7 +67,7 @@ function extractCustomFields(contact) {
 
 async function fetchGHLContacts(apiKey, locationId) {
   const contacts = []
-  let startAfterId = null
+  let offset = 0
   const limit = 100
   let hasMore = true
 
@@ -75,11 +75,8 @@ async function fetchGHLContacts(apiKey, locationId) {
     const params = new URLSearchParams({
       locationId,
       limit: limit.toString(),
+      startAfter: offset.toString(),
     })
-
-    if (startAfterId) {
-      params.set('startAfterId', startAfterId)
-    }
 
     const res = await fetch(
       'https://services.leadconnectorhq.com/contacts/?' + params.toString(),
@@ -103,8 +100,7 @@ async function fetchGHLContacts(apiKey, locationId) {
     if (batch.length < limit) {
       hasMore = false
     } else {
-      // Use the last contact's ID for cursor-based pagination
-      startAfterId = batch[batch.length - 1].id
+      offset += limit
     }
 
     // Safety: max 20000 contacts per location per sync
