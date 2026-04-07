@@ -156,9 +156,16 @@ async function fetchGHLOpportunities(apiKey, locationId) {
 }
 
 // POST /sync/contacts — sync contacts for all locations (or ?location_id=xxx for one)
+// ?bg=true responds immediately and processes in background
 router.post('/contacts', async (req, res) => {
   const incremental = req.query.full !== 'true'
+  const background = req.query.bg === 'true'
 
+  if (background) {
+    res.json({ status: 'started', message: 'Sync running in background. Check /sync/status for progress.' })
+  }
+
+  const doSync = async () => {
   try {
     const { data: locations } = await supabaseAdmin
       .from('locations')
@@ -212,9 +219,18 @@ router.post('/contacts', async (req, res) => {
       }
     }
 
-    res.json({ success: true, results })
+    if (!background) res.json({ success: true, results })
+    console.log('Contact sync results:', JSON.stringify(results))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    if (!background) res.status(500).json({ error: err.message })
+    console.error('Contact sync error:', err.message)
+  }
+  }
+
+  if (background) {
+    doSync()
+  } else {
+    await doSync()
   }
 })
 
