@@ -65,8 +65,8 @@ router.get('/authorize', async (req, res) => {
     return res.status(400).send('Only response_type=code is supported')
   }
 
-  // Check if user is already authenticated via session cookie
-  const sessionToken = req.cookies?.wcs_session
+  // Check if user is already authenticated via session cookie or token param
+  const sessionToken = req.cookies?.wcs_session || req.query.token
   if (sessionToken) {
     try {
       const { data: { user }, error } = await supabaseAdmin.auth.getUser(sessionToken)

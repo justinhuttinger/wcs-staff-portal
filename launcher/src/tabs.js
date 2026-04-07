@@ -52,6 +52,22 @@ class TabManager {
       })
     }
 
+    // Intercept OIDC authorize URLs and inject auth token for auto-SSO
+    view.webContents.on('will-navigate', (e, url) => {
+      if (url.includes('/oidc/authorize') && url.includes('wcs-auth-api')) {
+        // Get token from main process auth module
+        try {
+          const auth = require('./auth')
+          const token = auth.getToken()
+          if (token && !url.includes('token=')) {
+            e.preventDefault()
+            const separator = url.includes('?') ? '&' : '?'
+            view.webContents.loadURL(url + separator + 'token=' + token)
+          }
+        } catch {}
+      }
+    })
+
     // Update tab title from page
     view.webContents.on('page-title-updated', (e, newTitle) => {
       const tab = this.tabs.get(id)
