@@ -89,3 +89,15 @@ export async function deleteTile(id) {
 export async function getLocations() {
   return api('/config/locations')
 }
+
+// Config - Role Visibility
+export async function getRoleVisibility() {
+  return api('/config/role-visibility')
+}
+
+export async function updateRoleVisibility(updates) {
+  return api('/config/role-visibility', {
+    method: 'PUT',
+    body: JSON.stringify({ updates }),
+  })
+}

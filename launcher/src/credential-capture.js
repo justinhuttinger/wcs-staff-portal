@@ -1,4 +1,5 @@
 // Generic login form credential capture — runs as Electron preload
+// Detects login forms (including SPA-style non-form logins), captures on submit
 const { ipcRenderer } = require('electron')
 
 const DOMAIN_SERVICE_MAP = {
@@ -18,16 +19,7 @@ function getServiceName() {
   return hostname.replace('www.', '').split('.')[0]
 }
 
-function findLoginForm() {
-  const forms = document.querySelectorAll('form')
-  for (const form of forms) {
-    const passwordField = form.querySelector('input[type="password"]')
-    if (passwordField) return { form, passwordField }
-  }
-  return null
-}
-
-function getUsernameField(form) {
+function findUsernameField(container) {
   const selectors = [
     'input[type="email"]',
     'input[name*="user" i]',
@@ -35,55 +27,84 @@ function getUsernameField(form) {
     'input[name*="login" i]',
     'input[id*="user" i]',
     'input[id*="email" i]',
+    'input[autocomplete="username"]',
+    'input[autocomplete="email"]',
     'input[type="text"]',
   ]
   for (const sel of selectors) {
-    const el = form.querySelector(sel)
-    if (el && el.type !== 'password' && el.type !== 'hidden') return el
+    const el = container.querySelector(sel)
+    if (el && el.type !== 'password' && el.type !== 'hidden' && el.offsetParent !== null) return el
   }
   return null
 }
 
-function attachCapture(form, passwordField) {
-  if (form._wcsCapture) return
-  form._wcsCapture = true
+let captured = false
 
-  form.addEventListener('submit', () => {
-    const usernameField = getUsernameField(form)
-    const username = usernameField?.value?.trim()
-    const password = passwordField?.value
+function captureCredentials() {
+  if (captured) return
 
-    if (username && password) {
+  // Find password field anywhere on page (not just inside <form>)
+  const passwordField = document.querySelector('input[type="password"]')
+  if (!passwordField || !passwordField.offsetParent) return
+
+  // Look for username field — search in same form, or in the whole page
+  const form = passwordField.closest('form')
+  const container = form || document.body
+  const usernameField = findUsernameField(container)
+
+  if (!usernameField) return
+
+  console.log('[WCS CredCapture] Found login fields on:', window.location.href)
+
+  function trySend() {
+    const username = usernameField.value?.trim()
+    const password = passwordField.value
+    if (username && password && !captured) {
+      captured = true
       const service = getServiceName()
-      console.log('[WCS CredCapture] Captured login for:', service)
+      console.log('[WCS CredCapture] Captured login for:', service, username)
       ipcRenderer.send('credential-captured', { service, username, password })
+      // Reset after a delay so re-login works
+      setTimeout(() => { captured = false }, 5000)
     }
+  }
+
+  // Attach to form submit if inside a form
+  if (form && !form._wcsCapture) {
+    form._wcsCapture = true
+    form.addEventListener('submit', () => trySend())
+  }
+
+  // Attach to ALL buttons and submit inputs near the password field
+  const buttons = container.querySelectorAll('button, input[type="submit"], [role="button"]')
+  buttons.forEach(btn => {
+    if (btn._wcsCapture) return
+    btn._wcsCapture = true
+    btn.addEventListener('click', () => {
+      // Small delay to let the form populate
+      setTimeout(trySend, 100)
+    })
   })
 
-  const submitBtn = form.querySelector('input[type="submit"], button[type="submit"], button:not([type])')
-  if (submitBtn) {
-    submitBtn.addEventListener('click', () => {
-      setTimeout(() => {
-        const usernameField = getUsernameField(form)
-        const username = usernameField?.value?.trim()
-        const password = passwordField?.value
-        if (username && password) {
-          const service = getServiceName()
-          ipcRenderer.send('credential-captured', { service, username, password })
-        }
-      }, 50)
+  // Also capture Enter key on password field
+  if (!passwordField._wcsCapture) {
+    passwordField._wcsCapture = true
+    passwordField.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        setTimeout(trySend, 100)
+      }
     })
   }
 }
 
-function scanForForms() {
-  const result = findLoginForm()
-  if (result) attachCapture(result.form, result.passwordField)
-}
-
 window.addEventListener('DOMContentLoaded', () => {
   console.log('[WCS CredCapture] Loaded on:', window.location.href)
-  scanForForms()
-  const observer = new MutationObserver(() => scanForForms())
+
+  // Scan immediately and keep scanning for SPA-rendered login forms
+  captureCredentials()
+  const observer = new MutationObserver(() => captureCredentials())
   observer.observe(document.body, { childList: true, subtree: true })
+
+  // Fallback: periodic scan
+  setInterval(captureCredentials, 2000)
 })

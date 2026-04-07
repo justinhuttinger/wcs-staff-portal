@@ -124,4 +124,36 @@ router.delete('/tiles/:id', requireRole('admin'), async (req, res) => {
   res.json({ message: 'Tile deleted' })
 })
 
+// GET /config/role-visibility — admin only, returns all role/tool visibility settings
+router.get('/role-visibility', requireRole('admin'), async (req, res) => {
+  const { data, error } = await supabaseAdmin
+    .from('role_tool_visibility')
+    .select('id, role, tool_key, visible')
+    .order('role')
+
+  if (error) return res.status(500).json({ error: 'Failed to fetch role visibility' })
+  res.json({ visibility: data })
+})
+
+// PUT /config/role-visibility — admin only, batch update visibility
+router.put('/role-visibility', requireRole('admin'), async (req, res) => {
+  const { updates } = req.body
+  if (!updates || !Array.isArray(updates)) {
+    return res.status(400).json({ error: 'updates array is required' })
+  }
+
+  try {
+    for (const { role, tool_key, visible } of updates) {
+      await supabaseAdmin
+        .from('role_tool_visibility')
+        .update({ visible })
+        .eq('role', role)
+        .eq('tool_key', tool_key)
+    }
+    res.json({ message: 'Visibility updated' })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update visibility' })
+  }
+})
+
 module.exports = router
