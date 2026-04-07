@@ -1,0 +1,16 @@
+{
+  "name": "wcs-auth-api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "seed": "node seed/seed.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0"
+  }
+}
