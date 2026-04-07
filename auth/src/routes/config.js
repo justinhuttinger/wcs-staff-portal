@@ -56,42 +56,84 @@ router.get('/tools', async (req, res) => {
 
 // GET /config/tiles?location_id=xxx
 router.get('/tiles', async (req, res) => {
-  let query = supabaseAdmin
-    .from('custom_tiles')
-    .select('id, label, description, url, icon, location_id, parent_id, created_by, created_at, locations(name)')
-    .order('label')
+  try {
+    if (req.query.location_id) {
+      // Get tiles for a specific location (used by ToolGrid)
+      const { data: tileLinks } = await supabaseAdmin
+        .from('tile_locations')
+        .select('tile_id')
+        .eq('location_id', req.query.location_id)
 
-  if (req.query.location_id) {
-    query = query.eq('location_id', req.query.location_id)
-  } else {
-    query = query.in('location_id', req.staff.location_ids)
+      const tileIds = (tileLinks || []).map(tl => tl.tile_id)
+      if (tileIds.length === 0) return res.json({ tiles: [] })
+
+      const { data, error } = await supabaseAdmin
+        .from('custom_tiles')
+        .select('id, label, description, url, icon, parent_id, created_by, created_at')
+        .in('id', tileIds)
+        .order('label')
+
+      if (error) return res.status(500).json({ error: 'Failed to fetch tiles' })
+      return res.json({ tiles: data })
+    }
+
+    // Admin view — get all tiles with their locations
+    const { data: tiles, error } = await supabaseAdmin
+      .from('custom_tiles')
+      .select('id, label, description, url, icon, parent_id, created_by, created_at')
+      .order('label')
+
+    if (error) return res.status(500).json({ error: 'Failed to fetch tiles' })
+
+    // Attach locations to each tile
+    const { data: allLinks } = await supabaseAdmin
+      .from('tile_locations')
+      .select('tile_id, location_id, locations(id, name)')
+
+    const tilesWithLocations = (tiles || []).map(t => ({
+      ...t,
+      locations: (allLinks || [])
+        .filter(tl => tl.tile_id === t.id)
+        .map(tl => ({ id: tl.locations.id, name: tl.locations.name })),
+    }))
+
+    res.json({ tiles: tilesWithLocations })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch tiles' })
   }
-
-  const { data, error } = await query
-  if (error) return res.status(500).json({ error: 'Failed to fetch tiles' })
-  res.json({ tiles: data })
 })
 
 // POST /config/tiles — admin only
 router.post('/tiles', requireRole('admin'), async (req, res) => {
-  const { label, description, url, icon, location_id, parent_id } = req.body
-  if (!label || !location_id) {
-    return res.status(400).json({ error: 'label and location_id are required' })
+  const { label, description, url, icon, parent_id, location_ids } = req.body
+  if (!label) {
+    return res.status(400).json({ error: 'label is required' })
   }
 
-  const { data, error } = await supabaseAdmin
-    .from('custom_tiles')
-    .insert({ label, description, url, icon, location_id, created_by: req.staff.id, parent_id: parent_id || null })
-    .select()
-    .single()
+  try {
+    const { data: tile, error } = await supabaseAdmin
+      .from('custom_tiles')
+      .insert({ label, description, url, icon, created_by: req.staff.id, parent_id: parent_id || null })
+      .select()
+      .single()
 
-  if (error) return res.status(500).json({ error: 'Failed to create tile' })
-  res.status(201).json({ tile: data })
+    if (error) return res.status(500).json({ error: 'Failed to create tile' })
+
+    // Link to locations
+    if (location_ids && location_ids.length > 0) {
+      const links = location_ids.map(lid => ({ tile_id: tile.id, location_id: lid }))
+      await supabaseAdmin.from('tile_locations').insert(links)
+    }
+
+    res.status(201).json({ tile })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create tile' })
+  }
 })
 
 // PUT /config/tiles/:id — admin only
 router.put('/tiles/:id', requireRole('admin'), async (req, res) => {
-  const { label, description, url, icon, parent_id } = req.body
+  const { label, description, url, icon, parent_id, location_ids } = req.body
   const updates = {}
   if (label !== undefined) updates.label = label
   if (description !== undefined) updates.description = description
@@ -99,19 +141,29 @@ router.put('/tiles/:id', requireRole('admin'), async (req, res) => {
   if (icon !== undefined) updates.icon = icon
   if (parent_id !== undefined) updates.parent_id = parent_id
 
-  if (Object.keys(updates).length === 0) {
-    return res.status(400).json({ error: 'No fields to update' })
+  try {
+    if (Object.keys(updates).length > 0) {
+      const { error } = await supabaseAdmin
+        .from('custom_tiles')
+        .update(updates)
+        .eq('id', req.params.id)
+
+      if (error) return res.status(500).json({ error: 'Failed to update tile' })
+    }
+
+    // Update location assignments if provided
+    if (location_ids) {
+      await supabaseAdmin.from('tile_locations').delete().eq('tile_id', req.params.id)
+      if (location_ids.length > 0) {
+        const links = location_ids.map(lid => ({ tile_id: req.params.id, location_id: lid }))
+        await supabaseAdmin.from('tile_locations').insert(links)
+      }
+    }
+
+    res.json({ message: 'Tile updated' })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update tile' })
   }
-
-  const { data, error } = await supabaseAdmin
-    .from('custom_tiles')
-    .update(updates)
-    .eq('id', req.params.id)
-    .select()
-    .single()
-
-  if (error) return res.status(500).json({ error: 'Failed to update tile' })
-  res.json({ tile: data })
 })
 
 // DELETE /config/tiles/:id — admin only
