@@ -108,3 +108,9 @@ export async function updateRoleVisibility(updates) {
     body: JSON.stringify({ updates }),
   })
 }
+
+// Appointments
+export async function getAppointments(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/appointments' + (qs ? '?' + qs : ''))
+}
