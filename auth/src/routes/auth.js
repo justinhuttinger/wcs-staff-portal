@@ -25,7 +25,7 @@ router.post('/login', async (req, res) => {
 
   const { data: staff, error: staffError } = await supabaseAdmin
     .from('staff')
-    .select('id, email, display_name, role, must_change_password')
+    .select('id, email, display_name, first_name, last_name, role, must_change_password')
     .eq('id', authData.user.id)
     .single()
 
@@ -50,6 +50,8 @@ router.post('/login', async (req, res) => {
       id: staff.id,
       email: staff.email,
       display_name: staff.display_name,
+      first_name: staff.first_name,
+      last_name: staff.last_name,
       role: staff.role,
       locations,
     },
@@ -121,6 +123,8 @@ router.get('/me', authenticate, async (req, res) => {
       id: req.staff.id,
       email: req.staff.email,
       display_name: req.staff.display_name,
+      first_name: req.staff.first_name,
+      last_name: req.staff.last_name,
       role: req.staff.role,
       locations,
     },
