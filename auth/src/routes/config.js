@@ -58,7 +58,7 @@ router.get('/tools', async (req, res) => {
 router.get('/tiles', async (req, res) => {
   let query = supabaseAdmin
     .from('custom_tiles')
-    .select('id, label, description, url, icon, location_id, created_by, created_at, locations(name)')
+    .select('id, label, description, url, icon, location_id, parent_id, created_by, created_at, locations(name)')
     .order('label')
 
   if (req.query.location_id) {
@@ -74,14 +74,14 @@ router.get('/tiles', async (req, res) => {
 
 // POST /config/tiles — admin only
 router.post('/tiles', requireRole('admin'), async (req, res) => {
-  const { label, description, url, icon, location_id } = req.body
-  if (!label || !url || !location_id) {
-    return res.status(400).json({ error: 'label, url, and location_id are required' })
+  const { label, description, url, icon, location_id, parent_id } = req.body
+  if (!label || !location_id) {
+    return res.status(400).json({ error: 'label and location_id are required' })
   }
 
   const { data, error } = await supabaseAdmin
     .from('custom_tiles')
-    .insert({ label, description, url, icon, location_id, created_by: req.staff.id })
+    .insert({ label, description, url, icon, location_id, created_by: req.staff.id, parent_id: parent_id || null })
     .select()
     .single()
 
@@ -91,12 +91,13 @@ router.post('/tiles', requireRole('admin'), async (req, res) => {
 
 // PUT /config/tiles/:id — admin only
 router.put('/tiles/:id', requireRole('admin'), async (req, res) => {
-  const { label, description, url, icon } = req.body
+  const { label, description, url, icon, parent_id } = req.body
   const updates = {}
   if (label !== undefined) updates.label = label
   if (description !== undefined) updates.description = description
   if (url !== undefined) updates.url = url
   if (icon !== undefined) updates.icon = icon
+  if (parent_id !== undefined) updates.parent_id = parent_id
 
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: 'No fields to update' })
