@@ -29,14 +29,18 @@ class TabManager {
     const closable = options.closable !== false
     const preload = options.preload || undefined
 
-    const isAbcScraper = preload && preload.includes('abc-scraper')
+    const isPortalPreload = preload && preload.includes('portal-preload')
     const view = new BrowserView({
       webPreferences: {
         preload,
-        contextIsolation: isAbcScraper ? false : true,
+        contextIsolation: isPortalPreload ? true : false,
         nodeIntegration: false,
       },
     })
+
+    // Set Chrome user agent so sites like GHL don't block Electron
+    const chromeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+    view.webContents.setUserAgent(chromeUA)
 
     view.webContents.loadURL(url)
 
