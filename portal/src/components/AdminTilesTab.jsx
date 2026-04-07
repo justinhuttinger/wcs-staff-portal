@@ -8,6 +8,7 @@ const defaultForm = {
   icon: '',
   location_ids: [],
   all_locations: false,
+  parent_id: '',
 }
 
 const defaultEditForm = {
@@ -56,7 +57,7 @@ export default function AdminTilesTab() {
     }
     try {
       for (const location_id of form.location_ids) {
-        await createTile({ label: form.label, description: form.description, url: form.url, icon: form.icon, location_id })
+        await createTile({ label: form.label, description: form.description, url: form.url, icon: form.icon, location_id, parent_id: form.parent_id || null })
       }
       setForm(defaultForm)
       setShowAdd(false)
@@ -148,7 +149,6 @@ export default function AdminTilesTab() {
               <label className="block text-xs text-text-muted mb-1">URL</label>
               <input
                 type="url"
-                required
                 value={form.url}
                 onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
                 className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red"
@@ -174,6 +174,19 @@ export default function AdminTilesTab() {
                 className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red"
                 placeholder="🔧"
               />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs text-text-muted mb-1">Parent Group (optional)</label>
+              <select
+                value={form.parent_id}
+                onChange={e => setForm(f => ({ ...f, parent_id: e.target.value }))}
+                className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red"
+              >
+                <option value="">None (top-level tile)</option>
+                {tiles.filter(t => !t.parent_id && (!t.url || t.url === '')).map(t => (
+                  <option key={t.id} value={t.id}>{t.icon || '📁'} {t.label}</option>
+                ))}
+              </select>
             </div>
             <div className="col-span-2">
               <label className="block text-xs text-text-muted mb-2">Locations</label>
@@ -235,13 +248,14 @@ export default function AdminTilesTab() {
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">Label</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">URL</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">Location</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">Group</th>
               <th className="text-right px-4 py-3 text-xs font-semibold text-text-muted">Actions</th>
             </tr>
           </thead>
           <tbody>
             {tiles.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-text-muted text-sm">
+                <td colSpan={6} className="px-4 py-8 text-center text-text-muted text-sm">
                   No tiles found.
                 </td>
               </tr>
@@ -277,6 +291,9 @@ export default function AdminTilesTab() {
                     </td>
                     <td className="px-4 py-3 text-text-muted text-xs">
                       {tile.locations?.name || 'All'}
+                    </td>
+                    <td className="px-4 py-3 text-text-muted text-xs">
+                      {(() => { const parent = tiles.find(p => p.id === tile.parent_id); return parent ? parent.label : '—' })()}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
@@ -315,6 +332,9 @@ export default function AdminTilesTab() {
                     </td>
                     <td className="px-4 py-3 text-text-muted text-xs">
                       {tile.locations?.name || 'All'}
+                    </td>
+                    <td className="px-4 py-3 text-text-muted text-xs">
+                      {(() => { const parent = tiles.find(p => p.id === tile.parent_id); return parent ? parent.label : '—' })()}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-3">

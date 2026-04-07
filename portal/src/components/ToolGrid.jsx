@@ -5,6 +5,7 @@ import { getTiles } from '../lib/api'
 
 export default function ToolGrid({ abcUrl, location, visibleTools, locationId }) {
   const [customTiles, setCustomTiles] = useState([])
+  const [activeGroup, setActiveGroup] = useState(null)
 
   useEffect(() => {
     if (locationId) {
@@ -29,6 +30,43 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId })
     return tool.url
   }
 
+  // Separate parent tiles (groups) and top-level tiles (no parent)
+  const topLevelTiles = customTiles.filter(t => !t.parent_id)
+  const childTiles = activeGroup ? customTiles.filter(t => t.parent_id === activeGroup.id) : []
+
+  // If viewing a group's children
+  if (activeGroup) {
+    return (
+      <div className="w-full max-w-3xl mx-auto px-8">
+        <button
+          onClick={() => setActiveGroup(null)}
+          className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-4 mt-2"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to Portal
+        </button>
+        <h2 className="text-lg font-bold text-text-primary mb-4">{activeGroup.icon ? activeGroup.icon + ' ' : ''}{activeGroup.label}</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
+          {childTiles.map((tile) => (
+            <ToolButton
+              key={'custom-' + tile.id}
+              label={tile.label}
+              description={tile.description || ''}
+              emoji={tile.icon}
+              url={tile.url}
+            />
+          ))}
+          {childTiles.length === 0 && (
+            <p className="col-span-3 text-center text-text-muted text-sm py-8">No items in this category yet</p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // Top-level view
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-5 p-8 max-w-3xl mx-auto w-full">
       {tools.map((tool) => (
@@ -40,15 +78,38 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId })
           url={getUrl(tool)}
         />
       ))}
-      {customTiles.map((tile) => (
-        <ToolButton
-          key={'custom-' + tile.id}
-          label={tile.label}
-          description={tile.description || ''}
-          emoji={tile.icon}
-          url={tile.url}
-        />
-      ))}
+      {topLevelTiles.map((tile) => {
+        const hasChildren = customTiles.some(t => t.parent_id === tile.id)
+        const isGroup = hasChildren || !tile.url
+
+        if (isGroup) {
+          return (
+            <button
+              key={'custom-' + tile.id}
+              onClick={() => setActiveGroup(tile)}
+              className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+            >
+              <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg text-wcs-red group-hover:bg-wcs-red group-hover:text-white transition-all duration-200">
+                <span className="text-2xl">{tile.icon || '📁'}</span>
+              </div>
+              <div className="text-center">
+                <span className="block text-base font-semibold text-text-primary">{tile.label}</span>
+                <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">{tile.description || ''}</span>
+              </div>
+            </button>
+          )
+        }
+
+        return (
+          <ToolButton
+            key={'custom-' + tile.id}
+            label={tile.label}
+            description={tile.description || ''}
+            emoji={tile.icon}
+            url={tile.url}
+          />
+        )
+      })}
     </div>
   )
 }
