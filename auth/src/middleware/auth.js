@@ -1,4 +1,3 @@
-const jwt = require('jsonwebtoken')
 const { supabaseAdmin } = require('../services/supabase')
 
 async function authenticate(req, res, next) {
@@ -10,9 +9,12 @@ async function authenticate(req, res, next) {
   const token = header.slice(7)
 
   try {
-    const secret = Buffer.from(process.env.SUPABASE_JWT_SECRET, 'base64')
-    const payload = jwt.verify(token, secret)
-    const userId = payload.sub
+    // Use Supabase's own token verification (handles ES256/HS256 automatically)
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+    if (authError || !user) {
+      return res.status(401).json({ error: 'Invalid or expired token' })
+    }
+    const userId = user.id
 
     // Fetch staff profile + locations
     const { data: staff, error } = await supabaseAdmin
