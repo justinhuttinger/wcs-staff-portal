@@ -122,6 +122,21 @@ async function tryAutoFill() {
     passwordField.dispatchEvent(new Event('change', { bubbles: true }))
 
     console.log('[WCS CredCapture] Auto-filled login for:', service)
+
+    // Auto-click the login/submit button
+    setTimeout(() => {
+      const form = passwordField.closest('form')
+      const submitBtn = (form || document.body).querySelector(
+        'button[type="submit"], input[type="submit"], button:not([type])'
+      )
+      if (submitBtn) {
+        captured = true // prevent re-capture of our own submit
+        submitBtn.click()
+        setTimeout(() => { captured = false }, 5000)
+      } else if (form) {
+        form.submit()
+      }
+    }, 500)
   } catch (err) {
     console.log('[WCS CredCapture] Auto-fill skipped:', err.message)
   }
