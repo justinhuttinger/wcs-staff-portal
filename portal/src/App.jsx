@@ -89,7 +89,7 @@ export default function App() {
     return <LoginScreen onLogin={handleLogin} />
   }
 
-  const location = user.staff.locations?.find(l => l.is_primary)?.name || locationParam || 'Salem'
+  const location = locationParam || user.staff.locations?.find(l => l.is_primary)?.name || 'Salem'
 
   return (
     <div className="min-h-screen bg-bg flex flex-col">

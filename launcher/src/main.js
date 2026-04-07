@@ -160,6 +160,14 @@ app.on('ready', () => {
   ipcMain.handle('get-kiosk-config', () => readConfig())
   ipcMain.handle('set-kiosk-config', (e, config) => {
     writeConfig(config)
+    // Reload portal tab with updated location/abc_url
+    const portalTab = tabManager.tabs.get(1)
+    if (portalTab) {
+      const newLocation = config.location || getLocation()
+      const newAbcUrl = config.abc_url || getAbcUrl()
+      const portalUrl = `${PORTAL_URL}?location=${newLocation}` + (newAbcUrl ? `&abc_url=${encodeURIComponent(newAbcUrl)}` : '')
+      portalTab.view.webContents.loadURL(portalUrl)
+    }
     return { success: true }
   })
 

@@ -25,7 +25,7 @@ export default function AdminConfig({ isElectron, onClose }) {
     try {
       if (isElectron && window.wcsElectron) {
         await window.wcsElectron.setConfig({ location, abc_url: abcUrl })
-        setMessage('Saved! Restart the app for changes to take effect.')
+        setMessage('Saved! Reloading portal...')
       }
     } catch {
       setMessage('Failed to save configuration.')
