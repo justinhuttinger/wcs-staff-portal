@@ -114,10 +114,11 @@ async function tryAutoFill() {
     // Don't auto-fill if fields already have values
     if (usernameField.value && passwordField.value) return
 
-    usernameField.value = creds.username
+    const nativeSet = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    nativeSet.call(usernameField, creds.username)
     usernameField.dispatchEvent(new Event('input', { bubbles: true }))
     usernameField.dispatchEvent(new Event('change', { bubbles: true }))
-    passwordField.value = creds.password
+    nativeSet.call(passwordField, creds.password)
     passwordField.dispatchEvent(new Event('input', { bubbles: true }))
     passwordField.dispatchEvent(new Event('change', { bubbles: true }))
 

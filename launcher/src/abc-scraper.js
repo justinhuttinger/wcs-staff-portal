@@ -21,30 +21,26 @@ async function tryAutoFill() {
     if (!usernameField) return
     if (usernameField.value && passwordField.value) return
 
-    // Focus, set value, then blur — triggers framework validation
+    // Use native input setter to bypass framework bindings (React/Angular)
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+
     usernameField.focus()
-    usernameField.value = creds.username
+    nativeInputValueSetter.call(usernameField, creds.username)
     usernameField.dispatchEvent(new Event('input', { bubbles: true }))
     usernameField.dispatchEvent(new Event('change', { bubbles: true }))
-    usernameField.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }))
-    usernameField.blur()
 
+    passwordField.focus()
+    nativeInputValueSetter.call(passwordField, creds.password)
+    passwordField.dispatchEvent(new Event('input', { bubbles: true }))
+    passwordField.dispatchEvent(new Event('change', { bubbles: true }))
+    autoFilled = true
+
+    // Submit
     setTimeout(() => {
-      passwordField.focus()
-      passwordField.value = creds.password
-      passwordField.dispatchEvent(new Event('input', { bubbles: true }))
-      passwordField.dispatchEvent(new Event('change', { bubbles: true }))
-      passwordField.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }))
-      passwordField.blur()
-      autoFilled = true
-
-      // Wait for framework to process, then submit
-      setTimeout(() => {
-        const submitBtn = container.querySelector('button[type="submit"], input[type="submit"], button:not([type])')
-        if (submitBtn) submitBtn.click()
-        else if (container.tagName === 'FORM') container.submit()
-      }, 1000)
-    }, 500)
+      const submitBtn = container.querySelector('button[type="submit"], input[type="submit"], button:not([type])')
+      if (submitBtn) submitBtn.click()
+      else if (container.tagName === 'FORM') container.submit()
+    }, 300)
 
     console.log('[WCS Scraper] Auto-filled ABC login')
   } catch (err) {
