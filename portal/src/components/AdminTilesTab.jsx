@@ -6,7 +6,8 @@ const defaultForm = {
   description: '',
   url: '',
   icon: '',
-  location_id: '',
+  location_ids: [],
+  all_locations: false,
 }
 
 const defaultEditForm = {
@@ -49,8 +50,14 @@ export default function AdminTilesTab() {
   async function handleCreate(e) {
     e.preventDefault()
     setError(null)
+    if (form.location_ids.length === 0) {
+      setError('Select at least one location')
+      return
+    }
     try {
-      await createTile(form)
+      for (const location_id of form.location_ids) {
+        await createTile({ label: form.label, description: form.description, url: form.url, icon: form.icon, location_id })
+      }
       setForm(defaultForm)
       setShowAdd(false)
       await loadData()
@@ -169,17 +176,36 @@ export default function AdminTilesTab() {
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-xs text-text-muted mb-1">Location</label>
-              <select
-                value={form.location_id}
-                onChange={e => setForm(f => ({ ...f, location_id: e.target.value }))}
-                className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red"
-              >
-                <option value="">All Locations</option>
+              <label className="block text-xs text-text-muted mb-2">Locations</label>
+              <label className="flex items-center gap-1.5 text-sm text-text-primary cursor-pointer mb-2">
+                <input
+                  type="checkbox"
+                  checked={form.all_locations}
+                  onChange={e => setForm(f => ({ ...f, all_locations: e.target.checked, location_ids: e.target.checked ? locations.map(l => l.id) : [] }))}
+                  className="accent-wcs-red"
+                />
+                <span className="font-medium">All Locations</span>
+              </label>
+              <div className="flex flex-wrap gap-3">
                 {locations.map(loc => (
-                  <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  <label key={loc.id} className="flex items-center gap-1.5 text-sm text-text-primary cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.location_ids.includes(loc.id)}
+                      onChange={() => {
+                        setForm(f => {
+                          const ids = f.location_ids.includes(loc.id)
+                            ? f.location_ids.filter(id => id !== loc.id)
+                            : [...f.location_ids, loc.id]
+                          return { ...f, location_ids: ids, all_locations: ids.length === locations.length }
+                        })
+                      }}
+                      className="accent-wcs-red"
+                    />
+                    {loc.name}
+                  </label>
                 ))}
-              </select>
+              </div>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
