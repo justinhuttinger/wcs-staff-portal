@@ -29,10 +29,11 @@ class TabManager {
     const closable = options.closable !== false
     const preload = options.preload || undefined
 
+    const isAbcScraper = preload && preload.includes('abc-scraper')
     const view = new BrowserView({
       webPreferences: {
         preload,
-        contextIsolation: preload ? false : true,
+        contextIsolation: isAbcScraper ? false : true,
         nodeIntegration: false,
       },
     })
