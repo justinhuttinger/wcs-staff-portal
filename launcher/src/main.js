@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const LOG_FILE = 'C:\\WCS\\app.log'
@@ -73,8 +73,15 @@ app.on('ready', () => {
     auth.logout()
   })
 
-  // Credential capture — save prompt flow
-  ipcMain.on('credential-captured', (e, { service, username, password }) => {
+  // Credential capture — native dialog prompt
+  const SERVICE_NAMES = {
+    abc: 'ABC Financial',
+    ghl: 'Grow (GHL)',
+    wheniwork: 'WhenIWork',
+    paychex: 'Paychex',
+  }
+
+  ipcMain.on('credential-captured', async (e, { service, username, password }) => {
     if (!auth.isLoggedIn()) return
 
     const existing = auth.getCachedCredential(service)
@@ -82,22 +89,20 @@ app.on('ready', () => {
 
     log('Credential captured for: ' + service)
 
-    const portalTab = tabManager.tabs.get(1)
-    if (portalTab) {
-      mainWindow._pendingCredential = { service, username, password }
-      portalTab.view.webContents.send('show-save-prompt', { service, username })
-    }
-  })
+    const serviceName = SERVICE_NAMES[service] || service
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'question',
+      buttons: ['Save', 'Not now'],
+      defaultId: 0,
+      title: 'Save Login',
+      message: `Save login for ${serviceName}?`,
+      detail: `Username: ${username}`,
+    })
 
-  ipcMain.on('save-credential-response', async (e, { accepted }) => {
-    const pending = mainWindow._pendingCredential
-    if (!pending) return
-    mainWindow._pendingCredential = null
-
-    if (accepted) {
+    if (response === 0) {
       try {
-        await auth.storeCredential(pending.service, pending.username, pending.password)
-        log('Credential saved for: ' + pending.service)
+        await auth.storeCredential(service, username, password)
+        log('Credential saved for: ' + service)
       } catch (err) {
         log('Failed to save credential: ' + err.message)
       }
