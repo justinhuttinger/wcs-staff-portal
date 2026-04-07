@@ -3,7 +3,7 @@ import allTools from '../config/tools.json'
 import ToolButton from './ToolButton'
 import { getTiles } from '../lib/api'
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onDayOne, onTours }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onDayOne, onTours, onReporting }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
 
@@ -140,10 +140,15 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
         const isGroup = hasChildren || !tile.url
 
         if (isGroup) {
+          // Special handling for Reporting tile — opens built-in ReportingView
+          const handleClick = tile.label === 'Reporting' && onReporting
+            ? onReporting
+            : () => setActiveGroup(tile)
+
           return (
             <button
               key={'custom-' + tile.id}
-              onClick={() => setActiveGroup(tile)}
+              onClick={handleClick}
               className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
             >
               <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg text-wcs-red group-hover:bg-wcs-red group-hover:text-white transition-all duration-200">
