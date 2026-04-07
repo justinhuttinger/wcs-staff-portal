@@ -6,6 +6,10 @@ const REFERENCES = [
     items: [
       { label: 'Day One — Appointment Booked', value: 'POST https://wcs-auth-api.onrender.com/webhooks/ghl-appointment' },
       { label: 'Day One — Form Completed', value: 'POST https://wcs-auth-api.onrender.com/webhooks/ghl-form-complete' },
+      { label: 'Sync All Data (hourly cron target)', value: 'POST https://wcs-auth-api.onrender.com/sync/all' },
+      { label: 'Sync Contacts Only', value: 'POST https://wcs-auth-api.onrender.com/sync/contacts' },
+      { label: 'Sync Opportunities Only', value: 'POST https://wcs-auth-api.onrender.com/sync/opportunities' },
+      { label: 'Full Sync (all contacts, not incremental)', value: 'POST https://wcs-auth-api.onrender.com/sync/contacts?full=true' },
     ],
   },
   {
