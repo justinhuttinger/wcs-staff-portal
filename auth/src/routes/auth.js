@@ -81,6 +81,21 @@ router.post('/change-password', authenticate, async (req, res) => {
   res.json({ message: 'Password updated' })
 })
 
+// POST /auth/reset-password — public
+router.post('/reset-password', async (req, res) => {
+  const { email } = req.body
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' })
+  }
+
+  const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email)
+  if (error) {
+    return res.status(500).json({ error: 'Failed to send reset email' })
+  }
+
+  res.json({ message: 'Password reset email sent' })
+})
+
 // GET /auth/me — authenticated
 router.get('/me', authenticate, async (req, res) => {
   const { data: staffLocs } = await supabaseAdmin

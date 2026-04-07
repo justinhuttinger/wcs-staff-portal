@@ -46,6 +46,13 @@ export async function changePassword(newPassword) {
   })
 }
 
+export async function resetPassword(email) {
+  return api('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
 export async function getMe() {
   return api('/auth/me')
 }
