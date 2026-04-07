@@ -3,6 +3,22 @@
 
 const { ipcRenderer } = require('electron')
 
+// Login overlay for ABC
+let overlayEl = null
+function showABCOverlay() {
+  if (overlayEl) return
+  overlayEl = document.createElement('div')
+  overlayEl.innerHTML = `
+    <div style="position:fixed;inset:0;z-index:999999;background:#f4f5f7;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Inter',-apple-system,sans-serif;">
+      <div style="position:relative;width:100px;height:100px;margin-bottom:24px;"><img src="https://wcs-staff-portal.onrender.com/wcs-logo.svg" style="width:80px;height:80px;position:absolute;top:10px;left:10px;border-radius:50%;" onerror="this.style.display='none'" /><div style="position:absolute;inset:0;border:3px solid #e2e4e8;border-top-color:#e53e3e;border-radius:50%;animation:wcs-spin 0.8s linear infinite;"></div></div>
+      <p style="font-size:16px;font-weight:600;color:#1a1a2e;margin-bottom:8px;">Signing you in</p>
+      <p style="font-size:13px;color:#8b90a5;">ABC Financial</p>
+      <style>@keyframes wcs-spin{to{transform:rotate(360deg)}}</style>
+    </div>`
+  document.body.appendChild(overlayEl)
+  setTimeout(() => { if (overlayEl) { overlayEl.remove(); overlayEl = null } }, 5000)
+}
+
 // Auto-fill ABC login form with vault credentials
 let autoFilled = false
 async function tryAutoFill() {
@@ -14,6 +30,8 @@ async function tryAutoFill() {
     // Look for any password field on the page (not just in forms)
     const passwordField = document.querySelector('input[type="password"]')
     if (!passwordField || !passwordField.offsetParent) return
+
+    showABCOverlay()
 
     // Find username field nearby
     const container = passwordField.closest('form') || document.body
