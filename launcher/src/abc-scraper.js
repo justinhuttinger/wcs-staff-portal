@@ -40,7 +40,7 @@ async function tryAutoFill() {
       const submitBtn = container.querySelector('button[type="submit"], input[type="submit"], button:not([type])')
       if (submitBtn) submitBtn.click()
       else if (container.tagName === 'FORM') container.submit()
-    }, 300)
+    }, 100)
 
     console.log('[WCS Scraper] Auto-filled ABC login')
   } catch (err) {
