@@ -54,4 +54,74 @@ router.get('/tools', async (req, res) => {
   res.json({ visible_tools })
 })
 
+// GET /config/tiles?location_id=xxx
+router.get('/tiles', async (req, res) => {
+  let query = supabaseAdmin
+    .from('custom_tiles')
+    .select('id, label, description, url, icon, location_id, created_by, created_at, locations(name)')
+    .order('label')
+
+  if (req.query.location_id) {
+    query = query.eq('location_id', req.query.location_id)
+  } else {
+    query = query.in('location_id', req.staff.location_ids)
+  }
+
+  const { data, error } = await query
+  if (error) return res.status(500).json({ error: 'Failed to fetch tiles' })
+  res.json({ tiles: data })
+})
+
+// POST /config/tiles — admin only
+router.post('/tiles', requireRole('admin'), async (req, res) => {
+  const { label, description, url, icon, location_id } = req.body
+  if (!label || !url || !location_id) {
+    return res.status(400).json({ error: 'label, url, and location_id are required' })
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('custom_tiles')
+    .insert({ label, description, url, icon, location_id, created_by: req.staff.id })
+    .select()
+    .single()
+
+  if (error) return res.status(500).json({ error: 'Failed to create tile' })
+  res.status(201).json({ tile: data })
+})
+
+// PUT /config/tiles/:id — admin only
+router.put('/tiles/:id', requireRole('admin'), async (req, res) => {
+  const { label, description, url, icon } = req.body
+  const updates = {}
+  if (label !== undefined) updates.label = label
+  if (description !== undefined) updates.description = description
+  if (url !== undefined) updates.url = url
+  if (icon !== undefined) updates.icon = icon
+
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ error: 'No fields to update' })
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('custom_tiles')
+    .update(updates)
+    .eq('id', req.params.id)
+    .select()
+    .single()
+
+  if (error) return res.status(500).json({ error: 'Failed to update tile' })
+  res.json({ tile: data })
+})
+
+// DELETE /config/tiles/:id — admin only
+router.delete('/tiles/:id', requireRole('admin'), async (req, res) => {
+  const { error } = await supabaseAdmin
+    .from('custom_tiles')
+    .delete()
+    .eq('id', req.params.id)
+
+  if (error) return res.status(500).json({ error: 'Failed to delete tile' })
+  res.json({ message: 'Tile deleted' })
+})
+
 module.exports = router

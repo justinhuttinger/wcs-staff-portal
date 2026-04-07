@@ -49,3 +49,43 @@ export async function changePassword(newPassword) {
 export async function getMe() {
   return api('/auth/me')
 }
+
+// Admin - Staff
+export async function getStaff() {
+  return api('/admin/staff')
+}
+
+export async function createStaff(data) {
+  return api('/admin/staff', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateStaff(id, data) {
+  return api('/admin/staff/' + id, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function deleteStaff(id) {
+  return api('/admin/staff/' + id, { method: 'DELETE' })
+}
+
+// Config - Tiles
+export async function getTiles(locationId) {
+  const qs = locationId ? '?location_id=' + locationId : ''
+  return api('/config/tiles' + qs)
+}
+
+export async function createTile(data) {
+  return api('/config/tiles', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateTile(id, data) {
+  return api('/config/tiles/' + id, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function deleteTile(id) {
+  return api('/config/tiles/' + id, { method: 'DELETE' })
+}
+
+// Config - Locations
+export async function getLocations() {
+  return api('/config/locations')
+}
