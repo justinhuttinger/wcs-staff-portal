@@ -281,6 +281,14 @@ export default function AdminTilesTab() {
                       {(() => { const p = tiles.find(x => x.id === t.parent_id); return p ? p.label : '—' })()}
                     </td>
                     <td className="px-4 py-3">
+                      <select value={editForm.section}
+                        onChange={e => setEditForm(f => ({ ...f, section: e.target.value }))}
+                        className="px-2 py-1 rounded border border-border bg-bg text-sm">
+                        <option value="main">Main</option>
+                        <option value="management">Management</option>
+                      </select>
+                    </td>
+                    <td className="px-4 py-3">
                       <LocationCheckboxes formState={editForm} setFormState={setEditForm} />
                     </td>
                     <td className="px-4 py-3 text-right">
