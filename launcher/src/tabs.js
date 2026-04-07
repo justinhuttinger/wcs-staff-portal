@@ -1,9 +1,6 @@
 const { BrowserView, session } = require('electron')
 const path = require('path')
 
-// Persistent session — cookies/MFA tokens survive app restarts
-const persistentSession = session.fromPartition('persist:wcs-portal')
-
 class TabManager {
   constructor(parentWindow, tabBarHeight) {
     this.window = parentWindow
@@ -38,7 +35,7 @@ class TabManager {
         preload,
         contextIsolation: isPortalPreload ? true : false,
         nodeIntegration: false,
-        session: persistentSession,
+        partition: 'persist:wcs-portal',
       },
     })
 
