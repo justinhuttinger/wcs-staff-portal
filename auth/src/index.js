@@ -24,17 +24,60 @@ const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
   console.log(`WCS Auth API listening on port ${PORT}`)
 
-  // Hourly GHL data sync via node-cron
+  // Hourly GHL data sync via node-cron — syncs one location at a time
   const cron = require('node-cron')
+  const { supabaseAdmin } = require('./services/supabase')
+
   cron.schedule('0 * * * *', async () => {
     console.log('Cron: starting hourly GHL sync...')
     try {
-      const res = await fetch(`http://localhost:${PORT}/sync/all`, { method: 'POST' })
-      const data = await res.json()
-      console.log('Cron: sync complete', JSON.stringify(data).substring(0, 200))
+      const { data: locations } = await supabaseAdmin
+        .from('locations')
+        .select('id, name, ghl_location_id, ghl_api_key')
+
+      const active = locations.filter(l => l.ghl_api_key && l.ghl_location_id)
+
+      for (const loc of active) {
+        try {
+          console.log('Cron: syncing contacts for ' + loc.name + '...')
+          await fetch(`http://localhost:${PORT}/sync/contacts?location_id=${loc.id}`, { method: 'POST' })
+          console.log('Cron: syncing opportunities for ' + loc.name + '...')
+          await fetch(`http://localhost:${PORT}/sync/opportunities?location_id=${loc.id}`, { method: 'POST' })
+          console.log('Cron: ' + loc.name + ' done')
+        } catch (err) {
+          console.error('Cron: ' + loc.name + ' failed:', err.message)
+        }
+      }
+      console.log('Cron: hourly sync complete')
     } catch (err) {
       console.error('Cron: sync failed', err.message)
     }
   })
+
+  // Also run initial sync on startup (one location at a time)
+  setTimeout(async () => {
+    console.log('Startup: running initial GHL sync...')
+    try {
+      const { data: locations } = await supabaseAdmin
+        .from('locations')
+        .select('id, name, ghl_location_id, ghl_api_key')
+
+      const active = locations.filter(l => l.ghl_api_key && l.ghl_location_id)
+      for (const loc of active) {
+        try {
+          console.log('Startup sync: ' + loc.name + '...')
+          await fetch(`http://localhost:${PORT}/sync/contacts?location_id=${loc.id}&full=true`, { method: 'POST' })
+          await fetch(`http://localhost:${PORT}/sync/opportunities?location_id=${loc.id}`, { method: 'POST' })
+          console.log('Startup sync: ' + loc.name + ' done')
+        } catch (err) {
+          console.error('Startup sync: ' + loc.name + ' failed:', err.message)
+        }
+      }
+      console.log('Startup: initial sync complete')
+    } catch (err) {
+      console.error('Startup sync failed:', err.message)
+    }
+  }, 5000) // Wait 5s after startup
+
   console.log('Cron: hourly GHL sync scheduled')
 })
