@@ -50,7 +50,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   // If viewing a group's children
   if (activeGroup) {
     return (
-      <div className="w-full max-w-3xl mx-auto px-8">
+      <div className="w-full max-w-4xl mx-auto px-8">
         <button
           onClick={() => setActiveGroup(null)}
           className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-4 mt-2"
@@ -61,7 +61,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           Back to Portal
         </button>
         <h2 className="text-lg font-bold text-text-primary mb-4">{activeGroup.icon ? activeGroup.icon + ' ' : ''}{activeGroup.label}</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
           {childTiles.map((tile) => (
             <ToolButton
               key={'custom-' + tile.id}
@@ -72,7 +72,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
             />
           ))}
           {childTiles.length === 0 && (
-            <p className="col-span-3 text-center text-text-muted text-sm py-8">No items in this category yet</p>
+            <p className="col-span-4 text-center text-text-muted text-sm py-8">No items in this category yet</p>
           )}
         </div>
       </div>
@@ -81,7 +81,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
 
   // Top-level view
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-5 p-8 max-w-3xl mx-auto w-full">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-5 p-8 max-w-4xl mx-auto w-full">
       {tools.map((tool) => (
         <ToolButton
           key={tool.id}
@@ -118,6 +118,12 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
             <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">Calendar</span>
           </div>
         </button>
+      )}
+      {topLevelTiles.length > 0 && (
+        <div className="col-span-2 sm:col-span-4 pt-4 pb-1">
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-widest">Management</p>
+          <div className="border-b border-border mt-1"></div>
+        </div>
       )}
       {topLevelTiles.map((tile) => {
         const hasChildren = customTiles.some(t => t.parent_id === tile.id)
