@@ -4,6 +4,7 @@ import IdleOverlay from './components/IdleOverlay'
 import LoginScreen from './components/LoginScreen'
 import AdminConfig from './components/AdminConfig'
 import AdminPanel from './components/AdminPanel'
+import SaveCredentialToast from './components/SaveCredentialToast'
 import useIdleTimer from './hooks/useIdleTimer'
 import { getMe, getToken, clearToken } from './lib/api'
 
@@ -19,6 +20,7 @@ export default function App() {
 
   const [showConfig, setShowConfig] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
+  const [savePrompt, setSavePrompt] = useState(null)
   const isElectron = !!window.wcsElectron
   const isAdmin = user?.staff?.role === 'admin' || user?.staff?.role === 'director'
 
@@ -26,6 +28,14 @@ export default function App() {
 
   useEffect(() => {
     document.title = 'WCS Staff Portal'
+  }, [])
+
+  useEffect(() => {
+    if (window.wcsElectron?.onSavePrompt) {
+      window.wcsElectron.onSavePrompt((data) => {
+        setSavePrompt(data)
+      })
+    }
   }, [])
 
   useEffect(() => {
@@ -126,6 +136,18 @@ export default function App() {
 
       {isIdle && <IdleOverlay onDismiss={resetTimer} />}
       {showConfig && <AdminConfig isElectron={isElectron} onClose={() => setShowConfig(false)} />}
+      {savePrompt && (
+        <SaveCredentialToast
+          service={savePrompt.service}
+          username={savePrompt.username}
+          onRespond={(accepted) => {
+            if (window.wcsElectron?.respondSavePrompt) {
+              window.wcsElectron.respondSavePrompt(accepted)
+            }
+            setSavePrompt(null)
+          }}
+        />
+      )}
     </div>
   )
 }
