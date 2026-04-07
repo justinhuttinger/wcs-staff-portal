@@ -327,4 +327,68 @@ router.post('/all', async (req, res) => {
   }
 })
 
+// Export sync functions for direct cron use (no HTTP timeout)
+router.syncContactsForLocation = async function(loc) {
+  const contacts = await fetchGHLContacts(loc.ghl_api_key, loc.ghl_location_id)
+  let upserted = 0
+  for (const contact of contacts) {
+    const customFields = extractCustomFields(contact)
+    const row = {
+      ghl_contact_id: contact.id,
+      location_id: loc.id,
+      first_name: contact.firstName || null,
+      last_name: contact.lastName || null,
+      email: contact.email || null,
+      phone: contact.phone || null,
+      tags: contact.tags || [],
+      synced_at: new Date().toISOString(),
+      ...customFields,
+    }
+    const { error } = await supabaseAdmin.from('ghl_contacts').upsert(row, { onConflict: 'ghl_contact_id' })
+    if (!error) upserted++
+  }
+  return { fetched: contacts.length, upserted }
+}
+
+router.syncOpportunitiesForLocation = async function(loc) {
+  const opportunities = await fetchGHLOpportunities(loc.ghl_api_key, loc.ghl_location_id)
+  let upserted = 0
+  // Fetch pipeline info
+  const pipRes = await fetch('https://services.leadconnectorhq.com/opportunities/pipelines?locationId=' + loc.ghl_location_id, {
+    headers: { 'Authorization': 'Bearer ' + loc.ghl_api_key, 'Version': '2021-07-28' }
+  })
+  const pipelineCache = {}
+  if (pipRes.ok) {
+    const pipData = await pipRes.json()
+    for (const p of (pipData.pipelines || [])) {
+      pipelineCache[p.id] = { name: p.name, stages: {} }
+      for (const s of (p.stages || [])) pipelineCache[p.id].stages[s.id] = s.name
+    }
+  }
+  for (const opp of opportunities) {
+    const pipeline = pipelineCache[opp.pipelineId] || {}
+    const row = {
+      ghl_opportunity_id: opp.id,
+      ghl_contact_id: opp.contactId || null,
+      location_id: loc.id,
+      pipeline_id: opp.pipelineId || null,
+      pipeline_name: pipeline.name || null,
+      stage_id: opp.pipelineStageId || null,
+      stage_name: pipeline.stages?.[opp.pipelineStageId] || null,
+      status: opp.status || null,
+      contact_name: opp.contactName || opp.name || null,
+      contact_email: opp.contactEmail || null,
+      assigned_to: opp.assignedTo || null,
+      monetary_value: opp.monetaryValue || null,
+      source: opp.source || null,
+      created_date: opp.createdAt || null,
+      updated_date: opp.updatedAt || null,
+      synced_at: new Date().toISOString(),
+    }
+    const { error } = await supabaseAdmin.from('ghl_opportunities').upsert(row, { onConflict: 'ghl_opportunity_id' })
+    if (!error) upserted++
+  }
+  return { fetched: opportunities.length, upserted }
+}
+
 module.exports = router
