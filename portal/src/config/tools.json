@@ -31,14 +31,14 @@
     "id": "gmail",
     "label": "Gmail",
     "description": "Email",
-    "url": "https://accounts.google.com/ServiceLogin?service=mail&continue=https://mail.google.com/mail/",
+    "url": "https://mail.google.com/mail/",
     "icon": "gmail"
   },
   {
     "id": "drive",
     "label": "Google Drive",
     "description": "Files",
-    "url": "https://accounts.google.com/ServiceLogin?service=wise&continue=https://drive.google.com/",
+    "url": "https://drive.google.com",
     "icon": "drive"
   }
 ]
