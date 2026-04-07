@@ -31,11 +31,16 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId })
   }
 
   // Filter custom tiles by role visibility
+  // Show tile if: no visibility data, OR tile key is in visible list, OR tile key isn't in the list at all (not yet configured = visible by default)
   const visibleCustomTiles = customTiles.filter(t => {
-    const tileKey = 'tile:' + t.id
-    // If no visibility data yet, show all. Otherwise check.
     if (!visibleTools || visibleTools.length === 0) return true
-    return visibleTools.includes(tileKey)
+    const tileKey = 'tile:' + t.id
+    // If the tile key exists in visible_tools, it's explicitly allowed
+    if (visibleTools.includes(tileKey)) return true
+    // If no tile:* keys exist at all in visible_tools, visibility hasn't been configured yet — show all
+    const hasTileKeys = visibleTools.some(k => k.startsWith('tile:'))
+    if (!hasTileKeys) return true
+    return false
   })
 
   // Separate parent tiles (groups) and top-level tiles (no parent)
