@@ -3,7 +3,7 @@ import allTools from '../config/tools.json'
 import ToolButton from './ToolButton'
 import { getTiles } from '../lib/api'
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onDayOne }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
 
@@ -91,6 +91,20 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId })
           url={getUrl(tool)}
         />
       ))}
+      {onDayOne && (
+        <button
+          onClick={onDayOne}
+          className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+        >
+          <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg text-wcs-red group-hover:bg-wcs-red group-hover:text-white transition-all duration-200">
+            <span className="text-2xl">📋</span>
+          </div>
+          <div className="text-center">
+            <span className="block text-base font-semibold text-text-primary">Day One</span>
+            <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">Tracking</span>
+          </div>
+        </button>
+      )}
       {topLevelTiles.map((tile) => {
         const hasChildren = customTiles.some(t => t.parent_id === tile.id)
         const isGroup = hasChildren || !tile.url
