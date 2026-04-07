@@ -68,14 +68,8 @@ class TabManager {
       }
     })
 
-    // Update tab title from page
-    view.webContents.on('page-title-updated', (e, newTitle) => {
-      const tab = this.tabs.get(id)
-      if (tab) {
-        tab.title = newTitle.substring(0, 30)
-        this.notifyTabBar()
-      }
-    })
+    // Keep original tab title — don't update from page title
+    // Tab names are set when created (Portal, Grow, ABC, etc.)
 
     // Block all popups — ABC internal links should navigate in-place, not open new windows
     view.webContents.setWindowOpenHandler(({ url }) => {
