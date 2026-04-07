@@ -65,9 +65,9 @@ function extractCustomFields(contact) {
   return result
 }
 
-async function fetchGHLContacts(apiKey, locationId, startAfterDate) {
+async function fetchGHLContacts(apiKey, locationId) {
   const contacts = []
-  let startAfter = 0
+  let startAfterId = null
   const limit = 100
   let hasMore = true
 
@@ -75,12 +75,10 @@ async function fetchGHLContacts(apiKey, locationId, startAfterDate) {
     const params = new URLSearchParams({
       locationId,
       limit: limit.toString(),
-      startAfter: startAfter.toString(),
     })
 
-    // For incremental sync, filter by date
-    if (startAfterDate) {
-      params.set('startAfterDate', startAfterDate)
+    if (startAfterId) {
+      params.set('startAfterId', startAfterId)
     }
 
     const res = await fetch(
@@ -105,11 +103,12 @@ async function fetchGHLContacts(apiKey, locationId, startAfterDate) {
     if (batch.length < limit) {
       hasMore = false
     } else {
-      startAfter += limit
+      // Use the last contact's ID for cursor-based pagination
+      startAfterId = batch[batch.length - 1].id
     }
 
-    // Safety: max 10000 contacts per location per sync
-    if (contacts.length >= 10000) break
+    // Safety: max 20000 contacts per location per sync
+    if (contacts.length >= 20000) break
   }
 
   return contacts
@@ -179,14 +178,7 @@ router.post('/contacts', async (req, res) => {
 
     for (const loc of targetLocations) {
       try {
-        // For incremental, only get contacts updated in last 2 hours
-        let startAfterDate = null
-        if (incremental) {
-          const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
-          startAfterDate = twoHoursAgo.toISOString()
-        }
-
-        const contacts = await fetchGHLContacts(loc.ghl_api_key, loc.ghl_location_id, incremental ? startAfterDate : null)
+        const contacts = await fetchGHLContacts(loc.ghl_api_key, loc.ghl_location_id)
 
         let upserted = 0
         for (const contact of contacts) {
