@@ -10,7 +10,8 @@ async function authenticate(req, res, next) {
   const token = header.slice(7)
 
   try {
-    const payload = jwt.verify(token, process.env.SUPABASE_JWT_SECRET)
+    const secret = Buffer.from(process.env.SUPABASE_JWT_SECRET, 'base64')
+    const payload = jwt.verify(token, secret)
     const userId = payload.sub
 
     // Fetch staff profile + locations
