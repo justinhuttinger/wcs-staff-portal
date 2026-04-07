@@ -20,12 +20,18 @@ let tabManager = null
 app.on('ready', () => {
   const { session } = require('electron')
 
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+  // Strip X-Frame-Options on both default and persistent sessions
+  const stripFrameHeaders = (details, callback) => {
     const headers = { ...details.responseHeaders }
     delete headers['x-frame-options']
     delete headers['X-Frame-Options']
     callback({ responseHeaders: headers })
-  })
+  }
+  session.defaultSession.webRequest.onHeadersReceived(stripFrameHeaders)
+
+  const { session: ses } = require('electron')
+  const persistSes = ses.fromPartition('persist:wcs-portal')
+  persistSes.webRequest.onHeadersReceived(stripFrameHeaders)
 
   mainWindow = new BrowserWindow({
     width: 1400,
