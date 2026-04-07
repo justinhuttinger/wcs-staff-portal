@@ -2,12 +2,13 @@ const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const LOG_FILE = 'C:\\WCS\\app.log'
-function log(msg) { fs.appendFileSync(LOG_FILE, new Date().toISOString() + ' ' + msg + '\n') }
+function log(msg) { try { fs.appendFileSync(LOG_FILE, new Date().toISOString() + ' ' + msg + '\n') } catch {} }
 log('=== APP STARTING ===')
-const { PORTAL_URL, getAbcUrl, getLocation } = require('./config')
+const { PORTAL_URL, getAbcUrl, getLocation, readConfig, writeConfig } = require('./config')
 const TabManager = require('./tabs')
 const { showOverlay, closeOverlay, onResize: onOverlayResize } = require('./overlay')
 const { createTray } = require('./tray')
+const auth = require('./auth')
 
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) app.quit()
@@ -15,21 +16,89 @@ if (!gotLock) app.quit()
 const TAB_BAR_HEIGHT = 40
 let mainWindow = null
 let tabManager = null
+let loginWindow = null
+let idleTimeout = null
+
+function resetIdleTimer() {
+  if (idleTimeout) clearTimeout(idleTimeout)
+  if (!auth.isLoggedIn()) return
+  idleTimeout = setTimeout(() => {
+    log('IDLE TIMEOUT — logging out')
+    handleLogout()
+  }, 10 * 60 * 1000)
+}
+
+function handleLogout() {
+  auth.logout()
+  if (idleTimeout) clearTimeout(idleTimeout)
+  if (tabManager) {
+    for (const [id] of tabManager.tabs) {
+      tabManager.closeTab(id)
+    }
+  }
+  showLoginWindow()
+}
+
+function showLoginWindow() {
+  if (loginWindow && !loginWindow.isDestroyed()) {
+    loginWindow.focus()
+    return
+  }
+
+  loginWindow = new BrowserWindow({
+    width: 450,
+    height: 500,
+    parent: mainWindow,
+    modal: true,
+    frame: false,
+    resizable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'login-preload.js'),
+      contextIsolation: true,
+    },
+  })
+
+  const loginUrl = PORTAL_URL + '?mode=electron-login'
+  loginWindow.loadURL(loginUrl)
+}
+
+function closeLoginWindow() {
+  if (loginWindow && !loginWindow.isDestroyed()) {
+    loginWindow.close()
+    loginWindow = null
+  }
+}
+
+function startAuthenticatedSession() {
+  closeLoginWindow()
+
+  const location = getLocation()
+  const abcUrl = getAbcUrl()
+  const portalUrl = `${PORTAL_URL}?location=${location}` + (abcUrl ? `&abc_url=${encodeURIComponent(abcUrl)}` : '')
+
+  tabManager.createTab(portalUrl, 'Portal', {
+    closable: false,
+    preload: path.join(__dirname, 'portal-preload.js'),
+  })
+
+  auth.fetchAllCredentials().then(() => {
+    log('Credentials cached for session')
+  }).catch(err => {
+    log('Failed to cache credentials: ' + err.message)
+  })
+
+  resetIdleTimer()
+}
 
 app.on('ready', () => {
   const { session } = require('electron')
 
-  // Strip X-Frame-Options from ABC Financial so it loads in iframes
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const headers = { ...details.responseHeaders }
     delete headers['x-frame-options']
     delete headers['X-Frame-Options']
     callback({ responseHeaders: headers })
   })
-
-  const location = getLocation()
-  const abcUrl = getAbcUrl()
-  const portalUrl = `${PORTAL_URL}?location=${location}` + (abcUrl ? `&abc_url=${encodeURIComponent(abcUrl)}` : '')
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -41,7 +110,6 @@ app.on('ready', () => {
   })
 
   mainWindow.maximize()
-
   createTray(mainWindow)
 
   app.setLoginItemSettings({
@@ -52,10 +120,24 @@ app.on('ready', () => {
   tabManager = new TabManager(mainWindow, TAB_BAR_HEIGHT)
   tabManager.initTabBar()
 
-  // Home tab (portal) — not closable, with preload for link interception
-  tabManager.createTab(portalUrl, 'Portal', {
-    closable: false,
-    preload: path.join(__dirname, 'portal-preload.js'),
+  showLoginWindow()
+
+  // Auth IPC from login preload
+  ipcMain.handle('auth-login', async (e, email, password) => {
+    try {
+      const data = await auth.login(email, password)
+      return { success: true, data }
+    } catch (err) {
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.on('auth-login-complete', () => {
+    startAuthenticatedSession()
+  })
+
+  ipcMain.on('auth-logout', () => {
+    handleLogout()
   })
 
   // Tab IPC
@@ -63,12 +145,11 @@ app.on('ready', () => {
   ipcMain.on('close-tab', (e, id) => tabManager.closeTab(id))
   ipcMain.on('tabs-ready', () => tabManager.notifyTabBar())
 
-  // Link click IPC from preload scripts
   ipcMain.on('open-in-tab', (e, url) => {
     if (tabManager.onNewWindow) tabManager.onNewWindow(url)
   })
 
-  // Window control IPC
+  // Window controls
   ipcMain.on('window-minimize', () => mainWindow.minimize())
   ipcMain.on('window-maximize', () => {
     if (mainWindow.isMaximized()) mainWindow.unmaximize()
@@ -79,9 +160,7 @@ app.on('ready', () => {
   // ABC scraper IPC
   let latestMemberData = {}
 
-  ipcMain.on('abc-member-data', (e, data) => {
-    latestMemberData = data
-  })
+  ipcMain.on('abc-member-data', (e, data) => { latestMemberData = data })
 
   ipcMain.on('abc-signup-detected', (e, data) => {
     latestMemberData = { ...latestMemberData, ...data }
@@ -90,10 +169,31 @@ app.on('ready', () => {
     latestMemberData = {}
   })
 
-  // Route new windows into tabs
+  // Credential IPC — preload scripts request creds for auto-fill
+  ipcMain.handle('get-credentials', async (e, service) => {
+    const cred = auth.getCachedCredential(service)
+    if (cred) return { username: cred.username, password: cred.password }
+    try {
+      await auth.fetchCredentials(service)
+      const fetched = auth.getCachedCredential(service)
+      if (fetched) return { username: fetched.username, password: fetched.password }
+    } catch {}
+    return null
+  })
+
+  // Kiosk config IPC (admin only)
+  ipcMain.handle('get-kiosk-config', () => readConfig())
+  ipcMain.handle('set-kiosk-config', (e, config) => {
+    writeConfig(config)
+    return { success: true }
+  })
+
+  mainWindow.on('focus', resetIdleTimer)
+
   tabManager.onNewWindow = (url) => {
+    resetIdleTimer()
+    const abcUrl = getAbcUrl()
     if (url.includes('abcfinancial.com') || url.includes('kiosk.html')) {
-      // Open ABC directly as a tab (not in an iframe — avoids X-Frame-Options)
       const abcDirect = abcUrl || 'https://prod02.abcfinancial.com'
       tabManager.createTab(abcDirect, 'ABC Financial', {
         preload: path.join(__dirname, 'abc-scraper.js'),
@@ -109,18 +209,10 @@ app.on('ready', () => {
     }
   }
 
-  // Log EVERY new window/webContents that gets created
   app.on('web-contents-created', (event, contents) => {
     log('NEW WEBCONTENT: ' + contents.getType() + ' ' + contents.getURL())
     contents.on('did-finish-load', () => {
       log('LOADED: ' + contents.getType() + ' ' + contents.getURL())
-    })
-  })
-
-  app.on('browser-window-created', (event, win) => {
-    log('NEW WINDOW: ' + win.getTitle())
-    win.webContents.on('did-finish-load', () => {
-      log('WINDOW LOADED: ' + win.webContents.getURL())
     })
   })
 
@@ -129,7 +221,6 @@ app.on('ready', () => {
     onOverlayResize()
   })
 
-  // F12 opens DevTools on active tab
   const { globalShortcut } = require('electron')
   globalShortcut.register('F12', () => {
     const active = tabManager.tabs.get(tabManager.activeTabId)
@@ -138,6 +229,5 @@ app.on('ready', () => {
 })
 
 app.on('window-all-closed', (e) => {
-  // Only quit if the main window is gone
   if (!mainWindow || mainWindow.isDestroyed()) app.quit()
 })

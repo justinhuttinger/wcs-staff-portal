@@ -3,6 +3,35 @@
 
 const { ipcRenderer } = require('electron')
 
+// Auto-fill ABC login form with vault credentials
+async function tryAutoFill() {
+  try {
+    const creds = await ipcRenderer.invoke('get-credentials', 'abc')
+    if (!creds) return
+
+    // Look for ABC login form fields
+    const usernameField = document.querySelector('#Username, #username, input[name="Username"], input[name="username"]')
+    const passwordField = document.querySelector('#Password, #password, input[name="Password"], input[name="password"]')
+    const submitBtn = document.querySelector('input[type="submit"], button[type="submit"]')
+
+    if (usernameField && passwordField) {
+      usernameField.value = creds.username
+      usernameField.dispatchEvent(new Event('input', { bubbles: true }))
+      passwordField.value = creds.password
+      passwordField.dispatchEvent(new Event('input', { bubbles: true }))
+
+      // Auto-submit after a brief delay
+      if (submitBtn) {
+        setTimeout(() => submitBtn.click(), 300)
+      }
+
+      console.log('[WCS Scraper] Auto-filled ABC login')
+    }
+  } catch (err) {
+    console.log('[WCS Scraper] Auto-fill skipped:', err.message)
+  }
+}
+
 let memberData = {}
 
 const fieldSelectors = {
@@ -69,6 +98,7 @@ function watchMainFrame() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  tryAutoFill()
   console.log('[WCS Scraper] Loaded on:', window.location.href)
 
   setInterval(() => {
