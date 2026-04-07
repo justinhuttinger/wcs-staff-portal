@@ -1,7 +1,11 @@
-import tools from '../config/tools.json'
+import allTools from '../config/tools.json'
 import ToolButton from './ToolButton'
 
-export default function ToolGrid({ abcUrl, location }) {
+export default function ToolGrid({ abcUrl, location, visibleTools }) {
+  const tools = visibleTools && visibleTools.length > 0
+    ? allTools.filter(t => visibleTools.includes(t.id))
+    : allTools
+
   const getUrl = (tool) => {
     if (tool.id === 'abc') {
       const params = new URLSearchParams()
