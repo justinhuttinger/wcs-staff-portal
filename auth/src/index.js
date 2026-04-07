@@ -11,7 +11,7 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }))
 
 // Routes (added in subsequent tasks)
 app.use('/auth', require('./routes/auth'))
-// app.use('/vault', require('./routes/vault'))
+app.use('/vault', require('./routes/vault'))
 // app.use('/admin', require('./routes/admin'))
 // app.use('/config', require('./routes/config'))
 
