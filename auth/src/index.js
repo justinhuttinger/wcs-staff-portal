@@ -21,4 +21,20 @@ app.use('/sync', require('./routes/sync'))
 app.use('/reports', require('./routes/reports'))
 
 const PORT = process.env.PORT || 3001
-app.listen(PORT, () => console.log(`WCS Auth API listening on port ${PORT}`))
+app.listen(PORT, () => {
+  console.log(`WCS Auth API listening on port ${PORT}`)
+
+  // Hourly GHL data sync via node-cron
+  const cron = require('node-cron')
+  cron.schedule('0 * * * *', async () => {
+    console.log('Cron: starting hourly GHL sync...')
+    try {
+      const res = await fetch(`http://localhost:${PORT}/sync/all`, { method: 'POST' })
+      const data = await res.json()
+      console.log('Cron: sync complete', JSON.stringify(data).substring(0, 200))
+    } catch (err) {
+      console.error('Cron: sync failed', err.message)
+    }
+  })
+  console.log('Cron: hourly GHL sync scheduled')
+})
