@@ -460,6 +460,7 @@ router.get('/club-health', async (req, res) => {
     }
 
     res.json({
+      total_memberships: members.length,
       total_vips: totalVips || 0,
       total_same_day_sales: totalSameDaySales,
       total_day_ones_booked: totalDayOnesBooked,

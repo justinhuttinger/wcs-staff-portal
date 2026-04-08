@@ -104,14 +104,17 @@ router.post('/staff', requireRole('director'), async (req, res) => {
 
 // PUT /admin/staff/:id — director+
 router.put('/staff/:id', requireRole('director'), async (req, res) => {
-  const { role, location_ids, display_name, first_name, last_name, email } = req.body
+  const { role, location_ids, display_name, first_name, last_name, email, temp_password } = req.body
   const staffId = req.params.id
 
   try {
-    // Update email in both Supabase Auth and staff table
-    if (email) {
-      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(staffId, { email })
-      if (authError) return res.status(500).json({ error: 'Failed to update email: ' + authError.message })
+    // Update auth user (email and/or password)
+    const authUpdates = {}
+    if (email) authUpdates.email = email
+    if (temp_password) authUpdates.password = temp_password
+    if (Object.keys(authUpdates).length > 0) {
+      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(staffId, authUpdates)
+      if (authError) return res.status(500).json({ error: 'Failed to update auth: ' + authError.message })
     }
 
     const updates = {}

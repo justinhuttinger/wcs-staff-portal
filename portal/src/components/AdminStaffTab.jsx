@@ -42,7 +42,8 @@ function StaffModal({ member, locations, onClose, onSaved }) {
       if (isNew) {
         await createStaff(form)
       } else {
-        const { temp_password, ...updateData } = form
+        const updateData = { ...form }
+        if (!updateData.temp_password) delete updateData.temp_password
         await updateStaff(member.id, updateData)
       }
       onSaved()
@@ -110,19 +111,17 @@ function StaffModal({ member, locations, onClose, onSaved }) {
             </select>
           </div>
 
-          {isNew && (
-            <div>
-              <label className="block text-xs text-text-muted mb-1">Temporary Password</label>
-              <input
-                type="text"
-                required
-                value={form.temp_password}
-                onChange={e => setForm(f => ({ ...f, temp_password: e.target.value }))}
-                className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red"
-                placeholder="Initial password"
-              />
-            </div>
-          )}
+          <div>
+            <label className="block text-xs text-text-muted mb-1">{isNew ? 'Temporary Password' : 'Reset Password (optional)'}</label>
+            <input
+              type="text"
+              required={isNew}
+              value={form.temp_password}
+              onChange={e => setForm(f => ({ ...f, temp_password: e.target.value }))}
+              className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red"
+              placeholder={isNew ? 'Initial password' : 'Leave blank to keep current'}
+            />
+          </div>
 
           <div>
             <label className="block text-xs text-text-muted mb-2">Locations</label>

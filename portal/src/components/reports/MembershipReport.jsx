@@ -78,12 +78,27 @@ function LineChart({ points }) {
         {['memberships', 'vips', 'day_ones'].map(key => (
           <path key={key} d={makePath(key)} fill="none" stroke={LINE_COLORS[key]} strokeWidth="2" strokeLinejoin="round" />
         ))}
+        {/* Hover zones per day — invisible rects with tooltips */}
+        {points.map((p, i) => {
+          const barW = points.length > 1 ? chartW / (points.length - 1) : chartW
+          return (
+            <rect
+              key={`hover-${i}`}
+              x={toX(i) - barW / 2}
+              y={padT}
+              width={barW}
+              height={chartH}
+              fill="transparent"
+              className="cursor-crosshair"
+            >
+              <title>{p.date} — Memberships: {p.memberships}, VIPs: {p.vips}, Day Ones: {p.day_ones}</title>
+            </rect>
+          )
+        })}
         {/* Dots */}
         {['memberships', 'vips', 'day_ones'].map(key =>
           points.map((p, i) => p[key] > 0 ? (
-            <circle key={`${key}-${i}`} cx={toX(i)} cy={toY(p[key])} r="2.5" fill={LINE_COLORS[key]}>
-              <title>{p.date}: {p[key]} {key}</title>
-            </circle>
+            <circle key={`${key}-${i}`} cx={toX(i)} cy={toY(p[key])} r="2.5" fill={LINE_COLORS[key]} className="pointer-events-none" />
           ) : null)
         )}
         {/* X-axis labels */}
@@ -146,9 +161,11 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
     rows = rows.filter(([name]) => name.toLowerCase().includes(q))
   }
 
+  // Sort, but always push "Unassigned" to the bottom
   if (sortBy === 'best') rows.sort((a, b) => b[1].total_sales - a[1].total_sales)
   else if (sortBy === 'worst') rows.sort((a, b) => a[1].total_sales - b[1].total_sales)
   else if (sortBy === 'alpha') rows.sort((a, b) => a[0].localeCompare(b[0]))
+  rows.sort((a, b) => (a[0] === 'Unassigned' ? 1 : 0) - (b[0] === 'Unassigned' ? 1 : 0))
 
   const allRows = Object.entries(data.by_salesperson || {})
   const totalSales = allRows.reduce((sum, [, s]) => sum + (s.total_sales || 0), 0)

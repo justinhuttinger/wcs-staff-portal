@@ -82,21 +82,22 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
 
   return (
     <div className="space-y-6">
-      {/* Stat Cards */}
+      {/* Stat Cards — Set / Show / Close */}
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Total Day Ones</p>
+          <p className="text-xs text-text-muted uppercase tracking-wide">Set</p>
           <p className="text-2xl font-bold text-text-primary mt-1">{totalDayOnes}</p>
+          <p className="text-xs text-text-muted mt-0.5">Total Day Ones</p>
         </div>
         <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Completion Rate</p>
-          <p className="text-2xl font-bold text-text-primary mt-1">{completionRate}%</p>
-          <p className="text-xs text-text-muted mt-0.5">{totalCompleted} of {totalDayOnes}</p>
+          <p className="text-xs text-text-muted uppercase tracking-wide">Show</p>
+          <p className="text-2xl font-bold text-text-primary mt-1">{totalCompleted}</p>
+          <p className="text-xs text-text-muted mt-0.5">{completionRate}% of {totalDayOnes} set</p>
         </div>
         <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Close Rate</p>
-          <p className="text-2xl font-bold text-text-primary mt-1">{closeRate}%</p>
-          <p className="text-xs text-text-muted mt-0.5">{totalSales} of {totalCompleted}</p>
+          <p className="text-xs text-text-muted uppercase tracking-wide">Close</p>
+          <p className="text-2xl font-bold text-text-primary mt-1">{totalSales}</p>
+          <p className="text-xs text-text-muted mt-0.5">{closeRate}% of {totalCompleted} shown</p>
         </div>
       </div>
 
@@ -128,9 +129,10 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
                   <td className="px-4 py-2 text-text-muted">{c.day_one_trainer || '—'}</td>
                   <td className="px-4 py-2"><StatusPill status={c.day_one_status} /></td>
                   <td className="px-4 py-2">
-                    {c.day_one_sale === 'Sale' || c.day_one_sale === true
-                      ? <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200 text-xs">Sale</span>
-                      : <span className="px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 text-xs">{c.day_one_sale || 'No Sale'}</span>
+                    {(c.day_one_status || '').toLowerCase() === 'scheduled' ? '—' :
+                      c.day_one_sale === 'Sale' || c.day_one_sale === true
+                        ? <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200 text-xs">Sale</span>
+                        : <span className="px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 text-xs">{c.day_one_sale || 'No Sale'}</span>
                     }
                   </td>
                 </tr>
@@ -241,9 +243,10 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
                                   <td className="px-3 py-2 text-text-muted">{formatDate(c.day_one_date || c.day_one_booking_date)}</td>
                                   <td className="px-3 py-2"><StatusPill status={c.show_or_no_show || c.day_one_status} /></td>
                                   <td className="px-3 py-2">
-                                    {c.day_one_sale === 'Sale' || c.day_one_sale === true
-                                      ? <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200">Sale</span>
-                                      : <span className="px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200">{c.day_one_sale || 'No Sale'}</span>
+                                    {(c.day_one_status || c.show_or_no_show || '').toLowerCase() === 'scheduled' ? '—' :
+                                      c.day_one_sale === 'Sale' || c.day_one_sale === true
+                                        ? <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200">Sale</span>
+                                        : <span className="px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200">{c.day_one_sale || 'No Sale'}</span>
                                     }
                                   </td>
                                   <td className="px-3 py-2 text-text-muted">{c.pt_sale_type || c.day_one_sale_type || '—'}</td>

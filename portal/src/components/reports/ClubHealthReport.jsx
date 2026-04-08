@@ -76,7 +76,11 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
   return (
     <div className="space-y-6">
       {/* Big Number Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="bg-surface rounded-xl border border-border p-6 text-center">
+          <p className="text-xs text-text-muted uppercase tracking-wide">Memberships Sold</p>
+          <p className="text-4xl font-bold text-text-primary mt-2">{data.total_memberships || 0}</p>
+        </div>
         <div className="bg-surface rounded-xl border border-border p-6 text-center">
           <p className="text-xs text-text-muted uppercase tracking-wide">Total VIPs</p>
           <p className="text-4xl font-bold text-text-primary mt-2">{data.total_vips}</p>
