@@ -115,12 +115,10 @@ router.get('/salesperson-stats', async (req, res) => {
         bySalesperson[sp] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0 }
       }
       bySalesperson[sp].total_sales++
-      const hasVipTag = Array.isArray(c.tags) && c.tags.some(t => t && t.toLowerCase().includes('vip'))
+      const hasVipTag = Array.isArray(c.tags) && c.tags.includes('vip')
       if (hasVipTag) bySalesperson[sp].vips++
-      const booked = (c.day_one_booked || '').toLowerCase()
-      if (booked === 'yes' || booked === 'booked') bySalesperson[sp].day_one_booked++
-      const sds = (c.same_day_sale || '').toLowerCase()
-      if (sds === 'sale' || sds === 'yes') bySalesperson[sp].same_day_sale++
+      if (c.day_one_booked === 'Yes') bySalesperson[sp].day_one_booked++
+      if (c.same_day_sale === 'Sale') bySalesperson[sp].same_day_sale++
     }
 
     res.json({
@@ -224,13 +222,12 @@ router.get('/membership', async (req, res) => {
       const sp = c.sale_team_member || 'Unassigned'
       if (!bySalesperson[sp]) bySalesperson[sp] = { memberships: 0, vips: 0, day_one_booked: 0 }
       bySalesperson[sp].memberships++
-      const hasVipTag = Array.isArray(c.tags) && c.tags.some(t => t && t.toLowerCase().includes('vip'))
+      const hasVipTag = Array.isArray(c.tags) && c.tags.includes('vip')
       if (hasVipTag) bySalesperson[sp].vips++
-      const booked = (c.day_one_booked || '').toLowerCase()
-      if (booked === 'yes' || booked === 'booked') bySalesperson[sp].day_one_booked++
+      if (c.day_one_booked === 'Yes') bySalesperson[sp].day_one_booked++
 
       // totals
-      if (booked === 'yes' || booked === 'booked') totalDayOneBooked++
+      if (c.day_one_booked === 'Yes') totalDayOneBooked++
       if (hasVipTag) totalVips++
     }
 
@@ -377,51 +374,86 @@ router.get('/club-health', async (req, res) => {
 
     const startMs = dateToMs(start_date, false)
     const endMs   = dateToMs(end_date, true)
+    // ISO dates for TIMESTAMPTZ columns
+    const startISO = start_date ? start_date + 'T00:00:00.000Z' : null
+    const endISO   = end_date ? end_date + 'T23:59:59.999Z' : null
 
-    let q = supabaseAdmin
+    // --- VIPs: contacts created in date range with "vip" tag ---
+    // created_at_ghl is TIMESTAMPTZ on ghl_contacts_v2, need to go through base table
+    let vipQuery = supabaseAdmin
+      .from('ghl_contacts_v2')
+      .select('id, tags', { count: 'exact', head: false })
+      .contains('tags', ['vip'])
+    if (startISO) vipQuery = vipQuery.gte('created_at_ghl', startISO)
+    if (endISO) vipQuery = vipQuery.lte('created_at_ghl', endISO)
+    if (locationFilter && locationFilter.column === 'location_slug') {
+      // Resolve slug to location_id for base table
+      const { data: loc } = await supabaseAdmin
+        .from('ghl_locations')
+        .select('id')
+        .ilike('name', '%' + locationFilter.value + '%')
+        .limit(1)
+        .maybeSingle()
+      if (loc) vipQuery = vipQuery.eq('location_id', loc.id)
+    } else if (locationFilter && locationFilter.column === 'location_id') {
+      vipQuery = vipQuery.eq('location_id', locationFilter.value)
+    }
+    const { count: totalVips } = await vipQuery
+
+    // --- Day One + Same Day Sale + Pie Charts: from ghl_contacts_report ---
+    // Query contacts with member_sign_date in range for same_day_sale
+    // AND contacts with day_one_booking_date in range for day one stats
+    // Use a broad query: get contacts that have EITHER member_sign_date or day_one_booked
+    let memberQ = supabaseAdmin
       .from('ghl_contacts_report')
       .select(
         'tags, day_one_booked, day_one_status, day_one_sale,' +
-        'same_day_sale, member_sign_date, location_slug'
+        'same_day_sale, member_sign_date, day_one_booking_date, location_slug'
       )
       .not('member_sign_date', 'is', null)
+    memberQ = applyLocationFilter(memberQ, locationFilter)
+    memberQ = applyDateRange(memberQ, 'member_sign_date', startMs, endMs)
 
-    q = applyLocationFilter(q, locationFilter)
-    q = applyDateRange(q, 'member_sign_date', startMs, endMs)
+    const { data: memberContacts, error: memberErr } = await memberQ
+    if (memberErr) return res.status(500).json({ error: 'Failed to fetch club health data', detail: memberErr.message })
 
-    const { data, error } = await q
-    if (error) return res.status(500).json({ error: 'Failed to fetch club health data', detail: error.message })
+    // Separate query for day one booked contacts (by booking date, not member sign date)
+    let dayOneQ = supabaseAdmin
+      .from('ghl_contacts_report')
+      .select(
+        'day_one_booked, day_one_status, day_one_sale, day_one_booking_date, location_slug'
+      )
+      .eq('day_one_booked', 'Yes')
+      .not('day_one_booking_date', 'is', null)
+    dayOneQ = applyLocationFilter(dayOneQ, locationFilter)
+    dayOneQ = applyDateRange(dayOneQ, 'day_one_booking_date', startMs, endMs)
 
-    const contacts = data || []
+    const { data: dayOneContacts, error: dayOneErr } = await dayOneQ
+    if (dayOneErr) return res.status(500).json({ error: 'Failed to fetch day one data', detail: dayOneErr.message })
 
-    let totalVips = 0
+    const members = memberContacts || []
+    const dayOnes = dayOneContacts || []
+
+    // Same day sales from member contacts
     let totalSameDaySales = 0
-    let totalDayOnesBooked = 0
+    for (const c of members) {
+      if (c.same_day_sale === 'Sale') totalSameDaySales++
+    }
 
-    const dayOneBookedCounts = {}
+    // Day One stats from day one query
+    const totalDayOnesBooked = dayOnes.length
+
+    const dayOneBookedCounts = { 'Yes': totalDayOnesBooked }
+    // Count "No" from member contacts who don't have day one booked
+    const memberNoBooking = members.filter(c => c.day_one_booked !== 'Yes').length
+    if (memberNoBooking > 0) dayOneBookedCounts['No'] = memberNoBooking
+
     const dayOneStatusCounts = {}
     const dayOneSaleCounts = {}
+    for (const c of dayOnes) {
+      const statusVal = c.day_one_status || 'Unknown'
+      dayOneStatusCounts[statusVal] = (dayOneStatusCounts[statusVal] || 0) + 1
 
-    for (const c of contacts) {
-      const hasVipTag = Array.isArray(c.tags) && c.tags.some(t => t && t.toLowerCase().includes('vip'))
-      if (hasVipTag) totalVips++
-      const sds = (c.same_day_sale || '').toLowerCase()
-      if (sds === 'sale' || sds === 'yes') totalSameDaySales++
-      const booked = (c.day_one_booked || '').toLowerCase()
-      const isBooked = booked === 'yes' || booked === 'booked'
-      if (isBooked) totalDayOnesBooked++
-
-      // Day One Booked pie
-      const bookedVal = isBooked ? 'Yes' : 'No'
-      dayOneBookedCounts[bookedVal] = (dayOneBookedCounts[bookedVal] || 0) + 1
-
-      // Day One Status pie (only for booked contacts)
-      if (isBooked) {
-        const statusVal = c.day_one_status || 'Unknown'
-        dayOneStatusCounts[statusVal] = (dayOneStatusCounts[statusVal] || 0) + 1
-      }
-
-      // Day One Sale pie (only for status = Completed)
       if ((c.day_one_status || '').toLowerCase() === 'completed') {
         const saleVal = c.day_one_sale || 'No Sale'
         dayOneSaleCounts[saleVal] = (dayOneSaleCounts[saleVal] || 0) + 1
@@ -429,7 +461,7 @@ router.get('/club-health', async (req, res) => {
     }
 
     res.json({
-      total_vips: totalVips,
+      total_vips: totalVips || 0,
       total_same_day_sales: totalSameDaySales,
       total_day_ones_booked: totalDayOnesBooked,
       day_one_booked: dayOneBookedCounts,
