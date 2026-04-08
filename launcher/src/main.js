@@ -65,7 +65,7 @@ app.on('ready', () => {
   })
 
   // Auth state bridge — portal notifies us when user logs in/out
-  ipcMain.on('portal-auth-login', (e, token) => {
+  ipcMain.on('portal-auth-login', (e, token, userName) => {
     log('Portal auth: user logged in')
     auth.setToken(token)
     auth.fetchAllCredentials().then(() => {
@@ -73,11 +73,38 @@ app.on('ready', () => {
     }).catch(err => {
       log('Failed to cache credentials: ' + err.message)
     })
+    // Send user info to tab bar
+    if (tabManager?.tabBarView) {
+      tabManager.tabBarView.webContents.send('user-updated', { name: userName || '' })
+    }
   })
 
   ipcMain.on('portal-auth-logout', () => {
     log('Portal auth: user logged out')
     auth.logout()
+
+    // Close all tabs except Portal
+    tabManager.closeAllExceptPortal()
+
+    // Clear all session cookies/storage so GHL etc. sessions don't persist
+    const ses = require('electron').session.fromPartition('persist:wcs-portal')
+    ses.clearStorageData().catch(() => {})
+    ses.clearCache().catch(() => {})
+    log('Session data cleared, all tabs closed')
+
+    // Clear user from tab bar
+    if (tabManager?.tabBarView) {
+      tabManager.tabBarView.webContents.send('user-updated', { name: '' })
+    }
+  })
+
+  // Tab bar sign-out button
+  ipcMain.on('tabbar-signout', () => {
+    // Tell the portal to sign out
+    const portalTab = tabManager.tabs.get(1)
+    if (portalTab) {
+      portalTab.view.webContents.executeJavaScript('localStorage.removeItem("wcs_token"); location.reload();')
+    }
   })
 
   // Credential capture — native dialog prompt

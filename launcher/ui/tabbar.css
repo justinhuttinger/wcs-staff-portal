@@ -56,9 +56,42 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .tab:hover .tab-close { opacity: 0.5; }
 .tab-close:hover { opacity: 1; }
 
+#user-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  margin-right: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.user-name {
+  color: rgba(255,255,255,0.6);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.sign-out-btn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.6);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: 'Inter', sans-serif;
+}
+
+.sign-out-btn:hover {
+  background: #e53e3e;
+  border-color: #e53e3e;
+  color: white;
+}
+
 #window-controls {
   display: flex;
-  margin-left: auto;
   -webkit-app-region: no-drag;
 }
 

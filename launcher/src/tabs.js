@@ -115,6 +115,15 @@ class TabManager {
     this.notifyTabBar()
   }
 
+  closeAllExceptPortal() {
+    const idsToClose = [...this.tabs.entries()]
+      .filter(([, tab]) => tab.closable)
+      .map(([id]) => id)
+    for (const id of idsToClose) {
+      this.closeTab(id)
+    }
+  }
+
   layoutViews() {
     const bounds = this.window.getContentBounds()
     const width = bounds.width

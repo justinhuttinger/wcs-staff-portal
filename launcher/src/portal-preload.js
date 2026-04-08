@@ -15,7 +15,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
 contextBridge.exposeInMainWorld('wcsElectron', {
   // Auth bridge — portal tells main process about auth state changes
-  onLogin: (token) => ipcRenderer.send('portal-auth-login', token),
+  onLogin: (token, userName) => ipcRenderer.send('portal-auth-login', token, userName),
   onLogout: () => ipcRenderer.send('portal-auth-logout'),
   // Kiosk config
   getConfig: () => ipcRenderer.invoke('get-kiosk-config'),

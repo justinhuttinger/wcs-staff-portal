@@ -90,7 +90,7 @@ export default function App() {
     }
     // Notify Electron main process about the login
     if (window.wcsElectron) {
-      window.wcsElectron.onLogin(getToken())
+      window.wcsElectron.onLogin(getToken(), data.staff?.display_name || data.staff?.email || '')
     }
     setLoading(false)
   }
