@@ -60,20 +60,40 @@ router.get('/', async (req, res) => {
       console.warn('[TrainerAvail] Could not fetch users:', e.message)
     }
 
-    // Extract team members from calendar
-    // GHL calendars can have: teamMembers (array of objects or IDs), or calendarConfig.teamMembers
+    // Log the full calendar detail to understand the structure
+    console.log('[TrainerAvail] Calendar detail:', JSON.stringify(calDetail, null, 2).substring(0, 2000))
+
+    // Extract team members — GHL uses various field names
     let teamMemberIds = []
-    if (Array.isArray(calDetail.teamMembers)) {
-      teamMemberIds = calDetail.teamMembers.map(m => typeof m === 'string' ? m : m.userId || m.id || m)
-    } else if (calDetail.calendarConfig?.teamMembers) {
-      teamMemberIds = calDetail.calendarConfig.teamMembers.map(m => typeof m === 'string' ? m : m.userId || m.id || m)
+    const teamSources = [
+      calDetail.teamMembers,
+      calDetail.calendarConfig?.teamMembers,
+      calDetail.users,
+      calDetail.assignedUsers,
+      calDetail.calendarConfig?.users,
+    ]
+    for (const source of teamSources) {
+      if (Array.isArray(source) && source.length > 0) {
+        teamMemberIds = source.map(m => {
+          if (typeof m === 'string') return m
+          return m.userId || m.id || m.memberId || m
+        })
+        console.log('[TrainerAvail] Found team members from:', source === calDetail.teamMembers ? 'teamMembers' : 'other')
+        break
+      }
+    }
+
+    // If still empty, check if there's a single userId (personal calendar)
+    if (teamMemberIds.length === 0 && calDetail.userId) {
+      teamMemberIds = [calDetail.userId]
     }
 
     console.log('[TrainerAvail] Team member IDs:', teamMemberIds)
+    console.log('[TrainerAvail] Available users:', Object.keys(userMap))
 
     // Build per-trainer availability
-    // GHL stores per-user availability in openHours on team member configs or in the calendar schedule
     const calSchedule = calDetail.openHours || calDetail.schedule || calDetail.availability || calDetail.calendarConfig?.openHours || null
+    console.log('[TrainerAvail] Schedule type:', calSchedule ? typeof calSchedule : 'null', Array.isArray(calSchedule) ? 'array' : '')
 
     // Role check
     const userLevel = ROLE_HIERARCHY.indexOf(req.staff.role)

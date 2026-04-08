@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { getTours } from '../lib/api'
 
 function formatDate(dateStr) {
-  return new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  // Parse as local date (not UTC) to avoid day-shift in Pacific time
+  return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
 }
 
 function formatTime(dateStr) {
