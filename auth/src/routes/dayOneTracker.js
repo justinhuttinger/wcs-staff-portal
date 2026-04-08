@@ -70,12 +70,11 @@ router.get('/appointments', async (req, res) => {
     }
 
     // Convert dates to epoch milliseconds (GHL expects millis)
-    // Default: 6 months back to now (show all pending regardless of age)
     const now = new Date()
-    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1)
+    const jan1 = new Date(now.getFullYear(), 0, 1)
     const startMs = start_date
       ? new Date(start_date + 'T00:00:00.000Z').getTime()
-      : sixMonthsAgo.getTime()
+      : jan1.getTime()
     const endMs = end_date
       ? new Date(end_date + 'T23:59:59.999Z').getTime()
       : now.getTime()
