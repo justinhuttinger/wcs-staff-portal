@@ -1,25 +1,22 @@
 const axios = require('axios');
 
 const BASE_URL = process.env.GHL_BASE_URL || 'https://services.leadconnectorhq.com';
-const API_KEY = process.env.GHL_API_KEY;
-
-const ghlClient = axios.create({
-  baseURL: BASE_URL,
-  headers: {
-    'Authorization': `Bearer ${API_KEY}`,
-    'Version': '2021-07-28',
-    'Content-Type': 'application/json',
-  },
-});
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function get(path, params = {}) {
+async function get(path, params = {}, apiKey) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const res = await ghlClient.get(path, { params });
+      const res = await axios.get(`${BASE_URL}${path}`, {
+        params,
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Version': '2021-07-28',
+          'Content-Type': 'application/json',
+        },
+      });
       return res.data;
     } catch (err) {
       if (err.response?.status === 429 && attempt < 3) {
@@ -41,8 +38,9 @@ async function get(path, params = {}) {
  * @param {'cursor'|'offset'} options.paginationType - 'cursor' uses last item ID, 'offset' uses numeric offset
  * @param {string} options.cursorParam - Query param name for pagination (default: 'startAfter')
  * @param {number} options.maxRecords - Safety cap (default: 50000)
+ * @param {string} apiKey - Per-location API key
  */
-async function getPaginated(path, baseParams, itemsKey, options = {}) {
+async function getPaginated(path, baseParams, itemsKey, options = {}, apiKey) {
   const {
     paginationType = 'cursor',
     cursorParam = 'startAfter',
@@ -65,7 +63,7 @@ async function getPaginated(path, baseParams, itemsKey, options = {}) {
       params[cursorParam] = offset;
     }
 
-    const data = await get(path, params);
+    const data = await get(path, params, apiKey);
     const items = data[itemsKey] || [];
     pageNum++;
 

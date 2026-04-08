@@ -2,22 +2,24 @@ const { getPaginated } = require('./client');
 
 const PAGE_SIZE = parseInt(process.env.OPPS_PAGE_SIZE) || 100;
 
-async function fetchAllOpportunities(locationId) {
+async function fetchAllOpportunities(locationId, apiKey) {
   return getPaginated(
     '/opportunities/search',
     { location_id: locationId, limit: PAGE_SIZE },
     'opportunities',
-    { paginationType: 'offset', cursorParam: 'startAfter' }
+    { paginationType: 'offset', cursorParam: 'startAfter' },
+    apiKey
   );
 }
 
-async function fetchOpportunitiesDelta(locationId, sinceDate) {
+async function fetchOpportunitiesDelta(locationId, sinceDate, apiKey) {
   const overlap = new Date(new Date(sinceDate).getTime() - 5 * 60 * 1000);
   return getPaginated(
     '/opportunities/search',
     { location_id: locationId, limit: PAGE_SIZE, date: overlap.toISOString() },
     'opportunities',
-    { paginationType: 'offset', cursorParam: 'startAfter' }
+    { paginationType: 'offset', cursorParam: 'startAfter' },
+    apiKey
   );
 }
 

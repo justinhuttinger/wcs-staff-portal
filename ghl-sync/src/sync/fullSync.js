@@ -23,7 +23,7 @@ async function syncLocation(location, syncType) {
   // 2. Custom fields
   let cfStart = new Date().toISOString();
   try {
-    const rawFields = await fetchCustomFields(location.id);
+    const rawFields = await fetchCustomFields(location.id, location.apiKey);
     const cfResult = await upsertCustomFields(rawFields, location.id);
     console.log(`[Sync] ${location.name}: ${cfResult.upserted} custom field defs`);
     await writeSyncLog({ syncType, entity: 'custom_fields', locationId: location.id, recordsFetched: rawFields.length, recordsUpserted: cfResult.upserted, errors: cfResult.errors, startedAt: cfStart });
@@ -35,7 +35,7 @@ async function syncLocation(location, syncType) {
   // 3. Pipelines + stages
   let pipStart = new Date().toISOString();
   try {
-    const rawPipelines = await fetchPipelines(location.id);
+    const rawPipelines = await fetchPipelines(location.id, location.apiKey);
     const pipResult = await upsertPipelines(rawPipelines, location.id);
     console.log(`[Sync] ${location.name}: ${pipResult.pipelinesUpserted} pipelines, ${pipResult.stagesUpserted} stages`);
     await writeSyncLog({ syncType, entity: 'pipelines', locationId: location.id, recordsFetched: rawPipelines.length, recordsUpserted: pipResult.pipelinesUpserted, errors: pipResult.errors, startedAt: pipStart });
@@ -47,7 +47,7 @@ async function syncLocation(location, syncType) {
   // 4. Contacts
   let ctStart = new Date().toISOString();
   try {
-    const rawContacts = await fetchAllContacts(location.id);
+    const rawContacts = await fetchAllContacts(location.id, location.apiKey);
     const contacts = rawContacts.map(c => transformContact(c, location.id));
     const ctResult = await upsertContacts(contacts);
     console.log(`[Sync] ${location.name}: ${rawContacts.length} contacts fetched, ${ctResult.upserted} upserted`);
@@ -60,7 +60,7 @@ async function syncLocation(location, syncType) {
   // 5. Opportunities
   let opStart = new Date().toISOString();
   try {
-    const rawOpps = await fetchAllOpportunities(location.id);
+    const rawOpps = await fetchAllOpportunities(location.id, location.apiKey);
     const opps = rawOpps.map(o => transformOpportunity(o, location.id));
     const opResult = await upsertOpportunities(opps);
     console.log(`[Sync] ${location.name}: ${rawOpps.length} opportunities fetched, ${opResult.upserted} upserted`);

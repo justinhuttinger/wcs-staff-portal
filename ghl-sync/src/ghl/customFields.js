@@ -1,7 +1,7 @@
 const { get } = require('./client');
 
-async function fetchCustomFields(locationId) {
-  const data = await get(`/locations/${locationId}/customFields`);
+async function fetchCustomFields(locationId, apiKey) {
+  const data = await get(`/locations/${locationId}/customFields`, {}, apiKey);
   const fields = data.customFields || [];
 
   return fields.map(f => ({

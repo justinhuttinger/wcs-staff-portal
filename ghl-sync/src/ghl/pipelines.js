@@ -1,7 +1,7 @@
 const { get } = require('./client');
 
-async function fetchPipelines(locationId) {
-  const data = await get('/opportunities/pipelines', { locationId });
+async function fetchPipelines(locationId, apiKey) {
+  const data = await get('/opportunities/pipelines', { locationId }, apiKey);
   const pipelines = data.pipelines || [];
 
   return pipelines.map(p => ({

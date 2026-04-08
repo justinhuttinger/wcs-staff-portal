@@ -42,7 +42,7 @@ async function deltaSync() {
     // Contacts delta
     let ctStart = new Date().toISOString();
     try {
-      const rawContacts = await fetchContactsDelta(location.id, lastSync);
+      const rawContacts = await fetchContactsDelta(location.id, lastSync, location.apiKey);
       if (rawContacts.length > 0) {
         const contacts = rawContacts.map(c => transformContact(c, location.id));
         const result = await upsertContacts(contacts);
@@ -57,7 +57,7 @@ async function deltaSync() {
     // Opportunities delta
     let opStart = new Date().toISOString();
     try {
-      const rawOpps = await fetchOpportunitiesDelta(location.id, lastSync);
+      const rawOpps = await fetchOpportunitiesDelta(location.id, lastSync, location.apiKey);
       if (rawOpps.length > 0) {
         const opps = rawOpps.map(o => transformOpportunity(o, location.id));
         const result = await upsertOpportunities(opps);

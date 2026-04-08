@@ -2,16 +2,17 @@ const { getPaginated } = require('./client');
 
 const PAGE_SIZE = parseInt(process.env.CONTACTS_PAGE_SIZE) || 100;
 
-async function fetchAllContacts(locationId) {
+async function fetchAllContacts(locationId, apiKey) {
   return getPaginated(
     '/contacts/',
     { locationId, limit: PAGE_SIZE },
     'contacts',
-    { paginationType: 'cursor', cursorParam: 'startAfter' }
+    { paginationType: 'cursor', cursorParam: 'startAfter' },
+    apiKey
   );
 }
 
-async function fetchContactsDelta(locationId, sinceDate) {
+async function fetchContactsDelta(locationId, sinceDate, apiKey) {
   // startAfterDate returns contacts updated after this ISO date
   // Overlap by 5 minutes to avoid missing records
   const overlap = new Date(new Date(sinceDate).getTime() - 5 * 60 * 1000);
@@ -19,7 +20,8 @@ async function fetchContactsDelta(locationId, sinceDate) {
     '/contacts/',
     { locationId, limit: PAGE_SIZE, startAfterDate: overlap.toISOString() },
     'contacts',
-    { paginationType: 'cursor', cursorParam: 'startAfter' }
+    { paginationType: 'cursor', cursorParam: 'startAfter' },
+    apiKey
   );
 }
 
