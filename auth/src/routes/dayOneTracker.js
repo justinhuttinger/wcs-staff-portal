@@ -336,18 +336,17 @@ router.get('/field-options', async (req, res) => {
   }
 
   try {
-    const { data: fields } = await supabaseAdmin
-      .from('ghl_custom_field_defs')
-      .select('field_key, picklist_options')
-      .eq('location_id', location.id)
-      .in('field_key', ['contact.pt_sale_type', 'contact.why_no_sale'])
+    // Fetch custom fields directly from GHL API to get picklist options
+    const data = await ghlFetch(`/locations/${location.id}/customFields`, location.apiKey)
+    const fields = data.customFields || []
 
     const result = { pt_sale_types: [], no_sale_reasons: [] }
-    for (const f of (fields || [])) {
-      if (f.field_key === 'contact.pt_sale_type') {
-        result.pt_sale_types = f.picklist_options || []
-      } else if (f.field_key === 'contact.why_no_sale') {
-        result.no_sale_reasons = f.picklist_options || []
+    for (const f of fields) {
+      const key = f.fieldKey || ''
+      if (key === 'contact.pt_sale_type') {
+        result.pt_sale_types = f.picklistOptions || []
+      } else if (key === 'contact.why_no_sale') {
+        result.no_sale_reasons = f.picklistOptions || []
       }
     }
 

@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react'
 import { getPTReport } from '../../lib/api'
 import { exportCSV, exportPDF } from '../../lib/export'
 
+function capitalize(str) {
+  if (!str) return ''
+  return str.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
+}
+
 function formatDate(val) {
   if (!val) return '—'
   if (typeof val === 'number' || (typeof val === 'string' && /^\d{10,}$/.test(val))) {
@@ -27,7 +32,7 @@ function DetailModal({ contact, onClose }) {
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-surface rounded-2xl border border-border w-full max-w-md p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-text-primary">{c.first_name} {c.last_name}</h3>
+          <h3 className="text-lg font-bold text-text-primary">{capitalize(c.first_name)} {capitalize(c.last_name)}</h3>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary text-2xl leading-none">&times;</button>
         </div>
         <div className="space-y-3">
@@ -243,7 +248,7 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
                   onClick={() => setDetailContact(c)}
                   className="border-b border-border hover:bg-bg/50 transition-colors cursor-pointer"
                 >
-                  <td className="px-4 py-2 font-medium text-text-primary">{c.first_name} {c.last_name}</td>
+                  <td className="px-4 py-2 font-medium text-text-primary">{capitalize(c.first_name)} {capitalize(c.last_name)}</td>
                   <td className="px-4 py-2 text-text-muted">{c.day_one_booking_team_member || '—'}</td>
                   <td className="px-4 py-2 text-text-muted">{formatDate(c.day_one_booking_date)}</td>
                   <td className="px-4 py-2 text-text-muted">{formatDate(c.day_one_date)}</td>

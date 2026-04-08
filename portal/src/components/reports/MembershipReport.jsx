@@ -78,29 +78,23 @@ function LineChart({ points }) {
         {['memberships', 'vips', 'day_ones'].map(key => (
           <path key={key} d={makePath(key)} fill="none" stroke={LINE_COLORS[key]} strokeWidth="2" strokeLinejoin="round" />
         ))}
-        {/* Hover zones per day — invisible rects with tooltips */}
-        {points.map((p, i) => {
-          const barW = points.length > 1 ? chartW / (points.length - 1) : chartW
-          return (
-            <rect
-              key={`hover-${i}`}
-              x={toX(i) - barW / 2}
-              y={padT}
-              width={barW}
-              height={chartH}
-              fill="transparent"
-              className="cursor-crosshair"
-            >
-              <title>{p.date} — Memberships: {p.memberships}, VIPs: {p.vips}, Day Ones: {p.day_ones}</title>
-            </rect>
-          )
-        })}
         {/* Dots */}
         {['memberships', 'vips', 'day_ones'].map(key =>
           points.map((p, i) => p[key] > 0 ? (
-            <circle key={`${key}-${i}`} cx={toX(i)} cy={toY(p[key])} r="2.5" fill={LINE_COLORS[key]} className="pointer-events-none" />
+            <circle key={`${key}-${i}`} cx={toX(i)} cy={toY(p[key])} r="2.5" fill={LINE_COLORS[key]} style={{ pointerEvents: 'none' }} />
           ) : null)
         )}
+        {/* Hover zones — rendered last so they're on top */}
+        {points.map((p, i) => {
+          const barW = points.length > 1 ? chartW / (points.length - 1) : chartW
+          return (
+            <g key={`hover-${i}`}>
+              <rect x={toX(i) - barW / 2} y={padT} width={barW} height={chartH} fill="transparent" style={{ cursor: 'crosshair' }}>
+                <title>{`${p.date}\nMemberships: ${p.memberships}\nVIPs: ${p.vips}\nDay Ones: ${p.day_ones}`}</title>
+              </rect>
+            </g>
+          )
+        })}
         {/* X-axis labels */}
         {points.length > 0 && (
           <>
@@ -117,7 +111,7 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [sortBy, setSortBy] = useState('best')
+  const [sortBy, setSortBy] = useState('alpha')
   const [search, setSearch] = useState('')
 
   useEffect(() => { loadData() }, [startDate, endDate, locationSlug])
@@ -149,9 +143,12 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
   const totalVips = data.total_vips || 0
 
   const SORT_OPTIONS = [
-    { key: 'best', label: 'Top Performers' },
-    { key: 'worst', label: 'Bottom Performers' },
     { key: 'alpha', label: 'A-Z' },
+    { key: 'top_sales', label: 'Top Sales' },
+    { key: 'bottom_sales', label: 'Bottom Sales' },
+    { key: 'top_vips', label: 'Top VIPs' },
+    { key: 'top_day_one', label: 'Top Day One' },
+    { key: 'top_same_day', label: 'Top Same Day' },
   ]
 
   let rows = Object.entries(data.by_salesperson || {})
@@ -161,10 +158,13 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
     rows = rows.filter(([name]) => name.toLowerCase().includes(q))
   }
 
-  // Sort, but always push "Unassigned" to the bottom
-  if (sortBy === 'best') rows.sort((a, b) => b[1].total_sales - a[1].total_sales)
-  else if (sortBy === 'worst') rows.sort((a, b) => a[1].total_sales - b[1].total_sales)
-  else if (sortBy === 'alpha') rows.sort((a, b) => a[0].localeCompare(b[0]))
+  if (sortBy === 'alpha') rows.sort((a, b) => a[0].localeCompare(b[0]))
+  else if (sortBy === 'top_sales') rows.sort((a, b) => (b[1].total_sales || 0) - (a[1].total_sales || 0))
+  else if (sortBy === 'bottom_sales') rows.sort((a, b) => (a[1].total_sales || 0) - (b[1].total_sales || 0))
+  else if (sortBy === 'top_vips') rows.sort((a, b) => (b[1].vips || 0) - (a[1].vips || 0))
+  else if (sortBy === 'top_day_one') rows.sort((a, b) => (b[1].day_one_booked || 0) - (a[1].day_one_booked || 0))
+  else if (sortBy === 'top_same_day') rows.sort((a, b) => (b[1].same_day_sale || 0) - (a[1].same_day_sale || 0))
+  // Always push "Unassigned" to bottom
   rows.sort((a, b) => (a[0] === 'Unassigned' ? 1 : 0) - (b[0] === 'Unassigned' ? 1 : 0))
 
   const allRows = Object.entries(data.by_salesperson || {})

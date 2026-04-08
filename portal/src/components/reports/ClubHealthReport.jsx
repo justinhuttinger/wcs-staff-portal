@@ -79,8 +79,7 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
 
   const totalMemberships = data.total_memberships || 0
 
-  // Ratio pies
-  const vipRatio = { 'VIPs': data.total_vips || 0, 'Non-VIP': Math.max(0, totalMemberships - (data.total_vips || 0)) }
+  // Ratio pie
   const sameDayRatio = { 'Same Day': data.total_same_day_sales || 0, 'Other': Math.max(0, totalMemberships - (data.total_same_day_sales || 0)) }
 
   return (
@@ -105,17 +104,16 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
         </div>
       </div>
 
-      {/* Ratio Pie Charts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <PieChart title="VIPs to Memberships" data={vipRatio} colorMap={{ 'VIPs': '#805ad5', 'Non-VIP': '#e2e8f0' }} />
-        <PieChart title="Same Day Sales to Memberships" data={sameDayRatio} colorMap={{ 'Same Day': '#38a169', 'Other': '#e2e8f0' }} />
-      </div>
-
       {/* Day One Pie Charts */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <PieChart title="Day One Booked" data={data.day_one_booked} colorMap={{ 'Yes': '#38a169', 'No': '#e53e3e' }} />
         <PieChart title="Day One Status" data={data.day_one_status} />
         <PieChart title="Day One Sale" data={data.day_one_sale} colorMap={{ 'Sale': '#38a169', 'No Sale': '#e53e3e' }} />
+      </div>
+
+      {/* Same Day Sales Ratio */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <PieChart title="Same Day Sales to Memberships" data={sameDayRatio} colorMap={{ 'Same Day': '#38a169', 'Other': '#e2e8f0' }} />
       </div>
     </div>
   )
