@@ -17,7 +17,7 @@ function SvgTileButton({ onClick, iconPath, label, desc }) {
   return (
     <button
       onClick={onClick}
-      className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+      className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
     >
       <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 text-wcs-red">
@@ -102,16 +102,16 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
 
   if (!tilesLoaded) return null
 
-  // Split built-in tools into Apps and the rest
-  const appTools = tools.filter(t => APP_IDS.includes(t.id))
-  // Custom main tiles that are also apps (operandio, indeed, vista etc are custom tiles with URLs)
-  const appCustomTiles = mainTiles
+  // Tool labels that should be in Tools section even if they're in "main" section
+  const TOOL_LABELS = ['cancel', 'cancel tool']
 
-  // Management/custom tiles that go in Tools section
+  const appTools = tools.filter(t => APP_IDS.includes(t.id))
+  const appCustomTiles = mainTiles.filter(t => !TOOL_LABELS.includes((t.label || '').toLowerCase()))
+  const toolMainTiles = mainTiles.filter(t => TOOL_LABELS.includes((t.label || '').toLowerCase()))
   const toolCustomTiles = topLevelTiles
 
   return (
-    <div className="w-full px-8 max-w-5xl mx-auto flex gap-10">
+    <div className="w-full px-8 max-w-7xl mx-auto flex gap-10">
       {/* Apps — left side */}
       <div className="flex-1">
         <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">Apps</p>
@@ -129,6 +129,10 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
       <div className="flex-1">
         <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">Tools</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
+          {/* Cancel tool tile (moved from main section) */}
+          {toolMainTiles.map((tile) => (
+            <ToolButton key={'tool-' + tile.id} label={tile.label} description={tile.description || ''} emoji={tile.icon} url={tile.url} />
+          ))}
           {onDayOneTracker && <SvgTileButton onClick={onDayOneTracker} iconPath={TILE_ICONS.dayOne} label="Day One" desc="Tracking" />}
           {onTours && <SvgTileButton onClick={onTours} iconPath={TILE_ICONS.tours} label="Tours" desc="Calendar" />}
           {toolCustomTiles.map((tile) => {
