@@ -267,7 +267,33 @@ router.post('/submit', async (req, res) => {
       body: { customFields },
     })
 
-    res.json({ success: true, fields_updated: customFields.length })
+    // Re-read the contact from GHL to confirm the update took effect
+    const reverseMap = {}
+    for (const [key, id] of Object.entries(fieldMap)) {
+      reverseMap[id] = key
+    }
+
+    let confirmedStatus = {}
+    try {
+      const contactData = await ghlFetch(`/contacts/${contact_id}`, location.apiKey)
+      const contact = contactData.contact || contactData
+      for (const cf of (contact.customFields || [])) {
+        const key = reverseMap[cf.id]
+        if (key === 'contact.day_one_status') confirmedStatus.day_one_status = cf.value
+        if (key === 'contact.day_one_sale') confirmedStatus.day_one_sale = cf.value
+        if (key === 'contact.show_or_no_show') confirmedStatus.show_or_no_show = cf.value
+      }
+    } catch (e) {
+      console.warn('[DayOneTracker] Could not re-read contact:', e.message)
+      // Fall back to what we wrote
+      confirmedStatus = {
+        day_one_status: show_no_show === 'Show' ? 'Completed' : 'No Show',
+        day_one_sale: show_no_show === 'Show' ? sale_result : null,
+        show_or_no_show: show_no_show,
+      }
+    }
+
+    res.json({ success: true, fields_updated: customFields.length, confirmed: confirmedStatus })
   } catch (err) {
     console.error('[DayOneTracker] Error submitting:', err.message)
     res.status(500).json({ error: 'Failed to update contact: ' + err.message })

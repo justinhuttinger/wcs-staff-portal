@@ -1,25 +1,9 @@
 import { useState, useEffect } from 'react'
 import { getDayOneTrackerAppointments, submitDayOneResult, getDayOneFieldOptions } from '../lib/api'
 
-// Cache submitted results locally so they persist across view re-entries
-const CACHE_KEY = 'wcs_day_one_submissions'
-function getCachedSubmissions() {
-  try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '{}') } catch { return {} }
-}
-function cacheSubmission(contactId, fields) {
-  const cache = getCachedSubmissions()
-  cache[contactId] = { ...fields, submitted_at: Date.now() }
-  try { localStorage.setItem(CACHE_KEY, JSON.stringify(cache)) } catch {}
-}
-function applyCache(appointments) {
-  const cache = getCachedSubmissions()
-  return appointments.map(a => {
-    const cached = cache[a.contact_id]
-    if (cached && !a.day_one_status) {
-      return { ...a, ...cached }
-    }
-    return a
-  })
+function capitalize(str) {
+  if (!str) return ''
+  return str.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
 }
 
 const LOCATIONS = [
@@ -92,7 +76,7 @@ function OutcomeModal({ appointment, locationSlug, onClose, onSubmitted }) {
     setSubmitting(true)
     setError('')
     try {
-      await submitDayOneResult({
+      const result = await submitDayOneResult({
         contact_id: appointment.contact_id,
         location_slug: locationSlug,
         show_no_show: showNoShow,
@@ -100,7 +84,8 @@ function OutcomeModal({ appointment, locationSlug, onClose, onSubmitted }) {
         pt_sale_type: saleResult === 'Sale' ? ptSaleType : null,
         why_no_sale: saleResult === 'No Sale' ? whyNoSale : null,
       })
-      onSubmitted({
+      // Use confirmed status from GHL re-read
+      onSubmitted(result.confirmed || {
         day_one_status: showNoShow === 'Show' ? 'Completed' : 'No Show',
         show_or_no_show: showNoShow,
         day_one_sale: showNoShow === 'Show' ? saleResult : null,
@@ -143,7 +128,7 @@ function OutcomeModal({ appointment, locationSlug, onClose, onSubmitted }) {
       <div className="bg-surface rounded-2xl border border-border w-full max-w-md p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-lg font-bold text-text-primary">{appointment.contact_name}</h3>
+            <h3 className="text-lg font-bold text-text-primary">{capitalize(appointment.contact_name)}</h3>
             <p className="text-xs text-text-muted">{formatDateTime(appointment.appointment_time)}</p>
             {appointment.assigned_user_name && (
               <p className="text-xs text-text-muted">Trainer: {appointment.assigned_user_name}</p>
@@ -284,7 +269,7 @@ export default function DayOneTrackerView({ user, onBack }) {
     setError('')
     try {
       const res = await getDayOneTrackerAppointments({ location_slug: locationSlug })
-      setAppointments(applyCache(res.appointments || []))
+      setAppointments(res.appointments || [])
     } catch (err) {
       setError(err.message)
     }
@@ -372,7 +357,7 @@ export default function DayOneTrackerView({ user, onBack }) {
               className="w-full flex items-center justify-between p-4 rounded-xl bg-surface border border-border hover:border-wcs-red/50 transition-colors text-left"
             >
               <div>
-                <p className="font-medium text-text-primary">{apt.contact_name}</p>
+                <p className="font-medium text-text-primary">{capitalize(apt.contact_name)}</p>
                 <p className="text-xs text-text-muted mt-0.5">{formatDateTime(apt.appointment_time)}</p>
                 {apt.assigned_user_name && (
                   <p className="text-xs text-text-muted">Trainer: {apt.assigned_user_name}</p>
@@ -394,11 +379,10 @@ export default function DayOneTrackerView({ user, onBack }) {
           appointment={activeModal}
           locationSlug={locationSlug}
           onClose={() => setActiveModal(null)}
-          onSubmitted={(updatedFields) => {
-            // Cache + optimistic update: immediately move card to completed
-            cacheSubmission(activeModal.contact_id, updatedFields)
+          onSubmitted={(confirmedFields) => {
+            // Update local state with GHL-confirmed status
             setAppointments(prev => prev.map(a =>
-              a.id === activeModal.id ? { ...a, ...updatedFields } : a
+              a.id === activeModal.id ? { ...a, ...confirmedFields } : a
             ))
             setActiveModal(null)
           }}
