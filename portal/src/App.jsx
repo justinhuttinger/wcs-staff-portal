@@ -119,7 +119,7 @@ export default function App() {
           {isAdmin && (
             <button
               onClick={() => setShowAdmin(true)}
-              className="text-xs font-semibold text-text-muted hover:text-wcs-red transition-colors"
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-text-muted hover:text-wcs-red hover:border-wcs-red transition-colors"
             >
               Admin
             </button>
