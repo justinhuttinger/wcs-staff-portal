@@ -29,12 +29,12 @@ async function updateLastDeltaSync(timestamp) {
 async function deltaSync() {
   const lastSync = await getLastDeltaSync();
 
+  const syncSince = lastSync || new Date(new Date().getFullYear(), 0, 1).toISOString();
   if (!lastSync) {
-    console.log('[Delta] No previous delta sync found — skipping (full sync needed first)');
-    return;
+    console.log(`[Delta] No previous delta sync found — syncing from start of year: ${syncSince}`);
+  } else {
+    console.log(`[Delta] Starting delta sync since ${syncSince}`);
   }
-
-  console.log(`[Delta] Starting delta sync since ${lastSync}`);
   const start = Date.now();
   const syncTimestamp = new Date().toISOString();
 
@@ -42,7 +42,7 @@ async function deltaSync() {
     // Contacts delta
     let ctStart = new Date().toISOString();
     try {
-      const rawContacts = await fetchContactsDelta(location.id, lastSync, location.apiKey);
+      const rawContacts = await fetchContactsDelta(location.id, syncSince, location.apiKey);
       if (rawContacts.length > 0) {
         const contacts = rawContacts.map(c => transformContact(c, location.id));
         const result = await upsertContacts(contacts);
@@ -57,7 +57,7 @@ async function deltaSync() {
     // Opportunities delta
     let opStart = new Date().toISOString();
     try {
-      const rawOpps = await fetchOpportunitiesDelta(location.id, lastSync, location.apiKey);
+      const rawOpps = await fetchOpportunitiesDelta(location.id, syncSince, location.apiKey);
       if (rawOpps.length > 0) {
         const opps = rawOpps.map(o => transformOpportunity(o, location.id));
         const result = await upsertOpportunities(opps);
