@@ -3,12 +3,15 @@ import allTools from '../config/tools.json'
 import ToolButton from './ToolButton'
 import { getTiles } from '../lib/api'
 
-// SVG icon paths for built-in tiles (red outline style, matching Grow/ABC/Paychex)
 const TILE_ICONS = {
   dayOne: 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9 2 2 4-4',
   tours: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5',
-  tracker: 'M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m8.9-4.414c.376.023.75.05 1.124.08 1.131.094 1.976 1.057 1.976 2.192V16.5A2.25 2.25 0 0 1 18 18.75h-2.25m-7.5-10.5H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V18.75m-7.5-10.5h6.375c.621 0 1.125.504 1.125 1.125v9.375m-8.25-3 1.5 1.5 3-3.75',
+  reporting: 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z',
+  marketing: 'M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 1 1 0-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38a1.125 1.125 0 0 1-1.515-.462A11.972 11.972 0 0 1 3 12c0-2.578.814-4.965 2.2-6.92a1.125 1.125 0 0 1 1.515-.462l.657.38c.524.3.71.96.462 1.511a9.96 9.96 0 0 0-.984 2.783m.22 6.416a9.97 9.97 0 0 0 3.746-2.49M10.34 8.16a9.97 9.97 0 0 1 3.746 2.49M14.084 10.65l2.25-1.3a1.125 1.125 0 0 1 1.515.463A11.972 11.972 0 0 1 21 12c0 2.578-.814 4.965-2.2 6.92a1.125 1.125 0 0 1-1.515.462l-2.25-1.3',
 }
+
+// Which built-in tool IDs are "Apps" (external services)
+const APP_IDS = ['grow', 'abc', 'wheniwork', 'paychex', 'gmail', 'drive']
 
 function SvgTileButton({ onClick, iconPath, label, desc }) {
   return (
@@ -29,7 +32,7 @@ function SvgTileButton({ onClick, iconPath, label, desc }) {
   )
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onDayOne, onTours, onDayOneTracker }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [tilesLoaded, setTilesLoaded] = useState(false)
@@ -99,58 +102,64 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
 
   if (!tilesLoaded) return null
 
+  // Split built-in tools into Apps and the rest
+  const appTools = tools.filter(t => APP_IDS.includes(t.id))
+  // Custom main tiles that are also apps (operandio, indeed, vista etc are custom tiles with URLs)
+  const appCustomTiles = mainTiles
+
+  // Management/custom tiles that go in Tools section
+  const toolCustomTiles = topLevelTiles
+
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-5 p-8 max-w-4xl mx-auto w-full">
-      {tools.map((tool) => (
-        <ToolButton key={tool.id} label={tool.label} description={tool.description} icon={tool.icon} url={getUrl(tool)} />
-      ))}
-      {mainTiles.map((tile) => (
-        <ToolButton key={'main-' + tile.id} label={tile.label} description={tile.description || ''} emoji={tile.icon} url={tile.url} />
-      ))}
-      {onDayOne && <SvgTileButton onClick={onDayOne} iconPath={TILE_ICONS.dayOne} label="Day One" desc="Tracking" />}
-      {onTours && <SvgTileButton onClick={onTours} iconPath={TILE_ICONS.tours} label="Tours" desc="Calendar" />}
-      {onDayOneTracker && <SvgTileButton onClick={onDayOneTracker} iconPath={TILE_ICONS.tracker} label="Day One Tracker" desc="v2" />}
-      {topLevelTiles.length > 0 && (
-        <div className="col-span-2 sm:col-span-4 pt-4 pb-1">
-          <p className="text-xs font-semibold text-text-muted uppercase tracking-widest">Management</p>
-          <div className="border-b border-border mt-1"></div>
+    <div className="w-full px-8 max-w-5xl mx-auto flex gap-10">
+      {/* Apps — left side */}
+      <div className="flex-1">
+        <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">Apps</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
+          {appTools.map((tool) => (
+            <ToolButton key={tool.id} label={tool.label} description={tool.description} icon={tool.icon} url={getUrl(tool)} />
+          ))}
+          {appCustomTiles.map((tile) => (
+            <ToolButton key={'main-' + tile.id} label={tile.label} description={tile.description || ''} emoji={tile.icon} url={tile.url} />
+          ))}
         </div>
-      )}
-      {topLevelTiles.map((tile) => {
-        const hasChildren = customTiles.some(t => t.parent_id === tile.id)
-        const isGroup = hasChildren || !tile.url
+      </div>
 
-        if (isGroup) {
-          const handleClick = tile.label === 'Reporting'
-            ? () => {
-                const reportingUrl = window.location.origin + window.location.pathname + window.location.search + '#reporting'
-                window.open(reportingUrl, '_blank')
-              }
-            : () => setActiveGroup(tile)
+      {/* Tools — right side */}
+      <div className="flex-1">
+        <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">Tools</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
+          {onDayOneTracker && <SvgTileButton onClick={onDayOneTracker} iconPath={TILE_ICONS.dayOne} label="Day One" desc="Tracking" />}
+          {onTours && <SvgTileButton onClick={onTours} iconPath={TILE_ICONS.tours} label="Tours" desc="Calendar" />}
+          {toolCustomTiles.map((tile) => {
+            const hasChildren = customTiles.some(t => t.parent_id === tile.id)
+            const isGroup = hasChildren || !tile.url
 
-          return (
-            <button
-              key={'custom-' + tile.id}
-              onClick={handleClick}
-              className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
-            >
-              <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 text-wcs-red">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6Z" />
-                </svg>
-              </div>
-              <div className="text-center">
-                <span className="block text-base font-semibold text-text-primary">{tile.label}</span>
-                <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">{tile.description || ''}</span>
-              </div>
-            </button>
-          )
-        }
+            if (isGroup) {
+              const handleClick = tile.label === 'Reporting'
+                ? () => {
+                    const reportingUrl = window.location.origin + window.location.pathname + window.location.search + '#reporting'
+                    window.open(reportingUrl, '_blank')
+                  }
+                : () => setActiveGroup(tile)
 
-        return (
-          <ToolButton key={'custom-' + tile.id} label={tile.label} description={tile.description || ''} emoji={tile.icon} url={tile.url} />
-        )
-      })}
+              return (
+                <SvgTileButton
+                  key={'custom-' + tile.id}
+                  onClick={handleClick}
+                  iconPath={tile.label === 'Reporting' ? TILE_ICONS.reporting : TILE_ICONS.marketing}
+                  label={tile.label}
+                  desc={tile.description || ''}
+                />
+              )
+            }
+
+            return (
+              <ToolButton key={'custom-' + tile.id} label={tile.label} description={tile.description || ''} emoji={tile.icon} url={tile.url} />
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }

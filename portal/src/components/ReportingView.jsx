@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react'
 import MembershipReport from './reports/MembershipReport'
 import PTReport from './reports/PTReport'
-import AdReports from './reports/AdReports'
 import ClubHealthReport from './reports/ClubHealthReport'
 
 const REPORT_TILES = [
   { key: 'club-health', label: 'Club Health', desc: 'Dashboard', icon: '❤️' },
   { key: 'membership', label: 'Membership', desc: 'Report', icon: '🏷️' },
   { key: 'pt', label: 'PT / Day One', desc: 'Report', icon: '🏋️' },
-  { key: 'ads', label: 'Ad Reports', desc: 'Coming Soon', icon: '📣' },
 ]
 
 const LOCATIONS = [
@@ -220,9 +218,6 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           )}
           {activeReport === 'pt' && (
             <PTReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
-          )}
-          {activeReport === 'ads' && (
-            <AdReports startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
           )}
         </>
       )}

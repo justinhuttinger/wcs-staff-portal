@@ -3,7 +3,6 @@ import ToolGrid from './components/ToolGrid'
 import LoginScreen from './components/LoginScreen'
 import AdminPanel from './components/AdminPanel'
 import SaveCredentialToast from './components/SaveCredentialToast'
-import DayOneView from './components/DayOneView'
 import ToursView from './components/ToursView'
 import ReportingView from './components/ReportingView'
 import DayOneTrackerView from './components/DayOneTrackerView'
@@ -20,7 +19,6 @@ export default function App() {
   const locationParam = getParam('location')
 
   const [showAdmin, setShowAdmin] = useState(false)
-  const [showDayOne, setShowDayOne] = useState(false)
   const [showTours, setShowTours] = useState(false)
   const [showReporting, setShowReporting] = useState(window.location.hash.startsWith('#reporting'))
   const [showDayOneTracker, setShowDayOneTracker] = useState(false)
@@ -89,7 +87,6 @@ export default function App() {
     setUser(null)
     // Reset all views to homepage
     setShowAdmin(false)
-    setShowDayOne(false)
     setShowTours(false)
     setShowDayOneTracker(false)
     setShowReporting(false)
@@ -136,8 +133,6 @@ export default function App() {
 
       {showAdmin ? (
         <AdminPanel onBack={() => setShowAdmin(false)} isElectron={isElectron} />
-      ) : showDayOne ? (
-        <DayOneView user={user} onBack={() => setShowDayOne(false)} />
       ) : showTours ? (
         <ToursView user={user} onBack={() => setShowTours(false)} />
       ) : showDayOneTracker ? (
@@ -146,7 +141,7 @@ export default function App() {
         <ReportingView user={user} onBack={() => setShowReporting(false)} location={location} isAdmin={isAdmin} />
       ) : (
         <main className="flex-1 flex items-start pt-4">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onDayOne={() => setShowDayOne(true)} onTours={() => setShowTours(true)} onDayOneTracker={() => setShowDayOneTracker(true)} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onTours={() => setShowTours(true)} onDayOneTracker={() => setShowDayOneTracker(true)} />
         </main>
       )}
 
