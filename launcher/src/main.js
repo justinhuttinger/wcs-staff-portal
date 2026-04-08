@@ -194,7 +194,10 @@ app.on('ready', () => {
 
   function getTabName(url) {
     try {
-      const hostname = new URL(url).hostname
+      const parsed = new URL(url)
+      // Check for reporting hash
+      if (parsed.hash && parsed.hash.startsWith('#reporting')) return 'Reporting'
+      const hostname = parsed.hostname
       for (const [domain, name] of Object.entries(URL_TAB_NAMES)) {
         if (hostname.includes(domain) || hostname === domain) return name
       }
@@ -210,6 +213,11 @@ app.on('ready', () => {
       const abcDirect = abcUrl || 'https://prod02.abcfinancial.com'
       tabManager.createTab(abcDirect, 'ABC Financial', {
         preload: path.join(__dirname, 'abc-scraper.js'),
+      })
+    } else if (url.includes('#reporting')) {
+      // Reporting tab uses portal preload for auth bridge
+      tabManager.createTab(url, 'Reporting', {
+        preload: path.join(__dirname, 'portal-preload.js'),
       })
     } else if (url !== 'about:blank' && !url.startsWith('chrome')) {
       tabManager.createTab(url, getTabName(url), { preload: path.join(__dirname, 'credential-capture.js') })
