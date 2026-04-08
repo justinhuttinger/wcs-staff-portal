@@ -139,6 +139,9 @@ router.get('/', async (req, res) => {
   }
 })
 
+// Map day name to numeric (0=Sun, 1=Mon, ..., 6=Sat)
+const DAY_TO_NUM = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 }
+
 // PUT /trainer-availability/:calendarId — update schedule
 router.put('/:calendarId', async (req, res) => {
   const { calendarId } = req.params
@@ -154,16 +157,29 @@ router.put('/:calendarId', async (req, res) => {
   }
 
   try {
-    const result = await ghlFetch(`/calendars/schedules/event-calendar/${calendarId}`, location.apiKey, {
+    // Convert rules format to GHL openHours format
+    // Input: [{ type: 'wday', day: 'monday', intervals: [{ from: '09:00', to: '17:00' }] }]
+    // Output: [{ daysOfTheWeek: [1], hours: [{ openHour: 9, openMinute: 0, closeHour: 17, closeMinute: 0 }] }]
+    const openHours = rules.map(rule => {
+      const dayNum = DAY_TO_NUM[rule.day]
+      if (dayNum === undefined) return null
+      const interval = rule.intervals?.[0] || {}
+      const [openHour, openMinute] = (interval.from || '09:00').split(':').map(Number)
+      const [closeHour, closeMinute] = (interval.to || '17:00').split(':').map(Number)
+      return {
+        daysOfTheWeek: [dayNum],
+        hours: [{ openHour, openMinute, closeHour, closeMinute }],
+      }
+    }).filter(Boolean)
+
+    // Update the calendar directly (round-robin calendars use PUT /calendars/:id)
+    const result = await ghlFetch(`/calendars/${calendarId}`, location.apiKey, {
       method: 'PUT',
       version: CAL_VERSION,
-      body: {
-        rules,
-        timezone: timezone || 'America/Los_Angeles',
-      },
+      body: { openHours },
     })
 
-    res.json({ success: true, schedule: result.schedule || result })
+    res.json({ success: true, schedule: result.calendar?.openHours || openHours })
   } catch (err) {
     console.error('[TrainerAvail] Update error:', err.message)
     res.status(500).json({ error: 'Failed to update schedule: ' + err.message })
