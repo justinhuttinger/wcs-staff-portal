@@ -114,9 +114,9 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   return (
     <div className="w-full px-8 max-w-7xl mx-auto flex gap-10">
       {/* Apps — left side */}
-      <div className="flex-1">
+      <div className="w-1/2">
         <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">Apps</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
+        <div className="grid grid-cols-3 gap-4">
           {appTools.map((tool) => (
             <ToolButton key={tool.id} label={tool.label} description={tool.description} icon={tool.icon} url={getUrl(tool)} />
           ))}
@@ -127,9 +127,9 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
       </div>
 
       {/* Tools — right side */}
-      <div className="flex-1">
+      <div className="w-1/2">
         <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">Tools</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
+        <div className="grid grid-cols-3 gap-4">
           {/* Cancel tool tile (moved from main section) */}
           {toolMainTiles.map((tile) => (
             <ToolButton key={'tool-' + tile.id} label={tile.label} description={tile.description || ''} emoji={tile.icon} url={tile.url} />
