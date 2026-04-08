@@ -233,15 +233,6 @@ function OutcomeModal({ appointment, locationSlug, onClose, onSubmitted }) {
   )
 }
 
-function getMonthStart() {
-  const d = new Date()
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]
-}
-
-function getToday() {
-  return new Date().toISOString().split('T')[0]
-}
-
 export default function DayOneTrackerView({ user, onBack }) {
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading] = useState(true)
@@ -249,16 +240,14 @@ export default function DayOneTrackerView({ user, onBack }) {
   const [locationSlug, setLocationSlug] = useState('salem')
   const [activeModal, setActiveModal] = useState(null)
   const [tab, setTab] = useState('pending')
-  const [startDate, setStartDate] = useState(getMonthStart())
-  const [endDate, setEndDate] = useState(getToday())
 
-  useEffect(() => { loadAppointments() }, [locationSlug, startDate, endDate])
+  useEffect(() => { loadAppointments() }, [locationSlug])
 
   async function loadAppointments() {
     setLoading(true)
     setError('')
     try {
-      const res = await getDayOneTrackerAppointments({ location_slug: locationSlug, start_date: startDate, end_date: endDate })
+      const res = await getDayOneTrackerAppointments({ location_slug: locationSlug })
       setAppointments(res.appointments || [])
     } catch (err) {
       setError(err.message)
@@ -268,8 +257,8 @@ export default function DayOneTrackerView({ user, onBack }) {
 
   // Filter out future appointments — only show past ones
   const pastAppointments = appointments.filter(a => isPast(a.appointment_time))
-  const pending = pastAppointments.filter(isPending)
-  const completed = pastAppointments.filter(isCompleted)
+  const pending = pastAppointments.filter(isPending).sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time))
+  const completed = pastAppointments.filter(isCompleted).sort((a, b) => new Date(b.appointment_time) - new Date(a.appointment_time))
   const visibleList = tab === 'pending' ? pending : completed
 
   return (
@@ -309,24 +298,6 @@ export default function DayOneTrackerView({ user, onBack }) {
             {loc.label}
           </button>
         ))}
-      </div>
-
-      {/* Date Range */}
-      <div className="flex items-center gap-2 mb-4 justify-end">
-        <label className="text-xs text-text-muted">From</label>
-        <input
-          type="date"
-          value={startDate}
-          onChange={e => setStartDate(e.target.value)}
-          className="px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
-        />
-        <label className="text-xs text-text-muted">To</label>
-        <input
-          type="date"
-          value={endDate}
-          onChange={e => setEndDate(e.target.value)}
-          className="px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
-        />
       </div>
 
       {/* Pending / Completed Tabs */}
