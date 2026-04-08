@@ -86,9 +86,9 @@ export default function ToursView({ user, onBack }) {
   }
 
   function navigateDate(offset) {
-    const d = new Date(currentDate)
+    const d = new Date(currentDate + 'T12:00:00')
     d.setDate(d.getDate() + (view === 'week' ? offset * 7 : offset))
-    setCurrentDate(d.toISOString().split('T')[0])
+    setCurrentDate(toLocalDateStr(d))
   }
 
   // Group tours by date for week view
@@ -97,7 +97,7 @@ export default function ToursView({ user, onBack }) {
     const weekDates = getWeekDates(currentDate)
     weekDates.forEach(date => { toursByDate[date] = [] })
     tours.forEach(tour => {
-      const date = new Date(tour.start_time).toISOString().split('T')[0]
+      const date = toLocalDateStr(new Date(tour.start_time))
       if (toursByDate[date]) toursByDate[date].push(tour)
     })
   }
@@ -152,16 +152,22 @@ export default function ToursView({ user, onBack }) {
               {formatDate(getWeekDates(currentDate)[0])} — {formatDate(getWeekDates(currentDate)[6])}
             </p>
           )}
-          <button
-            onClick={() => setCurrentDate(getDateStr())}
-            className="text-xs text-wcs-red hover:underline mt-0.5"
-          >Today</button>
         </div>
-        <button onClick={() => navigateDate(1)} className="text-text-muted hover:text-text-primary transition-colors p-1">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-2">
+          {currentDate !== getDateStr() && (
+            <button
+              onClick={() => setCurrentDate(getDateStr())}
+              className="px-3 py-1 text-xs font-medium rounded-lg border border-wcs-red text-wcs-red hover:bg-wcs-red hover:text-white transition-colors"
+            >
+              Skip to Today
+            </button>
+          )}
+          <button onClick={() => navigateDate(1)} className="text-text-muted hover:text-text-primary transition-colors p-1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {error && <p className="text-sm text-wcs-red mb-4">{error}</p>}

@@ -44,7 +44,8 @@ export default function SyncStatusTile() {
   if (!data) return (
     <div className="bg-surface rounded-xl border border-border p-4">
       <p className="text-xs text-text-muted uppercase tracking-wide">GHL Sync</p>
-      <p className="text-sm text-text-muted mt-1">Not connected</p>
+      <p className="text-sm text-text-muted mt-1">Loading sync status...</p>
+      <button onClick={loadData} className="text-xs text-wcs-red hover:underline mt-1">Retry</button>
     </div>
   )
 
