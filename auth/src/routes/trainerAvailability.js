@@ -92,8 +92,9 @@ router.get('/', async (req, res) => {
     console.log('[TrainerAvail] Available users:', Object.keys(userMap))
 
     // Build per-trainer availability
-    const calSchedule = calDetail.openHours || calDetail.schedule || calDetail.availability || calDetail.calendarConfig?.openHours || null
-    console.log('[TrainerAvail] Schedule type:', calSchedule ? typeof calSchedule : 'null', Array.isArray(calSchedule) ? 'array' : '')
+    const calSchedule = calDetail.openHours || calDetail.availabilities || calDetail.schedule || calDetail.availability || null
+    console.log('[TrainerAvail] openHours:', JSON.stringify(calDetail.openHours)?.substring(0, 500))
+    console.log('[TrainerAvail] availabilities:', JSON.stringify(calDetail.availabilities)?.substring(0, 500))
 
     // Role check
     const userLevel = ROLE_HIERARCHY.indexOf(req.staff.role)
