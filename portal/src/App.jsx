@@ -25,7 +25,7 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false)
   const [showDayOne, setShowDayOne] = useState(false)
   const [showTours, setShowTours] = useState(false)
-  const [showReporting, setShowReporting] = useState(false)
+  const [showReporting, setShowReporting] = useState(window.location.hash.startsWith('#reporting'))
   const [savePrompt, setSavePrompt] = useState(null)
   const isElectron = !!window.wcsElectron
   const isAdmin = user?.staff?.role === 'admin' || user?.staff?.role === 'director'
@@ -57,6 +57,14 @@ export default function App() {
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
+
+  useEffect(() => {
+    function onHashChange() {
+      setShowReporting(window.location.hash.startsWith('#reporting'))
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
   async function handleLogin(data) {
@@ -142,7 +150,7 @@ export default function App() {
         <ReportingView user={user} onBack={() => setShowReporting(false)} />
       ) : (
         <main className="flex-1 flex items-start pt-4">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onDayOne={() => setShowDayOne(true)} onTours={() => setShowTours(true)} onReporting={() => setShowReporting(true)} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onDayOne={() => setShowDayOne(true)} onTours={() => setShowTours(true)} />
         </main>
       )}
 

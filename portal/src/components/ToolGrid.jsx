@@ -3,7 +3,7 @@ import allTools from '../config/tools.json'
 import ToolButton from './ToolButton'
 import { getTiles } from '../lib/api'
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onDayOne, onTours, onReporting }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onDayOne, onTours }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
 
@@ -140,9 +140,12 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
         const isGroup = hasChildren || !tile.url
 
         if (isGroup) {
-          // Special handling for Reporting tile — opens built-in ReportingView
-          const handleClick = tile.label === 'Reporting' && onReporting
-            ? onReporting
+          // Special handling for Reporting tile — opens in new tab via hash routing
+          const handleClick = tile.label === 'Reporting'
+            ? () => {
+                const reportingUrl = window.location.origin + window.location.pathname + window.location.search + '#reporting'
+                window.open(reportingUrl, '_blank')
+              }
             : () => setActiveGroup(tile)
 
           return (
