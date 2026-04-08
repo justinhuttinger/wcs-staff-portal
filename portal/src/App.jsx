@@ -138,8 +138,8 @@ export default function App() {
     <div className="min-h-screen bg-bg flex flex-col">
       <header className="flex items-center justify-between px-8 py-6 max-w-3xl mx-auto w-full">
         <div>
-          <div className="flex items-center gap-2">
-            <img src="/wcs-logo.svg" alt="WCS" className="h-8 w-auto" />
+          <div className="flex items-center gap-3">
+            <img src="/wcs-logo.png" alt="WCS" className="h-10 w-10 rounded-full" />
             <h1 className="text-2xl font-black text-text-primary tracking-[-0.5px]">Portal</h1>
           </div>
           <p className="text-xs text-text-muted mt-0.5">{user.staff.display_name}</p>
@@ -156,7 +156,7 @@ export default function App() {
           <span className="text-sm font-semibold text-text-muted uppercase tracking-[0.8px]">{location}</span>
           <button
             onClick={handleLogout}
-            className="text-xs text-text-muted hover:text-wcs-red transition-colors"
+            className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-text-muted hover:text-wcs-red hover:border-wcs-red transition-colors"
           >
             Sign Out
           </button>

@@ -197,10 +197,8 @@ export default function LoginScreen({ onLogin }) {
     <div className="min-h-screen bg-bg flex items-center justify-center">
       <div className="bg-surface rounded-2xl border border-border p-8 w-full max-w-sm">
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-black text-text-primary">
-            <span className="bg-gradient-to-r from-wcs-red to-[#fc8181] bg-clip-text text-transparent">WCS</span>
-            {' '}Staff Portal
-          </h1>
+          <img src="/wcs-logo.png" alt="WCS" className="h-16 w-16 rounded-full mx-auto mb-3" />
+          <h1 className="text-2xl font-black text-text-primary">Portal</h1>
           <p className="text-sm text-text-muted mt-1">Sign in to continue</p>
         </div>
 
