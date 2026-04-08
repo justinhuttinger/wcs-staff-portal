@@ -6,8 +6,15 @@ async function upsertOpportunities(opportunities) {
   let upserted = 0;
   const errors = [];
 
-  for (let i = 0; i < opportunities.length; i += BATCH_SIZE) {
-    const batch = opportunities.slice(i, i + BATCH_SIZE);
+  // Deduplicate by id — GHL can return the same opportunity across pages
+  const seen = new Map();
+  for (const opp of opportunities) {
+    seen.set(opp.id, opp); // last occurrence wins
+  }
+  const deduped = Array.from(seen.values());
+
+  for (let i = 0; i < deduped.length; i += BATCH_SIZE) {
+    const batch = deduped.slice(i, i + BATCH_SIZE);
 
     const { error, count } = await supabase
       .from('ghl_opportunities_v2')
