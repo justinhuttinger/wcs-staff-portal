@@ -10,27 +10,7 @@ router.use(requireRole('personal_trainer'))
 
 const CAL_VERSION = '2021-04-15'
 
-// Cache Day One calendar info per location
-const calendarCache = {}
-
-async function getDayOneCalendars(locationId, apiKey) {
-  if (calendarCache[locationId]) return calendarCache[locationId]
-
-  const data = await ghlFetch('/calendars/', apiKey, {
-    params: { locationId },
-    version: CAL_VERSION,
-  })
-
-  const calendars = (data.calendars || []).filter(cal => {
-    const name = (cal.name || '').toLowerCase()
-    return name.includes('day one') || name.includes('dayone') || name.includes('day 1')
-  })
-
-  if (calendars.length > 0) calendarCache[locationId] = calendars
-  return calendars
-}
-
-// GET /trainer-availability — get Day One calendars + schedules + team members
+// GET /trainer-availability
 router.get('/', async (req, res) => {
   const { location_slug } = req.query
 
@@ -44,12 +24,32 @@ router.get('/', async (req, res) => {
   }
 
   try {
-    const calendars = await getDayOneCalendars(location.id, location.apiKey)
-    if (calendars.length === 0) {
-      return res.json({ calendars: [], users: {} })
+    // List all calendars and find the one named exactly "Day One"
+    const data = await ghlFetch('/calendars/', location.apiKey, {
+      params: { locationId: location.id },
+      version: CAL_VERSION,
+    })
+
+    const allCalendars = data.calendars || []
+    console.log('[TrainerAvail] All calendars:', allCalendars.map(c => `${c.name} (${c.id})`))
+
+    const dayOneCalendar = allCalendars.find(cal => (cal.name || '').trim().toLowerCase() === 'day one')
+
+    if (!dayOneCalendar) {
+      return res.json({ trainers: [], calendarName: null, debug: 'No calendar named "Day One" found. Available: ' + allCalendars.map(c => c.name).join(', ') })
     }
 
-    // Fetch GHL users to resolve IDs to names/emails
+    // Get full calendar details
+    let calDetail = dayOneCalendar
+    try {
+      const detail = await ghlFetch(`/calendars/${dayOneCalendar.id}`, location.apiKey, { version: CAL_VERSION })
+      calDetail = detail.calendar || detail
+      console.log('[TrainerAvail] Calendar detail keys:', Object.keys(calDetail))
+    } catch (e) {
+      console.warn('[TrainerAvail] Could not fetch calendar detail:', e.message)
+    }
+
+    // Fetch GHL users
     let userMap = {}
     try {
       const usersData = await ghlFetch('/users/', location.apiKey)
@@ -60,45 +60,58 @@ router.get('/', async (req, res) => {
       console.warn('[TrainerAvail] Could not fetch users:', e.message)
     }
 
+    // Extract team members from calendar
+    // GHL calendars can have: teamMembers (array of objects or IDs), or calendarConfig.teamMembers
+    let teamMemberIds = []
+    if (Array.isArray(calDetail.teamMembers)) {
+      teamMemberIds = calDetail.teamMembers.map(m => typeof m === 'string' ? m : m.userId || m.id || m)
+    } else if (calDetail.calendarConfig?.teamMembers) {
+      teamMemberIds = calDetail.calendarConfig.teamMembers.map(m => typeof m === 'string' ? m : m.userId || m.id || m)
+    }
+
+    console.log('[TrainerAvail] Team member IDs:', teamMemberIds)
+
+    // Build per-trainer availability
+    // GHL stores per-user availability in openHours on team member configs or in the calendar schedule
+    const calSchedule = calDetail.openHours || calDetail.schedule || calDetail.availability || calDetail.calendarConfig?.openHours || null
+
     // Role check
     const userLevel = ROLE_HIERARCHY.indexOf(req.staff.role)
-    const managerLevel = ROLE_HIERARCHY.indexOf('manager')
-    const isManager = userLevel >= managerLevel
+    const isManager = userLevel >= ROLE_HIERARCHY.indexOf('manager')
     const userEmail = req.staff.email?.toLowerCase()
 
-    // For each Day One calendar, get its schedule
-    const calendarResults = []
-    for (const cal of calendars) {
-      // Get full calendar details (includes schedule, teamMembers)
-      let calDetail = cal
-      try {
-        const detail = await ghlFetch(`/calendars/${cal.id}`, location.apiKey, { version: CAL_VERSION })
-        calDetail = detail.calendar || detail
-      } catch (e) {
-        console.warn('[TrainerAvail] Could not fetch calendar detail:', e.message)
+    const trainers = []
+    for (const memberId of teamMemberIds) {
+      const user = userMap[memberId]
+      if (!user) continue
+
+      // Non-managers only see themselves
+      if (!isManager && user.email !== userEmail) continue
+
+      // Try to get per-member schedule
+      // In GHL, team members may have individual openHours
+      let memberSchedule = calSchedule
+      if (Array.isArray(calDetail.teamMembers)) {
+        const memberObj = calDetail.teamMembers.find(m => (m.userId || m.id || m) === memberId)
+        if (memberObj && typeof memberObj === 'object') {
+          memberSchedule = memberObj.openHours || memberObj.schedule || memberObj.availability || calSchedule
+        }
       }
 
-      const teamMembers = calDetail.teamMembers || calDetail.users || []
-      const schedule = calDetail.schedule || calDetail.availability || null
-
-      // Filter: trainers only see calendars they're on
-      if (!isManager) {
-        const isOnCalendar = teamMembers.some(memberId => {
-          const user = userMap[memberId]
-          return user?.email === userEmail
-        })
-        if (!isOnCalendar) continue
-      }
-
-      calendarResults.push({
-        id: cal.id,
-        name: cal.name,
-        teamMembers: teamMembers.map(id => userMap[id] || { id, name: 'Unknown', email: '' }),
-        schedule: schedule,
+      trainers.push({
+        userId: memberId,
+        name: user.name,
+        email: user.email,
+        schedule: memberSchedule,
       })
     }
 
-    res.json({ calendars: calendarResults, users: userMap })
+    res.json({
+      calendarId: dayOneCalendar.id,
+      calendarName: dayOneCalendar.name,
+      trainers,
+      rawSchedule: calSchedule, // for debugging
+    })
   } catch (err) {
     console.error('[TrainerAvail] Error:', err.message)
     res.status(500).json({ error: 'Failed to fetch availability: ' + err.message })
@@ -128,9 +141,6 @@ router.put('/:calendarId', async (req, res) => {
         timezone: timezone || 'America/Los_Angeles',
       },
     })
-
-    // Clear cache so next fetch gets updated data
-    delete calendarCache[location.id]
 
     res.json({ success: true, schedule: result.schedule || result })
   } catch (err) {

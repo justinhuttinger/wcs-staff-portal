@@ -14,22 +14,33 @@ const LOCATIONS = [
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 const DAY_LABELS = { monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu', friday: 'Fri', saturday: 'Sat', sunday: 'Sun' }
 
-function parseRules(rules) {
-  const schedule = {}
+function parseSchedule(schedule) {
+  const result = {}
   for (const day of DAYS) {
-    schedule[day] = { enabled: false, from: '09:00', to: '17:00' }
+    result[day] = { enabled: false, from: '09:00', to: '17:00' }
   }
-  if (!rules) return schedule
+  if (!schedule) return result
+
+  // Handle different GHL schedule formats
+  const rules = Array.isArray(schedule) ? schedule : schedule.rules || schedule.openHours || []
+  if (!Array.isArray(rules)) return result
+
   for (const rule of rules) {
     if (rule.type === 'wday' && rule.day && rule.intervals?.length > 0) {
-      schedule[rule.day] = {
-        enabled: true,
-        from: rule.intervals[0].from || '09:00',
-        to: rule.intervals[0].to || '17:00',
+      result[rule.day] = { enabled: true, from: rule.intervals[0].from || '09:00', to: rule.intervals[0].to || '17:00' }
+    } else if (rule.dOW && rule.hours?.length > 0) {
+      // Alternative format: { dOW: ['monday'], hours: [{ openHour: 9, openMinute: 0, closeHour: 17, closeMinute: 0 }] }
+      for (const day of (rule.dOW || [])) {
+        const h = rule.hours[0]
+        result[day.toLowerCase()] = {
+          enabled: true,
+          from: `${String(h.openHour).padStart(2, '0')}:${String(h.openMinute || 0).padStart(2, '0')}`,
+          to: `${String(h.closeHour).padStart(2, '0')}:${String(h.closeMinute || 0).padStart(2, '0')}`,
+        }
       }
     }
   }
-  return schedule
+  return result
 }
 
 function buildRules(schedule) {
@@ -37,18 +48,14 @@ function buildRules(schedule) {
   for (const day of DAYS) {
     const s = schedule[day]
     if (s.enabled) {
-      rules.push({
-        type: 'wday',
-        day,
-        intervals: [{ from: s.from, to: s.to }],
-      })
+      rules.push({ type: 'wday', day, intervals: [{ from: s.from, to: s.to }] })
     }
   }
   return rules
 }
 
-function ScheduleEditor({ calendar, locationSlug, onUpdated }) {
-  const [schedule, setSchedule] = useState(() => parseRules(calendar.schedule?.rules))
+function TrainerScheduleCard({ trainer, calendarId, locationSlug, onUpdated }) {
+  const [schedule, setSchedule] = useState(() => parseSchedule(trainer.schedule))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
@@ -68,10 +75,9 @@ function ScheduleEditor({ calendar, locationSlug, onUpdated }) {
     setError('')
     setSaved(false)
     try {
-      const rules = buildRules(schedule)
-      await updateTrainerAvailability(calendar.id, {
+      await updateTrainerAvailability(calendarId, {
         location_slug: locationSlug,
-        rules,
+        rules: buildRules(schedule),
         timezone: 'America/Los_Angeles',
       })
       setSaved(true)
@@ -86,10 +92,8 @@ function ScheduleEditor({ calendar, locationSlug, onUpdated }) {
     <div className="bg-surface rounded-xl border border-border p-5">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-sm font-semibold text-text-primary">{calendar.name}</h3>
-          <p className="text-xs text-text-muted mt-0.5">
-            {calendar.teamMembers.map(m => m.name).join(', ') || 'No team members'}
-          </p>
+          <h3 className="text-sm font-semibold text-text-primary">{trainer.name}</h3>
+          <p className="text-xs text-text-muted">{trainer.email}</p>
         </div>
         <div className="flex items-center gap-2">
           {saved && <span className="text-xs text-green-600">Saved</span>}
@@ -177,10 +181,11 @@ export default function TrainerAvailabilityView({ user, onBack, location, isAdmi
           Back to Portal
         </button>
         <h2 className="text-xl font-bold text-text-primary">Trainer Availability</h2>
-        <p className="text-xs text-text-muted mt-1">Manage Day One calendar availability</p>
+        {data?.calendarName && (
+          <p className="text-xs text-text-muted mt-1">Calendar: {data.calendarName}</p>
+        )}
       </div>
 
-      {/* Location Selector (admin only) */}
       {isAdmin ? (
         <div className="flex flex-wrap gap-2 mb-6">
           {LOCATIONS.map(loc => (
@@ -206,11 +211,22 @@ export default function TrainerAvailabilityView({ user, onBack, location, isAdmi
 
       {!loading && data && (
         <div className="space-y-4">
-          {(data.calendars || []).length === 0 && (
-            <p className="text-text-muted text-sm py-8 text-center">No Day One calendars found at this location</p>
+          {(data.trainers || []).length === 0 && (
+            <div className="text-center py-8">
+              <p className="text-text-muted text-sm">
+                {data.calendarName ? 'No trainers found on this calendar' : 'No "Day One" calendar found at this location'}
+              </p>
+              {data.debug && <p className="text-xs text-text-muted mt-2">{data.debug}</p>}
+            </div>
           )}
-          {(data.calendars || []).map(cal => (
-            <ScheduleEditor key={cal.id} calendar={cal} locationSlug={locationSlug} onUpdated={loadData} />
+          {(data.trainers || []).map(trainer => (
+            <TrainerScheduleCard
+              key={trainer.userId}
+              trainer={trainer}
+              calendarId={data.calendarId}
+              locationSlug={locationSlug}
+              onUpdated={loadData}
+            />
           ))}
         </div>
       )}
