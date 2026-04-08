@@ -172,8 +172,9 @@ router.get('/membership', async (req, res) => {
         const { data: loc } = await supabaseAdmin
           .from('ghl_locations')
           .select('id')
-          .ilike('name', locationFilter.value)
-          .single()
+          .ilike('name', '%' + locationFilter.value + '%')
+          .limit(1)
+          .maybeSingle()
         if (loc) oppLocationId = loc.id
       }
     }
