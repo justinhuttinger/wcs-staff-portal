@@ -81,84 +81,8 @@ function mostFrequent(arr) {
 // GET /reports/salesperson-stats
 // Query params: start_date, end_date, location_id, location_slug
 // ---------------------------------------------------------------------------
-router.get('/salesperson-stats', async (req, res) => {
-  const { start_date, end_date } = req.query
-
-  try {
-    const locationFilter = await resolveLocationFilter(req.query)
-
-    const startMs = dateToMs(start_date, false)
-    const endMs   = dateToMs(end_date, true)
-
-    let q = supabaseAdmin
-      .from('ghl_contacts_report')
-      .select(
-        'first_name, last_name, full_name, email, phone, tags,' +
-        'sale_team_member, vip_count, day_one_booked,' +
-        'member_sign_date, membership_type, same_day_sale,' +
-        'location_name, location_slug'
-      )
-      .not('member_sign_date', 'is', null)
-
-    q = applyLocationFilter(q, locationFilter)
-    q = applyDateRange(q, 'member_sign_date', startMs, endMs)
-
-    const { data, error } = await q.order('member_sign_date', { ascending: false })
-    if (error) return res.status(500).json({ error: 'Failed to fetch salesperson stats', detail: error.message })
-
-    const contacts = data || []
-
-    // --- Separate query for day ones by booking date + booking team member ---
-    let dayOneQ = supabaseAdmin
-      .from('ghl_contacts_report')
-      .select('day_one_booking_team_member, day_one_booked, day_one_booking_date, location_slug')
-      .eq('day_one_booked', 'Yes')
-      .not('day_one_booking_date', 'is', null)
-    dayOneQ = applyLocationFilter(dayOneQ, locationFilter)
-    dayOneQ = applyDateRange(dayOneQ, 'day_one_booking_date', startMs, endMs)
-
-    const { data: dayOneData } = await dayOneQ
-    const dayOnes = dayOneData || []
-
-    // Count day ones by booking team member
-    const dayOneByPerson = {}
-    for (const d of dayOnes) {
-      const person = d.day_one_booking_team_member || 'Unassigned'
-      dayOneByPerson[person] = (dayOneByPerson[person] || 0) + 1
-    }
-
-    const bySalesperson = {}
-    for (const c of contacts) {
-      const sp = c.sale_team_member || 'Unassigned'
-      if (!bySalesperson[sp]) {
-        bySalesperson[sp] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0 }
-      }
-      bySalesperson[sp].total_sales++
-      const hasVipTag = Array.isArray(c.tags) && c.tags.includes('vip')
-      if (hasVipTag) bySalesperson[sp].vips++
-      if (c.same_day_sale === 'Sale') bySalesperson[sp].same_day_sale++
-    }
-
-    // Merge day one counts (from booking team member query) into salesperson data
-    for (const [person, count] of Object.entries(dayOneByPerson)) {
-      if (!bySalesperson[person]) {
-        bySalesperson[person] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0 }
-      }
-      bySalesperson[person].day_one_booked = count
-    }
-
-    res.json({
-      total_contacts: contacts.length,
-      by_salesperson: bySalesperson,
-      contacts,
-    })
-  } catch (err) {
-    res.status(500).json({ error: err.message })
-  }
-})
-
 // ---------------------------------------------------------------------------
-// GET /reports/membership
+// GET /reports/membership  (combined membership + salesperson stats)
 // Query params: start_date, end_date, location_id, location_slug
 // ---------------------------------------------------------------------------
 router.get('/membership', async (req, res) => {
@@ -169,13 +93,15 @@ router.get('/membership', async (req, res) => {
 
     const startMs = dateToMs(start_date, false)
     const endMs   = dateToMs(end_date, true)
+    const startISO = start_date ? start_date + 'T00:00:00.000Z' : null
+    const endISO   = end_date ? end_date + 'T23:59:59.999Z' : null
 
-    // --- Contacts / membership data from the enriched view ---
+    // --- Contacts with member_sign_date in range ---
     let q = supabaseAdmin
       .from('ghl_contacts_report')
       .select(
         'first_name, last_name, full_name, email, phone, tags,' +
-        'sale_team_member, vip_count, day_one_booked,' +
+        'sale_team_member, day_one_booked,' +
         'member_sign_date, membership_type, same_day_sale,' +
         'origin, active, location_name, location_slug'
       )
@@ -189,19 +115,52 @@ router.get('/membership', async (req, res) => {
 
     const contacts = data || []
 
+    // --- VIPs: contacts created in range with "vip" tag (same logic as club-health) ---
+    let vipQuery = supabaseAdmin
+      .from('ghl_contacts_v2')
+      .select('id, tags', { count: 'exact', head: false })
+      .contains('tags', ['vip'])
+    if (startISO) vipQuery = vipQuery.gte('created_at_ghl', startISO)
+    if (endISO) vipQuery = vipQuery.lte('created_at_ghl', endISO)
+    if (locationFilter && locationFilter.column === 'location_slug') {
+      const { data: loc } = await supabaseAdmin
+        .from('ghl_locations').select('id')
+        .ilike('name', '%' + locationFilter.value + '%').limit(1).maybeSingle()
+      if (loc) vipQuery = vipQuery.eq('location_id', loc.id)
+    } else if (locationFilter && locationFilter.column === 'location_id') {
+      vipQuery = vipQuery.eq('location_id', locationFilter.value)
+    }
+    const { count: totalVips } = await vipQuery
+
+    // --- Day Ones booked in range (by booking_team_member) ---
+    let dayOneQ = supabaseAdmin
+      .from('ghl_contacts_report')
+      .select('day_one_booking_team_member, day_one_booked, day_one_booking_date, location_slug')
+      .eq('day_one_booked', 'Yes')
+      .not('day_one_booking_date', 'is', null)
+    dayOneQ = applyLocationFilter(dayOneQ, locationFilter)
+    dayOneQ = applyDateRange(dayOneQ, 'day_one_booking_date', startMs, endMs)
+
+    const { data: dayOneData } = await dayOneQ
+    const dayOnes = dayOneData || []
+    const totalDayOneBooked = dayOnes.length
+
+    // Count day ones by booking team member
+    const dayOneByPerson = {}
+    for (const d of dayOnes) {
+      const person = d.day_one_booking_team_member || 'Unassigned'
+      dayOneByPerson[person] = (dayOneByPerson[person] || 0) + 1
+    }
+
     // --- Trial conversion from opportunities ---
-    // Resolve location_slug to ghl_location_id for opportunities table
     let oppLocationId = null
     if (locationFilter) {
       if (locationFilter.column === 'location_id') {
         oppLocationId = locationFilter.value
       } else if (locationFilter.column === 'location_slug') {
         const { data: loc } = await supabaseAdmin
-          .from('ghl_locations')
-          .select('id')
-          .ilike('name', '%' + locationFilter.value + '%')
-          .limit(1)
-          .maybeSingle()
+          .from('ghl_locations').select('id')
+          .ilike('name', '%' + locationFilter.value + '%').limit(1).maybeSingle()
         if (loc) oppLocationId = loc.id
       }
     }
@@ -209,20 +168,16 @@ router.get('/membership', async (req, res) => {
     let oppQuery = supabaseAdmin
       .from('ghl_opportunities_v2')
       .select('id, status, stage_id, pipeline_id, ghl_pipeline_stages(name)')
-
     if (oppLocationId) oppQuery = oppQuery.eq('location_id', oppLocationId)
-    // created_at_ghl is TIMESTAMPTZ, not ms — use ISO strings for filtering
-    if (start_date) oppQuery = oppQuery.gte('created_at_ghl', start_date + 'T00:00:00.000Z')
-    if (end_date) oppQuery = oppQuery.lte('created_at_ghl', end_date + 'T23:59:59.999Z')
+    if (start_date) oppQuery = oppQuery.gte('created_at_ghl', startISO)
+    if (end_date) oppQuery = oppQuery.lte('created_at_ghl', endISO)
 
     const { data: opps, error: oppsError } = await oppQuery
     if (oppsError) return res.status(500).json({ error: 'Failed to fetch trial data', detail: oppsError.message })
 
-    const opportunities = opps || []
-
     let trialStarted = 0
     let trialWon = 0
-    for (const opp of opportunities) {
+    for (const opp of (opps || [])) {
       const stageName = opp.ghl_pipeline_stages?.name || ''
       if (stageName === 'Trial Started') {
         trialStarted++
@@ -230,48 +185,59 @@ router.get('/membership', async (req, res) => {
       }
     }
 
-    // --- Aggregate contact stats ---
+    // --- Aggregate by salesperson + by date ---
     const byDate = {}
     const bySalesperson = {}
-    let totalDayOneBooked = 0
-    let totalVips = 0
 
     for (const c of contacts) {
-      // by_date: derive YYYY-MM-DD from the ms timestamp
+      // by_date for chart
       if (c.member_sign_date) {
         const d = new Date(parseInt(c.member_sign_date, 10))
         const dateKey = d.toISOString().slice(0, 10)
-        byDate[dateKey] = (byDate[dateKey] || 0) + 1
+        if (!byDate[dateKey]) byDate[dateKey] = { memberships: 0, vips: 0, day_ones: 0 }
+        byDate[dateKey].memberships++
+        if (Array.isArray(c.tags) && c.tags.includes('vip')) byDate[dateKey].vips++
       }
 
       // by_salesperson
       const sp = c.sale_team_member || 'Unassigned'
-      if (!bySalesperson[sp]) bySalesperson[sp] = { memberships: 0, vips: 0, day_one_booked: 0 }
-      bySalesperson[sp].memberships++
-      const hasVipTag = Array.isArray(c.tags) && c.tags.includes('vip')
-      if (hasVipTag) bySalesperson[sp].vips++
-      if (c.day_one_booked === 'Yes') bySalesperson[sp].day_one_booked++
+      if (!bySalesperson[sp]) {
+        bySalesperson[sp] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0 }
+      }
+      bySalesperson[sp].total_sales++
+      if (Array.isArray(c.tags) && c.tags.includes('vip')) bySalesperson[sp].vips++
+      if (c.same_day_sale === 'Sale') bySalesperson[sp].same_day_sale++
+    }
 
-      // totals
-      if (c.day_one_booked === 'Yes') totalDayOneBooked++
-      if (hasVipTag) totalVips++
+    // Add day one booking dates to the chart
+    for (const d of dayOnes) {
+      if (d.day_one_booking_date) {
+        const dt = new Date(parseInt(d.day_one_booking_date, 10))
+        const dateKey = dt.toISOString().slice(0, 10)
+        if (!byDate[dateKey]) byDate[dateKey] = { memberships: 0, vips: 0, day_ones: 0 }
+        byDate[dateKey].day_ones++
+      }
+    }
+
+    // Merge day one counts into salesperson data
+    for (const [person, count] of Object.entries(dayOneByPerson)) {
+      if (!bySalesperson[person]) {
+        bySalesperson[person] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0 }
+      }
+      bySalesperson[person].day_one_booked = count
     }
 
     const byDateArr = Object.entries(byDate)
-      .map(([date, count]) => ({ date, count }))
+      .map(([date, vals]) => ({ date, ...vals }))
       .sort((a, b) => a.date.localeCompare(b.date))
 
     const conversionRate = trialStarted > 0 ? Math.round((trialWon / trialStarted) * 100) : 0
 
     res.json({
       total_memberships: contacts.length,
-      trial_conversion: {
-        trial_started: trialStarted,
-        won: trialWon,
-        rate: conversionRate,
-      },
+      trial_conversion: { trial_started: trialStarted, won: trialWon, rate: conversionRate },
       total_day_one_booked: totalDayOneBooked,
-      total_vips: totalVips,
+      total_vips: totalVips || 0,
       by_date: byDateArr,
       by_salesperson: bySalesperson,
       contacts,
@@ -279,6 +245,13 @@ router.get('/membership', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
+})
+
+// Keep /salesperson-stats as alias for backwards compat
+router.get('/salesperson-stats', async (req, res) => {
+  // Forward to membership endpoint
+  req.url = '/membership' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '')
+  router.handle(req, res)
 })
 
 // ---------------------------------------------------------------------------
