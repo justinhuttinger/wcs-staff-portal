@@ -154,7 +154,6 @@ export default function App() {
             <img src="/wcs-logo.png" alt="WCS" className="h-10 w-10 rounded-full" />
             <h1 className="text-2xl font-black text-text-primary tracking-[-0.5px]">Portal</h1>
           </div>
-          <p className="text-xs text-text-muted mt-0.5">{user.staff.display_name}</p>
         </div>
         <div className="flex items-center gap-4">
           {isAdmin && (
