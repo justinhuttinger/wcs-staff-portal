@@ -7,7 +7,7 @@ async function fetchAllOpportunities(locationId, apiKey) {
     '/opportunities/search',
     { location_id: locationId, limit: PAGE_SIZE },
     'opportunities',
-    { paginationType: 'offset', cursorParam: 'startAfter' },
+    { paginationType: 'meta' },
     apiKey
   );
 }
@@ -18,7 +18,7 @@ async function fetchOpportunitiesDelta(locationId, sinceDate, apiKey) {
     '/opportunities/search',
     { location_id: locationId, limit: PAGE_SIZE, date: overlap.toISOString() },
     'opportunities',
-    { paginationType: 'offset', cursorParam: 'startAfter' },
+    { paginationType: 'meta' },
     apiKey
   );
 }
