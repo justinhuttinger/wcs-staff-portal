@@ -181,3 +181,16 @@ export async function getDayOneFieldOptions(params = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/day-one-tracker/field-options' + (qs ? '?' + qs : ''))
 }
+
+// Trainer Availability
+export async function getTrainerAvailability(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/trainer-availability' + (qs ? '?' + qs : ''))
+}
+
+export async function updateTrainerAvailability(calendarId, data) {
+  return api('/trainer-availability/' + calendarId, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
