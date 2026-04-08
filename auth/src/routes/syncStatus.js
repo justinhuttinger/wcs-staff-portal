@@ -19,14 +19,15 @@ router.get('/', async (req, res) => {
     ])
 
     // Last sync logs
-    const { data: recentLogs } = await supabaseAdmin
+    const { data: recentLogs, error: logsError } = await supabaseAdmin
       .from('ghl_sync_log')
       .select('*')
       .order('started_at', { ascending: false })
       .limit(10)
+    if (logsError) console.error('Sync logs query failed:', logsError.message)
 
     // Last successful sync per type
-    const { data: lastFull } = await supabaseAdmin
+    const { data: lastFull, error: fullError } = await supabaseAdmin
       .from('ghl_sync_log')
       .select('completed_at, duration_ms')
       .eq('sync_type', 'full')
@@ -34,8 +35,9 @@ router.get('/', async (req, res) => {
       .order('completed_at', { ascending: false })
       .limit(1)
       .single()
+    if (fullError && fullError.code !== 'PGRST116') console.error('Last full sync query failed:', fullError.message)
 
-    const { data: lastDelta } = await supabaseAdmin
+    const { data: lastDelta, error: deltaError } = await supabaseAdmin
       .from('ghl_sync_log')
       .select('completed_at, duration_ms')
       .eq('sync_type', 'delta')
@@ -43,6 +45,7 @@ router.get('/', async (req, res) => {
       .order('completed_at', { ascending: false })
       .limit(1)
       .single()
+    if (deltaError && deltaError.code !== 'PGRST116') console.error('Last delta sync query failed:', deltaError.message)
 
     // Contacts per location
     const { data: contactsByLoc } = await supabaseAdmin

@@ -27,6 +27,9 @@ export function exportCSV(rows, filename) {
 /**
  * Print the current page (for PDF export via browser print dialog)
  */
-export function exportPDF() {
+export function exportPDF(reportName) {
+  const prev = document.title
+  if (reportName) document.title = reportName
   window.print()
+  document.title = prev
 }

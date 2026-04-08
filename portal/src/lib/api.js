@@ -21,7 +21,12 @@ export async function api(path, options = {}) {
   }
 
   const res = await fetch(API_URL + path, { ...options, headers })
-  const data = await res.json()
+  let data
+  try {
+    data = await res.json()
+  } catch {
+    throw new Error('Server error — please try again')
+  }
 
   if (!res.ok) {
     throw new Error(data.error || 'Request failed')

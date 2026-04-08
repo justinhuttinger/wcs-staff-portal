@@ -37,7 +37,9 @@ async function resolveLocationFilter(query) {
 // ---------------------------------------------------------------------------
 function dateToMs(dateStr, endOfDay = false) {
   if (!dateStr) return null
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null
   const d = endOfDay ? new Date(dateStr + 'T23:59:59.999Z') : new Date(dateStr + 'T00:00:00.000Z')
+  if (isNaN(d.getTime())) return null
   return d.getTime().toString()
 }
 
