@@ -26,6 +26,7 @@ app.get('/.well-known/openid-configuration', (req, res) => {
   res.redirect('/oidc/.well-known/openid-configuration')
 })
 app.use('/reports', require('./routes/reports'))
+app.use('/sync-status', require('./routes/syncStatus'))
 
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {

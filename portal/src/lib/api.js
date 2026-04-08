@@ -146,3 +146,7 @@ export async function getSalespersonStats(params = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/reports/salesperson-stats' + (qs ? '?' + qs : ''))
 }
+
+export async function getSyncStatus() {
+  return api('/sync-status')
+}
