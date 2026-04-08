@@ -13,11 +13,22 @@ function formatTime(dateStr) {
 function getDateStr(offset = 0) {
   const d = new Date()
   d.setDate(d.getDate() + offset)
-  return d.toISOString().split('T')[0]
+  // Use local date, not UTC (toISOString returns UTC which can be off by a day)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function toLocalDateStr(d) {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function getWeekDates(baseDate) {
-  const d = new Date(baseDate)
+  const d = new Date(baseDate + 'T12:00:00') // noon to avoid DST edge cases
   const day = d.getDay()
   const monday = new Date(d)
   monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1))
@@ -25,7 +36,7 @@ function getWeekDates(baseDate) {
   for (let i = 0; i < 7; i++) {
     const date = new Date(monday)
     date.setDate(monday.getDate() + i)
-    dates.push(date.toISOString().split('T')[0])
+    dates.push(toLocalDateStr(date))
   }
   return dates
 }
