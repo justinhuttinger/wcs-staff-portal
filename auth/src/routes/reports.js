@@ -358,10 +358,10 @@ router.get('/pipelines', async (req, res) => {
     let q = supabaseAdmin
       .from('ghl_opportunities_v2')
       .select(
-        'id, status, monetary_value, created_at,' +
+        'id, name, status, monetary_value, created_at_ghl,' +
         'ghl_pipelines(id, name),' +
         'ghl_pipeline_stages(id, name),' +
-        'contact_name, assigned_to'
+        'assigned_user_id'
       )
 
     // Opportunities use location_id (ghl location id), not location_slug
@@ -369,7 +369,7 @@ router.get('/pipelines', async (req, res) => {
       q = q.eq('location_id', locationFilter.value)
     }
 
-    const { data, error } = await q.order('created_at', { ascending: false })
+    const { data, error } = await q.order('created_at_ghl', { ascending: false })
     if (error) return res.status(500).json({ error: 'Failed to fetch pipeline data', detail: error.message })
 
     const opportunities = data || []
