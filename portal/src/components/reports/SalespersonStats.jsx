@@ -26,14 +26,35 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
 
   if (loading) return <p className="text-text-muted text-sm py-8 text-center">Loading salesperson data...</p>
   if (error) return <p className="text-wcs-red text-sm py-4">{error}</p>
+  const [sortBy, setSortBy] = useState('best')
+  const [search, setSearch] = useState('')
+
   if (!data) return null
 
-  const rows = Object.entries(data.by_salesperson || {}).sort((a, b) => b[1].total_sales - a[1].total_sales)
+  const SORT_OPTIONS = [
+    { key: 'best', label: 'Best' },
+    { key: 'worst', label: 'Worst' },
+    { key: 'alpha', label: 'A-Z' },
+  ]
 
-  const totalSales = rows.reduce((sum, [, s]) => sum + (s.total_sales || 0), 0)
-  const totalVIPs = rows.reduce((sum, [, s]) => sum + (s.vips || 0), 0)
-  const totalDayOneYes = rows.reduce((sum, [, s]) => sum + (s.day_one_yes || 0), 0)
-  const totalDayOneNo = rows.reduce((sum, [, s]) => sum + (s.day_one_no || 0), 0)
+  let rows = Object.entries(data.by_salesperson || {})
+
+  // Search filter
+  if (search) {
+    const q = search.toLowerCase()
+    rows = rows.filter(([name]) => name.toLowerCase().includes(q))
+  }
+
+  // Sort
+  if (sortBy === 'best') rows.sort((a, b) => b[1].total_sales - a[1].total_sales)
+  else if (sortBy === 'worst') rows.sort((a, b) => a[1].total_sales - b[1].total_sales)
+  else if (sortBy === 'alpha') rows.sort((a, b) => a[0].localeCompare(b[0]))
+
+  const allRows = Object.entries(data.by_salesperson || {})
+  const totalSales = allRows.reduce((sum, [, s]) => sum + (s.total_sales || 0), 0)
+  const totalVIPs = allRows.reduce((sum, [, s]) => sum + (s.vips || 0), 0)
+  const totalDayOneYes = allRows.reduce((sum, [, s]) => sum + (s.day_one_yes || 0), 0)
+  const totalDayOneNo = allRows.reduce((sum, [, s]) => sum + (s.day_one_no || 0), 0)
   const dayOneTotal = totalDayOneYes + totalDayOneNo
   const dayOneRate = dayOneTotal > 0 ? Math.round((totalDayOneYes / dayOneTotal) * 100) : 0
 
@@ -54,6 +75,32 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
           <p className="text-2xl font-bold text-text-primary mt-1">{dayOneRate}%</p>
           <p className="text-xs text-text-muted mt-0.5">{totalDayOneYes} yes / {dayOneTotal} total</p>
         </div>
+      </div>
+
+      {/* Sort & Search Controls */}
+      <div className="flex items-center justify-between">
+        <div className="flex gap-1">
+          {SORT_OPTIONS.map(opt => (
+            <button
+              key={opt.key}
+              onClick={() => setSortBy(opt.key)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                sortBy === opt.key
+                  ? 'bg-wcs-red text-white'
+                  : 'bg-surface border border-border text-text-muted hover:text-text-primary'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <input
+          type="text"
+          placeholder="Search by name..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red w-56"
+        />
       </div>
 
       {/* Summary Table */}
