@@ -138,10 +138,10 @@ export default function App() {
     <div className="min-h-screen bg-bg flex flex-col">
       <header className="flex items-center justify-between px-8 py-6 max-w-3xl mx-auto w-full">
         <div>
-          <h1 className="text-2xl font-black text-text-primary tracking-[-0.5px]">
-            <span className="bg-gradient-to-r from-wcs-red to-[#fc8181] bg-clip-text text-transparent">WCS</span>
-            {' '}Staff Portal
-          </h1>
+          <div className="flex items-center gap-2">
+            <img src="/wcs-logo.svg" alt="WCS" className="h-8 w-auto" />
+            <h1 className="text-2xl font-black text-text-primary tracking-[-0.5px]">Portal</h1>
+          </div>
           <p className="text-xs text-text-muted mt-0.5">{user.staff.display_name}</p>
         </div>
         <div className="flex items-center gap-4">

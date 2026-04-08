@@ -129,13 +129,27 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
 
   if (!tilesLoaded) return null
 
-  // Tool labels that should be in Tools section even if they're in "main" section
+  // Labels that should be in Apps even if their section isn't "main"
+  const APP_LABELS = ['indeed', 'operandio', 'vistaprint', 'vista']
+  // Labels that should be in Tools even if their section is "main"
   const TOOL_LABELS = ['cancel', 'cancel tool']
 
   const appTools = tools.filter(t => APP_IDS.includes(t.id))
-  const appCustomTiles = mainTiles.filter(t => !TOOL_LABELS.includes((t.label || '').toLowerCase()))
-  const toolMainTiles = mainTiles.filter(t => TOOL_LABELS.includes((t.label || '').toLowerCase()))
-  const toolCustomTiles = topLevelTiles
+
+  // All custom tiles, categorized
+  const allCustom = [...mainTiles, ...topLevelTiles]
+  const appCustomTiles = allCustom.filter(t => {
+    const label = (t.label || '').toLowerCase()
+    if (TOOL_LABELS.includes(label)) return false
+    if (APP_LABELS.includes(label)) return true
+    return t.section === 'main' // default: main section = apps
+  })
+  const toolCustomTiles = allCustom.filter(t => {
+    const label = (t.label || '').toLowerCase()
+    if (TOOL_LABELS.includes(label)) return true
+    if (APP_LABELS.includes(label)) return false
+    return t.section !== 'main' // default: non-main = tools
+  })
 
   return (
     <div className="w-full px-8 max-w-7xl mx-auto flex gap-10">
@@ -156,10 +170,6 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
       <div className="w-1/2">
         <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">Tools</p>
         <div className="grid grid-cols-3 gap-4">
-          {/* Cancel tool tile (moved from main section) */}
-          {toolMainTiles.map((tile) => (
-            <ToolButton key={'tool-' + tile.id} label={tile.label} description={tile.description || ''} emoji={tile.icon} url={tile.url} />
-          ))}
           {onDayOneTracker && <SvgTileButton onClick={onDayOneTracker} iconPath={TILE_ICONS.dayOne} label="Day One" desc="Tracking" badge={dayOneBadge} />}
           {onTrainerAvail && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="Availability" desc="Trainers" />}
           {onTours && <SvgTileButton onClick={onTours} iconPath={TILE_ICONS.tours} label="Tours" desc="Calendar" badge={toursBadge} />}
