@@ -108,6 +108,25 @@ router.get('/salesperson-stats', async (req, res) => {
 
     const contacts = data || []
 
+    // --- Separate query for day ones by booking date + booking team member ---
+    let dayOneQ = supabaseAdmin
+      .from('ghl_contacts_report')
+      .select('day_one_booking_team_member, day_one_booked, day_one_booking_date, location_slug')
+      .eq('day_one_booked', 'Yes')
+      .not('day_one_booking_date', 'is', null)
+    dayOneQ = applyLocationFilter(dayOneQ, locationFilter)
+    dayOneQ = applyDateRange(dayOneQ, 'day_one_booking_date', startMs, endMs)
+
+    const { data: dayOneData } = await dayOneQ
+    const dayOnes = dayOneData || []
+
+    // Count day ones by booking team member
+    const dayOneByPerson = {}
+    for (const d of dayOnes) {
+      const person = d.day_one_booking_team_member || 'Unassigned'
+      dayOneByPerson[person] = (dayOneByPerson[person] || 0) + 1
+    }
+
     const bySalesperson = {}
     for (const c of contacts) {
       const sp = c.sale_team_member || 'Unassigned'
@@ -117,8 +136,15 @@ router.get('/salesperson-stats', async (req, res) => {
       bySalesperson[sp].total_sales++
       const hasVipTag = Array.isArray(c.tags) && c.tags.includes('vip')
       if (hasVipTag) bySalesperson[sp].vips++
-      if (c.day_one_booked === 'Yes') bySalesperson[sp].day_one_booked++
       if (c.same_day_sale === 'Sale') bySalesperson[sp].same_day_sale++
+    }
+
+    // Merge day one counts (from booking team member query) into salesperson data
+    for (const [person, count] of Object.entries(dayOneByPerson)) {
+      if (!bySalesperson[person]) {
+        bySalesperson[person] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0 }
+      }
+      bySalesperson[person].day_one_booked = count
     }
 
     res.json({
