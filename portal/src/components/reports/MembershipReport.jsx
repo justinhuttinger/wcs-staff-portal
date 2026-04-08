@@ -125,7 +125,7 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
       {/* Export Controls */}
       <div className="flex justify-end gap-2">
         <button onClick={handleExportCSV} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors">CSV</button>
-        <button onClick={exportPDF} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors">PDF</button>
+        <button onClick={() => exportPDF('Membership Report')} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors">PDF</button>
       </div>
 
       {/* Salesperson Summary Table */}
