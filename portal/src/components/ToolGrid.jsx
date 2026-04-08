@@ -99,68 +99,58 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
 
   if (!tilesLoaded) return null
 
-  const hasManagement = topLevelTiles.length > 0
-
   return (
-    <div className={`w-full px-8 max-w-6xl mx-auto ${hasManagement ? 'flex gap-8' : ''}`}>
-      {/* Main Tools */}
-      <div className={hasManagement ? 'flex-1' : 'w-full'}>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
-          {tools.map((tool) => (
-            <ToolButton key={tool.id} label={tool.label} description={tool.description} icon={tool.icon} url={getUrl(tool)} />
-          ))}
-          {mainTiles.map((tile) => (
-            <ToolButton key={'main-' + tile.id} label={tile.label} description={tile.description || ''} emoji={tile.icon} url={tile.url} />
-          ))}
-          {onDayOne && <SvgTileButton onClick={onDayOne} iconPath={TILE_ICONS.dayOne} label="Day One" desc="Tracking" />}
-          {onTours && <SvgTileButton onClick={onTours} iconPath={TILE_ICONS.tours} label="Tours" desc="Calendar" />}
-          {onDayOneTracker && <SvgTileButton onClick={onDayOneTracker} iconPath={TILE_ICONS.tracker} label="Day One Tracker" desc="v2" />}
-        </div>
-      </div>
-
-      {/* Management Tiles — right side */}
-      {hasManagement && (
-        <div className="w-64 flex-shrink-0">
-          <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">Management</p>
-          <div className="flex flex-col gap-3">
-            {topLevelTiles.map((tile) => {
-              const hasChildren = customTiles.some(t => t.parent_id === tile.id)
-              const isGroup = hasChildren || !tile.url
-
-              if (isGroup) {
-                const handleClick = tile.label === 'Reporting'
-                  ? () => {
-                      const reportingUrl = window.location.origin + window.location.pathname + window.location.search + '#reporting'
-                      window.open(reportingUrl, '_blank')
-                    }
-                  : () => setActiveGroup(tile)
-
-                return (
-                  <button
-                    key={'custom-' + tile.id}
-                    onClick={handleClick}
-                    className="group flex items-center gap-3 rounded-xl bg-surface border border-border p-4 cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
-                  >
-                    <div className="flex items-center justify-center w-10 h-10 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5 text-wcs-red">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6Z" />
-                      </svg>
-                    </div>
-                    <div className="text-left">
-                      <span className="block text-sm font-semibold text-text-primary">{tile.label}</span>
-                      <span className="block text-xs text-text-muted">{tile.description || ''}</span>
-                    </div>
-                  </button>
-                )
-              }
-
-              return (
-                <ToolButton key={'custom-' + tile.id} label={tile.label} description={tile.description || ''} emoji={tile.icon} url={tile.url} />
-              )
-            })}
-          </div>
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-5 p-8 max-w-4xl mx-auto w-full">
+      {tools.map((tool) => (
+        <ToolButton key={tool.id} label={tool.label} description={tool.description} icon={tool.icon} url={getUrl(tool)} />
+      ))}
+      {mainTiles.map((tile) => (
+        <ToolButton key={'main-' + tile.id} label={tile.label} description={tile.description || ''} emoji={tile.icon} url={tile.url} />
+      ))}
+      {onDayOne && <SvgTileButton onClick={onDayOne} iconPath={TILE_ICONS.dayOne} label="Day One" desc="Tracking" />}
+      {onTours && <SvgTileButton onClick={onTours} iconPath={TILE_ICONS.tours} label="Tours" desc="Calendar" />}
+      {onDayOneTracker && <SvgTileButton onClick={onDayOneTracker} iconPath={TILE_ICONS.tracker} label="Day One Tracker" desc="v2" />}
+      {topLevelTiles.length > 0 && (
+        <div className="col-span-2 sm:col-span-4 pt-4 pb-1">
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-widest">Management</p>
+          <div className="border-b border-border mt-1"></div>
         </div>
       )}
+      {topLevelTiles.map((tile) => {
+        const hasChildren = customTiles.some(t => t.parent_id === tile.id)
+        const isGroup = hasChildren || !tile.url
+
+        if (isGroup) {
+          const handleClick = tile.label === 'Reporting'
+            ? () => {
+                const reportingUrl = window.location.origin + window.location.pathname + window.location.search + '#reporting'
+                window.open(reportingUrl, '_blank')
+              }
+            : () => setActiveGroup(tile)
+
+          return (
+            <button
+              key={'custom-' + tile.id}
+              onClick={handleClick}
+              className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+            >
+              <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 text-wcs-red">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6Z" />
+                </svg>
+              </div>
+              <div className="text-center">
+                <span className="block text-base font-semibold text-text-primary">{tile.label}</span>
+                <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">{tile.description || ''}</span>
+              </div>
+            </button>
+          )
+        }
+
+        return (
+          <ToolButton key={'custom-' + tile.id} label={tile.label} description={tile.description || ''} emoji={tile.icon} url={tile.url} />
+        )
+      })}
     </div>
   )
 }

@@ -31,6 +31,8 @@ function buildChartData(byDate, startDate, endDate) {
 }
 
 function LineChart({ points }) {
+  const [hoverIdx, setHoverIdx] = useState(null)
+
   if (points.length === 0) return null
 
   const maxVal = Math.max(...points.flatMap(p => [p.memberships, p.vips, p.day_ones]), 1)
@@ -50,8 +52,8 @@ function LineChart({ points }) {
     return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${toX(i).toFixed(1)},${toY(p[key]).toFixed(1)}`).join(' ')
   }
 
-  // Y-axis labels
   const yLabels = [0, Math.round(maxVal / 2), maxVal]
+  const hoveredPoint = hoverIdx !== null ? points[hoverIdx] : null
 
   return (
     <div className="bg-surface rounded-xl border border-border p-4">
@@ -66,7 +68,28 @@ function LineChart({ points }) {
           ))}
         </div>
       </div>
-      <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ maxHeight: '160px' }}>
+
+      {/* Hover info bar */}
+      <div className="h-5 mb-1 text-xs text-text-muted">
+        {hoveredPoint && (
+          <span>
+            <span className="font-medium text-text-primary">{hoveredPoint.date}</span>
+            {' — '}
+            <span style={{ color: LINE_COLORS.memberships }}>Memberships: {hoveredPoint.memberships}</span>
+            {' · '}
+            <span style={{ color: LINE_COLORS.vips }}>VIPs: {hoveredPoint.vips}</span>
+            {' · '}
+            <span style={{ color: LINE_COLORS.day_ones }}>Day Ones: {hoveredPoint.day_ones}</span>
+          </span>
+        )}
+      </div>
+
+      <svg
+        viewBox={`0 0 ${w} ${h}`}
+        className="w-full"
+        style={{ maxHeight: '160px' }}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
         {/* Grid lines */}
         {yLabels.map(v => (
           <g key={v}>
@@ -81,18 +104,27 @@ function LineChart({ points }) {
         {/* Dots */}
         {['memberships', 'vips', 'day_ones'].map(key =>
           points.map((p, i) => p[key] > 0 ? (
-            <circle key={`${key}-${i}`} cx={toX(i)} cy={toY(p[key])} r="2.5" fill={LINE_COLORS[key]} style={{ pointerEvents: 'none' }} />
+            <circle key={`${key}-${i}`} cx={toX(i)} cy={toY(p[key])} r={hoverIdx === i ? 4 : 2.5} fill={LINE_COLORS[key]} style={{ pointerEvents: 'none' }} />
           ) : null)
         )}
-        {/* Hover zones — rendered last so they're on top */}
+        {/* Hover vertical line */}
+        {hoverIdx !== null && (
+          <line x1={toX(hoverIdx)} x2={toX(hoverIdx)} y1={padT} y2={padT + chartH} stroke="#94a3b8" strokeWidth="0.5" strokeDasharray="3,3" />
+        )}
+        {/* Invisible hover zones */}
         {points.map((p, i) => {
           const barW = points.length > 1 ? chartW / (points.length - 1) : chartW
           return (
-            <g key={`hover-${i}`}>
-              <rect x={toX(i) - barW / 2} y={padT} width={barW} height={chartH} fill="transparent" style={{ cursor: 'crosshair' }}>
-                <title>{`${p.date}\nMemberships: ${p.memberships}\nVIPs: ${p.vips}\nDay Ones: ${p.day_ones}`}</title>
-              </rect>
-            </g>
+            <rect
+              key={`hover-${i}`}
+              x={toX(i) - barW / 2}
+              y={0}
+              width={barW}
+              height={h}
+              fill="transparent"
+              style={{ cursor: 'crosshair' }}
+              onMouseEnter={() => setHoverIdx(i)}
+            />
           )
         })}
         {/* X-axis labels */}
@@ -145,7 +177,6 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
   const SORT_OPTIONS = [
     { key: 'alpha', label: 'A-Z' },
     { key: 'top_sales', label: 'Top Sales' },
-    { key: 'bottom_sales', label: 'Bottom Sales' },
     { key: 'top_vips', label: 'Top VIPs' },
     { key: 'top_day_one', label: 'Top Day One' },
     { key: 'top_same_day', label: 'Top Same Day' },

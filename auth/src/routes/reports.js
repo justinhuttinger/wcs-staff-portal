@@ -280,9 +280,9 @@ router.get('/pt', async (req, res) => {
       .neq('day_one_booked', '')
 
     q = applyLocationFilter(q, locationFilter)
-    q = applyDateRange(q, 'day_one_booking_date', startMs, endMs)
+    q = applyDateRange(q, 'day_one_date', startMs, endMs)
 
-    const { data, error } = await q.order('day_one_booking_date', { ascending: false })
+    const { data, error } = await q.order('day_one_date', { ascending: false })
     if (error) return res.status(500).json({ error: 'Failed to fetch PT data', detail: error.message })
 
     const contacts = data || []
