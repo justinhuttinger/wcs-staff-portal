@@ -52,7 +52,7 @@ function formatDateTime(iso) {
 }
 
 function OutcomeModal({ appointment, locationSlug, onClose, onSubmitted }) {
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState(1) // 1=show/no-show, 2=sale/no-sale, 3=details, 4=review
   const [showNoShow, setShowNoShow] = useState(null)
   const [saleResult, setSaleResult] = useState(null)
   const [ptSaleType, setPtSaleType] = useState('')
@@ -67,16 +67,23 @@ function OutcomeModal({ appointment, locationSlug, onClose, onSubmitted }) {
       .catch(() => setFieldOptions({ pt_sale_types: [], no_sale_reasons: [] }))
   }, [locationSlug])
 
-  async function handleSubmit(data) {
+  async function handleSubmit() {
     setSubmitting(true)
     setError('')
     try {
       await submitDayOneResult({
         contact_id: appointment.contact_id,
         location_slug: locationSlug,
-        ...data,
+        show_no_show: showNoShow,
+        sale_result: showNoShow === 'Show' ? saleResult : null,
+        pt_sale_type: saleResult === 'Sale' ? ptSaleType : null,
+        why_no_sale: saleResult === 'No Sale' ? whyNoSale : null,
       })
-      onSubmitted()
+      onSubmitted({
+        day_one_status: showNoShow === 'Show' ? 'Completed' : 'No Show',
+        show_or_no_show: showNoShow,
+        day_one_sale: showNoShow === 'Show' ? saleResult : null,
+      })
     } catch (err) {
       setError(err.message)
       setSubmitting(false)
@@ -86,7 +93,7 @@ function OutcomeModal({ appointment, locationSlug, onClose, onSubmitted }) {
   function handleShowNoShow(value) {
     setShowNoShow(value)
     if (value === 'No Show') {
-      handleSubmit({ show_no_show: 'No Show', sale_result: null, pt_sale_type: null, why_no_sale: null })
+      setStep(4) // Go to review
     } else {
       setStep(2)
     }
@@ -97,16 +104,18 @@ function OutcomeModal({ appointment, locationSlug, onClose, onSubmitted }) {
     setStep(3)
   }
 
-  function handleFinalSubmit() {
-    handleSubmit({
-      show_no_show: 'Show',
-      sale_result: saleResult,
-      pt_sale_type: saleResult === 'Sale' ? ptSaleType : null,
-      why_no_sale: saleResult === 'No Sale' ? whyNoSale : null,
-    })
+  function handleDetailNext() {
+    setStep(4) // Go to review
   }
 
   const alreadyDone = isCompleted(appointment)
+
+  // Build review summary
+  const reviewItems = []
+  if (showNoShow) reviewItems.push({ label: 'Attendance', value: showNoShow })
+  if (showNoShow === 'Show' && saleResult) reviewItems.push({ label: 'Sale Result', value: saleResult })
+  if (saleResult === 'Sale' && ptSaleType) reviewItems.push({ label: 'Sale Type', value: ptSaleType })
+  if (saleResult === 'No Sale' && whyNoSale) reviewItems.push({ label: 'Reason', value: whyNoSale })
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -122,7 +131,6 @@ function OutcomeModal({ appointment, locationSlug, onClose, onSubmitted }) {
           <button onClick={onClose} className="text-text-muted hover:text-text-primary text-2xl leading-none">&times;</button>
         </div>
 
-        {/* Show current status info if already completed */}
         {alreadyDone && (
           <div className="mb-4 p-3 rounded-lg bg-bg border border-border">
             <p className="text-xs text-text-muted uppercase tracking-wide mb-1">Current Status</p>
@@ -138,94 +146,101 @@ function OutcomeModal({ appointment, locationSlug, onClose, onSubmitted }) {
 
         {error && <p className="text-wcs-red text-sm mb-4">{error}</p>}
 
+        {/* Step 1: Show or No Show */}
         {step === 1 && (
           <div className="space-y-3">
             <p className="text-sm font-medium text-text-primary text-center mb-4">Did they show up?</p>
             <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => handleShowNoShow('Show')}
-                disabled={submitting}
-                className="py-6 rounded-xl bg-green-50 border-2 border-green-200 text-green-700 font-bold text-lg hover:bg-green-100 transition-colors disabled:opacity-50"
-              >
+              <button onClick={() => handleShowNoShow('Show')} className="py-6 rounded-xl bg-green-50 border-2 border-green-200 text-green-700 font-bold text-lg hover:bg-green-100 transition-colors">
                 Show
               </button>
-              <button
-                onClick={() => handleShowNoShow('No Show')}
-                disabled={submitting}
-                className="py-6 rounded-xl bg-red-50 border-2 border-red-200 text-red-600 font-bold text-lg hover:bg-red-100 transition-colors disabled:opacity-50"
-              >
+              <button onClick={() => handleShowNoShow('No Show')} className="py-6 rounded-xl bg-red-50 border-2 border-red-200 text-red-600 font-bold text-lg hover:bg-red-100 transition-colors">
                 No Show
               </button>
             </div>
           </div>
         )}
 
+        {/* Step 2: Sale or No Sale */}
         {step === 2 && (
           <div className="space-y-3">
             <p className="text-sm font-medium text-text-primary text-center mb-4">Sale or No Sale?</p>
             <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => handleSaleResult('Sale')}
-                className="py-6 rounded-xl bg-green-50 border-2 border-green-200 text-green-700 font-bold text-lg hover:bg-green-100 transition-colors"
-              >
+              <button onClick={() => handleSaleResult('Sale')} className="py-6 rounded-xl bg-green-50 border-2 border-green-200 text-green-700 font-bold text-lg hover:bg-green-100 transition-colors">
                 Sale
               </button>
-              <button
-                onClick={() => handleSaleResult('No Sale')}
-                className="py-6 rounded-xl bg-gray-50 border-2 border-gray-200 text-gray-600 font-bold text-lg hover:bg-gray-100 transition-colors"
-              >
+              <button onClick={() => handleSaleResult('No Sale')} className="py-6 rounded-xl bg-gray-50 border-2 border-gray-200 text-gray-600 font-bold text-lg hover:bg-gray-100 transition-colors">
                 No Sale
               </button>
             </div>
-            <button onClick={() => setStep(1)} className="text-xs text-text-muted hover:text-text-primary mt-2">Back</button>
+            <button onClick={() => { setShowNoShow(null); setStep(1) }} className="text-xs text-text-muted hover:text-text-primary mt-2">Back</button>
           </div>
         )}
 
+        {/* Step 3: Details (sale type or no-sale reason) */}
         {step === 3 && saleResult === 'Sale' && (
           <div className="space-y-4">
             <p className="text-sm font-medium text-text-primary text-center">What did they sell?</p>
-            <select
-              value={ptSaleType}
-              onChange={e => setPtSaleType(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
-            >
+            <select value={ptSaleType} onChange={e => setPtSaleType(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red">
               <option value="">Select sale type...</option>
               {(fieldOptions?.pt_sale_types || []).map(opt => (
                 <option key={opt} value={opt}>{opt}</option>
               ))}
             </select>
-            <button
-              onClick={handleFinalSubmit}
-              disabled={!ptSaleType || submitting}
-              className="w-full py-3 rounded-xl bg-wcs-red text-white font-semibold hover:bg-wcs-red/90 transition-colors disabled:opacity-50"
-            >
-              {submitting ? 'Saving...' : 'Submit'}
+            <button onClick={handleDetailNext} disabled={!ptSaleType} className="w-full py-3 rounded-xl bg-wcs-red text-white font-semibold hover:bg-wcs-red/90 transition-colors disabled:opacity-50">
+              Next
             </button>
-            <button onClick={() => setStep(2)} className="text-xs text-text-muted hover:text-text-primary">Back</button>
+            <button onClick={() => { setSaleResult(null); setStep(2) }} className="text-xs text-text-muted hover:text-text-primary">Back</button>
           </div>
         )}
 
         {step === 3 && saleResult === 'No Sale' && (
           <div className="space-y-4">
             <p className="text-sm font-medium text-text-primary text-center">Why no sale?</p>
-            <select
-              value={whyNoSale}
-              onChange={e => setWhyNoSale(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
-            >
+            <select value={whyNoSale} onChange={e => setWhyNoSale(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red">
               <option value="">Select reason...</option>
               {(fieldOptions?.no_sale_reasons || []).map(opt => (
                 <option key={opt} value={opt}>{opt}</option>
               ))}
             </select>
+            <button onClick={handleDetailNext} disabled={!whyNoSale} className="w-full py-3 rounded-xl bg-wcs-red text-white font-semibold hover:bg-wcs-red/90 transition-colors disabled:opacity-50">
+              Next
+            </button>
+            <button onClick={() => { setSaleResult(null); setStep(2) }} className="text-xs text-text-muted hover:text-text-primary">Back</button>
+          </div>
+        )}
+
+        {/* Step 4: Review & Submit */}
+        {step === 4 && (
+          <div className="space-y-4">
+            <p className="text-sm font-medium text-text-primary text-center mb-2">Review & Submit</p>
+            <div className="rounded-xl bg-bg border border-border p-4 space-y-2">
+              {reviewItems.map(item => (
+                <div key={item.label} className="flex justify-between text-sm">
+                  <span className="text-text-muted">{item.label}</span>
+                  <span className="font-medium text-text-primary">{item.value}</span>
+                </div>
+              ))}
+            </div>
             <button
-              onClick={handleFinalSubmit}
-              disabled={!whyNoSale || submitting}
+              onClick={handleSubmit}
+              disabled={submitting}
               className="w-full py-3 rounded-xl bg-wcs-red text-white font-semibold hover:bg-wcs-red/90 transition-colors disabled:opacity-50"
             >
               {submitting ? 'Saving...' : 'Submit'}
             </button>
-            <button onClick={() => setStep(2)} className="text-xs text-text-muted hover:text-text-primary">Back</button>
+            <button
+              onClick={() => {
+                // Go back to the appropriate step to edit
+                if (showNoShow === 'No Show') setStep(1)
+                else if (saleResult === 'Sale') setStep(3)
+                else if (saleResult === 'No Sale') setStep(3)
+                else setStep(2)
+              }}
+              className="w-full py-2 text-xs text-text-muted hover:text-text-primary transition-colors"
+            >
+              Edit answers
+            </button>
           </div>
         )}
       </div>
@@ -358,7 +373,13 @@ export default function DayOneTrackerView({ user, onBack }) {
           appointment={activeModal}
           locationSlug={locationSlug}
           onClose={() => setActiveModal(null)}
-          onSubmitted={() => { setActiveModal(null); loadAppointments() }}
+          onSubmitted={(updatedFields) => {
+            // Optimistic update: immediately move card to completed
+            setAppointments(prev => prev.map(a =>
+              a.id === activeModal.id ? { ...a, ...updatedFields } : a
+            ))
+            setActiveModal(null)
+          }}
         />
       )}
     </div>
