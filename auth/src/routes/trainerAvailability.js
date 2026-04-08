@@ -52,7 +52,7 @@ router.get('/', async (req, res) => {
     // Fetch GHL users
     let userMap = {}
     try {
-      const usersData = await ghlFetch('/users/', location.apiKey)
+      const usersData = await ghlFetch('/users/', location.apiKey, { params: { locationId: location.id } })
       for (const u of (usersData.users || [])) {
         userMap[u.id] = { id: u.id, name: u.name || [u.firstName, u.lastName].filter(Boolean).join(' '), email: (u.email || '').toLowerCase() }
       }
