@@ -3,7 +3,7 @@ import { getStaff, createStaff, updateStaff, deleteStaff, getLocations } from '.
 
 const ROLES = ['front_desk', 'personal_trainer', 'lead', 'manager', 'director', 'admin']
 
-const defaultForm = {
+const emptyForm = {
   email: '',
   first_name: '',
   last_name: '',
@@ -12,27 +12,168 @@ const defaultForm = {
   temp_password: '',
 }
 
-const defaultEditForm = {
-  email: '',
-  first_name: '',
-  last_name: '',
-  role: 'front_desk',
-  location_ids: [],
+function StaffModal({ member, locations, onClose, onSaved }) {
+  const isNew = !member
+  const [form, setForm] = useState(isNew ? { ...emptyForm } : {
+    email: member.email || '',
+    first_name: member.first_name || '',
+    last_name: member.last_name || '',
+    role: member.role || 'front_desk',
+    location_ids: (member.locations || []).map(l => l.id),
+    temp_password: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  function toggleLocation(locId) {
+    setForm(prev => ({
+      ...prev,
+      location_ids: prev.location_ids.includes(locId)
+        ? prev.location_ids.filter(id => id !== locId)
+        : [...prev.location_ids, locId],
+    }))
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      if (isNew) {
+        await createStaff(form)
+      } else {
+        const { temp_password, ...updateData } = form
+        await updateStaff(member.id, updateData)
+      }
+      onSaved()
+    } catch (err) {
+      setError(err.message)
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-surface rounded-2xl border border-border w-full max-w-lg p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-lg font-bold text-text-primary">{isNew ? 'New Staff Member' : 'Edit Staff Member'}</h3>
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary text-2xl leading-none">&times;</button>
+        </div>
+
+        {error && <p className="text-wcs-red text-sm mb-4">{error}</p>}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-text-muted mb-1">First Name</label>
+              <input
+                type="text"
+                required
+                value={form.first_name}
+                onChange={e => setForm(f => ({ ...f, first_name: e.target.value }))}
+                className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Last Name</label>
+              <input
+                type="text"
+                required
+                value={form.last_name}
+                onChange={e => setForm(f => ({ ...f, last_name: e.target.value }))}
+                className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs text-text-muted mb-1">Email</label>
+            <input
+              type="email"
+              required
+              value={form.email}
+              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+              className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-text-muted mb-1">Role</label>
+            <select
+              value={form.role}
+              onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+              className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red capitalize"
+            >
+              {ROLES.map(r => (
+                <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>
+              ))}
+            </select>
+          </div>
+
+          {isNew && (
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Temporary Password</label>
+              <input
+                type="text"
+                required
+                value={form.temp_password}
+                onChange={e => setForm(f => ({ ...f, temp_password: e.target.value }))}
+                className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red"
+                placeholder="Initial password"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs text-text-muted mb-2">Locations</label>
+            <div className="flex flex-wrap gap-2">
+              {locations.map(loc => (
+                <button
+                  key={loc.id}
+                  type="button"
+                  onClick={() => toggleLocation(loc.id)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                    form.location_ids.includes(loc.id)
+                      ? 'bg-wcs-red text-white border-wcs-red'
+                      : 'bg-bg text-text-muted border-border hover:text-text-primary'
+                  }`}
+                >
+                  {loc.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-text-muted border border-border rounded-lg hover:text-text-primary transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 text-sm font-medium bg-wcs-red text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : isNew ? 'Create' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
 }
 
 export default function AdminStaffTab() {
   const [staff, setStaff] = useState([])
   const [locations, setLocations] = useState([])
   const [loading, setLoading] = useState(true)
-  const [showAdd, setShowAdd] = useState(false)
-  const [editingId, setEditingId] = useState(null)
   const [error, setError] = useState(null)
-  const [form, setForm] = useState(defaultForm)
-  const [editForm, setEditForm] = useState(defaultEditForm)
+  const [modalMember, setModalMember] = useState(undefined) // undefined=closed, null=new, object=edit
 
-  useEffect(() => {
-    loadData()
-  }, [])
+  useEffect(() => { loadData() }, [])
 
   async function loadData() {
     setLoading(true)
@@ -48,31 +189,6 @@ export default function AdminStaffTab() {
     }
   }
 
-  async function handleCreate(e) {
-    e.preventDefault()
-    setError(null)
-    try {
-      await createStaff(form)
-      setForm(defaultForm)
-      setShowAdd(false)
-      await loadData()
-    } catch (e) {
-      setError(e.message || 'Failed to create staff member')
-    }
-  }
-
-  async function handleUpdate(id) {
-    setError(null)
-    try {
-      await updateStaff(id, editForm)
-      setEditingId(null)
-      setEditForm(defaultEditForm)
-      await loadData()
-    } catch (e) {
-      setError(e.message || 'Failed to update staff member')
-    }
-  }
-
   async function handleDelete(id) {
     if (!window.confirm('Are you sure you want to delete this staff member?')) return
     setError(null)
@@ -82,26 +198,6 @@ export default function AdminStaffTab() {
     } catch (e) {
       setError(e.message || 'Failed to delete staff member')
     }
-  }
-
-  function startEdit(member) {
-    setEditingId(member.id)
-    setEditForm({
-      email: member.email || '',
-      first_name: member.first_name || '',
-      last_name: member.last_name || '',
-      role: member.role || 'front_desk',
-      location_ids: (member.locations || []).map(l => l.id),
-    })
-  }
-
-  function toggleLocation(locationId, formState, setFormState) {
-    setFormState(prev => {
-      const ids = prev.location_ids.includes(locationId)
-        ? prev.location_ids.filter(id => id !== locationId)
-        : [...prev.location_ids, locationId]
-      return { ...prev, location_ids: ids }
-    })
   }
 
   if (loading) {
@@ -120,116 +216,15 @@ export default function AdminStaffTab() {
         </div>
       )}
 
-      {/* Add Staff Button */}
       <div className="flex justify-end">
         <button
-          onClick={() => setShowAdd(v => !v)}
+          onClick={() => setModalMember(null)}
           className="px-4 py-2 bg-wcs-red text-white text-sm font-medium rounded-lg hover:opacity-90 transition-opacity"
         >
-          {showAdd ? 'Cancel' : '+ Add Staff'}
+          + Add Staff
         </button>
       </div>
 
-      {/* Add Staff Form */}
-      {showAdd && (
-        <form
-          onSubmit={handleCreate}
-          className="bg-surface border border-border rounded-xl p-6 space-y-4"
-        >
-          <h3 className="text-sm font-semibold text-text-primary mb-2">New Staff Member</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs text-text-muted mb-1">Email</label>
-              <input
-                type="email"
-                required
-                value={form.email}
-                onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red"
-                placeholder="staff@example.com"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-text-muted mb-1">First Name</label>
-              <input
-                type="text"
-                required
-                value={form.first_name}
-                onChange={e => setForm(f => ({ ...f, first_name: e.target.value }))}
-                className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red"
-                placeholder="Jane"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-text-muted mb-1">Last Name</label>
-              <input
-                type="text"
-                required
-                value={form.last_name}
-                onChange={e => setForm(f => ({ ...f, last_name: e.target.value }))}
-                className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red"
-                placeholder="Smith"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-text-muted mb-1">Role</label>
-              <select
-                value={form.role}
-                onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-                className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red"
-              >
-                {ROLES.map(r => (
-                  <option key={r} value={r}>{r.replace('_', ' ')}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-text-muted mb-1">Temporary Password</label>
-              <input
-                type="text"
-                required
-                value={form.temp_password}
-                onChange={e => setForm(f => ({ ...f, temp_password: e.target.value }))}
-                className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red"
-                placeholder="Temp password"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs text-text-muted mb-2">Locations</label>
-            <div className="flex flex-wrap gap-3">
-              {locations.map(loc => (
-                <label key={loc.id} className="flex items-center gap-1.5 text-sm text-text-primary cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.location_ids.includes(loc.id)}
-                    onChange={() => toggleLocation(loc.id, form, setForm)}
-                    className="accent-wcs-red"
-                  />
-                  {loc.name}
-                </label>
-              ))}
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => { setShowAdd(false); setForm(defaultForm) }}
-              className="px-4 py-2 text-sm text-text-muted border border-border rounded-lg hover:text-text-primary transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 text-sm font-medium bg-wcs-red text-white rounded-lg hover:opacity-90 transition-opacity"
-            >
-              Create
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* Staff Table */}
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -251,116 +246,50 @@ export default function AdminStaffTab() {
             )}
             {staff.map(member => (
               <tr key={member.id} className="border-b border-border last:border-0 hover:bg-bg transition-colors">
-                {editingId === member.id ? (
-                  <>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={editForm.first_name}
-                          onChange={e => setEditForm(f => ({ ...f, first_name: e.target.value }))}
-                          className="w-full px-2 py-1 bg-bg border border-border rounded text-sm text-text-primary focus:outline-none focus:border-wcs-red"
-                          placeholder="First"
-                        />
-                        <input
-                          type="text"
-                          value={editForm.last_name}
-                          onChange={e => setEditForm(f => ({ ...f, last_name: e.target.value }))}
-                          className="w-full px-2 py-1 bg-bg border border-border rounded text-sm text-text-primary focus:outline-none focus:border-wcs-red"
-                          placeholder="Last"
-                        />
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="email"
-                        value={editForm.email}
-                        onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
-                        className="w-full px-2 py-1 bg-bg border border-border rounded text-sm text-text-primary focus:outline-none focus:border-wcs-red"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <select
-                        value={editForm.role}
-                        onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))}
-                        className="px-2 py-1 bg-bg border border-border rounded text-sm text-text-primary focus:outline-none focus:border-wcs-red"
-                      >
-                        {ROLES.map(r => (
-                          <option key={r} value={r}>{r.replace('_', ' ')}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        {locations.map(loc => (
-                          <label key={loc.id} className="flex items-center gap-1 text-xs text-text-primary cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={editForm.location_ids.includes(loc.id)}
-                              onChange={() => toggleLocation(loc.id, editForm, setEditForm)}
-                              className="accent-wcs-red"
-                            />
-                            {loc.name}
-                          </label>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleUpdate(member.id)}
-                          className="text-xs font-medium text-wcs-red hover:underline"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => { setEditingId(null); setEditForm(defaultEditForm) }}
-                          className="text-xs text-text-muted hover:text-text-primary"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </td>
-                  </>
-                ) : (
-                  <>
-                    <td className="px-4 py-3 text-text-primary font-medium">
-                      {[member.first_name, member.last_name].filter(Boolean).join(' ') || member.display_name || '—'}
-                    </td>
-                    <td className="px-4 py-3 text-text-muted">{member.email}</td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 bg-bg border border-border rounded text-xs text-text-primary capitalize">
-                        {member.role?.replace('_', ' ') || '—'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-text-muted text-xs">
-                      {member.locations?.length
-                        ? member.locations.map(l => l.name).join(', ')
-                        : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-3">
-                        <button
-                          onClick={() => startEdit(member)}
-                          className="text-xs font-medium text-text-muted hover:text-text-primary transition-colors"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(member.id)}
-                          className="text-xs font-medium text-wcs-red hover:underline"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </>
-                )}
+                <td className="px-4 py-3 text-text-primary font-medium">
+                  {[member.first_name, member.last_name].filter(Boolean).join(' ') || member.display_name || '—'}
+                </td>
+                <td className="px-4 py-3 text-text-muted">{member.email}</td>
+                <td className="px-4 py-3">
+                  <span className="px-2 py-0.5 bg-bg border border-border rounded text-xs text-text-primary capitalize">
+                    {member.role?.replace(/_/g, ' ') || '—'}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-text-muted text-xs">
+                  {member.locations?.length
+                    ? member.locations.map(l => l.name).join(', ')
+                    : '—'}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <div className="flex items-center justify-end gap-3">
+                    <button
+                      onClick={() => setModalMember(member)}
+                      className="text-xs font-medium text-text-muted hover:text-text-primary transition-colors"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(member.id)}
+                      className="text-xs font-medium text-wcs-red hover:underline"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {modalMember !== undefined && (
+        <StaffModal
+          member={modalMember}
+          locations={locations}
+          onClose={() => setModalMember(undefined)}
+          onSaved={() => { setModalMember(undefined); loadData() }}
+        />
+      )}
     </div>
   )
 }
