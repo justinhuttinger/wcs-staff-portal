@@ -5,7 +5,7 @@ function sleep(ms) {
 }
 
 async function ghlFetch(path, apiKey, options = {}) {
-  const { method = 'GET', params, body } = options
+  const { method = 'GET', params, body, version = '2021-07-28' } = options
 
   let url = `${BASE_URL}${path}`
   if (params) {
@@ -17,7 +17,7 @@ async function ghlFetch(path, apiKey, options = {}) {
     method,
     headers: {
       'Authorization': `Bearer ${apiKey}`,
-      'Version': '2021-07-28',
+      'Version': version,
       'Content-Type': 'application/json',
     },
   }

@@ -9,27 +9,45 @@ const router = Router()
 router.use(authenticate)
 router.use(requireRole('personal_trainer'))
 
-// Cache calendar IDs per location (Day One calendar group)
+const CAL_VERSION = '2021-04-15'
+
+// Cache: location -> { calendarIds, groupId }
 const calendarCache = {}
 
-async function getDayOneCalendarIds(locationId, apiKey) {
-  const cacheKey = locationId
-  if (calendarCache[cacheKey]) return calendarCache[cacheKey]
+async function getDayOneCalendarInfo(locationId, apiKey) {
+  if (calendarCache[locationId]) return calendarCache[locationId]
 
+  // List all calendars at this location
   const data = await ghlFetch('/calendars/', apiKey, {
     params: { locationId },
+    version: CAL_VERSION,
   })
 
   const calendars = data.calendars || []
+  console.log(`[DayOneTracker] Found ${calendars.length} calendars for ${locationId}`)
+
+  // Find calendars whose name or groupId relates to "Day One"
+  // First, find any calendar with "day one" in its name
   const dayOneCalendars = calendars.filter(cal => {
     const name = (cal.name || '').toLowerCase()
-    const group = (cal.groupName || cal.group || '').toLowerCase()
-    return name.includes('day one') || group.includes('day one')
+    return name.includes('day one') || name.includes('dayone') || name.includes('day 1')
   })
 
-  const ids = dayOneCalendars.map(c => c.id)
-  if (ids.length > 0) calendarCache[cacheKey] = ids
-  return ids
+  if (dayOneCalendars.length > 0) {
+    // If they share a groupId, we can use that for filtering events
+    const groupId = dayOneCalendars[0].groupId || null
+    const result = {
+      calendarIds: dayOneCalendars.map(c => c.id),
+      groupId,
+    }
+    calendarCache[locationId] = result
+    console.log(`[DayOneTracker] Day One calendars: ${result.calendarIds.length}, groupId: ${groupId}`)
+    return result
+  }
+
+  // Fallback: log all calendar names for debugging
+  console.log(`[DayOneTracker] No Day One calendars found. Available:`, calendars.map(c => c.name))
+  return { calendarIds: [], groupId: null }
 }
 
 // GET /day-one-tracker/appointments
@@ -46,31 +64,50 @@ router.get('/appointments', async (req, res) => {
   }
 
   try {
-    const calendarIds = await getDayOneCalendarIds(location.id, location.apiKey)
-    if (calendarIds.length === 0) {
-      return res.json({ appointments: [] })
+    const calInfo = await getDayOneCalendarInfo(location.id, location.apiKey)
+    if (calInfo.calendarIds.length === 0) {
+      return res.json({ appointments: [], debug: 'No Day One calendars found at this location' })
     }
 
+    // Convert dates to epoch milliseconds (GHL expects millis)
     const now = new Date()
-    const startTime = start_date
-      ? new Date(start_date + 'T00:00:00.000Z').toISOString()
-      : new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-    const endTime = end_date
-      ? new Date(end_date + 'T23:59:59.999Z').toISOString()
-      : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
+    const startMs = start_date
+      ? new Date(start_date + 'T00:00:00.000Z').getTime()
+      : new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+    const endMs = end_date
+      ? new Date(end_date + 'T23:59:59.999Z').getTime()
+      : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).getTime()
 
     let allEvents = []
-    for (const calId of calendarIds) {
+
+    // Try groupId first (single API call), fall back to per-calendar
+    if (calInfo.groupId) {
       const data = await ghlFetch('/calendars/events', location.apiKey, {
         params: {
           locationId: location.id,
-          calendarId: calId,
-          startTime,
-          endTime,
+          groupId: calInfo.groupId,
+          startTime: startMs.toString(),
+          endTime: endMs.toString(),
         },
+        version: CAL_VERSION,
       })
-      allEvents.push(...(data.events || []))
+      allEvents = data.events || []
+    } else {
+      for (const calId of calInfo.calendarIds) {
+        const data = await ghlFetch('/calendars/events', location.apiKey, {
+          params: {
+            locationId: location.id,
+            calendarId: calId,
+            startTime: startMs.toString(),
+            endTime: endMs.toString(),
+          },
+          version: CAL_VERSION,
+        })
+        allEvents.push(...(data.events || []))
+      }
     }
+
+    console.log(`[DayOneTracker] Fetched ${allEvents.length} events for ${location_slug}`)
 
     // Role check: managers see all, others see only their own
     const userLevel = ROLE_HIERARCHY.indexOf(req.staff.role)
