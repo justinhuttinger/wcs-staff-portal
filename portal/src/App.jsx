@@ -87,6 +87,12 @@ export default function App() {
   function handleLogout() {
     clearToken()
     setUser(null)
+    // Reset all views to homepage
+    setShowAdmin(false)
+    setShowDayOne(false)
+    setShowTours(false)
+    setShowDayOneTracker(false)
+    setShowReporting(false)
     // Notify Electron main process about logout
     if (window.wcsElectron) {
       window.wcsElectron.onLogout()
