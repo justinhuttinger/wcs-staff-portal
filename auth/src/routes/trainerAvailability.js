@@ -110,12 +110,13 @@ router.get('/', async (req, res) => {
       if (!isManager && user.email !== userEmail) continue
 
       // Try to get per-member schedule
-      // In GHL, team members may have individual openHours
       let memberSchedule = calSchedule
       if (Array.isArray(calDetail.teamMembers)) {
         const memberObj = calDetail.teamMembers.find(m => (m.userId || m.id || m) === memberId)
         if (memberObj && typeof memberObj === 'object') {
-          memberSchedule = memberObj.openHours || memberObj.schedule || memberObj.availability || calSchedule
+          console.log(`[TrainerAvail] Member ${user.name} keys:`, Object.keys(memberObj))
+          console.log(`[TrainerAvail] Member ${user.name} data:`, JSON.stringify(memberObj).substring(0, 1000))
+          memberSchedule = memberObj.openHours || memberObj.schedule || memberObj.availability || memberObj.calendarConfig?.openHours || calSchedule
         }
       }
 
