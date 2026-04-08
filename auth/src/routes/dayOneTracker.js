@@ -109,6 +109,19 @@ router.get('/appointments', async (req, res) => {
 
     console.log(`[DayOneTracker] Fetched ${allEvents.length} events for ${location_slug}`)
 
+    // Fetch GHL users for this location to resolve assignedUserId → name/email
+    let userMap = {}
+    try {
+      const usersData = await ghlFetch('/users/', location.apiKey, {
+        params: { locationId: location.id },
+      })
+      for (const u of (usersData.users || [])) {
+        userMap[u.id] = { name: u.name || u.firstName + ' ' + u.lastName, email: (u.email || '').toLowerCase() }
+      }
+    } catch (e) {
+      console.warn('[DayOneTracker] Could not fetch users:', e.message)
+    }
+
     // Role check: managers see all, others see only their own
     const userLevel = ROLE_HIERARCHY.indexOf(req.staff.role)
     const managerLevel = ROLE_HIERARCHY.indexOf('manager')
@@ -117,44 +130,55 @@ router.get('/appointments', async (req, res) => {
 
     if (!isManager) {
       allEvents = allEvents.filter(evt => {
-        const assignedEmail = (evt.assignedUserId || evt.selectedUser || evt.calendarOwnerEmail || '').toLowerCase()
-        const userEmail2 = (evt.user?.email || '').toLowerCase()
-        return assignedEmail === userEmail || userEmail2 === userEmail
+        const assignedId = evt.assignedUserId
+        const assignedUser = userMap[assignedId]
+        return assignedUser?.email === userEmail
       })
     }
 
-    // Fetch contact custom fields from synced data
+    // Fetch contact names + custom fields from synced data
     const contactIds = [...new Set(allEvents.map(e => e.contactId).filter(Boolean))]
-    let contactFields = {}
+    let contactData = {}
     if (contactIds.length > 0) {
       const { data: contacts } = await supabaseAdmin
+        .from('ghl_contacts_v2')
+        .select('id, first_name, last_name, email')
+        .in('id', contactIds)
+      if (contacts) {
+        for (const c of contacts) contactData[c.id] = c
+      }
+
+      // Also get custom field status from report view
+      const { data: cfData } = await supabaseAdmin
         .from('ghl_contacts_report')
         .select('id, day_one_status, day_one_sale, show_or_no_show')
         .in('id', contactIds)
-      if (contacts) {
-        for (const c of contacts) {
-          contactFields[c.id] = c
+      if (cfData) {
+        for (const c of cfData) {
+          if (contactData[c.id]) Object.assign(contactData[c.id], c)
+          else contactData[c.id] = c
         }
       }
     }
 
     const appointments = allEvents
       .map(evt => {
-        const cf = contactFields[evt.contactId] || {}
+        const contact = contactData[evt.contactId] || {}
+        const assignedUser = userMap[evt.assignedUserId] || {}
+        const contactName = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unknown'
         return {
           id: evt.id,
           contact_id: evt.contactId || null,
-          contact_name: [evt.firstName, evt.lastName].filter(Boolean).join(' ') || evt.title || 'Unknown',
-          contact_email: evt.email || null,
+          contact_name: contactName,
           appointment_time: evt.startTime || evt.start || null,
           end_time: evt.endTime || evt.end || null,
-          assigned_user: evt.selectedUser || evt.assignedUserId || null,
-          assigned_user_name: evt.userName || evt.user?.name || null,
-          calendar_name: evt.calendarName || null,
+          assigned_user_id: evt.assignedUserId || null,
+          assigned_user_name: assignedUser.name || null,
+          assigned_user_email: assignedUser.email || null,
           status: evt.appointmentStatus || evt.status || 'confirmed',
-          day_one_status: cf.day_one_status || null,
-          day_one_sale: cf.day_one_sale || null,
-          show_or_no_show: cf.show_or_no_show || null,
+          day_one_status: contact.day_one_status || null,
+          day_one_sale: contact.day_one_sale || null,
+          show_or_no_show: contact.show_or_no_show || null,
         }
       })
       .sort((a, b) => new Date(b.appointment_time) - new Date(a.appointment_time))

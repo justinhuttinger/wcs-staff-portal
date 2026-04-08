@@ -1,6 +1,27 @@
 import { useState, useEffect } from 'react'
 import { getDayOneTrackerAppointments, submitDayOneResult, getDayOneFieldOptions } from '../lib/api'
 
+// Cache submitted results locally so they persist across view re-entries
+const CACHE_KEY = 'wcs_day_one_submissions'
+function getCachedSubmissions() {
+  try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '{}') } catch { return {} }
+}
+function cacheSubmission(contactId, fields) {
+  const cache = getCachedSubmissions()
+  cache[contactId] = { ...fields, submitted_at: Date.now() }
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(cache)) } catch {}
+}
+function applyCache(appointments) {
+  const cache = getCachedSubmissions()
+  return appointments.map(a => {
+    const cached = cache[a.contact_id]
+    if (cached && !a.day_one_status) {
+      return { ...a, ...cached }
+    }
+    return a
+  })
+}
+
 const LOCATIONS = [
   { slug: 'salem', label: 'Salem' },
   { slug: 'keizer', label: 'Keizer' },
@@ -263,7 +284,7 @@ export default function DayOneTrackerView({ user, onBack }) {
     setError('')
     try {
       const res = await getDayOneTrackerAppointments({ location_slug: locationSlug })
-      setAppointments(res.appointments || [])
+      setAppointments(applyCache(res.appointments || []))
     } catch (err) {
       setError(err.message)
     }
@@ -374,7 +395,8 @@ export default function DayOneTrackerView({ user, onBack }) {
           locationSlug={locationSlug}
           onClose={() => setActiveModal(null)}
           onSubmitted={(updatedFields) => {
-            // Optimistic update: immediately move card to completed
+            // Cache + optimistic update: immediately move card to completed
+            cacheSubmission(activeModal.contact_id, updatedFields)
             setAppointments(prev => prev.map(a =>
               a.id === activeModal.id ? { ...a, ...updatedFields } : a
             ))
