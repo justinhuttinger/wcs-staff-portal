@@ -58,9 +58,10 @@ router.get('/', async (req, res) => {
       return res.json({ tours: [], location: location.name, message: 'No Gym Tour calendar found' })
     }
 
-    // Fetch events from the tour calendar
-    const startTime = new Date(startDate + 'T00:00:00').getTime()
-    const endTime = new Date(endDateVal + 'T23:59:59').getTime()
+    // Fetch events — use Pacific time boundaries (UTC-7)
+    // Render runs in UTC, so we offset to Pacific: midnight PDT = 07:00 UTC
+    const startTime = new Date(startDate + 'T07:00:00Z').getTime()
+    const endTime = new Date(endDateVal + 'T06:59:59Z').getTime() + 24 * 60 * 60 * 1000
 
     const eventsRes = await fetch(
       'https://services.leadconnectorhq.com/calendars/events?locationId=' + location.ghl_location_id +
