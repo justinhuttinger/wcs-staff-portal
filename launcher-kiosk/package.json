@@ -1,0 +1,28 @@
+{
+  "name": "wcs-dayone-kiosk",
+  "version": "1.0.0",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "dependencies": {
+    "electron": "^33.0.0"
+  },
+  "devDependencies": {
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.wcs.dayone-kiosk",
+    "productName": "WCS Day One",
+    "win": {
+      "target": "nsis",
+      "icon": "../launcher/assets/icon-256.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "installerIcon": "../launcher/assets/icon-256.png"
+    }
+  }
+}

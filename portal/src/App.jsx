@@ -7,11 +7,14 @@ import ToursView from './components/ToursView'
 import ReportingView from './components/ReportingView'
 import DayOneTrackerView from './components/DayOneTrackerView'
 import TrainerAvailabilityView from './components/TrainerAvailabilityView'
-import { getMe, getToken, clearToken } from './lib/api'
+import { getMe, getToken, clearToken, setToken, api } from './lib/api'
 
 function getParam(key) {
   return new URLSearchParams(window.location.search).get(key)
 }
+
+const kioskMode = getParam('mode')
+const kioskKey = getParam('key')
 
 export default function App() {
   const [user, setUser] = useState(null)
@@ -33,8 +36,16 @@ export default function App() {
   }, [])
 
   // Auto-login from stored token (for new tabs like Reporting)
+  // Or kiosk auto-login with shared secret
   useEffect(() => {
-    if (!user && getToken()) {
+    if (kioskMode === 'dayone' && kioskKey && !user) {
+      api('/auth/kiosk', { method: 'POST', body: JSON.stringify({ key: kioskKey }) })
+        .then(data => {
+          setToken(data.token)
+          setUser({ staff: data.staff, visible_tools: [] })
+        })
+        .catch(() => {})
+    } else if (!user && getToken()) {
       getMe().then(meData => setUser(meData)).catch(() => {
         clearToken()
       })
@@ -100,10 +111,28 @@ export default function App() {
   }
 
   if (!user) {
+    if (kioskMode === 'dayone') {
+      return <div className="min-h-screen bg-bg flex items-center justify-center"><p className="text-text-muted text-sm">Loading Day One Tracker...</p></div>
+    }
     return <LoginScreen onLogin={handleLogin} />
   }
 
   const location = locationParam || user.staff.locations?.find(l => l.is_primary)?.name || 'Salem'
+
+  // Kiosk mode: show only Day One Tracker, no header/navigation
+  if (kioskMode === 'dayone') {
+    return (
+      <div className="min-h-screen bg-bg">
+        <div className="px-8 py-4">
+          <h1 className="text-xl font-black text-text-primary tracking-[-0.5px]">
+            <span className="bg-gradient-to-r from-wcs-red to-[#fc8181] bg-clip-text text-transparent">WCS</span>
+            {' '}Day One Tracker
+          </h1>
+        </div>
+        <DayOneTrackerView user={user} onBack={() => {}} location={location} isAdmin={true} />
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-bg flex flex-col">

@@ -5,6 +5,54 @@ const { createClient } = require('@supabase/supabase-js')
 
 const router = Router()
 
+// POST /auth/kiosk — public, authenticates with shared secret
+router.post('/kiosk', async (req, res) => {
+  const { key } = req.body
+  const kioskSecret = process.env.KIOSK_SECRET
+  const kioskEmail = process.env.KIOSK_EMAIL
+  const kioskPassword = process.env.KIOSK_PASSWORD
+
+  if (!kioskSecret || !kioskEmail || !kioskPassword) {
+    return res.status(500).json({ error: 'Kiosk not configured' })
+  }
+  if (key !== kioskSecret) {
+    return res.status(401).json({ error: 'Invalid kiosk key' })
+  }
+
+  // Login as the kiosk service account
+  const anonClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+  const { data: authData, error: authError } = await anonClient.auth.signInWithPassword({
+    email: kioskEmail,
+    password: kioskPassword,
+  })
+
+  if (authError) {
+    return res.status(500).json({ error: 'Kiosk auth failed' })
+  }
+
+  const { data: staff } = await supabaseAdmin
+    .from('staff')
+    .select('id, email, display_name, first_name, last_name, role')
+    .eq('id', authData.user.id)
+    .single()
+
+  const { data: staffLocs } = await supabaseAdmin
+    .from('staff_locations')
+    .select('location_id, is_primary, locations(id, name)')
+    .eq('staff_id', authData.user.id)
+
+  const locations = (staffLocs || []).map(sl => ({
+    id: sl.locations.id,
+    name: sl.locations.name,
+    is_primary: sl.is_primary,
+  }))
+
+  res.json({
+    token: authData.session.access_token,
+    staff: { ...(staff || {}), locations },
+  })
+})
+
 // POST /auth/login — public
 router.post('/login', async (req, res) => {
   const { email, password } = req.body
