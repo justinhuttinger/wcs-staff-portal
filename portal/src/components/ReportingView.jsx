@@ -1,16 +1,16 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import MembershipReport from './reports/MembershipReport'
 import PTReport from './reports/PTReport'
-import PipelineReport from './reports/PipelineReport'
 import SalespersonStats from './reports/SalespersonStats'
 import AdReports from './reports/AdReports'
+import ClubHealthReport from './reports/ClubHealthReport'
 
-const REPORT_TABS = [
-  { key: 'salesperson', label: 'Salesperson Stats' },
-  { key: 'membership', label: 'Membership' },
-  { key: 'pt', label: 'PT' },
-  { key: 'pipelines', label: 'Pipelines' },
-  { key: 'ads', label: 'Ad Reports' },
+const REPORT_TILES = [
+  { key: 'club-health', label: 'Club Health', desc: 'Dashboard', icon: '❤️' },
+  { key: 'salesperson', label: 'Salesperson Stats', desc: 'Performance', icon: '📊' },
+  { key: 'membership', label: 'Membership', desc: 'Report', icon: '🏷️' },
+  { key: 'pt', label: 'PT / Day One', desc: 'Report', icon: '🏋️' },
+  { key: 'ads', label: 'Ad Reports', desc: 'Coming Soon', icon: '📣' },
 ]
 
 const LOCATIONS = [
@@ -69,12 +69,31 @@ function getToday() {
   return new Date().toISOString().split('T')[0]
 }
 
+function getSubRoute() {
+  const hash = window.location.hash
+  if (hash.startsWith('#reporting/')) return hash.replace('#reporting/', '')
+  return null
+}
+
 export default function ReportingView({ user, onBack }) {
-  const [activeTab, setActiveTab] = useState('salesperson')
+  const [activeReport, setActiveReport] = useState(getSubRoute())
   const [startDate, setStartDate] = useState(getMonthStart())
   const [endDate, setEndDate] = useState(getToday())
   const [locationSlug, setLocationSlug] = useState('all')
   const [activeQuick, setActiveQuick] = useState('this_month')
+
+  useEffect(() => {
+    function onHashChange() {
+      setActiveReport(getSubRoute())
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
+
+  function navigateTo(key) {
+    window.location.hash = key ? '#reporting/' + key : '#reporting'
+    setActiveReport(key || null)
+  }
 
   function applyQuickRange(key) {
     setActiveQuick(key)
@@ -89,20 +108,30 @@ export default function ReportingView({ user, onBack }) {
     else setEndDate(value)
   }
 
+  function handleBack() {
+    if (activeReport) {
+      navigateTo(null)
+    } else if (onBack) {
+      onBack()
+    }
+  }
+
   return (
-    <div className="w-full px-8 py-6">
+    <div className="w-full px-8 py-6 max-w-6xl mx-auto">
       {/* Header */}
       <div className="mb-5">
         <button
-          onClick={onBack}
+          onClick={handleBack}
           className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
-          Back to Portal
+          {activeReport ? 'Back to Reports' : 'Back to Portal'}
         </button>
-        <h2 className="text-xl font-bold text-text-primary">Reporting</h2>
+        <h2 className="text-xl font-bold text-text-primary">
+          {activeReport ? REPORT_TILES.find(t => t.key === activeReport)?.label || 'Report' : 'Reporting'}
+        </h2>
       </div>
 
       {/* Location Selector */}
@@ -122,9 +151,8 @@ export default function ReportingView({ user, onBack }) {
         ))}
       </div>
 
-      {/* Date Controls */}
-      <div className="flex flex-wrap items-center gap-3 mb-6">
-        {/* Quick range buttons */}
+      {/* Date Controls — right aligned */}
+      <div className="flex flex-wrap items-center gap-3 mb-6 justify-end">
         <div className="flex flex-wrap gap-1.5">
           {QUICK_RANGES.map(qr => (
             <button
@@ -140,8 +168,7 @@ export default function ReportingView({ user, onBack }) {
             </button>
           ))}
         </div>
-        {/* Manual date pickers */}
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="flex items-center gap-2">
           <label className="text-xs text-text-muted">From</label>
           <input
             type="date"
@@ -159,38 +186,43 @@ export default function ReportingView({ user, onBack }) {
         </div>
       </div>
 
-      {/* Tab Bar */}
-      <div className="flex gap-1 mb-6 border-b border-border">
-        {REPORT_TABS.map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === tab.key
-                ? 'border-wcs-red text-wcs-red'
-                : 'border-transparent text-text-muted hover:text-text-primary'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab Content */}
-      {activeTab === 'salesperson' && (
-        <SalespersonStats startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
-      )}
-      {activeTab === 'membership' && (
-        <MembershipReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
-      )}
-      {activeTab === 'pt' && (
-        <PTReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
-      )}
-      {activeTab === 'pipelines' && (
-        <PipelineReport locationSlug={locationSlug} />
-      )}
-      {activeTab === 'ads' && (
-        <AdReports startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+      {/* Content — Tile Grid or Active Report */}
+      {!activeReport ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
+          {REPORT_TILES.map(tile => (
+            <button
+              key={tile.key}
+              onClick={() => navigateTo(tile.key)}
+              className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+            >
+              <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg text-wcs-red group-hover:bg-wcs-red group-hover:text-white transition-all duration-200">
+                <span className="text-2xl">{tile.icon}</span>
+              </div>
+              <div className="text-center">
+                <span className="block text-base font-semibold text-text-primary">{tile.label}</span>
+                <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">{tile.desc}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <>
+          {activeReport === 'club-health' && (
+            <ClubHealthReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+          )}
+          {activeReport === 'salesperson' && (
+            <SalespersonStats startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+          )}
+          {activeReport === 'membership' && (
+            <MembershipReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+          )}
+          {activeReport === 'pt' && (
+            <PTReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+          )}
+          {activeReport === 'ads' && (
+            <AdReports startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+          )}
+        </>
       )}
     </div>
   )
