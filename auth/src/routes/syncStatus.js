@@ -48,25 +48,18 @@ router.get('/', async (req, res) => {
     if (deltaError && deltaError.code !== 'PGRST116') console.error('Last delta sync query failed:', deltaError.message)
 
     // Contacts per location
-    const { data: contactsByLoc } = await supabaseAdmin
-      .rpc('exec_sql', { query: `
-        SELECT l.name, COUNT(c.id) as count
-        FROM ghl_contacts_v2 c
-        JOIN ghl_locations l ON l.id = c.location_id
-        GROUP BY l.name ORDER BY l.name
-      `}).catch(() => ({ data: null }))
-
-    // Fallback if RPC not available
-    let locationBreakdown = null
-    if (!contactsByLoc) {
+    let contactsByLoc = null
+    try {
       const { data: locs } = await supabaseAdmin.from('ghl_locations').select('id, name')
       if (locs) {
-        locationBreakdown = []
+        contactsByLoc = []
         for (const loc of locs) {
           const { count } = await supabaseAdmin.from('ghl_contacts_v2').select('*', { count: 'exact', head: true }).eq('location_id', loc.id)
-          locationBreakdown.push({ name: loc.name, contacts: count || 0 })
+          contactsByLoc.push({ name: loc.name, contacts: count || 0 })
         }
       }
+    } catch (e) {
+      console.error('Location breakdown failed:', e.message)
     }
 
     // Check for errors in recent logs
@@ -84,7 +77,7 @@ router.get('/', async (req, res) => {
       last_full_duration_ms: lastFull?.duration_ms || null,
       last_delta_sync: lastDelta?.completed_at || null,
       last_delta_duration_ms: lastDelta?.duration_ms || null,
-      by_location: contactsByLoc || locationBreakdown || [],
+      by_location: contactsByLoc || [],
       recent_logs: recentLogs || [],
       recent_errors: recentErrors.length,
     })
