@@ -142,14 +142,14 @@ export async function getVIPReport(params = {}) {
   return api('/reports/vip' + (qs ? '?' + qs : ''))
 }
 
-export async function getPipelineReport(params = {}) {
-  const qs = new URLSearchParams(params).toString()
-  return api('/reports/pipelines' + (qs ? '?' + qs : ''))
-}
-
 export async function getSalespersonStats(params = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/reports/salesperson-stats' + (qs ? '?' + qs : ''))
+}
+
+export async function getClubHealthReport(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/club-health' + (qs ? '?' + qs : ''))
 }
 
 export async function getSyncStatus() {

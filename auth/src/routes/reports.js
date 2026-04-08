@@ -357,4 +357,76 @@ router.get('/pt', async (req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// GET /reports/club-health
+// Query params: start_date, end_date, location_id, location_slug
+// ---------------------------------------------------------------------------
+router.get('/club-health', async (req, res) => {
+  const { start_date, end_date } = req.query
+
+  try {
+    const locationFilter = await resolveLocationFilter(req.query)
+
+    const startMs = dateToMs(start_date, false)
+    const endMs   = dateToMs(end_date, true)
+
+    let q = supabaseAdmin
+      .from('ghl_contacts_report')
+      .select(
+        'vip_count, day_one_booked, day_one_status, day_one_sale,' +
+        'same_day_sale, member_sign_date, location_slug'
+      )
+      .not('member_sign_date', 'is', null)
+
+    q = applyLocationFilter(q, locationFilter)
+    q = applyDateRange(q, 'member_sign_date', startMs, endMs)
+
+    const { data, error } = await q
+    if (error) return res.status(500).json({ error: 'Failed to fetch club health data', detail: error.message })
+
+    const contacts = data || []
+
+    let totalVips = 0
+    let totalSameDaySales = 0
+    let totalDayOnesBooked = 0
+
+    const dayOneBookedCounts = {}
+    const dayOneStatusCounts = {}
+    const dayOneSaleCounts = {}
+
+    for (const c of contacts) {
+      totalVips += (parseInt(c.vip_count, 10) || 0)
+      if (c.same_day_sale === 'Yes') totalSameDaySales++
+      if (c.day_one_booked === 'Yes') totalDayOnesBooked++
+
+      // Day One Booked pie
+      const bookedVal = c.day_one_booked || 'No'
+      dayOneBookedCounts[bookedVal] = (dayOneBookedCounts[bookedVal] || 0) + 1
+
+      // Day One Status pie (only for booked = Yes)
+      if (c.day_one_booked === 'Yes') {
+        const statusVal = c.day_one_status || 'Unknown'
+        dayOneStatusCounts[statusVal] = (dayOneStatusCounts[statusVal] || 0) + 1
+      }
+
+      // Day One Sale pie (only for status = Completed)
+      if (c.day_one_status === 'Completed') {
+        const saleVal = c.day_one_sale || 'No Sale'
+        dayOneSaleCounts[saleVal] = (dayOneSaleCounts[saleVal] || 0) + 1
+      }
+    }
+
+    res.json({
+      total_vips: totalVips,
+      total_same_day_sales: totalSameDaySales,
+      total_day_ones_booked: totalDayOnesBooked,
+      day_one_booked: dayOneBookedCounts,
+      day_one_status: dayOneStatusCounts,
+      day_one_sale: dayOneSaleCounts,
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 module.exports = router
