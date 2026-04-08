@@ -126,10 +126,10 @@ export default function App() {
         <div className="px-8 py-4">
           <h1 className="text-xl font-black text-text-primary tracking-[-0.5px]">
             <span className="bg-gradient-to-r from-wcs-red to-[#fc8181] bg-clip-text text-transparent">WCS</span>
-            {' '}Day One Tracker
+            {' '}Day One Tracker — {location}
           </h1>
         </div>
-        <DayOneTrackerView user={user} onBack={() => {}} location={location} isAdmin={true} />
+        <DayOneTrackerView user={user} onBack={null} location={location} isAdmin={false} />
       </div>
     )
   }

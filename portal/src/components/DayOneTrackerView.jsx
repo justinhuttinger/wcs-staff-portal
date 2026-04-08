@@ -290,15 +290,17 @@ export default function DayOneTrackerView({ user, onBack, location, isAdmin }) {
   return (
     <div className="max-w-3xl mx-auto w-full px-8 py-6">
       <div className="mb-5">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          Back to Portal
-        </button>
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary hover:border-text-muted transition-colors mb-2"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Portal
+          </button>
+        )}
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-text-primary">Day One Tracker</h2>
           {pending.length > 0 && (
