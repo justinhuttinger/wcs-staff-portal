@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getPTReport } from '../../lib/api'
+import { exportCSV, exportPDF } from '../../lib/export'
 
 function formatDate(val) {
   if (!val) return '—'
@@ -49,53 +50,23 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
   if (error) return <p className="text-wcs-red text-sm py-4">{error}</p>
   if (!data) return null
 
-  const totalDayOnes = data.total_set || 0
-  const totalCompleted = data.total_showed || 0
-  const totalSales = data.total_closed || 0
-  const completionRate = totalDayOnes > 0 ? Math.round((totalCompleted / totalDayOnes) * 100) : 0
-  const closeRate = totalCompleted > 0 ? Math.round((totalSales / totalCompleted) * 100) : 0
+  const totalDayOnes = data.total_day_ones || 0
+  const completionRate = data.completion_rate || 0
+  const closeRate = data.close_rate || 0
 
-  // Build trainer rows: group contacts by trainer
   const contacts = data.contacts || []
-  const byTrainer = {}
-  for (const c of contacts) {
-    const trainer = c.day_one_trainer || c.trainer || 'Unassigned'
-    if (!byTrainer[trainer]) {
-      byTrainer[trainer] = { total: 0, scheduled: 0, completed: 0, no_show: 0, sales: 0, no_sales: 0, contacts: [] }
-    }
-    const s = byTrainer[trainer]
-    s.total++
-    s.contacts.push(c)
-    const status = (c.show_or_no_show || c.day_one_status || '').toLowerCase()
-    if (status === 'show' || status === 'completed' || status === 'complete') s.completed++
-    else if (status === 'no show' || status === 'no-show' || status === 'noshow') s.no_show++
-    else s.scheduled++
-    if (c.day_one_sale === 'Sale' || c.day_one_sale === true) s.sales++
-    else s.no_sales++
-  }
+  const byStatus = data.by_status || {}
+  const totalCompleted = byStatus['Completed'] || 0
+  const totalSales = Object.values(data.by_trainer || {}).reduce((sum, t) => sum + (t.sales || 0), 0)
 
-  // Also merge data from by_booker if present
-  const trainerRows = Object.entries(data.by_trainer || byTrainer).sort((a, b) => {
-    const aTotal = a[1].total || a[1].set || 0
-    const bTotal = b[1].total || b[1].set || 0
-    return bTotal - aTotal
-  })
+  const trainerRows = Object.entries(data.by_trainer || {}).sort((a, b) => b[1].total - a[1].total)
 
-  // Find top PT sale and top no-sale reason per trainer from contacts
   function getTopSale(trainerName) {
-    const tc = contacts.filter(c => (c.day_one_trainer || c.trainer || 'Unassigned') === trainerName && c.day_one_sale === 'Sale')
-    if (!tc.length) return '—'
-    const types = {}
-    tc.forEach(c => { const t = c.pt_sale_type || c.day_one_sale_type || 'Sale'; types[t] = (types[t] || 0) + 1 })
-    return Object.entries(types).sort((a, b) => b[1] - a[1])[0]?.[0] || '—'
+    return data.by_trainer?.[trainerName]?.top_pt_sale_type || '—'
   }
 
   function getTopNoSaleReason(trainerName) {
-    const tc = contacts.filter(c => (c.day_one_trainer || c.trainer || 'Unassigned') === trainerName && c.day_one_sale !== 'Sale')
-    if (!tc.length) return '—'
-    const reasons = {}
-    tc.forEach(c => { const r = c.why_no_sale || c.no_sale_reason || 'Not Specified'; reasons[r] = (reasons[r] || 0) + 1 })
-    return Object.entries(reasons).sort((a, b) => b[1] - a[1])[0]?.[0] || '—'
+    return data.by_trainer?.[trainerName]?.top_no_sale_reason || '—'
   }
 
   // Totals
@@ -127,6 +98,18 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
           <p className="text-2xl font-bold text-text-primary mt-1">{closeRate}%</p>
           <p className="text-xs text-text-muted mt-0.5">{totalSales} of {totalCompleted}</p>
         </div>
+      </div>
+
+      {/* Export Controls */}
+      <div className="flex justify-end gap-2">
+        <button onClick={() => {
+          const csvRows = [
+            ['Trainer', 'Total', 'Scheduled', 'Completed', 'No Show', 'Sales', 'No Sales', 'Top PT Sale', 'Top No Sale Reason'],
+            ...trainerRows.map(([name, s]) => [name, s.total, s.scheduled, s.completed, s.no_show, s.sales, s.no_sales, getTopSale(name), getTopNoSaleReason(name)]),
+          ]
+          exportCSV(csvRows, `pt-report-${startDate}-${endDate}`)
+        }} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors">CSV</button>
+        <button onClick={exportPDF} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors">PDF</button>
       </div>
 
       {/* Trainer Summary Table */}

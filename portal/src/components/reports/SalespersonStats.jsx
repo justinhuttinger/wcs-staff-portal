@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react'
 import { getSalespersonStats } from '../../lib/api'
+import { exportCSV, exportPDF } from '../../lib/export'
 
 export default function SalespersonStats({ startDate, endDate, locationSlug }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [sortBy, setSortBy] = useState('best')
+  const [search, setSearch] = useState('')
 
   useEffect(() => { loadData() }, [startDate, endDate, locationSlug])
 
@@ -26,9 +29,6 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
 
   if (loading) return <p className="text-text-muted text-sm py-8 text-center">Loading salesperson data...</p>
   if (error) return <p className="text-wcs-red text-sm py-4">{error}</p>
-  const [sortBy, setSortBy] = useState('best')
-  const [search, setSearch] = useState('')
-
   if (!data) return null
 
   const SORT_OPTIONS = [
@@ -39,13 +39,11 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
 
   let rows = Object.entries(data.by_salesperson || {})
 
-  // Search filter
   if (search) {
     const q = search.toLowerCase()
     rows = rows.filter(([name]) => name.toLowerCase().includes(q))
   }
 
-  // Sort
   if (sortBy === 'best') rows.sort((a, b) => b[1].total_sales - a[1].total_sales)
   else if (sortBy === 'worst') rows.sort((a, b) => a[1].total_sales - b[1].total_sales)
   else if (sortBy === 'alpha') rows.sort((a, b) => a[0].localeCompare(b[0]))
@@ -53,10 +51,19 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
   const allRows = Object.entries(data.by_salesperson || {})
   const totalSales = allRows.reduce((sum, [, s]) => sum + (s.total_sales || 0), 0)
   const totalVIPs = allRows.reduce((sum, [, s]) => sum + (s.vips || 0), 0)
-  const totalDayOneYes = allRows.reduce((sum, [, s]) => sum + (s.day_one_yes || 0), 0)
-  const totalDayOneNo = allRows.reduce((sum, [, s]) => sum + (s.day_one_no || 0), 0)
+  const totalDayOneYes = allRows.reduce((sum, [, s]) => sum + (s.day_one_booked_yes || 0), 0)
+  const totalDayOneNo = allRows.reduce((sum, [, s]) => sum + (s.day_one_booked_no || 0), 0)
   const dayOneTotal = totalDayOneYes + totalDayOneNo
   const dayOneRate = dayOneTotal > 0 ? Math.round((totalDayOneYes / dayOneTotal) * 100) : 0
+
+  function handleExportCSV() {
+    const csvRows = [
+      ['Salesperson', 'Total Sales', 'VIPs', 'Day One Yes', 'Day One No'],
+      ...rows.map(([name, s]) => [name, s.total_sales || 0, s.vips || 0, s.day_one_booked_yes || 0, s.day_one_booked_no || 0]),
+      ['Total', totalSales, totalVIPs, totalDayOneYes, totalDayOneNo],
+    ]
+    exportCSV(csvRows, `salesperson-stats-${startDate}-${endDate}`)
+  }
 
   return (
     <div className="space-y-6">
@@ -77,7 +84,7 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
         </div>
       </div>
 
-      {/* Sort & Search Controls */}
+      {/* Sort, Search & Export Controls */}
       <div className="flex items-center justify-between">
         <div className="flex gap-1">
           {SORT_OPTIONS.map(opt => (
@@ -94,13 +101,21 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
             </button>
           ))}
         </div>
-        <input
-          type="text"
-          placeholder="Search by name..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red w-56"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="Search by name..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red w-48"
+          />
+          <button onClick={handleExportCSV} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors">
+            CSV
+          </button>
+          <button onClick={exportPDF} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors">
+            PDF
+          </button>
+        </div>
       </div>
 
       {/* Summary Table */}
@@ -121,8 +136,8 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
                 <td className="px-4 py-3 font-medium text-text-primary">{name}</td>
                 <td className="px-4 py-3 text-center text-wcs-red font-semibold">{stats.total_sales || 0}</td>
                 <td className="px-4 py-3 text-center text-text-primary">{stats.vips || 0}</td>
-                <td className="px-4 py-3 text-center text-green-600">{stats.day_one_yes || 0}</td>
-                <td className="px-4 py-3 text-center text-text-muted">{stats.day_one_no || 0}</td>
+                <td className="px-4 py-3 text-center text-green-600">{stats.day_one_booked_yes || 0}</td>
+                <td className="px-4 py-3 text-center text-text-muted">{stats.day_one_booked_no || 0}</td>
               </tr>
             ))}
             {rows.length === 0 && (

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getMembershipReport } from '../../lib/api'
+import { exportCSV, exportPDF } from '../../lib/export'
 
 function buildDateBars(contacts, startDate, endDate) {
   // Build a map of date -> count from contacts
@@ -55,24 +56,22 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
 
   const contacts = data.contacts || []
 
-  // Compute stats
-  const totalMemberships = data.total || contacts.length
-  const trialContacts = contacts.filter(c => c.is_trial_member || c.membership_type?.toLowerCase().includes('trial'))
-  const trialWon = contacts.filter(c => c.trial_converted || c.same_day_sale === 'Sale')
-  const trialRate = trialContacts.length > 0 ? Math.round((trialWon.length / trialContacts.length) * 100) : 0
-  const dayOneBooked = contacts.filter(c => c.day_one_booked === 'Yes' || c.day_one_booked === true).length
-  const vips = contacts.filter(c => c.vip || c.is_vip).length
+  // Use pre-aggregated data from API
+  const totalMemberships = data.total_memberships || 0
+  const tc = data.trial_conversion || {}
+  const trialRate = tc.rate || 0
+  const dayOneBooked = data.total_day_one_booked || 0
+  const totalVips = data.total_vips || 0
 
-  // Salesperson table
-  const byPerson = {}
-  for (const c of contacts) {
-    const name = c.sale_team_member || 'Unknown'
-    if (!byPerson[name]) byPerson[name] = { memberships: 0, vips: 0, day_one_booked: 0 }
-    byPerson[name].memberships++
-    if (c.vip || c.is_vip) byPerson[name].vips++
-    if (c.day_one_booked === 'Yes' || c.day_one_booked === true) byPerson[name].day_one_booked++
+  const salespersonRows = Object.entries(data.by_salesperson || {}).sort((a, b) => b[1].memberships - a[1].memberships)
+
+  function handleExportCSV() {
+    const csvRows = [
+      ['Salesperson', 'Memberships', 'VIPs', 'Day One Booked'],
+      ...salespersonRows.map(([name, s]) => [name, s.memberships, s.vips, s.day_one_booked]),
+    ]
+    exportCSV(csvRows, `membership-report-${startDate}-${endDate}`)
   }
-  const salespersonRows = Object.entries(byPerson).sort((a, b) => b[1].memberships - a[1].memberships)
 
   // Bar chart
   const bars = buildDateBars(contacts, startDate, endDate)
@@ -89,7 +88,7 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
         <div className="bg-surface rounded-xl border border-border p-4">
           <p className="text-xs text-text-muted uppercase tracking-wide">Trial Conversion</p>
           <p className="text-2xl font-bold text-text-primary mt-1">{trialRate}%</p>
-          <p className="text-xs text-text-muted mt-0.5">{trialWon.length} won / {trialContacts.length} started</p>
+          <p className="text-xs text-text-muted mt-0.5">{tc.won || 0} won / {tc.trial_started || 0} started</p>
         </div>
         <div className="bg-surface rounded-xl border border-border p-4">
           <p className="text-xs text-text-muted uppercase tracking-wide">Total Day One Booked</p>
@@ -97,7 +96,7 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
         </div>
         <div className="bg-surface rounded-xl border border-border p-4">
           <p className="text-xs text-text-muted uppercase tracking-wide">Total VIPs</p>
-          <p className="text-2xl font-bold text-text-primary mt-1">{vips}</p>
+          <p className="text-2xl font-bold text-text-primary mt-1">{totalVips}</p>
         </div>
       </div>
 
@@ -122,6 +121,12 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
           </div>
         </div>
       )}
+
+      {/* Export Controls */}
+      <div className="flex justify-end gap-2">
+        <button onClick={handleExportCSV} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors">CSV</button>
+        <button onClick={exportPDF} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors">PDF</button>
+      </div>
 
       {/* Salesperson Summary Table */}
       <div className="bg-surface rounded-xl border border-border overflow-hidden">
