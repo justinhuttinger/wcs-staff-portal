@@ -32,8 +32,8 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
   if (!data) return null
 
   const SORT_OPTIONS = [
-    { key: 'best', label: 'Best' },
-    { key: 'worst', label: 'Worst' },
+    { key: 'best', label: 'Top Performers' },
+    { key: 'worst', label: 'Bottom Performers' },
     { key: 'alpha', label: 'A-Z' },
   ]
 
