@@ -11,6 +11,22 @@ const LOCATIONS = [
   { slug: 'medford', label: 'Medford' },
 ]
 
+function isPast(iso) {
+  if (!iso) return false
+  return new Date(iso) < new Date()
+}
+
+function isPending(apt) {
+  const s = (apt.day_one_status || '').toLowerCase()
+  // Pending = no status, or status is "scheduled", and appointment time has passed
+  return (!s || s === 'scheduled') && isPast(apt.appointment_time)
+}
+
+function isCompleted(apt) {
+  const s = (apt.day_one_status || '').toLowerCase()
+  return s === 'completed' || s === 'no show' || apt.show_or_no_show === 'No Show'
+}
+
 function StatusBadge({ appointment }) {
   const s = appointment.day_one_status
   const sale = appointment.day_one_sale
@@ -90,16 +106,35 @@ function OutcomeModal({ appointment, locationSlug, onClose, onSubmitted }) {
     })
   }
 
+  const alreadyDone = isCompleted(appointment)
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-surface rounded-2xl border border-border w-full max-w-md p-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-bold text-text-primary">{appointment.contact_name}</h3>
             <p className="text-xs text-text-muted">{formatDateTime(appointment.appointment_time)}</p>
+            {appointment.assigned_user_name && (
+              <p className="text-xs text-text-muted">Trainer: {appointment.assigned_user_name}</p>
+            )}
           </div>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary text-2xl leading-none">&times;</button>
         </div>
+
+        {/* Show current status info if already completed */}
+        {alreadyDone && (
+          <div className="mb-4 p-3 rounded-lg bg-bg border border-border">
+            <p className="text-xs text-text-muted uppercase tracking-wide mb-1">Current Status</p>
+            <div className="flex items-center gap-2">
+              <StatusBadge appointment={appointment} />
+              {appointment.day_one_sale && (
+                <span className="text-sm text-text-primary">{appointment.day_one_sale}</span>
+              )}
+            </div>
+            <p className="text-xs text-text-muted mt-2">You can update this result below.</p>
+          </div>
+        )}
 
         {error && <p className="text-wcs-red text-sm mb-4">{error}</p>}
 
@@ -198,23 +233,32 @@ function OutcomeModal({ appointment, locationSlug, onClose, onSubmitted }) {
   )
 }
 
+function getMonthStart() {
+  const d = new Date()
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]
+}
+
+function getToday() {
+  return new Date().toISOString().split('T')[0]
+}
+
 export default function DayOneTrackerView({ user, onBack }) {
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [locationSlug, setLocationSlug] = useState('salem')
   const [activeModal, setActiveModal] = useState(null)
+  const [tab, setTab] = useState('pending')
+  const [startDate, setStartDate] = useState(getMonthStart())
+  const [endDate, setEndDate] = useState(getToday())
 
-  useEffect(() => { loadAppointments() }, [locationSlug])
+  useEffect(() => { loadAppointments() }, [locationSlug, startDate, endDate])
 
   async function loadAppointments() {
     setLoading(true)
     setError('')
     try {
-      const now = new Date()
-      const start_date = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
-      const end_date = now.toISOString().split('T')[0]
-      const res = await getDayOneTrackerAppointments({ location_slug: locationSlug, start_date, end_date })
+      const res = await getDayOneTrackerAppointments({ location_slug: locationSlug, start_date: startDate, end_date: endDate })
       setAppointments(res.appointments || [])
     } catch (err) {
       setError(err.message)
@@ -222,8 +266,11 @@ export default function DayOneTrackerView({ user, onBack }) {
     setLoading(false)
   }
 
-  const pending = appointments.filter(a => !a.day_one_status && a.show_or_no_show !== 'No Show')
-  const completed = appointments.filter(a => a.day_one_status || a.show_or_no_show === 'No Show')
+  // Filter out future appointments — only show past ones
+  const pastAppointments = appointments.filter(a => isPast(a.appointment_time))
+  const pending = pastAppointments.filter(isPending)
+  const completed = pastAppointments.filter(isCompleted)
+  const visibleList = tab === 'pending' ? pending : completed
 
   return (
     <div className="max-w-3xl mx-auto w-full px-8 py-6">
@@ -247,7 +294,8 @@ export default function DayOneTrackerView({ user, onBack }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-6">
+      {/* Location Selector */}
+      <div className="flex flex-wrap gap-2 mb-4">
         {LOCATIONS.map(loc => (
           <button
             key={loc.slug}
@@ -263,62 +311,75 @@ export default function DayOneTrackerView({ user, onBack }) {
         ))}
       </div>
 
+      {/* Date Range */}
+      <div className="flex items-center gap-2 mb-4 justify-end">
+        <label className="text-xs text-text-muted">From</label>
+        <input
+          type="date"
+          value={startDate}
+          onChange={e => setStartDate(e.target.value)}
+          className="px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
+        />
+        <label className="text-xs text-text-muted">To</label>
+        <input
+          type="date"
+          value={endDate}
+          onChange={e => setEndDate(e.target.value)}
+          className="px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
+        />
+      </div>
+
+      {/* Pending / Completed Tabs */}
+      <div className="flex gap-1 mb-6 border-b border-border">
+        <button
+          onClick={() => setTab('pending')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            tab === 'pending'
+              ? 'border-wcs-red text-wcs-red'
+              : 'border-transparent text-text-muted hover:text-text-primary'
+          }`}
+        >
+          Pending ({pending.length})
+        </button>
+        <button
+          onClick={() => setTab('completed')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            tab === 'completed'
+              ? 'border-wcs-red text-wcs-red'
+              : 'border-transparent text-text-muted hover:text-text-primary'
+          }`}
+        >
+          Completed ({completed.length})
+        </button>
+      </div>
+
       {error && <p className="text-sm text-wcs-red mb-4">{error}</p>}
       {loading && <p className="text-text-muted text-sm py-8 text-center">Loading Day One appointments...</p>}
 
       {!loading && (
-        <>
-          {pending.length > 0 && (
-            <div className="mb-6">
-              <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Pending</h3>
-              <div className="flex flex-col gap-2">
-                {pending.map(apt => (
-                  <button
-                    key={apt.id}
-                    onClick={() => setActiveModal(apt)}
-                    className="w-full flex items-center justify-between p-4 rounded-xl bg-surface border border-border hover:border-wcs-red/50 transition-colors text-left"
-                  >
-                    <div>
-                      <p className="font-medium text-text-primary">{apt.contact_name}</p>
-                      <p className="text-xs text-text-muted mt-0.5">{formatDateTime(apt.appointment_time)}</p>
-                      {apt.assigned_user_name && (
-                        <p className="text-xs text-text-muted">Trainer: {apt.assigned_user_name}</p>
-                      )}
-                    </div>
-                    <StatusBadge appointment={apt} />
-                  </button>
-                ))}
+        <div className="flex flex-col gap-2">
+          {visibleList.map(apt => (
+            <button
+              key={apt.id}
+              onClick={() => setActiveModal(apt)}
+              className="w-full flex items-center justify-between p-4 rounded-xl bg-surface border border-border hover:border-wcs-red/50 transition-colors text-left"
+            >
+              <div>
+                <p className="font-medium text-text-primary">{apt.contact_name}</p>
+                <p className="text-xs text-text-muted mt-0.5">{formatDateTime(apt.appointment_time)}</p>
+                {apt.assigned_user_name && (
+                  <p className="text-xs text-text-muted">Trainer: {apt.assigned_user_name}</p>
+                )}
               </div>
-            </div>
+              <StatusBadge appointment={apt} />
+            </button>
+          ))}
+          {visibleList.length === 0 && (
+            <p className="text-text-muted text-sm py-8 text-center">
+              {tab === 'pending' ? 'No pending Day Ones' : 'No completed Day Ones'} for this period
+            </p>
           )}
-
-          {completed.length > 0 && (
-            <div>
-              <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Completed</h3>
-              <div className="flex flex-col gap-2">
-                {completed.map(apt => (
-                  <div
-                    key={apt.id}
-                    className="flex items-center justify-between p-4 rounded-xl bg-surface border border-border opacity-75"
-                  >
-                    <div>
-                      <p className="font-medium text-text-primary">{apt.contact_name}</p>
-                      <p className="text-xs text-text-muted mt-0.5">{formatDateTime(apt.appointment_time)}</p>
-                      {apt.assigned_user_name && (
-                        <p className="text-xs text-text-muted">Trainer: {apt.assigned_user_name}</p>
-                      )}
-                    </div>
-                    <StatusBadge appointment={apt} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {appointments.length === 0 && (
-            <p className="text-text-muted text-sm py-8 text-center">No Day One appointments found for this month</p>
-          )}
-        </>
+        </div>
       )}
 
       {activeModal && (
