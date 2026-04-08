@@ -100,16 +100,69 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
         </div>
       </div>
 
+      {/* Day One Breakdown */}
+      <div className="bg-surface rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-bg">
+          <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wide">Day One Breakdown</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[800px]">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Member Name</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Booking Team Member</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Date Scheduled</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Day One Date</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Trainer</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Status</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Sale</th>
+              </tr>
+            </thead>
+            <tbody>
+              {contacts.map((c, i) => (
+                <tr key={i} className="border-b border-border hover:bg-bg/50 transition-colors">
+                  <td className="px-4 py-2 font-medium text-text-primary">{c.first_name} {c.last_name}</td>
+                  <td className="px-4 py-2 text-text-muted">{c.day_one_booking_team_member || '—'}</td>
+                  <td className="px-4 py-2 text-text-muted">{formatDate(c.day_one_booking_date)}</td>
+                  <td className="px-4 py-2 text-text-muted">{formatDate(c.day_one_date)}</td>
+                  <td className="px-4 py-2 text-text-muted">{c.day_one_trainer || '—'}</td>
+                  <td className="px-4 py-2"><StatusPill status={c.day_one_status} /></td>
+                  <td className="px-4 py-2">
+                    {c.day_one_sale === 'Sale' || c.day_one_sale === true
+                      ? <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200 text-xs">Sale</span>
+                      : <span className="px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 text-xs">{c.day_one_sale || 'No Sale'}</span>
+                    }
+                  </td>
+                </tr>
+              ))}
+              {contacts.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-text-muted text-sm">No Day One data for this period</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Export Controls */}
       <div className="flex justify-end gap-2">
         <button onClick={() => {
           const csvRows = [
-            ['Trainer', 'Total', 'Scheduled', 'Completed', 'No Show', 'Sales', 'No Sales', 'Top PT Sale', 'Top No Sale Reason'],
-            ...trainerRows.map(([name, s]) => [name, s.total, s.scheduled, s.completed, s.no_show, s.sales, s.no_sales, getTopSale(name), getTopNoSaleReason(name)]),
+            ['Member Name', 'Booking Team Member', 'Date Scheduled', 'Day One Date', 'Trainer', 'Status', 'Sale'],
+            ...contacts.map(c => [
+              (c.first_name || '') + ' ' + (c.last_name || ''),
+              c.day_one_booking_team_member || '',
+              formatDate(c.day_one_booking_date),
+              formatDate(c.day_one_date),
+              c.day_one_trainer || '',
+              c.day_one_status || '',
+              c.day_one_sale || '',
+            ]),
           ]
-          exportCSV(csvRows, `pt-report-${startDate}-${endDate}`)
+          exportCSV(csvRows, `pt-day-one-report-${startDate}-${endDate}`)
         }} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors">CSV</button>
-        <button onClick={exportPDF} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors">PDF</button>
+        <button onClick={() => exportPDF('PT / Day One Report')} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors">PDF</button>
       </div>
 
       {/* Trainer Summary Table */}
