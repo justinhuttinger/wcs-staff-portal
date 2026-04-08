@@ -2,8 +2,15 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
 let authToken = null
 
+// Restore token from localStorage (for new tabs like Reporting)
+try {
+  const stored = localStorage.getItem('wcs_token')
+  if (stored) authToken = stored
+} catch {}
+
 export function setToken(token) {
   authToken = token
+  try { localStorage.setItem('wcs_token', token) } catch {}
 }
 
 export function getToken() {
@@ -12,6 +19,7 @@ export function getToken() {
 
 export function clearToken() {
   authToken = null
+  try { localStorage.removeItem('wcs_token') } catch {}
 }
 
 export async function api(path, options = {}) {

@@ -115,9 +115,12 @@ router.get('/salesperson-stats', async (req, res) => {
         bySalesperson[sp] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0 }
       }
       bySalesperson[sp].total_sales++
-      bySalesperson[sp].vips += (parseInt(c.vip_count, 10) || 0)
-      if (c.day_one_booked === 'Yes') bySalesperson[sp].day_one_booked++
-      if (c.same_day_sale === 'Yes') bySalesperson[sp].same_day_sale++
+      const hasVipTag = Array.isArray(c.tags) && c.tags.some(t => t && t.toLowerCase().includes('vip'))
+      if (hasVipTag) bySalesperson[sp].vips++
+      const booked = (c.day_one_booked || '').toLowerCase()
+      if (booked === 'yes' || booked === 'booked') bySalesperson[sp].day_one_booked++
+      const sds = (c.same_day_sale || '').toLowerCase()
+      if (sds === 'sale' || sds === 'yes') bySalesperson[sp].same_day_sale++
     }
 
     res.json({
@@ -221,12 +224,14 @@ router.get('/membership', async (req, res) => {
       const sp = c.sale_team_member || 'Unassigned'
       if (!bySalesperson[sp]) bySalesperson[sp] = { memberships: 0, vips: 0, day_one_booked: 0 }
       bySalesperson[sp].memberships++
-      bySalesperson[sp].vips += (parseInt(c.vip_count, 10) || 0)
-      if (c.day_one_booked === 'Yes') bySalesperson[sp].day_one_booked++
+      const hasVipTag = Array.isArray(c.tags) && c.tags.some(t => t && t.toLowerCase().includes('vip'))
+      if (hasVipTag) bySalesperson[sp].vips++
+      const booked = (c.day_one_booked || '').toLowerCase()
+      if (booked === 'yes' || booked === 'booked') bySalesperson[sp].day_one_booked++
 
       // totals
-      if (c.day_one_booked === 'Yes') totalDayOneBooked++
-      totalVips += (parseInt(c.vip_count, 10) || 0)
+      if (booked === 'yes' || booked === 'booked') totalDayOneBooked++
+      if (hasVipTag) totalVips++
     }
 
     const byDateArr = Object.entries(byDate)
@@ -376,7 +381,7 @@ router.get('/club-health', async (req, res) => {
     let q = supabaseAdmin
       .from('ghl_contacts_report')
       .select(
-        'vip_count, day_one_booked, day_one_status, day_one_sale,' +
+        'tags, day_one_booked, day_one_status, day_one_sale,' +
         'same_day_sale, member_sign_date, location_slug'
       )
       .not('member_sign_date', 'is', null)
@@ -398,22 +403,26 @@ router.get('/club-health', async (req, res) => {
     const dayOneSaleCounts = {}
 
     for (const c of contacts) {
-      totalVips += (parseInt(c.vip_count, 10) || 0)
-      if (c.same_day_sale === 'Yes') totalSameDaySales++
-      if (c.day_one_booked === 'Yes') totalDayOnesBooked++
+      const hasVipTag = Array.isArray(c.tags) && c.tags.some(t => t && t.toLowerCase().includes('vip'))
+      if (hasVipTag) totalVips++
+      const sds = (c.same_day_sale || '').toLowerCase()
+      if (sds === 'sale' || sds === 'yes') totalSameDaySales++
+      const booked = (c.day_one_booked || '').toLowerCase()
+      const isBooked = booked === 'yes' || booked === 'booked'
+      if (isBooked) totalDayOnesBooked++
 
       // Day One Booked pie
-      const bookedVal = c.day_one_booked || 'No'
+      const bookedVal = isBooked ? 'Yes' : 'No'
       dayOneBookedCounts[bookedVal] = (dayOneBookedCounts[bookedVal] || 0) + 1
 
-      // Day One Status pie (only for booked = Yes)
-      if (c.day_one_booked === 'Yes') {
+      // Day One Status pie (only for booked contacts)
+      if (isBooked) {
         const statusVal = c.day_one_status || 'Unknown'
         dayOneStatusCounts[statusVal] = (dayOneStatusCounts[statusVal] || 0) + 1
       }
 
       // Day One Sale pie (only for status = Completed)
-      if (c.day_one_status === 'Completed') {
+      if ((c.day_one_status || '').toLowerCase() === 'completed') {
         const saleVal = c.day_one_sale || 'No Sale'
         dayOneSaleCounts[saleVal] = (dayOneSaleCounts[saleVal] || 0) + 1
       }

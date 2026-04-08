@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import ToolGrid from './components/ToolGrid'
-import IdleOverlay from './components/IdleOverlay'
 import LoginScreen from './components/LoginScreen'
 import AdminConfig from './components/AdminConfig'
 import AdminPanel from './components/AdminPanel'
@@ -8,7 +7,6 @@ import SaveCredentialToast from './components/SaveCredentialToast'
 import DayOneView from './components/DayOneView'
 import ToursView from './components/ToursView'
 import ReportingView from './components/ReportingView'
-import useIdleTimer from './hooks/useIdleTimer'
 import { getMe, getToken, clearToken } from './lib/api'
 
 function getParam(key) {
@@ -30,10 +28,17 @@ export default function App() {
   const isElectron = !!window.wcsElectron
   const isAdmin = user?.staff?.role === 'admin' || user?.staff?.role === 'director'
 
-  const { isIdle, resetTimer } = useIdleTimer(10 * 60 * 1000)
-
   useEffect(() => {
     document.title = 'WCS Staff Portal'
+  }, [])
+
+  // Auto-login from stored token (for new tabs like Reporting)
+  useEffect(() => {
+    if (!user && getToken()) {
+      getMe().then(meData => setUser(meData)).catch(() => {
+        clearToken()
+      })
+    }
   }, [])
 
   useEffect(() => {
@@ -43,12 +48,6 @@ export default function App() {
       })
     }
   }, [])
-
-  useEffect(() => {
-    if (isIdle && user) {
-      handleLogout()
-    }
-  }, [isIdle])
 
   useEffect(() => {
     const handleBeforeUnload = (e) => {
@@ -83,7 +82,6 @@ export default function App() {
       window.wcsElectron.onLogin(getToken())
     }
     setLoading(false)
-    resetTimer()
   }
 
   function handleLogout() {
@@ -154,7 +152,6 @@ export default function App() {
         </main>
       )}
 
-      {isIdle && <IdleOverlay onDismiss={resetTimer} />}
       {showConfig && <AdminConfig isElectron={isElectron} onClose={() => setShowConfig(false)} />}
       {savePrompt && (
         <SaveCredentialToast
