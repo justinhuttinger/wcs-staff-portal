@@ -1,20 +1,20 @@
 import { useState, useEffect } from 'react'
 import { getPipelineReport } from '../../lib/api'
 
-export default function PipelineReport({ locationId }) {
+export default function PipelineReport({ locationSlug }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [expandedPipeline, setExpandedPipeline] = useState(null)
 
-  useEffect(() => { loadData() }, [locationId])
+  useEffect(() => { loadData() }, [locationSlug])
 
   async function loadData() {
     setLoading(true)
     setError('')
     try {
       const params = {}
-      if (locationId) params.location_id = locationId
+      if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
       const res = await getPipelineReport(params)
       setData(res)
     } catch (err) {

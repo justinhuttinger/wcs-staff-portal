@@ -141,3 +141,8 @@ export async function getPipelineReport(params = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/reports/pipelines' + (qs ? '?' + qs : ''))
 }
+
+export async function getSalespersonStats(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/salesperson-stats' + (qs ? '?' + qs : ''))
+}
