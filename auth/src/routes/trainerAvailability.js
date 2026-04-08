@@ -75,7 +75,7 @@ router.get('/', async (req, res) => {
       if (!user) continue
       if (!isManager && user.email !== userEmail) continue
 
-      // Get this user's schedule for the Day One calendar
+      // Get this user's schedule — try per-calendar first, then all schedules for user
       let userSchedule = null
       let scheduleId = null
       try {
@@ -89,9 +89,25 @@ router.get('/', async (req, res) => {
           version: CAL_VERSION,
         })
         const schedules = schedData.schedules || []
+        console.log(`[TrainerAvail] ${user.name}: found ${schedules.length} schedules for Day One calendar`)
         if (schedules.length > 0) {
           userSchedule = schedules[0]
           scheduleId = schedules[0].id
+          console.log(`[TrainerAvail] ${user.name}: schedule ID=${scheduleId}, rules count=${(schedules[0].rules || []).length}`)
+        } else {
+          // Try fetching all schedules for this user (might not be linked to specific calendar)
+          const allSched = await ghlFetch('/calendars/schedules/search', location.apiKey, {
+            params: { locationId: location.id, userId: memberId, limit: 10 },
+            version: CAL_VERSION,
+          })
+          const allSchedules = allSched.schedules || []
+          console.log(`[TrainerAvail] ${user.name}: found ${allSchedules.length} total schedules (not calendar-specific)`)
+          if (allSchedules.length > 0) {
+            // Use the first schedule (likely their default availability)
+            userSchedule = allSchedules[0]
+            scheduleId = allSchedules[0].id
+            console.log(`[TrainerAvail] ${user.name}: using schedule "${allSchedules[0].name}" ID=${scheduleId}`)
+          }
         }
       } catch (e) {
         console.warn(`[TrainerAvail] Could not fetch schedule for ${user.name}:`, e.message)
