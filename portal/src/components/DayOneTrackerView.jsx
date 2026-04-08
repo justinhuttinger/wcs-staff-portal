@@ -270,7 +270,10 @@ export default function DayOneTrackerView({ user, onBack, location, isAdmin }) {
     setLoading(true)
     setError('')
     try {
-      const res = await getDayOneTrackerAppointments({ location_slug: locationSlug })
+      const params = { location_slug: locationSlug }
+      const urlStartDate = new URLSearchParams(window.location.search).get('start_date')
+      if (urlStartDate) params.start_date = urlStartDate
+      const res = await getDayOneTrackerAppointments(params)
       setAppointments(res.appointments || [])
     } catch (err) {
       setError(err.message)

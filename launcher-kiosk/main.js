@@ -22,7 +22,7 @@ app.on('ready', () => {
 
   win.maximize()
 
-  const url = `${PORTAL_URL}?mode=dayone&key=${encodeURIComponent(KIOSK_KEY)}&location=${encodeURIComponent(LOCATION)}`
+  const url = `${PORTAL_URL}?mode=dayone&key=${encodeURIComponent(KIOSK_KEY)}&location=${encodeURIComponent(LOCATION)}&start_date=2026-03-01`
   win.loadURL(url)
 
   // Auto-start on login
