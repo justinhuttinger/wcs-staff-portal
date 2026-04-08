@@ -51,16 +51,14 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
   const allRows = Object.entries(data.by_salesperson || {})
   const totalSales = allRows.reduce((sum, [, s]) => sum + (s.total_sales || 0), 0)
   const totalVIPs = allRows.reduce((sum, [, s]) => sum + (s.vips || 0), 0)
-  const totalDayOneYes = allRows.reduce((sum, [, s]) => sum + (s.day_one_booked_yes || 0), 0)
-  const totalDayOneNo = allRows.reduce((sum, [, s]) => sum + (s.day_one_booked_no || 0), 0)
-  const dayOneTotal = totalDayOneYes + totalDayOneNo
-  const dayOneRate = dayOneTotal > 0 ? Math.round((totalDayOneYes / dayOneTotal) * 100) : 0
+  const totalDayOne = allRows.reduce((sum, [, s]) => sum + (s.day_one_booked || 0), 0)
+  const totalSameDay = allRows.reduce((sum, [, s]) => sum + (s.same_day_sale || 0), 0)
 
   function handleExportCSV() {
     const csvRows = [
-      ['Salesperson', 'Total Sales', 'VIPs', 'Day One Yes', 'Day One No'],
-      ...rows.map(([name, s]) => [name, s.total_sales || 0, s.vips || 0, s.day_one_booked_yes || 0, s.day_one_booked_no || 0]),
-      ['Total', totalSales, totalVIPs, totalDayOneYes, totalDayOneNo],
+      ['Salesperson', 'Total Sales', 'VIPs', 'Day One', 'Same Day Sale'],
+      ...rows.map(([name, s]) => [name, s.total_sales || 0, s.vips || 0, s.day_one_booked || 0, s.same_day_sale || 0]),
+      ['Total', totalSales, totalVIPs, totalDayOne, totalSameDay],
     ]
     exportCSV(csvRows, `salesperson-stats-${startDate}-${endDate}`)
   }
@@ -68,7 +66,7 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
   return (
     <div className="space-y-6">
       {/* Stat Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-surface rounded-xl border border-border p-4">
           <p className="text-xs text-text-muted uppercase tracking-wide">Total Sales</p>
           <p className="text-2xl font-bold text-text-primary mt-1">{totalSales}</p>
@@ -78,9 +76,12 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
           <p className="text-2xl font-bold text-text-primary mt-1">{totalVIPs}</p>
         </div>
         <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Day One Booked Rate</p>
-          <p className="text-2xl font-bold text-text-primary mt-1">{dayOneRate}%</p>
-          <p className="text-xs text-text-muted mt-0.5">{totalDayOneYes} yes / {dayOneTotal} total</p>
+          <p className="text-xs text-text-muted uppercase tracking-wide">Day One Booked</p>
+          <p className="text-2xl font-bold text-text-primary mt-1">{totalDayOne}</p>
+        </div>
+        <div className="bg-surface rounded-xl border border-border p-4">
+          <p className="text-xs text-text-muted uppercase tracking-wide">Same Day Sales</p>
+          <p className="text-2xl font-bold text-text-primary mt-1">{totalSameDay}</p>
         </div>
       </div>
 
@@ -112,7 +113,7 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
           <button onClick={handleExportCSV} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors">
             CSV
           </button>
-          <button onClick={exportPDF} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors">
+          <button onClick={() => exportPDF('Salesperson Stats')} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors">
             PDF
           </button>
         </div>
@@ -126,8 +127,8 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Salesperson</th>
               <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Total Sales</th>
               <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">VIPs</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Day One Yes</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Day One No</th>
+              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Day One</th>
+              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Same Day Sale</th>
             </tr>
           </thead>
           <tbody>
@@ -136,8 +137,8 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
                 <td className="px-4 py-3 font-medium text-text-primary">{name}</td>
                 <td className="px-4 py-3 text-center text-wcs-red font-semibold">{stats.total_sales || 0}</td>
                 <td className="px-4 py-3 text-center text-text-primary">{stats.vips || 0}</td>
-                <td className="px-4 py-3 text-center text-green-600">{stats.day_one_booked_yes || 0}</td>
-                <td className="px-4 py-3 text-center text-text-muted">{stats.day_one_booked_no || 0}</td>
+                <td className="px-4 py-3 text-center text-green-600">{stats.day_one_booked || 0}</td>
+                <td className="px-4 py-3 text-center text-green-600">{stats.same_day_sale || 0}</td>
               </tr>
             ))}
             {rows.length === 0 && (
@@ -150,8 +151,8 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
                 <td className="px-4 py-3 text-text-primary">Total</td>
                 <td className="px-4 py-3 text-center text-wcs-red">{totalSales}</td>
                 <td className="px-4 py-3 text-center text-text-primary">{totalVIPs}</td>
-                <td className="px-4 py-3 text-center text-green-600">{totalDayOneYes}</td>
-                <td className="px-4 py-3 text-center text-text-muted">{totalDayOneNo}</td>
+                <td className="px-4 py-3 text-center text-green-600">{totalDayOne}</td>
+                <td className="px-4 py-3 text-center text-green-600">{totalSameDay}</td>
               </tr>
             )}
           </tbody>

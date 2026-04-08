@@ -112,15 +112,12 @@ router.get('/salesperson-stats', async (req, res) => {
     for (const c of contacts) {
       const sp = c.sale_team_member || 'Unassigned'
       if (!bySalesperson[sp]) {
-        bySalesperson[sp] = { total_sales: 0, vips: 0, day_one_booked_yes: 0, day_one_booked_no: 0 }
+        bySalesperson[sp] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0 }
       }
       bySalesperson[sp].total_sales++
       bySalesperson[sp].vips += (parseInt(c.vip_count, 10) || 0)
-      if (c.day_one_booked === 'Yes') {
-        bySalesperson[sp].day_one_booked_yes++
-      } else {
-        bySalesperson[sp].day_one_booked_no++
-      }
+      if (c.day_one_booked === 'Yes') bySalesperson[sp].day_one_booked++
+      if (c.same_day_sale === 'Yes') bySalesperson[sp].same_day_sale++
     }
 
     res.json({
