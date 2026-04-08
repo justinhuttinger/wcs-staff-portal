@@ -184,7 +184,9 @@ router.get('/membership', async (req, res) => {
       .select('id, status, stage_id, pipeline_id, ghl_pipeline_stages(name)')
 
     if (oppLocationId) oppQuery = oppQuery.eq('location_id', oppLocationId)
-    oppQuery = applyDateRange(oppQuery, 'created_at_ghl', startMs, endMs)
+    // created_at_ghl is TIMESTAMPTZ, not ms — use ISO strings for filtering
+    if (start_date) oppQuery = oppQuery.gte('created_at_ghl', start_date + 'T00:00:00.000Z')
+    if (end_date) oppQuery = oppQuery.lte('created_at_ghl', end_date + 'T23:59:59.999Z')
 
     const { data: opps, error: oppsError } = await oppQuery
     if (oppsError) return res.status(500).json({ error: 'Failed to fetch trial data', detail: oppsError.message })
