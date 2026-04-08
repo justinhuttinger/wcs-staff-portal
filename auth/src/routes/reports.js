@@ -166,20 +166,31 @@ router.get('/membership', async (req, res) => {
     const contacts = data || []
 
     // --- Trial conversion from opportunities ---
-    // Fetch opportunities with pipeline JOIN to find "Trial Started" stage
-    let oppQuery = supabaseAdmin
-      .from('ghl_opportunities_v2')
-      .select('id, status, stage_id, pipeline_id, ghl_pipelines(name), ghl_pipeline_stages(name)')
-
+    // Resolve location_slug to ghl_location_id for opportunities table
+    let oppLocationId = null
     if (locationFilter) {
-      // ghl_opportunities_v2 uses location_id (ghl location id)
       if (locationFilter.column === 'location_id') {
-        oppQuery = oppQuery.eq('location_id', locationFilter.value)
+        oppLocationId = locationFilter.value
+      } else if (locationFilter.column === 'location_slug') {
+        const { data: loc } = await supabaseAdmin
+          .from('ghl_locations')
+          .select('id')
+          .ilike('name', locationFilter.value)
+          .single()
+        if (loc) oppLocationId = loc.id
       }
-      // location_slug is not directly on ghl_opportunities_v2; skip if slug-only
     }
 
+    let oppQuery = supabaseAdmin
+      .from('ghl_opportunities_v2')
+      .select('id, status, stage_id, pipeline_id, ghl_pipeline_stages(name)')
+
+    if (oppLocationId) oppQuery = oppQuery.eq('location_id', oppLocationId)
+    oppQuery = applyDateRange(oppQuery, 'created_at_ghl', startMs, endMs)
+
     const { data: opps, error: oppsError } = await oppQuery
+    if (oppsError) return res.status(500).json({ error: 'Failed to fetch trial data', detail: oppsError.message })
+
     const opportunities = opps || []
 
     let trialStarted = 0
@@ -343,54 +354,6 @@ router.get('/pt', async (req, res) => {
       close_rate: closeRate,
       by_trainer: byTrainer,
       contacts,
-    })
-  } catch (err) {
-    res.status(500).json({ error: err.message })
-  }
-})
-
-// ---------------------------------------------------------------------------
-// GET /reports/pipelines
-// Query params: location_id (ghl location id), location_slug (not used for opps)
-// ---------------------------------------------------------------------------
-router.get('/pipelines', async (req, res) => {
-  try {
-    const locationFilter = await resolveLocationFilter(req.query)
-
-    let q = supabaseAdmin
-      .from('ghl_opportunities_v2')
-      .select(
-        'id, name, status, monetary_value, created_at_ghl,' +
-        'ghl_pipelines(id, name),' +
-        'ghl_pipeline_stages(id, name),' +
-        'assigned_user_id'
-      )
-
-    // Opportunities use location_id (ghl location id), not location_slug
-    if (locationFilter && locationFilter.column === 'location_id') {
-      q = q.eq('location_id', locationFilter.value)
-    }
-
-    const { data, error } = await q.order('created_at_ghl', { ascending: false })
-    if (error) return res.status(500).json({ error: 'Failed to fetch pipeline data', detail: error.message })
-
-    const opportunities = data || []
-
-    const byPipeline = {}
-    for (const opp of opportunities) {
-      const pipeName = opp.ghl_pipelines?.name || 'Unknown Pipeline'
-      if (!byPipeline[pipeName]) byPipeline[pipeName] = { total: 0, stages: {} }
-      byPipeline[pipeName].total++
-
-      const stageName = opp.ghl_pipeline_stages?.name || 'Unknown Stage'
-      if (!byPipeline[pipeName].stages[stageName]) byPipeline[pipeName].stages[stageName] = []
-      byPipeline[pipeName].stages[stageName].push(opp)
-    }
-
-    res.json({
-      total: opportunities.length,
-      by_pipeline: byPipeline,
-      opportunities,
     })
   } catch (err) {
     res.status(500).json({ error: err.message })
