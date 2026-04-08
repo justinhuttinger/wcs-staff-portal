@@ -38,13 +38,11 @@ async function get(path, params = {}, apiKey) {
  * @param {'meta'|'offset'} options.paginationType
  *   - 'meta': uses response.meta.startAfter + meta.startAfterId (contacts)
  *   - 'offset': uses numeric startAfter offset (opportunities)
- * @param {number} options.maxRecords - Safety cap (default: 50000)
  * @param {string} apiKey - Per-location API key
  */
 async function getPaginated(path, baseParams, itemsKey, options = {}, apiKey) {
   const {
     paginationType = 'meta',
-    maxRecords = 50000,
   } = options;
 
   const allItems = [];
@@ -72,7 +70,7 @@ async function getPaginated(path, baseParams, itemsKey, options = {}, apiKey) {
 
     allItems.push(...items);
 
-    if (items.length < limit || allItems.length >= maxRecords) {
+    if (items.length < limit) {
       break;
     }
 
