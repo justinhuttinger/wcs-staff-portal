@@ -163,3 +163,21 @@ export async function getClubHealthReport(params = {}) {
 export async function getSyncStatus() {
   return api('/sync-status')
 }
+
+// Day One Tracker
+export async function getDayOneTrackerAppointments(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/day-one-tracker/appointments' + (qs ? '?' + qs : ''))
+}
+
+export async function submitDayOneResult(data) {
+  return api('/day-one-tracker/submit', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function getDayOneFieldOptions(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/day-one-tracker/field-options' + (qs ? '?' + qs : ''))
+}
