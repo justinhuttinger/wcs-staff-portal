@@ -35,20 +35,20 @@ async function get(path, params = {}, apiKey) {
  * @param {object} baseParams - Base query params (e.g., locationId, limit)
  * @param {string} itemsKey - Key in response containing the array (e.g., 'contacts')
  * @param {object} options
- * @param {'cursor'|'offset'} options.paginationType - 'cursor' uses last item ID, 'offset' uses numeric offset
- * @param {string} options.cursorParam - Query param name for pagination (default: 'startAfter')
+ * @param {'meta'|'offset'} options.paginationType
+ *   - 'meta': uses response.meta.startAfter + meta.startAfterId (contacts)
+ *   - 'offset': uses numeric startAfter offset (opportunities)
  * @param {number} options.maxRecords - Safety cap (default: 50000)
  * @param {string} apiKey - Per-location API key
  */
 async function getPaginated(path, baseParams, itemsKey, options = {}, apiKey) {
   const {
-    paginationType = 'cursor',
-    cursorParam = 'startAfter',
+    paginationType = 'meta',
     maxRecords = 50000,
   } = options;
 
   const allItems = [];
-  let cursor = null;
+  let metaCursor = null; // { startAfter, startAfterId } from response meta
   let offset = 0;
   let pageNum = 0;
   const limit = baseParams.limit || 100;
@@ -57,10 +57,11 @@ async function getPaginated(path, baseParams, itemsKey, options = {}, apiKey) {
   while (true) {
     const params = { ...baseParams };
 
-    if (paginationType === 'cursor' && cursor) {
-      params[cursorParam] = cursor;
+    if (paginationType === 'meta' && metaCursor) {
+      params.startAfter = metaCursor.startAfter;
+      params.startAfterId = metaCursor.startAfterId;
     } else if (paginationType === 'offset' && offset > 0) {
-      params[cursorParam] = offset;
+      params.startAfter = offset;
     }
 
     const data = await get(path, params, apiKey);
@@ -75,9 +76,13 @@ async function getPaginated(path, baseParams, itemsKey, options = {}, apiKey) {
       break;
     }
 
-    if (paginationType === 'cursor') {
-      cursor = items[items.length - 1]?.id;
-      if (!cursor) break;
+    if (paginationType === 'meta') {
+      // GHL contacts: meta contains startAfter (timestamp) + startAfterId (contact ID)
+      if (!data.meta?.startAfter || !data.meta?.startAfterId) break;
+      metaCursor = {
+        startAfter: data.meta.startAfter,
+        startAfterId: data.meta.startAfterId,
+      };
     } else {
       offset += limit;
     }

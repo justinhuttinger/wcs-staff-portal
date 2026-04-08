@@ -7,7 +7,7 @@ async function fetchAllContacts(locationId, apiKey) {
     '/contacts/',
     { locationId, limit: PAGE_SIZE },
     'contacts',
-    { paginationType: 'offset', cursorParam: 'startAfter' },
+    { paginationType: 'meta' },
     apiKey
   );
 }
@@ -20,7 +20,7 @@ async function fetchContactsDelta(locationId, sinceDate, apiKey) {
     '/contacts/',
     { locationId, limit: PAGE_SIZE, startAfterDate: overlap.toISOString() },
     'contacts',
-    { paginationType: 'offset', cursorParam: 'startAfter' },
+    { paginationType: 'meta' },
     apiKey
   );
 }
