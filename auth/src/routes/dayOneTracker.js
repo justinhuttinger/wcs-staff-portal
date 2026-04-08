@@ -293,6 +293,28 @@ router.post('/submit', async (req, res) => {
       }
     }
 
+    // Update Supabase so ghl_contacts_report view reflects change immediately
+    try {
+      const { data: existing } = await supabaseAdmin
+        .from('ghl_contacts_v2')
+        .select('custom_fields')
+        .eq('id', contact_id)
+        .maybeSingle()
+
+      if (existing) {
+        const merged = { ...(existing.custom_fields || {}) }
+        for (const cf of customFields) {
+          merged[cf.id] = cf.value
+        }
+        await supabaseAdmin
+          .from('ghl_contacts_v2')
+          .update({ custom_fields: merged })
+          .eq('id', contact_id)
+      }
+    } catch (e) {
+      console.warn('[DayOneTracker] Supabase update failed (non-critical):', e.message)
+    }
+
     res.json({ success: true, fields_updated: customFields.length, confirmed: confirmedStatus })
   } catch (err) {
     console.error('[DayOneTracker] Error submitting:', err.message)
