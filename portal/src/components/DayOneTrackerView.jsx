@@ -203,13 +203,14 @@ function OutcomeModal({ appointment, locationSlug, onClose, onSubmitted }) {
         {step === 3 && saleResult === 'No Sale' && (
           <div className="space-y-4">
             <p className="text-sm font-medium text-text-primary text-center">Why no sale?</p>
-            <select value={whyNoSale} onChange={e => setWhyNoSale(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red">
-              <option value="">Select reason...</option>
-              {(fieldOptions?.no_sale_reasons || []).map(opt => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
-            <button onClick={handleDetailNext} disabled={!whyNoSale} className="w-full py-3 rounded-xl bg-wcs-red text-white font-semibold hover:bg-wcs-red/90 transition-colors disabled:opacity-50">
+            <textarea
+              value={whyNoSale}
+              onChange={e => setWhyNoSale(e.target.value)}
+              placeholder="Enter reason..."
+              rows={3}
+              className="w-full px-4 py-3 rounded-xl border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red resize-none"
+            />
+            <button onClick={handleDetailNext} disabled={!whyNoSale.trim()} className="w-full py-3 rounded-xl bg-wcs-red text-white font-semibold hover:bg-wcs-red/90 transition-colors disabled:opacity-50">
               Next
             </button>
             <button onClick={() => { setSaleResult(null); setStep(2) }} className="text-xs text-text-muted hover:text-text-primary">Back</button>
@@ -254,11 +255,12 @@ function OutcomeModal({ appointment, locationSlug, onClose, onSubmitted }) {
   )
 }
 
-export default function DayOneTrackerView({ user, onBack }) {
+export default function DayOneTrackerView({ user, onBack, location, isAdmin }) {
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [locationSlug, setLocationSlug] = useState('salem')
+  const defaultSlug = (location || 'Salem').toLowerCase()
+  const [locationSlug, setLocationSlug] = useState(defaultSlug)
   const [activeModal, setActiveModal] = useState(null)
   const [tab, setTab] = useState('pending')
 
@@ -304,22 +306,26 @@ export default function DayOneTrackerView({ user, onBack }) {
         </div>
       </div>
 
-      {/* Location Selector */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {LOCATIONS.map(loc => (
-          <button
-            key={loc.slug}
-            onClick={() => setLocationSlug(loc.slug)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-              locationSlug === loc.slug
-                ? 'bg-wcs-red text-white border-wcs-red'
-                : 'bg-surface text-text-muted border-border hover:text-text-primary hover:border-text-muted'
-            }`}
-          >
-            {loc.label}
-          </button>
-        ))}
-      </div>
+      {/* Location Selector (admin only) */}
+      {isAdmin ? (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {LOCATIONS.map(loc => (
+            <button
+              key={loc.slug}
+              onClick={() => setLocationSlug(loc.slug)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                locationSlug === loc.slug
+                  ? 'bg-wcs-red text-white border-wcs-red'
+                  : 'bg-surface text-text-muted border-border hover:text-text-primary hover:border-text-muted'
+              }`}
+            >
+              {loc.label}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-text-muted mb-4 uppercase tracking-wide font-semibold">{location}</p>
+      )}
 
       {/* Pending / Completed Tabs */}
       <div className="flex gap-1 mb-6 border-b border-border">

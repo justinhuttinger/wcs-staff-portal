@@ -73,11 +73,12 @@ function getSubRoute() {
   return null
 }
 
-export default function ReportingView({ user, onBack }) {
+export default function ReportingView({ user, onBack, location, isAdmin }) {
   const [activeReport, setActiveReport] = useState(getSubRoute())
   const [startDate, setStartDate] = useState(getMonthStart())
   const [endDate, setEndDate] = useState(getToday())
-  const [locationSlug, setLocationSlug] = useState('all')
+  const defaultSlug = isAdmin ? 'all' : (location || 'Salem').toLowerCase()
+  const [locationSlug, setLocationSlug] = useState(defaultSlug)
   const [activeQuick, setActiveQuick] = useState('this_month')
 
   useEffect(() => {
@@ -132,22 +133,26 @@ export default function ReportingView({ user, onBack }) {
         </h2>
       </div>
 
-      {/* Location Selector */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {LOCATIONS.map(loc => (
-          <button
-            key={loc.slug}
-            onClick={() => setLocationSlug(loc.slug)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-              locationSlug === loc.slug
-                ? 'bg-wcs-red text-white border-wcs-red'
-                : 'bg-surface text-text-muted border-border hover:text-text-primary hover:border-text-muted'
-            }`}
-          >
-            {loc.label}
-          </button>
-        ))}
-      </div>
+      {/* Location Selector (admin only) */}
+      {isAdmin ? (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {LOCATIONS.map(loc => (
+            <button
+              key={loc.slug}
+              onClick={() => setLocationSlug(loc.slug)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                locationSlug === loc.slug
+                  ? 'bg-wcs-red text-white border-wcs-red'
+                  : 'bg-surface text-text-muted border-border hover:text-text-primary hover:border-text-muted'
+              }`}
+            >
+              {loc.label}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-text-muted mb-4 uppercase tracking-wide font-semibold">{location}</p>
+      )}
 
       {/* Date Controls — right aligned */}
       <div className="flex flex-wrap items-center gap-3 mb-6 justify-end">

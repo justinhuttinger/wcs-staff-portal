@@ -6,12 +6,15 @@ import { getTiles } from '../lib/api'
 export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onDayOne, onTours, onDayOneTracker }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
+  const [tilesLoaded, setTilesLoaded] = useState(false)
 
   useEffect(() => {
     if (locationId) {
       getTiles(locationId).then(res => {
         setCustomTiles(res.tiles || [])
-      }).catch(() => {})
+      }).catch(() => {}).finally(() => setTilesLoaded(true))
+    } else {
+      setTilesLoaded(true)
     }
   }, [locationId])
 
@@ -79,6 +82,9 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
       </div>
     )
   }
+
+  // Don't render until custom tiles are loaded (prevents flash)
+  if (!tilesLoaded) return null
 
   // Top-level view
   return (
