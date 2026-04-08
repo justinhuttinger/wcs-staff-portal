@@ -24,29 +24,32 @@ router.get('/', async (req, res) => {
   }
 
   try {
-    // List all calendars and find the one named exactly "Day One"
+    // Find the "Day One" calendar
     const data = await ghlFetch('/calendars/', location.apiKey, {
       params: { locationId: location.id },
       version: CAL_VERSION,
     })
 
     const allCalendars = data.calendars || []
-    console.log('[TrainerAvail] All calendars:', allCalendars.map(c => `${c.name} (${c.id})`))
-
     const dayOneCalendar = allCalendars.find(cal => (cal.name || '').trim().toLowerCase() === 'day one')
 
     if (!dayOneCalendar) {
-      return res.json({ trainers: [], calendarName: null, debug: 'No calendar named "Day One" found. Available: ' + allCalendars.map(c => c.name).join(', ') })
+      return res.json({ trainers: [], calendarId: null, calendarName: null })
     }
 
-    // Get full calendar details
+    // Get calendar detail for team members
     let calDetail = dayOneCalendar
     try {
       const detail = await ghlFetch(`/calendars/${dayOneCalendar.id}`, location.apiKey, { version: CAL_VERSION })
       calDetail = detail.calendar || detail
-      console.log('[TrainerAvail] Calendar detail keys:', Object.keys(calDetail))
     } catch (e) {
       console.warn('[TrainerAvail] Could not fetch calendar detail:', e.message)
+    }
+
+    // Get team member user IDs
+    let teamMemberIds = []
+    if (Array.isArray(calDetail.teamMembers)) {
+      teamMemberIds = calDetail.teamMembers.map(m => typeof m === 'string' ? m : m.userId || m.id || m)
     }
 
     // Fetch GHL users
@@ -60,71 +63,46 @@ router.get('/', async (req, res) => {
       console.warn('[TrainerAvail] Could not fetch users:', e.message)
     }
 
-    // Log the full calendar detail to understand the structure
-    console.log('[TrainerAvail] Calendar detail:', JSON.stringify(calDetail, null, 2).substring(0, 2000))
-
-    // Extract team members — GHL uses various field names
-    let teamMemberIds = []
-    const teamSources = [
-      calDetail.teamMembers,
-      calDetail.calendarConfig?.teamMembers,
-      calDetail.users,
-      calDetail.assignedUsers,
-      calDetail.calendarConfig?.users,
-    ]
-    for (const source of teamSources) {
-      if (Array.isArray(source) && source.length > 0) {
-        teamMemberIds = source.map(m => {
-          if (typeof m === 'string') return m
-          return m.userId || m.id || m.memberId || m
-        })
-        console.log('[TrainerAvail] Found team members from:', source === calDetail.teamMembers ? 'teamMembers' : 'other')
-        break
-      }
-    }
-
-    // If still empty, check if there's a single userId (personal calendar)
-    if (teamMemberIds.length === 0 && calDetail.userId) {
-      teamMemberIds = [calDetail.userId]
-    }
-
-    console.log('[TrainerAvail] Team member IDs:', teamMemberIds)
-    console.log('[TrainerAvail] Available users:', Object.keys(userMap))
-
-    // Build per-trainer availability
-    const calSchedule = calDetail.openHours || calDetail.availabilities || calDetail.schedule || calDetail.availability || null
-    console.log('[TrainerAvail] openHours:', JSON.stringify(calDetail.openHours)?.substring(0, 500))
-    console.log('[TrainerAvail] availabilities:', JSON.stringify(calDetail.availabilities)?.substring(0, 500))
-
     // Role check
     const userLevel = ROLE_HIERARCHY.indexOf(req.staff.role)
     const isManager = userLevel >= ROLE_HIERARCHY.indexOf('manager')
     const userEmail = req.staff.email?.toLowerCase()
 
+    // Fetch per-user availability schedules for the Day One calendar
     const trainers = []
     for (const memberId of teamMemberIds) {
       const user = userMap[memberId]
       if (!user) continue
-
-      // Non-managers only see themselves
       if (!isManager && user.email !== userEmail) continue
 
-      // Try to get per-member schedule
-      let memberSchedule = calSchedule
-      if (Array.isArray(calDetail.teamMembers)) {
-        const memberObj = calDetail.teamMembers.find(m => (m.userId || m.id || m) === memberId)
-        if (memberObj && typeof memberObj === 'object') {
-          console.log(`[TrainerAvail] Member ${user.name} keys:`, Object.keys(memberObj))
-          console.log(`[TrainerAvail] Member ${user.name} data:`, JSON.stringify(memberObj).substring(0, 1000))
-          memberSchedule = memberObj.openHours || memberObj.schedule || memberObj.availability || memberObj.calendarConfig?.openHours || calSchedule
+      // Get this user's schedule for the Day One calendar
+      let userSchedule = null
+      let scheduleId = null
+      try {
+        const schedData = await ghlFetch('/calendars/schedules/search', location.apiKey, {
+          params: {
+            locationId: location.id,
+            userId: memberId,
+            calendarId: dayOneCalendar.id,
+            limit: 10,
+          },
+          version: CAL_VERSION,
+        })
+        const schedules = schedData.schedules || []
+        if (schedules.length > 0) {
+          userSchedule = schedules[0]
+          scheduleId = schedules[0].id
         }
+      } catch (e) {
+        console.warn(`[TrainerAvail] Could not fetch schedule for ${user.name}:`, e.message)
       }
 
       trainers.push({
         userId: memberId,
         name: user.name,
         email: user.email,
-        schedule: memberSchedule,
+        scheduleId,
+        schedule: userSchedule,
       })
     }
 
@@ -132,7 +110,6 @@ router.get('/', async (req, res) => {
       calendarId: dayOneCalendar.id,
       calendarName: dayOneCalendar.name,
       trainers,
-      rawSchedule: calSchedule, // for debugging
     })
   } catch (err) {
     console.error('[TrainerAvail] Error:', err.message)
@@ -140,12 +117,9 @@ router.get('/', async (req, res) => {
   }
 })
 
-// Map day name to numeric (0=Sun, 1=Mon, ..., 6=Sat)
-const DAY_TO_NUM = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 }
-
-// PUT /trainer-availability/:calendarId — update schedule
-router.put('/:calendarId', async (req, res) => {
-  const { calendarId } = req.params
+// PUT /trainer-availability/:scheduleId — update a user's schedule
+router.put('/:scheduleId', async (req, res) => {
+  const { scheduleId } = req.params
   const { location_slug, rules, timezone } = req.body
 
   if (!location_slug || !rules) {
@@ -158,29 +132,16 @@ router.put('/:calendarId', async (req, res) => {
   }
 
   try {
-    // Convert rules format to GHL openHours format
-    // Input: [{ type: 'wday', day: 'monday', intervals: [{ from: '09:00', to: '17:00' }] }]
-    // Output: [{ daysOfTheWeek: [1], hours: [{ openHour: 9, openMinute: 0, closeHour: 17, closeMinute: 0 }] }]
-    const openHours = rules.map(rule => {
-      const dayNum = DAY_TO_NUM[rule.day]
-      if (dayNum === undefined) return null
-      const interval = rule.intervals?.[0] || {}
-      const [openHour, openMinute] = (interval.from || '09:00').split(':').map(Number)
-      const [closeHour, closeMinute] = (interval.to || '17:00').split(':').map(Number)
-      return {
-        daysOfTheWeek: [dayNum],
-        hours: [{ openHour, openMinute, closeHour, closeMinute }],
-      }
-    }).filter(Boolean)
-
-    // Update the calendar directly (round-robin calendars use PUT /calendars/:id)
-    const result = await ghlFetch(`/calendars/${calendarId}`, location.apiKey, {
+    const result = await ghlFetch(`/calendars/schedules/${scheduleId}`, location.apiKey, {
       method: 'PUT',
       version: CAL_VERSION,
-      body: { openHours },
+      body: {
+        rules,
+        timezone: timezone || 'America/Los_Angeles',
+      },
     })
 
-    res.json({ success: true, schedule: result.calendar?.openHours || openHours })
+    res.json({ success: true, schedule: result })
   } catch (err) {
     console.error('[TrainerAvail] Update error:', err.message)
     res.status(500).json({ error: 'Failed to update schedule: ' + err.message })

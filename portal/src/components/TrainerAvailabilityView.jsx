@@ -66,8 +66,8 @@ function buildRules(schedule) {
   return rules
 }
 
-function TrainerScheduleCard({ trainer, calendarId, locationSlug, onUpdated }) {
-  const [schedule, setSchedule] = useState(() => parseSchedule(trainer.schedule))
+function TrainerScheduleCard({ trainer, locationSlug, onUpdated }) {
+  const [schedule, setSchedule] = useState(() => parseSchedule(trainer.schedule?.rules || trainer.schedule))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
@@ -87,7 +87,12 @@ function TrainerScheduleCard({ trainer, calendarId, locationSlug, onUpdated }) {
     setError('')
     setSaved(false)
     try {
-      await updateTrainerAvailability(calendarId, {
+      if (!trainer.scheduleId) {
+        setError('No schedule found — set availability in GHL first')
+        setSaving(false)
+        return
+      }
+      await updateTrainerAvailability(trainer.scheduleId, {
         location_slug: locationSlug,
         rules: buildRules(schedule),
         timezone: 'America/Los_Angeles',
@@ -235,7 +240,6 @@ export default function TrainerAvailabilityView({ user, onBack, location, isAdmi
             <TrainerScheduleCard
               key={trainer.userId}
               trainer={trainer}
-              calendarId={data.calendarId}
               locationSlug={locationSlug}
               onUpdated={loadData}
             />
