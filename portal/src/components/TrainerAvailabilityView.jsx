@@ -14,6 +14,9 @@ const LOCATIONS = [
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 const DAY_LABELS = { monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu', friday: 'Fri', saturday: 'Sat', sunday: 'Sun' }
 
+// Map numeric day (0=Sun, 1=Mon, ..., 6=Sat) to day name
+const NUM_TO_DAY = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+
 function parseSchedule(schedule) {
   const result = {}
   for (const day of DAYS) {
@@ -21,22 +24,31 @@ function parseSchedule(schedule) {
   }
   if (!schedule) return result
 
-  // Handle different GHL schedule formats
   const rules = Array.isArray(schedule) ? schedule : schedule.rules || schedule.openHours || []
   if (!Array.isArray(rules)) return result
 
   for (const rule of rules) {
+    // Format 1: { type: 'wday', day: 'monday', intervals: [{ from, to }] }
     if (rule.type === 'wday' && rule.day && rule.intervals?.length > 0) {
       result[rule.day] = { enabled: true, from: rule.intervals[0].from || '09:00', to: rule.intervals[0].to || '17:00' }
-    } else if (rule.dOW && rule.hours?.length > 0) {
-      // Alternative format: { dOW: ['monday'], hours: [{ openHour: 9, openMinute: 0, closeHour: 17, closeMinute: 0 }] }
-      for (const day of (rule.dOW || [])) {
-        const h = rule.hours[0]
-        result[day.toLowerCase()] = {
-          enabled: true,
-          from: `${String(h.openHour).padStart(2, '0')}:${String(h.openMinute || 0).padStart(2, '0')}`,
-          to: `${String(h.closeHour).padStart(2, '0')}:${String(h.closeMinute || 0).padStart(2, '0')}`,
-        }
+    }
+    // Format 2: { daysOfTheWeek: [1, 2], hours: [{ openHour, openMinute, closeHour, closeMinute }] }
+    else if (rule.daysOfTheWeek && rule.hours?.length > 0) {
+      const h = rule.hours[0]
+      const from = `${String(h.openHour).padStart(2, '0')}:${String(h.openMinute || 0).padStart(2, '0')}`
+      const to = `${String(h.closeHour).padStart(2, '0')}:${String(h.closeMinute || 0).padStart(2, '0')}`
+      for (const dayNum of rule.daysOfTheWeek) {
+        const dayName = NUM_TO_DAY[dayNum]
+        if (dayName) result[dayName] = { enabled: true, from, to }
+      }
+    }
+    // Format 3: { dOW: ['monday'], hours: [...] }
+    else if (rule.dOW && rule.hours?.length > 0) {
+      const h = rule.hours[0]
+      const from = `${String(h.openHour).padStart(2, '0')}:${String(h.openMinute || 0).padStart(2, '0')}`
+      const to = `${String(h.closeHour).padStart(2, '0')}:${String(h.closeMinute || 0).padStart(2, '0')}`
+      for (const day of rule.dOW) {
+        if (day) result[day.toLowerCase()] = { enabled: true, from, to }
       }
     }
   }
