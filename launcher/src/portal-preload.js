@@ -26,4 +26,8 @@ contextBridge.exposeInMainWorld('wcsElectron', {
     ipc.on('show-save-prompt', (e, data) => callback(data))
   },
   respondSavePrompt: (accepted) => ipcRenderer.send('save-credential-response', { accepted }),
+  // Listen for sign-out command from tab bar
+  onSignOut: (callback) => {
+    ipcRenderer.on('trigger-signout', () => callback())
+  },
 })

@@ -98,12 +98,11 @@ app.on('ready', () => {
     }
   })
 
-  // Tab bar sign-out button
+  // Tab bar sign-out button — tell the portal to trigger its own logout
   ipcMain.on('tabbar-signout', () => {
-    // Tell the portal to sign out
     const portalTab = tabManager.tabs.get(1)
     if (portalTab) {
-      portalTab.view.webContents.executeJavaScript('localStorage.removeItem("wcs_token"); location.reload();')
+      portalTab.view.webContents.send('trigger-signout')
     }
   })
 

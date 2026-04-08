@@ -58,6 +58,18 @@ export default function App() {
         setSavePrompt(data)
       })
     }
+    if (window.wcsElectron?.onSignOut) {
+      window.wcsElectron.onSignOut(() => {
+        clearToken()
+        setUser(null)
+        setShowAdmin(false)
+        setShowTours(false)
+        setShowDayOneTracker(false)
+        setShowTrainerAvail(false)
+        setShowReporting(false)
+        if (window.wcsElectron) window.wcsElectron.onLogout()
+      })
+    }
   }, [])
 
   useEffect(() => {
