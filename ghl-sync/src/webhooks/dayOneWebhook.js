@@ -3,8 +3,6 @@ const { get } = require('../ghl/client');
 const supabase = require('../db/supabase');
 const LOCATIONS = require('../config/locations');
 
-const CAL_VERSION = '2021-04-15';
-
 // Cache: locationId -> { calendarIds, groupId }
 const calendarCache = {};
 
@@ -148,6 +146,7 @@ async function run() {
 
   for (const location of LOCATIONS) {
     if (!location.dayOneWebhookUrl) {
+      console.warn(`[DayOneWebhook] No webhook URL configured for ${location.slug}, skipping`);
       continue;
     }
 

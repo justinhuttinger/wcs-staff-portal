@@ -32,12 +32,14 @@ export default function WebhookLogs() {
   const [page, setPage] = useState(1)
   const [locationFilter, setLocationFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [expandedId, setExpandedId] = useState(null)
   const limit = 25
 
   useEffect(() => {
     loadLogs()
-  }, [page, locationFilter, statusFilter])
+  }, [page, locationFilter, statusFilter, startDate, endDate])
 
   async function loadLogs() {
     setLoading(true)
@@ -45,6 +47,8 @@ export default function WebhookLogs() {
       const params = { page, limit }
       if (locationFilter) params.location_slug = locationFilter
       if (statusFilter) params.status = statusFilter
+      if (startDate) params.start_date = startDate
+      if (endDate) params.end_date = endDate
       const res = await getWebhookLogs(params)
       setLogs(res.logs || [])
       setTotal(res.total || 0)
@@ -78,6 +82,20 @@ export default function WebhookLogs() {
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
+        <input
+          type="date"
+          value={startDate}
+          onChange={e => { setStartDate(e.target.value); setPage(1) }}
+          className="px-3 py-1.5 rounded-lg border border-border bg-surface text-sm text-text-primary"
+          placeholder="Start date"
+        />
+        <input
+          type="date"
+          value={endDate}
+          onChange={e => { setEndDate(e.target.value); setPage(1) }}
+          className="px-3 py-1.5 rounded-lg border border-border bg-surface text-sm text-text-primary"
+          placeholder="End date"
+        />
         <button
           onClick={() => { setPage(1); loadLogs() }}
           className="px-3 py-1.5 rounded-lg border border-border text-sm text-text-muted hover:text-text-primary"
