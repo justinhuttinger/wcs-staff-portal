@@ -94,7 +94,18 @@ async function getAlreadySent(eventIds, locationId) {
   return new Set((data || []).map(r => r.event_id));
 }
 
+function parseEventTime(raw) {
+  if (!raw) return null;
+  const num = typeof raw === 'number' ? raw : parseInt(raw, 10);
+  // If it looks like epoch milliseconds (after year 2000), use directly
+  if (num > 946684800000) return new Date(num).toISOString();
+  // Otherwise treat as ISO string
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 async function sendWebhook(location, event, userMap) {
+  console.log(`[DayOneWebhook] Event time fields — startTime: ${event.startTime} (${typeof event.startTime}), endTime: ${event.endTime} (${typeof event.endTime}), start: ${event.start}, end: ${event.end}`);
   const trainerInfo = userMap[event.assignedUserId] || {};
   const payload = {
     contactId: event.contactId || null,
@@ -104,8 +115,8 @@ async function sendWebhook(location, event, userMap) {
     trainerName: trainerInfo.name || null,
     trainerPhone: trainerInfo.phone || null,
     appointmentId: event.id,
-    appointmentStart: event.startTime ? new Date(parseInt(event.startTime)).toISOString() : event.start || null,
-    appointmentEnd: event.endTime ? new Date(parseInt(event.endTime)).toISOString() : event.end || null,
+    appointmentStart: parseEventTime(event.startTime) || event.start || null,
+    appointmentEnd: parseEventTime(event.endTime) || event.end || null,
     locationSlug: location.slug,
   };
 
