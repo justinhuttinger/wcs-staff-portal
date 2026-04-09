@@ -110,7 +110,8 @@ async function fetchContact(contactId, apiKey) {
     const data = await get('/contacts/' + contactId, {}, apiKey);
     const c = data.contact || data;
     return {
-      name: [c.firstName, c.lastName].filter(Boolean).join(' ') || c.name || null,
+      firstName: c.firstName || null,
+      lastName: c.lastName || null,
       email: c.email || null,
       phone: c.phone || null,
     };
@@ -126,7 +127,8 @@ async function sendWebhook(location, event, userMap) {
   const contact = await fetchContact(event.contactId, location.apiKey);
   const payload = {
     contactId: event.contactId || null,
-    contactName: contact.name || event.title || 'Unknown',
+    contactFirstName: contact.firstName || null,
+    contactLastName: contact.lastName || null,
     contactEmail: contact.email || null,
     contactPhone: contact.phone || null,
     trainerName: trainerInfo.name || null,
