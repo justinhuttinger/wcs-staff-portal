@@ -166,4 +166,31 @@ router.delete('/staff/:id', requireRole('admin'), async (req, res) => {
   }
 })
 
+// GET /admin/webhook-logs — manager+ (webhook send history)
+router.get('/webhook-logs', requireRole('manager'), async (req, res) => {
+  try {
+    const { location_slug, status, start_date, end_date, page = 1, limit = 25 } = req.query
+    const offset = (parseInt(page) - 1) * parseInt(limit)
+
+    let query = supabaseAdmin
+      .from('ghl_dayone_webhooks')
+      .select('*', { count: 'exact' })
+      .order('sent_at', { ascending: false })
+      .range(offset, offset + parseInt(limit) - 1)
+
+    if (location_slug) query = query.eq('payload->>locationSlug', location_slug)
+    if (status) query = query.eq('status', status)
+    if (start_date) query = query.gte('sent_at', start_date + 'T00:00:00Z')
+    if (end_date) query = query.lte('sent_at', end_date + 'T23:59:59Z')
+
+    const { data, count, error } = await query
+    if (error) throw error
+
+    res.json({ logs: data || [], total: count || 0 })
+  } catch (err) {
+    console.error('[Admin] webhook-logs error:', err.message)
+    res.status(500).json({ error: 'Failed to fetch webhook logs' })
+  }
+})
+
 module.exports = router
