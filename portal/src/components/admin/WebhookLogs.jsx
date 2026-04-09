@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment } from 'react'
-import { getWebhookLogs, triggerDayOneWebhooks, sendTestWebhook } from '../../lib/api'
+import { getWebhookLogs } from '../../lib/api'
 
 const LOCATION_OPTIONS = [
   { label: 'All Locations', value: '' },
@@ -35,10 +35,6 @@ export default function WebhookLogs() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [expandedId, setExpandedId] = useState(null)
-  const [triggering, setTriggering] = useState(false)
-  const [triggerMsg, setTriggerMsg] = useState(null)
-  const [testLoc, setTestLoc] = useState('salem')
-  const [sendingTest, setSendingTest] = useState(false)
   const limit = 25
 
   useEffect(() => {
@@ -62,68 +58,12 @@ export default function WebhookLogs() {
     setLoading(false)
   }
 
-  async function handleTrigger() {
-    setTriggering(true)
-    setTriggerMsg(null)
-    try {
-      await triggerDayOneWebhooks()
-      setTriggerMsg({ type: 'success', text: 'Webhook relay triggered — check logs in a moment' })
-      setTimeout(() => loadLogs(), 3000)
-    } catch (err) {
-      setTriggerMsg({ type: 'error', text: err.message })
-    }
-    setTriggering(false)
-  }
-
-  async function handleSendTest() {
-    setSendingTest(true)
-    setTriggerMsg(null)
-    try {
-      await sendTestWebhook(testLoc)
-      setTriggerMsg({ type: 'success', text: `Test webhook sent to ${testLoc}` })
-    } catch (err) {
-      setTriggerMsg({ type: 'error', text: err.message })
-    }
-    setSendingTest(false)
-  }
-
   const totalPages = Math.ceil(total / limit)
 
   return (
     <div>
-      {/* Trigger + Filters */}
-      <div className="flex items-center gap-3 mb-4">
-        <button
-          onClick={handleTrigger}
-          disabled={triggering}
-          className="px-4 py-1.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50"
-        >
-          {triggering ? 'Firing...' : 'Fire Webhooks'}
-        </button>
-        <div className="flex items-center gap-1.5 border-l border-border pl-3">
-          <select
-            value={testLoc}
-            onChange={e => setTestLoc(e.target.value)}
-            className="px-2 py-1.5 rounded-lg border border-border bg-surface text-sm text-text-primary"
-          >
-            {LOCATION_OPTIONS.filter(o => o.value).map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-          <button
-            onClick={handleSendTest}
-            disabled={sendingTest}
-            className="px-3 py-1.5 rounded-lg border border-border text-sm text-text-primary hover:bg-bg disabled:opacity-50"
-          >
-            {sendingTest ? 'Sending...' : 'Send Test'}
-          </button>
-        </div>
-        {triggerMsg && (
-          <span className={`text-xs ${triggerMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
-            {triggerMsg.text}
-          </span>
-        )}
-        <div className="flex-1" />
+      {/* Filters */}
+      <div className="flex gap-3 mb-4">
         <select
           value={locationFilter}
           onChange={e => { setLocationFilter(e.target.value); setPage(1) }}

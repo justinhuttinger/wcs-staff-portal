@@ -195,15 +195,6 @@ export async function updateTrainerAvailability(calendarId, data) {
   })
 }
 
-// Webhook Actions
-export async function triggerDayOneWebhooks() {
-  return api('/admin/webhooks/dayone/trigger', { method: 'POST' })
-}
-
-export async function sendTestWebhook(locationSlug) {
-  return api('/admin/webhooks/dayone/test/' + locationSlug, { method: 'POST' })
-}
-
 // Webhook Logs
 export async function getWebhookLogs(params = {}) {
   const qs = new URLSearchParams(params).toString()

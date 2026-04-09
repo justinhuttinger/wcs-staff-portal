@@ -1,8 +1,6 @@
 const cron = require('node-cron');
 const { fullSync } = require('./sync/fullSync');
 const { deltaSync } = require('./sync/deltaSync');
-const { run: runDayOneWebhook } = require('./webhooks/dayOneWebhook');
-
 function startScheduler() {
   const intervalMinutes = process.env.SYNC_INTERVAL_MINUTES || 10;
   const fullSyncHour = process.env.FULL_SYNC_HOUR || 3; // PST
@@ -16,11 +14,6 @@ function startScheduler() {
       await deltaSync();
     } catch (err) {
       console.error('[Scheduler] Delta sync failed:', err.message);
-    }
-    try {
-      await runDayOneWebhook();
-    } catch (err) {
-      console.error('[Scheduler] Day One webhook failed:', err.message);
     }
   });
 
