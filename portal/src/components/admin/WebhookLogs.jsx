@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment } from 'react'
-import { getWebhookLogs } from '../../lib/api'
+import { getWebhookLogs, triggerDayOneWebhooks } from '../../lib/api'
 
 const LOCATION_OPTIONS = [
   { label: 'All Locations', value: '' },
@@ -35,6 +35,8 @@ export default function WebhookLogs() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [expandedId, setExpandedId] = useState(null)
+  const [triggering, setTriggering] = useState(false)
+  const [triggerMsg, setTriggerMsg] = useState(null)
   const limit = 25
 
   useEffect(() => {
@@ -58,12 +60,38 @@ export default function WebhookLogs() {
     setLoading(false)
   }
 
+  async function handleTrigger() {
+    setTriggering(true)
+    setTriggerMsg(null)
+    try {
+      await triggerDayOneWebhooks()
+      setTriggerMsg({ type: 'success', text: 'Webhook relay triggered — check logs in a moment' })
+      setTimeout(() => loadLogs(), 3000)
+    } catch (err) {
+      setTriggerMsg({ type: 'error', text: err.message })
+    }
+    setTriggering(false)
+  }
+
   const totalPages = Math.ceil(total / limit)
 
   return (
     <div>
-      {/* Filters */}
-      <div className="flex gap-3 mb-4">
+      {/* Trigger + Filters */}
+      <div className="flex items-center gap-3 mb-4">
+        <button
+          onClick={handleTrigger}
+          disabled={triggering}
+          className="px-4 py-1.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+        >
+          {triggering ? 'Firing...' : 'Fire Webhooks'}
+        </button>
+        {triggerMsg && (
+          <span className={`text-xs ${triggerMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+            {triggerMsg.text}
+          </span>
+        )}
+        <div className="flex-1" />
         <select
           value={locationFilter}
           onChange={e => { setLocationFilter(e.target.value); setPage(1) }}

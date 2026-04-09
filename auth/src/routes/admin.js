@@ -166,6 +166,29 @@ router.delete('/staff/:id', requireRole('admin'), async (req, res) => {
   }
 })
 
+// POST /admin/webhooks/dayone/trigger — manager+ (manually fire Day One webhook relay)
+router.post('/webhooks/dayone/trigger', requireRole('manager'), async (req, res) => {
+  const syncUrl = process.env.GHL_SYNC_URL
+  const syncSecret = process.env.GHL_SYNC_SECRET
+  if (!syncUrl) return res.status(500).json({ error: 'GHL_SYNC_URL not configured' })
+
+  try {
+    const resp = await fetch(syncUrl + '/api/webhooks/dayone', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(syncSecret ? { 'x-sync-secret': syncSecret } : {}),
+      },
+    })
+    const data = await resp.json()
+    if (!resp.ok) throw new Error(data.error || 'Sync service error')
+    res.json(data)
+  } catch (err) {
+    console.error('[Admin] webhook trigger error:', err.message)
+    res.status(502).json({ error: 'Failed to trigger webhook relay: ' + err.message })
+  }
+})
+
 // GET /admin/webhook-logs — manager+ (webhook send history)
 router.get('/webhook-logs', requireRole('manager'), async (req, res) => {
   try {

@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const { fullSync, fullSyncForLocation } = require('./sync/fullSync');
 const { deltaSync } = require('./sync/deltaSync');
+const { run: runDayOneWebhook } = require('./webhooks/dayOneWebhook');
 const { startScheduler } = require('./scheduler');
 const supabase = require('./db/supabase');
 
@@ -78,6 +79,13 @@ app.post('/api/sync/full/:locationSlug', requireSecret, (req, res) => {
   fullSyncForLocation(req.params.locationSlug)
     .catch(err => console.error(`[API] Full sync for ${req.params.locationSlug} failed:`, err.message))
     .finally(() => { syncRunning = false; });
+});
+
+// POST /api/webhooks/dayone — manually trigger Day One webhook relay
+app.post('/api/webhooks/dayone', requireSecret, (req, res) => {
+  res.json({ status: 'started', message: 'Day One webhook relay running in background' });
+  runDayOneWebhook()
+    .catch(err => console.error('[API] Day One webhook relay failed:', err.message));
 });
 
 // GET /api/sync/logs
