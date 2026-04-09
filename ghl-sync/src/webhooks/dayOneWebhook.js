@@ -104,14 +104,31 @@ function parseEventTime(raw) {
   return isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+async function fetchContact(contactId, apiKey) {
+  if (!contactId) return {};
+  try {
+    const data = await get('/contacts/' + contactId, {}, apiKey);
+    const c = data.contact || data;
+    return {
+      name: [c.firstName, c.lastName].filter(Boolean).join(' ') || c.name || null,
+      email: c.email || null,
+      phone: c.phone || null,
+    };
+  } catch (err) {
+    console.warn(`[DayOneWebhook] Could not fetch contact ${contactId}: ${err.message}`);
+    return {};
+  }
+}
+
 async function sendWebhook(location, event, userMap) {
   console.log(`[DayOneWebhook] Event time fields — startTime: ${event.startTime} (${typeof event.startTime}), endTime: ${event.endTime} (${typeof event.endTime}), start: ${event.start}, end: ${event.end}`);
   const trainerInfo = userMap[event.assignedUserId] || {};
+  const contact = await fetchContact(event.contactId, location.apiKey);
   const payload = {
     contactId: event.contactId || null,
-    contactName: event.title || event.contactName || 'Unknown',
-    contactEmail: event.contactEmail || null,
-    contactPhone: event.contactPhone || null,
+    contactName: contact.name || event.title || 'Unknown',
+    contactEmail: contact.email || null,
+    contactPhone: contact.phone || null,
     trainerName: trainerInfo.name || null,
     trainerPhone: trainerInfo.phone || null,
     appointmentId: event.id,
