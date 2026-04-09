@@ -158,7 +158,7 @@ export default function WebhookLogs() {
                 >
                   <td className="px-4 py-2">{formatDate(log.sent_at)}</td>
                   <td className="px-4 py-2 capitalize">{log.payload?.locationSlug || '—'}</td>
-                  <td className="px-4 py-2">{log.payload?.contactName || '—'}</td>
+                  <td className="px-4 py-2">{[log.payload?.contactFirstName, log.payload?.contactLastName].filter(Boolean).join(' ') || log.payload?.contactName || '—'}</td>
                   <td className="px-4 py-2">{log.payload?.trainerName || '—'}</td>
                   <td className="px-4 py-2">
                     <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
