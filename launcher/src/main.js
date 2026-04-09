@@ -37,7 +37,7 @@ app.on('ready', () => {
     width: 1400,
     height: 900,
     title: 'Portal',
-    icon: require('path').join(__dirname, '..', 'assets', 'icon-256.png'),
+    icon: require('path').join(__dirname, '..', 'assets', 'icon.ico'),
     autoHideMenuBar: true,
     frame: false,
     titleBarStyle: 'hidden',

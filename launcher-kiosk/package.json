@@ -7,22 +7,24 @@
     "start": "electron .",
     "build": "electron-builder"
   },
-  "dependencies": {
-    "electron": "^33.0.0"
-  },
+  "dependencies": {},
   "devDependencies": {
+    "electron": "^33.0.0",
     "electron-builder": "^25.0.0"
   },
+  "author": "WCS",
+  "description": "Day One Tracker Kiosk for Keizer",
   "build": {
-    "appId": "com.wcs.dayone-kiosk",
-    "productName": "WCS Day One",
+    "appId": "com.wcs.d1-tracker",
+    "productName": "D1 Tracker",
     "win": {
       "target": "nsis",
-      "icon": "../launcher/assets/icon-256.png"
+      "icon": "icon.ico"
     },
     "nsis": {
       "oneClick": true,
-      "installerIcon": "../launcher/assets/icon-256.png"
+      "createDesktopShortcut": true,
+      "installerIcon": "icon.ico"
     }
   }
 }
