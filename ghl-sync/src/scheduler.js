@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const { fullSync } = require('./sync/fullSync');
 const { deltaSync } = require('./sync/deltaSync');
+const { run: runDayOneWebhook } = require('./webhooks/dayOneWebhook');
 
 function startScheduler() {
   const intervalMinutes = process.env.SYNC_INTERVAL_MINUTES || 10;
@@ -9,9 +10,18 @@ function startScheduler() {
   const fullSyncHourUTC = (parseInt(fullSyncHour) + 8) % 24;
 
   // Delta sync every N minutes
-  cron.schedule(`*/${intervalMinutes} * * * *`, () => {
+  cron.schedule(`*/${intervalMinutes} * * * *`, async () => {
     console.log('[Scheduler] Starting delta sync...');
-    deltaSync().catch(err => console.error('[Scheduler] Delta sync failed:', err.message));
+    try {
+      await deltaSync();
+    } catch (err) {
+      console.error('[Scheduler] Delta sync failed:', err.message);
+    }
+    try {
+      await runDayOneWebhook();
+    } catch (err) {
+      console.error('[Scheduler] Day One webhook failed:', err.message);
+    }
   });
 
   // Full re-sync daily
