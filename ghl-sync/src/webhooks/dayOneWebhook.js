@@ -215,4 +215,36 @@ async function run() {
   }
 }
 
-module.exports = { run };
+async function sendTest(locationSlug) {
+  const location = LOCATIONS.find(l => l.slug === locationSlug);
+  if (!location) throw new Error(`Unknown location: ${locationSlug}`);
+  if (!location.dayOneWebhookUrl) throw new Error(`No webhook URL configured for ${locationSlug}`);
+
+  const now = new Date();
+  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+  const payload = {
+    contactId: 'test_contact_123',
+    contactFirstName: 'Test',
+    contactLastName: 'Contact',
+    contactEmail: 'test@example.com',
+    contactPhone: '+15551234567',
+    trainerName: 'Test Trainer',
+    trainerPhone: '+15559876543',
+    appointmentId: 'test_appointment_' + Date.now(),
+    appointmentStart: oneHourAgo.toISOString(),
+    appointmentEnd: now.toISOString(),
+    locationSlug: location.slug,
+    isTest: true,
+  };
+
+  await axios.post(location.dayOneWebhookUrl, payload, {
+    headers: { 'Content-Type': 'application/json' },
+    timeout: 10000,
+  });
+
+  console.log(`[DayOneWebhook] Sent test webhook to ${locationSlug}`);
+  return payload;
+}
+
+module.exports = { run, sendTest };

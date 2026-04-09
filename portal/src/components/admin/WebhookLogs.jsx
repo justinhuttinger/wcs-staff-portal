@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment } from 'react'
-import { getWebhookLogs, triggerDayOneWebhooks } from '../../lib/api'
+import { getWebhookLogs, triggerDayOneWebhooks, sendTestWebhook } from '../../lib/api'
 
 const LOCATION_OPTIONS = [
   { label: 'All Locations', value: '' },
@@ -37,6 +37,8 @@ export default function WebhookLogs() {
   const [expandedId, setExpandedId] = useState(null)
   const [triggering, setTriggering] = useState(false)
   const [triggerMsg, setTriggerMsg] = useState(null)
+  const [testLoc, setTestLoc] = useState('salem')
+  const [sendingTest, setSendingTest] = useState(false)
   const limit = 25
 
   useEffect(() => {
@@ -73,6 +75,18 @@ export default function WebhookLogs() {
     setTriggering(false)
   }
 
+  async function handleSendTest() {
+    setSendingTest(true)
+    setTriggerMsg(null)
+    try {
+      await sendTestWebhook(testLoc)
+      setTriggerMsg({ type: 'success', text: `Test webhook sent to ${testLoc}` })
+    } catch (err) {
+      setTriggerMsg({ type: 'error', text: err.message })
+    }
+    setSendingTest(false)
+  }
+
   const totalPages = Math.ceil(total / limit)
 
   return (
@@ -86,6 +100,24 @@ export default function WebhookLogs() {
         >
           {triggering ? 'Firing...' : 'Fire Webhooks'}
         </button>
+        <div className="flex items-center gap-1.5 border-l border-border pl-3">
+          <select
+            value={testLoc}
+            onChange={e => setTestLoc(e.target.value)}
+            className="px-2 py-1.5 rounded-lg border border-border bg-surface text-sm text-text-primary"
+          >
+            {LOCATION_OPTIONS.filter(o => o.value).map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleSendTest}
+            disabled={sendingTest}
+            className="px-3 py-1.5 rounded-lg border border-border text-sm text-text-primary hover:bg-bg disabled:opacity-50"
+          >
+            {sendingTest ? 'Sending...' : 'Send Test'}
+          </button>
+        </div>
         {triggerMsg && (
           <span className={`text-xs ${triggerMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
             {triggerMsg.text}
