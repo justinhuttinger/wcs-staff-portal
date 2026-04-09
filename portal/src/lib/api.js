@@ -194,3 +194,9 @@ export async function updateTrainerAvailability(calendarId, data) {
     body: JSON.stringify(data),
   })
 }
+
+// Webhook Logs
+export async function getWebhookLogs(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/admin/webhook-logs' + (qs ? '?' + qs : ''))
+}
