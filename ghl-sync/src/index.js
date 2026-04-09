@@ -150,21 +150,18 @@ async function main() {
   }
   console.log('[Startup] Supabase connected');
 
-  // 2. Run initial full sync
-  console.log('[Startup] Running initial full sync...');
-  syncRunning = true;
-  try {
-    await fullSync();
-  } catch (err) {
-    console.error('[Startup] Initial full sync failed:', err.message);
-  }
-  syncRunning = false;
+  // 2. Start Express FIRST so Render detects the port
+  app.listen(PORT, () => console.log(`[API] Listening on :${PORT}`));
 
   // 3. Start scheduler
   startScheduler();
 
-  // 4. Start Express (needed even for worker — health checks + manual triggers)
-  app.listen(PORT, () => console.log(`[API] Listening on :${PORT}`));
+  // 4. Run initial full sync in background (don't block startup)
+  console.log('[Startup] Running initial full sync in background...');
+  syncRunning = true;
+  fullSync()
+    .catch(err => console.error('[Startup] Initial full sync failed:', err.message))
+    .finally(() => { syncRunning = false; });
 }
 
 main();
