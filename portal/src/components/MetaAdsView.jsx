@@ -64,20 +64,25 @@ function StatCard({ label, value, sub }) {
   )
 }
 
+const CHART_HEIGHT = 96 // pixels
+
 function MiniChart({ data, dataKey, label, color = 'bg-wcs-red' }) {
   if (!data || data.length === 0) return <p className="text-xs text-text-muted">No data for this period</p>
   const maxVal = Math.max(...data.map(d => d[dataKey] || 0), 1)
   return (
     <div>
       <p className="text-xs text-text-muted uppercase font-semibold mb-2">{label}</p>
-      <div className="flex items-end gap-[2px] h-24">
+      <div className="flex items-end gap-[2px]" style={{ height: CHART_HEIGHT }}>
         {data.map((d, i) => {
           const val = d[dataKey] || 0
-          const pct = (val / maxVal) * 100
+          const h = Math.max((val / maxVal) * CHART_HEIGHT, 2)
           return (
-            <div key={i} className="flex-1 flex flex-col items-center group relative">
-              <div className={`w-full ${color} rounded-t-sm opacity-80 group-hover:opacity-100 transition-opacity`} style={{ height: `${Math.max(pct, 2)}%` }} />
-              <div className="absolute bottom-full mb-1 hidden group-hover:block bg-navy text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
+            <div key={i} className="flex-1 group relative" style={{ height: CHART_HEIGHT }}>
+              <div
+                className={`absolute bottom-0 left-0 right-0 ${color} rounded-t-sm opacity-80 group-hover:opacity-100 transition-opacity`}
+                style={{ height: h }}
+              />
+              <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block bg-navy text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
                 {d.date}: {dataKey === 'spend' ? fmtMoney(val) : fmtNum(val)}
               </div>
             </div>
@@ -116,7 +121,9 @@ function FilterPills({ options, value, onChange, label }) {
 }
 
 // Shared table row component
-function MetricRow({ name, spend, leads, costPerLead, clicks, impressions, budget, updatedTime, onClick, depth = 0 }) {
+function MetricRow({ name, spend, leads, costPerLead, costPerLinkClick, isTraffic, clicks, impressions, budget, updatedTime, onClick, depth = 0 }) {
+  // Traffic campaigns show cost per link click instead of CPL
+  const costLabel = isTraffic ? (costPerLinkClick ? fmtMoney(costPerLinkClick) : '—') : (costPerLead ? fmtMoney(costPerLead) : '—')
   return (
     <tr onClick={onClick} className={`border-b border-border last:border-0 hover:bg-bg transition-colors ${onClick ? 'cursor-pointer' : ''}`}>
       <td className="px-4 py-2.5 text-text-primary font-medium text-xs max-w-[260px]">
@@ -124,7 +131,7 @@ function MetricRow({ name, spend, leads, costPerLead, clicks, impressions, budge
       </td>
       <td className="px-3 py-2.5 text-right text-text-primary text-xs">{fmtMoney(spend)}</td>
       <td className="px-3 py-2.5 text-right text-text-primary text-xs font-medium">{fmtNum(leads)}</td>
-      <td className="px-3 py-2.5 text-right text-text-muted text-xs">{costPerLead ? fmtMoney(costPerLead) : '—'}</td>
+      <td className="px-3 py-2.5 text-right text-text-muted text-xs">{costLabel}</td>
       <td className="px-3 py-2.5 text-right text-text-muted text-xs">{fmtNum(clicks)}</td>
       <td className="px-3 py-2.5 text-right text-text-muted text-xs">{fmtNum(impressions)}</td>
       <td className="px-3 py-2.5 text-right text-text-muted text-xs">{budget || '—'}</td>
@@ -338,7 +345,7 @@ export default function MetaAdsView({ onBack }) {
                     <th className="text-left px-4 py-2 text-xs font-semibold text-text-muted">Name</th>
                     <th className="text-right px-3 py-2 text-xs font-semibold text-text-muted">Spend</th>
                     <th className="text-right px-3 py-2 text-xs font-semibold text-text-muted">Leads</th>
-                    <th className="text-right px-3 py-2 text-xs font-semibold text-text-muted">CPL</th>
+                    <th className="text-right px-3 py-2 text-xs font-semibold text-text-muted">CPL / CPC</th>
                     <th className="text-right px-3 py-2 text-xs font-semibold text-text-muted">Clicks</th>
                     <th className="text-right px-3 py-2 text-xs font-semibold text-text-muted">Impr.</th>
                     <th className="text-right px-3 py-2 text-xs font-semibold text-text-muted">Budget</th>
@@ -355,6 +362,7 @@ export default function MetaAdsView({ onBack }) {
                         key={c.campaign_id}
                         name={expandedCampaign === c.campaign_id ? '[-] ' + c.campaign_name : '[+] ' + c.campaign_name}
                         spend={c.spend} leads={c.leads} costPerLead={c.cost_per_lead}
+                        costPerLinkClick={c.cost_per_link_click} isTraffic={classifyCampaign(c.campaign_name) === 'Traffic'}
                         clicks={c.clicks} impressions={c.impressions}
                         budget={fmtBudget(c.daily_budget, c.lifetime_budget)}
                         updatedTime={c.updated_time}

@@ -38,14 +38,17 @@ function timeRange(start_date, end_date) {
 function extractMetrics(row) {
   const actions = row.actions || []
   const costPerAction = row.cost_per_action_type || []
+  const linkClicks = parseInt(actions.find(a => a.action_type === 'link_click')?.value || 0)
+  const spend = parseFloat(row.spend || 0)
   return {
-    spend: parseFloat(row.spend || 0),
+    spend,
     impressions: parseInt(row.impressions || 0),
     clicks: parseInt(row.clicks || 0),
     leads: parseInt(actions.find(a => a.action_type === 'lead')?.value || 0),
-    link_clicks: parseInt(actions.find(a => a.action_type === 'link_click')?.value || 0),
+    link_clicks: linkClicks,
     landing_page_views: parseInt(actions.find(a => a.action_type === 'landing_page_view')?.value || 0),
     cost_per_lead: costPerAction.find(a => a.action_type === 'lead')?.value ? parseFloat(costPerAction.find(a => a.action_type === 'lead').value) : null,
+    cost_per_link_click: linkClicks > 0 ? spend / linkClicks : null,
   }
 }
 
@@ -93,6 +96,24 @@ router.get('/campaigns', async (req, res) => {
         lifetime_budget: c.lifetime_budget ? parseFloat(c.lifetime_budget) / 100 : null,
         updated_time: c.updated_time,
       }
+    }
+
+    // Fetch all ad sets to find most recent edit per campaign
+    const adsetParams = { fields: 'campaign_id,updated_time', limit: 500 }
+    if (status !== 'all') adsetParams.effective_status = JSON.stringify(['ACTIVE'])
+    try {
+      const adsetData = await metaFetch(`/${accountId}/adsets`, adsetParams, token)
+      for (const as of (adsetData.data || [])) {
+        const cid = as.campaign_id
+        if (campaignMeta[cid] && as.updated_time) {
+          const existing = campaignMeta[cid].updated_time
+          if (!existing || new Date(as.updated_time) > new Date(existing)) {
+            campaignMeta[cid].updated_time = as.updated_time
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Meta Ads] Could not fetch adset updated_times:', e.message)
     }
 
     // Fetch insights
