@@ -63,6 +63,20 @@ async function getAccessToken() {
   return newAccessToken
 }
 
+// Cache to avoid hitting Google rate limits
+const cache = {}
+const CACHE_TTL = 10 * 60 * 1000 // 10 minutes
+
+function getCached(key) {
+  const entry = cache[key]
+  if (entry && (Date.now() - entry.ts) < CACHE_TTL) return entry.data
+  return null
+}
+
+function setCache(key, data) {
+  cache[key] = { data, ts: Date.now() }
+}
+
 async function googleFetch(url, accessToken) {
   const res = await fetch(url, {
     headers: { Authorization: 'Bearer ' + accessToken },
@@ -126,8 +140,11 @@ router.get('/status', authenticate, requireRole('lead'), async (req, res) => {
   res.json({ authorized: !!(tokens?.refresh_token) })
 })
 
-// GET /google-business/locations — list all business locations
+// GET /google-business/locations — list all business locations (cached 10 min)
 router.get('/locations', authenticate, requireRole('lead'), async (req, res) => {
+  const cached = getCached('locations')
+  if (cached) return res.json(cached)
+
   try {
     const token = await getAccessToken()
 
@@ -148,16 +165,21 @@ router.get('/locations', authenticate, requireRole('lead'), async (req, res) => 
       address: l.storefrontAddress?.locality || '',
     }))
 
-    res.json({ locations })
+    const result = { locations }
+    setCache('locations', result)
+    res.json(result)
   } catch (err) {
     console.error('[Google Business] Locations error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })
 
-// GET /google-business/performance — get performance metrics for all locations
+// GET /google-business/performance — get performance metrics for all locations (cached 10 min)
 router.get('/performance', authenticate, requireRole('lead'), async (req, res) => {
   const { start_date, end_date, location_name } = req.query
+  const cacheKey = `perf:${start_date}:${end_date}:${location_name || 'all'}`
+  const cached = getCached(cacheKey)
+  if (cached) return res.json(cached)
 
   try {
     const token = await getAccessToken()
@@ -224,7 +246,9 @@ router.get('/performance', authenticate, requireRole('lead'), async (req, res) =
       }
     }
 
-    res.json({ metrics })
+    const result = { metrics }
+    setCache(cacheKey, result)
+    res.json(result)
   } catch (err) {
     console.error('[Google Business] Performance error:', err.message)
     res.status(500).json({ error: err.message })
