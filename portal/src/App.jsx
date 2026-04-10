@@ -7,6 +7,7 @@ import ToursView from './components/ToursView'
 import ReportingView from './components/ReportingView'
 import DayOneTrackerView from './components/DayOneTrackerView'
 import TrainerAvailabilityView from './components/TrainerAvailabilityView'
+import DayOneCalendarView from './components/DayOneCalendarView'
 import { getMe, getToken, clearToken, setToken, api } from './lib/api'
 
 function getParam(key) {
@@ -27,6 +28,7 @@ export default function App() {
   const [showReporting, setShowReporting] = useState(window.location.hash.startsWith('#reporting'))
   const [showDayOneTracker, setShowDayOneTracker] = useState(false)
   const [showTrainerAvail, setShowTrainerAvail] = useState(false)
+  const [showDayOneCalendar, setShowDayOneCalendar] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
   const isElectron = !!window.wcsElectron
   const isAdmin = user?.staff?.role === 'admin' || user?.staff?.role === 'director'
@@ -66,6 +68,7 @@ export default function App() {
         setShowTours(false)
         setShowDayOneTracker(false)
         setShowTrainerAvail(false)
+        setShowDayOneCalendar(false)
         setShowReporting(false)
         if (window.wcsElectron) window.wcsElectron.onLogout()
       })
@@ -180,13 +183,15 @@ export default function App() {
         <ToursView user={user} onBack={() => setShowTours(false)} />
       ) : showDayOneTracker ? (
         <DayOneTrackerView user={user} onBack={() => setShowDayOneTracker(false)} location={location} isAdmin={isAdmin} />
+      ) : showDayOneCalendar ? (
+        <DayOneCalendarView user={user} onBack={() => setShowDayOneCalendar(false)} location={location} />
       ) : showTrainerAvail ? (
         <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={isAdmin} />
       ) : showReporting ? (
         <ReportingView user={user} onBack={() => setShowReporting(false)} location={location} isAdmin={isAdmin} />
       ) : (
         <main className="flex-1 flex items-start pt-4">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onTours={() => setShowTours(true)} onDayOneTracker={() => setShowDayOneTracker(true)} onTrainerAvail={() => setShowTrainerAvail(true)} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onTours={() => setShowTours(true)} onDayOneTracker={() => setShowDayOneTracker(true)} onDayOneCalendar={() => setShowDayOneCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} />
         </main>
       )}
 
