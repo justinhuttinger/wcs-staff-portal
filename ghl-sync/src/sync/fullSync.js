@@ -14,11 +14,15 @@ async function syncLocation(location, syncType) {
   console.log(`[Sync] Starting ${syncType} sync for ${location.name} (${location.id})`);
 
   // 1. Upsert location record
-  await supabase.from('ghl_locations').upsert({
+  const { error: locError } = await supabase.from('ghl_locations').upsert({
     id: location.id,
     name: location.name,
     slug: location.slug,
   }, { onConflict: 'id' });
+  if (locError) {
+    console.error(`[Sync] Failed to upsert location ${location.name}:`, locError.message);
+    throw new Error(`Location upsert failed: ${locError.message}`);
+  }
 
   // 2. Custom fields
   let cfStart = new Date().toISOString();

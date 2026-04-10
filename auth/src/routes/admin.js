@@ -1,7 +1,7 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { requireRole, ROLE_HIERARCHY } = require('../middleware/role')
 
 const router = Router()
 
@@ -57,6 +57,16 @@ router.post('/staff', requireRole('director'), async (req, res) => {
 
   if (!email || !role || !location_ids?.length || !temp_password) {
     return res.status(400).json({ error: 'email, role, location_ids, and temp_password are required' })
+  }
+
+  // Validate role exists and prevent privilege escalation
+  if (!ROLE_HIERARCHY.includes(role)) {
+    return res.status(400).json({ error: 'Invalid role. Must be one of: ' + ROLE_HIERARCHY.join(', ') })
+  }
+  const callerLevel = ROLE_HIERARCHY.indexOf(req.staff.role)
+  const requestedLevel = ROLE_HIERARCHY.indexOf(role)
+  if (requestedLevel > callerLevel) {
+    return res.status(403).json({ error: 'Cannot assign a role higher than your own' })
   }
 
   try {
@@ -119,6 +129,17 @@ router.post('/staff', requireRole('director'), async (req, res) => {
 router.put('/staff/:id', requireRole('director'), async (req, res) => {
   const { role, location_ids, display_name, first_name, last_name, email, temp_password } = req.body
   const staffId = req.params.id
+
+  // Validate role if being changed
+  if (role) {
+    if (!ROLE_HIERARCHY.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be one of: ' + ROLE_HIERARCHY.join(', ') })
+    }
+    const callerLevel = ROLE_HIERARCHY.indexOf(req.staff.role)
+    if (ROLE_HIERARCHY.indexOf(role) > callerLevel) {
+      return res.status(403).json({ error: 'Cannot assign a role higher than your own' })
+    }
+  }
 
   try {
     // Update auth user (email and/or password)
@@ -190,14 +211,16 @@ router.delete('/staff/:id', requireRole('admin'), async (req, res) => {
 // GET /admin/webhook-logs — manager+ (webhook send history)
 router.get('/webhook-logs', requireRole('manager'), async (req, res) => {
   try {
-    const { location_slug, status, start_date, end_date, page = 1, limit = 25 } = req.query
-    const offset = (parseInt(page) - 1) * parseInt(limit)
+    const { location_slug, status, start_date, end_date } = req.query
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1)
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 25))
+    const offset = (page - 1) * limit
 
     let query = supabaseAdmin
       .from('ghl_dayone_webhooks')
       .select('*', { count: 'exact' })
       .order('sent_at', { ascending: false })
-      .range(offset, offset + parseInt(limit) - 1)
+      .range(offset, offset + limit - 1)
 
     if (location_slug) query = query.eq('payload->>locationSlug', location_slug)
     if (status) query = query.eq('status', status)

@@ -37,6 +37,7 @@ async function deltaSync() {
   }
   const start = Date.now();
   const syncTimestamp = new Date().toISOString();
+  let anySuccess = false;
 
   for (const location of LOCATIONS) {
     // Contacts delta
@@ -48,6 +49,7 @@ async function deltaSync() {
         const result = await upsertContacts(contacts);
         console.log(`[Delta] ${location.name}: ${rawContacts.length} contacts updated, ${result.upserted} upserted`);
         await writeSyncLog({ syncType: 'delta', entity: 'contacts', locationId: location.id, recordsFetched: rawContacts.length, recordsUpserted: result.upserted, errors: result.errors, startedAt: ctStart });
+        anySuccess = true;
       }
     } catch (err) {
       console.error(`[Delta] ${location.name} contacts failed:`, err.message);
@@ -63,6 +65,7 @@ async function deltaSync() {
         const result = await upsertOpportunities(opps);
         console.log(`[Delta] ${location.name}: ${rawOpps.length} opportunities updated, ${result.upserted} upserted`);
         await writeSyncLog({ syncType: 'delta', entity: 'opportunities', locationId: location.id, recordsFetched: rawOpps.length, recordsUpserted: result.upserted, errors: result.errors, startedAt: opStart });
+        anySuccess = true;
       }
     } catch (err) {
       console.error(`[Delta] ${location.name} opportunities failed:`, err.message);
@@ -70,7 +73,12 @@ async function deltaSync() {
     }
   }
 
-  await updateLastDeltaSync(syncTimestamp);
+  // Only update timestamp if at least one location synced successfully
+  if (anySuccess) {
+    await updateLastDeltaSync(syncTimestamp);
+  } else {
+    console.warn('[Delta] No locations synced successfully — timestamp NOT updated to prevent data loss');
+  }
   const duration = ((Date.now() - start) / 1000).toFixed(1);
   console.log(`[Delta] Delta sync complete in ${duration}s`);
 }

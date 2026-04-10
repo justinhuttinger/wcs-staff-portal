@@ -8,8 +8,11 @@ const router = Router()
 
 // OIDC Configuration
 const ISSUER = process.env.OIDC_ISSUER || 'https://wcs-auth-api.onrender.com'
-const CLIENT_ID = process.env.OIDC_CLIENT_ID || 'f6588abfac3490cfd85b22bb5e72787f'
-const CLIENT_SECRET = process.env.OIDC_CLIENT_SECRET || '8abcb11cfe3cef6797ac65c3da63cb5fb117a5456898d57e565bcd09cc280699'
+const CLIENT_ID = process.env.OIDC_CLIENT_ID
+const CLIENT_SECRET = process.env.OIDC_CLIENT_SECRET
+if (!CLIENT_ID || !CLIENT_SECRET) {
+  console.warn('[OIDC] WARNING: OIDC_CLIENT_ID and OIDC_CLIENT_SECRET not set — SSO endpoints will reject all requests')
+}
 
 // Generate RSA key pair for signing tokens (or use a static one from env)
 let signingKey
@@ -27,8 +30,16 @@ function getSigningKey() {
   return signingKey
 }
 
-// In-memory authorization code store (short-lived)
+// In-memory authorization code store (short-lived, capped at 500)
 const authCodes = new Map()
+const MAX_AUTH_CODES = 500
+
+function pruneExpiredCodes() {
+  const now = Date.now()
+  for (const [key, val] of authCodes) {
+    if (val.expiresAt < now) authCodes.delete(key)
+  }
+}
 
 // 1. OpenID Configuration (Discovery Document)
 router.get('/.well-known/openid-configuration', (req, res) => {
@@ -106,6 +117,7 @@ router.get('/authorize', async (req, res) => {
             redirectUri: redirect_uri,
             expiresAt: Date.now() + 5 * 60 * 1000,
           })
+          if (authCodes.size > MAX_AUTH_CODES) pruneExpiredCodes()
 
           const redirectUrl = new URL(redirect_uri)
           redirectUrl.searchParams.set('code', code)
@@ -214,9 +226,7 @@ router.post('/authorize', express.urlencoded({ extended: false }), async (req, r
     })
 
     // Clean up expired codes
-    for (const [key, val] of authCodes) {
-      if (val.expiresAt < Date.now()) authCodes.delete(key)
-    }
+    pruneExpiredCodes()
 
     // Redirect back to GHL with the authorization code
     const redirectUrl = new URL(redirect_uri)

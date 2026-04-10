@@ -22,8 +22,13 @@ router.get('/', async (req, res) => {
     if (isManager) {
       // Managers see all appointments at their locations
       if (req.query.location_id) {
+        // Verify manager has access to requested location
+        if (!req.staff.location_ids.includes(req.query.location_id)) {
+          return res.status(403).json({ error: 'Not authorized for this location' })
+        }
         query = query.eq('location_id', req.query.location_id)
       } else {
+        if (req.staff.location_ids.length === 0) return res.json({ appointments: [] })
         query = query.in('location_id', req.staff.location_ids)
       }
 

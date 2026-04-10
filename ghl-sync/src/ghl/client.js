@@ -16,6 +16,7 @@ async function get(path, params = {}, apiKey) {
           'Version': '2021-07-28',
           'Content-Type': 'application/json',
         },
+        timeout: 30000, // 30s timeout to prevent hanging
       });
       return res.data;
     } catch (err) {
@@ -51,8 +52,13 @@ async function getPaginated(path, baseParams, itemsKey, options = {}, apiKey) {
   let pageNum = 0;
   const limit = baseParams.limit || 100;
   const locationId = baseParams.locationId || baseParams.location_id || 'unknown';
+  const MAX_PAGES = 2000; // Safety limit: 2000 pages × 100 = 200K records max
 
   while (true) {
+    if (pageNum >= MAX_PAGES) {
+      console.warn(`[GHL] Hit max page limit (${MAX_PAGES}) for ${itemsKey} @ ${locationId}. Stopping pagination.`);
+      break;
+    }
     const params = { ...baseParams };
 
     if (paginationType === 'meta' && metaCursor) {
