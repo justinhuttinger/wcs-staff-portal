@@ -29,12 +29,18 @@ async function authenticate(req, res, next) {
 
     const { data: staffLocs } = await supabaseAdmin
       .from('staff_locations')
-      .select('location_id, is_primary')
+      .select('location_id, is_primary, can_sign_in, can_view_reports')
       .eq('staff_id', userId)
+
+    const allLocationIds = (staffLocs || []).map(sl => sl.location_id)
+    const signInLocationIds = (staffLocs || []).filter(sl => sl.can_sign_in !== false).map(sl => sl.location_id)
+    const reportLocationIds = (staffLocs || []).filter(sl => sl.can_view_reports !== false).map(sl => sl.location_id)
 
     req.staff = {
       ...staff,
-      location_ids: (staffLocs || []).map(sl => sl.location_id),
+      location_ids: allLocationIds,
+      sign_in_location_ids: signInLocationIds,
+      report_location_ids: reportLocationIds,
       primary_location_id: (staffLocs || []).find(sl => sl.is_primary)?.location_id || null,
     }
 

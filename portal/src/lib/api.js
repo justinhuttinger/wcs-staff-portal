@@ -87,6 +87,34 @@ export async function deleteStaff(id) {
   return api('/admin/staff/' + id, { method: 'DELETE' })
 }
 
+// Admin - Bulk Import
+export async function downloadStaffTemplate() {
+  const headers = {}
+  if (authToken) headers['Authorization'] = 'Bearer ' + authToken
+  const res = await fetch(API_URL + '/admin/staff/template', { headers })
+  if (!res.ok) throw new Error('Failed to download template')
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'wcs-staff-import-template.xlsx'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export async function importStaff(file) {
+  const headers = { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+  if (authToken) headers['Authorization'] = 'Bearer ' + authToken
+  const res = await fetch(API_URL + '/admin/staff/import', {
+    method: 'POST',
+    headers,
+    body: file,
+  })
+  const data = await res.json()
+  if (!res.ok) throw Object.assign(new Error(data.error || 'Import failed'), { data })
+  return data
+}
+
 // Config - Tiles
 export async function getTiles(locationId) {
   const qs = locationId ? '?location_id=' + locationId : ''

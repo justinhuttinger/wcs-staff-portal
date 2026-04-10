@@ -9,6 +9,7 @@ const emptyForm = {
   last_name: '',
   role: 'front_desk',
   location_ids: [],
+  location_permissions: {},
   temp_password: '',
 }
 
@@ -20,17 +21,43 @@ function StaffModal({ member, locations, onClose, onSaved }) {
     last_name: member.last_name || '',
     role: member.role || 'front_desk',
     location_ids: (member.locations || []).map(l => l.id),
+    location_permissions: Object.fromEntries(
+      (member.locations || []).map(l => [l.id, {
+        can_sign_in: l.can_sign_in !== false,
+        can_view_reports: l.can_view_reports !== false,
+      }])
+    ),
     temp_password: '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   function toggleLocation(locId) {
+    setForm(prev => {
+      const wasSelected = prev.location_ids.includes(locId)
+      const newIds = wasSelected
+        ? prev.location_ids.filter(id => id !== locId)
+        : [...prev.location_ids, locId]
+      const newPerms = { ...prev.location_permissions }
+      if (!wasSelected) {
+        newPerms[locId] = { can_sign_in: true, can_view_reports: true }
+      } else {
+        delete newPerms[locId]
+      }
+      return { ...prev, location_ids: newIds, location_permissions: newPerms }
+    })
+  }
+
+  function togglePerm(locId, perm) {
     setForm(prev => ({
       ...prev,
-      location_ids: prev.location_ids.includes(locId)
-        ? prev.location_ids.filter(id => id !== locId)
-        : [...prev.location_ids, locId],
+      location_permissions: {
+        ...prev.location_permissions,
+        [locId]: {
+          ...prev.location_permissions[locId],
+          [perm]: !(prev.location_permissions[locId]?.[perm] ?? true),
+        },
+      },
     }))
   }
 
@@ -124,8 +151,8 @@ function StaffModal({ member, locations, onClose, onSaved }) {
           </div>
 
           <div>
-            <label className="block text-xs text-text-muted mb-2">Locations</label>
-            <div className="flex flex-wrap gap-2">
+            <label className="block text-xs text-text-muted mb-2">Locations & Permissions</label>
+            <div className="flex flex-wrap gap-2 mb-3">
               {locations.map(loc => (
                 <button
                   key={loc.id}
@@ -141,6 +168,41 @@ function StaffModal({ member, locations, onClose, onSaved }) {
                 </button>
               ))}
             </div>
+
+            {form.location_ids.length > 0 && (
+              <div className="bg-bg rounded-lg border border-border p-3 space-y-2">
+                <p className="text-xs text-text-muted font-medium mb-1">Location Permissions</p>
+                {form.location_ids.map(locId => {
+                  const loc = locations.find(l => l.id === locId)
+                  const perms = form.location_permissions[locId] || { can_sign_in: true, can_view_reports: true }
+                  return (
+                    <div key={locId} className="flex items-center justify-between text-xs">
+                      <span className="text-text-primary font-medium min-w-[80px]">{loc?.name}</span>
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={perms.can_sign_in}
+                            onChange={() => togglePerm(locId, 'can_sign_in')}
+                            className="rounded border-border text-wcs-red focus:ring-wcs-red"
+                          />
+                          <span className="text-text-muted">Sign In</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={perms.can_view_reports}
+                            onChange={() => togglePerm(locId, 'can_view_reports')}
+                            className="rounded border-border text-wcs-red focus:ring-wcs-red"
+                          />
+                          <span className="text-text-muted">Reports</span>
+                        </label>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-2">

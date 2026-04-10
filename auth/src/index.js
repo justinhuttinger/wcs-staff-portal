@@ -14,6 +14,8 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }))
 // Routes (added in subsequent tasks)
 app.use('/auth', require('./routes/auth'))
 app.use('/vault', require('./routes/vault'))
+// Raw body parser for staff import (xlsx upload) — must be before json parser hits this route
+app.use('/admin/staff/import', express.raw({ type: '*/*', limit: '10mb' }))
 app.use('/admin', require('./routes/admin'))
 app.use('/config', require('./routes/config'))
 app.use('/webhooks', require('./routes/webhooks'))

@@ -75,7 +75,11 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
   const [activeReport, setActiveReport] = useState(getSubRoute())
   const [startDate, setStartDate] = useState(getMonthStart())
   const [endDate, setEndDate] = useState(getToday())
-  const defaultSlug = isAdmin ? 'all' : (location || 'Salem').toLowerCase()
+
+  // Build the list of locations this user can view reports for
+  const reportLocations = (user?.staff?.locations || []).filter(l => l.can_view_reports !== false)
+  const hasMultipleReportLocations = isAdmin || reportLocations.length > 1
+  const defaultSlug = hasMultipleReportLocations ? 'all' : (location || 'Salem').toLowerCase()
   const [locationSlug, setLocationSlug] = useState(defaultSlug)
   const [activeQuick, setActiveQuick] = useState('this_month')
 
@@ -133,10 +137,10 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
         </h2>
       </div>
 
-      {/* Location Selector (admin only) */}
-      {isAdmin ? (
+      {/* Location Selector */}
+      {hasMultipleReportLocations ? (
         <div className="flex flex-wrap gap-2 mb-4">
-          {LOCATIONS.map(loc => (
+          {(isAdmin ? LOCATIONS : [{ slug: 'all', label: 'All Locations' }, ...reportLocations.map(l => ({ slug: l.name.toLowerCase(), label: l.name }))]).map(loc => (
             <button
               key={loc.slug}
               onClick={() => setLocationSlug(loc.slug)}

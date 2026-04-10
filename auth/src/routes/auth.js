@@ -83,13 +83,15 @@ router.post('/login', async (req, res) => {
 
   const { data: staffLocs } = await supabaseAdmin
     .from('staff_locations')
-    .select('location_id, is_primary, locations(id, name)')
+    .select('location_id, is_primary, can_sign_in, can_view_reports, locations(id, name)')
     .eq('staff_id', staff.id)
 
   const locations = (staffLocs || []).map(sl => ({
     id: sl.locations.id,
     name: sl.locations.name,
     is_primary: sl.is_primary,
+    can_sign_in: sl.can_sign_in,
+    can_view_reports: sl.can_view_reports,
   }))
 
   // Set SSO session cookie so OIDC authorize can auto-authenticate
@@ -159,12 +161,14 @@ router.post('/reset-password', async (req, res) => {
 router.get('/me', authenticate, async (req, res) => {
   const { data: staffLocs } = await supabaseAdmin
     .from('staff_locations')
-    .select('location_id, is_primary, locations(id, name, abc_url, booking_url, vip_survey_url)')
+    .select('location_id, is_primary, can_sign_in, can_view_reports, locations(id, name, abc_url, booking_url, vip_survey_url)')
     .eq('staff_id', req.staff.id)
 
   const locations = (staffLocs || []).map(sl => ({
     ...sl.locations,
     is_primary: sl.is_primary,
+    can_sign_in: sl.can_sign_in,
+    can_view_reports: sl.can_view_reports,
   }))
 
   const { data: visibility } = await supabaseAdmin
