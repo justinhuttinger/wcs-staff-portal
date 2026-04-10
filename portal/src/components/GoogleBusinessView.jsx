@@ -179,7 +179,7 @@ export default function GoogleBusinessView({ onBack }) {
                     {metrics.map((m, i) => (
                       <tr key={i} className="border-b border-border last:border-0 hover:bg-bg transition-colors">
                         <td className="px-4 py-2.5 text-text-primary font-medium text-xs">
-                          {m.error ? <span className="text-wcs-red">{m.location} (error)</span> : locDisplayName(m.location)}
+                          {m.error ? <span className="text-wcs-red">{locDisplayName(m.title || m.location)} (error)</span> : locDisplayName(m.title || m.location)}
                         </td>
                         <td className="px-4 py-2.5 text-right text-text-primary text-xs">{m.error ? '—' : fmtNum(m.searches)}</td>
                         <td className="px-4 py-2.5 text-right text-text-muted text-xs">{m.error ? '—' : fmtNum(m.website_clicks)}</td>

@@ -184,21 +184,31 @@ router.get('/performance', authenticate, requireRole('lead'), async (req, res) =
   try {
     const token = await getAccessToken()
 
-    // Get accounts + locations if not specified
-    let locationNames = []
+    // Get locations — reuse cached locations list to avoid extra API calls
+    let locationData = []
     if (location_name) {
-      locationNames = [location_name]
+      locationData = [{ name: location_name, title: location_name }]
     } else {
-      const accounts = await googleFetch('https://mybusinessaccountmanagement.googleapis.com/v1/accounts', token)
-      const accountName = accounts.accounts?.[0]?.name
-      if (!accountName) return res.json({ metrics: [] })
+      // Try to use cached locations first
+      const cachedLocs = getCached('locations')
+      if (cachedLocs?.locations) {
+        locationData = cachedLocs.locations
+      } else {
+        const accounts = await googleFetch('https://mybusinessaccountmanagement.googleapis.com/v1/accounts', token)
+        const accountName = accounts.accounts?.[0]?.name
+        if (!accountName) return res.json({ metrics: [] })
 
-      const locs = await googleFetch(
-        `https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations?readMask=name,title`,
-        token
-      )
-      locationNames = (locs.locations || []).map(l => l.name)
+        const locs = await googleFetch(
+          `https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations?readMask=name,title`,
+          token
+        )
+        locationData = (locs.locations || []).map(l => ({ name: l.name, title: l.title }))
+        setCache('locations', { locations: locationData })
+      }
     }
+    const locationNames = locationData.map(l => l.name)
+    const locationTitles = {}
+    for (const l of locationData) locationTitles[l.name] = l.title
 
     // Build date range
     const start = start_date ? new Date(start_date) : new Date(Date.now() - 30 * 86400000)
@@ -230,7 +240,7 @@ router.get('/performance', authenticate, requireRole('lead'), async (req, res) =
         )
 
         // Sum up daily values for each metric
-        const totals = { location: locName, searches: 0, website_clicks: 0, calls: 0, directions: 0 }
+        const totals = { location: locName, title: locationTitles[locName] || locName, searches: 0, website_clicks: 0, calls: 0, directions: 0 }
         for (const series of (data.multiDailyMetricTimeSeries || [])) {
           const metric = series.dailyMetric
           const total = (series.timeSeries?.datedValues || []).reduce((sum, dv) => sum + (parseInt(dv.value) || 0), 0)
@@ -242,7 +252,7 @@ router.get('/performance', authenticate, requireRole('lead'), async (req, res) =
         metrics.push(totals)
       } catch (e) {
         console.warn(`[Google Business] Performance error for ${locName}:`, e.message)
-        metrics.push({ location: locName, error: e.message })
+        metrics.push({ location: locName, title: locationTitles[locName] || locName, error: e.message })
       }
     }
 
