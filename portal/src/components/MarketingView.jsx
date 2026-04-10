@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import MetaAdsView from './MetaAdsView'
+import GoogleBusinessView from './GoogleBusinessView'
 
 export default function MarketingView({ onBack }) {
   const [activeReport, setActiveReport] = useState(null)
@@ -9,27 +10,7 @@ export default function MarketingView({ onBack }) {
   }
 
   if (activeReport === 'google') {
-    return (
-      <div className="max-w-3xl mx-auto w-full px-8 py-6">
-        <div className="mb-6">
-          <button
-            onClick={() => setActiveReport(null)}
-            className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-            Back to Marketing
-          </button>
-          <h2 className="text-xl font-bold text-text-primary">Google Ads</h2>
-          <p className="text-sm text-text-muted">Coming soon</p>
-        </div>
-        <div className="bg-surface border border-border rounded-xl p-8 text-center">
-          <p className="text-text-muted text-sm">Google Ads integration is not yet configured.</p>
-          <p className="text-text-muted text-xs mt-2">Requires: Google Ads Customer ID, Developer Token, and OAuth credentials.</p>
-        </div>
-      </div>
-    )
+    return <GoogleBusinessView onBack={() => setActiveReport(null)} />
   }
 
   return (
@@ -76,8 +57,8 @@ export default function MarketingView({ onBack }) {
             </svg>
           </div>
           <div className="text-center">
-            <span className="block text-base font-semibold text-text-primary">Google Ads</span>
-            <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">Search & Display</span>
+            <span className="block text-base font-semibold text-text-primary">Google</span>
+            <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">Business Profile</span>
           </div>
         </button>
       </div>

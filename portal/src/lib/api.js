@@ -264,6 +264,20 @@ export async function getMetaAds(params = {}) {
   return api('/meta-ads/ads' + (qs ? '?' + qs : ''))
 }
 
+// Google Business Profile
+export async function getGoogleBusinessStatus() {
+  return api('/google-business/status')
+}
+
+export async function getGoogleBusinessLocations() {
+  return api('/google-business/locations')
+}
+
+export async function getGoogleBusinessPerformance(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/google-business/performance' + (qs ? '?' + qs : ''))
+}
+
 // Webhook Logs
 export async function getWebhookLogs(params = {}) {
   const qs = new URLSearchParams(params).toString()

@@ -48,6 +48,7 @@ app.use('/day-one-tracker', require('./routes/dayOneTracker'))
 app.use('/trainer-availability', require('./routes/trainerAvailability'))
 app.use('/sms-history', require('./routes/smsHistory'))
 app.use('/meta-ads', require('./routes/metaAds'))
+app.use('/google-business', require('./routes/googleBusiness'))
 
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
