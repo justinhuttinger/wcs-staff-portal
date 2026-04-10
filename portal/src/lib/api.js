@@ -238,6 +238,22 @@ export async function searchSMSHistory(params = {}) {
   return api('/sms-history/search' + (qs ? '?' + qs : ''))
 }
 
+// Meta Ads
+export async function getMetaAdsOverview(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/meta-ads/overview' + (qs ? '?' + qs : ''))
+}
+
+export async function getMetaAdsCampaigns(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/meta-ads/campaigns' + (qs ? '?' + qs : ''))
+}
+
+export async function getMetaAdsDaily(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/meta-ads/daily' + (qs ? '?' + qs : ''))
+}
+
 // Webhook Logs
 export async function getWebhookLogs(params = {}) {
   const qs = new URLSearchParams(params).toString()

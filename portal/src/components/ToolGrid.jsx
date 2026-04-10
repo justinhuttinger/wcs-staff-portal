@@ -40,7 +40,7 @@ function SvgTileButton({ onClick, iconPath, label, desc, badge }) {
   )
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker, onDayOneCalendar, onTrainerAvail }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker, onDayOneCalendar, onTrainerAvail, onMetaAds }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [tilesLoaded, setTilesLoaded] = useState(false)
@@ -192,12 +192,15 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
             const isGroup = hasChildren || !tile.url
 
             if (isGroup) {
-              const handleClick = tile.label === 'Reporting'
+              const tileLabel = (tile.label || '').toLowerCase()
+              const handleClick = tileLabel === 'reporting'
                 ? () => {
                     const reportingUrl = window.location.origin + window.location.pathname + window.location.search + '#reporting'
                     window.open(reportingUrl, '_blank')
                   }
-                : () => setActiveGroup(tile)
+                : (tileLabel === 'marketing' && onMetaAds)
+                  ? onMetaAds
+                  : () => setActiveGroup(tile)
 
               const iconKey = (tile.label || '').toLowerCase()
               const iconPath = TILE_ICONS[iconKey] || TILE_ICONS.reporting
