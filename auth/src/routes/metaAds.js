@@ -16,49 +16,53 @@ function getConfig() {
   return { token, accountId }
 }
 
-async function metaFetch(path, token) {
-  const url = `${META_API}${path}${path.includes('?') ? '&' : '?'}access_token=${token}`
-  const res = await fetch(url)
+async function metaFetch(endpoint, params, token) {
+  const url = new URL(`${META_API}${endpoint}`)
+  url.searchParams.set('access_token', token)
+  for (const [key, val] of Object.entries(params || {})) {
+    if (val !== undefined && val !== null) {
+      url.searchParams.set(key, typeof val === 'object' ? JSON.stringify(val) : String(val))
+    }
+  }
+  const res = await fetch(url.toString())
   const data = await res.json()
   if (data.error) throw new Error(data.error.message || 'Meta API error')
   return data
 }
 
-function buildTimeRange(start_date, end_date) {
-  if (start_date && end_date) {
-    return `&time_range=${encodeURIComponent(JSON.stringify({ since: start_date, until: end_date }))}`
-  }
-  return '&date_preset=last_30d'
+function timeRange(start_date, end_date) {
+  if (start_date && end_date) return { since: start_date, until: end_date }
+  return undefined
 }
 
 function extractMetrics(row) {
   const actions = row.actions || []
   const costPerAction = row.cost_per_action_type || []
-  const leads = actions.find(a => a.action_type === 'lead')?.value || 0
-  const linkClicks = actions.find(a => a.action_type === 'link_click')?.value || 0
-  const landingPageViews = actions.find(a => a.action_type === 'landing_page_view')?.value || 0
-  const costPerLead = costPerAction.find(a => a.action_type === 'lead')?.value || null
   return {
     spend: parseFloat(row.spend || 0),
     impressions: parseInt(row.impressions || 0),
     clicks: parseInt(row.clicks || 0),
-    leads: parseInt(leads),
-    link_clicks: parseInt(linkClicks),
-    landing_page_views: parseInt(landingPageViews),
-    cost_per_lead: costPerLead ? parseFloat(costPerLead) : null,
+    leads: parseInt(actions.find(a => a.action_type === 'lead')?.value || 0),
+    link_clicks: parseInt(actions.find(a => a.action_type === 'link_click')?.value || 0),
+    landing_page_views: parseInt(actions.find(a => a.action_type === 'landing_page_view')?.value || 0),
+    cost_per_lead: costPerAction.find(a => a.action_type === 'lead')?.value ? parseFloat(costPerAction.find(a => a.action_type === 'lead').value) : null,
   }
 }
 
-// GET /meta-ads/overview — account-level metrics
+// GET /meta-ads/overview
 router.get('/overview', async (req, res) => {
   const { start_date, end_date } = req.query
   try {
     const { token, accountId } = getConfig()
-    const fields = 'spend,impressions,clicks,actions,cost_per_action_type'
-    const data = await metaFetch(
-      `/${accountId}/insights?fields=${fields}${buildTimeRange(start_date, end_date)}&level=account`,
-      token
-    )
+    const params = {
+      fields: 'spend,impressions,clicks,actions,cost_per_action_type',
+      level: 'account',
+    }
+    const tr = timeRange(start_date, end_date)
+    if (tr) params.time_range = tr
+    else params.date_preset = 'last_30d'
+
+    const data = await metaFetch(`/${accountId}/insights`, params, token)
     const row = data.data?.[0] || {}
     res.json({ ...extractMetrics(row), date_start: row.date_start, date_stop: row.date_stop })
   } catch (err) {
@@ -67,18 +71,19 @@ router.get('/overview', async (req, res) => {
   }
 })
 
-// GET /meta-ads/campaigns — campaign list with budget + last edit
+// GET /meta-ads/campaigns
 router.get('/campaigns', async (req, res) => {
   const { start_date, end_date, status } = req.query
   try {
     const { token, accountId } = getConfig()
 
-    // Fetch campaign metadata (budget, updated_time, status, objective)
-    const statusParam = status === 'all' ? '' : '&effective_status=["ACTIVE"]'
-    const metaData = await metaFetch(
-      `/${accountId}/campaigns?fields=name,status,objective,daily_budget,lifetime_budget,updated_time,effective_status&limit=100${statusParam}`,
-      token
-    )
+    // Fetch campaign metadata
+    const metaParams = {
+      fields: 'name,status,objective,daily_budget,lifetime_budget,updated_time,effective_status',
+      limit: 100,
+    }
+    if (status !== 'all') metaParams.effective_status = JSON.stringify(['ACTIVE'])
+    const metaData = await metaFetch(`/${accountId}/campaigns`, metaParams, token)
     const campaignMeta = {}
     for (const c of (metaData.data || [])) {
       campaignMeta[c.id] = {
@@ -90,14 +95,21 @@ router.get('/campaigns', async (req, res) => {
       }
     }
 
-    // Fetch insights per campaign
-    const statusFilter = status === 'all' ? '' : `&filtering=[{"field":"campaign.effective_status","operator":"IN","value":["ACTIVE"]}]`
-    const fields = 'campaign_name,campaign_id,spend,impressions,clicks,actions,cost_per_action_type'
-    const data = await metaFetch(
-      `/${accountId}/insights?fields=${fields}${buildTimeRange(start_date, end_date)}&level=campaign${statusFilter}&limit=100&sort=spend_descending`,
-      token
-    )
+    // Fetch insights
+    const insightParams = {
+      fields: 'campaign_name,campaign_id,spend,impressions,clicks,actions,cost_per_action_type',
+      level: 'campaign',
+      limit: 100,
+      sort: 'spend_descending',
+    }
+    const tr = timeRange(start_date, end_date)
+    if (tr) insightParams.time_range = tr
+    else insightParams.date_preset = 'last_30d'
+    if (status !== 'all') {
+      insightParams.filtering = [{ field: 'campaign.effective_status', operator: 'IN', value: ['ACTIVE'] }]
+    }
 
+    const data = await metaFetch(`/${accountId}/insights`, insightParams, token)
     const campaigns = (data.data || []).map(row => {
       const meta = campaignMeta[row.campaign_id] || {}
       return {
@@ -111,7 +123,6 @@ router.get('/campaigns', async (req, res) => {
         updated_time: meta.updated_time,
       }
     })
-
     res.json({ campaigns })
   } catch (err) {
     console.error('[Meta Ads] Campaigns error:', err.message)
@@ -119,7 +130,7 @@ router.get('/campaigns', async (req, res) => {
   }
 })
 
-// GET /meta-ads/adsets?campaign_id=XXX — ad sets for a campaign
+// GET /meta-ads/adsets?campaign_id=XXX
 router.get('/adsets', async (req, res) => {
   const { campaign_id, start_date, end_date } = req.query
   if (!campaign_id) return res.status(400).json({ error: 'campaign_id is required' })
@@ -127,11 +138,12 @@ router.get('/adsets', async (req, res) => {
   try {
     const { token, accountId } = getConfig()
 
-    // Fetch ad set metadata
-    const metaData = await metaFetch(
-      `/${accountId}/adsets?fields=name,status,daily_budget,lifetime_budget,updated_time,effective_status&filtering=[{"field":"campaign_id","operator":"EQUAL","value":"${campaign_id}"}]&limit=100`,
-      token
-    )
+    // Metadata
+    const metaData = await metaFetch(`/${accountId}/adsets`, {
+      fields: 'name,status,daily_budget,lifetime_budget,updated_time,effective_status',
+      filtering: [{ field: 'campaign.id', operator: 'EQUAL', value: campaign_id }],
+      limit: 100,
+    }, token)
     const adsetMeta = {}
     for (const a of (metaData.data || [])) {
       adsetMeta[a.id] = {
@@ -142,13 +154,19 @@ router.get('/adsets', async (req, res) => {
       }
     }
 
-    // Fetch insights
-    const fields = 'adset_name,adset_id,spend,impressions,clicks,actions,cost_per_action_type'
-    const data = await metaFetch(
-      `/${accountId}/insights?fields=${fields}${buildTimeRange(start_date, end_date)}&level=adset&filtering=[{"field":"campaign_id","operator":"EQUAL","value":"${campaign_id}"}]&limit=100&sort=spend_descending`,
-      token
-    )
+    // Insights
+    const insightParams = {
+      fields: 'adset_name,adset_id,spend,impressions,clicks,actions,cost_per_action_type',
+      level: 'adset',
+      filtering: [{ field: 'campaign.id', operator: 'EQUAL', value: campaign_id }],
+      limit: 100,
+      sort: 'spend_descending',
+    }
+    const tr = timeRange(start_date, end_date)
+    if (tr) insightParams.time_range = tr
+    else insightParams.date_preset = 'last_30d'
 
+    const data = await metaFetch(`/${accountId}/insights`, insightParams, token)
     const adsets = (data.data || []).map(row => {
       const meta = adsetMeta[row.adset_id] || {}
       return {
@@ -161,7 +179,6 @@ router.get('/adsets', async (req, res) => {
         updated_time: meta.updated_time,
       }
     })
-
     res.json({ adsets })
   } catch (err) {
     console.error('[Meta Ads] Adsets error:', err.message)
@@ -169,7 +186,7 @@ router.get('/adsets', async (req, res) => {
   }
 })
 
-// GET /meta-ads/ads?adset_id=XXX — ads for an ad set
+// GET /meta-ads/ads?adset_id=XXX
 router.get('/ads', async (req, res) => {
   const { adset_id, start_date, end_date } = req.query
   if (!adset_id) return res.status(400).json({ error: 'adset_id is required' })
@@ -177,26 +194,30 @@ router.get('/ads', async (req, res) => {
   try {
     const { token, accountId } = getConfig()
 
-    // Fetch ad metadata
-    const metaData = await metaFetch(
-      `/${accountId}/ads?fields=name,status,updated_time,effective_status&filtering=[{"field":"adset_id","operator":"EQUAL","value":"${adset_id}"}]&limit=100`,
-      token
-    )
+    // Metadata
+    const metaData = await metaFetch(`/${accountId}/ads`, {
+      fields: 'name,status,updated_time,effective_status',
+      filtering: [{ field: 'adset.id', operator: 'EQUAL', value: adset_id }],
+      limit: 100,
+    }, token)
     const adMeta = {}
     for (const a of (metaData.data || [])) {
-      adMeta[a.id] = {
-        status: a.effective_status || a.status,
-        updated_time: a.updated_time,
-      }
+      adMeta[a.id] = { status: a.effective_status || a.status, updated_time: a.updated_time }
     }
 
-    // Fetch insights
-    const fields = 'ad_name,ad_id,spend,impressions,clicks,actions,cost_per_action_type'
-    const data = await metaFetch(
-      `/${accountId}/insights?fields=${fields}${buildTimeRange(start_date, end_date)}&level=ad&filtering=[{"field":"adset_id","operator":"EQUAL","value":"${adset_id}"}]&limit=100&sort=spend_descending`,
-      token
-    )
+    // Insights
+    const insightParams = {
+      fields: 'ad_name,ad_id,spend,impressions,clicks,actions,cost_per_action_type',
+      level: 'ad',
+      filtering: [{ field: 'adset.id', operator: 'EQUAL', value: adset_id }],
+      limit: 100,
+      sort: 'spend_descending',
+    }
+    const tr = timeRange(start_date, end_date)
+    if (tr) insightParams.time_range = tr
+    else insightParams.date_preset = 'last_30d'
 
+    const data = await metaFetch(`/${accountId}/insights`, insightParams, token)
     const ads = (data.data || []).map(row => {
       const meta = adMeta[row.ad_id] || {}
       return {
@@ -207,7 +228,6 @@ router.get('/ads', async (req, res) => {
         updated_time: meta.updated_time,
       }
     })
-
     res.json({ ads })
   } catch (err) {
     console.error('[Meta Ads] Ads error:', err.message)
@@ -215,25 +235,29 @@ router.get('/ads', async (req, res) => {
   }
 })
 
-// GET /meta-ads/daily — daily metrics for charting
+// GET /meta-ads/daily
 router.get('/daily', async (req, res) => {
   const { start_date, end_date } = req.query
   try {
     const { token, accountId } = getConfig()
-    const fields = 'spend,impressions,clicks,actions'
-    const data = await metaFetch(
-      `/${accountId}/insights?fields=${fields}${buildTimeRange(start_date, end_date)}&time_increment=1&limit=90`,
-      token
-    )
+    const params = {
+      fields: 'spend,impressions,clicks,actions',
+      time_increment: 1,
+      limit: 90,
+    }
+    const tr = timeRange(start_date, end_date)
+    if (tr) params.time_range = tr
+    else params.date_preset = 'last_30d'
+
+    const data = await metaFetch(`/${accountId}/insights`, params, token)
     const daily = (data.data || []).map(row => {
       const actions = row.actions || []
-      const leads = actions.find(a => a.action_type === 'lead')?.value || 0
       return {
         date: row.date_start,
         spend: parseFloat(row.spend || 0),
         impressions: parseInt(row.impressions || 0),
         clicks: parseInt(row.clicks || 0),
-        leads: parseInt(leads),
+        leads: parseInt(actions.find(a => a.action_type === 'lead')?.value || 0),
       }
     })
     res.json({ daily })

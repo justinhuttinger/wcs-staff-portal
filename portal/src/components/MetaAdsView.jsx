@@ -226,6 +226,7 @@ export default function MetaAdsView({ onBack }) {
   }
 
   // Apply filters
+  const isFiltered = locationFilter !== 'All' || typeFilter !== 'All'
   const filteredCampaigns = campaigns.filter(c => {
     if (locationFilter !== 'All') {
       const loc = detectLocation(c.campaign_name)
@@ -237,6 +238,21 @@ export default function MetaAdsView({ onBack }) {
     }
     return true
   })
+
+  // Compute filtered overview from campaign-level data when filters are active
+  const displayOverview = isFiltered ? (() => {
+    const totals = { spend: 0, impressions: 0, clicks: 0, leads: 0, link_clicks: 0, landing_page_views: 0 }
+    for (const c of filteredCampaigns) {
+      totals.spend += c.spend || 0
+      totals.impressions += c.impressions || 0
+      totals.clicks += c.clicks || 0
+      totals.leads += c.leads || 0
+      totals.link_clicks += c.link_clicks || c.clicks || 0
+      totals.landing_page_views += c.landing_page_views || 0
+    }
+    totals.cost_per_lead = totals.leads > 0 ? totals.spend / totals.leads : null
+    return totals
+  })() : overview
 
   return (
     <div className="max-w-6xl mx-auto w-full px-8 py-6">
@@ -287,11 +303,11 @@ export default function MetaAdsView({ onBack }) {
         <>
           {/* Overview Cards */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
-            <StatCard label="Spend" value={fmtMoney(overview.spend)} />
-            <StatCard label="Leads" value={fmtNum(overview.leads)} sub={overview.cost_per_lead ? `${fmtMoney(overview.cost_per_lead)} / lead` : null} />
-            <StatCard label="Impressions" value={fmtNum(overview.impressions)} />
-            <StatCard label="Link Clicks" value={fmtNum(overview.link_clicks)} />
-            <StatCard label="Landing Views" value={fmtNum(overview.landing_page_views)} />
+            <StatCard label="Spend" value={fmtMoney(displayOverview.spend)} />
+            <StatCard label="Leads" value={fmtNum(displayOverview.leads)} sub={displayOverview.cost_per_lead ? `${fmtMoney(displayOverview.cost_per_lead)} / lead` : null} />
+            <StatCard label="Impressions" value={fmtNum(displayOverview.impressions)} />
+            <StatCard label="Link Clicks" value={fmtNum(displayOverview.link_clicks)} />
+            <StatCard label="Landing Views" value={fmtNum(displayOverview.landing_page_views)} />
           </div>
 
           {/* Daily Charts */}
