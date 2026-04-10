@@ -223,6 +223,21 @@ export async function updateTrainerAvailability(calendarId, data) {
   })
 }
 
+// SMS History
+export async function getSMSMessages(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/sms-history/messages' + (qs ? '?' + qs : ''))
+}
+
+export async function syncSMSMessages(data = {}) {
+  return api('/sms-history/sync', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function searchSMSHistory(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/sms-history/search' + (qs ? '?' + qs : ''))
+}
+
 // Webhook Logs
 export async function getWebhookLogs(params = {}) {
   const qs = new URLSearchParams(params).toString()

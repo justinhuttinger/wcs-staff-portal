@@ -46,6 +46,7 @@ app.use('/reports', require('./routes/reports'))
 app.use('/sync-status', require('./routes/syncStatus'))
 app.use('/day-one-tracker', require('./routes/dayOneTracker'))
 app.use('/trainer-availability', require('./routes/trainerAvailability'))
+app.use('/sms-history', require('./routes/smsHistory'))
 
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
