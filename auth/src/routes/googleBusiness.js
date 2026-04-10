@@ -122,13 +122,39 @@ router.get('/callback', async (req, res) => {
     const tokens = await tokenRes.json()
     if (tokens.error) return res.status(400).send('Token exchange failed: ' + tokens.error_description)
 
+    // Fetch account + locations NOW (during callback, one-time) to avoid future Account Management API calls
+    let locationData = []
+    try {
+      const accounts = await googleFetch('https://mybusinessaccountmanagement.googleapis.com/v1/accounts', tokens.access_token)
+      const accountName = accounts.accounts?.[0]?.name
+      if (accountName) {
+        const locs = await googleFetch(
+          `https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations?readMask=name,title,storefrontAddress`,
+          tokens.access_token
+        )
+        locationData = (locs.locations || []).map(l => ({
+          name: l.name,
+          title: l.title || '',
+          city: l.storefrontAddress?.locality || '',
+        }))
+      }
+    } catch (e) {
+      console.warn('[Google Business] Could not fetch locations during auth:', e.message)
+    }
+
     await storeTokens({
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
       expires_at: Date.now() + (tokens.expires_in || 3600) * 1000,
+      locations: locationData,
     })
 
-    res.send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Google Business Profile connected!</h2><p>You can close this tab and go back to the portal.</p></body></html>')
+    // Also cache the locations
+    if (locationData.length > 0) {
+      setCache('locations', { locations: locationData })
+    }
+
+    res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Google Business Profile connected!</h2><p>Found ${locationData.length} locations. You can close this tab and go back to the portal.</p></body></html>`)
   } catch (err) {
     res.status(500).send('Authorization failed: ' + err.message)
   }
@@ -184,26 +210,23 @@ router.get('/performance', authenticate, requireRole('lead'), async (req, res) =
   try {
     const token = await getAccessToken()
 
-    // Get locations — reuse cached locations list to avoid extra API calls
+    // Get locations from stored tokens (fetched during authorization) — NO API call needed
     let locationData = []
     if (location_name) {
       locationData = [{ name: location_name, title: location_name }]
     } else {
-      // Try to use cached locations first
       const cachedLocs = getCached('locations')
       if (cachedLocs?.locations) {
         locationData = cachedLocs.locations
       } else {
-        const accounts = await googleFetch('https://mybusinessaccountmanagement.googleapis.com/v1/accounts', token)
-        const accountName = accounts.accounts?.[0]?.name
-        if (!accountName) return res.json({ metrics: [] })
-
-        const locs = await googleFetch(
-          `https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations?readMask=name,title`,
-          token
-        )
-        locationData = (locs.locations || []).map(l => ({ name: l.name, title: l.title }))
-        setCache('locations', { locations: locationData })
+        // Read from stored tokens (locations saved during OAuth callback)
+        const tokens = await getStoredTokens()
+        if (tokens?.locations?.length) {
+          locationData = tokens.locations
+          setCache('locations', { locations: locationData })
+        } else {
+          return res.json({ metrics: [], error: 'No locations found. Try reconnecting Google Business Profile.' })
+        }
       }
     }
     const locationNames = locationData.map(l => l.name)
