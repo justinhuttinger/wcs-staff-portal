@@ -254,6 +254,16 @@ export async function getMetaAdsDaily(params = {}) {
   return api('/meta-ads/daily' + (qs ? '?' + qs : ''))
 }
 
+export async function getMetaAdsets(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/meta-ads/adsets' + (qs ? '?' + qs : ''))
+}
+
+export async function getMetaAds(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/meta-ads/ads' + (qs ? '?' + qs : ''))
+}
+
 // Webhook Logs
 export async function getWebhookLogs(params = {}) {
   const qs = new URLSearchParams(params).toString()

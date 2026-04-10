@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react'
-import { getMetaAdsOverview, getMetaAdsCampaigns, getMetaAdsDaily } from '../lib/api'
+import { getMetaAdsOverview, getMetaAdsCampaigns, getMetaAdsDaily, getMetaAdsets, getMetaAds } from '../lib/api'
 
 const QUICK_RANGES = [
-  { key: 'last_7', label: 'Last 7 Days' },
-  { key: 'last_30', label: 'Last 30 Days' },
-  { key: 'last_90', label: 'Last 90 Days' },
+  { key: 'last_7', label: '7 Days' },
+  { key: 'last_30', label: '30 Days' },
+  { key: 'last_90', label: '90 Days' },
   { key: 'this_month', label: 'This Month' },
   { key: 'last_month', label: 'Last Month' },
 ]
+
+const LOCATIONS = ['All', 'Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
+const TYPES = ['All', 'Lead', 'Traffic', 'Retargeting', 'Other']
 
 function getQuickRange(key) {
   const now = new Date()
@@ -28,7 +31,28 @@ function getQuickRange(key) {
 
 function fmtMoney(val) { return '$' + Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
 function fmtNum(val) { return Number(val || 0).toLocaleString() }
-function fmtPct(val) { return Number(val || 0).toFixed(2) + '%' }
+function fmtDate(d) { if (!d) return '—'; return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
+function fmtBudget(daily, lifetime) {
+  if (daily) return fmtMoney(daily) + '/day'
+  if (lifetime) return fmtMoney(lifetime) + ' lifetime'
+  return '—'
+}
+
+function classifyCampaign(name) {
+  const n = (name || '').toLowerCase()
+  if (n.includes('retarget')) return 'Retargeting'
+  if (n.includes('lead') || n.includes('1 year free') || n.includes('test drive')) return 'Lead'
+  if (n.includes('traffic')) return 'Traffic'
+  return 'Other'
+}
+
+function detectLocation(name) {
+  const n = (name || '').toLowerCase()
+  for (const loc of LOCATIONS.slice(1)) {
+    if (n.includes(loc.toLowerCase())) return loc
+  }
+  return null
+}
 
 function StatCard({ label, value, sub }) {
   return (
@@ -40,9 +64,8 @@ function StatCard({ label, value, sub }) {
   )
 }
 
-// Simple bar chart using divs
 function MiniChart({ data, dataKey, label, color = 'bg-wcs-red' }) {
-  if (!data || data.length === 0) return null
+  if (!data || data.length === 0) return <p className="text-xs text-text-muted">No data for this period</p>
   const maxVal = Math.max(...data.map(d => d[dataKey] || 0), 1)
   return (
     <div>
@@ -62,10 +85,51 @@ function MiniChart({ data, dataKey, label, color = 'bg-wcs-red' }) {
         })}
       </div>
       <div className="flex justify-between mt-1">
-        <span className="text-[10px] text-text-muted">{data[0]?.date}</span>
-        <span className="text-[10px] text-text-muted">{data[data.length - 1]?.date}</span>
+        <span className="text-[10px] text-text-muted">{data[0]?.date?.slice(5)}</span>
+        <span className="text-[10px] text-text-muted">{data[data.length - 1]?.date?.slice(5)}</span>
       </div>
     </div>
+  )
+}
+
+function FilterPills({ options, value, onChange, label }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-text-muted font-medium">{label}:</span>
+      <div className="flex gap-1 flex-wrap">
+        {options.map(opt => (
+          <button
+            key={opt}
+            onClick={() => onChange(opt)}
+            className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+              value === opt
+                ? 'bg-wcs-red text-white border-wcs-red'
+                : 'bg-surface text-text-muted border-border hover:text-text-primary'
+            }`}
+          >
+            {opt}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Shared table row component
+function MetricRow({ name, spend, leads, costPerLead, clicks, impressions, budget, updatedTime, onClick, depth = 0 }) {
+  return (
+    <tr onClick={onClick} className={`border-b border-border last:border-0 hover:bg-bg transition-colors ${onClick ? 'cursor-pointer' : ''}`}>
+      <td className="px-4 py-2.5 text-text-primary font-medium text-xs max-w-[260px]">
+        <span style={{ paddingLeft: depth * 16 }}>{name}</span>
+      </td>
+      <td className="px-3 py-2.5 text-right text-text-primary text-xs">{fmtMoney(spend)}</td>
+      <td className="px-3 py-2.5 text-right text-text-primary text-xs font-medium">{fmtNum(leads)}</td>
+      <td className="px-3 py-2.5 text-right text-text-muted text-xs">{costPerLead ? fmtMoney(costPerLead) : '—'}</td>
+      <td className="px-3 py-2.5 text-right text-text-muted text-xs">{fmtNum(clicks)}</td>
+      <td className="px-3 py-2.5 text-right text-text-muted text-xs">{fmtNum(impressions)}</td>
+      <td className="px-3 py-2.5 text-right text-text-muted text-xs">{budget || '—'}</td>
+      <td className="px-3 py-2.5 text-right text-text-muted text-xs whitespace-nowrap">{fmtDate(updatedTime)}</td>
+    </tr>
   )
 }
 
@@ -80,11 +144,25 @@ export default function MetaAdsView({ onBack }) {
   const [endDate, setEndDate] = useState(() => getQuickRange('last_30').end)
   const [showAll, setShowAll] = useState(false)
 
+  // Filters
+  const [locationFilter, setLocationFilter] = useState('All')
+  const [typeFilter, setTypeFilter] = useState('All')
+
+  // Drill-down
+  const [expandedCampaign, setExpandedCampaign] = useState(null)
+  const [adsets, setAdsets] = useState([])
+  const [adsetsLoading, setAdsetsLoading] = useState(false)
+  const [expandedAdset, setExpandedAdset] = useState(null)
+  const [ads, setAds] = useState([])
+  const [adsLoading, setAdsLoading] = useState(false)
+
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
     setLoading(true)
     setError(null)
+    setExpandedCampaign(null)
+    setExpandedAdset(null)
     try {
       const params = { start_date: startDate, end_date: endDate }
       const [ov, camps, dy] = await Promise.all([
@@ -109,24 +187,62 @@ export default function MetaAdsView({ onBack }) {
     setEndDate(range.end)
   }
 
-  function handleApply() {
-    setActiveQuick(null)
-    loadData()
+  useEffect(() => { if (activeQuick) loadData() }, [activeQuick, showAll])
+
+  function handleApply() { setActiveQuick(null); loadData() }
+
+  async function toggleCampaign(campaignId) {
+    if (expandedCampaign === campaignId) {
+      setExpandedCampaign(null)
+      setAdsets([])
+      setExpandedAdset(null)
+      setAds([])
+      return
+    }
+    setExpandedCampaign(campaignId)
+    setExpandedAdset(null)
+    setAds([])
+    setAdsetsLoading(true)
+    try {
+      const data = await getMetaAdsets({ campaign_id: campaignId, start_date: startDate, end_date: endDate })
+      setAdsets(data.adsets || [])
+    } catch { setAdsets([]) }
+    setAdsetsLoading(false)
   }
 
-  // Re-fetch when quick range changes
-  useEffect(() => {
-    if (activeQuick) loadData()
-  }, [activeQuick, showAll])
+  async function toggleAdset(adsetId) {
+    if (expandedAdset === adsetId) {
+      setExpandedAdset(null)
+      setAds([])
+      return
+    }
+    setExpandedAdset(adsetId)
+    setAdsLoading(true)
+    try {
+      const data = await getMetaAds({ adset_id: adsetId, start_date: startDate, end_date: endDate })
+      setAds(data.ads || [])
+    } catch { setAds([]) }
+    setAdsLoading(false)
+  }
+
+  // Apply filters
+  const filteredCampaigns = campaigns.filter(c => {
+    if (locationFilter !== 'All') {
+      const loc = detectLocation(c.campaign_name)
+      if (loc !== locationFilter) return false
+    }
+    if (typeFilter !== 'All') {
+      const type = classifyCampaign(c.campaign_name)
+      if (type !== typeFilter) return false
+    }
+    return true
+  })
 
   return (
-    <div className="max-w-5xl mx-auto w-full px-8 py-6">
+    <div className="max-w-6xl mx-auto w-full px-8 py-6">
       {/* Header */}
-      <div className="mb-6">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2"
-        >
+      <div className="mb-5">
+        <button onClick={onBack} className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
@@ -136,102 +252,134 @@ export default function MetaAdsView({ onBack }) {
         <p className="text-sm text-text-muted">Meta / Facebook Ads</p>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 mb-6">
-        <div className="flex gap-1.5">
+      {/* Date Controls */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex gap-1">
           {QUICK_RANGES.map(qr => (
-            <button
-              key={qr.key}
-              onClick={() => applyQuickRange(qr.key)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                activeQuick === qr.key
-                  ? 'bg-wcs-red text-white border-wcs-red'
-                  : 'bg-surface text-text-muted border-border hover:text-text-primary'
-              }`}
-            >
+            <button key={qr.key} onClick={() => applyQuickRange(qr.key)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                activeQuick === qr.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-surface text-text-muted border-border hover:text-text-primary'
+              }`}>
               {qr.label}
             </button>
           ))}
         </div>
         <div className="flex items-center gap-2 ml-auto">
           <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setActiveQuick(null) }}
-            className="px-2 py-1.5 bg-bg border border-border rounded-lg text-xs text-text-primary" />
+            className="px-2 py-1 bg-bg border border-border rounded-lg text-xs text-text-primary" />
           <span className="text-text-muted text-xs">to</span>
           <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setActiveQuick(null) }}
-            className="px-2 py-1.5 bg-bg border border-border rounded-lg text-xs text-text-primary" />
-          {!activeQuick && (
-            <button onClick={handleApply} className="px-3 py-1.5 bg-wcs-red text-white text-xs font-medium rounded-lg">
-              Apply
-            </button>
-          )}
+            className="px-2 py-1 bg-bg border border-border rounded-lg text-xs text-text-primary" />
+          {!activeQuick && <button onClick={handleApply} className="px-3 py-1 bg-wcs-red text-white text-xs font-medium rounded-lg">Apply</button>}
         </div>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-wcs-red rounded-xl px-4 py-3 text-sm mb-6">{error}</div>
-      )}
+      {/* Filters */}
+      <div className="flex flex-wrap gap-4 mb-5">
+        <FilterPills options={LOCATIONS} value={locationFilter} onChange={setLocationFilter} label="Location" />
+        <FilterPills options={TYPES} value={typeFilter} onChange={setTypeFilter} label="Type" />
+      </div>
 
+      {error && <div className="bg-red-50 border border-red-200 text-wcs-red rounded-xl px-4 py-3 text-sm mb-5">{error}</div>}
       {loading && <p className="text-text-muted text-sm py-12 text-center">Loading ad data...</p>}
 
       {!loading && overview && (
         <>
           {/* Overview Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
             <StatCard label="Spend" value={fmtMoney(overview.spend)} />
             <StatCard label="Leads" value={fmtNum(overview.leads)} sub={overview.cost_per_lead ? `${fmtMoney(overview.cost_per_lead)} / lead` : null} />
             <StatCard label="Impressions" value={fmtNum(overview.impressions)} />
-            <StatCard label="Link Clicks" value={fmtNum(overview.link_clicks)} sub={`${fmtPct(overview.ctr)} CTR`} />
+            <StatCard label="Link Clicks" value={fmtNum(overview.link_clicks)} />
             <StatCard label="Landing Views" value={fmtNum(overview.landing_page_views)} />
           </div>
 
           {/* Daily Charts */}
-          {daily.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              <div className="bg-surface border border-border rounded-xl p-4">
-                <MiniChart data={daily} dataKey="spend" label="Daily Spend" />
-              </div>
-              <div className="bg-surface border border-border rounded-xl p-4">
-                <MiniChart data={daily} dataKey="leads" label="Daily Leads" color="bg-green-500" />
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+            <div className="bg-surface border border-border rounded-xl p-4">
+              <MiniChart data={daily} dataKey="spend" label="Daily Spend" />
             </div>
-          )}
+            <div className="bg-surface border border-border rounded-xl p-4">
+              <MiniChart data={daily} dataKey="leads" label="Daily Leads" color="bg-green-500" />
+            </div>
+          </div>
 
-          {/* Campaigns Table */}
+          {/* Campaigns Table with Drill-Down */}
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-              <p className="text-xs text-text-muted font-semibold uppercase">Campaigns ({campaigns.length})</p>
-              <button
-                onClick={() => setShowAll(!showAll)}
-                className="text-xs text-text-muted hover:text-text-primary transition-colors"
-              >
+              <p className="text-xs text-text-muted font-semibold uppercase">
+                Campaigns ({filteredCampaigns.length})
+                {(locationFilter !== 'All' || typeFilter !== 'All') && <span className="text-wcs-red ml-1">(filtered)</span>}
+              </p>
+              <button onClick={() => { setShowAll(!showAll) }} className="text-xs text-text-muted hover:text-text-primary transition-colors">
                 {showAll ? 'Active only' : 'Show all'}
               </button>
             </div>
-            <div className="max-h-[400px] overflow-y-auto">
+            <div className="max-h-[600px] overflow-y-auto">
               <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-surface">
+                <thead className="sticky top-0 bg-surface z-10">
                   <tr className="border-b border-border">
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-text-muted">Campaign</th>
-                    <th className="text-right px-4 py-2 text-xs font-semibold text-text-muted">Spend</th>
-                    <th className="text-right px-4 py-2 text-xs font-semibold text-text-muted">Leads</th>
-                    <th className="text-right px-4 py-2 text-xs font-semibold text-text-muted">CPL</th>
-                    <th className="text-right px-4 py-2 text-xs font-semibold text-text-muted">Clicks</th>
-                    <th className="text-right px-4 py-2 text-xs font-semibold text-text-muted">CTR</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-text-muted">Name</th>
+                    <th className="text-right px-3 py-2 text-xs font-semibold text-text-muted">Spend</th>
+                    <th className="text-right px-3 py-2 text-xs font-semibold text-text-muted">Leads</th>
+                    <th className="text-right px-3 py-2 text-xs font-semibold text-text-muted">CPL</th>
+                    <th className="text-right px-3 py-2 text-xs font-semibold text-text-muted">Clicks</th>
+                    <th className="text-right px-3 py-2 text-xs font-semibold text-text-muted">Impr.</th>
+                    <th className="text-right px-3 py-2 text-xs font-semibold text-text-muted">Budget</th>
+                    <th className="text-right px-3 py-2 text-xs font-semibold text-text-muted">Last Edit</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {campaigns.length === 0 && (
-                    <tr><td colSpan={6} className="px-4 py-8 text-center text-text-muted text-sm">No campaign data for this period</td></tr>
+                  {filteredCampaigns.length === 0 && (
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-text-muted text-sm">No campaigns match filters</td></tr>
                   )}
-                  {campaigns.map(c => (
-                    <tr key={c.campaign_id} className="border-b border-border last:border-0 hover:bg-bg transition-colors">
-                      <td className="px-4 py-2.5 text-text-primary font-medium text-xs max-w-[240px] truncate">{c.campaign_name}</td>
-                      <td className="px-4 py-2.5 text-right text-text-primary text-xs">{fmtMoney(c.spend)}</td>
-                      <td className="px-4 py-2.5 text-right text-text-primary text-xs font-medium">{fmtNum(c.leads)}</td>
-                      <td className="px-4 py-2.5 text-right text-text-muted text-xs">{c.cost_per_lead ? fmtMoney(c.cost_per_lead) : '—'}</td>
-                      <td className="px-4 py-2.5 text-right text-text-muted text-xs">{fmtNum(c.clicks)}</td>
-                      <td className="px-4 py-2.5 text-right text-text-muted text-xs">{fmtPct(c.ctr)}</td>
-                    </tr>
+                  {filteredCampaigns.map(c => (
+                    <>
+                      <MetricRow
+                        key={c.campaign_id}
+                        name={expandedCampaign === c.campaign_id ? '[-] ' + c.campaign_name : '[+] ' + c.campaign_name}
+                        spend={c.spend} leads={c.leads} costPerLead={c.cost_per_lead}
+                        clicks={c.clicks} impressions={c.impressions}
+                        budget={fmtBudget(c.daily_budget, c.lifetime_budget)}
+                        updatedTime={c.updated_time}
+                        onClick={() => toggleCampaign(c.campaign_id)}
+                      />
+                      {/* Ad Sets */}
+                      {expandedCampaign === c.campaign_id && (
+                        adsetsLoading ? (
+                          <tr key={c.campaign_id + '-loading'}><td colSpan={8} className="px-8 py-3 text-xs text-text-muted">Loading ad sets...</td></tr>
+                        ) : adsets.map(as => (
+                          <>
+                            <MetricRow
+                              key={as.adset_id}
+                              name={expandedAdset === as.adset_id ? '[-] ' + as.adset_name : '[+] ' + as.adset_name}
+                              spend={as.spend} leads={as.leads} costPerLead={as.cost_per_lead}
+                              clicks={as.clicks} impressions={as.impressions}
+                              budget={fmtBudget(as.daily_budget, as.lifetime_budget)}
+                              updatedTime={as.updated_time}
+                              onClick={() => toggleAdset(as.adset_id)}
+                              depth={1}
+                            />
+                            {/* Ads */}
+                            {expandedAdset === as.adset_id && (
+                              adsLoading ? (
+                                <tr key={as.adset_id + '-loading'}><td colSpan={8} className="px-12 py-3 text-xs text-text-muted">Loading ads...</td></tr>
+                              ) : ads.map(ad => (
+                                <MetricRow
+                                  key={ad.ad_id}
+                                  name={ad.ad_name}
+                                  spend={ad.spend} leads={ad.leads} costPerLead={ad.cost_per_lead}
+                                  clicks={ad.clicks} impressions={ad.impressions}
+                                  budget="—"
+                                  updatedTime={ad.updated_time}
+                                  depth={2}
+                                />
+                              ))
+                            )}
+                          </>
+                        ))
+                      )}
+                    </>
                   ))}
                 </tbody>
               </table>
