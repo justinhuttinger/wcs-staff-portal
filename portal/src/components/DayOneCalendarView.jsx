@@ -49,9 +49,13 @@ export default function DayOneCalendarView({ user, onBack, location }) {
   const [view, setView] = useState('day')
   const [currentDate, setCurrentDate] = useState(getDateStr())
 
-  const locationSlug = (location || 'Salem').toLowerCase()
+  const userLocations = user?.staff?.locations || []
+  const primaryName = userLocations.find(l => l.is_primary)?.name || location || 'Salem'
+  const [selectedLocation, setSelectedLocation] = useState(primaryName)
+  const hasMultipleLocations = userLocations.length > 1
+  const locationSlug = selectedLocation.toLowerCase()
 
-  useEffect(() => { loadAppointments() }, [currentDate, view])
+  useEffect(() => { loadAppointments() }, [currentDate, view, locationSlug])
 
   async function loadAppointments() {
     setLoading(true)
@@ -123,7 +127,7 @@ export default function DayOneCalendarView({ user, onBack, location }) {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-text-primary">Day Ones</h2>
-            <p className="text-sm text-text-muted">{location}</p>
+            {!hasMultipleLocations && <p className="text-sm text-text-muted">{selectedLocation}</p>}
           </div>
           <div className="flex gap-1 bg-bg rounded-lg p-1">
             <button
@@ -140,6 +144,23 @@ export default function DayOneCalendarView({ user, onBack, location }) {
             >Week</button>
           </div>
         </div>
+        {hasMultipleLocations && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {userLocations.map(loc => (
+              <button
+                key={loc.id}
+                onClick={() => setSelectedLocation(loc.name)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  selectedLocation === loc.name
+                    ? 'bg-wcs-red text-white border-wcs-red'
+                    : 'bg-surface text-text-muted border-border hover:text-text-primary hover:border-text-muted'
+                }`}
+              >
+                {loc.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Date Navigation */}

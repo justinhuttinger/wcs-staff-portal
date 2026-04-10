@@ -58,9 +58,12 @@ export default function ToursView({ user, onBack }) {
   const [view, setView] = useState('day') // 'day' or 'week'
   const [currentDate, setCurrentDate] = useState(getDateStr())
 
-  const locationId = user?.staff?.locations?.find(l => l.is_primary)?.id
+  const userLocations = user?.staff?.locations || []
+  const primaryId = userLocations.find(l => l.is_primary)?.id || userLocations[0]?.id
+  const [locationId, setLocationId] = useState(primaryId)
+  const hasMultipleLocations = userLocations.length > 1
 
-  useEffect(() => { loadTours() }, [currentDate, view])
+  useEffect(() => { loadTours() }, [currentDate, view, locationId])
 
   async function loadTours() {
     if (!locationId) return
@@ -119,7 +122,7 @@ export default function ToursView({ user, onBack }) {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-text-primary">Tours</h2>
-            {locationName && <p className="text-sm text-text-muted">{locationName}</p>}
+            {!hasMultipleLocations && locationName && <p className="text-sm text-text-muted">{locationName}</p>}
           </div>
           <div className="flex gap-1 bg-bg rounded-lg p-1">
             <button
@@ -136,6 +139,23 @@ export default function ToursView({ user, onBack }) {
             >Week</button>
           </div>
         </div>
+        {hasMultipleLocations && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {userLocations.map(loc => (
+              <button
+                key={loc.id}
+                onClick={() => setLocationId(loc.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  locationId === loc.id
+                    ? 'bg-wcs-red text-white border-wcs-red'
+                    : 'bg-surface text-text-muted border-border hover:text-text-primary hover:border-text-muted'
+                }`}
+              >
+                {loc.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Date Navigation */}
