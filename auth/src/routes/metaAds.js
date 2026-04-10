@@ -8,6 +8,25 @@ router.use(requireRole('lead'))
 
 const META_API = 'https://graph.facebook.com/v21.0'
 
+// Simple in-memory cache (5 min TTL) to reduce Meta API calls
+const cache = {}
+const CACHE_TTL = 5 * 60 * 1000
+
+function getCached(key) {
+  const entry = cache[key]
+  if (entry && (Date.now() - entry.ts) < CACHE_TTL) return entry.data
+  return null
+}
+
+function setCache(key, data) {
+  cache[key] = { data, ts: Date.now() }
+  // Prune old entries
+  const now = Date.now()
+  for (const k of Object.keys(cache)) {
+    if ((now - cache[k].ts) > CACHE_TTL * 2) delete cache[k]
+  }
+}
+
 function getConfig() {
   const token = process.env.META_ACCESS_TOKEN
   const adAccountId = process.env.META_AD_ACCOUNT_ID
@@ -55,6 +74,10 @@ function extractMetrics(row) {
 // GET /meta-ads/overview
 router.get('/overview', async (req, res) => {
   const { start_date, end_date } = req.query
+  const cacheKey = `overview:${start_date}:${end_date}`
+  const cached = getCached(cacheKey)
+  if (cached) return res.json(cached)
+
   try {
     const { token, accountId } = getConfig()
     const params = {
@@ -67,16 +90,22 @@ router.get('/overview', async (req, res) => {
 
     const data = await metaFetch(`/${accountId}/insights`, params, token)
     const row = data.data?.[0] || {}
-    res.json({ ...extractMetrics(row), date_start: row.date_start, date_stop: row.date_stop })
+    const result = { ...extractMetrics(row), date_start: row.date_start, date_stop: row.date_stop }
+    setCache(cacheKey, result)
+    res.json(result)
   } catch (err) {
     console.error('[Meta Ads] Overview error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })
 
-// GET /meta-ads/campaigns
+// GET /meta-ads/campaigns (cached 5 min)
 router.get('/campaigns', async (req, res) => {
   const { start_date, end_date, status } = req.query
+  const cacheKey = `campaigns:${start_date}:${end_date}:${status}`
+  const cached = getCached(cacheKey)
+  if (cached) return res.json(cached)
+
   try {
     const { token, accountId } = getConfig()
 
@@ -144,7 +173,9 @@ router.get('/campaigns', async (req, res) => {
         updated_time: meta.updated_time,
       }
     })
-    res.json({ campaigns })
+    const result = { campaigns }
+    setCache(cacheKey, result)
+    res.json(result)
   } catch (err) {
     console.error('[Meta Ads] Campaigns error:', err.message)
     res.status(500).json({ error: err.message })

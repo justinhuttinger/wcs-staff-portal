@@ -8,7 +8,7 @@ import ReportingView from './components/ReportingView'
 import DayOneTrackerView from './components/DayOneTrackerView'
 import TrainerAvailabilityView from './components/TrainerAvailabilityView'
 import DayOneCalendarView from './components/DayOneCalendarView'
-import MetaAdsView from './components/MetaAdsView'
+import MarketingView from './components/MarketingView'
 import { getMe, getToken, clearToken, setToken, api } from './lib/api'
 
 function getParam(key) {
@@ -191,7 +191,7 @@ export default function App() {
       ) : showTrainerAvail ? (
         <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={isAdmin} />
       ) : showMetaAds ? (
-        <MetaAdsView onBack={() => setShowMetaAds(false)} />
+        <MarketingView onBack={() => setShowMetaAds(false)} />
       ) : showReporting ? (
         <ReportingView user={user} onBack={() => setShowReporting(false)} location={location} isAdmin={isAdmin} />
       ) : (
