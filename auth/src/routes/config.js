@@ -126,7 +126,7 @@ router.post('/tiles', requireRole('admin'), async (req, res) => {
     }
 
     // Auto-create role_tool_visibility rows for this tile (all roles, visible by default)
-    const ROLES = ['front_desk', 'personal_trainer', 'manager', 'director', 'admin']
+    const ROLES = ['front_desk', 'personal_trainer', 'lead', 'manager', 'director', 'admin']
     const visRows = ROLES.map(role => ({ role, tool_key: 'tile:' + tile.id, visible: true }))
     await supabaseAdmin.from('role_tool_visibility').upsert(visRows, { onConflict: 'role,tool_key' })
 
@@ -175,13 +175,21 @@ router.put('/tiles/:id', requireRole('admin'), async (req, res) => {
 
 // DELETE /config/tiles/:id — admin only
 router.delete('/tiles/:id', requireRole('admin'), async (req, res) => {
-  const { error } = await supabaseAdmin
-    .from('custom_tiles')
-    .delete()
-    .eq('id', req.params.id)
+  try {
+    // Clean up junction tables first
+    await supabaseAdmin.from('tile_locations').delete().eq('tile_id', req.params.id)
+    await supabaseAdmin.from('role_tool_visibility').delete().eq('tool_key', 'tile:' + req.params.id)
 
-  if (error) return res.status(500).json({ error: 'Failed to delete tile' })
-  res.json({ message: 'Tile deleted' })
+    const { error } = await supabaseAdmin
+      .from('custom_tiles')
+      .delete()
+      .eq('id', req.params.id)
+
+    if (error) return res.status(500).json({ error: 'Failed to delete tile' })
+    res.json({ message: 'Tile deleted' })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete tile' })
+  }
 })
 
 // GET /config/role-visibility — admin only, returns all role/tool visibility settings
@@ -202,7 +210,7 @@ router.get('/role-visibility', requireRole('admin'), async (req, res) => {
       .order('label')
 
     // Auto-create missing visibility rows for tiles
-    const ROLES = ['front_desk', 'personal_trainer', 'manager', 'director', 'admin']
+    const ROLES = ['front_desk', 'personal_trainer', 'lead', 'manager', 'director', 'admin']
     const missing = []
     for (const tile of (tiles || [])) {
       const tileKey = 'tile:' + tile.id
@@ -242,11 +250,11 @@ router.put('/role-visibility', requireRole('admin'), async (req, res) => {
   }
 
   try {
-    for (const { role, tool_key, visible } of updates) {
-      await supabaseAdmin
-        .from('role_tool_visibility')
-        .upsert({ role, tool_key, visible }, { onConflict: 'role,tool_key' })
-    }
+    const rows = updates.map(({ role, tool_key, visible }) => ({ role, tool_key, visible }))
+    const { error } = await supabaseAdmin
+      .from('role_tool_visibility')
+      .upsert(rows, { onConflict: 'role,tool_key' })
+    if (error) return res.status(500).json({ error: 'Failed to update visibility' })
     res.json({ message: 'Visibility updated' })
   } catch (err) {
     res.status(500).json({ error: 'Failed to update visibility' })

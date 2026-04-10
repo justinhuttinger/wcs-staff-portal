@@ -65,6 +65,21 @@ router.get('/authorize', async (req, res) => {
     return res.status(400).send('Only response_type=code is supported')
   }
 
+  // Validate redirect_uri to prevent open redirects
+  if (redirect_uri) {
+    try {
+      const url = new URL(redirect_uri)
+      const allowed = (process.env.OIDC_ALLOWED_REDIRECTS || 'leadconnectorhq.com,msgsndr.com,highlevel.com').split(',')
+      const isAllowed = allowed.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain.trim()))
+      if (!isAllowed && url.hostname !== 'localhost') {
+        console.warn('OIDC: blocked redirect to unauthorized URI:', redirect_uri)
+        return res.status(400).send('Invalid redirect_uri')
+      }
+    } catch {
+      return res.status(400).send('Invalid redirect_uri')
+    }
+  }
+
   // Check if user is already authenticated via session cookie or token param
   const sessionToken = req.cookies?.wcs_session || req.query.token
   if (sessionToken) {
@@ -105,6 +120,11 @@ router.get('/authorize', async (req, res) => {
     }
   }
 
+  // Escape HTML attribute values to prevent XSS
+  function escAttr(val) {
+    return (val || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  }
+
   // No valid session — show login form
   res.send(`
     <!DOCTYPE html>
@@ -131,10 +151,10 @@ router.get('/authorize', async (req, res) => {
         <p>Sign in to continue to GoHighLevel</p>
         <div class="error" id="error"></div>
         <form method="POST" action="/oidc/authorize">
-          <input type="hidden" name="redirect_uri" value="${redirect_uri || ''}" />
-          <input type="hidden" name="state" value="${state || ''}" />
-          <input type="hidden" name="nonce" value="${nonce || ''}" />
-          <input type="hidden" name="scope" value="${scope || 'openid'}" />
+          <input type="hidden" name="redirect_uri" value="${escAttr(redirect_uri)}" />
+          <input type="hidden" name="state" value="${escAttr(state)}" />
+          <input type="hidden" name="nonce" value="${escAttr(nonce)}" />
+          <input type="hidden" name="scope" value="${escAttr(scope || 'openid')}" />
           <input type="email" name="email" placeholder="Email" required autofocus />
           <input type="password" name="password" placeholder="Password" required />
           <button type="submit">Sign In</button>

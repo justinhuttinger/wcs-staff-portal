@@ -11,11 +11,14 @@ router.use(requireRole('personal_trainer'))
 
 const CAL_VERSION = '2021-04-15'
 
-// Cache: location -> { calendarIds, groupId }
+// Cache: location -> { calendarIds, groupId, cachedAt }
+// TTL: 1 hour — calendars rarely change but we don't want stale data forever
 const calendarCache = {}
+const CACHE_TTL = 60 * 60 * 1000
 
 async function getDayOneCalendarInfo(locationId, apiKey) {
-  if (calendarCache[locationId]) return calendarCache[locationId]
+  const cached = calendarCache[locationId]
+  if (cached && (Date.now() - cached.cachedAt) < CACHE_TTL) return cached
 
   // List all calendars at this location
   const data = await ghlFetch('/calendars/', apiKey, {
@@ -40,6 +43,7 @@ async function getDayOneCalendarInfo(locationId, apiKey) {
       calendarIds: dayOneCalendars.map(c => c.id),
       groupId,
     }
+    result.cachedAt = Date.now()
     calendarCache[locationId] = result
     console.log(`[DayOneTracker] Day One calendars: ${result.calendarIds.length}, groupId: ${groupId}`)
     return result

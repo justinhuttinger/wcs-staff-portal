@@ -247,11 +247,10 @@ router.get('/membership', async (req, res) => {
   }
 })
 
-// Keep /salesperson-stats as alias for backwards compat
-router.get('/salesperson-stats', async (req, res) => {
-  // Forward to membership endpoint
-  req.url = '/membership' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '')
-  router.handle(req, res)
+// Keep /salesperson-stats as alias — redirects to membership endpoint
+router.get('/salesperson-stats', (req, res) => {
+  const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''
+  res.redirect(307, '/reports/membership' + qs)
 })
 
 // ---------------------------------------------------------------------------
