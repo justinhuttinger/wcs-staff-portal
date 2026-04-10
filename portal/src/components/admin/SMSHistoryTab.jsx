@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getSMSMessages, syncSMSMessages, searchSMSHistory } from '../../lib/api'
+import { getSMSMessages } from '../../lib/api'
 
 const QUICK_RANGES = [
   { key: 'today', label: 'Today' },
@@ -56,10 +56,7 @@ export default function SMSHistoryTab() {
   const [messages, setMessages] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
-  const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState(null)
-  const [syncResult, setSyncResult] = useState(null)
-  const [source, setSource] = useState('live') // 'live' or 'db'
 
   function applyQuickRange(key) {
     setActiveQuick(key)
@@ -71,42 +68,19 @@ export default function SMSHistoryTab() {
   async function handleFetch() {
     setLoading(true)
     setError(null)
-    setSyncResult(null)
     try {
       const params = {}
       if (startDate) params.start_date = startDate
       if (endDate) params.end_date = endDate
       if (search) params.search = search
 
-      let data
-      if (source === 'db') {
-        data = await searchSMSHistory(params)
-      } else {
-        data = await getSMSMessages(params)
-      }
+      const data = await getSMSMessages(params)
       setMessages(data.messages || [])
       setTotal(data.total || 0)
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
-    }
-  }
-
-  async function handleSync() {
-    setSyncing(true)
-    setError(null)
-    setSyncResult(null)
-    try {
-      const data = await syncSMSMessages({
-        start_date: startDate,
-        end_date: endDate,
-      })
-      setSyncResult(data.message)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setSyncing(false)
     }
   }
 
@@ -130,19 +104,6 @@ export default function SMSHistoryTab() {
                 {qr.label}
               </button>
             ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-text-muted">Source:</span>
-            <button
-              onClick={() => setSource(s => s === 'live' ? 'db' : 'live')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                source === 'live'
-                  ? 'bg-wcs-red/10 text-wcs-red border-wcs-red/30'
-                  : 'bg-bg text-text-muted border-border'
-              }`}
-            >
-              {source === 'live' ? 'Twilio (Live)' : 'Database'}
-            </button>
           </div>
         </div>
 
@@ -184,13 +145,6 @@ export default function SMSHistoryTab() {
           >
             {loading ? 'Loading...' : 'Fetch'}
           </button>
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="px-4 py-2 bg-bg text-text-primary text-sm font-medium rounded-lg border border-border hover:border-wcs-red transition-colors disabled:opacity-50 whitespace-nowrap"
-          >
-            {syncing ? 'Syncing...' : 'Sync to DB'}
-          </button>
         </div>
       </div>
 
@@ -200,11 +154,6 @@ export default function SMSHistoryTab() {
           {error}
         </div>
       )}
-      {syncResult && (
-        <div className="bg-green-50 border border-green-200 text-green-700 rounded-xl px-4 py-3 text-sm">
-          {syncResult}
-        </div>
-      )}
 
       {/* Results */}
       {messages.length > 0 && (
@@ -212,7 +161,6 @@ export default function SMSHistoryTab() {
           <div className="px-4 py-3 border-b border-border">
             <p className="text-xs text-text-muted font-medium">
               {total} message{total !== 1 ? 's' : ''} found
-              <span className="ml-2 text-text-muted/60">({source === 'live' ? 'from Twilio' : 'from database'})</span>
             </p>
           </div>
           <div className="max-h-[500px] overflow-y-auto">
