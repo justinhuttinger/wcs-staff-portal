@@ -118,7 +118,22 @@ export default function SyncStatusTile() {
           {/* Recent errors */}
           {data.recent_errors > 0 && (
             <div>
-              <p className="text-xs text-orange-600 uppercase font-semibold">{data.recent_errors} recent error{data.recent_errors > 1 ? 's' : ''}</p>
+              <p className="text-xs text-orange-600 uppercase font-semibold mb-2">{data.recent_errors} recent error{data.recent_errors > 1 ? 's' : ''}</p>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {(data.recent_logs || [])
+                  .filter(l => l.errors && l.errors.length > 0)
+                  .map((log, i) => (
+                    <div key={i} className="bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-text-primary capitalize">{log.entity} ({log.sync_type})</span>
+                        <span className="text-xs text-text-muted">{timeAgo(log.started_at)}</span>
+                      </div>
+                      {log.errors.map((err, j) => (
+                        <p key={j} className="text-xs text-red-600">{err.error || err.message || JSON.stringify(err)}</p>
+                      ))}
+                    </div>
+                  ))}
+              </div>
             </div>
           )}
         </div>
