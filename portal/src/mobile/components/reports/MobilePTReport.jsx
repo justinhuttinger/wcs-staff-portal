@@ -205,13 +205,13 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
 
       {/* Contact detail modal */}
       {selectedContact && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={() => setSelectedContact(null)}>
-          <div className="bg-surface w-full max-w-lg rounded-t-2xl p-6 pb-8" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setSelectedContact(null)}>
+          <div className="bg-surface w-full max-w-sm rounded-2xl p-5 shadow-xl max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-bold text-text-primary">{capitalize(selectedContact.first_name)} {capitalize(selectedContact.last_name)}</h3>
-              <button onClick={() => setSelectedContact(null)} className="text-text-muted text-xl leading-none">&times;</button>
+              <button onClick={() => setSelectedContact(null)} className="w-8 h-8 flex items-center justify-center rounded-full bg-bg text-text-muted text-lg leading-none">&times;</button>
             </div>
-            <div className="space-y-2 text-sm">
+            <div className="space-y-3 text-sm">
               <Detail label="Booking Date" value={formatDate(selectedContact.day_one_booking_date)} />
               <Detail label="Day One Date" value={formatDate(selectedContact.day_one_date)} />
               <Detail label="Booking Team Member" value={selectedContact.day_one_booking_team_member} />
