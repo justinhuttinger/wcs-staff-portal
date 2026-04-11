@@ -80,7 +80,7 @@ export default function HomeScreen({ user, navigate, onLogout }) {
       </div>
 
       {/* Tile grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         {tiles.map(tile => (
           <button
             key={tile.route}

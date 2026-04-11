@@ -92,7 +92,7 @@ export default function MobileClubHealth({ startDate, endDate, locationSlug }) {
   return (
     <div className="space-y-3">
       {/* Stat cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <StatCard label="Memberships Sold" value={totalMemberships} />
         <StatCard label="Total VIPs" value={data.total_vips || 0} />
         <StatCard label="Same Day Sales" value={data.total_same_day_sales || 0} />
