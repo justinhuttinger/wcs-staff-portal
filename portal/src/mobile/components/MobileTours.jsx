@@ -148,89 +148,84 @@ export default function MobileTours({ user }) {
 
   return (
     <div className="flex flex-col h-full bg-bg">
-      {/* Tab toggle — matches Day One underline style */}
-      <div className="px-4 pt-4 pb-2">
-        <div className="flex border-b border-border">
-          <button
-            onClick={() => setView('day')}
-            className={`flex-1 pb-3 text-sm font-semibold text-center transition-colors ${
-              view === 'day'
-                ? 'text-wcs-red border-b-2 border-wcs-red'
-                : 'text-text-muted'
-            }`}
-          >
-            Day
-          </button>
-          <button
-            onClick={() => setView('week')}
-            className={`flex-1 pb-3 text-sm font-semibold text-center transition-colors ${
-              view === 'week'
-                ? 'text-wcs-red border-b-2 border-wcs-red'
-                : 'text-text-muted'
-            }`}
-          >
-            Week
-          </button>
+      {/* Header */}
+      <div className="bg-surface border-b border-border px-4 pt-4 pb-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-text-primary">Gym Tours</h2>
+          {/* Day/Week toggle */}
+          <div className="flex bg-bg rounded-lg p-0.5">
+            <button
+              onClick={() => setView('day')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                view === 'day' ? 'bg-surface text-text-primary shadow-sm' : 'text-text-muted'
+              }`}
+            >Day</button>
+            <button
+              onClick={() => setView('week')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                view === 'week' ? 'bg-surface text-text-primary shadow-sm' : 'text-text-muted'
+              }`}
+            >Week</button>
+          </div>
         </div>
-      </div>
 
-      {/* Location selector */}
-      {userLocations.length > 1 && (
-        <div className="px-4 pb-2 overflow-x-auto">
-          <div className="flex gap-2 min-w-max">
+        {/* Location pills - horizontal scroll */}
+        {userLocations.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide">
             {userLocations.map(loc => (
               <button
                 key={loc.id}
                 onClick={() => setSelectedLocation(loc.id)}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium border whitespace-nowrap transition-colors ${
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap shrink-0 transition-colors ${
                   selectedLocation === loc.id
                     ? 'bg-wcs-red text-white border-wcs-red'
-                    : 'bg-surface text-text-secondary border-border'
+                    : 'bg-surface text-text-muted border-border'
                 }`}
               >
                 {loc.name}
               </button>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* Date navigation */}
-      <div className="px-4 pb-3 flex items-center gap-2">
-        <button
-          onClick={() => navigateDate(-1)}
-          className="w-9 h-9 flex items-center justify-center rounded-lg border border-border bg-surface active:bg-bg"
-          aria-label="Previous"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-text-primary">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-          </svg>
-        </button>
-
-        <div className="flex-1 text-center">
-          <p className="text-sm font-semibold text-text-primary">
-            {view === 'day' ? formatDateLong(date) : `${formatDate(getWeekDates(date)[0])} - ${formatDate(getWeekDates(date)[6])}`}
-          </p>
-        </div>
-
-        <button
-          onClick={() => navigateDate(1)}
-          className="w-9 h-9 flex items-center justify-center rounded-lg border border-border bg-surface active:bg-bg"
-          aria-label="Next"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-text-primary">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-          </svg>
-        </button>
-
-        {date !== today && (
-          <button
-            onClick={goToday}
-            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-wcs-red text-white active:opacity-80"
-          >
-            Today
-          </button>
         )}
+
+        {/* Date Navigation */}
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => navigateDate(-1)}
+            className="p-2 text-text-muted active:text-text-primary"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <div className="text-center flex-1 min-w-0">
+            {view === 'day' ? (
+              <p className="text-sm font-semibold text-text-primary truncate">{formatDateLong(date)}</p>
+            ) : (
+              <p className="text-xs font-semibold text-text-primary">
+                {formatDate(getWeekDates(date)[0])} — {formatDate(getWeekDates(date)[6])}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            {date !== today && (
+              <button
+                onClick={goToday}
+                className="px-2.5 py-1 text-xs font-medium rounded-lg border border-wcs-red text-wcs-red active:bg-wcs-red active:text-white transition-colors"
+              >
+                Today
+              </button>
+            )}
+            <button
+              onClick={() => navigateDate(1)}
+              className="p-2 text-text-muted active:text-text-primary"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Content */}

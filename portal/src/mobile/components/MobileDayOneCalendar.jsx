@@ -128,34 +128,26 @@ export default function MobileDayOneCalendar({ user }) {
 
   return (
     <div className="flex flex-col h-full bg-bg">
-      {/* Tab toggle — underline style */}
-      <div className="px-4 pt-4 pb-2">
-        <div className="flex border-b border-border">
-          <button
-            onClick={() => setView('day')}
-            className={`flex-1 pb-3 text-sm font-semibold text-center transition-colors ${
-              view === 'day'
-                ? 'text-wcs-red border-b-2 border-wcs-red'
-                : 'text-text-muted'
-            }`}
-          >
-            Day
-          </button>
-          <button
-            onClick={() => setView('week')}
-            className={`flex-1 pb-3 text-sm font-semibold text-center transition-colors ${
-              view === 'week'
-                ? 'text-wcs-red border-b-2 border-wcs-red'
-                : 'text-text-muted'
-            }`}
-          >
-            Week
-          </button>
+      {/* Header */}
+      <div className="bg-surface border-b border-border px-4 pt-4 pb-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-text-primary">Day Ones</h2>
+          {/* Day/Week toggle */}
+          <div className="flex bg-bg rounded-lg p-0.5">
+            <button
+              onClick={() => setView('day')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                view === 'day' ? 'bg-surface text-text-primary shadow-sm' : 'text-text-muted'
+              }`}
+            >Day</button>
+            <button
+              onClick={() => setView('week')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                view === 'week' ? 'bg-surface text-text-primary shadow-sm' : 'text-text-muted'
+              }`}
+            >Week</button>
+          </div>
         </div>
-      </div>
-
-      {/* Header controls */}
-      <div className="px-4 pb-3 space-y-3">
 
         {/* Location pills - horizontal scroll */}
         {hasMultipleLocations && (
