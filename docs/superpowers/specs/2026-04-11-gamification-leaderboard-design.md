@@ -12,9 +12,10 @@ A point-based gamification system that ranks staff within their location based o
 | Membership Sold | 5 | `ghl_contacts_report.sale_team_member`, filtered by `member_sign_date` in month |
 | Same Day Sale | 5 | Bonus on top of membership — `same_day_sale = 'Sale'` on the same contact |
 | VIP | 2 | `ghl_contacts_v2` with `"vip"` tag, `created_at_ghl` in month, attributed to `sale_team_member` via report view |
-| Tour Logged | 2 | GHL Calendar API — "Gym Tour" calendar events, attributed by `assignedUserId` → staff email match |
 
 A same-day membership sale = 10 pts total (5 membership + 5 same day bonus).
+
+> **Note:** Tours will be added as a separate scoring category later with different handling.
 
 ## Components
 
@@ -27,7 +28,7 @@ Displayed on the portal home screen (desktop and mobile) for all logged-in staff
 **Content:**
 - Staff first name + current month's total points (large number)
 - Rank within their location: "3rd of 8"
-- Point legend — compact row showing all 5 actions and their point values
+- Point legend — compact row showing all 4 actions and their point values
 
 **Data:** Uses the same leaderboard API endpoint, filtered to current user.
 
@@ -43,7 +44,7 @@ New tile in the Tools section with a trophy icon. Opens a full leaderboard view.
 
 **Staff Leaderboard (all roles):**
 - Table/list of all staff at the user's location, ranked by total points descending
-- Each row: rank, name, total points, breakdown (memberships, day ones, same day, VIPs, tours)
+- Each row: rank, name, total points, breakdown (memberships, day ones, same day, VIPs)
 - Top 3 get visual flair: gold (#FFD700), silver (#C0C0C0), bronze (#CD7F32) accent on rank
 - Current user's row highlighted with a subtle background color
 - Non-admins see only their own location
@@ -75,7 +76,6 @@ New tile in the Tools section with a trophy icon. Opens a full leaderboard view.
       "day_ones": 3,
       "same_day": 2,
       "vips": 4,
-      "tours": 5,
       "rank": 1
     }
   ],
@@ -106,11 +106,11 @@ For cross-location (manager view):
 
 ### 4. Data Aggregation Logic
 
-All metrics except tours come from Supabase (already synced). Tours require a GHL Calendar API call.
+All metrics come from Supabase (already synced via GHL sync). No additional API calls needed.
 
 **Date filtering:** Uses the same `dateToMs` helper with Pacific timezone offset for custom field dates. Month boundaries: 1st of month 00:00 PDT → last day of month 23:59:59 PDT.
 
-**Staff name matching:** The `sale_team_member` and `day_one_booking_team_member` fields are free-text names from GHL. Tours use `assignedUserId` which maps to a GHL user email via the users API. Match tour attribution to staff by comparing GHL user email to staff email in the `staff` table.
+**Staff name matching:** The `sale_team_member` and `day_one_booking_team_member` fields are free-text names from GHL custom fields.
 
 **VIP attribution:** VIPs are counted by the `sale_team_member` on the contact (from the report view), filtered by `created_at_ghl` in month range.
 
