@@ -251,6 +251,12 @@ export async function searchSMSHistory(params = {}) {
   return api('/sms-history/search' + (qs ? '?' + qs : ''))
 }
 
+// Leaderboard
+export async function getLeaderboard(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/leaderboard' + (qs ? '?' + qs : ''))
+}
+
 // Meta Ads
 export async function getMetaAdsOverview(params = {}) {
   const qs = new URLSearchParams(params).toString()
