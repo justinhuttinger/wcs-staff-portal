@@ -180,6 +180,11 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
                       Sale
                     </span>
                   )}
+                  {c.day_one_sale && c.day_one_sale !== 'Sale' && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-50 text-red-600 border border-red-200">
+                      No Sale
+                    </span>
+                  )}
                 </div>
               </button>
             ))}
