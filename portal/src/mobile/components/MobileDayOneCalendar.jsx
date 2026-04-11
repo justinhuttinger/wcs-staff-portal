@@ -38,12 +38,17 @@ function getWeekDates(baseDate) {
   return dates
 }
 
+function normalizeStatus(apt) {
+  const s = (apt.day_one_status || apt.status || '').toLowerCase().replace(/\s+/g, '')
+  if (s === 'cancelled') return 'Cancelled'
+  if (s === 'completed' || s === 'noshow' || s === 'no show' || apt.show_or_no_show === 'No Show') return 'Completed'
+  return 'Scheduled'
+}
+
 const STATUS_COLORS = {
-  confirmed: 'bg-green-50 text-green-700 border-green-200',
-  scheduled: 'bg-blue-50 text-blue-700 border-blue-200',
-  completed: 'bg-green-50 text-green-700 border-green-200',
-  'no show': 'bg-red-50 text-red-500 border-red-200',
-  cancelled: 'bg-gray-50 text-gray-500 border-gray-200',
+  Scheduled: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+  Cancelled: 'bg-red-50 text-red-500 border-red-200',
+  Completed: 'bg-green-50 text-green-700 border-green-200',
 }
 
 export default function MobileDayOneCalendar({ user }) {
@@ -95,7 +100,7 @@ export default function MobileDayOneCalendar({ user }) {
   }
 
   function getStatus(apt) {
-    return apt.day_one_status || apt.status || 'scheduled'
+    return normalizeStatus(apt)
   }
 
   function toggleDay(date) {
@@ -123,26 +128,34 @@ export default function MobileDayOneCalendar({ user }) {
 
   return (
     <div className="flex flex-col h-full bg-bg">
-      {/* Header */}
-      <div className="bg-surface border-b border-border px-4 pt-4 pb-3 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-text-primary">Day Ones</h2>
-          {/* Day/Week toggle */}
-          <div className="flex bg-bg rounded-lg p-0.5">
-            <button
-              onClick={() => setView('day')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                view === 'day' ? 'bg-surface text-text-primary shadow-sm' : 'text-text-muted'
-              }`}
-            >Day</button>
-            <button
-              onClick={() => setView('week')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                view === 'week' ? 'bg-surface text-text-primary shadow-sm' : 'text-text-muted'
-              }`}
-            >Week</button>
-          </div>
+      {/* Tab toggle — underline style */}
+      <div className="px-4 pt-4 pb-2">
+        <div className="flex border-b border-border">
+          <button
+            onClick={() => setView('day')}
+            className={`flex-1 pb-3 text-sm font-semibold text-center transition-colors ${
+              view === 'day'
+                ? 'text-wcs-red border-b-2 border-wcs-red'
+                : 'text-text-muted'
+            }`}
+          >
+            Day
+          </button>
+          <button
+            onClick={() => setView('week')}
+            className={`flex-1 pb-3 text-sm font-semibold text-center transition-colors ${
+              view === 'week'
+                ? 'text-wcs-red border-b-2 border-wcs-red'
+                : 'text-text-muted'
+            }`}
+          >
+            Week
+          </button>
         </div>
+      </div>
+
+      {/* Header controls */}
+      <div className="px-4 pb-3 space-y-3">
 
         {/* Location pills - horizontal scroll */}
         {hasMultipleLocations && (
@@ -222,18 +235,16 @@ export default function MobileDayOneCalendar({ user }) {
             {dayAppointments.map(apt => {
               const status = getStatus(apt)
               return (
-                <div key={apt.id} className="bg-surface border border-border rounded-xl p-3.5 flex items-start gap-3">
-                  <div className="shrink-0">
-                    <p className="text-base font-bold text-wcs-red leading-tight">{formatTime(apt.appointment_time)}</p>
-                  </div>
+                <div key={apt.id} className="w-full text-left bg-surface rounded-2xl border border-border p-4 flex items-start gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-text-primary truncate">{apt.contact_name || 'Unknown'}</p>
+                    <p className="font-semibold text-text-primary truncate">{apt.contact_name || 'Unknown'}</p>
+                    <p className="text-xs text-text-muted mt-0.5">{formatTime(apt.appointment_time)}</p>
                     {apt.assigned_user_name && (
                       <p className="text-xs text-text-muted mt-0.5">{apt.assigned_user_name}</p>
                     )}
                   </div>
-                  <span className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-medium border capitalize ${
-                    STATUS_COLORS[status.toLowerCase()] || 'bg-blue-50 text-blue-700 border-blue-200'
+                  <span className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                    STATUS_COLORS[status] || STATUS_COLORS.Scheduled
                   }`}>
                     {status}
                   </span>
@@ -252,12 +263,12 @@ export default function MobileDayOneCalendar({ user }) {
               const isCollapsed = collapsedDays[date]
 
               return (
-                <div key={date} className={`rounded-xl border overflow-hidden ${isToday ? 'border-wcs-red' : 'border-border'}`}>
+                <div key={date} className={`rounded-2xl border overflow-hidden ${isToday ? 'border-wcs-red' : 'border-border'}`}>
                   {/* Day header - tappable to collapse */}
                   <button
                     onClick={() => toggleDay(date)}
-                    className={`w-full flex items-center justify-between px-3.5 py-2.5 text-left ${
-                      isToday ? 'bg-wcs-red text-white' : 'bg-bg text-text-muted'
+                    className={`w-full flex items-center justify-between px-4 py-3 text-left ${
+                      isToday ? 'bg-wcs-red text-white' : 'bg-surface text-text-primary'
                     }`}
                   >
                     <span className="text-xs font-semibold">
@@ -282,23 +293,24 @@ export default function MobileDayOneCalendar({ user }) {
 
                   {/* Appointment list */}
                   {!isCollapsed && (
-                    <>
+                    <div className="bg-bg px-3 py-2">
                       {dayApts.length === 0 ? (
-                        <div className="px-3.5 py-2.5 text-xs text-text-muted bg-surface">No appointments</div>
+                        <p className="text-xs text-text-muted px-1 py-3">No appointments</p>
                       ) : (
-                        <div className="divide-y divide-border bg-surface">
+                        <div className="flex flex-col gap-2">
                           {dayApts.map(apt => {
                             const status = getStatus(apt)
                             return (
-                              <div key={apt.id} className="px-3.5 py-2.5 flex items-center gap-2.5">
-                                <span className="text-sm font-bold text-wcs-red shrink-0 min-w-[52px]">
-                                  {formatTime(apt.appointment_time)}
-                                </span>
+                              <div key={apt.id} className="w-full text-left bg-surface rounded-2xl border border-border p-4 flex items-start gap-3">
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm text-text-primary truncate">{apt.contact_name || 'Unknown'}</p>
+                                  <p className="font-semibold text-text-primary truncate">{apt.contact_name || 'Unknown'}</p>
+                                  <p className="text-xs text-text-muted mt-0.5">{formatTime(apt.appointment_time)}</p>
+                                  {apt.assigned_user_name && (
+                                    <p className="text-xs text-text-muted mt-0.5">{apt.assigned_user_name}</p>
+                                  )}
                                 </div>
-                                <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-medium border capitalize ${
-                                  STATUS_COLORS[status.toLowerCase()] || 'bg-blue-50 text-blue-700 border-blue-200'
+                                <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium border ${
+                                  STATUS_COLORS[status] || STATUS_COLORS.Scheduled
                                 }`}>
                                   {status}
                                 </span>
@@ -307,7 +319,7 @@ export default function MobileDayOneCalendar({ user }) {
                           })}
                         </div>
                       )}
-                    </>
+                    </div>
                   )}
                 </div>
               )
