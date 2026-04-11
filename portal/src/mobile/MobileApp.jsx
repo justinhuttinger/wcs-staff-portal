@@ -207,12 +207,12 @@ export default function MobileApp() {
   return (
     <div className="min-h-screen bg-bg text-text-primary">
       {/* Main content area with bottom padding for tab bar */}
-      <div className="pb-20">
+      <div className="pb-20 max-w-2xl mx-auto">
         {renderView()}
       </div>
 
       {/* Bottom tab bar */}
-      <nav className="fixed bottom-0 left-0 right-0 h-16 bg-surface border-t border-border flex items-center justify-around px-2 z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      <nav className="fixed bottom-0 left-0 right-0 h-16 bg-surface border-t border-border flex items-center justify-around max-w-2xl mx-auto px-2 z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         {tabs.map(({ key, label, Icon }) => {
           const isActive = activeTab === key
           return (
