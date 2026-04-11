@@ -21,13 +21,19 @@ function isPast(iso) {
   return new Date(iso) < new Date()
 }
 
+function isCancelled(apt) {
+  const s = (apt.status || '').toLowerCase().replace(/\s+/g, '')
+  return s === 'cancelled'
+}
+
 function isPending(apt) {
+  if (isCancelled(apt)) return false
   const s = (apt.day_one_status || '').toLowerCase()
-  // Pending = no status, or status is "scheduled", and appointment time has passed
-  return (!s || s === 'scheduled') && isPast(apt.appointment_time)
+  return (!s || s === 'scheduled' || s === 'confirmed') && isPast(apt.appointment_time)
 }
 
 function isCompleted(apt) {
+  if (isCancelled(apt)) return false
   const s = (apt.day_one_status || '').toLowerCase()
   return s === 'completed' || s === 'no show' || apt.show_or_no_show === 'No Show'
 }
@@ -35,6 +41,10 @@ function isCompleted(apt) {
 function StatusBadge({ appointment }) {
   const s = appointment.day_one_status
   const sale = appointment.day_one_sale
+  const apptStatus = (appointment.status || '').toLowerCase().replace(/\s+/g, '')
+  if (apptStatus === 'cancelled') {
+    return <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-500 text-xs border border-red-200">Cancelled</span>
+  }
   if (s === 'No Show' || appointment.show_or_no_show === 'No Show') {
     return <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-600 text-xs border border-red-200">No Show</span>
   }
@@ -47,7 +57,7 @@ function StatusBadge({ appointment }) {
     }
     return <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs border border-green-200">Completed</span>
   }
-  return <span className="px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700 text-xs border border-yellow-200">Pending</span>
+  return <span className="px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700 text-xs border border-yellow-200">Scheduled</span>
 }
 
 function formatDateTime(iso) {

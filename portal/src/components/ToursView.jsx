@@ -42,12 +42,17 @@ function getWeekDates(baseDate) {
   return dates
 }
 
-const STATUS_COLORS = {
-  confirmed: 'bg-green-50 text-green-700 border-green-200',
-  new: 'bg-blue-50 text-blue-700 border-blue-200',
-  cancelled: 'bg-red-50 text-red-500 border-red-200',
-  noshow: 'bg-gray-50 text-gray-500 border-gray-200',
-  showed: 'bg-green-50 text-green-700 border-green-200',
+function normalizeStatus(raw) {
+  const s = (raw || '').toLowerCase().replace(/\s+/g, '')
+  if (s === 'cancelled') return 'Cancelled'
+  if (s === 'showed' || s === 'completed' || s === 'noshow') return 'Completed'
+  return 'Scheduled'
+}
+
+const STATUS_BADGE_COLORS = {
+  Scheduled: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+  Cancelled: 'bg-red-50 text-red-500 border-red-200',
+  Completed: 'bg-green-50 text-green-700 border-green-200',
 }
 
 export default function ToursView({ user, onBack }) {
@@ -210,8 +215,8 @@ export default function ToursView({ user, onBack }) {
                 {tour.contact_phone && <p className="text-xs text-text-muted">{tour.contact_phone}</p>}
                 {tour.contact_email && <p className="text-xs text-text-muted">{tour.contact_email}</p>}
               </div>
-              <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium border ${STATUS_COLORS[tour.status] || STATUS_COLORS.confirmed}`}>
-                {tour.status}
+              <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium border ${STATUS_BADGE_COLORS[normalizeStatus(tour.status)]}`}>
+                {normalizeStatus(tour.status)}
               </span>
             </div>
           ))}
@@ -238,8 +243,8 @@ export default function ToursView({ user, onBack }) {
                       <div key={tour.id} className="px-4 py-3 flex items-center gap-3">
                         <span className="text-sm font-medium text-wcs-red min-w-[55px]">{formatTime(tour.start_time)}</span>
                         <span className="text-sm text-text-primary">{tour.contact_name || tour.title}</span>
-                        <span className={`ml-auto shrink-0 px-2 py-0.5 rounded-full text-xs border ${STATUS_COLORS[tour.status] || STATUS_COLORS.confirmed}`}>
-                          {tour.status}
+                        <span className={`ml-auto shrink-0 px-2 py-0.5 rounded-full text-xs border ${STATUS_BADGE_COLORS[normalizeStatus(tour.status)]}`}>
+                          {normalizeStatus(tour.status)}
                         </span>
                       </div>
                     ))}

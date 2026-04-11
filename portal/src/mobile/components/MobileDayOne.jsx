@@ -16,11 +16,17 @@ function capitalize(str) {
   return str.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
 }
 function isPast(iso) { return iso ? new Date(iso) < new Date() : false }
+function isCancelled(apt) {
+  const s = (apt.status || '').toLowerCase().replace(/\s+/g, '')
+  return s === 'cancelled'
+}
 function isPending(apt) {
+  if (isCancelled(apt)) return false
   const s = (apt.day_one_status || '').toLowerCase()
-  return (!s || s === 'scheduled') && isPast(apt.appointment_time)
+  return (!s || s === 'scheduled' || s === 'confirmed') && isPast(apt.appointment_time)
 }
 function isCompleted(apt) {
+  if (isCancelled(apt)) return false
   const s = (apt.day_one_status || '').toLowerCase()
   return s === 'completed' || s === 'no show' || apt.show_or_no_show === 'No Show'
 }
@@ -33,9 +39,13 @@ function formatDateTime(iso) {
 function StatusBadge({ apt }) {
   const status = (apt.day_one_status || '').toLowerCase()
   const showNoShow = apt.show_or_no_show
+  const apptStatus = (apt.status || '').toLowerCase().replace(/\s+/g, '')
 
   let label, colorClass
-  if (status === 'no show' || showNoShow === 'No Show') {
+  if (apptStatus === 'cancelled') {
+    label = 'Cancelled'
+    colorClass = 'bg-red-50 text-red-500 border-red-200'
+  } else if (status === 'no show' || showNoShow === 'No Show') {
     label = 'No Show'
     colorClass = 'bg-red-50 text-red-600 border-red-200'
   } else if (status === 'completed' && apt.sale_type) {
@@ -48,7 +58,7 @@ function StatusBadge({ apt }) {
     label = 'Completed'
     colorClass = 'bg-green-50 text-green-700 border-green-200'
   } else {
-    label = 'Pending'
+    label = 'Scheduled'
     colorClass = 'bg-yellow-50 text-yellow-700 border-yellow-200'
   }
 

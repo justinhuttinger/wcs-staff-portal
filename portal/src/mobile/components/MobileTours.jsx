@@ -34,12 +34,19 @@ function getWeekDates(baseDate) {
   return dates
 }
 
-const STATUS_COLORS = {
-  confirmed: 'bg-green-50 text-green-700 border-green-200',
-  new: 'bg-blue-50 text-blue-700 border-blue-200',
-  cancelled: 'bg-red-50 text-red-500 border-red-200',
-  noshow: 'bg-gray-50 text-gray-500 border-gray-200',
-  showed: 'bg-green-50 text-green-700 border-green-200',
+function normalizeStatus(raw) {
+  const s = (raw || '').toLowerCase().replace(/\s+/g, '')
+  if (s === 'cancelled') return 'Cancelled'
+  if (s === 'showed' || s === 'completed' || s === 'noshow') return 'Completed'
+  return 'Scheduled'
+}
+
+function statusBadgeClass(label) {
+  switch (label) {
+    case 'Cancelled': return 'bg-red-50 text-red-500 border-red-200'
+    case 'Completed': return 'bg-green-50 text-green-700 border-green-200'
+    default: return 'bg-yellow-50 text-yellow-700 border-yellow-200'
+  }
 }
 
 export default function MobileTours({ user }) {
@@ -115,30 +122,25 @@ export default function MobileTours({ user }) {
   }
 
   function TourCard({ tour }) {
-    const status = (tour.status || '').toLowerCase().replace(/\s+/g, '')
-    const colorClass = STATUS_COLORS[status] || 'bg-gray-50 text-gray-500 border-gray-200'
-    const time = formatTime(tour.appointment_time || tour.start_time)
+    const status = normalizeStatus(tour.status)
+    const colorClass = statusBadgeClass(status)
     const name = tour.contact_name || tour.name || 'Unknown'
     const phone = tour.phone || tour.contact_phone || ''
     const email = tour.email || tour.contact_email || ''
+    const time = formatTime(tour.appointment_time || tour.start_time)
 
     return (
-      <div className="bg-surface rounded-2xl border border-border p-4 flex items-start gap-3">
-        {/* Time */}
-        <div className="flex-shrink-0 min-w-[60px]">
-          <span className="text-lg font-bold text-wcs-red">{time || '--'}</span>
-        </div>
-
-        {/* Contact info */}
+      <div className="w-full text-left bg-surface rounded-2xl border border-border p-4 flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-text-primary truncate">{name}</p>
-          {phone && <p className="text-xs text-text-muted truncate">{phone}</p>}
-          {email && <p className="text-xs text-text-muted truncate">{email}</p>}
+          <p className="text-xs text-text-muted mt-0.5">
+            {time || '—'}
+          </p>
+          {phone && <p className="text-xs text-text-muted mt-0.5">{phone}</p>}
+          {email && <p className="text-xs text-text-muted truncate mt-0.5">{email}</p>}
         </div>
-
-        {/* Status pill */}
         <span className={`flex-shrink-0 text-xs font-medium px-2.5 py-1 rounded-full border ${colorClass}`}>
-          {tour.status || 'New'}
+          {status}
         </span>
       </div>
     )
@@ -146,21 +148,25 @@ export default function MobileTours({ user }) {
 
   return (
     <div className="flex flex-col h-full bg-bg">
-      {/* View toggle */}
+      {/* Tab toggle — matches Day One underline style */}
       <div className="px-4 pt-4 pb-2">
-        <div className="flex bg-bg rounded-xl border border-border overflow-hidden">
+        <div className="flex border-b border-border">
           <button
             onClick={() => setView('day')}
-            className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${
-              view === 'day' ? 'bg-wcs-red text-white' : 'text-text-secondary'
+            className={`flex-1 pb-3 text-sm font-semibold text-center transition-colors ${
+              view === 'day'
+                ? 'text-wcs-red border-b-2 border-wcs-red'
+                : 'text-text-muted'
             }`}
           >
             Day
           </button>
           <button
             onClick={() => setView('week')}
-            className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${
-              view === 'week' ? 'bg-wcs-red text-white' : 'text-text-secondary'
+            className={`flex-1 pb-3 text-sm font-semibold text-center transition-colors ${
+              view === 'week'
+                ? 'text-wcs-red border-b-2 border-wcs-red'
+                : 'text-text-muted'
             }`}
           >
             Week
@@ -246,7 +252,7 @@ export default function MobileTours({ user }) {
               <p className="text-sm">No tours scheduled</p>
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 pt-2">
               {tours.map((tour, i) => <TourCard key={tour.id || i} tour={tour} />)}
             </div>
           )
@@ -261,12 +267,12 @@ export default function MobileTours({ user }) {
                   const isExpanded = expandedDays[dateStr] !== false
 
                   return (
-                    <div key={dateStr} className="rounded-xl overflow-hidden border border-border">
+                    <div key={dateStr} className="rounded-2xl overflow-hidden border border-border">
                       {/* Day header */}
                       <button
                         onClick={() => toggleDay(dateStr)}
                         className={`w-full flex items-center justify-between px-4 py-3 text-left ${
-                          isToday ? 'bg-wcs-red text-white' : 'bg-bg text-text-primary'
+                          isToday ? 'bg-wcs-red text-white' : 'bg-surface text-text-primary'
                         }`}
                       >
                         <span className="text-sm font-semibold">{formatDate(dateStr)}</span>
@@ -289,28 +295,12 @@ export default function MobileTours({ user }) {
 
                       {/* Day tours */}
                       {isExpanded && (
-                        <div className="bg-surface">
+                        <div className="bg-bg px-3 py-2">
                           {dayTours.length === 0 ? (
-                            <p className="text-xs text-text-muted px-4 py-3">No tours</p>
+                            <p className="text-xs text-text-muted px-1 py-3">No tours</p>
                           ) : (
-                            <div className="flex flex-col divide-y divide-border">
-                              {dayTours.map((tour, i) => (
-                                <div key={tour.id || i} className="px-4 py-3 flex items-start gap-3">
-                                  <span className="text-sm font-bold text-wcs-red min-w-[55px]">
-                                    {formatTime(tour.appointment_time || tour.start_time) || '--'}
-                                  </span>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-semibold text-text-primary truncate">
-                                      {tour.contact_name || tour.name || 'Unknown'}
-                                    </p>
-                                  </div>
-                                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
-                                    STATUS_COLORS[(tour.status || '').toLowerCase().replace(/\s+/g, '')] || 'bg-gray-50 text-gray-500 border-gray-200'
-                                  }`}>
-                                    {tour.status || 'New'}
-                                  </span>
-                                </div>
-                              ))}
+                            <div className="flex flex-col gap-2">
+                              {dayTours.map((tour, i) => <TourCard key={tour.id || i} tour={tour} />)}
                             </div>
                           )}
                         </div>
