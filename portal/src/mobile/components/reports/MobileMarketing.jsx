@@ -345,6 +345,7 @@ export default function MobileMarketing() {
   }, [dateRange?.start, dateRange?.end, activeOnly])
 
   // filtered campaigns
+  const isFiltered = location !== 'All' || type !== 'All'
   const filtered = useMemo(() => {
     return campaigns.filter(c => {
       if (location !== 'All') {
@@ -358,6 +359,22 @@ export default function MobileMarketing() {
       return true
     })
   }, [campaigns, location, type])
+
+  // Recompute overview stats from filtered campaigns when filters are active
+  const displayOverview = useMemo(() => {
+    if (!isFiltered) return overview
+    const totals = { spend: 0, impressions: 0, clicks: 0, leads: 0, link_clicks: 0, landing_page_views: 0 }
+    for (const c of filtered) {
+      totals.spend += c.spend || 0
+      totals.impressions += c.impressions || 0
+      totals.clicks += c.clicks || 0
+      totals.leads += c.leads || 0
+      totals.link_clicks += c.link_clicks || c.clicks || 0
+      totals.landing_page_views += c.landing_page_views || 0
+    }
+    totals.cost_per_lead = totals.leads > 0 ? totals.spend / totals.leads : 0
+    return totals
+  }, [overview, filtered, isFiltered])
 
   // not connected state
   if (notConnected) {
@@ -445,15 +462,15 @@ export default function MobileMarketing() {
       ) : (
         <>
           {/* Overview stat cards - horizontal scroll */}
-          {overview && (
+          {displayOverview && (
             <div className="mb-4">
               <div className="flex gap-2.5 overflow-x-auto px-4 pb-1 no-scrollbar">
                 {[
-                  { label: 'Spend', value: fmtMoney(overview.spend), sub: null },
-                  { label: 'Leads', value: fmtNum(overview.leads), sub: `CPL ${fmtMoney(overview.cost_per_lead)}` },
-                  { label: 'Impressions', value: fmtNum(overview.impressions), sub: null },
-                  { label: 'Link Clicks', value: fmtNum(overview.link_clicks), sub: null },
-                  { label: 'Landing Views', value: fmtNum(overview.landing_page_views), sub: null },
+                  { label: 'Spend', value: fmtMoney(displayOverview.spend), sub: null },
+                  { label: 'Leads', value: fmtNum(displayOverview.leads), sub: `CPL ${fmtMoney(displayOverview.cost_per_lead)}` },
+                  { label: 'Impressions', value: fmtNum(displayOverview.impressions), sub: null },
+                  { label: 'Link Clicks', value: fmtNum(displayOverview.link_clicks), sub: null },
+                  { label: 'Landing Views', value: fmtNum(displayOverview.landing_page_views), sub: null },
                 ].map(stat => (
                   <div
                     key={stat.label}
