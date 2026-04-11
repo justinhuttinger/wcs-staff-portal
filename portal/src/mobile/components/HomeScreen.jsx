@@ -1,4 +1,5 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
+import { getLeaderboard } from '../../lib/api'
 
 // Tile icons (Heroicons outline, inline SVG)
 function BarChartIcon() {
@@ -33,12 +34,26 @@ function MegaphoneIcon() {
   )
 }
 
+function TrophyIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7 text-wcs-red">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-4.5A3.375 3.375 0 0019.875 10.875 3.375 3.375 0 0021 8.25V6a1.5 1.5 0 00-1.5-1.5h-1.875a.375.375 0 01-.375-.375V3.75a.75.75 0 00-.75-.75h-9a.75.75 0 00-.75.75v.375a.375.375 0 01-.375.375H4.5A1.5 1.5 0 003 6v2.25a3.375 3.375 0 001.125 2.625A3.375 3.375 0 007.5 14.25v4.5m4.5-13.5v7.5a2.25 2.25 0 01-2.25 2.25h-.75a2.25 2.25 0 01-2.25-2.25v-7.5" />
+    </svg>
+  )
+}
+
 function LogoutIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
       <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
     </svg>
   )
+}
+
+function ordinal(n) {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return n + (s[(v - 20) % 10] || s[v] || s[0])
 }
 
 export default function HomeScreen({ user, navigate, onLogout }) {
@@ -48,12 +63,44 @@ export default function HomeScreen({ user, navigate, onLogout }) {
   const email = staff.email || ''
   const locations = staff.locations || []
   const primaryLocation = locations.find(l => l.is_primary)?.name || locations[0]?.name || ''
+  const locationSlug = (primaryLocation || 'Salem').toLowerCase()
+  const staffId = staff.id
+
+  const [scoreData, setScoreData] = useState(null)
+  const [scoreLoading, setScoreLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    const now = new Date()
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
+    getLeaderboard({ month, location: locationSlug })
+      .then(res => {
+        if (!cancelled) {
+          const rankings = res?.rankings || res?.leaderboard || []
+          const idx = rankings.findIndex(r => r.staff_id === staffId)
+          setScoreData({
+            rankings,
+            userRank: idx >= 0 ? (rankings[idx].rank || idx + 1) : null,
+            userEntry: idx >= 0 ? rankings[idx] : null,
+            total: rankings.length,
+          })
+          setScoreLoading(false)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setScoreLoading(false)
+      })
+
+    return () => { cancelled = true }
+  }, [locationSlug, staffId])
 
   const tiles = [
     { label: 'Reports', icon: <BarChartIcon />, route: 'reports' },
     { label: 'Tours', icon: <CalendarIcon />, route: 'tours' },
     { label: 'Day One', icon: <ClipboardIcon />, route: 'dayone' },
     { label: 'Marketing', icon: <MegaphoneIcon />, route: 'reports/marketing' },
+    { label: 'Leaderboard', icon: <TrophyIcon />, route: 'leaderboard' },
   ]
 
   return (
@@ -78,6 +125,34 @@ export default function HomeScreen({ user, navigate, onLogout }) {
           </span>
         )}
       </div>
+
+      {/* Score card */}
+      {!scoreLoading && scoreData?.userEntry && (
+        <div className="bg-surface border border-border rounded-2xl p-4 mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <span className="text-3xl font-bold text-wcs-red">
+                {scoreData.userEntry.total_points ?? scoreData.userEntry.points ?? 0}
+              </span>
+              <span className="text-sm text-text-muted ml-1">pts</span>
+            </div>
+            {scoreData.userRank && (
+              <span className="text-sm font-medium text-text-secondary">
+                {ordinal(scoreData.userRank)} of {scoreData.total}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] text-text-muted">Day One <span className="font-semibold text-text-secondary">10</span></span>
+            <span className="text-[11px] text-text-muted">&middot;</span>
+            <span className="text-[11px] text-text-muted">Membership <span className="font-semibold text-text-secondary">5</span></span>
+            <span className="text-[11px] text-text-muted">&middot;</span>
+            <span className="text-[11px] text-text-muted">Same Day <span className="font-semibold text-text-secondary">5</span></span>
+            <span className="text-[11px] text-text-muted">&middot;</span>
+            <span className="text-[11px] text-text-muted">VIP <span className="font-semibold text-text-secondary">2</span></span>
+          </div>
+        </div>
+      )}
 
       {/* Tile grid */}
       <div className="grid grid-cols-2 gap-4">
