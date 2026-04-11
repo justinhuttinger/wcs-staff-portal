@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import allTools from '../config/tools.json'
 import ToolButton from './ToolButton'
-import { getTiles, getDayOneTrackerAppointments, getTours } from '../lib/api'
+import { getTiles, getDayOneTrackerAppointments, getTours, getLeaderboard } from '../lib/api'
 
 const TILE_ICONS = {
   dayOne: 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9 2 2 4-4',
@@ -11,6 +11,7 @@ const TILE_ICONS = {
   tickets: 'M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 0 1 0 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 0 1 0-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375Z',
   availability: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
   dayOneCalendar: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008ZM12 15h.008v.008H12V15Zm0 2.25h.008v.008H12v-.008ZM9.75 15h.008v.008H9.75V15Zm0 2.25h.008v.008H9.75v-.008ZM7.5 15h.008v.008H7.5V15Zm0 2.25h.008v.008H7.5v-.008Zm6.75-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V15Zm0 2.25h.008v.008h-.008v-.008Zm2.25-4.5h.008v.008H16.5v-.008Zm0 2.25h.008v.008H16.5V15Z',
+  leaderboard: 'M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-4.5A3.375 3.375 0 0 0 13.125 10.875h-2.25A3.375 3.375 0 0 0 7.5 14.25v4.5m6-15V3.375c0-.621-.504-1.125-1.125-1.125h-.75a1.125 1.125 0 0 0-1.125 1.125V3.75m3 0h-3',
 }
 
 // Which built-in tool IDs are "Apps" (external services)
@@ -40,13 +41,20 @@ function SvgTileButton({ onClick, iconPath, label, desc, badge }) {
   )
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker, onDayOneCalendar, onTrainerAvail, onMetaAds }) {
+function ordinal(n) {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return n + (s[(v - 20) % 10] || s[v] || s[0])
+}
+
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker, onDayOneCalendar, onTrainerAvail, onMetaAds, onLeaderboard }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [tilesLoaded, setTilesLoaded] = useState(false)
   const [dayOneBadge, setDayOneBadge] = useState(0)
   const [dayOneCalBadge, setDayOneCalBadge] = useState(0)
   const [toursBadge, setToursBadge] = useState(0)
+  const [leaderboardData, setLeaderboardData] = useState(null)
 
   useEffect(() => {
     if (locationId) {
@@ -86,6 +94,13 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
       }).catch(() => {})
     }
   }, [locationId, location])
+
+  useEffect(() => {
+    const locationSlug = (location || 'salem').toLowerCase()
+    getLeaderboard({ location_slug: locationSlug }).then(res => {
+      setLeaderboardData(res)
+    }).catch(() => {})
+  }, [location])
 
   const tools = visibleTools && visibleTools.length > 0
     ? allTools.filter(t => visibleTools.includes(t.id))
@@ -164,8 +179,40 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
     return t.section !== 'main' // default: non-main = tools
   })
 
+  const myEntry = leaderboardData?.leaderboard?.find(e => e.is_current_user)
+  const totalStaff = leaderboardData?.leaderboard?.length || 0
+
   return (
-    <div className="w-full px-8 max-w-7xl mx-auto flex gap-10">
+    <div className="w-full px-8 max-w-7xl mx-auto">
+      {/* Score Card */}
+      {myEntry && (
+        <div className="mb-6 rounded-[14px] bg-surface border border-border p-5 flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-6 h-6 text-wcs-red">
+                <path strokeLinecap="round" strokeLinejoin="round" d={TILE_ICONS.leaderboard} />
+              </svg>
+              <div>
+                <span className="text-2xl font-black text-text-primary">{myEntry.total_points || 0}</span>
+                <span className="text-xs font-semibold text-text-muted uppercase tracking-wide ml-1.5">pts</span>
+              </div>
+            </div>
+            <div className="h-8 w-px bg-border" />
+            <div>
+              <span className="text-sm font-bold text-text-primary">{ordinal(myEntry.rank || 1)}</span>
+              <span className="text-xs text-text-muted ml-1">of {totalStaff}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 text-xs text-text-muted">
+            <span><strong className="text-text-primary">{myEntry.new_sales || 0}</strong> Sales</span>
+            <span><strong className="text-text-primary">{myEntry.day_ones || 0}</strong> Day Ones</span>
+            <span><strong className="text-text-primary">{myEntry.same_day || 0}</strong> Same Day</span>
+            <span><strong className="text-text-primary">{myEntry.vips || 0}</strong> VIPs</span>
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-10">
       {/* Apps — left side */}
       <div className="w-1/2">
         <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">Apps</p>
@@ -187,6 +234,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {onDayOneTracker && <SvgTileButton onClick={onDayOneTracker} iconPath={TILE_ICONS.dayOne} label="Day One" desc="Tracking" badge={dayOneBadge} />}
           {onTrainerAvail && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="Availability" desc="Trainers" />}
           {onTours && <SvgTileButton onClick={onTours} iconPath={TILE_ICONS.tours} label="Tours" desc="Calendar" badge={toursBadge} />}
+          {onLeaderboard && <SvgTileButton onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" badge={myEntry?.rank || null} />}
           {toolCustomTiles.map((tile) => {
             const hasChildren = customTiles.some(t => t.parent_id === tile.id)
             const isGroup = hasChildren || !tile.url
@@ -220,6 +268,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
             )
           })}
         </div>
+      </div>
       </div>
     </div>
   )

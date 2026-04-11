@@ -9,6 +9,7 @@ import DayOneTrackerView from './components/DayOneTrackerView'
 import TrainerAvailabilityView from './components/TrainerAvailabilityView'
 import DayOneCalendarView from './components/DayOneCalendarView'
 import MarketingView from './components/MarketingView'
+import LeaderboardView from './components/LeaderboardView'
 import { getMe, getToken, clearToken, setToken, api } from './lib/api'
 
 function getParam(key) {
@@ -31,6 +32,7 @@ export default function App() {
   const [showTrainerAvail, setShowTrainerAvail] = useState(false)
   const [showDayOneCalendar, setShowDayOneCalendar] = useState(false)
   const [showMetaAds, setShowMetaAds] = useState(false)
+  const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
   const isElectron = !!window.wcsElectron
   const isAdmin = user?.staff?.role === 'admin' || user?.staff?.role === 'director'
@@ -73,6 +75,7 @@ export default function App() {
         setShowDayOneCalendar(false)
         setShowMetaAds(false)
         setShowReporting(false)
+        setShowLeaderboard(false)
         if (window.wcsElectron) window.wcsElectron.onLogout()
       })
     }
@@ -122,6 +125,7 @@ export default function App() {
     setShowDayOneTracker(false)
     setShowTrainerAvail(false)
     setShowReporting(false)
+    setShowLeaderboard(false)
     // Notify Electron main process about logout
     if (window.wcsElectron) {
       window.wcsElectron.onLogout()
@@ -192,11 +196,13 @@ export default function App() {
         <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={isAdmin} />
       ) : showMetaAds ? (
         <MarketingView onBack={() => setShowMetaAds(false)} />
+      ) : showLeaderboard ? (
+        <LeaderboardView user={user} onBack={() => setShowLeaderboard(false)} location={location} />
       ) : showReporting ? (
         <ReportingView user={user} onBack={() => setShowReporting(false)} location={location} isAdmin={isAdmin} />
       ) : (
         <main className="flex-1 flex items-start pt-4">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onTours={() => setShowTours(true)} onDayOneTracker={() => setShowDayOneTracker(true)} onDayOneCalendar={() => setShowDayOneCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onMetaAds={() => setShowMetaAds(true)} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onTours={() => setShowTours(true)} onDayOneTracker={() => setShowDayOneTracker(true)} onDayOneCalendar={() => setShowDayOneCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onMetaAds={() => setShowMetaAds(true)} onLeaderboard={() => setShowLeaderboard(true)} />
         </main>
       )}
 
