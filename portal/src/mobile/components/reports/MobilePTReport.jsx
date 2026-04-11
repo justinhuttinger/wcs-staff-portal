@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { getPTReport } from '../../../lib/api'
-import { exportCSV, exportPDF } from '../../../lib/export'
 
 function capitalize(str) {
   if (!str) return ''
@@ -68,17 +67,6 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
     }), { total: 0, completed: 0, no_show: 0, sales: 0, no_sales: 0 })
   }, [trainers])
 
-  function handleExportCSV() {
-    const rows = [
-      ['Trainer', 'Set', 'Completed', 'No Show', 'Sales', 'No Sale', 'Show %', 'Close %'],
-      ...trainers.map(t => {
-        const showPct = t.total > 0 ? Math.round((t.completed / t.total) * 100) : 0
-        const closePct = t.completed > 0 ? Math.round((t.sales / t.completed) * 100) : 0
-        return [t.name, t.total, t.completed, t.no_show, t.sales, t.no_sales, showPct + '%', closePct + '%']
-      }),
-    ]
-    exportCSV(rows, `pt-report-${startDate}-${endDate}`)
-  }
 
   if (loading) return (
     <div className="p-4 space-y-3">
@@ -192,21 +180,6 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
         </>
       )}
 
-      {/* Export buttons */}
-      <div className="flex gap-3 pt-2">
-        <button
-          onClick={handleExportCSV}
-          className="flex-1 bg-surface border border-border rounded-xl py-2.5 text-sm font-medium text-text-primary active:bg-bg transition-colors"
-        >
-          Export CSV
-        </button>
-        <button
-          onClick={() => exportPDF(`PT Report ${startDate} - ${endDate}`)}
-          className="flex-1 bg-surface border border-border rounded-xl py-2.5 text-sm font-medium text-text-primary active:bg-bg transition-colors"
-        >
-          Export PDF
-        </button>
-      </div>
 
       {/* Contact detail modal */}
       {selectedContact && (

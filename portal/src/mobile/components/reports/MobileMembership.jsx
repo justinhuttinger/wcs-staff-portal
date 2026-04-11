@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { getMembershipReport } from '../../../lib/api'
-import { exportCSV, exportPDF } from '../../../lib/export'
 
 const SORT_OPTIONS = [
   { key: 'az', label: 'A-Z' },
@@ -123,14 +122,6 @@ export default function MobileMembership({ startDate, endDate, locationSlug }) {
     }
   }, [data, salespeople])
 
-  function handleExportCSV() {
-    const rows = [
-      ['Name', 'Total Sales', 'VIPs', 'Day One Booked', 'Same Day Sale'],
-      ...sortedSalespeople.map(s => [s.name, s.total_sales, s.vips, s.day_one_booked, s.same_day_sale]),
-      ['TOTAL', totals.total_sales, totals.vips, totals.day_one_booked, totals.same_day_sale],
-    ]
-    exportCSV(rows, `membership-report-${startDate}-${endDate}`)
-  }
 
   if (loading) return (
     <div className="p-4 space-y-3">
@@ -237,21 +228,6 @@ export default function MobileMembership({ startDate, endDate, locationSlug }) {
         </div>
       </div>
 
-      {/* Export buttons */}
-      <div className="flex gap-3">
-        <button
-          onClick={handleExportCSV}
-          className="flex-1 bg-surface border border-border rounded-xl py-2.5 text-sm font-medium text-text-primary active:bg-bg transition-colors"
-        >
-          Export CSV
-        </button>
-        <button
-          onClick={() => exportPDF(`Membership Report ${startDate} - ${endDate}`)}
-          className="flex-1 bg-surface border border-border rounded-xl py-2.5 text-sm font-medium text-text-primary active:bg-bg transition-colors"
-        >
-          Export PDF
-        </button>
-      </div>
     </div>
   )
 }
