@@ -34,13 +34,19 @@ async function resolveLocationFilter(query) {
 
 // ---------------------------------------------------------------------------
 // Helper: convert YYYY-MM-DD date strings to millisecond timestamp strings
+// GHL custom field dates are stored as midnight UTC but displayed on the client
+// in Pacific time (UTC-7 PDT). Without offset, a date shown as "April 11" in
+// the UI (stored as April 12 00:00 UTC) falls outside an April 11 UTC filter.
+// Adding 7 hours aligns the filter with the displayed Pacific-time dates.
 // ---------------------------------------------------------------------------
+const PACIFIC_OFFSET_MS = 7 * 3600000 // PDT = UTC-7
+
 function dateToMs(dateStr, endOfDay = false) {
   if (!dateStr) return null
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null
   const d = endOfDay ? new Date(dateStr + 'T23:59:59.999Z') : new Date(dateStr + 'T00:00:00.000Z')
   if (isNaN(d.getTime())) return null
-  return d.getTime().toString()
+  return (d.getTime() + PACIFIC_OFFSET_MS).toString()
 }
 
 // ---------------------------------------------------------------------------
@@ -269,7 +275,7 @@ router.get('/pt', async (req, res) => {
     let q = supabaseAdmin
       .from('ghl_contacts_report')
       .select(
-        'first_name, last_name, full_name, email, phone, tags,' +
+        'id, first_name, last_name, full_name, email, phone, tags,' +
         'day_one_booked, day_one_booking_date, day_one_booking_team_member,' +
         'day_one_date, day_one_status, day_one_sale, day_one_trainer,' +
         'show_or_no_show, pt_sale_type, pt_value, pt_sign_date, why_no_sale,' +

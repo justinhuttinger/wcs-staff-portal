@@ -39,16 +39,24 @@ function getWeekDates(baseDate) {
 }
 
 function normalizeStatus(apt) {
-  const s = (apt.day_one_status || apt.status || '').toLowerCase().replace(/\s+/g, '')
-  if (s === 'cancelled') return 'Cancelled'
-  if (s === 'completed' || s === 'noshow' || s === 'no show' || apt.show_or_no_show === 'No Show') return 'Completed'
+  const aptStatus = (apt.status || '').toLowerCase()
+  if (aptStatus === 'cancelled') return 'Cancelled'
+  const dayOneStatus = (apt.day_one_status || '').toLowerCase().replace(/\s+/g, '')
+  if (dayOneStatus === 'completed') return 'Completed'
+  if (dayOneStatus === 'noshow' || dayOneStatus === 'no-show' || dayOneStatus === 'no show') return 'No Show'
   return 'Scheduled'
 }
 
+function getSaleLabel(apt) {
+  if (normalizeStatus(apt) !== 'Completed') return null
+  return apt.day_one_sale || null
+}
+
 const STATUS_COLORS = {
-  Scheduled: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-  Cancelled: 'bg-red-50 text-red-500 border-red-200',
+  Scheduled: 'bg-blue-50 text-blue-700 border-blue-200',
   Completed: 'bg-green-50 text-green-700 border-green-200',
+  'No Show': 'bg-red-50 text-red-500 border-red-200',
+  Cancelled: 'bg-gray-50 text-gray-500 border-gray-200',
 }
 
 export default function MobileDayOneCalendar({ user }) {
@@ -226,6 +234,7 @@ export default function MobileDayOneCalendar({ user }) {
             )}
             {dayAppointments.map(apt => {
               const status = getStatus(apt)
+              const sale = getSaleLabel(apt)
               return (
                 <div key={apt.id} className="w-full text-left bg-surface rounded-2xl border border-border p-4 flex items-start gap-3">
                   <div className="flex-1 min-w-0">
@@ -235,11 +244,20 @@ export default function MobileDayOneCalendar({ user }) {
                       <p className="text-xs text-text-muted mt-0.5">{apt.assigned_user_name}</p>
                     )}
                   </div>
-                  <span className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-medium border ${
-                    STATUS_COLORS[status] || STATUS_COLORS.Scheduled
-                  }`}>
-                    {status}
-                  </span>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                      STATUS_COLORS[status] || STATUS_COLORS.Scheduled
+                    }`}>
+                      {status}
+                    </span>
+                    {sale && (
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                        sale === 'Sale' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200'
+                      }`}>
+                        {sale}
+                      </span>
+                    )}
+                  </div>
                 </div>
               )
             })}
@@ -292,6 +310,7 @@ export default function MobileDayOneCalendar({ user }) {
                         <div className="flex flex-col gap-2">
                           {dayApts.map(apt => {
                             const status = getStatus(apt)
+                            const sale = getSaleLabel(apt)
                             return (
                               <div key={apt.id} className="w-full text-left bg-surface rounded-2xl border border-border p-4 flex items-start gap-3">
                                 <div className="flex-1 min-w-0">
@@ -301,11 +320,20 @@ export default function MobileDayOneCalendar({ user }) {
                                     <p className="text-xs text-text-muted mt-0.5">{apt.assigned_user_name}</p>
                                   )}
                                 </div>
-                                <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium border ${
-                                  STATUS_COLORS[status] || STATUS_COLORS.Scheduled
-                                }`}>
-                                  {status}
-                                </span>
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
+                                    STATUS_COLORS[status] || STATUS_COLORS.Scheduled
+                                  }`}>
+                                    {status}
+                                  </span>
+                                  {sale && (
+                                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
+                                      sale === 'Sale' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200'
+                                    }`}>
+                                      {sale}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             )
                           })}
