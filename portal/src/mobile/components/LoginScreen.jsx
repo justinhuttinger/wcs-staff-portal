@@ -79,7 +79,7 @@ export default function LoginScreen({ onLogin }) {
       <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-6">
         <div className="w-full max-w-sm">
           <div className="text-center mb-10">
-            <h1 className="text-4xl font-bold text-wcs-red">WCS</h1>
+            <img src="/wcs-logo.png" alt="WCS" className="w-20 h-20 mx-auto mb-2 rounded-full" />
             <p className="text-text-secondary mt-1 text-lg">Reset Password</p>
           </div>
 
@@ -136,7 +136,7 @@ export default function LoginScreen({ onLogin }) {
       <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-6">
         <div className="w-full max-w-sm">
           <div className="text-center mb-10">
-            <h1 className="text-4xl font-bold text-wcs-red">WCS</h1>
+            <img src="/wcs-logo.png" alt="WCS" className="w-20 h-20 mx-auto mb-2 rounded-full" />
             <p className="text-text-secondary mt-1 text-lg">Change Password</p>
             <p className="text-text-muted mt-2 text-sm">You must set a new password before continuing.</p>
           </div>
@@ -192,7 +192,7 @@ export default function LoginScreen({ onLogin }) {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-10">
-          <h1 className="text-5xl font-bold text-wcs-red tracking-tight">WCS</h1>
+          <img src="/wcs-logo.png" alt="WCS" className="w-24 h-24 mx-auto mb-3 rounded-full" />
           <p className="text-text-secondary mt-1 text-lg">Staff Portal</p>
         </div>
 

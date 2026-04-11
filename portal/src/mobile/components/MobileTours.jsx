@@ -60,7 +60,8 @@ export default function MobileTours({ user }) {
     try {
       const params = { location_id: selectedLocation }
       if (view === 'day') {
-        params.date = date
+        params.start_date = date
+        params.end_date = date
       } else {
         const week = getWeekDates(date)
         params.start_date = week[0]
@@ -105,8 +106,10 @@ export default function MobileTours({ user }) {
     const week = getWeekDates(date)
     week.forEach(d => { grouped[d] = [] })
     tourList.forEach(t => {
-      const tDate = t.appointment_time ? t.appointment_time.slice(0, 10) : t.date
-      if (tDate && grouped[tDate]) grouped[tDate].push(t)
+      const timeStr = t.start_time || t.appointment_time
+      if (!timeStr) return
+      const tDate = toLocalDateStr(new Date(timeStr))
+      if (grouped[tDate]) grouped[tDate].push(t)
     })
     return grouped
   }

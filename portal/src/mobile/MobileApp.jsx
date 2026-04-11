@@ -10,7 +10,7 @@ import MobileMembership from './components/reports/MobileMembership'
 import MobilePTReport from './components/reports/MobilePTReport'
 import MobileMarketing from './components/reports/MobileMarketing'
 import MobileTours from './components/MobileTours'
-import MobileDayOne from './components/MobileDayOne'
+import MobileDayOneCalendar from './components/MobileDayOneCalendar'
 
 // Icons for bottom tab bar (Heroicons outline)
 function HomeIcon({ active }) {
@@ -176,15 +176,17 @@ export default function MobileApp() {
         )
       case 'reports/marketing':
         return (
-          <div className="pt-2 px-4">
-            <MobileHeader title="Marketing" onBack={() => navigate('reports')} />
-            <MobileMarketing onNavigate={(key) => navigate('reports/' + key)} />
+          <div className="pt-2">
+            <div className="px-4">
+              <MobileHeader title="Ad Reports" onBack={() => navigate('reports')} />
+            </div>
+            <MobileMarketing />
           </div>
         )
       case 'tours':
         return <MobileTours user={user} />
       case 'dayone':
-        return <MobileDayOne user={user} />
+        return <MobileDayOneCalendar user={user} />
       default:
         return (
           <div className="pt-4 px-4">
