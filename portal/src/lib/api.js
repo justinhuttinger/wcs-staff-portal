@@ -22,6 +22,13 @@ export function clearToken() {
   try { localStorage.removeItem('wcs_token') } catch {}
 }
 
+// Listeners for auth expiry (401) so the UI can redirect to login
+const authExpiredListeners = new Set()
+export function onAuthExpired(fn) {
+  authExpiredListeners.add(fn)
+  return () => authExpiredListeners.delete(fn)
+}
+
 export async function api(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...options.headers }
   if (authToken) {
@@ -34,6 +41,12 @@ export async function api(path, options = {}) {
     data = await res.json()
   } catch {
     throw new Error('Server error — please try again')
+  }
+
+  if (res.status === 401 && authToken && path !== '/auth/login') {
+    clearToken()
+    authExpiredListeners.forEach(fn => fn())
+    throw new Error('Session expired — please sign in again')
   }
 
   if (!res.ok) {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { getMe, getToken, clearToken } from '../lib/api'
+import { getMe, getToken, clearToken, onAuthExpired } from '../lib/api'
 import LoginScreen from './components/LoginScreen'
 import MobileHeader from './components/MobileHeader'
 import HomeScreen from './components/HomeScreen'
@@ -64,6 +64,14 @@ export default function MobileApp() {
     }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
+
+  // Auto-redirect to login when token expires
+  useEffect(() => {
+    return onAuthExpired(() => {
+      setUser(null)
+      navigate('home')
+    })
   }, [])
 
   useEffect(() => {
