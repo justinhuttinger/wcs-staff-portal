@@ -43,6 +43,7 @@ app.get('/.well-known/openid-configuration', (req, res) => {
   res.redirect('/oidc/.well-known/openid-configuration')
 })
 app.use('/reports', require('./routes/reports'))
+app.use('/reports/leaderboard', require('./routes/leaderboard'))
 app.use('/sync-status', require('./routes/syncStatus'))
 app.use('/day-one-tracker', require('./routes/dayOneTracker'))
 app.use('/trainer-availability', require('./routes/trainerAvailability'))
