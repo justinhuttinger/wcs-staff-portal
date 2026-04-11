@@ -121,10 +121,10 @@ export default function LeaderboardView({ user, onBack, location }) {
 
       {/* Point legend */}
       <div className="flex items-center gap-4 text-xs text-text-muted mb-6 px-1">
-        <span><strong className="text-text-primary">5</strong> pts/Sale</span>
-        <span><strong className="text-text-primary">3</strong> pts/Day One</span>
-        <span><strong className="text-text-primary">2</strong> pts/Same Day</span>
-        <span><strong className="text-text-primary">1</strong> pt/VIP</span>
+        <span>Day One Booked <strong className="text-text-primary">10</strong></span>
+        <span>Membership <strong className="text-text-primary">5</strong></span>
+        <span>Same Day Sale <strong className="text-text-primary">5</strong></span>
+        <span>VIP <strong className="text-text-primary">2</strong></span>
       </div>
 
       {/* Manager tabs */}
