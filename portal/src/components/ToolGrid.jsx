@@ -302,7 +302,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-xs">
                             <strong className="text-amber-700">2</strong> <span className="text-amber-600">VIP</span>
                           </span>
-                          <span className="text-xs text-text-muted">VIP walk-in conversion</span>
+                          <span className="text-xs text-text-muted">VIPs submitted</span>
                         </div>
                       </div>
                     </div>
