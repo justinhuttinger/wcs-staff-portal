@@ -300,7 +300,6 @@ app.on('ready', () => {
     const active = tabManager.tabs.get(tabManager.activeTabId)
     if (active) active.view.webContents.openDevTools()
   })
-})
 
   // ---------------------------------------------------------------------------
   // Trainerize Push Notification Automation
