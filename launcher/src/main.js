@@ -355,23 +355,47 @@ app.on('ready', () => {
       await wait(4000)
 
       log('[Notification] Filling credentials...')
+      // Trainerize login has two inputs: first is email, second is password
+      // Labels are "Email" and "Password" — use input order since type="email" isn't set
       await run(`
-        var emailEl = document.querySelector('input[type="email"]') || document.querySelector('input[name="email"]') || document.querySelector('#email');
-        if (emailEl) { emailEl.focus(); emailEl.value = ${JSON.stringify(email)}; emailEl.dispatchEvent(new Event('input', {bubbles:true})); emailEl.dispatchEvent(new Event('change', {bubbles:true})); }
-      `)
-      await wait(300)
-      await run(`
-        var passEl = document.querySelector('input[type="password"]') || document.querySelector('input[name="password"]') || document.querySelector('#password');
-        if (passEl) { passEl.focus(); passEl.value = ${JSON.stringify(password)}; passEl.dispatchEvent(new Event('input', {bubbles:true})); passEl.dispatchEvent(new Event('change', {bubbles:true})); }
+        var inputs = document.querySelectorAll('input');
+        var emailEl = null;
+        var passEl = null;
+        for (var i = 0; i < inputs.length; i++) {
+          var t = (inputs[i].type || '').toLowerCase();
+          if (t === 'password') { passEl = inputs[i]; }
+          else if (t === 'text' || t === 'email' || t === '') {
+            if (!emailEl) emailEl = inputs[i];
+          }
+        }
+        if (emailEl) {
+          emailEl.focus();
+          emailEl.value = ${JSON.stringify(email)};
+          emailEl.dispatchEvent(new Event('input', {bubbles:true}));
+          emailEl.dispatchEvent(new Event('change', {bubbles:true}));
+        }
+        if (passEl) {
+          passEl.focus();
+          passEl.value = ${JSON.stringify(password)};
+          passEl.dispatchEvent(new Event('input', {bubbles:true}));
+          passEl.dispatchEvent(new Event('change', {bubbles:true}));
+        }
       `)
       await wait(500)
+      // Button says "SIGN IN"
       await run(`
-        var btn = document.querySelector('button[type="submit"]') || document.querySelector('.btn-login');
-        if (!btn) { var buttons = document.querySelectorAll('button'); for (var i = 0; i < buttons.length; i++) { if (buttons[i].textContent.indexOf('Log') >= 0) { btn = buttons[i]; break; } } }
+        var btn = document.querySelector('button[type="submit"]');
+        if (!btn) {
+          var buttons = document.querySelectorAll('button');
+          for (var i = 0; i < buttons.length; i++) {
+            var txt = buttons[i].textContent.trim().toUpperCase();
+            if (txt === 'SIGN IN' || txt === 'LOG IN' || txt === 'LOGIN') { btn = buttons[i]; break; }
+          }
+        }
         if (btn) btn.click();
       `)
       log('[Notification] Logging in...')
-      await wait(6000)
+      await wait(8000)
 
       // 2. Navigate to Announcements
       log('[Notification] Navigating to Announcements...')
