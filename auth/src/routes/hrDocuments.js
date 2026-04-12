@@ -281,18 +281,24 @@ router.get('/paychex-workers', requireRole('manager'), async (req, res) => {
     const workers = await getWorkers(paychexLoc.companyId, statusType)
 
     // Return a simplified worker list for the frontend
-    const simplified = workers.map(w => ({
-      workerId: w.workerId,
-      employeeId: w.employeeId,
-      givenName: w.name?.givenName || '',
-      familyName: w.name?.familyName || '',
-      preferredName: w.name?.preferredName || '',
-      displayName: [w.name?.givenName, w.name?.familyName].filter(Boolean).join(' '),
-      workerType: w.workerType,
-      employmentType: w.employmentType,
-      status: w.currentStatus?.statusType || 'UNKNOWN',
-      hireDate: w.hireDate,
-    }))
+    const simplified = workers.map(w => {
+      // Extract email from communications array if available
+      const comms = w.communications || []
+      const emailComm = comms.find(c => c.type === 'EMAIL' || c.emailAddress) || {}
+      const email = emailComm.emailAddress || emailComm.uri || ''
+
+      return {
+        workerId: w.workerId,
+        employeeId: w.employeeId,
+        givenName: w.name?.givenName || '',
+        familyName: w.name?.familyName || '',
+        preferredName: w.name?.preferredName || '',
+        displayName: [w.name?.givenName, w.name?.familyName].filter(Boolean).join(' '),
+        email,
+        status: w.currentStatus?.statusType || 'UNKNOWN',
+        hireDate: w.hireDate,
+      }
+    })
 
     // Sort alphabetically by last name
     simplified.sort((a, b) => a.familyName.localeCompare(b.familyName))

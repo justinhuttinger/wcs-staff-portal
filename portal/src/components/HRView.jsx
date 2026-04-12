@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   createHRDocument,
-  uploadHRDocumentToPaychex,
-  acknowledgeHRDocument,
   getPaychexWorkers,
   getPaychexWorkerDocuments,
   getPaychexLocations,
@@ -115,7 +113,7 @@ function DocumentPreview({ employeeName, reason, shortReason, description, manag
 // ---------------------------------------------------------------------------
 // Worker List — shared between View Docs and Submit Doc flows
 // ---------------------------------------------------------------------------
-function WorkerList({ user, onSelectWorker }) {
+function WorkerList({ user, onSelectWorker, onLocationChange }) {
   const [workers, setWorkers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -139,7 +137,10 @@ function WorkerList({ user, onSelectWorker }) {
     try {
       const res = await getPaychexWorkers(canSeeAll && locationSlug ? locationSlug : undefined)
       setWorkers(res.workers || [])
-      if (!locationSlug && res.location) setLocationSlug(res.location)
+      if (!locationSlug && res.location) {
+        setLocationSlug(res.location)
+        onLocationChange?.(res.location)
+      }
     } catch (err) {
       setError(err.message || 'Failed to load employees')
     } finally {
@@ -164,7 +165,7 @@ function WorkerList({ user, onSelectWorker }) {
           {locations.map(loc => (
             <button
               key={loc.slug}
-              onClick={() => setLocationSlug(loc.slug)}
+              onClick={() => { setLocationSlug(loc.slug); onLocationChange?.(loc.slug) }}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
                 locationSlug === loc.slug
                   ? 'bg-wcs-red text-white'
@@ -223,11 +224,7 @@ function WorkerList({ user, onSelectWorker }) {
                 <p className="text-sm font-semibold text-text-primary truncate">{w.displayName}</p>
                 <div className="flex items-center gap-2 mt-0.5">
                   {w.employeeId && <span className="text-[11px] text-text-muted">ID: {w.employeeId}</span>}
-                  <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                    w.employmentType === 'FULL_TIME' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'
-                  }`}>
-                    {w.employmentType === 'FULL_TIME' ? 'Full-Time' : w.employmentType === 'PART_TIME' ? 'Part-Time' : w.employmentType || ''}
-                  </span>
+                  {w.email && <span className="text-[11px] text-text-muted">{w.email}</span>}
                 </div>
               </div>
               <div className="text-right shrink-0">
@@ -416,17 +413,14 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
 }
 
 // ---------------------------------------------------------------------------
-// Worker Document Detail — shows Paychex docs + local HR docs for a worker
+// Worker Document Detail — VIEW ONLY, no editing/signing/uploading
 // ---------------------------------------------------------------------------
-function WorkerDocuments({ worker, user }) {
+function WorkerDocuments({ worker, location }) {
   const [paychexDocs, setPaychexDocs] = useState([])
   const [localDocs, setLocalDocs] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
-  const [uploading, setUploading] = useState(null)
-  const [acknowledging, setAcknowledging] = useState(null)
-  const [employeeSigs, setEmployeeSigs] = useState({})
 
   const fetchDocs = useCallback(async () => {
     setLoading(true)
@@ -444,46 +438,30 @@ function WorkerDocuments({ worker, user }) {
 
   useEffect(() => { fetchDocs() }, [fetchDocs])
 
-  async function handleUploadToPaychex(docId) {
-    setUploading(docId)
-    try {
-      await uploadHRDocumentToPaychex(docId, worker.workerId)
-      await fetchDocs()
-    } catch { /* silent */ } finally { setUploading(null) }
-  }
-
-  async function handleAcknowledge(docId) {
-    const sig = employeeSigs[docId]
-    if (!sig) return
-    setAcknowledging(docId)
-    try {
-      await acknowledgeHRDocument(docId, { employee_signature: sig })
-      setEmployeeSigs(prev => { const next = { ...prev }; delete next[docId]; return next })
-      await fetchDocs()
-    } catch { /* silent */ } finally { setAcknowledging(null) }
-  }
-
   return (
     <div className="space-y-4">
-      {/* Worker header */}
-      <div className="bg-surface border border-border rounded-xl p-4 flex items-center gap-4">
-        <div className="w-12 h-12 rounded-full bg-wcs-red/10 flex items-center justify-center shrink-0">
-          <span className="text-lg font-bold text-wcs-red">
-            {(worker.givenName?.[0] || '').toUpperCase()}{(worker.familyName?.[0] || '').toUpperCase()}
-          </span>
+      {/* Worker header with logo and location */}
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="bg-[#C41E24] px-4 py-3 flex items-center gap-3">
+          <img src="/wcs-logo.png" alt="WCS" className="h-8 w-8 rounded-full" />
+          <div>
+            <h3 className="text-white text-sm font-bold">West Coast Strength</h3>
+            {location && <p className="text-white/70 text-[11px]">{location.charAt(0).toUpperCase() + location.slice(1)}</p>}
+          </div>
         </div>
-        <div>
-          <p className="text-base font-bold text-text-primary">{worker.displayName}</p>
-          <div className="flex items-center gap-3 mt-0.5 text-xs text-text-muted">
-            {worker.employeeId && <span>ID: {worker.employeeId}</span>}
-            {worker.hireDate && <span>Hired {formatDate(worker.hireDate)}</span>}
-            {worker.employmentType && (
-              <span className={`px-1.5 py-0.5 rounded font-medium ${
-                worker.employmentType === 'FULL_TIME' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'
-              }`}>
-                {worker.employmentType === 'FULL_TIME' ? 'Full-Time' : 'Part-Time'}
-              </span>
-            )}
+        <div className="p-4 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-wcs-red/10 flex items-center justify-center shrink-0">
+            <span className="text-lg font-bold text-wcs-red">
+              {(worker.givenName?.[0] || '').toUpperCase()}{(worker.familyName?.[0] || '').toUpperCase()}
+            </span>
+          </div>
+          <div>
+            <p className="text-base font-bold text-text-primary">{worker.displayName}</p>
+            <div className="flex items-center gap-3 mt-0.5 text-xs text-text-muted">
+              {worker.employeeId && <span>ID: {worker.employeeId}</span>}
+              {worker.email && <span>{worker.email}</span>}
+              {worker.hireDate && <span>Hired {formatDate(worker.hireDate)}</span>}
+            </div>
           </div>
         </div>
       </div>
@@ -558,7 +536,7 @@ function WorkerDocuments({ worker, user }) {
                       </button>
 
                       {isExpanded && (
-                        <div className="border-t border-border px-4 py-4 space-y-4">
+                        <div className="border-t border-border px-4 py-4">
                           <DocumentPreview
                             employeeName={doc.employee_name}
                             reason={doc.reason}
@@ -569,38 +547,6 @@ function WorkerDocuments({ worker, user }) {
                             employeeSignature={doc.employee_signature}
                             date={formatDate(doc.created_at)}
                           />
-
-                          {doc.employee_signature && doc.employee_acknowledged_at && (
-                            <p className="text-[10px] text-text-muted">Acknowledged {formatDate(doc.employee_acknowledged_at)}</p>
-                          )}
-
-                          {doc.status === 'pending_signature' && (
-                            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 space-y-3">
-                              <p className="text-xs font-semibold text-yellow-700">Employee Acknowledgment Required</p>
-                              <SignaturePad
-                                label="Employee Signature"
-                                value={employeeSigs[doc.id] || ''}
-                                onChange={val => setEmployeeSigs(prev => ({ ...prev, [doc.id]: val }))}
-                              />
-                              <button
-                                onClick={() => handleAcknowledge(doc.id)}
-                                disabled={!employeeSigs[doc.id] || acknowledging === doc.id}
-                                className="px-4 py-2 text-xs font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                              >
-                                {acknowledging === doc.id ? 'Acknowledging...' : 'Sign & Acknowledge'}
-                              </button>
-                            </div>
-                          )}
-
-                          {doc.status === 'completed' && (
-                            <button
-                              onClick={() => handleUploadToPaychex(doc.id)}
-                              disabled={uploading === doc.id}
-                              className="px-4 py-2 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                              {uploading === doc.id ? 'Uploading to Paychex...' : 'Upload to Paychex'}
-                            </button>
-                          )}
                         </div>
                       )}
                     </div>
@@ -626,6 +572,7 @@ export default function HRView({ user, onBack }) {
   // Navigation: landing | submit-pick | submit-form | list | worker-detail
   const [view, setView] = useState('landing')
   const [selectedWorker, setSelectedWorker] = useState(null)
+  const [currentLocation, setCurrentLocation] = useState('')
 
   const backToLanding = () => { setView('landing'); setSelectedWorker(null) }
 
@@ -701,6 +648,7 @@ export default function HRView({ user, onBack }) {
           <WorkerList
             user={user}
             onSelectWorker={w => { setSelectedWorker(w); setView('submit-form') }}
+            onLocationChange={setCurrentLocation}
           />
         </div>
       )}
@@ -720,12 +668,13 @@ export default function HRView({ user, onBack }) {
         <WorkerList
           user={user}
           onSelectWorker={w => { setSelectedWorker(w); setView('worker-detail') }}
+          onLocationChange={setCurrentLocation}
         />
       )}
 
       {/* View Docs — Worker detail */}
       {view === 'worker-detail' && selectedWorker && (
-        <WorkerDocuments worker={selectedWorker} user={user} />
+        <WorkerDocuments worker={selectedWorker} location={currentLocation} />
       )}
     </div>
   )
