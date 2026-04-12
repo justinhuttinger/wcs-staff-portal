@@ -20,29 +20,25 @@ const APP_IDS = ['grow', 'abc', 'wheniwork', 'paychex', 'gmail', 'drive']
 // Role hierarchy levels for visibility checks
 const ROLE_LEVELS = { team_member: 0, fd_lead: 1, pt_lead: 2, manager: 3, corporate: 4, admin: 5 }
 
-function SvgTileButton({ onClick, iconPath, label, desc, badge, dark }) {
+function SvgTileButton({ onClick, iconPath, label, desc, badge }) {
   return (
     <button
       onClick={onClick}
-      className={`group relative flex flex-col items-center justify-center gap-3 rounded-[14px] p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)] ${
-        dark ? 'bg-[#1a1a1a] border border-[#333]' : 'bg-surface border border-border'
-      }`}
+      className="group relative flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
     >
       {badge > 0 && (
         <span className="absolute top-3 right-3 min-w-[20px] h-5 flex items-center justify-center rounded-full bg-wcs-red text-white text-xs font-bold px-1.5">
           {badge}
         </span>
       )}
-      <div className={`flex items-center justify-center w-14 h-14 rounded-full transition-all duration-200 ${
-        dark ? 'bg-white/10 group-hover:bg-wcs-red/20' : 'bg-bg group-hover:bg-wcs-red/10'
-      }`}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={`w-7 h-7 ${dark ? 'text-white' : 'text-wcs-red'}`}>
+      <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 text-wcs-red">
           <path strokeLinecap="round" strokeLinejoin="round" d={iconPath} />
         </svg>
       </div>
       <div className="text-center">
-        <span className={`block text-base font-semibold ${dark ? 'text-white' : 'text-text-primary'}`}>{label}</span>
-        <span className={`block text-xs font-medium uppercase tracking-[0.8px] mt-1 ${dark ? 'text-white/50' : 'text-text-muted'}`}>{desc}</span>
+        <span className="block text-base font-semibold text-text-primary">{label}</span>
+        <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">{desc}</span>
       </div>
     </button>
   )
@@ -354,9 +350,9 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
             <ToolButton key={'custom-' + tile.id} label={tile.label} description={tile.description || ''} url={tile.url} />
           ))}
           {/* 2. Tours Calendar */}
-          {onTours && <SvgTileButton onClick={onTours} iconPath={TILE_ICONS.tours} label="Tours" desc="Calendar" badge={toursBadge} dark />}
+          {onTours && <SvgTileButton onClick={onTours} iconPath={TILE_ICONS.tours} label="Tours" desc="Calendar" badge={toursBadge} />}
           {/* 3. Day One Calendar */}
-          {onDayOneCalendar && <SvgTileButton onClick={onDayOneCalendar} iconPath={TILE_ICONS.dayOneCalendar} label="Day Ones" desc="Calendar" badge={dayOneCalBadge} dark />}
+          {onDayOneCalendar && <SvgTileButton onClick={onDayOneCalendar} iconPath={TILE_ICONS.dayOneCalendar} label="Day Ones" desc="Calendar" badge={dayOneCalBadge} />}
           {/* 4. Leaderboard */}
           {onLeaderboard && <SvgTileButton onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />}
           {/* 5. Day One Tracking */}

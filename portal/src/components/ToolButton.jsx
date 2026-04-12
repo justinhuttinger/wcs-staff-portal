@@ -43,25 +43,15 @@ const ICONS = {
   ),
 }
 
-// Tiles that should use dark styling
-const DARK_TILES = ['abc', 'grow']
-const DARK_LABELS = ['cancel tool', 'cancel']
-
 export default function ToolButton({ label, description, icon, emoji, url }) {
-  const dark = (icon && DARK_TILES.includes(icon)) || DARK_LABELS.includes((label || '').toLowerCase())
-
   return (
     <a
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className={`group flex flex-col items-center justify-center gap-3 rounded-[14px] p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)] no-underline ${
-        dark ? 'bg-[#1a1a1a] border border-[#333]' : 'bg-surface border border-border'
-      }`}
+      className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)] no-underline"
     >
-      <div className={`flex items-center justify-center w-14 h-14 rounded-full transition-all duration-200 ${
-        dark ? 'bg-white/10 text-white group-hover:bg-wcs-red/20' : 'bg-bg text-wcs-red group-hover:bg-wcs-red/10'
-      }`}>
+      <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg text-wcs-red group-hover:bg-wcs-red/10 transition-all duration-200">
         {icon && ICONS[icon] ? (
           ICONS[icon]
         ) : LABEL_ICONS[(label || '').toLowerCase()] ? (
@@ -77,8 +67,8 @@ export default function ToolButton({ label, description, icon, emoji, url }) {
         )}
       </div>
       <div className="text-center">
-        <span className={`block text-base font-semibold ${dark ? 'text-white' : 'text-text-primary'}`}>{label}</span>
-        <span className={`block text-xs font-medium uppercase tracking-[0.8px] mt-1 ${dark ? 'text-white/50' : 'text-text-muted'}`}>{description}</span>
+        <span className="block text-base font-semibold text-text-primary">{label}</span>
+        <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">{description}</span>
       </div>
     </a>
   )
