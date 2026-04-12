@@ -5,7 +5,9 @@ import {
   getHRDocument,
   acknowledgeHRDocument,
   uploadHRDocumentToPaychex,
+  getStaff,
 } from '../../lib/api'
+import SignaturePad from '../../components/SignaturePad'
 
 const ROLES = ['team_member', 'fd_lead', 'pt_lead', 'manager', 'corporate', 'admin']
 
@@ -107,12 +109,24 @@ function SubmitDocumentView({ user, onBack, onSuccess }) {
   const [managerSignature, setManagerSignature] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+  const [staffList, setStaffList] = useState([])
+  const [staffQuery, setStaffQuery] = useState('')
+  const [showStaffDropdown, setShowStaffDropdown] = useState(false)
 
   const userName = user?.staff?.display_name || user?.staff?.first_name || 'Manager'
 
+  useEffect(() => {
+    getStaff().then(res => setStaffList(res?.staff || res || [])).catch(() => {})
+  }, [])
+
+  const filteredStaff = staffList.filter(s => {
+    const name = (s.display_name || [s.first_name, s.last_name].filter(Boolean).join(' ')).toLowerCase()
+    return name.includes(staffQuery.toLowerCase())
+  }).slice(0, 8)
+
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!employeeName.trim() || !description.trim() || !managerSignature.trim()) return
+    if (!employeeName.trim() || !description.trim() || !managerSignature) return
     setSubmitting(true)
     setError(null)
     try {
@@ -120,7 +134,7 @@ function SubmitDocumentView({ user, onBack, onSuccess }) {
         employee_name: employeeName.trim(),
         reason,
         description: description.trim(),
-        manager_signature: managerSignature.trim(),
+        manager_signature: managerSignature,
       })
       onSuccess()
     } catch (err) {
@@ -143,17 +157,39 @@ function SubmitDocumentView({ user, onBack, onSuccess }) {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Employee Name */}
-        <div>
+        {/* Employee Name - Search */}
+        <div className="relative">
           <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1.5">Employee Name</label>
           <input
             type="text"
-            value={employeeName}
-            onChange={e => setEmployeeName(e.target.value)}
-            placeholder="Enter employee name"
+            value={staffQuery}
+            onChange={e => { setStaffQuery(e.target.value); setShowStaffDropdown(true); setEmployeeName('') }}
+            onFocus={() => setShowStaffDropdown(true)}
+            placeholder="Search employees..."
             className="w-full px-3 py-2.5 bg-surface border border-border rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-wcs-red/30 focus:border-wcs-red"
-            required
+            autoComplete="off"
           />
+          {showStaffDropdown && staffQuery.length > 0 && filteredStaff.length > 0 && (
+            <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-xl shadow-lg max-h-48 overflow-y-auto">
+              {filteredStaff.map(s => {
+                const name = s.display_name || [s.first_name, s.last_name].filter(Boolean).join(' ')
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => { setEmployeeName(name); setStaffQuery(name); setShowStaffDropdown(false) }}
+                    className="w-full text-left px-3 py-2.5 text-sm text-text-primary active:bg-bg"
+                  >
+                    <span className="font-medium">{name}</span>
+                    {s.role && <span className="ml-2 text-xs text-text-muted">{s.role.replace(/_/g, ' ')}</span>}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          {employeeName && (
+            <p className="text-[10px] text-green-600 mt-1">Selected: {employeeName}</p>
+          )}
         </div>
 
         {/* Reason pills */}
@@ -190,18 +226,12 @@ function SubmitDocumentView({ user, onBack, onSuccess }) {
           />
         </div>
 
-        {/* Manager Signature */}
-        <div>
-          <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1.5">Manager Signature</label>
-          <input
-            type="text"
-            value={managerSignature}
-            onChange={e => setManagerSignature(e.target.value)}
-            placeholder="Type your full name"
-            className="w-full px-3 py-2.5 bg-surface border border-border rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-wcs-red/30 focus:border-wcs-red"
-            required
-          />
-        </div>
+        {/* Manager Signature - Drawn */}
+        <SignaturePad
+          label="Manager Signature"
+          value={managerSignature}
+          onChange={setManagerSignature}
+        />
 
         {error && (
           <div className="px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
@@ -212,7 +242,7 @@ function SubmitDocumentView({ user, onBack, onSuccess }) {
         {/* Submit */}
         <button
           type="submit"
-          disabled={submitting || !employeeName.trim() || !description.trim() || !managerSignature.trim()}
+          disabled={submitting || !employeeName.trim() || !description.trim() || !managerSignature}
           className="w-full py-3 rounded-xl bg-wcs-red text-white font-semibold text-sm disabled:opacity-50 active:scale-[0.98] transition-transform"
         >
           {submitting ? 'Submitting...' : 'Submit Document'}
@@ -378,6 +408,7 @@ function DocumentDetailView({ docId, onBack }) {
   const [error, setError] = useState(null)
   const [actionLoading, setActionLoading] = useState(false)
   const [toast, setToast] = useState(null)
+  const [employeeSig, setEmployeeSig] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -390,11 +421,13 @@ function DocumentDetailView({ docId, onBack }) {
   }, [docId])
 
   async function handleAcknowledge() {
+    if (!employeeSig) return
     setActionLoading(true)
     try {
-      const res = await acknowledgeHRDocument(docId, { acknowledged: true })
+      const res = await acknowledgeHRDocument(docId, { employee_signature: employeeSig })
       setDoc(prev => ({ ...prev, ...res, status: res?.status || 'completed' }))
       setToast('Document acknowledged')
+      setEmployeeSig('')
     } catch (err) {
       setToast(err.message || 'Failed to acknowledge')
     } finally {
@@ -470,14 +503,25 @@ function DocumentDetailView({ docId, onBack }) {
         {/* Manager Signature */}
         <div>
           <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">Manager Signature</label>
-          <p className="text-sm text-text-primary italic">{doc.manager_signature}</p>
+          {doc.manager_signature && doc.manager_signature.startsWith('data:image') ? (
+            <img src={doc.manager_signature} alt="Manager signature" className="h-14 border-b border-border" />
+          ) : (
+            <p className="text-sm text-text-primary italic">{doc.manager_signature}</p>
+          )}
         </div>
 
         {/* Employee Signature if exists */}
         {doc.employee_signature && (
           <div>
             <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">Employee Signature</label>
-            <p className="text-sm text-text-primary italic">{doc.employee_signature}</p>
+            {doc.employee_signature.startsWith('data:image') ? (
+              <img src={doc.employee_signature} alt="Employee signature" className="h-14 border-b border-border" />
+            ) : (
+              <p className="text-sm text-text-primary italic">{doc.employee_signature}</p>
+            )}
+            {doc.employee_acknowledged_at && (
+              <p className="text-[10px] text-text-muted mt-1">Acknowledged {formatDate(doc.employee_acknowledged_at)}</p>
+            )}
           </div>
         )}
 
@@ -505,13 +549,21 @@ function DocumentDetailView({ docId, onBack }) {
       {/* Action buttons */}
       <div className="mt-4 space-y-3">
         {doc.status === 'pending_signature' && (
-          <button
-            onClick={handleAcknowledge}
-            disabled={actionLoading}
-            className="w-full py-3 rounded-xl bg-green-600 text-white font-semibold text-sm disabled:opacity-50 active:scale-[0.98] transition-transform"
-          >
-            {actionLoading ? 'Processing...' : 'Mark as Acknowledged'}
-          </button>
+          <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 space-y-3">
+            <p className="text-xs font-semibold text-yellow-700">Employee Acknowledgment Required</p>
+            <SignaturePad
+              label="Employee Signature"
+              value={employeeSig}
+              onChange={setEmployeeSig}
+            />
+            <button
+              onClick={handleAcknowledge}
+              disabled={!employeeSig || actionLoading}
+              className="w-full py-3 rounded-xl bg-green-600 text-white font-semibold text-sm disabled:opacity-50 active:scale-[0.98] transition-transform"
+            >
+              {actionLoading ? 'Processing...' : 'Sign & Acknowledge'}
+            </button>
+          </div>
         )}
         {doc.status === 'completed' && (
           <button

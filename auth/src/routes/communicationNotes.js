@@ -10,7 +10,7 @@ router.use(authenticate)
 // POST /communication-notes  (team_member+)
 // ---------------------------------------------------------------------------
 router.post('/', requireRole('team_member'), async (req, res) => {
-  const { title, category, body } = req.body
+  const { title, category, body, member_name, member_phone } = req.body
 
   if (!title || !category || !body) {
     return res.status(400).json({ error: 'title, category, and body are required' })
@@ -37,18 +37,24 @@ router.post('/', requireRole('team_member'), async (req, res) => {
       locationId = loc?.id || null
     }
 
+    const insertPayload = {
+      title,
+      category,
+      body,
+      status: 'unresolved',
+      location_id: locationId,
+      location_slug: locationSlug,
+      submitted_by: req.staff.id,
+      submitted_by_name: staffName,
+    }
+    if (category === 'member') {
+      if (member_name) insertPayload.member_name = member_name
+      if (member_phone) insertPayload.member_phone = member_phone
+    }
+
     const { data, error } = await supabaseAdmin
       .from('communication_notes')
-      .insert({
-        title,
-        category,
-        body,
-        status: 'unresolved',
-        location_id: locationId,
-        location_slug: locationSlug,
-        submitted_by: req.staff.id,
-        submitted_by_name: staffName,
-      })
+      .insert(insertPayload)
       .select()
       .single()
 
@@ -65,7 +71,7 @@ router.post('/', requireRole('team_member'), async (req, res) => {
 // GET /communication-notes  (fd_lead+)
 // ---------------------------------------------------------------------------
 router.get('/', requireRole('fd_lead'), async (req, res) => {
-  const { status, category, location_slug } = req.query
+  const { status, category, location_slug, date_from, date_to } = req.query
 
   try {
     let query = supabaseAdmin
@@ -85,6 +91,8 @@ router.get('/', requireRole('fd_lead'), async (req, res) => {
 
     if (status) query = query.eq('status', status)
     if (category) query = query.eq('category', category)
+    if (date_from) query = query.gte('created_at', date_from)
+    if (date_to) query = query.lte('created_at', date_to + 'T23:59:59.999Z')
 
     const { data, error } = await query
 
@@ -172,7 +180,7 @@ router.get('/:id/comments', requireRole('fd_lead'), async (req, res) => {
 
     if (error) throw error
 
-    res.json(data || [])
+    res.json({ comments: data || [] })
   } catch (err) {
     console.error('[CommunicationNotes] Error listing comments:', err.message)
     res.status(500).json({ error: 'Failed to list comments: ' + err.message })

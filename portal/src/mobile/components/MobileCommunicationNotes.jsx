@@ -63,6 +63,12 @@ export default function MobileCommunicationNotes({ user }) {
 
   const ALL_LOCATIONS = ['Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
 
+  function getDefaultDateFrom() {
+    const d = new Date()
+    d.setDate(d.getDate() - 7)
+    return d.toISOString().slice(0, 10)
+  }
+
   const [showForm, setShowForm] = useState(false)
   const [notes, setNotes] = useState([])
   const [loading, setLoading] = useState(false)
@@ -70,11 +76,15 @@ export default function MobileCommunicationNotes({ user }) {
   const [categoryFilter, setCategoryFilter] = useState(null)
   const [locationFilter, setLocationFilter] = useState('all')
   const [statusCounts, setStatusCounts] = useState({ unresolved: 0, in_progress: 0, completed: 0 })
+  const [dateFrom, setDateFrom] = useState(getDefaultDateFrom)
+  const [dateTo, setDateTo] = useState(() => new Date().toISOString().slice(0, 10))
 
   // Form state
   const [formTitle, setFormTitle] = useState('')
   const [formCategory, setFormCategory] = useState('member')
   const [formBody, setFormBody] = useState('')
+  const [formMemberName, setFormMemberName] = useState('')
+  const [formMemberPhone, setFormMemberPhone] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   // Detail view
@@ -92,6 +102,8 @@ export default function MobileCommunicationNotes({ user }) {
       const params = { status: statusTab }
       if (categoryFilter) params.category = categoryFilter
       if (canSeeAll && locationFilter !== 'all') params.location_slug = locationFilter
+      if (dateFrom) params.date_from = dateFrom
+      if (dateTo) params.date_to = dateTo
       const res = await getCommunicationNotes(params)
       const list = res?.notes || res?.data || res || []
       setNotes(list)
@@ -104,7 +116,7 @@ export default function MobileCommunicationNotes({ user }) {
     } finally {
       setLoading(false)
     }
-  }, [canViewNotes, statusTab, categoryFilter, canSeeAll, locationFilter])
+  }, [canViewNotes, statusTab, categoryFilter, canSeeAll, locationFilter, dateFrom, dateTo])
 
   // Fetch counts for all tabs on mount
   useEffect(() => {
@@ -114,6 +126,8 @@ export default function MobileCommunicationNotes({ user }) {
       try {
         const params = {}
         if (canSeeAll && locationFilter !== 'all') params.location_slug = locationFilter
+        if (dateFrom) params.date_from = dateFrom
+        if (dateTo) params.date_to = dateTo
         const [unresolved, inProgress, completed] = await Promise.all([
           getCommunicationNotes({ ...params, status: 'unresolved' }),
           getCommunicationNotes({ ...params, status: 'in_progress' }),
@@ -131,7 +145,7 @@ export default function MobileCommunicationNotes({ user }) {
     }
     fetchCounts()
     return () => { cancelled = true }
-  }, [canViewNotes, canSeeAll, locationFilter])
+  }, [canViewNotes, canSeeAll, locationFilter, dateFrom, dateTo])
 
   useEffect(() => { fetchNotes() }, [fetchNotes])
 
@@ -140,14 +154,21 @@ export default function MobileCommunicationNotes({ user }) {
     if (!formTitle.trim() || !formBody.trim()) return
     setSubmitting(true)
     try {
-      await createCommunicationNote({
+      const payload = {
         title: formTitle.trim(),
         category: formCategory,
         body: formBody.trim(),
-      })
+      }
+      if (formCategory === 'member') {
+        if (formMemberName.trim()) payload.member_name = formMemberName.trim()
+        if (formMemberPhone.trim()) payload.member_phone = formMemberPhone.trim()
+      }
+      await createCommunicationNote(payload)
       setFormTitle('')
       setFormCategory('member')
       setFormBody('')
+      setFormMemberName('')
+      setFormMemberPhone('')
       setShowForm(false)
       fetchNotes()
     } catch (err) {
@@ -226,6 +247,12 @@ export default function MobileCommunicationNotes({ user }) {
                 {note.category}
               </span>
             </div>
+            {note.member_name && (
+              <div className="flex items-center gap-2 text-xs text-text-muted mb-2">
+                <span className="font-medium">Member: {note.member_name}</span>
+                {note.member_phone && <span>· {note.member_phone}</span>}
+              </div>
+            )}
             <p className="text-sm text-text-secondary whitespace-pre-wrap">{note.body}</p>
             <div className="mt-3 flex items-center gap-2 text-[11px] text-text-muted">
               <span>by {note.submitted_by_name || note.author_name || 'Unknown'}</span>
@@ -391,6 +418,58 @@ export default function MobileCommunicationNotes({ user }) {
             })}
           </div>
         )}
+        {/* Date filter */}
+        {canViewNotes && (
+          <div className="mt-2 space-y-2">
+            <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide">
+              {[
+                { label: '7 Days', days: 7 },
+                { label: '30 Days', days: 30 },
+                { label: '90 Days', days: 90 },
+              ].map(({ label, days }) => {
+                const from = new Date(); from.setDate(from.getDate() - days)
+                const isActive = dateFrom === from.toISOString().slice(0, 10) && dateTo === new Date().toISOString().slice(0, 10)
+                return (
+                  <button
+                    key={label}
+                    onClick={() => {
+                      const d = new Date(); d.setDate(d.getDate() - days)
+                      setDateFrom(d.toISOString().slice(0, 10))
+                      setDateTo(new Date().toISOString().slice(0, 10))
+                    }}
+                    className={`px-3 py-1 rounded-full text-[11px] font-medium border whitespace-nowrap shrink-0 transition-colors ${
+                      isActive ? 'bg-wcs-red/10 text-wcs-red border-wcs-red/30' : 'bg-surface text-text-muted border-border'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+              <button
+                onClick={() => { setDateFrom(''); setDateTo('') }}
+                className={`px-3 py-1 rounded-full text-[11px] font-medium border whitespace-nowrap shrink-0 transition-colors ${
+                  !dateFrom && !dateTo ? 'bg-wcs-red/10 text-wcs-red border-wcs-red/30' : 'bg-surface text-text-muted border-border'
+                }`}
+              >
+                All Time
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="flex-1 px-2 py-1 text-[11px] rounded-lg bg-bg border border-border text-text-primary focus:outline-none focus:ring-1 focus:ring-wcs-red"
+              />
+              <input
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="flex-1 px-2 py-1 text-[11px] rounded-lg bg-bg border border-border text-text-primary focus:outline-none focus:ring-1 focus:ring-wcs-red"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Content */}
@@ -490,6 +569,30 @@ export default function MobileCommunicationNotes({ user }) {
                 </select>
               </div>
 
+              {formCategory === 'member' && (
+                <>
+                  <div>
+                    <label className="text-[11px] font-medium text-text-muted mb-1 block">Member Name</label>
+                    <input
+                      type="text"
+                      value={formMemberName}
+                      onChange={e => setFormMemberName(e.target.value)}
+                      placeholder="Member full name"
+                      className="w-full px-3 py-2.5 rounded-xl bg-bg border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-wcs-red"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-medium text-text-muted mb-1 block">Member Phone</label>
+                    <input
+                      type="tel"
+                      value={formMemberPhone}
+                      onChange={e => setFormMemberPhone(e.target.value)}
+                      placeholder="(555) 555-5555"
+                      className="w-full px-3 py-2.5 rounded-xl bg-bg border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-wcs-red"
+                    />
+                  </div>
+                </>
+              )}
               <div>
                 <label className="text-[11px] font-medium text-text-muted mb-1 block">Body</label>
                 <textarea

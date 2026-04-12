@@ -1,9 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   getHRDocuments,
   createHRDocument,
   uploadHRDocumentToPaychex,
+  acknowledgeHRDocument,
+  getStaff,
 } from '../lib/api'
+import SignaturePad from './SignaturePad'
 
 const REASONS = [
   { value: 'verbal_warning', label: 'Verbal Warning' },
@@ -43,7 +46,64 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function DocumentPreview({ employeeName, reason, description, managerName, date }) {
+function EmployeeSearch({ staffList, value, onChange }) {
+  const [query, setQuery] = useState(value || '')
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const filtered = staffList.filter(s => {
+    const name = (s.display_name || [s.first_name, s.last_name].filter(Boolean).join(' ')).toLowerCase()
+    return name.includes(query.toLowerCase())
+  }).slice(0, 10)
+
+  return (
+    <div ref={ref} className="relative">
+      <label className="block text-sm font-semibold text-text-primary mb-1">Employee Name</label>
+      <input
+        type="text"
+        value={query}
+        onChange={e => { setQuery(e.target.value); setOpen(true); onChange('') }}
+        onFocus={() => setOpen(true)}
+        placeholder="Search employees..."
+        className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red"
+        autoComplete="off"
+      />
+      {open && query.length > 0 && filtered.length > 0 && (
+        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          {filtered.map(s => {
+            const name = s.display_name || [s.first_name, s.last_name].filter(Boolean).join(' ')
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => { onChange(name); setQuery(name); setOpen(false) }}
+                className="w-full text-left px-3 py-2 text-sm text-text-primary hover:bg-bg transition-colors"
+              >
+                <span className="font-medium">{name}</span>
+                {s.role && <span className="ml-2 text-xs text-text-muted">{s.role.replace(/_/g, ' ')}</span>}
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {open && query.length > 0 && filtered.length === 0 && (
+        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg px-3 py-2 text-sm text-text-muted">
+          No employees found
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DocumentPreview({ employeeName, reason, description, managerName, managerSignature, date }) {
   return (
     <div className="bg-white rounded-xl border border-border overflow-hidden shadow-sm">
       {/* Red header bar */}
@@ -77,9 +137,13 @@ function DocumentPreview({ employeeName, reason, description, managerName, date 
         <div className="border-t border-border pt-4 space-y-4">
           <div>
             <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1">Manager Signature</p>
-            <p className="text-sm italic text-text-primary border-b border-border pb-1 inline-block min-w-[200px]">
-              {managerName || ''}
-            </p>
+            {managerSignature && managerSignature.startsWith('data:image') ? (
+              <img src={managerSignature} alt="Manager signature" className="h-16 border-b border-border" />
+            ) : (
+              <p className="text-sm italic text-text-primary border-b border-border pb-1 inline-block min-w-[200px]">
+                {managerName || ''}
+              </p>
+            )}
           </div>
           <div>
             <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1">Employee Acknowledgment</p>
@@ -94,6 +158,12 @@ function DocumentPreview({ employeeName, reason, description, managerName, date 
 export default function HRView({ user, onBack }) {
   const userName = user?.staff?.display_name || user?.staff?.first_name || ''
 
+  // Staff list for employee search
+  const [staffList, setStaffList] = useState([])
+  useEffect(() => {
+    getStaff().then(res => setStaffList(res?.staff || res || [])).catch(() => {})
+  }, [])
+
   // Navigation state: 'landing' | 'submit' | 'list'
   const [view, setView] = useState('landing')
 
@@ -101,7 +171,7 @@ export default function HRView({ user, onBack }) {
   const [employeeName, setEmployeeName] = useState('')
   const [reason, setReason] = useState('verbal_warning')
   const [description, setDescription] = useState('')
-  const [managerSignature, setManagerSignature] = useState(userName)
+  const [managerSignature, setManagerSignature] = useState('')
   const [showPreview, setShowPreview] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitMsg, setSubmitMsg] = useState(null)
@@ -114,6 +184,8 @@ export default function HRView({ user, onBack }) {
   const [filterStatus, setFilterStatus] = useState('all')
   const [expandedId, setExpandedId] = useState(null)
   const [uploading, setUploading] = useState(null)
+  const [acknowledging, setAcknowledging] = useState(null)
+  const [employeeSig, setEmployeeSig] = useState('')
 
   const fetchDocuments = useCallback(async () => {
     setLoading(true)
@@ -139,7 +211,7 @@ export default function HRView({ user, onBack }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!employeeName.trim() || !description.trim() || !managerSignature.trim()) return
+    if (!employeeName.trim() || !description.trim() || !managerSignature) return
     setSubmitting(true)
     setSubmitMsg(null)
     try {
@@ -165,7 +237,7 @@ export default function HRView({ user, onBack }) {
     setEmployeeName('')
     setReason('verbal_warning')
     setDescription('')
-    setManagerSignature(userName)
+    setManagerSignature('')
     setShowPreview(false)
     setSubmitMsg(null)
   }
@@ -179,6 +251,20 @@ export default function HRView({ user, onBack }) {
       // silent
     } finally {
       setUploading(null)
+    }
+  }
+
+  async function handleAcknowledge(docId) {
+    if (!employeeSig) return
+    setAcknowledging(docId)
+    try {
+      await acknowledgeHRDocument(docId, { employee_signature: employeeSig })
+      setEmployeeSig('')
+      await fetchDocuments()
+    } catch {
+      // silent
+    } finally {
+      setAcknowledging(null)
     }
   }
 
@@ -256,17 +342,11 @@ export default function HRView({ user, onBack }) {
 
           {!showPreview ? (
             <form onSubmit={handleSubmit} className="bg-surface border border-border rounded-xl p-6 space-y-5">
-              <div>
-                <label className="block text-sm font-semibold text-text-primary mb-1">Employee Name</label>
-                <input
-                  type="text"
-                  value={employeeName}
-                  onChange={e => setEmployeeName(e.target.value)}
-                  placeholder="Enter employee full name"
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red"
-                  required
-                />
-              </div>
+              <EmployeeSearch
+                staffList={staffList}
+                value={employeeName}
+                onChange={setEmployeeName}
+              />
 
               <div>
                 <label className="block text-sm font-semibold text-text-primary mb-1">Reason</label>
@@ -293,17 +373,11 @@ export default function HRView({ user, onBack }) {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-text-primary mb-1">Manager Signature</label>
-                <input
-                  type="text"
-                  value={managerSignature}
-                  onChange={e => setManagerSignature(e.target.value)}
-                  placeholder="Type your name as signature"
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red"
-                  required
-                />
-              </div>
+              <SignaturePad
+                label="Manager Signature"
+                value={managerSignature}
+                onChange={setManagerSignature}
+              />
 
               <div className="flex gap-3 pt-2">
                 <button
@@ -318,7 +392,7 @@ export default function HRView({ user, onBack }) {
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting || !employeeName.trim() || !description.trim() || !managerSignature.trim()}
+                  disabled={submitting || !employeeName.trim() || !description.trim() || !managerSignature}
                   className="px-5 py-2 text-sm font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {submitting ? 'Submitting...' : 'Submit Document'}
@@ -331,7 +405,8 @@ export default function HRView({ user, onBack }) {
                 employeeName={employeeName}
                 reason={reason}
                 description={description}
-                managerName={managerSignature}
+                managerName={userName}
+                managerSignature={managerSignature}
                 date={formatDate(new Date().toISOString())}
               />
               <div className="flex gap-3">
@@ -438,12 +513,41 @@ export default function HRView({ user, onBack }) {
                           employeeName={doc.employee_name}
                           reason={doc.reason}
                           description={doc.description}
-                          managerName={doc.manager_signature || doc.manager_name}
+                          managerName={doc.manager_name}
+                          managerSignature={doc.manager_signature}
                           date={formatDate(doc.created_at)}
                         />
 
+                        {doc.employee_signature && (
+                          <div>
+                            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1">Employee Signature</p>
+                            {doc.employee_signature.startsWith('data:image') ? (
+                              <img src={doc.employee_signature} alt="Employee signature" className="h-16 border-b border-border" />
+                            ) : (
+                              <p className="text-sm italic text-text-primary">{doc.employee_signature}</p>
+                            )}
+                            {doc.employee_acknowledged_at && (
+                              <p className="text-[10px] text-text-muted mt-1">Acknowledged {formatDate(doc.employee_acknowledged_at)}</p>
+                            )}
+                          </div>
+                        )}
+
                         {doc.status === 'pending_signature' && (
-                          <p className="text-xs text-yellow-600 font-medium">Awaiting employee acknowledgment</p>
+                          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 space-y-3">
+                            <p className="text-xs font-semibold text-yellow-700">Employee Acknowledgment Required</p>
+                            <SignaturePad
+                              label="Employee Signature"
+                              value={employeeSig}
+                              onChange={setEmployeeSig}
+                            />
+                            <button
+                              onClick={() => handleAcknowledge(doc.id)}
+                              disabled={!employeeSig || acknowledging === doc.id}
+                              className="px-4 py-2 text-xs font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              {acknowledging === doc.id ? 'Acknowledging...' : 'Sign & Acknowledge'}
+                            </button>
+                          </div>
                         )}
 
                         {doc.status === 'completed' && (

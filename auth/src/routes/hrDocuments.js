@@ -28,7 +28,11 @@ function buildDocumentHTML({ employee_name, manager_name, reason, body, manager_
     ? `<div style="margin-top:32px;">
         <h3 style="margin-bottom:8px;">Employee Acknowledgment</h3>
         <p>I acknowledge receipt of this document on ${new Date(employee_acknowledged_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.</p>
-        <p style="margin-top:16px;"><strong>Employee Signature:</strong> <span style="font-family:cursive;font-size:18px;">${employee_signature || ''}</span></p>
+        <p style="margin-top:16px;"><strong>Employee Signature:</strong></p>
+        ${employee_signature && employee_signature.startsWith('data:image')
+          ? `<img src="${employee_signature}" style="height:60px;margin-top:4px;" />`
+          : `<span style="font-family:cursive;font-size:18px;">${employee_signature || ''}</span>`
+        }
       </div>`
     : `<div style="margin-top:32px;">
         <h3 style="margin-bottom:8px;">Employee Acknowledgment</h3>
@@ -67,7 +71,11 @@ function buildDocumentHTML({ employee_name, manager_name, reason, body, manager_
     <div class="body-text">${body}</div>
 
     <div class="signature-section">
-      <p><strong>Manager Signature:</strong> <span style="font-family:cursive;font-size:18px;">${manager_signature || ''}</span></p>
+      <p><strong>Manager Signature:</strong></p>
+      ${manager_signature && manager_signature.startsWith('data:image')
+        ? `<img src="${manager_signature}" style="height:60px;margin-top:4px;" />`
+        : `<span style="font-family:cursive;font-size:18px;">${manager_signature || ''}</span>`
+      }
     </div>
 
     ${ackSection}

@@ -8,7 +8,7 @@ const router = Router()
 router.use(authenticate)
 
 // GET /admin/staff — manager+ (returns staff at caller's locations)
-router.get('/staff', requireRole('admin'), async (req, res) => {
+router.get('/staff', requireRole('manager'), async (req, res) => {
   try {
     if (!req.staff.location_ids.length) return res.json({ staff: [] })
 

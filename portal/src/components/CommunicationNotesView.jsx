@@ -53,11 +53,23 @@ export default function CommunicationNotesView({ user, onBack }) {
   const userName = user?.staff?.display_name || user?.staff?.first_name || ''
   const ALL_LOCATIONS = ['Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
 
+  // Date filter helpers
+  function getDefaultDateFrom() {
+    const d = new Date()
+    d.setDate(d.getDate() - 7)
+    return d.toISOString().slice(0, 10)
+  }
+  function getDefaultDateTo() {
+    return new Date().toISOString().slice(0, 10)
+  }
+
   // Submit form state
   const [formOpen, setFormOpen] = useState(!isLeadPlus)
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState('member')
   const [body, setBody] = useState('')
+  const [memberName, setMemberName] = useState('')
+  const [memberPhone, setMemberPhone] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitMsg, setSubmitMsg] = useState(null)
 
@@ -67,6 +79,8 @@ export default function CommunicationNotesView({ user, onBack }) {
   const [statusFilter, setStatusFilter] = useState('unresolved')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [locationFilter, setLocationFilter] = useState('all')
+  const [dateFrom, setDateFrom] = useState(getDefaultDateFrom)
+  const [dateTo, setDateTo] = useState(getDefaultDateTo)
 
   // Expanded note state
   const [expandedId, setExpandedId] = useState(null)
@@ -81,11 +95,13 @@ export default function CommunicationNotesView({ user, onBack }) {
     setLoading(true)
     const params = {}
     if (canSeeAll && locationFilter !== 'all') params.location_slug = locationFilter
+    if (dateFrom) params.date_from = dateFrom
+    if (dateTo) params.date_to = dateTo
     getCommunicationNotes(params)
       .then(res => setNotes(res.notes || []))
       .catch(() => setNotes([]))
       .finally(() => setLoading(false))
-  }, [isLeadPlus, canSeeAll, locationFilter])
+  }, [isLeadPlus, canSeeAll, locationFilter, dateFrom, dateTo])
 
   useEffect(() => {
     fetchNotes()
@@ -96,11 +112,18 @@ export default function CommunicationNotesView({ user, onBack }) {
     if (!title.trim() || !body.trim()) return
     setSubmitting(true)
     setSubmitMsg(null)
-    createCommunicationNote({ title: title.trim(), category, body: body.trim() })
+    const payload = { title: title.trim(), category, body: body.trim() }
+    if (category === 'member') {
+      if (memberName.trim()) payload.member_name = memberName.trim()
+      if (memberPhone.trim()) payload.member_phone = memberPhone.trim()
+    }
+    createCommunicationNote(payload)
       .then(() => {
         setTitle('')
         setCategory('member')
         setBody('')
+        setMemberName('')
+        setMemberPhone('')
         setSubmitMsg({ type: 'success', text: 'Note submitted successfully' })
         fetchNotes()
         if (!isLeadPlus) setTimeout(() => setSubmitMsg(null), 3000)
@@ -226,6 +249,30 @@ export default function CommunicationNotesView({ user, onBack }) {
                 ))}
               </select>
             </div>
+            {category === 'member' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1">Member Name</label>
+                  <input
+                    type="text"
+                    value={memberName}
+                    onChange={e => setMemberName(e.target.value)}
+                    placeholder="Member full name"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-bg text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-wcs-red"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1">Member Phone</label>
+                  <input
+                    type="tel"
+                    value={memberPhone}
+                    onChange={e => setMemberPhone(e.target.value)}
+                    placeholder="(555) 555-5555"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-bg text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-wcs-red"
+                  />
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1">Body</label>
               <textarea
@@ -299,6 +346,54 @@ export default function CommunicationNotesView({ user, onBack }) {
             </div>
           )}
 
+          {/* Date Filter */}
+          <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-text-muted">From</label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="px-2 py-1 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-text-muted">To</label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="px-2 py-1 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red"
+              />
+            </div>
+            <div className="flex gap-1.5">
+              {[
+                { label: '7d', days: 7 },
+                { label: '30d', days: 30 },
+                { label: '90d', days: 90 },
+              ].map(({ label, days }) => (
+                <button
+                  key={label}
+                  onClick={() => {
+                    const d = new Date()
+                    d.setDate(d.getDate() - days)
+                    setDateFrom(d.toISOString().slice(0, 10))
+                    setDateTo(new Date().toISOString().slice(0, 10))
+                  }}
+                  className="px-2 py-1 text-[11px] font-semibold rounded-lg border border-border bg-surface text-text-muted hover:border-text-muted transition-colors"
+                >
+                  {label}
+                </button>
+              ))}
+              <button
+                onClick={() => { setDateFrom(''); setDateTo('') }}
+                className="px-2 py-1 text-[11px] font-semibold rounded-lg border border-border bg-surface text-text-muted hover:border-text-muted transition-colors"
+              >
+                All
+              </button>
+            </div>
+          </div>
+
           {/* Category Filter Pills */}
           <div className="flex flex-wrap gap-1.5 mb-5">
             {['all', ...CATEGORIES].map(c => (
@@ -346,17 +441,23 @@ export default function CommunicationNotesView({ user, onBack }) {
                               {STATUS_LABELS[note.status] || note.status}
                             </span>
                           </div>
+                          {note.member_name && (
+                            <div className="flex items-center gap-3 text-xs text-text-muted mb-1">
+                              <span className="font-medium">Member: {note.member_name}</span>
+                              {note.member_phone && <span>· {note.member_phone}</span>}
+                            </div>
+                          )}
                           <p className={`text-sm text-text-muted ${isExpanded ? '' : 'line-clamp-2'}`}>
                             {note.body}
                           </p>
                           <div className="flex items-center gap-2 mt-2 text-xs text-text-muted">
-                            <span>Submitted by {note.submitted_by || 'Unknown'}</span>
+                            <span>Submitted by {note.submitted_by_name || 'Unknown'}</span>
                             <span>·</span>
                             <span>{formatDate(note.created_at)}</span>
                             {note.status === 'completed' && note.completed_by && (
                               <>
                                 <span>·</span>
-                                <span className="text-green-600">Completed by {note.completed_by} · {formatDate(note.completed_at)}</span>
+                                <span className="text-green-600">Completed by {note.completed_by_name || 'Unknown'} · {formatDate(note.completed_at)}</span>
                               </>
                             )}
                           </div>
@@ -386,35 +487,28 @@ export default function CommunicationNotesView({ user, onBack }) {
                     {/* Expanded Detail */}
                     {isExpanded && (
                       <div className="border-t border-border px-5 py-4 space-y-4">
-                        {/* Status Action Buttons */}
-                        <div className="flex gap-2">
-                          {note.status !== 'in_progress' && (
-                            <button
-                              onClick={() => handleStatusChange(note, 'in_progress')}
-                              disabled={updatingStatus}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-yellow-300 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 disabled:opacity-50 transition-colors"
-                            >
-                              Mark In Progress
-                            </button>
-                          )}
-                          {note.status !== 'completed' && (
-                            <button
-                              onClick={() => handleStatusChange(note, 'completed')}
-                              disabled={updatingStatus}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 transition-colors"
-                            >
-                              Mark Completed
-                            </button>
-                          )}
-                          {note.status !== 'unresolved' && (
-                            <button
-                              onClick={() => handleStatusChange(note, 'unresolved')}
-                              disabled={updatingStatus}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-text-muted hover:bg-bg disabled:opacity-50 transition-colors"
-                            >
-                              Reopen
-                            </button>
-                          )}
+                        {/* Status Selector */}
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">Status</span>
+                          <div className="flex gap-1.5">
+                            {STATUSES.map(s => {
+                              const isActive = note.status === s
+                              return (
+                                <button
+                                  key={s}
+                                  onClick={() => !isActive && handleStatusChange(note, s)}
+                                  disabled={isActive || updatingStatus}
+                                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                                    isActive
+                                      ? STATUS_COLORS[s]
+                                      : 'bg-surface text-text-muted border-border hover:bg-bg'
+                                  } ${isActive || updatingStatus ? 'opacity-70 cursor-default' : 'cursor-pointer'}`}
+                                >
+                                  {STATUS_LABELS[s]}
+                                </button>
+                              )
+                            })}
+                          </div>
                         </div>
 
                         {/* Comments Section */}
@@ -429,7 +523,7 @@ export default function CommunicationNotesView({ user, onBack }) {
                               {comments.map(c => (
                                 <div key={c.id} className="bg-bg rounded-lg px-3 py-2">
                                   <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-xs font-semibold text-text-primary">{c.author || 'Unknown'}</span>
+                                    <span className="text-xs font-semibold text-text-primary">{c.author_name || 'Unknown'}</span>
                                     <span className="text-[10px] text-text-muted">{formatDateTime(c.created_at)}</span>
                                   </div>
                                   <p className="text-sm text-text-primary">{c.body}</p>
