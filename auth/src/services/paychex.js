@@ -101,6 +101,27 @@ async function paychexPost(path, body, contentType = 'application/json') {
 }
 
 /**
+ * List all companies the API key has access to.
+ */
+async function getCompanies() {
+  const companies = []
+  let offset = 0
+  const limit = 100
+
+  while (true) {
+    const data = await paychexGet('/companies', { offset, limit })
+    const items = data.content || []
+    companies.push(...items)
+
+    const pagination = data.metadata?.pagination
+    if (!pagination || companies.length >= pagination.itemCount) break
+    offset += limit
+  }
+
+  return companies
+}
+
+/**
  * Get all workers for a company, handling pagination.
  */
 async function getWorkers(companyId, statusType = 'ACTIVE') {
@@ -164,6 +185,7 @@ async function uploadWorkerDocument(workerId, pdfBuffer, fileName) {
 
 module.exports = {
   getAccessToken,
+  getCompanies,
   getWorkers,
   getWorkerDocuments,
   getWorkerDocument,

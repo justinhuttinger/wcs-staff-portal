@@ -2,7 +2,7 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, canSeeAllLocations } = require('../middleware/role')
-const { getWorkers, getWorkerDocuments, getWorkerDocument, uploadWorkerDocument } = require('../services/paychex')
+const { getCompanies, getWorkers, getWorkerDocuments, getWorkerDocument, uploadWorkerDocument } = require('../services/paychex')
 const { getPaychexBySlug, PAYCHEX_LOCATIONS } = require('../config/paychexLocations')
 
 const router = Router()
@@ -323,6 +323,24 @@ router.get('/paychex-workers/:workerId/documents', requireRole('manager'), async
 router.get('/paychex-locations', requireRole('manager'), async (req, res) => {
   const locations = PAYCHEX_LOCATIONS.map(l => ({ name: l.name, slug: l.slug }))
   res.json({ locations })
+})
+
+// ---------------------------------------------------------------------------
+// GET /hr-documents/paychex-companies  (admin only)
+// Discover all companies the API key has access to — use this to find real company IDs
+// ---------------------------------------------------------------------------
+router.get('/paychex-companies', requireRole('admin'), async (req, res) => {
+  if (!process.env.PAYCHEX_API_KEY || !process.env.PAYCHEX_API_SECRET) {
+    return res.status(501).json({ error: 'Paychex integration not configured' })
+  }
+
+  try {
+    const companies = await getCompanies()
+    res.json({ companies })
+  } catch (err) {
+    console.error('[HRDocuments] Paychex companies fetch failed:', err.message)
+    res.status(500).json({ error: 'Failed to fetch companies: ' + err.message })
+  }
 })
 
 // ---------------------------------------------------------------------------
