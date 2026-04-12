@@ -163,6 +163,7 @@ export default function HelpCenterView({ user, onBack }) {
     setFormBody('')
     setFormCategoryId(selectedCategory || categories[0]?.id || '')
     setFormMinRole('')
+    setImportStatus('')
     setEditTarget(null)
     setModal('add-article')
   }
@@ -172,6 +173,7 @@ export default function HelpCenterView({ user, onBack }) {
     setFormBody(article.body)
     setFormCategoryId(article.category_id)
     setFormMinRole(article.min_role || '')
+    setImportStatus('')
     setEditTarget(article)
     setModal('edit-article')
   }
