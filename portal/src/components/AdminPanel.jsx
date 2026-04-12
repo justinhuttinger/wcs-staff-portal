@@ -66,8 +66,8 @@ export default function AdminPanel({ onBack, isElectron }) {
         </button>
       </div>
 
-      {/* Admin Tiles Grid — matches home portal tile style */}
-      <div className="grid grid-cols-3 gap-4 max-w-3xl">
+      {/* Admin Tiles Grid — 4 wide, centered */}
+      <div className="grid grid-cols-4 gap-4 max-w-5xl mx-auto">
         {ADMIN_TILES.map(tile => (
           <button
             key={tile.key}
