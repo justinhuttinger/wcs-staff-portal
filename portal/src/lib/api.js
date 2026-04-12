@@ -400,6 +400,10 @@ export async function deleteHelpArticle(id) {
   return api('/help-center/articles/' + id, { method: 'DELETE' })
 }
 
+export async function uploadHelpImage(url) {
+  return api('/help-center/upload-image', { method: 'POST', body: JSON.stringify({ url }) })
+}
+
 // Ticket Embeds
 export async function getTicketEmbeds() {
   return api('/ticket-embeds')

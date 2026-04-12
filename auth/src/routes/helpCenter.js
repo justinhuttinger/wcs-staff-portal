@@ -188,6 +188,45 @@ router.put('/articles/:id', requireRole('admin'), async (req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// POST /help-center/upload-image — admin only
+// Downloads an external image and uploads to Supabase Storage
+// ---------------------------------------------------------------------------
+router.post('/upload-image', requireRole('admin'), async (req, res) => {
+  const { url } = req.body
+  if (!url) return res.status(400).json({ error: 'url is required' })
+
+  try {
+    // Download the image
+    const imgResp = await fetch(url)
+    if (!imgResp.ok) throw new Error(`Failed to download image: ${imgResp.status}`)
+
+    const contentType = imgResp.headers.get('content-type') || 'image/jpeg'
+    const buffer = Buffer.from(await imgResp.arrayBuffer())
+
+    // Generate a unique filename
+    const ext = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
+    const fileName = `articles/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+
+    // Upload to Supabase Storage
+    const { error: uploadErr } = await supabaseAdmin.storage
+      .from('help-center')
+      .upload(fileName, buffer, { contentType, upsert: false })
+
+    if (uploadErr) throw uploadErr
+
+    // Get public URL
+    const { data: urlData } = supabaseAdmin.storage
+      .from('help-center')
+      .getPublicUrl(fileName)
+
+    res.json({ publicUrl: urlData.publicUrl })
+  } catch (err) {
+    console.error('[HelpCenter] Image upload failed:', err.message)
+    res.status(500).json({ error: 'Failed to upload image: ' + err.message })
+  }
+})
+
 // DELETE /help-center/articles/:id — admin only
 router.delete('/articles/:id', requireRole('admin'), async (req, res) => {
   try {

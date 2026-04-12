@@ -9,6 +9,7 @@ import {
   createHelpArticle,
   updateHelpArticle,
   deleteHelpArticle,
+  uploadHelpImage,
 } from '../lib/api'
 
 // Configure marked for safe rendering
@@ -76,6 +77,7 @@ export default function HelpCenterView({ user, onBack }) {
   const [formCategoryId, setFormCategoryId] = useState('')
   const [formMinRole, setFormMinRole] = useState('')
   const [saving, setSaving] = useState(false)
+  const [importing, setImporting] = useState(false)
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -450,29 +452,42 @@ export default function HelpCenterView({ user, onBack }) {
                 <p className="text-xs font-semibold text-text-primary">Import from Markdown</p>
                 <p className="text-[10px] text-text-muted">Upload a .md file (e.g. from Scribe) to populate the title and body</p>
               </div>
-              <label className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 transition-colors cursor-pointer">
-                Upload .md
-                <input type="file" accept=".md,.markdown,.txt" className="hidden" onChange={e => {
+              <label className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${importing ? 'bg-wcs-red/60 text-white cursor-wait' : 'bg-wcs-red text-white hover:bg-wcs-red/90 cursor-pointer'}`}>
+                {importing ? 'Importing...' : 'Upload .md'}
+                <input type="file" accept=".md,.markdown,.txt" className="hidden" onChange={async e => {
                   const file = e.target.files?.[0]
                   if (!file) return
-                  const reader = new FileReader()
-                  reader.onload = (ev) => {
-                    const content = ev.target?.result || ''
+                  e.target.value = ''
+                  setImporting(true)
+                  try {
+                    const content = await file.text()
                     // Extract title from first # heading
                     const titleMatch = content.match(/^#\s+(.+)$/m)
                     if (titleMatch && !formTitle.trim()) {
                       setFormTitle(titleMatch[1].trim())
                     }
-                    // Remove the Scribe attribution lines and clean up
-                    const cleaned = content
-                      .replace(/^#\s+.+\n/m, '') // remove first h1 (used as title)
-                      .replace(/####\s*\[Made.*?Scribe\]\(.*?\)\s*/g, '') // remove Scribe attribution
+                    // Clean up content
+                    let cleaned = content
+                      .replace(/^#\s+.+\n/m, '')
+                      .replace(/####\s*\[Made.*?Scribe\]\(.*?\)\s*/g, '')
                       .replace(/####\s*\[Made with Scribe\]\(.*?\)\s*/g, '')
                       .trim()
+
+                    // Find all external image URLs and re-host them
+                    const imgRegex = /!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g
+                    const matches = [...cleaned.matchAll(imgRegex)]
+                    for (const match of matches) {
+                      try {
+                        const res = await uploadHelpImage(match[2])
+                        if (res.publicUrl) {
+                          cleaned = cleaned.replace(match[2], res.publicUrl)
+                        }
+                      } catch {
+                        // Keep original URL if upload fails
+                      }
+                    }
                     setFormBody(cleaned)
-                  }
-                  reader.readAsText(file)
-                  e.target.value = '' // reset so same file can be re-uploaded
+                  } catch { /* silent */ } finally { setImporting(false) }
                 }} />
               </label>
             </div>
