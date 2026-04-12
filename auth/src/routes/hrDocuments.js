@@ -1,0 +1,411 @@
+const { Router } = require('express')
+const { supabaseAdmin } = require('../services/supabase')
+const authenticate = require('../middleware/auth')
+const { requireRole, canSeeAllLocations } = require('../middleware/role')
+
+const router = Router()
+router.use(authenticate)
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const REASON_LABELS = {
+  verbal_warning: 'Verbal Warning',
+  written_warning: 'Written Warning',
+  termination: 'Termination',
+}
+
+/**
+ * Build an HTML document for the HR form, suitable for PDF rendering.
+ */
+function buildDocumentHTML({ employee_name, manager_name, reason, body, manager_signature, employee_signature, employee_acknowledged, employee_acknowledged_at, created_at }) {
+  const dateStr = new Date(created_at || Date.now()).toLocaleDateString('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric',
+  })
+
+  const ackSection = employee_acknowledged
+    ? `<div style="margin-top:32px;">
+        <h3 style="margin-bottom:8px;">Employee Acknowledgment</h3>
+        <p>I acknowledge receipt of this document on ${new Date(employee_acknowledged_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.</p>
+        <p style="margin-top:16px;"><strong>Employee Signature:</strong> <span style="font-family:cursive;font-size:18px;">${employee_signature || ''}</span></p>
+      </div>`
+    : `<div style="margin-top:32px;">
+        <h3 style="margin-bottom:8px;">Employee Acknowledgment</h3>
+        <p style="color:#888;">Not yet acknowledged</p>
+        <p style="margin-top:16px;border-bottom:1px solid #333;width:300px;">&nbsp;</p>
+        <p style="font-size:12px;color:#666;">Employee Signature</p>
+      </div>`
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; color: #222; }
+    .header { background: #C41E24; color: #fff; padding: 24px 40px; }
+    .header h1 { margin: 0; font-size: 24px; letter-spacing: 1px; }
+    .header h2 { margin: 8px 0 0; font-size: 16px; font-weight: 400; opacity: 0.9; }
+    .content { padding: 32px 40px; }
+    .meta-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+    .meta-row span { font-size: 14px; }
+    .body-text { margin-top: 24px; line-height: 1.7; white-space: pre-wrap; }
+    .signature-section { margin-top: 40px; }
+    .signature-section p { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>West Coast Strength</h1>
+    <h2>${REASON_LABELS[reason] || reason}</h2>
+  </div>
+  <div class="content">
+    <div class="meta-row"><span><strong>Date:</strong> ${dateStr}</span></div>
+    <div class="meta-row"><span><strong>Manager:</strong> ${manager_name}</span></div>
+    <div class="meta-row"><span><strong>Employee:</strong> ${employee_name}</span></div>
+
+    <div class="body-text">${body}</div>
+
+    <div class="signature-section">
+      <p><strong>Manager Signature:</strong> <span style="font-family:cursive;font-size:18px;">${manager_signature || ''}</span></p>
+    </div>
+
+    ${ackSection}
+  </div>
+</body>
+</html>`
+}
+
+/**
+ * Generate a PDF via PDFShift. Returns a Buffer, or null if API key is missing.
+ */
+async function generatePDF(htmlContent) {
+  const apiKey = process.env.PDFSHIFT_API_KEY
+  if (!apiKey) {
+    console.warn('[HRDocuments] PDFSHIFT_API_KEY not set — skipping PDF generation')
+    return null
+  }
+
+  const resp = await fetch('https://api.pdfshift.io/v3/convert/pdf', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Basic ' + Buffer.from(apiKey + ':').toString('base64'),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ source: htmlContent, format: 'Letter' }),
+  })
+
+  if (!resp.ok) {
+    const text = await resp.text()
+    throw new Error(`PDFShift error ${resp.status}: ${text}`)
+  }
+
+  return Buffer.from(await resp.arrayBuffer())
+}
+
+/**
+ * Upload a document PDF to Paychex for a worker.
+ */
+async function paychexUploadDocument(workerId, pdfBuffer, fileName) {
+  const apiKey = process.env.PAYCHEX_API_KEY
+  if (!apiKey) return null
+
+  const resp = await fetch(`https://api.paychex.com/workers/${workerId}/documents`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${fileName}"`,
+    },
+    body: pdfBuffer,
+  })
+
+  if (!resp.ok) {
+    const text = await resp.text()
+    throw new Error(`Paychex upload error ${resp.status}: ${text}`)
+  }
+
+  return resp.json()
+}
+
+/**
+ * Get documents for a worker from Paychex.
+ */
+async function paychexGetWorkerDocuments(companyId, workerName) {
+  const apiKey = process.env.PAYCHEX_API_KEY
+  if (!apiKey) return null
+
+  const resp = await fetch(`https://api.paychex.com/companies/${companyId}/workers?givenName=${encodeURIComponent(workerName)}`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  })
+
+  if (!resp.ok) {
+    const text = await resp.text()
+    throw new Error(`Paychex API error ${resp.status}: ${text}`)
+  }
+
+  return resp.json()
+}
+
+// ---------------------------------------------------------------------------
+// POST /hr-documents  (manager+)
+// ---------------------------------------------------------------------------
+router.post('/', requireRole('manager'), async (req, res) => {
+  const { employee_name, reason, body, manager_signature } = req.body
+
+  if (!employee_name || !reason || !body || !manager_signature) {
+    return res.status(400).json({ error: 'employee_name, reason, body, and manager_signature are required' })
+  }
+
+  const validReasons = ['verbal_warning', 'written_warning', 'termination']
+  if (!validReasons.includes(reason)) {
+    return res.status(400).json({ error: 'Invalid reason. Must be one of: ' + validReasons.join(', ') })
+  }
+
+  try {
+    const managerName = req.staff.display_name || [req.staff.first_name, req.staff.last_name].filter(Boolean).join(' ')
+    const primaryLocation = req.staff.locations?.find(l => l.is_primary)
+    const locationSlug = primaryLocation?.name?.toLowerCase() || null
+
+    const insertPayload = {
+      employee_name,
+      reason,
+      body,
+      manager_signature,
+      manager_name: managerName,
+      submitted_by: req.staff.id,
+      location_slug: locationSlug,
+      status: 'pending_signature',
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('hr_documents')
+      .insert(insertPayload)
+      .select()
+      .single()
+
+    if (error) throw error
+
+    // Generate PDF in background — don't block the response on failure
+    try {
+      const html = buildDocumentHTML(data)
+      const pdfBuffer = await generatePDF(html)
+      if (pdfBuffer) {
+        const dataUrl = 'data:application/pdf;base64,' + pdfBuffer.toString('base64')
+        const { error: updateErr } = await supabaseAdmin
+          .from('hr_documents')
+          .update({ pdf_url: dataUrl })
+          .eq('id', data.id)
+        if (updateErr) console.error('[HRDocuments] Failed to store PDF URL:', updateErr.message)
+        else data.pdf_url = dataUrl
+      }
+    } catch (pdfErr) {
+      console.error('[HRDocuments] PDF generation failed:', pdfErr.message)
+    }
+
+    res.status(201).json(data)
+  } catch (err) {
+    console.error('[HRDocuments] Error creating document:', err.message)
+    res.status(500).json({ error: 'Failed to create document: ' + err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /hr-documents  (manager+)
+// ---------------------------------------------------------------------------
+router.get('/', requireRole('manager'), async (req, res) => {
+  const { employee_name, reason, status, location_slug } = req.query
+
+  try {
+    let query = supabaseAdmin
+      .from('hr_documents')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    // Location scoping
+    if (canSeeAllLocations(req.staff.role)) {
+      if (location_slug) {
+        query = query.eq('location_slug', location_slug)
+      }
+    } else {
+      const primarySlug = req.staff.locations?.find(l => l.is_primary)?.name?.toLowerCase() || null
+      query = query.eq('location_slug', primarySlug)
+    }
+
+    if (employee_name) query = query.ilike('employee_name', `%${employee_name}%`)
+    if (reason) query = query.eq('reason', reason)
+    if (status) query = query.eq('status', status)
+
+    const { data, error } = await query
+
+    if (error) throw error
+
+    res.json(data || [])
+  } catch (err) {
+    console.error('[HRDocuments] Error listing documents:', err.message)
+    res.status(500).json({ error: 'Failed to list documents: ' + err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /hr-documents/paychex-worker/:employeeName  (manager+)
+// Must be before /:id to avoid route conflict
+// ---------------------------------------------------------------------------
+router.get('/paychex-worker/:employeeName', requireRole('manager'), async (req, res) => {
+  if (!process.env.PAYCHEX_API_KEY || !process.env.PAYCHEX_COMPANY_ID) {
+    return res.status(501).json({ error: 'Paychex integration not configured' })
+  }
+
+  try {
+    const result = await paychexGetWorkerDocuments(process.env.PAYCHEX_COMPANY_ID, req.params.employeeName)
+    res.json(result)
+  } catch (err) {
+    console.error('[HRDocuments] Paychex worker lookup failed:', err.message)
+    res.status(500).json({ error: 'Paychex lookup failed: ' + err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /hr-documents/:id  (manager+)
+// ---------------------------------------------------------------------------
+router.get('/:id', requireRole('manager'), async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('hr_documents')
+      .select('*')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Document not found' })
+
+    res.json(data)
+  } catch (err) {
+    console.error('[HRDocuments] Error fetching document:', err.message)
+    res.status(500).json({ error: 'Failed to fetch document: ' + err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// PUT /hr-documents/:id/acknowledge  (team_member+)
+// ---------------------------------------------------------------------------
+router.put('/:id/acknowledge', requireRole('team_member'), async (req, res) => {
+  const { employee_signature } = req.body
+
+  if (!employee_signature) {
+    return res.status(400).json({ error: 'employee_signature is required' })
+  }
+
+  try {
+    const { data: existing, error: fetchErr } = await supabaseAdmin
+      .from('hr_documents')
+      .select('status')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
+    if (fetchErr) throw fetchErr
+    if (!existing) return res.status(404).json({ error: 'Document not found' })
+
+    if (existing.status === 'completed' || existing.status === 'uploaded') {
+      return res.status(400).json({ error: 'Document has already been acknowledged' })
+    }
+
+    const now = new Date().toISOString()
+
+    const { data, error } = await supabaseAdmin
+      .from('hr_documents')
+      .update({
+        employee_signature,
+        employee_acknowledged: true,
+        employee_acknowledged_at: now,
+        status: 'completed',
+        updated_at: now,
+      })
+      .eq('id', req.params.id)
+      .select()
+      .single()
+
+    if (error) throw error
+
+    // Re-generate PDF with acknowledgment included
+    try {
+      const html = buildDocumentHTML(data)
+      const pdfBuffer = await generatePDF(html)
+      if (pdfBuffer) {
+        const dataUrl = 'data:application/pdf;base64,' + pdfBuffer.toString('base64')
+        const { error: updateErr } = await supabaseAdmin
+          .from('hr_documents')
+          .update({ pdf_url: dataUrl })
+          .eq('id', data.id)
+        if (updateErr) console.error('[HRDocuments] Failed to update PDF after ack:', updateErr.message)
+        else data.pdf_url = dataUrl
+      }
+    } catch (pdfErr) {
+      console.error('[HRDocuments] PDF re-generation after ack failed:', pdfErr.message)
+    }
+
+    res.json(data)
+  } catch (err) {
+    console.error('[HRDocuments] Error acknowledging document:', err.message)
+    res.status(500).json({ error: 'Failed to acknowledge document: ' + err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// POST /hr-documents/:id/upload-paychex  (manager+)
+// ---------------------------------------------------------------------------
+router.post('/:id/upload-paychex', requireRole('manager'), async (req, res) => {
+  if (!process.env.PAYCHEX_API_KEY || !process.env.PAYCHEX_COMPANY_ID) {
+    return res.status(501).json({ error: 'Paychex integration not configured' })
+  }
+
+  try {
+    const { data: doc, error: fetchErr } = await supabaseAdmin
+      .from('hr_documents')
+      .select('*')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
+    if (fetchErr) throw fetchErr
+    if (!doc) return res.status(404).json({ error: 'Document not found' })
+
+    if (!doc.pdf_url) {
+      return res.status(400).json({ error: 'No PDF available for this document. Generate the PDF first.' })
+    }
+
+    // Decode the base64 data URL back to a buffer
+    const base64Data = doc.pdf_url.replace(/^data:application\/pdf;base64,/, '')
+    const pdfBuffer = Buffer.from(base64Data, 'base64')
+    const fileName = `hr_${doc.reason}_${doc.employee_name.replace(/\s+/g, '_')}_${doc.id}.pdf`
+
+    const { workerId } = req.body || {}
+    if (!workerId) {
+      return res.status(400).json({ error: 'workerId is required in the request body' })
+    }
+
+    const result = await paychexUploadDocument(workerId, pdfBuffer, fileName)
+
+    const paychexDocId = result?.documentId || result?.id || null
+
+    const now = new Date().toISOString()
+    const { data, error } = await supabaseAdmin
+      .from('hr_documents')
+      .update({
+        paychex_document_id: paychexDocId,
+        status: 'uploaded',
+        updated_at: now,
+      })
+      .eq('id', req.params.id)
+      .select()
+      .single()
+
+    if (error) throw error
+
+    res.json(data)
+  } catch (err) {
+    console.error('[HRDocuments] Paychex upload failed:', err.message)
+    res.status(500).json({ error: 'Paychex upload failed: ' + err.message })
+  }
+})
+
+module.exports = router
