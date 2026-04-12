@@ -78,7 +78,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker, onDayOneCalendar, onTrainerAvail, onMetaAds, onLeaderboard, userRole, userName }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker, onDayOneCalendar, onTrainerAvail, onMetaAds, onLeaderboard, onReporting, userRole, userName }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [tilesLoaded, setTilesLoaded] = useState(false)
@@ -389,11 +389,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
 
             if (isGroup) {
               const tileLabel = (tile.label || '').toLowerCase()
-              const handleClick = tileLabel === 'reporting'
-                ? () => {
-                    const reportingUrl = window.location.origin + window.location.pathname + window.location.search + '#reporting'
-                    window.open(reportingUrl, '_blank')
-                  }
+              const handleClick = (tileLabel === 'reporting' && onReporting)
+                ? onReporting
                 : (tileLabel === 'marketing' && onMetaAds)
                   ? onMetaAds
                   : () => setActiveGroup(tile)
