@@ -1,10 +1,12 @@
+/*
+ * NOTE: All copy-to-clipboard buttons in this project MUST show a visual
+ * confirmation animation (e.g. text changes to "Copied!" with a checkmark,
+ * brief color flash, etc.) so the user knows the copy succeeded. Never use
+ * a silent clipboard write without feedback.
+ */
+
 import { useState } from 'react'
 import { api } from '../../lib/api'
-
-function formatDate(dateStr) {
-  if (!dateStr) return ''
-  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
 
 function ActionCard({ title, desc, icon, onClick, loading }) {
   return (
@@ -33,6 +35,38 @@ function ActionCard({ title, desc, icon, onClick, loading }) {
   )
 }
 
+function CopyButton({ text, label = 'Copy', className = '' }) {
+  const [copied, setCopied] = useState(false)
+
+  function handleCopy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }).catch(() => {})
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      className={`relative transition-all duration-200 ${className} ${
+        copied ? 'bg-green-100 text-green-700 border-green-300 scale-95' : ''
+      }`}
+    >
+      <span className={`inline-flex items-center gap-1 transition-opacity duration-150 ${copied ? 'opacity-0' : 'opacity-100'}`}>
+        {label}
+      </span>
+      {copied && (
+        <span className="absolute inset-0 flex items-center justify-center gap-1 text-green-700 animate-[fadeIn_0.15s_ease-out]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+          </svg>
+          Copied!
+        </span>
+      )}
+    </button>
+  )
+}
+
 export default function PaychexAdmin() {
   const [result, setResult] = useState(null)
   const [resultTitle, setResultTitle] = useState('')
@@ -52,10 +86,6 @@ export default function PaychexAdmin() {
     } finally {
       setLoading(null)
     }
-  }
-
-  function copyToClipboard(text) {
-    navigator.clipboard.writeText(text).catch(() => {})
   }
 
   return (
@@ -90,12 +120,11 @@ export default function PaychexAdmin() {
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <h3 className="text-sm font-bold text-text-primary">{resultTitle}</h3>
-            <button
-              onClick={() => copyToClipboard(JSON.stringify(result, null, 2))}
-              className="px-3 py-1 text-[11px] font-semibold rounded-lg bg-bg border border-border text-text-muted hover:text-text-primary transition-colors"
-            >
-              Copy JSON
-            </button>
+            <CopyButton
+              text={JSON.stringify(result, null, 2)}
+              label="Copy JSON"
+              className="px-3 py-1 text-[11px] font-semibold rounded-lg bg-bg border border-border text-text-muted hover:text-text-primary"
+            />
           </div>
 
           {/* Companies result */}
@@ -123,12 +152,11 @@ export default function PaychexAdmin() {
                         )}
                       </div>
                     </div>
-                    <button
-                      onClick={() => copyToClipboard(company.companyId)}
-                      className="px-2 py-1 text-[10px] font-semibold rounded bg-wcs-red/10 text-wcs-red hover:bg-wcs-red/20 transition-colors shrink-0"
-                    >
-                      Copy ID
-                    </button>
+                    <CopyButton
+                      text={company.companyId}
+                      label="Copy ID"
+                      className="px-2 py-1 text-[10px] font-semibold rounded bg-wcs-red/10 text-wcs-red hover:bg-wcs-red/20"
+                    />
                   </div>
                 ))
               )}
