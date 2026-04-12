@@ -78,6 +78,7 @@ export default function HelpCenterView({ user, onBack }) {
   const [formMinRole, setFormMinRole] = useState('')
   const [saving, setSaving] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [importStatus, setImportStatus] = useState('') // progress text
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -444,52 +445,88 @@ export default function HelpCenterView({ user, onBack }) {
         <EditorModal title={modal === 'edit-article' ? 'Edit Article' : 'Add Article'} onClose={() => setModal(null)}>
           <div className="space-y-4">
             {/* Import from Markdown file */}
-            <div className="flex items-center gap-3 p-3 bg-bg rounded-lg border border-border">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5 text-text-muted shrink-0">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
-              </svg>
-              <div className="flex-1">
-                <p className="text-xs font-semibold text-text-primary">Import from Markdown</p>
-                <p className="text-[10px] text-text-muted">Upload a .md file (e.g. from Scribe) to populate the title and body</p>
-              </div>
-              <label className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${importing ? 'bg-wcs-red/60 text-white cursor-wait' : 'bg-wcs-red text-white hover:bg-wcs-red/90 cursor-pointer'}`}>
-                {importing ? 'Importing...' : 'Upload .md'}
-                <input type="file" accept=".md,.markdown,.txt" className="hidden" onChange={async e => {
-                  const file = e.target.files?.[0]
-                  if (!file) return
-                  e.target.value = ''
-                  setImporting(true)
-                  try {
-                    const content = await file.text()
-                    // Extract title from first # heading
-                    const titleMatch = content.match(/^#\s+(.+)$/m)
-                    if (titleMatch && !formTitle.trim()) {
-                      setFormTitle(titleMatch[1].trim())
-                    }
-                    // Clean up content
-                    let cleaned = content
-                      .replace(/^#\s+.+\n/m, '')
-                      .replace(/####\s*\[Made.*?Scribe\]\(.*?\)\s*/g, '')
-                      .replace(/####\s*\[Made with Scribe\]\(.*?\)\s*/g, '')
-                      .trim()
+            <div className="p-3 bg-bg rounded-lg border border-border space-y-2">
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5 text-text-muted shrink-0">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-text-primary">Import from Markdown</p>
+                  <p className="text-[10px] text-text-muted">Upload a .md file (e.g. from Scribe) — images are downloaded and self-hosted</p>
+                </div>
+                <label className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${importing ? 'bg-wcs-red/60 text-white cursor-wait' : 'bg-wcs-red text-white hover:bg-wcs-red/90 cursor-pointer'}`}>
+                  {importing ? 'Working...' : 'Upload .md'}
+                  <input type="file" accept=".md,.markdown,.txt" className="hidden" disabled={importing} onChange={async e => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    e.target.value = ''
+                    setImporting(true)
+                    setImportStatus('Reading file...')
+                    try {
+                      const content = await file.text()
 
-                    // Find all external image URLs and re-host them
-                    const imgRegex = /!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g
-                    const matches = [...cleaned.matchAll(imgRegex)]
-                    for (const match of matches) {
-                      try {
-                        const res = await uploadHelpImage(match[2])
-                        if (res.publicUrl) {
-                          cleaned = cleaned.replace(match[2], res.publicUrl)
-                        }
-                      } catch {
-                        // Keep original URL if upload fails
+                      setImportStatus('Extracting title...')
+                      const titleMatch = content.match(/^#\s+(.+)$/m)
+                      if (titleMatch && !formTitle.trim()) {
+                        setFormTitle(titleMatch[1].trim())
                       }
+
+                      setImportStatus('Cleaning up formatting...')
+                      let cleaned = content
+                        .replace(/^#\s+.+\n/m, '')
+                        .replace(/####\s*\[Made.*?Scribe\]\(.*?\)\s*/g, '')
+                        .replace(/####\s*\[Made with Scribe\]\(.*?\)\s*/g, '')
+                        .trim()
+
+                      // Find all external image URLs
+                      const imgRegex = /!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g
+                      const matches = [...cleaned.matchAll(imgRegex)]
+
+                      if (matches.length > 0) {
+                        let uploaded = 0
+                        let failed = 0
+                        for (const match of matches) {
+                          setImportStatus(`Downloading image ${uploaded + failed + 1} of ${matches.length}...`)
+                          try {
+                            const res = await uploadHelpImage(match[2])
+                            if (res.publicUrl) {
+                              cleaned = cleaned.replace(match[2], res.publicUrl)
+                              uploaded++
+                            } else {
+                              failed++
+                            }
+                          } catch {
+                            failed++
+                          }
+                          setImportStatus(`Images: ${uploaded} saved${failed ? `, ${failed} failed` : ''} (${uploaded + failed}/${matches.length})`)
+                        }
+                        setImportStatus(`Done! ${uploaded} image${uploaded !== 1 ? 's' : ''} saved${failed ? `, ${failed} failed` : ''}`)
+                      } else {
+                        setImportStatus('Done! No images to download.')
+                      }
+
+                      setFormBody(cleaned)
+                    } catch (err) {
+                      setImportStatus('Error: ' + (err.message || 'Import failed'))
+                    } finally {
+                      setImporting(false)
                     }
-                    setFormBody(cleaned)
-                  } catch { /* silent */ } finally { setImporting(false) }
-                }} />
-              </label>
+                  }} />
+                </label>
+              </div>
+              {importStatus && (
+                <div className={`flex items-center gap-2 text-[11px] ${importStatus.startsWith('Error') ? 'text-red-600' : importStatus.startsWith('Done') ? 'text-green-600' : 'text-text-muted'}`}>
+                  {importing && (
+                    <div className="w-3 h-3 border-2 border-wcs-red/30 border-t-wcs-red rounded-full animate-spin shrink-0" />
+                  )}
+                  {!importing && importStatus.startsWith('Done') && (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3 text-green-600 shrink-0">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                    </svg>
+                  )}
+                  {importStatus}
+                </div>
+              )}
             </div>
 
             <div>
