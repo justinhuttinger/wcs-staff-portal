@@ -69,22 +69,22 @@ export default function TicketsView({ onBack }) {
           <p className="text-xs text-text-muted mt-1">Ask your admin to set up ticket embeds</p>
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-4">
           {embeds.map(embed => (
             <button
               key={embed.id}
               onClick={() => setSelected(embed)}
-              className="group flex flex-col items-center justify-center gap-2 rounded-xl bg-surface border border-border p-5 min-h-[120px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+              className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
             >
-              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5 text-wcs-red">
+              <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 text-wcs-red">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 0 1 0 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 0 1 0-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375Z" />
                 </svg>
               </div>
               <div className="text-center">
-                <span className="block text-sm font-semibold text-text-primary">{embed.name}</span>
+                <span className="block text-base font-semibold text-text-primary">{embed.name}</span>
                 {embed.description && (
-                  <span className="block text-[10px] font-medium text-text-muted uppercase tracking-[0.8px] mt-0.5">{embed.description}</span>
+                  <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">{embed.description}</span>
                 )}
               </div>
             </button>
