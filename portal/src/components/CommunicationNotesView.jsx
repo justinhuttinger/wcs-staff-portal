@@ -7,15 +7,15 @@ import {
   addCommunicationNoteComment,
 } from '../lib/api'
 
-const CATEGORIES = ['Member', 'Billing', 'Cancel', 'Equipment', 'Other']
+const CATEGORIES = ['member', 'billing', 'cancel', 'equipment', 'other']
 const STATUSES = ['unresolved', 'in_progress', 'completed']
 
 const CATEGORY_COLORS = {
-  Member: 'bg-blue-50 text-blue-700 border-blue-200',
-  Billing: 'bg-green-50 text-green-700 border-green-200',
-  Cancel: 'bg-red-50 text-red-700 border-red-200',
-  Equipment: 'bg-amber-50 text-amber-700 border-amber-200',
-  Other: 'bg-gray-100 text-gray-600 border-gray-200',
+  member: 'bg-blue-50 text-blue-700 border-blue-200',
+  billing: 'bg-green-50 text-green-700 border-green-200',
+  cancel: 'bg-red-50 text-red-700 border-red-200',
+  equipment: 'bg-amber-50 text-amber-700 border-amber-200',
+  other: 'bg-gray-100 text-gray-600 border-gray-200',
 }
 
 const STATUS_COLORS = {
@@ -54,7 +54,7 @@ export default function CommunicationNotesView({ user, onBack }) {
   // Submit form state
   const [formOpen, setFormOpen] = useState(!isLeadPlus)
   const [title, setTitle] = useState('')
-  const [category, setCategory] = useState('Member')
+  const [category, setCategory] = useState('member')
   const [body, setBody] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitMsg, setSubmitMsg] = useState(null)
@@ -63,7 +63,7 @@ export default function CommunicationNotesView({ user, onBack }) {
   const [notes, setNotes] = useState([])
   const [loading, setLoading] = useState(false)
   const [statusFilter, setStatusFilter] = useState('unresolved')
-  const [categoryFilter, setCategoryFilter] = useState('All')
+  const [categoryFilter, setCategoryFilter] = useState('all')
 
   // Expanded note state
   const [expandedId, setExpandedId] = useState(null)
@@ -94,7 +94,7 @@ export default function CommunicationNotesView({ user, onBack }) {
     createCommunicationNote({ title: title.trim(), category, body: body.trim() })
       .then(() => {
         setTitle('')
-        setCategory('Member')
+        setCategory('member')
         setBody('')
         setSubmitMsg({ type: 'success', text: 'Note submitted successfully' })
         fetchNotes()
@@ -150,7 +150,7 @@ export default function CommunicationNotesView({ user, onBack }) {
   // Filter notes
   const filteredNotes = notes.filter(n => {
     if (n.status !== statusFilter) return false
-    if (categoryFilter !== 'All' && n.category !== categoryFilter) return false
+    if (categoryFilter !== 'all' && n.category !== categoryFilter) return false
     return true
   })
 
@@ -217,7 +217,7 @@ export default function CommunicationNotesView({ user, onBack }) {
                 className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red"
               >
                 {CATEGORIES.map(c => (
-                  <option key={c} value={c}>{c}</option>
+                  <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
                 ))}
               </select>
             </div>
@@ -277,7 +277,7 @@ export default function CommunicationNotesView({ user, onBack }) {
 
           {/* Category Filter Pills */}
           <div className="flex flex-wrap gap-1.5 mb-5">
-            {['All', ...CATEGORIES].map(c => (
+            {['all', ...CATEGORIES].map(c => (
               <button
                 key={c}
                 onClick={() => setCategoryFilter(c)}
@@ -287,7 +287,7 @@ export default function CommunicationNotesView({ user, onBack }) {
                     : 'bg-surface text-text-muted border-border hover:border-text-muted'
                 }`}
               >
-                {c}
+                {c === 'all' ? 'All' : c.charAt(0).toUpperCase() + c.slice(1)}
               </button>
             ))}
           </div>
@@ -296,7 +296,7 @@ export default function CommunicationNotesView({ user, onBack }) {
           {loading ? (
             <p className="text-sm text-text-muted text-center py-8">Loading notes...</p>
           ) : filteredNotes.length === 0 ? (
-            <p className="text-sm text-text-muted text-center py-8">No {STATUS_LABELS[statusFilter].toLowerCase()} notes{categoryFilter !== 'All' ? ` in ${categoryFilter}` : ''}</p>
+            <p className="text-sm text-text-muted text-center py-8">No {STATUS_LABELS[statusFilter].toLowerCase()} notes{categoryFilter !== 'all' ? ` in ${categoryFilter}` : ''}</p>
           ) : (
             <div className="space-y-3">
               {filteredNotes.map(note => {
@@ -315,7 +315,7 @@ export default function CommunicationNotesView({ user, onBack }) {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap mb-1">
                             <span className="text-sm font-bold text-text-primary">{note.title}</span>
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${CATEGORY_COLORS[note.category] || CATEGORY_COLORS.Other}`}>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${CATEGORY_COLORS[note.category] || CATEGORY_COLORS.other}`}>
                               {note.category}
                             </span>
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${STATUS_COLORS[note.status] || STATUS_COLORS.unresolved}`}>
