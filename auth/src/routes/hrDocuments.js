@@ -167,7 +167,7 @@ router.post('/', requireRole('manager'), async (req, res) => {
       submitted_by: req.staff.id,
       location_slug: locationSlug,
       worker_id: worker_id || null,
-      status: hasEmployeeSig ? 'completed' : 'pending_signature',
+      status: 'completed',
     }
 
     if (hasEmployeeSig) {
@@ -289,9 +289,13 @@ router.get('/paychex-workers', requireRole('manager'), async (req, res) => {
     // Return a simplified worker list for the frontend
     const simplified = workers.map(w => {
       // Extract email from communications array if available
+      // Paychex may nest it as {type:'EMAIL', uri:'...'} or {emailAddress:'...'}
       const comms = w.communications || []
-      const emailComm = comms.find(c => c.type === 'EMAIL' || c.emailAddress) || {}
-      const email = emailComm.emailAddress || emailComm.uri || ''
+      const emailComm = comms.find(c =>
+        c.type === 'EMAIL' || c.communicationType === 'EMAIL' ||
+        c.emailAddress || (c.uri && c.uri.includes('@'))
+      ) || {}
+      const email = emailComm.emailAddress || emailComm.uri || emailComm.dialNumber || ''
 
       return {
         workerId: w.workerId,

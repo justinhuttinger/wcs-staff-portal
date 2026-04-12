@@ -27,14 +27,14 @@ const REASON_COLORS = {
 
 const STATUS_LABELS = {
   draft: 'Draft',
-  pending_signature: 'Pending Signature',
+  pending_signature: 'Completed',
   completed: 'Completed',
   uploaded: 'Uploaded',
 }
 
 const STATUS_COLORS = {
   draft: 'bg-gray-100 text-gray-600 border-gray-200',
-  pending_signature: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+  pending_signature: 'bg-green-50 text-green-700 border-green-200',
   completed: 'bg-green-50 text-green-700 border-green-200',
   uploaded: 'bg-blue-50 text-blue-700 border-blue-200',
 }
@@ -131,7 +131,13 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
     }
   }, [canSeeAll])
 
+  const needsLocationPick = canSeeAll && !locationSlug
+
   const fetchWorkers = useCallback(async () => {
+    if (needsLocationPick) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -146,7 +152,7 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
     } finally {
       setLoading(false)
     }
-  }, [locationSlug, canSeeAll])
+  }, [locationSlug, canSeeAll, needsLocationPick])
 
   useEffect(() => { fetchWorkers() }, [fetchWorkers])
 
@@ -178,6 +184,17 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
         </div>
       )}
 
+      {needsLocationPick ? (
+        <div className="text-center py-12">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-10 h-10 text-text-muted mx-auto mb-3">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+          </svg>
+          <p className="text-sm font-medium text-text-primary">Select a location to begin</p>
+          <p className="text-xs text-text-muted mt-1">Choose a location above to view employees</p>
+        </div>
+      ) : (
+      <>
       <div className="bg-surface border border-border rounded-xl p-4">
         <div className="relative">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2">
@@ -236,6 +253,8 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
             </button>
           ))}
         </div>
+      )}
+      </>
       )}
     </div>
   )
