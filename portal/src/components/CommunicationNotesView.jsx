@@ -66,7 +66,7 @@ export default function CommunicationNotesView({ user, onBack }) {
   // Submit form state
   const [formOpen, setFormOpen] = useState(!isLeadPlus)
   const [title, setTitle] = useState('')
-  const [category, setCategory] = useState('member')
+  const [category, setCategory] = useState('')
   const [body, setBody] = useState('')
   const [memberName, setMemberName] = useState('')
   const [memberPhone, setMemberPhone] = useState('')
@@ -109,7 +109,7 @@ export default function CommunicationNotesView({ user, onBack }) {
 
   function handleSubmit(e) {
     e.preventDefault()
-    if (!title.trim() || !body.trim()) return
+    if (!title.trim() || !body.trim() || !category) return
     setSubmitting(true)
     setSubmitMsg(null)
     const payload = { title: title.trim(), category, body: body.trim() }
@@ -120,7 +120,7 @@ export default function CommunicationNotesView({ user, onBack }) {
     createCommunicationNote(payload)
       .then(() => {
         setTitle('')
-        setCategory('member')
+        setCategory('')
         setBody('')
         setMemberName('')
         setMemberPhone('')
@@ -206,8 +206,8 @@ export default function CommunicationNotesView({ user, onBack }) {
         <h2 className="text-xl font-black text-text-primary tracking-[-0.5px]">Communication Notes</h2>
       </div>
 
-      {/* Submit Form */}
-      <div className="bg-surface border border-border rounded-xl mb-6 overflow-hidden">
+      {/* Submit Form — team_member only */}
+      {!isLeadPlus && <div className="bg-surface border border-border rounded-xl mb-6 overflow-hidden">
         <button
           onClick={() => setFormOpen(!formOpen)}
           className="w-full flex items-center justify-between px-5 py-3 text-left"
@@ -243,7 +243,9 @@ export default function CommunicationNotesView({ user, onBack }) {
                 value={category}
                 onChange={e => setCategory(e.target.value)}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red"
+                required
               >
+                <option value="" disabled>Select a category...</option>
                 {CATEGORIES.map(c => (
                   <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
                 ))}
@@ -278,7 +280,7 @@ export default function CommunicationNotesView({ user, onBack }) {
               <textarea
                 value={body}
                 onChange={e => setBody(e.target.value)}
-                placeholder="Describe the issue or note in detail..."
+                placeholder="Type your message here..."
                 rows={4}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-bg text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-wcs-red resize-none"
                 required
@@ -287,7 +289,7 @@ export default function CommunicationNotesView({ user, onBack }) {
             <div className="flex items-center gap-3">
               <button
                 type="submit"
-                disabled={submitting || !title.trim() || !body.trim()}
+                disabled={submitting || !title.trim() || !body.trim() || !category}
                 className="px-5 py-2 text-sm font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {submitting ? 'Submitting...' : 'Submit Note'}
@@ -300,7 +302,7 @@ export default function CommunicationNotesView({ user, onBack }) {
             </div>
           </form>
         )}
-      </div>
+      </div>}
 
       {/* Notes List (fd_lead+ only) */}
       {isLeadPlus && (
@@ -442,9 +444,34 @@ export default function CommunicationNotesView({ user, onBack }) {
                             </span>
                           </div>
                           {note.member_name && (
-                            <div className="flex items-center gap-3 text-xs text-text-muted mb-1">
+                            <div className="flex items-center gap-2 text-xs text-text-muted mb-1">
                               <span className="font-medium">Member: {note.member_name}</span>
-                              {note.member_phone && <span>· {note.member_phone}</span>}
+                              <button
+                                type="button"
+                                onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(note.member_name) }}
+                                className="text-wcs-red hover:text-wcs-red/70 transition-colors"
+                                title="Copy name"
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9.75a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" />
+                                </svg>
+                              </button>
+                              {note.member_phone && (
+                                <>
+                                  <span>·</span>
+                                  <span>{note.member_phone}</span>
+                                  <button
+                                    type="button"
+                                    onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(note.member_phone) }}
+                                    className="text-wcs-red hover:text-wcs-red/70 transition-colors"
+                                    title="Copy phone"
+                                  >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9.75a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" />
+                                    </svg>
+                                  </button>
+                                </>
+                              )}
                             </div>
                           )}
                           <p className={`text-sm text-text-muted ${isExpanded ? '' : 'line-clamp-2'}`}>
@@ -487,28 +514,19 @@ export default function CommunicationNotesView({ user, onBack }) {
                     {/* Expanded Detail */}
                     {isExpanded && (
                       <div className="border-t border-border px-5 py-4 space-y-4">
-                        {/* Status Selector */}
+                        {/* Status Dropdown */}
                         <div className="flex items-center gap-3">
                           <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">Status</span>
-                          <div className="flex gap-1.5">
-                            {STATUSES.map(s => {
-                              const isActive = note.status === s
-                              return (
-                                <button
-                                  key={s}
-                                  onClick={() => !isActive && handleStatusChange(note, s)}
-                                  disabled={isActive || updatingStatus}
-                                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
-                                    isActive
-                                      ? STATUS_COLORS[s]
-                                      : 'bg-surface text-text-muted border-border hover:bg-bg'
-                                  } ${isActive || updatingStatus ? 'opacity-70 cursor-default' : 'cursor-pointer'}`}
-                                >
-                                  {STATUS_LABELS[s]}
-                                </button>
-                              )
-                            })}
-                          </div>
+                          <select
+                            value={note.status}
+                            onChange={e => handleStatusChange(note, e.target.value)}
+                            disabled={updatingStatus}
+                            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer focus:outline-none focus:border-wcs-red ${STATUS_COLORS[note.status] || ''}`}
+                          >
+                            {STATUSES.map(s => (
+                              <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                            ))}
+                          </select>
                         </div>
 
                         {/* Comments Section */}

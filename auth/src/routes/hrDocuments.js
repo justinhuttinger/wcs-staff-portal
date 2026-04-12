@@ -159,10 +159,11 @@ async function paychexGetWorkerDocuments(companyId, workerName) {
 // POST /hr-documents  (manager+)
 // ---------------------------------------------------------------------------
 router.post('/', requireRole('manager'), async (req, res) => {
-  const { employee_name, reason, body, manager_signature } = req.body
+  const { employee_name, reason, body, description, manager_signature } = req.body
+  const docBody = body || description
 
-  if (!employee_name || !reason || !body || !manager_signature) {
-    return res.status(400).json({ error: 'employee_name, reason, body, and manager_signature are required' })
+  if (!employee_name || !reason || !docBody || !manager_signature) {
+    return res.status(400).json({ error: 'employee_name, reason, description, and manager_signature are required' })
   }
 
   const validReasons = ['verbal_warning', 'written_warning', 'termination']
@@ -178,7 +179,7 @@ router.post('/', requireRole('manager'), async (req, res) => {
     const insertPayload = {
       employee_name,
       reason,
-      body,
+      body: docBody,
       manager_signature,
       manager_name: managerName,
       submitted_by: req.staff.id,

@@ -81,7 +81,7 @@ export default function MobileCommunicationNotes({ user }) {
 
   // Form state
   const [formTitle, setFormTitle] = useState('')
-  const [formCategory, setFormCategory] = useState('member')
+  const [formCategory, setFormCategory] = useState('')
   const [formBody, setFormBody] = useState('')
   const [formMemberName, setFormMemberName] = useState('')
   const [formMemberPhone, setFormMemberPhone] = useState('')
@@ -151,7 +151,7 @@ export default function MobileCommunicationNotes({ user }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!formTitle.trim() || !formBody.trim()) return
+    if (!formTitle.trim() || !formBody.trim() || !formCategory) return
     setSubmitting(true)
     try {
       const payload = {
@@ -165,7 +165,7 @@ export default function MobileCommunicationNotes({ user }) {
       }
       await createCommunicationNote(payload)
       setFormTitle('')
-      setFormCategory('member')
+      setFormCategory('')
       setFormBody('')
       setFormMemberName('')
       setFormMemberPhone('')
@@ -338,12 +338,14 @@ export default function MobileCommunicationNotes({ user }) {
       <div className="bg-surface border-b border-border px-4 pt-4 pb-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-text-primary">Comm Notes</h2>
-          <button
-            onClick={() => setShowForm(true)}
-            className="px-3 py-1.5 bg-wcs-red text-white rounded-xl text-xs font-semibold active:scale-95 transition-transform"
-          >
-            + New Note
-          </button>
+          {!canViewNotes && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="px-3 py-1.5 bg-wcs-red text-white rounded-xl text-xs font-semibold active:scale-95 transition-transform"
+            >
+              + New Note
+            </button>
+          )}
         </div>
 
         {/* Status tabs (leads+ only) */}
@@ -562,7 +564,9 @@ export default function MobileCommunicationNotes({ user }) {
                   value={formCategory}
                   onChange={e => setFormCategory(e.target.value)}
                   className="w-full px-3 py-2.5 rounded-xl bg-bg border border-border text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-wcs-red"
+                  required
                 >
+                  <option value="" disabled>Select a category...</option>
                   {CATEGORIES.map(cat => (
                     <option key={cat} value={cat} className="capitalize">{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
                   ))}
@@ -598,7 +602,7 @@ export default function MobileCommunicationNotes({ user }) {
                 <textarea
                   value={formBody}
                   onChange={e => setFormBody(e.target.value)}
-                  placeholder="Describe the issue or note..."
+                  placeholder="Type your message here..."
                   required
                   rows={4}
                   className="w-full px-3 py-2.5 rounded-xl bg-bg border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-wcs-red resize-none"
@@ -607,7 +611,7 @@ export default function MobileCommunicationNotes({ user }) {
 
               <button
                 type="submit"
-                disabled={submitting || !formTitle.trim() || !formBody.trim()}
+                disabled={submitting || !formTitle.trim() || !formBody.trim() || !formCategory}
                 className="w-full py-3 bg-wcs-red text-white rounded-xl text-sm font-bold disabled:opacity-50 active:scale-95 transition-transform mt-1"
               >
                 {submitting ? (

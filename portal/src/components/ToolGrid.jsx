@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import allTools from '../config/tools.json'
 import ToolButton from './ToolButton'
-import { getTiles, getDayOneTrackerAppointments, getTours, getLeaderboard } from '../lib/api'
+import { getTiles, getDayOneTrackerAppointments, getTours, getLeaderboard, getCommunicationNotes } from '../lib/api'
 
 const TILE_ICONS = {
   dayOne: 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9 2 2 4-4',
@@ -83,6 +83,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   const [dayOneBadge, setDayOneBadge] = useState(0)
   const [dayOneCalBadge, setDayOneCalBadge] = useState(0)
   const [toursBadge, setToursBadge] = useState(0)
+  const [commNotesBadge, setCommNotesBadge] = useState(0)
   const [leaderboardData, setLeaderboardData] = useState(null)
   const [showPointsInfo, setShowPointsInfo] = useState(false)
   const [motivationalMsg, setMotivationalMsg] = useState(getMotivationalMessage())
@@ -124,6 +125,11 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
         setToursBadge((res.tours || []).length)
       }).catch(() => {})
     }
+
+    // Fetch unresolved comm notes count
+    getCommunicationNotes({ status: 'unresolved' }).then(res => {
+      setCommNotesBadge((res.notes || []).length)
+    }).catch(() => {})
   }, [locationId, location])
 
   useEffect(() => {
@@ -358,7 +364,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {/* 4. Leaderboard */}
           {onLeaderboard && <SvgTileButton onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />}
           {/* 4.5. Communication Notes */}
-          {onCommunicationNotes && <SvgTileButton onClick={onCommunicationNotes} iconPath={TILE_ICONS.commNotes} label="Comm Notes" desc="Team Notes" />}
+          {onCommunicationNotes && <SvgTileButton onClick={onCommunicationNotes} iconPath={TILE_ICONS.commNotes} label="Comm Notes" desc="Team Notes" badge={commNotesBadge} />}
           {/* 4.6. HR Documents — manager+ only */}
           {onHR && roleIdx >= ROLE_LEVELS.manager && <SvgTileButton onClick={onHR} iconPath={TILE_ICONS.hr} label="HR Docs" desc="Documents" />}
           {/* 5. Day One Tracking */}

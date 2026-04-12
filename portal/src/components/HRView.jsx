@@ -219,7 +219,7 @@ export default function HRView({ user, onBack }) {
         employee_name: employeeName.trim(),
         reason,
         description: description.trim(),
-        manager_signature: managerSignature.trim(),
+        manager_signature: managerSignature,
       })
       setSubmitMsg({ type: 'success', text: 'Document submitted successfully.' })
       setEmployeeName('')
