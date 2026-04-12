@@ -47,7 +47,7 @@ function ordinal(n) {
   return n + (s[(v - 20) % 10] || s[v] || s[0])
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker, onDayOneCalendar, onTrainerAvail, onMetaAds, onLeaderboard }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker, onDayOneCalendar, onTrainerAvail, onMetaAds, onLeaderboard, userRole }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [tilesLoaded, setTilesLoaded] = useState(false)
@@ -179,13 +179,17 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
     return t.section !== 'main' // default: non-main = tools
   })
 
-  const myEntry = leaderboardData?.leaderboard?.find(e => e.is_current_user)
-  const totalStaff = leaderboardData?.leaderboard?.length || 0
+  const rankings = leaderboardData?.rankings || []
+  const userRank = leaderboardData?.user_rank
+  const userPoints = leaderboardData?.user_points || 0
+  const myEntry = userRank ? rankings.find(r => r.rank === userRank) : null
+  const totalStaff = rankings.length
+  const hideScoreCard = userRole === 'admin'
 
   return (
     <div className="w-full px-8 max-w-7xl mx-auto">
-      {/* Score Card */}
-      {myEntry && (
+      {/* Score Card — visible to all non-admin roles */}
+      {leaderboardData && !hideScoreCard && (
         <div className="mb-6 rounded-[14px] bg-surface border border-border p-5 flex items-center justify-between">
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
@@ -193,21 +197,21 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
                 <path strokeLinecap="round" strokeLinejoin="round" d={TILE_ICONS.leaderboard} />
               </svg>
               <div>
-                <span className="text-2xl font-black text-text-primary">{myEntry.total_points || 0}</span>
+                <span className="text-2xl font-black text-text-primary">{userPoints}</span>
                 <span className="text-xs font-semibold text-text-muted uppercase tracking-wide ml-1.5">pts</span>
               </div>
             </div>
             <div className="h-8 w-px bg-border" />
             <div>
-              <span className="text-sm font-bold text-text-primary">{ordinal(myEntry.rank || 1)}</span>
+              <span className="text-sm font-bold text-text-primary">{userRank ? ordinal(userRank) : '—'}</span>
               <span className="text-xs text-text-muted ml-1">of {totalStaff}</span>
             </div>
           </div>
           <div className="flex items-center gap-4 text-xs text-text-muted">
-            <span><strong className="text-text-primary">{myEntry.new_sales || 0}</strong> Sales</span>
-            <span><strong className="text-text-primary">{myEntry.day_ones || 0}</strong> Day Ones</span>
-            <span><strong className="text-text-primary">{myEntry.same_day || 0}</strong> Same Day</span>
-            <span><strong className="text-text-primary">{myEntry.vips || 0}</strong> VIPs</span>
+            <span><strong className="text-text-primary">{myEntry?.memberships || 0}</strong> Sales</span>
+            <span><strong className="text-text-primary">{myEntry?.day_ones || 0}</strong> Day Ones</span>
+            <span><strong className="text-text-primary">{myEntry?.same_day || 0}</strong> Same Day</span>
+            <span><strong className="text-text-primary">{myEntry?.vips || 0}</strong> VIPs</span>
           </div>
         </div>
       )}

@@ -64,7 +64,6 @@ export default function HomeScreen({ user, navigate, onLogout }) {
   const locations = staff.locations || []
   const primaryLocation = locations.find(l => l.is_primary)?.name || locations[0]?.name || ''
   const locationSlug = (primaryLocation || 'Salem').toLowerCase()
-  const staffId = staff.id
 
   const [scoreData, setScoreData] = useState(null)
   const [scoreLoading, setScoreLoading] = useState(true)
@@ -74,15 +73,17 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     const now = new Date()
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
-    getLeaderboard({ month, location: locationSlug })
+    getLeaderboard({ month, location_slug: locationSlug })
       .then(res => {
         if (!cancelled) {
-          const rankings = res?.rankings || res?.leaderboard || []
-          const idx = rankings.findIndex(r => r.staff_id === staffId)
+          const rankings = res?.rankings || []
+          const userRank = res?.user_rank || null
+          const userEntry = userRank ? rankings.find(r => r.rank === userRank) : null
           setScoreData({
             rankings,
-            userRank: idx >= 0 ? (rankings[idx].rank || idx + 1) : null,
-            userEntry: idx >= 0 ? rankings[idx] : null,
+            userRank,
+            userPoints: res?.user_points || 0,
+            userEntry,
             total: rankings.length,
           })
           setScoreLoading(false)
@@ -93,7 +94,7 @@ export default function HomeScreen({ user, navigate, onLogout }) {
       })
 
     return () => { cancelled = true }
-  }, [locationSlug, staffId])
+  }, [locationSlug])
 
   const tiles = [
     { label: 'Reports', icon: <BarChartIcon />, route: 'reports' },
@@ -126,21 +127,19 @@ export default function HomeScreen({ user, navigate, onLogout }) {
         )}
       </div>
 
-      {/* Score card */}
-      {!scoreLoading && scoreData?.userEntry && (
+      {/* Score card — always show for non-admin roles */}
+      {!scoreLoading && scoreData && role !== 'admin' && (
         <div className="bg-surface border border-border rounded-2xl p-4 mb-6">
           <div className="flex items-center justify-between mb-2">
             <div>
               <span className="text-3xl font-bold text-wcs-red">
-                {scoreData.userEntry.total_points ?? scoreData.userEntry.points ?? 0}
+                {scoreData.userPoints || 0}
               </span>
               <span className="text-sm text-text-muted ml-1">pts</span>
             </div>
-            {scoreData.userRank && (
-              <span className="text-sm font-medium text-text-secondary">
-                {ordinal(scoreData.userRank)} of {scoreData.total}
-              </span>
-            )}
+            <span className="text-sm font-medium text-text-secondary">
+              {scoreData.userRank ? `${ordinal(scoreData.userRank)} of ${scoreData.total}` : `${scoreData.total} staff`}
+            </span>
           </div>
           <div className="flex gap-1.5 flex-wrap">
             {[{ l: 'Day One', p: 10 }, { l: 'Membership', p: 5 }, { l: 'Same Day', p: 5 }, { l: 'VIP', p: 2 }].map(x => (
