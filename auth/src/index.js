@@ -52,6 +52,7 @@ app.use('/meta-ads', require('./routes/metaAds'))
 app.use('/google-business', require('./routes/googleBusiness'))
 app.use('/communication-notes', require('./routes/communicationNotes'))
 app.use('/hr-documents', require('./routes/hrDocuments'))
+app.use('/help-center', require('./routes/helpCenter'))
 
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {

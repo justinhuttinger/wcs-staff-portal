@@ -361,3 +361,41 @@ export async function getPaychexWorkerDocuments(workerId, workerName) {
 export async function getPaychexLocations() {
   return api('/hr-documents/paychex-locations')
 }
+
+// Help Center
+export async function getHelpCategories() {
+  return api('/help-center/categories')
+}
+
+export async function createHelpCategory(data) {
+  return api('/help-center/categories', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateHelpCategory(id, data) {
+  return api('/help-center/categories/' + id, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function deleteHelpCategory(id) {
+  return api('/help-center/categories/' + id, { method: 'DELETE' })
+}
+
+export async function getHelpArticles(categoryId) {
+  const qs = categoryId ? '?category_id=' + categoryId : ''
+  return api('/help-center/articles' + qs)
+}
+
+export async function getHelpArticle(id) {
+  return api('/help-center/articles/' + id)
+}
+
+export async function createHelpArticle(data) {
+  return api('/help-center/articles', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateHelpArticle(id, data) {
+  return api('/help-center/articles/' + id, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function deleteHelpArticle(id) {
+  return api('/help-center/articles/' + id, { method: 'DELETE' })
+}
