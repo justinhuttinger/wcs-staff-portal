@@ -85,6 +85,7 @@ export default function HomeScreen({ user, navigate, onLogout }) {
             userPoints: res?.user_points || 0,
             userEntry,
             total: rankings.length,
+            totalStaff: res?.total_staff || rankings.length,
           })
           setScoreLoading(false)
         }
@@ -138,30 +139,38 @@ export default function HomeScreen({ user, navigate, onLogout }) {
         )}
       </div>
 
-      {/* Score card — always show for non-admin roles */}
-      {!scoreLoading && scoreData && role !== 'admin' && role !== 'corporate' && (
-        <div className="bg-surface border border-border rounded-2xl p-4 mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <span className="text-3xl font-bold text-wcs-red">
-                {scoreData.userPoints || 0}
-              </span>
-              <span className="text-sm text-text-muted ml-1">pts</span>
+      {/* Score card — always show for non-admin/corporate roles */}
+      {!scoreLoading && scoreData && role !== 'admin' && role !== 'corporate' && (() => {
+        const totalAtLocation = scoreData.totalStaff || scoreData.total
+        const displayRank = scoreData.userRank || totalAtLocation || '—'
+        return (
+          <div className="bg-surface border border-border rounded-2xl p-4 mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">Your Points</span>
+              <span className="text-sm font-bold text-text-primary">{ordinal(displayRank)} Place</span>
             </div>
-            <span className="text-sm font-medium text-text-secondary">
-              {scoreData.userRank ? `${ordinal(scoreData.userRank)} of ${scoreData.total}` : `${scoreData.total} staff`}
-            </span>
-          </div>
-          <div className="flex gap-1.5 flex-wrap">
-            {[{ l: 'Day One', p: 10 }, { l: 'Membership', p: 5 }, { l: 'Same Day', p: 5 }, { l: 'VIP', p: 2 }].map(x => (
-              <span key={x.l} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-bg border border-border text-[10px]">
-                <span className="font-bold text-wcs-red">{x.p}</span>
-                <span className="text-text-muted">{x.l}</span>
+            <p className="text-3xl font-black text-wcs-red mb-3">{scoreData.userPoints || 0}</p>
+            <div className="flex gap-1.5 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-[11px]">
+                <strong className="text-blue-700">{scoreData.userEntry?.memberships || 0}</strong>
+                <span className="text-blue-600">Sales</span>
               </span>
-            ))}
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 border border-green-200 text-[11px]">
+                <strong className="text-green-700">{scoreData.userEntry?.day_ones || 0}</strong>
+                <span className="text-green-600">Day Ones</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-[11px]">
+                <strong className="text-purple-700">{scoreData.userEntry?.same_day || 0}</strong>
+                <span className="text-purple-600">Same Day</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-[11px]">
+                <strong className="text-amber-700">{scoreData.userEntry?.vips || 0}</strong>
+                <span className="text-amber-600">VIPs</span>
+              </span>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Tile grid */}
       <div className="grid grid-cols-2 gap-4">

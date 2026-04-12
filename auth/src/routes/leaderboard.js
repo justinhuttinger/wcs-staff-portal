@@ -272,8 +272,22 @@ router.get('/', async (req, res) => {
     const rankings = await aggregateLocation(locationSlug, bounds)
     const userInfo = findUserRank(rankings, req.staff)
 
-    const result = { month, location: locationSlug, rankings, ...userInfo }
-    setCache(cacheKey, { month, location: locationSlug, rankings })
+    // Count total staff at this location for "last place" display
+    let totalStaff = rankings.length
+    try {
+      const { data: loc } = await supabaseAdmin
+        .from('ghl_locations').select('id')
+        .ilike('name', '%' + locationSlug + '%').limit(1).maybeSingle()
+      if (loc) {
+        const { count } = await supabaseAdmin
+          .from('staff_locations').select('*', { count: 'exact', head: true })
+          .eq('location_id', loc.id)
+        if (count && count > totalStaff) totalStaff = count
+      }
+    } catch (e) { /* fallback to rankings length */ }
+
+    const result = { month, location: locationSlug, rankings, total_staff: totalStaff, ...userInfo }
+    setCache(cacheKey, { month, location: locationSlug, rankings, total_staff: totalStaff })
     return res.json(result)
   } catch (err) {
     console.error('[Leaderboard] Error:', err.message)
