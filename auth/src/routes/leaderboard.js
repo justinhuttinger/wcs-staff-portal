@@ -5,7 +5,7 @@ const { requireRole, ROLE_HIERARCHY } = require('../middleware/role')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('front_desk'))
+router.use(requireRole('team_member'))
 
 // ---------------------------------------------------------------------------
 // Point values

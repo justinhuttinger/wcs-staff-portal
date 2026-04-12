@@ -7,7 +7,7 @@ const { ghlFetch } = require('../services/ghlClient')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('personal_trainer'))
+router.use(requireRole('team_member'))
 
 const CAL_VERSION = '2021-04-15'
 

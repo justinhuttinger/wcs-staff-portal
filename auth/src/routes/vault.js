@@ -69,7 +69,7 @@ router.put('/credentials/:id', async (req, res) => {
 })
 
 // DELETE /vault/credentials/:id — director+ only
-router.delete('/credentials/:id', requireRole('director'), async (req, res) => {
+router.delete('/credentials/:id', requireRole('admin'), async (req, res) => {
   const existing = await vault.getCredentialById(req.params.id)
   if (!existing) return res.status(404).json({ error: 'Credential not found' })
 

@@ -5,7 +5,7 @@ const { requireRole } = require('../middleware/role')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('lead'))
+router.use(requireRole('fd_lead'))
 
 // ---------------------------------------------------------------------------
 // Helper: resolve location filter from query params

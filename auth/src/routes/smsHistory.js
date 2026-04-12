@@ -5,7 +5,7 @@ const { requireRole } = require('../middleware/role')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('director'))
+router.use(requireRole('admin'))
 
 function getTwilioClient() {
   const sid = process.env.TWILIO_ACCOUNT_SID

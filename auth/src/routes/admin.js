@@ -8,7 +8,7 @@ const router = Router()
 router.use(authenticate)
 
 // GET /admin/staff — manager+ (returns staff at caller's locations)
-router.get('/staff', requireRole('manager'), async (req, res) => {
+router.get('/staff', requireRole('admin'), async (req, res) => {
   try {
     if (!req.staff.location_ids.length) return res.json({ staff: [] })
 
@@ -52,7 +52,7 @@ router.get('/staff', requireRole('manager'), async (req, res) => {
 })
 
 // POST /admin/staff — director+
-router.post('/staff', requireRole('director'), async (req, res) => {
+router.post('/staff', requireRole('admin'), async (req, res) => {
   const { email, display_name, first_name, last_name, role, location_ids, temp_password } = req.body
 
   if (!email || !role || !location_ids?.length || !temp_password) {
@@ -126,7 +126,7 @@ router.post('/staff', requireRole('director'), async (req, res) => {
 })
 
 // PUT /admin/staff/:id — director+
-router.put('/staff/:id', requireRole('director'), async (req, res) => {
+router.put('/staff/:id', requireRole('admin'), async (req, res) => {
   const { role, location_ids, display_name, first_name, last_name, email, temp_password } = req.body
   const staffId = req.params.id
 
@@ -209,7 +209,7 @@ router.delete('/staff/:id', requireRole('admin'), async (req, res) => {
 })
 
 // GET /admin/webhook-logs — manager+ (webhook send history)
-router.get('/webhook-logs', requireRole('manager'), async (req, res) => {
+router.get('/webhook-logs', requireRole('admin'), async (req, res) => {
   try {
     const { location_slug, status, start_date, end_date } = req.query
     const page = Math.max(1, parseInt(req.query.page, 10) || 1)
@@ -238,7 +238,7 @@ router.get('/webhook-logs', requireRole('manager'), async (req, res) => {
 })
 
 // GET /admin/staff/template — director+ (download Excel template)
-router.get('/staff/template', requireRole('director'), async (req, res) => {
+router.get('/staff/template', requireRole('admin'), async (req, res) => {
   const XLSX = require('xlsx')
 
   try {
@@ -283,7 +283,7 @@ router.get('/staff/template', requireRole('director'), async (req, res) => {
 })
 
 // POST /admin/staff/import — director+ (bulk import from Excel)
-router.post('/staff/import', requireRole('director'), async (req, res) => {
+router.post('/staff/import', requireRole('admin'), async (req, res) => {
   const XLSX = require('xlsx')
   const VALID_ROLES = ['front_desk', 'personal_trainer', 'lead', 'manager', 'director', 'admin']
 

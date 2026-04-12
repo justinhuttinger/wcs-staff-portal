@@ -4,7 +4,7 @@ const { requireRole } = require('../middleware/role')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('lead'))
+router.use(requireRole('corporate'))
 
 const META_API = 'https://graph.facebook.com/v21.0'
 

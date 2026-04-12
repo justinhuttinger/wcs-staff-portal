@@ -1,4 +1,15 @@
-const ROLE_HIERARCHY = ['front_desk', 'personal_trainer', 'lead', 'manager', 'director', 'admin']
+const ROLE_HIERARCHY = ['team_member', 'fd_lead', 'pt_lead', 'manager', 'corporate', 'admin']
+
+// Report access matrix — which roles can view which reports
+const REPORT_ACCESS = {
+  membership:   ['fd_lead', 'manager', 'corporate', 'admin'],
+  'club-health': ['manager', 'corporate', 'admin'],
+  pt:           ['pt_lead', 'manager', 'corporate', 'admin'],
+  marketing:    ['corporate', 'admin'],
+}
+
+// Roles that can see all locations (not locked to home club)
+const ALL_LOCATION_ROLES = ['corporate', 'admin']
 
 function requireRole(minimumRole) {
   const minLevel = ROLE_HIERARCHY.indexOf(minimumRole)
@@ -13,4 +24,13 @@ function requireRole(minimumRole) {
   }
 }
 
-module.exports = { requireRole, ROLE_HIERARCHY }
+function canAccessReport(role, reportKey) {
+  const allowed = REPORT_ACCESS[reportKey]
+  return allowed ? allowed.includes(role) : false
+}
+
+function canSeeAllLocations(role) {
+  return ALL_LOCATION_ROLES.includes(role)
+}
+
+module.exports = { requireRole, ROLE_HIERARCHY, REPORT_ACCESS, canAccessReport, canSeeAllLocations, ALL_LOCATION_ROLES }
