@@ -50,6 +50,30 @@ function ordinal(n) {
   return n + (s[(v - 20) % 10] || s[v] || s[0])
 }
 
+const MOTIVATIONAL_MESSAGES = [
+  "Every membership changes a life!",
+  "You're building something great!",
+  "Consistency wins the race!",
+  "Your energy is contagious!",
+  "Champions are made daily!",
+  "Keep pushing — results follow!",
+  "Be the reason someone smiles today!",
+  "Small wins add up to big results!",
+  "You've got this!",
+  "Make today count!",
+  "Progress, not perfection!",
+  "Lead by example!",
+  "Your effort matters!",
+  "Stay hungry, stay humble!",
+  "One more rep, one more sale!",
+]
+
+function getMotivationalMessage() {
+  // Rotate every 10 minutes based on timestamp
+  const slot = Math.floor(Date.now() / (10 * 60 * 1000))
+  return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
+}
+
 export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker, onDayOneCalendar, onTrainerAvail, onMetaAds, onLeaderboard, userRole, userName }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
@@ -58,6 +82,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   const [dayOneCalBadge, setDayOneCalBadge] = useState(0)
   const [toursBadge, setToursBadge] = useState(0)
   const [leaderboardData, setLeaderboardData] = useState(null)
+  const [showPointsInfo, setShowPointsInfo] = useState(false)
+  const [motivationalMsg, setMotivationalMsg] = useState(getMotivationalMessage())
 
   useEffect(() => {
     if (locationId) {
@@ -104,6 +130,13 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
       setLeaderboardData(res)
     }).catch(() => {})
   }, [location])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMotivationalMsg(getMotivationalMessage())
+    }, 10 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   const tools = visibleTools && visibleTools.length > 0
     ? allTools.filter(t => visibleTools.includes(t.id))
@@ -197,34 +230,95 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
         const totalAtLocation = leaderboardData.total_staff || totalStaff
         const displayRank = userRank || totalAtLocation || '—'
         return (
-          <div className="mb-5 rounded-[14px] bg-surface border border-border px-5 py-3 flex items-center gap-5">
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-sm font-semibold text-text-primary">{userName}</span>
-              <span className="text-xs text-text-muted">·</span>
-              <span className="text-xs font-medium text-text-muted">{ordinal(displayRank)} Place</span>
+          <>
+            <div className="mb-5 rounded-[14px] bg-surface border border-border px-5 py-3 flex items-center gap-4">
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-sm font-semibold text-text-primary">{userName}</span>
+                <span className="text-xs text-text-muted">·</span>
+                <span className="text-xs font-medium text-text-muted">{ordinal(displayRank)} Place</span>
+              </div>
+              <div className="h-5 w-px bg-border shrink-0" />
+              <span className="text-xl font-black text-wcs-red shrink-0">{userPoints} <span className="text-xs font-semibold text-text-muted">pts</span></span>
+              <div className="h-5 w-px bg-border shrink-0" />
+              <div className="flex items-center gap-1.5">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[11px]">
+                  <strong className="text-blue-700">{myEntry?.memberships || 0}</strong>
+                  <span className="text-blue-600">MS</span>
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 border border-green-200 text-[11px]">
+                  <strong className="text-green-700">{myEntry?.day_ones || 0}</strong>
+                  <span className="text-green-600">D1</span>
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 border border-purple-200 text-[11px]">
+                  <strong className="text-purple-700">{myEntry?.same_day || 0}</strong>
+                  <span className="text-purple-600">SD</span>
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[11px]">
+                  <strong className="text-amber-700">{myEntry?.vips || 0}</strong>
+                  <span className="text-amber-600">VIP</span>
+                </span>
+              </div>
+              <div className="h-5 w-px bg-border shrink-0" />
+              <button
+                onClick={() => setShowPointsInfo(true)}
+                className="text-[11px] text-text-muted hover:text-wcs-red transition-colors shrink-0 underline decoration-dotted"
+              >
+                Learn More
+              </button>
+              <p className="ml-auto text-xs italic text-text-muted shrink-0 max-w-[180px] text-right leading-tight">{motivationalMsg}</p>
             </div>
-            <div className="h-5 w-px bg-border shrink-0" />
-            <span className="text-xl font-black text-wcs-red shrink-0">{userPoints} <span className="text-xs font-semibold text-text-muted">pts</span></span>
-            <div className="h-5 w-px bg-border shrink-0" />
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[11px]">
-                <strong className="text-blue-700">{myEntry?.memberships || 0}</strong>
-                <span className="text-blue-600">Sales</span>
-              </span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 border border-green-200 text-[11px]">
-                <strong className="text-green-700">{myEntry?.day_ones || 0}</strong>
-                <span className="text-green-600">D1</span>
-              </span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 border border-purple-200 text-[11px]">
-                <strong className="text-purple-700">{myEntry?.same_day || 0}</strong>
-                <span className="text-purple-600">SD</span>
-              </span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[11px]">
-                <strong className="text-amber-700">{myEntry?.vips || 0}</strong>
-                <span className="text-amber-600">VIP</span>
-              </span>
-            </div>
-          </div>
+
+            {/* Points Info Modal */}
+            {showPointsInfo && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowPointsInfo(false)}>
+                <div className="bg-surface rounded-2xl border border-border w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold text-text-primary">How Points Work</h3>
+                    <button onClick={() => setShowPointsInfo(false)} className="text-text-muted hover:text-text-primary text-2xl leading-none">&times;</button>
+                  </div>
+                  <div className="space-y-4 text-sm text-text-secondary">
+                    <div>
+                      <h4 className="font-semibold text-text-primary mb-2">Earn Points</h4>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 border border-green-200 text-xs">
+                            <strong className="text-green-700">10</strong> <span className="text-green-600">Day One Booked</span>
+                          </span>
+                          <span className="text-xs text-text-muted">Book a Day One session</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-xs">
+                            <strong className="text-blue-700">5</strong> <span className="text-blue-600">Membership Sale</span>
+                          </span>
+                          <span className="text-xs text-text-muted">Close a membership</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-xs">
+                            <strong className="text-purple-700">5</strong> <span className="text-purple-600">Same Day Sale</span>
+                          </span>
+                          <span className="text-xs text-text-muted">Bonus for closing same day</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-xs">
+                            <strong className="text-amber-700">2</strong> <span className="text-amber-600">VIP</span>
+                          </span>
+                          <span className="text-xs text-text-muted">VIP walk-in conversion</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-text-primary mb-1">Monthly Reset</h4>
+                      <p>Points reset on the 1st of each month. Everyone starts fresh!</p>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-text-primary mb-1">Leaderboard</h4>
+                      <p>Tap the <strong>Leaderboard</strong> tile to see how you rank against your club. Top 3 earn gold, silver, and bronze!</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )
       })()}
 
