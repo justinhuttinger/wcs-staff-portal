@@ -28,8 +28,8 @@ function SvgTileButton({ onClick, iconPath, label, desc, badge, star }) {
       onClick={onClick}
       className="group relative flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
     >
-      {star && !badge && (
-        <svg viewBox="0 0 24 24" fill="currentColor" className="absolute top-2.5 right-2.5 w-3.5 h-3.5 text-amber-400">
+      {star && (
+        <svg viewBox="0 0 24 24" fill="currentColor" className="absolute top-2.5 left-2.5 w-3.5 h-3.5 text-amber-400">
           <path d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" />
         </svg>
       )}
