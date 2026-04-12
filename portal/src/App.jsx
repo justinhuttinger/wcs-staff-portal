@@ -158,7 +158,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-bg flex flex-col">
-      <header className="flex items-center justify-between px-8 py-6 max-w-3xl mx-auto w-full">
+      <header className="flex items-center justify-between px-8 py-3 max-w-3xl mx-auto w-full">
         <div>
           <div className="flex items-center gap-3">
             <img src="/wcs-logo.png" alt="WCS" className="h-10 w-10 rounded-full" />
@@ -201,7 +201,7 @@ export default function App() {
       ) : showReporting ? (
         <ReportingView user={user} onBack={() => setShowReporting(false)} location={location} isAdmin={isAdmin} />
       ) : (
-        <main className="flex-1 flex items-start pt-4">
+        <main className="flex-1 flex items-start pt-1 pb-12">
           <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onTours={() => setShowTours(true)} onDayOneTracker={() => setShowDayOneTracker(true)} onDayOneCalendar={() => setShowDayOneCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onMetaAds={() => setShowMetaAds(true)} onLeaderboard={() => setShowLeaderboard(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} />
         </main>
       )}
