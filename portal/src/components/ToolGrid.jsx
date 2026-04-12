@@ -349,12 +349,10 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
       <div className="w-1/2">
         <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">Tools</p>
         <div className="grid grid-cols-3 gap-4">
-          {/* 1. Cancel Tool (custom tile) */}
-          {toolCustomTiles.filter(t => ['cancel', 'cancel tool'].includes((t.label || '').toLowerCase())).map(tile => {
-            const tileLabel = (tile.label || '').toLowerCase()
-            const iconPath = TILE_ICONS[tileLabel] || TILE_ICONS.reporting
-            return <SvgTileButton key={'custom-' + tile.id} onClick={() => setActiveGroup(tile)} iconPath={iconPath} label={tile.label} desc={tile.description || ''} dark />
-          })}
+          {/* 1. Cancel Tool (custom tile — direct link) */}
+          {toolCustomTiles.filter(t => ['cancel', 'cancel tool'].includes((t.label || '').toLowerCase())).map(tile => (
+            <ToolButton key={'custom-' + tile.id} label={tile.label} description={tile.description || ''} url={tile.url} />
+          ))}
           {/* 2. Tours Calendar */}
           {onTours && <SvgTileButton onClick={onTours} iconPath={TILE_ICONS.tours} label="Tours" desc="Calendar" badge={toursBadge} dark />}
           {/* 3. Day One Calendar */}
