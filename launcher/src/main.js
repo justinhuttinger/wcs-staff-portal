@@ -330,30 +330,48 @@ app.on('ready', () => {
       webPreferences: {
         session: ses.fromPartition('persist:trainerize-automation'),
         nodeIntegration: false,
-        contextIsolation: true,
+        contextIsolation: false,
+        webSecurity: true,
       },
     })
 
     try {
       const page = automationWindow.webContents
 
-      // Helper to run JS in the page
-      const run = (code) => page.executeJavaScript(code)
+      // Helper to run JS in the page with error handling
+      const run = async (code) => {
+        try {
+          return await page.executeJavaScript(`(function() { try { ${code}; return 'ok'; } catch(e) { return 'ERR: ' + e.message; } })()`)
+        } catch (e) {
+          log('[Notification] JS exec error: ' + e.message)
+          return 'ERR: ' + e.message
+        }
+      }
       const wait = (ms) => new Promise(r => setTimeout(r, ms))
 
       // 1. Login
       log('[Notification] Loading login page...')
       await page.loadURL('https://westcoaststrength.trainerize.com/app/login')
-      await wait(3000)
+      await wait(4000)
 
-      await run(`document.querySelector('input[type="email"], input[name="email"], #email').value = ${JSON.stringify(email)}`)
-      await run(`document.querySelector('input[type="email"], input[name="email"], #email').dispatchEvent(new Event('input', {bubbles:true}))`)
-      await run(`document.querySelector('input[type="password"], input[name="password"], #password').value = ${JSON.stringify(password)}`)
-      await run(`document.querySelector('input[type="password"], input[name="password"], #password').dispatchEvent(new Event('input', {bubbles:true}))`)
+      log('[Notification] Filling credentials...')
+      await run(`
+        var emailEl = document.querySelector('input[type="email"]') || document.querySelector('input[name="email"]') || document.querySelector('#email');
+        if (emailEl) { emailEl.focus(); emailEl.value = ${JSON.stringify(email)}; emailEl.dispatchEvent(new Event('input', {bubbles:true})); emailEl.dispatchEvent(new Event('change', {bubbles:true})); }
+      `)
+      await wait(300)
+      await run(`
+        var passEl = document.querySelector('input[type="password"]') || document.querySelector('input[name="password"]') || document.querySelector('#password');
+        if (passEl) { passEl.focus(); passEl.value = ${JSON.stringify(password)}; passEl.dispatchEvent(new Event('input', {bubbles:true})); passEl.dispatchEvent(new Event('change', {bubbles:true})); }
+      `)
       await wait(500)
-      await run(`(document.querySelector('button[type="submit"]') || document.querySelector('.btn-login') || [...document.querySelectorAll('button')].find(b => b.textContent.includes('Log'))).click()`)
+      await run(`
+        var btn = document.querySelector('button[type="submit"]') || document.querySelector('.btn-login');
+        if (!btn) { var buttons = document.querySelectorAll('button'); for (var i = 0; i < buttons.length; i++) { if (buttons[i].textContent.indexOf('Log') >= 0) { btn = buttons[i]; break; } } }
+        if (btn) btn.click();
+      `)
       log('[Notification] Logging in...')
-      await wait(5000)
+      await wait(6000)
 
       // 2. Navigate to Announcements
       log('[Notification] Navigating to Announcements...')
