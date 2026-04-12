@@ -54,6 +54,7 @@ app.use('/communication-notes', require('./routes/communicationNotes'))
 app.use('/hr-documents', require('./routes/hrDocuments'))
 app.use('/help-center', require('./routes/helpCenter'))
 app.use('/ticket-embeds', require('./routes/ticketEmbeds'))
+app.use('/notifications', require('./routes/notifications'))
 
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {

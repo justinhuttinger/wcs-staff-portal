@@ -420,3 +420,12 @@ export async function updateTicketEmbed(id, data) {
 export async function deleteTicketEmbed(id) {
   return api('/ticket-embeds/' + id, { method: 'DELETE' })
 }
+
+// Notifications
+export async function sendPushNotification(data) {
+  return api('/notifications/push', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function getNotificationLocations() {
+  return api('/notifications/locations')
+}
