@@ -324,3 +324,25 @@ export async function getCommunicationNoteComments(noteId) {
 export async function addCommunicationNoteComment(noteId, data) {
   return api('/communication-notes/' + noteId + '/comments', { method: 'POST', body: JSON.stringify(data) })
 }
+
+// HR Documents
+export async function getHRDocuments(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/hr-documents' + (qs ? '?' + qs : ''))
+}
+
+export async function createHRDocument(data) {
+  return api('/hr-documents', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function getHRDocument(id) {
+  return api('/hr-documents/' + id)
+}
+
+export async function acknowledgeHRDocument(id, data) {
+  return api('/hr-documents/' + id + '/acknowledge', { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function uploadHRDocumentToPaychex(id) {
+  return api('/hr-documents/' + id + '/upload-paychex', { method: 'POST' })
+}
