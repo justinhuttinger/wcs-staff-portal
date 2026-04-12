@@ -43,12 +43,39 @@ const REPORT_TILES = [
   },
 ]
 
-export default function ReportsHome({ onNavigate }) {
+function getTilesForRole(role) {
+  switch (role) {
+    case 'team_member':
+      return []
+    case 'fd_lead':
+      return REPORT_TILES.filter(t => t.key === 'membership')
+    case 'pt_lead':
+      return REPORT_TILES.filter(t => t.key === 'pt')
+    case 'manager':
+      return REPORT_TILES.filter(t => ['membership', 'pt', 'club-health'].includes(t.key))
+    default: // corporate, admin
+      return REPORT_TILES
+  }
+}
+
+export default function ReportsHome({ onNavigate, user }) {
+  const role = user?.staff?.role || 'team_member'
+  const visibleTiles = getTilesForRole(role)
+
+  if (visibleTiles.length === 0) {
+    return (
+      <div className="p-4">
+        <h2 className="text-lg font-bold text-text-primary mb-4">Reports</h2>
+        <p className="text-sm text-text-muted text-center py-8">No reports available for your role.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="p-4">
       <h2 className="text-lg font-bold text-text-primary mb-4">Reports</h2>
       <div className="grid grid-cols-2 gap-3">
-        {REPORT_TILES.map(tile => (
+        {visibleTiles.map(tile => (
           <button
             key={tile.key}
             onClick={() => onNavigate(tile.key)}

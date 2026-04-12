@@ -123,7 +123,7 @@ export default function MobileApp() {
 
   const activeTab = getActiveTab(route)
 
-  const isAdmin = user?.staff?.role === 'admin' || user?.staff?.role === 'director'
+  const isAdmin = user?.staff?.role === 'admin'
   const userLocation = user?.staff?.locations?.find(l => l.is_primary)?.name || user?.staff?.locations?.[0]?.name || 'Salem'
 
   function renderView() {

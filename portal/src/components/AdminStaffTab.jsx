@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { getStaff, createStaff, updateStaff, deleteStaff, getLocations } from '../lib/api'
 
-const ROLES = ['front_desk', 'personal_trainer', 'lead', 'manager', 'director', 'admin']
+const ROLES = ['team_member', 'fd_lead', 'pt_lead', 'manager', 'corporate', 'admin']
 
 const emptyForm = {
   email: '',
   first_name: '',
   last_name: '',
-  role: 'front_desk',
+  role: 'team_member',
   location_ids: [],
   location_permissions: {},
   temp_password: '',
@@ -19,7 +19,7 @@ function StaffModal({ member, locations, onClose, onSaved }) {
     email: member.email || '',
     first_name: member.first_name || '',
     last_name: member.last_name || '',
-    role: member.role || 'front_desk',
+    role: member.role || 'team_member',
     location_ids: (member.locations || []).map(l => l.id),
     location_permissions: Object.fromEntries(
       (member.locations || []).map(l => [l.id, {

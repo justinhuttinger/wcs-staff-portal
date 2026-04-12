@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getLeaderboard } from '../lib/api'
 
-const ROLES_ORDERED = ['front_desk', 'personal_trainer', 'lead', 'manager', 'director', 'admin']
+const ROLES_ORDERED = ['team_member', 'fd_lead', 'pt_lead', 'manager', 'corporate', 'admin']
 
 function ordinal(n) {
   const s = ['th', 'st', 'nd', 'rd']
@@ -31,7 +31,7 @@ export default function LeaderboardView({ user, onBack, location }) {
   const [crossData, setCrossData] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  const role = user?.staff?.role || 'front_desk'
+  const role = user?.staff?.role || 'team_member'
   const isManager = ROLES_ORDERED.indexOf(role) >= ROLES_ORDERED.indexOf('manager')
 
   const userLocations = user?.staff?.locations || []

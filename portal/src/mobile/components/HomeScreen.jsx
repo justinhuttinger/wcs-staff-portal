@@ -96,13 +96,21 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     return () => { cancelled = true }
   }, [locationSlug])
 
-  const tiles = [
+  const allTiles = [
     { label: 'Reports', icon: <BarChartIcon />, route: 'reports' },
     { label: 'Tours', icon: <CalendarIcon />, route: 'tours' },
     { label: 'Day One', icon: <ClipboardIcon />, route: 'dayone' },
     { label: 'Marketing', icon: <MegaphoneIcon />, route: 'reports/marketing' },
     { label: 'Leaderboard', icon: <TrophyIcon />, route: 'leaderboard' },
   ]
+
+  const tiles = allTiles.filter(tile => {
+    // Hide Reports tile for team_member
+    if (tile.label === 'Reports' && role === 'team_member') return false
+    // Marketing tile only for corporate and admin
+    if (tile.label === 'Marketing' && role !== 'corporate' && role !== 'admin') return false
+    return true
+  })
 
   return (
     <div className="px-4 pt-6">
@@ -128,7 +136,7 @@ export default function HomeScreen({ user, navigate, onLogout }) {
       </div>
 
       {/* Score card — always show for non-admin roles */}
-      {!scoreLoading && scoreData && role !== 'admin' && (
+      {!scoreLoading && scoreData && role !== 'admin' && role !== 'corporate' && (
         <div className="bg-surface border border-border rounded-2xl p-4 mb-6">
           <div className="flex items-center justify-between mb-2">
             <div>

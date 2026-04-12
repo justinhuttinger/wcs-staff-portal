@@ -35,7 +35,7 @@ export default function App() {
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
   const isElectron = !!window.wcsElectron
-  const isAdmin = user?.staff?.role === 'admin' || user?.staff?.role === 'director'
+  const isAdmin = user?.staff?.role === 'admin'
 
   useEffect(() => {
     document.title = 'WCS Staff Portal'

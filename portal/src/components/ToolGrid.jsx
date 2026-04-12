@@ -184,7 +184,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   const userPoints = leaderboardData?.user_points || 0
   const myEntry = userRank ? rankings.find(r => r.rank === userRank) : null
   const totalStaff = rankings.length
-  const hideScoreCard = userRole === 'admin'
+  const hideScoreCard = userRole === 'admin' || userRole === 'corporate'
 
   return (
     <div className="w-full px-8 max-w-7xl mx-auto">
@@ -239,7 +239,14 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {onTrainerAvail && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="Availability" desc="Trainers" />}
           {onTours && <SvgTileButton onClick={onTours} iconPath={TILE_ICONS.tours} label="Tours" desc="Calendar" badge={toursBadge} />}
           {onLeaderboard && <SvgTileButton onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" badge={myEntry?.rank || null} />}
-          {toolCustomTiles.map((tile) => {
+          {toolCustomTiles.filter((tile) => {
+            const tileLabel = (tile.label || '').toLowerCase()
+            // Hide Reporting tile for team_member
+            if (tileLabel === 'reporting' && userRole === 'team_member') return false
+            // Marketing tile only for corporate and admin
+            if (tileLabel === 'marketing' && userRole !== 'corporate' && userRole !== 'admin') return false
+            return true
+          }).map((tile) => {
             const hasChildren = customTiles.some(t => t.parent_id === tile.id)
             const isGroup = hasChildren || !tile.url
 

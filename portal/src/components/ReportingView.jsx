@@ -3,11 +3,26 @@ import MembershipReport from './reports/MembershipReport'
 import PTReport from './reports/PTReport'
 import ClubHealthReport from './reports/ClubHealthReport'
 
-const REPORT_TILES = [
+const ALL_REPORT_TILES = [
   { key: 'club-health', label: 'Club Health', desc: 'Dashboard', icon: '❤️' },
   { key: 'membership', label: 'Membership', desc: 'Report', icon: '🏷️' },
   { key: 'pt', label: 'PT / Day One', desc: 'Report', icon: '🏋️' },
 ]
+
+function getReportTilesForRole(role) {
+  switch (role) {
+    case 'team_member':
+      return []
+    case 'fd_lead':
+      return ALL_REPORT_TILES.filter(t => t.key === 'membership')
+    case 'pt_lead':
+      return ALL_REPORT_TILES.filter(t => t.key === 'pt')
+    case 'manager':
+      return ALL_REPORT_TILES.filter(t => ['membership', 'pt', 'club-health'].includes(t.key))
+    default: // corporate, admin
+      return ALL_REPORT_TILES
+  }
+}
 
 const LOCATIONS = [
   { slug: 'all', label: 'All Locations' },
@@ -72,6 +87,8 @@ function getSubRoute() {
 }
 
 export default function ReportingView({ user, onBack, location, isAdmin }) {
+  const userRole = user?.staff?.role || 'team_member'
+  const REPORT_TILES = getReportTilesForRole(userRole)
   const [activeReport, setActiveReport] = useState(getSubRoute())
   const [startDate, setStartDate] = useState(getMonthStart())
   const [endDate, setEndDate] = useState(getToday())
