@@ -68,9 +68,9 @@ router.post('/', requireRole('team_member'), async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
-// GET /communication-notes  (fd_lead+)
+// GET /communication-notes  (lead+)
 // ---------------------------------------------------------------------------
-router.get('/', requireRole('fd_lead'), async (req, res) => {
+router.get('/', requireRole('lead'), async (req, res) => {
   const { status, category, location_slug, date_from, date_to } = req.query
 
   try {
@@ -112,9 +112,9 @@ router.get('/', requireRole('fd_lead'), async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
-// PUT /communication-notes/:id  (fd_lead+)
+// PUT /communication-notes/:id  (lead+)
 // ---------------------------------------------------------------------------
-router.put('/:id', requireRole('fd_lead'), async (req, res) => {
+router.put('/:id', requireRole('lead'), async (req, res) => {
   const { id } = req.params
   const { status, title, category, body } = req.body
 
@@ -166,9 +166,9 @@ router.put('/:id', requireRole('fd_lead'), async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
-// GET /communication-notes/:id/comments  (fd_lead+)
+// GET /communication-notes/:id/comments  (lead+)
 // ---------------------------------------------------------------------------
-router.get('/:id/comments', requireRole('fd_lead'), async (req, res) => {
+router.get('/:id/comments', requireRole('lead'), async (req, res) => {
   const { id } = req.params
 
   try {
@@ -188,9 +188,9 @@ router.get('/:id/comments', requireRole('fd_lead'), async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
-// POST /communication-notes/:id/comments  (fd_lead+)
+// POST /communication-notes/:id/comments  (lead+)
 // ---------------------------------------------------------------------------
-router.post('/:id/comments', requireRole('fd_lead'), async (req, res) => {
+router.post('/:id/comments', requireRole('lead'), async (req, res) => {
   const { id } = req.params
   const { body } = req.body
 

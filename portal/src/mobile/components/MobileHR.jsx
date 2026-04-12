@@ -9,7 +9,7 @@ import {
 } from '../../lib/api'
 import SignaturePad from '../../components/SignaturePad'
 
-const ROLES = ['team_member', 'fd_lead', 'pt_lead', 'manager', 'corporate', 'admin']
+const ROLES = ['team_member', 'lead', 'manager', 'corporate', 'admin']
 
 const REASON_OPTIONS = [
   { key: 'verbal_warning', label: 'Verbal Warning' },

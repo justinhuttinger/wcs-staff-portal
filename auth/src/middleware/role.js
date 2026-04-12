@@ -1,10 +1,10 @@
-const ROLE_HIERARCHY = ['team_member', 'fd_lead', 'pt_lead', 'manager', 'corporate', 'admin']
+const ROLE_HIERARCHY = ['team_member', 'lead', 'manager', 'corporate', 'admin']
 
 // Report access matrix — which roles can view which reports
 const REPORT_ACCESS = {
-  membership:   ['fd_lead', 'manager', 'corporate', 'admin'],
+  membership:   ['lead', 'manager', 'corporate', 'admin'],
   'club-health': ['manager', 'corporate', 'admin'],
-  pt:           ['pt_lead', 'manager', 'corporate', 'admin'],
+  pt:           ['lead', 'manager', 'corporate', 'admin'],
   marketing:    ['corporate', 'admin'],
 }
 

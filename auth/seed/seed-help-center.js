@@ -203,8 +203,8 @@ IMPORTANT
   {
     category: 'Management',
     title: 'Trainer Availability — Managing Schedules',
-    min_role: 'pt_lead',
-    body: `The Trainer Availability tool lets PT leads and managers manage trainer schedules for the Day One calendar in GoHighLevel.
+    min_role: 'lead',
+    body: `The Trainer Availability tool lets leads and managers manage trainer schedules for the Day One calendar in GoHighLevel.
 
 VIEWING SCHEDULES
 1. Click "Availability" from the Tools section

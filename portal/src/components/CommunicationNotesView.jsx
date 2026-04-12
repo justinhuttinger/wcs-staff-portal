@@ -30,7 +30,7 @@ const STATUS_LABELS = {
   completed: 'Completed',
 }
 
-const ROLE_LEVELS = { team_member: 0, fd_lead: 1, pt_lead: 2, manager: 3, corporate: 4, admin: 5 }
+const ROLE_LEVELS = { team_member: 0, lead: 1, manager: 2, corporate: 3, admin: 4 }
 
 function formatDate(dateStr) {
   if (!dateStr) return ''
@@ -48,7 +48,7 @@ function formatDateTime(dateStr) {
 export default function CommunicationNotesView({ user, onBack }) {
   const role = user?.staff?.role || 'team_member'
   const roleIdx = ROLE_LEVELS[role] ?? 0
-  const isLeadPlus = roleIdx >= ROLE_LEVELS.fd_lead
+  const isLeadPlus = roleIdx >= ROLE_LEVELS.lead
   const canSeeAll = role === 'corporate' || role === 'admin'
   const userName = user?.staff?.display_name || user?.staff?.first_name || ''
   const ALL_LOCATIONS = ['Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
@@ -312,7 +312,7 @@ export default function CommunicationNotesView({ user, onBack }) {
         )}
       </div>}
 
-      {/* Notes List (fd_lead+ only) */}
+      {/* Notes List (lead+ only) */}
       {isLeadPlus && (
         <>
           {/* Status Tabs + Date Range (inline) */}

@@ -8,28 +8,24 @@ export default function TicketsView({ onBack }) {
 
   useEffect(() => {
     getTicketEmbeds()
-      .then(res => {
-        const items = res.embeds || []
-        setEmbeds(items)
-        if (items.length === 1) setSelected(items[0])
-      })
+      .then(res => setEmbeds(res.embeds || []))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 
-  // If viewing an embed, show it full-width
+  // Viewing an embed — full-width iframe
   if (selected) {
     return (
       <div className="w-full h-full flex flex-col px-8 pb-4">
         <div className="flex items-center gap-3 mb-4 shrink-0">
           <button
-            onClick={() => embeds.length > 1 ? setSelected(null) : onBack()}
+            onClick={() => setSelected(null)}
             className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary hover:border-text-muted transition-colors"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
-            {embeds.length > 1 ? 'Back' : 'Back to Portal'}
+            Back
           </button>
           <h2 className="text-lg font-bold text-text-primary">{selected.name}</h2>
         </div>
@@ -39,13 +35,14 @@ export default function TicketsView({ onBack }) {
             title={selected.name}
             className="w-full h-full border-0"
             allow="clipboard-write"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+            referrerPolicy="no-referrer-when-downgrade"
           />
         </div>
       </div>
     )
   }
 
+  // Tile picker — always shown first
   return (
     <div className="w-full max-w-3xl mx-auto px-8 pb-12">
       <div className="flex items-center gap-3 mb-6">

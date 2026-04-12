@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getRoleVisibility, updateRoleVisibility } from '../lib/api'
 
-const ROLES = ['team_member', 'fd_lead', 'pt_lead', 'manager', 'corporate', 'admin']
+const ROLES = ['team_member', 'lead', 'manager', 'corporate', 'admin']
 
 const BUILTIN_TOOLS = {
   grow: 'Grow (CRM)',

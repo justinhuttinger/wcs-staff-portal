@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { getLeaderboard } from '../../lib/api'
 
-const ROLES = ['team_member', 'fd_lead', 'pt_lead', 'manager', 'corporate', 'admin']
+const ROLES = ['team_member', 'lead', 'manager', 'corporate', 'admin']
 
 const POINT_LEGEND = [
   { label: 'Day One', pts: 10 },

@@ -21,7 +21,7 @@ const TILE_ICONS = {
 const APP_IDS = ['grow', 'abc', 'wheniwork', 'paychex', 'gmail', 'drive']
 
 // Role hierarchy levels for visibility checks
-const ROLE_LEVELS = { team_member: 0, fd_lead: 1, pt_lead: 2, manager: 3, corporate: 4, admin: 5 }
+const ROLE_LEVELS = { team_member: 0, lead: 1, manager: 2, corporate: 3, admin: 4 }
 
 function SvgTileButton({ onClick, iconPath, label, desc, badge, star }) {
   return (
@@ -376,11 +376,11 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {/* 4.7. Help Center — all roles */}
           {onHelpCenter && <SvgTileButton onClick={onHelpCenter} iconPath={TILE_ICONS.helpCenter} label="Help Center" desc="Guides" />}
           {/* 4.8. Tickets — fd_lead+ */}
-          {onTickets && roleIdx >= ROLE_LEVELS.fd_lead && <SvgTileButton onClick={onTickets} iconPath={TILE_ICONS.tickets} label="Tickets" desc="Support" />}
+          {onTickets && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTickets} iconPath={TILE_ICONS.tickets} label="Tickets" desc="Support" />}
           {/* 5. Day One Tracking */}
           {onDayOneTracker && <SvgTileButton onClick={onDayOneTracker} iconPath={TILE_ICONS.dayOne} label="Day One" desc="Tracking" badge={dayOneBadge} />}
           {/* 6. Trainer Availability */}
-          {onTrainerAvail && roleIdx >= ROLE_LEVELS.pt_lead && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="Availability" desc="Trainers" />}
+          {onTrainerAvail && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="Availability" desc="Trainers" />}
           {/* 7-9. Reporting, Marketing, Tickets + remaining custom tiles */}
           {toolCustomTiles.filter((tile) => {
             const tileLabel = (tile.label || '').toLowerCase()

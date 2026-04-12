@@ -47,10 +47,8 @@ function getTilesForRole(role) {
   switch (role) {
     case 'team_member':
       return []
-    case 'fd_lead':
-      return REPORT_TILES.filter(t => t.key === 'membership')
-    case 'pt_lead':
-      return REPORT_TILES.filter(t => t.key === 'pt')
+    case 'lead':
+      return REPORT_TILES.filter(t => ['membership', 'pt'].includes(t.key))
     case 'manager':
       return REPORT_TILES.filter(t => ['membership', 'pt', 'club-health'].includes(t.key))
     default: // corporate, admin

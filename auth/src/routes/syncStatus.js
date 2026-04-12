@@ -5,7 +5,7 @@ const { requireRole } = require('../middleware/role')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('fd_lead'))
+router.use(requireRole('lead'))
 
 // GET /sync-status — overview of GHL sync health
 router.get('/', async (req, res) => {

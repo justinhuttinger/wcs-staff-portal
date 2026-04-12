@@ -39,7 +39,7 @@ const STATUS_COLORS = {
   uploaded: 'bg-blue-50 text-blue-700 border-blue-200',
 }
 
-const ROLE_LEVELS = { team_member: 0, fd_lead: 1, pt_lead: 2, manager: 3, corporate: 4, admin: 5 }
+const ROLE_LEVELS = { team_member: 0, lead: 1, manager: 2, corporate: 3, admin: 4 }
 
 function formatDate(dateStr) {
   if (!dateStr) return ''

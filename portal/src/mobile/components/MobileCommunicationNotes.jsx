@@ -7,7 +7,7 @@ import {
   addCommunicationNoteComment,
 } from '../../lib/api'
 
-const ROLES = ['team_member', 'fd_lead', 'pt_lead', 'manager', 'corporate', 'admin']
+const ROLES = ['team_member', 'lead', 'manager', 'corporate', 'admin']
 
 const STATUS_TABS = [
   { key: 'unresolved', label: 'Unresolved' },
@@ -56,7 +56,7 @@ function Spinner() {
 
 export default function MobileCommunicationNotes({ user }) {
   const role = user?.staff?.role || 'team_member'
-  const canViewNotes = ROLES.indexOf(role) >= ROLES.indexOf('fd_lead')
+  const canViewNotes = ROLES.indexOf(role) >= ROLES.indexOf('lead')
   const canSeeAll = role === 'corporate' || role === 'admin'
   const userName = user?.staff?.display_name || user?.staff?.first_name || 'Staff'
   const primarySlug = (user?.staff?.locations?.find(l => l.is_primary)?.name || user?.staff?.locations?.[0]?.name || '').toLowerCase()

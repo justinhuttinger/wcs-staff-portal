@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getLeaderboard } from '../lib/api'
 
-const ROLES_ORDERED = ['team_member', 'fd_lead', 'pt_lead', 'manager', 'corporate', 'admin']
+const ROLES_ORDERED = ['team_member', 'lead', 'manager', 'corporate', 'admin']
 
 function ordinal(n) {
   const s = ['th', 'st', 'nd', 'rd']

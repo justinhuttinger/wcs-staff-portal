@@ -13,14 +13,13 @@ import {
 const ROLES = [
   { value: '', label: 'All Roles' },
   { value: 'team_member', label: 'Team Member+' },
-  { value: 'fd_lead', label: 'FD Lead+' },
-  { value: 'pt_lead', label: 'PT Lead+' },
+  { value: 'lead', label: 'Lead+' },
   { value: 'manager', label: 'Manager+' },
   { value: 'corporate', label: 'Corporate+' },
   { value: 'admin', label: 'Admin Only' },
 ]
 
-const ROLE_LABELS = { team_member: 'Team Member+', fd_lead: 'FD Lead+', pt_lead: 'PT Lead+', manager: 'Manager+', corporate: 'Corporate+', admin: 'Admin' }
+const ROLE_LABELS = { team_member: 'Team Member+', lead: 'Lead+', manager: 'Manager+', corporate: 'Corporate+', admin: 'Admin' }
 
 function formatDate(dateStr) {
   if (!dateStr) return ''

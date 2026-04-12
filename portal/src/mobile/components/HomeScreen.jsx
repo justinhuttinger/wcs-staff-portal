@@ -123,7 +123,7 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     { label: 'HR', icon: <HRIcon />, route: 'hr' },
   ]
 
-  const ROLE_LEVELS = { team_member: 0, fd_lead: 1, pt_lead: 2, manager: 3, corporate: 4, admin: 5 }
+  const ROLE_LEVELS = { team_member: 0, lead: 1, manager: 2, corporate: 3, admin: 4 }
   const roleIdx = ROLE_LEVELS[role] ?? 0
 
   const tiles = allTiles.filter(tile => {
