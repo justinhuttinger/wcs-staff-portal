@@ -12,6 +12,7 @@ import MobileMarketing from './components/reports/MobileMarketing'
 import MobileTours from './components/MobileTours'
 import MobileDayOneCalendar from './components/MobileDayOneCalendar'
 import MobileLeaderboard from './components/MobileLeaderboard'
+import MobileCommunicationNotes from './components/MobileCommunicationNotes'
 
 // Icons for bottom tab bar (Heroicons outline)
 function HomeIcon({ active }) {
@@ -198,6 +199,8 @@ export default function MobileApp() {
         return <MobileDayOneCalendar user={user} />
       case 'leaderboard':
         return <MobileLeaderboard user={user} />
+      case 'comm-notes':
+        return <MobileCommunicationNotes user={user} />
       default:
         return (
           <div className="pt-4 px-4">
