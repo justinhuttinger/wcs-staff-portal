@@ -1,10 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
-  getHRDocuments,
   createHRDocument,
   uploadHRDocumentToPaychex,
   acknowledgeHRDocument,
-  getStaff,
   getPaychexWorkers,
   getPaychexWorkerDocuments,
   getPaychexLocations,
@@ -51,67 +49,9 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function EmployeeSearch({ staffList, value, onChange }) {
-  const [query, setQuery] = useState(value || '')
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    function handleClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
-
-  const filtered = staffList.filter(s => {
-    const name = (s.display_name || [s.first_name, s.last_name].filter(Boolean).join(' ')).toLowerCase()
-    return name.includes(query.toLowerCase())
-  }).slice(0, 10)
-
-  return (
-    <div ref={ref} className="relative">
-      <label className="block text-sm font-semibold text-text-primary mb-1">Employee Name</label>
-      <input
-        type="text"
-        value={query}
-        onChange={e => { setQuery(e.target.value); setOpen(true); onChange('') }}
-        onFocus={() => setOpen(true)}
-        placeholder="Search employees..."
-        className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red"
-        autoComplete="off"
-      />
-      {open && query.length > 0 && filtered.length > 0 && (
-        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-          {filtered.map(s => {
-            const name = s.display_name || [s.first_name, s.last_name].filter(Boolean).join(' ')
-            return (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => { onChange(name); setQuery(name); setOpen(false) }}
-                className="w-full text-left px-3 py-2 text-sm text-text-primary hover:bg-bg transition-colors"
-              >
-                <span className="font-medium">{name}</span>
-                {s.role && <span className="ml-2 text-xs text-text-muted">{s.role.replace(/_/g, ' ')}</span>}
-              </button>
-            )
-          })}
-        </div>
-      )}
-      {open && query.length > 0 && filtered.length === 0 && (
-        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg px-3 py-2 text-sm text-text-muted">
-          No employees found
-        </div>
-      )}
-    </div>
-  )
-}
-
-function DocumentPreview({ employeeName, reason, description, managerName, managerSignature, date }) {
+function DocumentPreview({ employeeName, reason, shortReason, description, managerName, managerSignature, employeeSignature, date }) {
   return (
     <div className="bg-white rounded-xl border border-border overflow-hidden shadow-sm">
-      {/* Red header bar */}
       <div className="bg-[#C41E24] px-6 py-4">
         <h3 className="text-white text-lg font-bold tracking-wide">West Coast Strength</h3>
       </div>
@@ -132,6 +72,12 @@ function DocumentPreview({ employeeName, reason, description, managerName, manag
             <span className="text-text-muted font-medium">Employee:</span>
             <span className="ml-2 text-text-primary">{employeeName || '—'}</span>
           </div>
+          {shortReason && (
+            <div className="col-span-2">
+              <span className="text-text-muted font-medium">Reason:</span>
+              <span className="ml-2 text-text-primary">{shortReason}</span>
+            </div>
+          )}
         </div>
         <div>
           <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Description</p>
@@ -151,8 +97,14 @@ function DocumentPreview({ employeeName, reason, description, managerName, manag
             )}
           </div>
           <div>
-            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1">Employee Acknowledgment</p>
-            <p className="text-xs text-text-muted italic">Pending employee signature</p>
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1">Employee Signature</p>
+            {employeeSignature && employeeSignature.startsWith('data:image') ? (
+              <img src={employeeSignature} alt="Employee signature" className="h-16 border-b border-border" />
+            ) : (
+              <p className="text-xs text-text-muted italic">
+                {employeeSignature ? employeeSignature : 'Not provided'}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -161,9 +113,9 @@ function DocumentPreview({ employeeName, reason, description, managerName, manag
 }
 
 // ---------------------------------------------------------------------------
-// Worker List — fetched from Paychex per location
+// Worker List — shared between View Docs and Submit Doc flows
 // ---------------------------------------------------------------------------
-function WorkerList({ user, onSelectWorker, onBack }) {
+function WorkerList({ user, onSelectWorker }) {
   const [workers, setWorkers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -207,7 +159,6 @@ function WorkerList({ user, onSelectWorker, onBack }) {
 
   return (
     <div className="space-y-4">
-      {/* Location selector for corporate/admin */}
       {canSeeAll && locations.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {locations.map(loc => (
@@ -226,7 +177,6 @@ function WorkerList({ user, onSelectWorker, onBack }) {
         </div>
       )}
 
-      {/* Search */}
       <div className="bg-surface border border-border rounded-xl p-4">
         <div className="relative">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2">
@@ -245,7 +195,6 @@ function WorkerList({ user, onSelectWorker, onBack }) {
         )}
       </div>
 
-      {/* Workers */}
       {loading ? (
         <p className="text-center text-text-muted text-sm py-8">Loading employees from Paychex...</p>
       ) : error ? (
@@ -265,7 +214,6 @@ function WorkerList({ user, onSelectWorker, onBack }) {
               onClick={() => onSelectWorker(w)}
               className="w-full flex items-center gap-3 px-4 py-3 bg-surface border border-border rounded-xl text-left hover:bg-bg/50 transition-colors"
             >
-              {/* Avatar circle */}
               <div className="w-10 h-10 rounded-full bg-wcs-red/10 flex items-center justify-center shrink-0">
                 <span className="text-sm font-bold text-wcs-red">
                   {(w.givenName?.[0] || '').toUpperCase()}{(w.familyName?.[0] || '').toUpperCase()}
@@ -274,9 +222,7 @@ function WorkerList({ user, onSelectWorker, onBack }) {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-text-primary truncate">{w.displayName}</p>
                 <div className="flex items-center gap-2 mt-0.5">
-                  {w.employeeId && (
-                    <span className="text-[11px] text-text-muted">ID: {w.employeeId}</span>
-                  )}
+                  {w.employeeId && <span className="text-[11px] text-text-muted">ID: {w.employeeId}</span>}
                   <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${
                     w.employmentType === 'FULL_TIME' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'
                   }`}>
@@ -285,9 +231,7 @@ function WorkerList({ user, onSelectWorker, onBack }) {
                 </div>
               </div>
               <div className="text-right shrink-0">
-                {w.hireDate && (
-                  <p className="text-[11px] text-text-muted">Hired {formatDate(w.hireDate)}</p>
-                )}
+                {w.hireDate && <p className="text-[11px] text-text-muted">Hired {formatDate(w.hireDate)}</p>}
               </div>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-text-muted shrink-0">
                 <path strokeLinecap="round" strokeLinejoin="round" d="m9 5 7 7-7 7" />
@@ -301,9 +245,180 @@ function WorkerList({ user, onSelectWorker, onBack }) {
 }
 
 // ---------------------------------------------------------------------------
+// Submit Document Form — multi-step: employee selected → form → preview → submit
+// ---------------------------------------------------------------------------
+function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
+  const userName = user?.staff?.display_name || user?.staff?.first_name || ''
+
+  const [reason, setReason] = useState('verbal_warning')
+  const [shortReason, setShortReason] = useState('')
+  const [description, setDescription] = useState('')
+  const [managerSignature, setManagerSignature] = useState('')
+  const [employeeSignature, setEmployeeSignature] = useState('')
+  const [showPreview, setShowPreview] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitMsg, setSubmitMsg] = useState(null)
+
+  async function handleSubmit(e) {
+    if (e) e.preventDefault()
+    if (!description.trim() || !managerSignature) return
+    setSubmitting(true)
+    setSubmitMsg(null)
+    try {
+      await createHRDocument({
+        employee_name: worker.displayName,
+        worker_id: worker.workerId,
+        reason,
+        short_reason: shortReason.trim() || null,
+        description: description.trim(),
+        manager_signature: managerSignature,
+        employee_signature: employeeSignature || null,
+      })
+      setSubmitMsg({ type: 'success', text: 'Document submitted and sent to Paychex.' })
+    } catch (err) {
+      setSubmitMsg({ type: 'error', text: err.message || 'Failed to submit document.' })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Worker header */}
+      <div className="bg-surface border border-border rounded-xl p-4 flex items-center gap-4">
+        <div className="w-12 h-12 rounded-full bg-wcs-red/10 flex items-center justify-center shrink-0">
+          <span className="text-lg font-bold text-wcs-red">
+            {(worker.givenName?.[0] || '').toUpperCase()}{(worker.familyName?.[0] || '').toUpperCase()}
+          </span>
+        </div>
+        <div>
+          <p className="text-base font-bold text-text-primary">{worker.displayName}</p>
+          <div className="flex items-center gap-3 mt-0.5 text-xs text-text-muted">
+            {worker.employeeId && <span>ID: {worker.employeeId}</span>}
+            {worker.hireDate && <span>Hired {formatDate(worker.hireDate)}</span>}
+          </div>
+        </div>
+      </div>
+
+      {submitMsg && (
+        <div className={`rounded-xl border px-4 py-3 text-sm font-medium ${submitMsg.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+          {submitMsg.text}
+          {submitMsg.type === 'success' && (
+            <div className="mt-2 flex gap-3">
+              <button onClick={onBack} className="text-xs underline hover:no-underline">Back to HR</button>
+              {onSuccess && <button onClick={onSuccess} className="text-xs underline hover:no-underline">Submit Another</button>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!submitMsg?.type && !showPreview && (
+        <form onSubmit={handleSubmit} className="bg-surface border border-border rounded-xl p-6 space-y-5">
+          <div>
+            <label className="block text-sm font-semibold text-text-primary mb-1">Document Type</label>
+            <select
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red"
+            >
+              {REASONS.map(r => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-text-primary mb-1">Reason</label>
+            <input
+              type="text"
+              value={shortReason}
+              onChange={e => setShortReason(e.target.value)}
+              placeholder="e.g. Late to shift, No call no show..."
+              className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-text-primary mb-1">Description</label>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="Describe the incident in detail..."
+              rows={6}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red resize-y"
+              required
+            />
+          </div>
+
+          <SignaturePad
+            label="Manager Signature (required)"
+            value={managerSignature}
+            onChange={setManagerSignature}
+          />
+
+          <SignaturePad
+            label="Employee Signature (optional)"
+            value={employeeSignature}
+            onChange={setEmployeeSignature}
+          />
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => { if (description.trim() && managerSignature) setShowPreview(true) }}
+              disabled={!description.trim() || !managerSignature}
+              className="px-5 py-2 text-sm font-semibold rounded-lg border border-border bg-surface text-text-primary hover:bg-bg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Preview
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !description.trim() || !managerSignature}
+              className="px-5 py-2 text-sm font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {submitting ? 'Submitting...' : 'Submit & Send to Paychex'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {!submitMsg?.type && showPreview && (
+        <div className="space-y-4">
+          <DocumentPreview
+            employeeName={worker.displayName}
+            reason={reason}
+            shortReason={shortReason}
+            description={description}
+            managerName={userName}
+            managerSignature={managerSignature}
+            employeeSignature={employeeSignature}
+            date={formatDate(new Date().toISOString())}
+          />
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowPreview(false)}
+              className="px-5 py-2 text-sm font-semibold rounded-lg border border-border bg-surface text-text-primary hover:bg-bg transition-colors"
+            >
+              Edit
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="px-5 py-2 text-sm font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {submitting ? 'Submitting...' : 'Submit & Send to Paychex'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Worker Document Detail — shows Paychex docs + local HR docs for a worker
 // ---------------------------------------------------------------------------
-function WorkerDocuments({ worker, user, onBack }) {
+function WorkerDocuments({ worker, user }) {
   const [paychexDocs, setPaychexDocs] = useState([])
   const [localDocs, setLocalDocs] = useState([])
   const [loading, setLoading] = useState(true)
@@ -334,11 +449,7 @@ function WorkerDocuments({ worker, user, onBack }) {
     try {
       await uploadHRDocumentToPaychex(docId, worker.workerId)
       await fetchDocs()
-    } catch {
-      // silent
-    } finally {
-      setUploading(null)
-    }
+    } catch { /* silent */ } finally { setUploading(null) }
   }
 
   async function handleAcknowledge(docId) {
@@ -349,16 +460,12 @@ function WorkerDocuments({ worker, user, onBack }) {
       await acknowledgeHRDocument(docId, { employee_signature: sig })
       setEmployeeSigs(prev => { const next = { ...prev }; delete next[docId]; return next })
       await fetchDocs()
-    } catch {
-      // silent
-    } finally {
-      setAcknowledging(null)
-    }
+    } catch { /* silent */ } finally { setAcknowledging(null) }
   }
 
   return (
     <div className="space-y-4">
-      {/* Worker header card */}
+      {/* Worker header */}
       <div className="bg-surface border border-border rounded-xl p-4 flex items-center gap-4">
         <div className="w-12 h-12 rounded-full bg-wcs-red/10 flex items-center justify-center shrink-0">
           <span className="text-lg font-bold text-wcs-red">
@@ -386,13 +493,10 @@ function WorkerDocuments({ worker, user, onBack }) {
       ) : error ? (
         <div className="text-center py-8">
           <p className="text-sm text-red-600 mb-3">{error}</p>
-          <button onClick={fetchDocs} className="px-4 py-2 text-xs font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 transition-colors">
-            Retry
-          </button>
+          <button onClick={fetchDocs} className="px-4 py-2 text-xs font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 transition-colors">Retry</button>
         </div>
       ) : (
         <>
-          {/* Paychex Documents */}
           {paychexDocs.length > 0 && (
             <div>
               <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Paychex Documents</h3>
@@ -406,28 +510,21 @@ function WorkerDocuments({ worker, user, onBack }) {
                       <p className="text-sm font-medium text-text-primary truncate">
                         {doc.description || doc.fileName || doc.documentName || `Document ${i + 1}`}
                       </p>
-                      {doc.effectiveDate && (
-                        <p className="text-[11px] text-text-muted">{formatDate(doc.effectiveDate)}</p>
-                      )}
+                      {doc.effectiveDate && <p className="text-[11px] text-text-muted">{formatDate(doc.effectiveDate)}</p>}
                     </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                      Paychex
-                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">Paychex</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Local HR Documents */}
           <div>
             <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
               Portal Documents {localDocs.length > 0 && `(${localDocs.length})`}
             </h3>
             {localDocs.length === 0 ? (
-              <p className="text-center text-text-muted text-sm py-6 bg-surface border border-border rounded-xl">
-                No portal documents for this employee
-              </p>
+              <p className="text-center text-text-muted text-sm py-6 bg-surface border border-border rounded-xl">No portal documents for this employee</p>
             ) : (
               <div className="space-y-2">
                 {localDocs.map(doc => {
@@ -449,6 +546,7 @@ function WorkerDocuments({ worker, user, onBack }) {
                               {STATUS_LABELS[doc.status] || doc.status}
                             </span>
                           </div>
+                          {doc.short_reason && <p className="text-xs text-text-muted mt-1">{doc.short_reason}</p>}
                         </div>
                         <div className="text-right shrink-0">
                           <p className="text-xs text-text-muted">{formatDate(doc.created_at)}</p>
@@ -464,24 +562,16 @@ function WorkerDocuments({ worker, user, onBack }) {
                           <DocumentPreview
                             employeeName={doc.employee_name}
                             reason={doc.reason}
+                            shortReason={doc.short_reason}
                             description={doc.body || doc.description}
                             managerName={doc.manager_name}
                             managerSignature={doc.manager_signature}
+                            employeeSignature={doc.employee_signature}
                             date={formatDate(doc.created_at)}
                           />
 
-                          {doc.employee_signature && (
-                            <div>
-                              <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1">Employee Signature</p>
-                              {doc.employee_signature.startsWith('data:image') ? (
-                                <img src={doc.employee_signature} alt="Employee signature" className="h-16 border-b border-border" />
-                              ) : (
-                                <p className="text-sm italic text-text-primary">{doc.employee_signature}</p>
-                              )}
-                              {doc.employee_acknowledged_at && (
-                                <p className="text-[10px] text-text-muted mt-1">Acknowledged {formatDate(doc.employee_acknowledged_at)}</p>
-                              )}
-                            </div>
+                          {doc.employee_signature && doc.employee_acknowledged_at && (
+                            <p className="text-[10px] text-text-muted">Acknowledged {formatDate(doc.employee_acknowledged_at)}</p>
                           )}
 
                           {doc.status === 'pending_signature' && (
@@ -533,84 +623,23 @@ function WorkerDocuments({ worker, user, onBack }) {
 // Main HR View
 // ---------------------------------------------------------------------------
 export default function HRView({ user, onBack }) {
-  const userName = user?.staff?.display_name || user?.staff?.first_name || ''
-
-  // Staff list for employee search
-  const [staffList, setStaffList] = useState([])
-  useEffect(() => {
-    getStaff().then(res => setStaffList(res?.staff || res || [])).catch(() => {})
-  }, [])
-
-  // Navigation state: 'landing' | 'submit' | 'list' | 'worker-detail'
+  // Navigation: landing | submit-pick | submit-form | list | worker-detail
   const [view, setView] = useState('landing')
   const [selectedWorker, setSelectedWorker] = useState(null)
 
-  // Submit form state
-  const [employeeName, setEmployeeName] = useState('')
-  const [reason, setReason] = useState('verbal_warning')
-  const [description, setDescription] = useState('')
-  const [managerSignature, setManagerSignature] = useState('')
-  const [showPreview, setShowPreview] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [submitMsg, setSubmitMsg] = useState(null)
+  const backToLanding = () => { setView('landing'); setSelectedWorker(null) }
 
-  async function handleSubmit(e) {
-    if (e) e.preventDefault()
-    if (!employeeName.trim() || !description.trim() || !managerSignature) return
-    setSubmitting(true)
-    setSubmitMsg(null)
-    try {
-      await createHRDocument({
-        employee_name: employeeName.trim(),
-        reason,
-        description: description.trim(),
-        manager_signature: managerSignature,
-      })
-      setSubmitMsg({ type: 'success', text: 'Document submitted successfully.' })
-      setEmployeeName('')
-      setDescription('')
-      setReason('verbal_warning')
-      setShowPreview(false)
-    } catch (err) {
-      setSubmitMsg({ type: 'error', text: err.message || 'Failed to submit document.' })
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  function resetForm() {
-    setEmployeeName('')
-    setReason('verbal_warning')
-    setDescription('')
-    setManagerSignature('')
-    setShowPreview(false)
-    setSubmitMsg(null)
-  }
-
-  const backToLanding = () => {
-    setView('landing')
-    setSelectedWorker(null)
-    resetForm()
-  }
-
-  const backFromWorkerDetail = () => {
-    setView('list')
-    setSelectedWorker(null)
-  }
-
-  const handleSelectWorker = (worker) => {
-    setSelectedWorker(worker)
-    setView('worker-detail')
-  }
-
-  // Determine back handler for current view
+  // Back handler logic
   let currentBackHandler = onBack
   let backLabel = 'Back to Portal'
-  if (view === 'submit' || view === 'list') {
+  if (view === 'submit-pick' || view === 'list') {
     currentBackHandler = backToLanding
     backLabel = 'Back'
+  } else if (view === 'submit-form') {
+    currentBackHandler = () => { setView('submit-pick'); setSelectedWorker(null) }
+    backLabel = 'Back'
   } else if (view === 'worker-detail') {
-    currentBackHandler = backFromWorkerDetail
+    currentBackHandler = () => { setView('list'); setSelectedWorker(null) }
     backLabel = 'Back'
   }
 
@@ -634,7 +663,7 @@ export default function HRView({ user, onBack }) {
       {view === 'landing' && (
         <div className="grid grid-cols-2 gap-6">
           <button
-            onClick={() => setView('submit')}
+            onClick={() => setView('submit-pick')}
             className="group flex flex-col items-center justify-center gap-4 rounded-[14px] bg-surface border border-border p-10 min-h-[200px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
           >
             <div className="flex items-center justify-center w-16 h-16 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
@@ -665,118 +694,38 @@ export default function HRView({ user, onBack }) {
         </div>
       )}
 
-      {/* Submit Document Form */}
-      {view === 'submit' && (
-        <div className="space-y-6">
-          {submitMsg && (
-            <div className={`rounded-xl border px-4 py-3 text-sm font-medium ${submitMsg.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-              {submitMsg.text}
-              {submitMsg.type === 'success' && (
-                <div className="mt-2 flex gap-3">
-                  <button onClick={backToLanding} className="text-xs underline hover:no-underline">Back to HR</button>
-                  <button onClick={resetForm} className="text-xs underline hover:no-underline">Submit Another</button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {!showPreview ? (
-            <form onSubmit={handleSubmit} className="bg-surface border border-border rounded-xl p-6 space-y-5">
-              <EmployeeSearch
-                staffList={staffList}
-                value={employeeName}
-                onChange={setEmployeeName}
-              />
-
-              <div>
-                <label className="block text-sm font-semibold text-text-primary mb-1">Reason</label>
-                <select
-                  value={reason}
-                  onChange={e => setReason(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red"
-                >
-                  {REASONS.map(r => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-text-primary mb-1">Description</label>
-                <textarea
-                  value={description}
-                  onChange={e => setDescription(e.target.value)}
-                  placeholder="Describe what happened..."
-                  rows={6}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red resize-y"
-                  required
-                />
-              </div>
-
-              <SignaturePad
-                label="Manager Signature"
-                value={managerSignature}
-                onChange={setManagerSignature}
-              />
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (employeeName.trim() && description.trim()) setShowPreview(true)
-                  }}
-                  disabled={!employeeName.trim() || !description.trim()}
-                  className="px-5 py-2 text-sm font-semibold rounded-lg border border-border bg-surface text-text-primary hover:bg-bg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Preview
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting || !employeeName.trim() || !description.trim() || !managerSignature}
-                  className="px-5 py-2 text-sm font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {submitting ? 'Submitting...' : 'Submit Document'}
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div className="space-y-4">
-              <DocumentPreview
-                employeeName={employeeName}
-                reason={reason}
-                description={description}
-                managerName={userName}
-                managerSignature={managerSignature}
-                date={formatDate(new Date().toISOString())}
-              />
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowPreview(false)}
-                  className="px-5 py-2 text-sm font-semibold rounded-lg border border-border bg-surface text-text-primary hover:bg-bg transition-colors"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={handleSubmit}
-                  disabled={submitting}
-                  className="px-5 py-2 text-sm font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {submitting ? 'Submitting...' : 'Submit Document'}
-                </button>
-              </div>
-            </div>
-          )}
+      {/* Submit — Step 1: Pick employee */}
+      {view === 'submit-pick' && (
+        <div>
+          <p className="text-sm text-text-muted mb-4">Select an employee to create a document for:</p>
+          <WorkerList
+            user={user}
+            onSelectWorker={w => { setSelectedWorker(w); setView('submit-form') }}
+          />
         </div>
       )}
 
-      {/* View Documents — Worker List */}
-      {view === 'list' && (
-        <WorkerList user={user} onSelectWorker={handleSelectWorker} onBack={backToLanding} />
+      {/* Submit — Step 2: Fill form */}
+      {view === 'submit-form' && selectedWorker && (
+        <SubmitDocumentForm
+          worker={selectedWorker}
+          user={user}
+          onBack={backToLanding}
+          onSuccess={() => { setSelectedWorker(null); setView('submit-pick') }}
+        />
       )}
 
-      {/* Worker Detail — Documents */}
+      {/* View Docs — Worker list */}
+      {view === 'list' && (
+        <WorkerList
+          user={user}
+          onSelectWorker={w => { setSelectedWorker(w); setView('worker-detail') }}
+        />
+      )}
+
+      {/* View Docs — Worker detail */}
       {view === 'worker-detail' && selectedWorker && (
-        <WorkerDocuments worker={selectedWorker} user={user} onBack={backFromWorkerDetail} />
+        <WorkerDocuments worker={selectedWorker} user={user} />
       )}
     </div>
   )

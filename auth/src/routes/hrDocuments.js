@@ -21,7 +21,7 @@ const REASON_LABELS = {
 /**
  * Build an HTML document for the HR form, suitable for PDF rendering.
  */
-function buildDocumentHTML({ employee_name, manager_name, reason, body, manager_signature, employee_signature, employee_acknowledged, employee_acknowledged_at, created_at }) {
+function buildDocumentHTML({ employee_name, manager_name, reason, short_reason, body, manager_signature, employee_signature, employee_acknowledged, employee_acknowledged_at, created_at }) {
   const dateStr = new Date(created_at || Date.now()).toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric',
   })
@@ -69,6 +69,7 @@ function buildDocumentHTML({ employee_name, manager_name, reason, body, manager_
     <div class="meta-row"><span><strong>Date:</strong> ${dateStr}</span></div>
     <div class="meta-row"><span><strong>Manager:</strong> ${manager_name}</span></div>
     <div class="meta-row"><span><strong>Employee:</strong> ${employee_name}</span></div>
+    ${short_reason ? `<div class="meta-row"><span><strong>Reason:</strong> ${short_reason}</span></div>` : ''}
 
     <div class="body-text">${body}</div>
 
@@ -128,9 +129,11 @@ async function resolveLocationSlug(staff) {
 
 // ---------------------------------------------------------------------------
 // POST /hr-documents  (manager+)
+// Accepts workerId to auto-upload to Paychex after PDF generation.
+// employee_signature is optional — if provided, document starts as 'completed'.
 // ---------------------------------------------------------------------------
 router.post('/', requireRole('manager'), async (req, res) => {
-  const { employee_name, reason, body, description, manager_signature } = req.body
+  const { employee_name, reason, short_reason, body, description, manager_signature, employee_signature, worker_id } = req.body
   const docBody = body || description
 
   if (!employee_name || !reason || !docBody || !manager_signature) {
@@ -146,15 +149,25 @@ router.post('/', requireRole('manager'), async (req, res) => {
     const managerName = req.staff.display_name || [req.staff.first_name, req.staff.last_name].filter(Boolean).join(' ')
     const locationSlug = await resolveLocationSlug(req.staff)
 
+    const hasEmployeeSig = !!employee_signature
+
     const insertPayload = {
       employee_name,
       reason,
+      short_reason: short_reason || null,
       body: docBody,
       manager_signature,
       manager_name: managerName,
       submitted_by: req.staff.id,
       location_slug: locationSlug,
-      status: 'pending_signature',
+      worker_id: worker_id || null,
+      status: hasEmployeeSig ? 'completed' : 'pending_signature',
+    }
+
+    if (hasEmployeeSig) {
+      insertPayload.employee_signature = employee_signature
+      insertPayload.employee_acknowledged = true
+      insertPayload.employee_acknowledged_at = new Date().toISOString()
     }
 
     const { data, error } = await supabaseAdmin
@@ -165,18 +178,33 @@ router.post('/', requireRole('manager'), async (req, res) => {
 
     if (error) throw error
 
-    // Generate PDF in background — don't block the response on failure
+    // Generate PDF and auto-upload to Paychex if workerId provided
     try {
       const html = buildDocumentHTML(data)
       const pdfBuffer = await generatePDF(html)
       if (pdfBuffer) {
         const dataUrl = 'data:application/pdf;base64,' + pdfBuffer.toString('base64')
+        const updates = { pdf_url: dataUrl }
+
+        // Auto-upload to Paychex if worker_id is provided
+        if (worker_id) {
+          try {
+            const fileName = `hr_${data.reason}_${data.employee_name.replace(/\s+/g, '_')}_${data.id}.pdf`
+            const result = await uploadWorkerDocument(worker_id, pdfBuffer, fileName)
+            updates.paychex_document_id = result?.documentId || result?.id || null
+            updates.status = 'uploaded'
+          } catch (uploadErr) {
+            console.error('[HRDocuments] Paychex auto-upload failed:', uploadErr.message)
+            // Continue — document is still saved locally
+          }
+        }
+
         const { error: updateErr } = await supabaseAdmin
           .from('hr_documents')
-          .update({ pdf_url: dataUrl })
+          .update(updates)
           .eq('id', data.id)
-        if (updateErr) console.error('[HRDocuments] Failed to store PDF URL:', updateErr.message)
-        else data.pdf_url = dataUrl
+        if (updateErr) console.error('[HRDocuments] Failed to update document:', updateErr.message)
+        else Object.assign(data, updates)
       }
     } catch (pdfErr) {
       console.error('[HRDocuments] PDF generation failed:', pdfErr.message)
