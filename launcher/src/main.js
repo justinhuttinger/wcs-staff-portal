@@ -302,6 +302,189 @@ app.on('ready', () => {
   })
 })
 
+  // ---------------------------------------------------------------------------
+  // Trainerize Push Notification Automation
+  // ---------------------------------------------------------------------------
+  const TRAINERIZE_LOCATION_MAP = {
+    salem: 'West Coast Strength - Salem',
+    keizer: 'West Coast Strength - Keizer',
+    eugene: 'West Coast Strength - Eugene',
+    springfield: 'West Coast Strength - Springfield',
+    clackamas: 'West Coast Strength - Clackamas',
+    milwaukie: 'East Side Athletic Club - Milwaukie',
+  }
+
+  ipcMain.handle('run-notification', async (e, params) => {
+    const { title, message, locations, sendTiming, scheduledDate, scheduledTime } = params
+    const config = readConfig()
+    const email = config.trainerize_email || 'justin@wcstrength.com'
+    const password = config.trainerize_password || 'Jellybean31!'
+
+    log('[Notification] Starting automation: ' + title)
+
+    // Create a hidden BrowserWindow for the automation
+    const { session: ses } = require('electron')
+    const automationWindow = new BrowserWindow({
+      width: 1280,
+      height: 900,
+      show: false,
+      webPreferences: {
+        session: ses.fromPartition('persist:trainerize-automation'),
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    })
+
+    try {
+      const page = automationWindow.webContents
+
+      // Helper to run JS in the page
+      const run = (code) => page.executeJavaScript(code)
+      const wait = (ms) => new Promise(r => setTimeout(r, ms))
+
+      // 1. Login
+      log('[Notification] Loading login page...')
+      await page.loadURL('https://westcoaststrength.trainerize.com/app/login')
+      await wait(3000)
+
+      await run(`document.querySelector('input[type="email"], input[name="email"], #email').value = ${JSON.stringify(email)}`)
+      await run(`document.querySelector('input[type="email"], input[name="email"], #email').dispatchEvent(new Event('input', {bubbles:true}))`)
+      await run(`document.querySelector('input[type="password"], input[name="password"], #password').value = ${JSON.stringify(password)}`)
+      await run(`document.querySelector('input[type="password"], input[name="password"], #password').dispatchEvent(new Event('input', {bubbles:true}))`)
+      await wait(500)
+      await run(`(document.querySelector('button[type="submit"]') || document.querySelector('.btn-login') || [...document.querySelectorAll('button')].find(b => b.textContent.includes('Log'))).click()`)
+      log('[Notification] Logging in...')
+      await wait(5000)
+
+      // 2. Navigate to Announcements
+      log('[Notification] Navigating to Announcements...')
+      await run(`([...document.querySelectorAll('a, [role="menuitem"], li')].find(el => el.textContent.includes('Announcements'))).click()`)
+      await wait(3000)
+
+      // 3. Click Push Notifications tab if not already selected
+      try {
+        await run(`{
+          const tab = [...document.querySelectorAll('a, button, [role="tab"]')].find(el => el.textContent.includes('Push'));
+          if (tab) tab.click();
+        }`)
+        await wait(1000)
+      } catch {}
+
+      // 4. Click NEW
+      log('[Notification] Clicking NEW...')
+      await run(`([...document.querySelectorAll('button, a')].find(el => el.textContent.trim() === 'NEW' || el.textContent.trim() === 'New')).click()`)
+      await wait(3000)
+
+      // 5. Fill Title
+      log('[Notification] Filling form...')
+      await run(`{
+        const inputs = document.querySelectorAll('input[type="text"]');
+        const titleInput = inputs[0];
+        if (titleInput) {
+          titleInput.focus();
+          titleInput.value = ${JSON.stringify(title.slice(0, 65))};
+          titleInput.dispatchEvent(new Event('input', {bubbles:true}));
+          titleInput.dispatchEvent(new Event('change', {bubbles:true}));
+        }
+      }`)
+      await wait(500)
+
+      // 6. Set send timing
+      if (sendTiming === 'now') {
+        log('[Notification] Setting "Start sending immediately"...')
+        await run(`{
+          const sel = document.querySelector('select');
+          if (sel) {
+            sel.value = 'now';
+            sel.dispatchEvent(new Event('change', {bubbles:true}));
+          } else {
+            const dd = [...document.querySelectorAll('[class*="dropdown"], [class*="select"], [role="listbox"]')].find(el => el.textContent.includes('Schedule'));
+            if (dd) dd.click();
+          }
+        }`)
+        await wait(500)
+        await run(`{
+          const opt = [...document.querySelectorAll('option, li, [role="option"]')].find(el => el.textContent.includes('immediately'));
+          if (opt) opt.click ? opt.click() : (opt.selected = true);
+        }`)
+        await wait(500)
+      }
+
+      // 7. Select locations
+      log('[Notification] Selecting locations...')
+      // Click the location field to open it
+      await run(`{
+        const field = [...document.querySelectorAll('label, span, div')].find(el => el.textContent.includes('Which locations'));
+        if (field) {
+          const input = field.closest('div')?.querySelector('input') || field.nextElementSibling?.querySelector('input') || field.nextElementSibling;
+          if (input) input.click();
+        }
+      }`)
+      await wait(1000)
+
+      // Expand "All locations"
+      await run(`{
+        const allLoc = [...document.querySelectorAll('span, label, div')].find(el => el.textContent.trim() === 'All locations');
+        if (allLoc) {
+          const arrow = allLoc.previousElementSibling || allLoc.parentElement.querySelector('[class*="arrow"], [class*="toggle"], [class*="expand"], svg, i');
+          if (arrow) arrow.click();
+          else allLoc.click();
+        }
+      }`)
+      await wait(1000)
+
+      if (locations.includes('all')) {
+        await run(`{
+          const cb = [...document.querySelectorAll('input[type="checkbox"]')].find(cb => cb.closest('label, div')?.textContent.includes('All locations'));
+          if (cb && !cb.checked) cb.click();
+        }`)
+      } else {
+        for (const slug of locations) {
+          const label = TRAINERIZE_LOCATION_MAP[slug]
+          if (!label) continue
+          await run(`{
+            const cb = [...document.querySelectorAll('input[type="checkbox"]')].find(cb => cb.closest('label, div')?.textContent.includes(${JSON.stringify(label)}));
+            if (cb && !cb.checked) cb.click();
+          }`)
+          await wait(300)
+        }
+      }
+      await wait(500)
+
+      // 8. Fill Message
+      log('[Notification] Filling message...')
+      await run(`{
+        const ta = document.querySelector('textarea');
+        if (ta) {
+          ta.focus();
+          ta.value = ${JSON.stringify(message.slice(0, 120))};
+          ta.dispatchEvent(new Event('input', {bubbles:true}));
+          ta.dispatchEvent(new Event('change', {bubbles:true}));
+        }
+      }`)
+      await wait(1000)
+
+      // 9. Take screenshot — do NOT click submit
+      log('[Notification] Taking screenshot...')
+      const image = await page.capturePage()
+      const screenshotBuffer = image.toPNG()
+      const base64 = screenshotBuffer.toString('base64')
+
+      log('[Notification] Done! Screenshot captured.')
+      return { success: true, screenshot: 'data:image/png;base64,' + base64 }
+    } catch (err) {
+      log('[Notification] Error: ' + err.message)
+      return { success: false, error: err.message }
+    } finally {
+      automationWindow.close()
+    }
+  })
+
+  ipcMain.handle('get-notification-locations', () => {
+    return Object.entries(TRAINERIZE_LOCATION_MAP).map(([slug, label]) => ({ slug, label }))
+  })
+})
+
 app.on('window-all-closed', (e) => {
   if (!mainWindow || mainWindow.isDestroyed()) app.quit()
 })

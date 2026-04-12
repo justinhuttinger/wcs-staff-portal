@@ -15,8 +15,6 @@
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^4.2.1",
-    "playwright": "^1.59.1",
-    "playwright-core": "^1.59.1",
     "twilio": "^5.13.1",
     "xlsx": "^0.18.5",
     "xml2js": "^0.6.2"

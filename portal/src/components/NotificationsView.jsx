@@ -14,11 +14,19 @@ export default function NotificationsView({ onBack }) {
   const [screenshot, setScreenshot] = useState(null)
   const [error, setError] = useState(null)
 
+  const isElectron = !!window.wcsElectron?.runNotification
+
   useEffect(() => {
-    getNotificationLocations()
-      .then(res => setLocations(res.locations || []))
-      .catch(() => {})
-  }, [])
+    if (isElectron) {
+      window.wcsElectron.getNotificationLocations()
+        .then(locs => setLocations(locs || []))
+        .catch(() => {})
+    } else {
+      getNotificationLocations()
+        .then(res => setLocations(res.locations || []))
+        .catch(() => {})
+    }
+  }, [isElectron])
 
   const allSelected = locations.length > 0 && selectedLocations.length === locations.length
 
@@ -57,14 +65,22 @@ export default function NotificationsView({ onBack }) {
     const timers = steps.map(s => setTimeout(() => setStatus(s.text), s.delay))
 
     try {
-      const res = await sendPushNotification({
+      const payload = {
         title: title.trim(),
         message: message.trim(),
         locations: allSelected ? ['all'] : selectedLocations,
         sendTiming,
         scheduledDate: sendTiming === 'scheduled' ? scheduledDate : undefined,
         scheduledTime: sendTiming === 'scheduled' ? scheduledTime : undefined,
-      })
+      }
+
+      let res
+      if (isElectron) {
+        res = await window.wcsElectron.runNotification(payload)
+        if (!res.success) throw new Error(res.error || 'Automation failed')
+      } else {
+        res = await sendPushNotification(payload)
+      }
 
       timers.forEach(clearTimeout)
       setScreenshot(res.screenshot)

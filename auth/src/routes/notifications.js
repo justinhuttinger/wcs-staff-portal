@@ -1,7 +1,15 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
-const { fillNotificationForm, LOCATION_MAP } = require('../services/trainerizeNotification')
+
+const LOCATION_MAP = {
+  salem: 'West Coast Strength - Salem',
+  keizer: 'West Coast Strength - Keizer',
+  eugene: 'West Coast Strength - Eugene',
+  springfield: 'West Coast Strength - Springfield',
+  clackamas: 'West Coast Strength - Clackamas',
+  milwaukie: 'East Side Athletic Club - Milwaukie',
+}
 
 const router = Router()
 router.use(authenticate)
@@ -20,37 +28,10 @@ router.post('/push', requireRole('manager'), async (req, res) => {
     return res.status(400).json({ error: 'Date is required when scheduling' })
   }
 
-  if (!process.env.TRAINERIZE_EMAIL || !process.env.TRAINERIZE_PASSWORD) {
-    return res.status(501).json({ error: 'Trainerize credentials not configured' })
-  }
-
-  try {
-    console.log(`[Notifications] Push notification requested by ${req.staff.display_name || req.staff.email}:`, {
-      title: title.slice(0, 30) + '...',
-      locations,
-      sendTiming,
-    })
-
-    const screenshot = await fillNotificationForm({
-      title: title.trim(),
-      message: message.trim(),
-      locations,
-      sendTiming: sendTiming || 'now',
-      scheduledDate,
-      scheduledTime,
-    })
-
-    // Return screenshot as base64 for the frontend to display/download
-    const base64 = screenshot.toString('base64')
-    res.json({
-      success: true,
-      screenshot: 'data:image/png;base64,' + base64,
-      message: 'Form filled successfully. Review the screenshot to verify before enabling auto-submit.',
-    })
-  } catch (err) {
-    console.error('[Notifications] Push notification failed:', err.message)
-    res.status(500).json({ error: 'Automation failed: ' + err.message })
-  }
+  // This endpoint is a fallback — automation runs in Electron on the kiosk
+  return res.status(501).json({
+    error: 'Push notifications must be sent from the Portal desktop app (Electron). The browser automation runs locally on the kiosk.'
+  })
 })
 
 // GET /notifications/locations — returns available Trainerize locations
