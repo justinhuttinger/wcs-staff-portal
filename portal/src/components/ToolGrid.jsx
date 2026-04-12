@@ -82,7 +82,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker, onDayOneCalendar, onTrainerAvail, onMetaAds, onLeaderboard, onHR, onHelpCenter, onCommunicationNotes, onReporting, userRole, userName }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker, onDayOneCalendar, onTrainerAvail, onMetaAds, onLeaderboard, onHR, onHelpCenter, onTickets, onCommunicationNotes, onReporting, userRole, userName }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [tilesLoaded, setTilesLoaded] = useState(false)
@@ -375,6 +375,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {onHR && roleIdx >= ROLE_LEVELS.manager && <SvgTileButton onClick={onHR} iconPath={TILE_ICONS.hr} label="HR Docs" desc="Documents" />}
           {/* 4.7. Help Center — all roles */}
           {onHelpCenter && <SvgTileButton onClick={onHelpCenter} iconPath={TILE_ICONS.helpCenter} label="Help Center" desc="Guides" />}
+          {/* 4.8. Tickets — fd_lead+ */}
+          {onTickets && roleIdx >= ROLE_LEVELS.fd_lead && <SvgTileButton onClick={onTickets} iconPath={TILE_ICONS.tickets} label="Tickets" desc="Support" />}
           {/* 5. Day One Tracking */}
           {onDayOneTracker && <SvgTileButton onClick={onDayOneTracker} iconPath={TILE_ICONS.dayOne} label="Day One" desc="Tracking" badge={dayOneBadge} />}
           {/* 6. Trainer Availability */}
@@ -388,8 +390,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
             if (tileLabel === 'reporting' && userRole === 'team_member') return false
             // Marketing tile only for corporate and admin
             if (tileLabel === 'marketing' && userRole !== 'corporate' && userRole !== 'admin') return false
-            // Tickets: everyone except team_member
-            if (tileLabel === 'tickets' && userRole === 'team_member') return false
+            // Tickets: now a built-in tile — skip custom tile version
+            if (tileLabel === 'tickets') return false
             // Indeed, Operandio, VistaPrint: manager+ only
             if (['indeed', 'operandio', 'vistaprint', 'vista'].includes(tileLabel) && roleIdx < ROLE_LEVELS.manager) return false
             return true

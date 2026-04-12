@@ -13,6 +13,7 @@ import LeaderboardView from './components/LeaderboardView'
 import CommunicationNotesView from './components/CommunicationNotesView'
 import HRView from './components/HRView'
 import HelpCenterView from './components/HelpCenterView'
+import TicketsView from './components/TicketsView'
 import { getMe, getToken, clearToken, setToken, api } from './lib/api'
 
 function getParam(key) {
@@ -39,6 +40,7 @@ export default function App() {
   const [showCommunicationNotes, setShowCommunicationNotes] = useState(false)
   const [showHR, setShowHR] = useState(false)
   const [showHelpCenter, setShowHelpCenter] = useState(false)
+  const [showTickets, setShowTickets] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
   const isElectron = !!window.wcsElectron
   const isAdmin = user?.staff?.role === 'admin'
@@ -206,6 +208,8 @@ export default function App() {
         <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={isAdmin} />
       ) : showMetaAds ? (
         <MarketingView onBack={() => setShowMetaAds(false)} />
+      ) : showTickets ? (
+        <TicketsView onBack={() => setShowTickets(false)} />
       ) : showHelpCenter ? (
         <HelpCenterView user={user} onBack={() => setShowHelpCenter(false)} />
       ) : showHR ? (
@@ -218,7 +222,7 @@ export default function App() {
         <ReportingView user={user} onBack={() => setShowReporting(false)} location={location} isAdmin={isAdmin} />
       ) : (
         <main className="flex-1 flex items-start pt-1 pb-12">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onTours={() => setShowTours(true)} onDayOneTracker={() => setShowDayOneTracker(true)} onDayOneCalendar={() => setShowDayOneCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onMetaAds={() => setShowMetaAds(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => setShowReporting(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onTours={() => setShowTours(true)} onDayOneTracker={() => setShowDayOneTracker(true)} onDayOneCalendar={() => setShowDayOneCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onMetaAds={() => setShowMetaAds(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => setShowReporting(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} />
         </main>
       )}
 

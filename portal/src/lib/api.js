@@ -399,3 +399,20 @@ export async function updateHelpArticle(id, data) {
 export async function deleteHelpArticle(id) {
   return api('/help-center/articles/' + id, { method: 'DELETE' })
 }
+
+// Ticket Embeds
+export async function getTicketEmbeds() {
+  return api('/ticket-embeds')
+}
+
+export async function createTicketEmbed(data) {
+  return api('/ticket-embeds', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateTicketEmbed(id, data) {
+  return api('/ticket-embeds/' + id, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function deleteTicketEmbed(id) {
+  return api('/ticket-embeds/' + id, { method: 'DELETE' })
+}
