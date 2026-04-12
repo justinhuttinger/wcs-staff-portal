@@ -17,6 +17,9 @@ const TILE_ICONS = {
 // Which built-in tool IDs are "Apps" (external services)
 const APP_IDS = ['grow', 'abc', 'wheniwork', 'paychex', 'gmail', 'drive']
 
+// Role hierarchy levels for visibility checks
+const ROLE_LEVELS = { team_member: 0, fd_lead: 1, pt_lead: 2, manager: 3, corporate: 4, admin: 5 }
+
 function SvgTileButton({ onClick, iconPath, label, desc, badge }) {
   return (
     <button
@@ -184,6 +187,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   const userPoints = leaderboardData?.user_points || 0
   const myEntry = userRank ? rankings.find(r => r.rank === userRank) : null
   const totalStaff = rankings.length
+  const roleIdx = ROLE_LEVELS[userRole] ?? 0
   const hideScoreCard = userRole === 'admin' || userRole === 'corporate'
 
   return (
@@ -224,7 +228,12 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {appTools.map((tool) => (
             <ToolButton key={tool.id} label={tool.label} description={tool.description} icon={tool.icon} url={getUrl(tool)} />
           ))}
-          {appCustomTiles.map((tile) => (
+          {appCustomTiles.filter((tile) => {
+            const tileLabel = (tile.label || '').toLowerCase()
+            // Indeed, Operandio, VistaPrint: manager+ only
+            if (['indeed', 'operandio', 'vistaprint', 'vista'].includes(tileLabel) && roleIdx < ROLE_LEVELS.manager) return false
+            return true
+          }).map((tile) => (
             <ToolButton key={'main-' + tile.id} label={tile.label} description={tile.description || ''} emoji={tile.icon} url={tile.url} />
           ))}
         </div>
@@ -236,7 +245,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
         <div className="grid grid-cols-3 gap-4">
           {onDayOneCalendar && <SvgTileButton onClick={onDayOneCalendar} iconPath={TILE_ICONS.dayOneCalendar} label="Day Ones" desc="Calendar" badge={dayOneCalBadge} />}
           {onDayOneTracker && <SvgTileButton onClick={onDayOneTracker} iconPath={TILE_ICONS.dayOne} label="Day One" desc="Tracking" badge={dayOneBadge} />}
-          {onTrainerAvail && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="Availability" desc="Trainers" />}
+          {onTrainerAvail && roleIdx >= ROLE_LEVELS.pt_lead && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="Availability" desc="Trainers" />}
           {onTours && <SvgTileButton onClick={onTours} iconPath={TILE_ICONS.tours} label="Tours" desc="Calendar" badge={toursBadge} />}
           {onLeaderboard && <SvgTileButton onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" badge={myEntry?.rank || null} />}
           {toolCustomTiles.filter((tile) => {
@@ -245,6 +254,10 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
             if (tileLabel === 'reporting' && userRole === 'team_member') return false
             // Marketing tile only for corporate and admin
             if (tileLabel === 'marketing' && userRole !== 'corporate' && userRole !== 'admin') return false
+            // Tickets: everyone except team_member
+            if (tileLabel === 'tickets' && userRole === 'team_member') return false
+            // Indeed, Operandio, VistaPrint: manager+ only
+            if (['indeed', 'operandio', 'vistaprint', 'vista'].includes(tileLabel) && roleIdx < ROLE_LEVELS.manager) return false
             return true
           }).map((tile) => {
             const hasChildren = customTiles.some(t => t.parent_id === tile.id)

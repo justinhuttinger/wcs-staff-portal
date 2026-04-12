@@ -104,6 +104,9 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     { label: 'Leaderboard', icon: <TrophyIcon />, route: 'leaderboard' },
   ]
 
+  const ROLE_LEVELS = { team_member: 0, fd_lead: 1, pt_lead: 2, manager: 3, corporate: 4, admin: 5 }
+  const roleIdx = ROLE_LEVELS[role] ?? 0
+
   const tiles = allTiles.filter(tile => {
     // Hide Reports tile for team_member
     if (tile.label === 'Reports' && role === 'team_member') return false
