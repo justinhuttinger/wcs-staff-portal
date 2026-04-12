@@ -355,28 +355,27 @@ app.on('ready', () => {
       await wait(4000)
 
       log('[Notification] Filling credentials...')
-      // Trainerize login has two inputs: first is email, second is password
-      // Labels are "Email" and "Password" — use input order since type="email" isn't set
+
+      // Use native input setter to bypass React's controlled inputs
       await run(`
+        var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
         var inputs = document.querySelectorAll('input');
         var emailEl = null;
         var passEl = null;
         for (var i = 0; i < inputs.length; i++) {
           var t = (inputs[i].type || '').toLowerCase();
           if (t === 'password') { passEl = inputs[i]; }
-          else if (t === 'text' || t === 'email' || t === '') {
-            if (!emailEl) emailEl = inputs[i];
-          }
+          else if (!emailEl && (t === 'text' || t === 'email' || t === '')) { emailEl = inputs[i]; }
         }
         if (emailEl) {
           emailEl.focus();
-          emailEl.value = ${JSON.stringify(email)};
+          nativeSetter.call(emailEl, ${JSON.stringify(email)});
           emailEl.dispatchEvent(new Event('input', {bubbles:true}));
           emailEl.dispatchEvent(new Event('change', {bubbles:true}));
         }
         if (passEl) {
           passEl.focus();
-          passEl.value = ${JSON.stringify(password)};
+          nativeSetter.call(passEl, ${JSON.stringify(password)});
           passEl.dispatchEvent(new Event('input', {bubbles:true}));
           passEl.dispatchEvent(new Event('change', {bubbles:true}));
         }
@@ -395,7 +394,11 @@ app.on('ready', () => {
         if (btn) btn.click();
       `)
       log('[Notification] Logging in...')
+
+      // Wait for login and check if we navigated away from login page
       await wait(8000)
+      var currentUrl = await run(`return window.location.href`)
+      log('[Notification] Current URL after login: ' + currentUrl)
 
       // 2. Navigate to Announcements
       log('[Notification] Navigating to Announcements...')
