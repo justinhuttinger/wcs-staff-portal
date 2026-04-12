@@ -3,6 +3,11 @@ productName: Portal
 directories:
   output: dist
 
+publish:
+  provider: github
+  owner: justinhuttinger
+  repo: wcs-staff-portal
+
 win:
   target: nsis
   icon: assets/icon.ico
