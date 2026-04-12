@@ -49,7 +49,9 @@ export default function CommunicationNotesView({ user, onBack }) {
   const role = user?.staff?.role || 'team_member'
   const roleIdx = ROLE_LEVELS[role] ?? 0
   const isLeadPlus = roleIdx >= ROLE_LEVELS.fd_lead
+  const canSeeAll = role === 'corporate' || role === 'admin'
   const userName = user?.staff?.display_name || user?.staff?.first_name || ''
+  const ALL_LOCATIONS = ['Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
 
   // Submit form state
   const [formOpen, setFormOpen] = useState(!isLeadPlus)
@@ -64,6 +66,7 @@ export default function CommunicationNotesView({ user, onBack }) {
   const [loading, setLoading] = useState(false)
   const [statusFilter, setStatusFilter] = useState('unresolved')
   const [categoryFilter, setCategoryFilter] = useState('all')
+  const [locationFilter, setLocationFilter] = useState('all')
 
   // Expanded note state
   const [expandedId, setExpandedId] = useState(null)
@@ -76,11 +79,13 @@ export default function CommunicationNotesView({ user, onBack }) {
   const fetchNotes = useCallback(() => {
     if (!isLeadPlus) return
     setLoading(true)
-    getCommunicationNotes()
+    const params = {}
+    if (canSeeAll && locationFilter !== 'all') params.location_slug = locationFilter
+    getCommunicationNotes(params)
       .then(res => setNotes(res.notes || []))
       .catch(() => setNotes([]))
       .finally(() => setLoading(false))
-  }, [isLeadPlus])
+  }, [isLeadPlus, canSeeAll, locationFilter])
 
   useEffect(() => {
     fetchNotes()
@@ -274,6 +279,25 @@ export default function CommunicationNotesView({ user, onBack }) {
               </button>
             ))}
           </div>
+
+          {/* Location Filter (corp/admin only) */}
+          {canSeeAll && (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {['all', ...ALL_LOCATIONS.map(l => l.toLowerCase())].map(loc => (
+                <button
+                  key={loc}
+                  onClick={() => setLocationFilter(loc)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors ${
+                    locationFilter === loc
+                      ? 'bg-wcs-red text-white border-wcs-red'
+                      : 'bg-surface text-text-muted border-border hover:border-text-muted'
+                  }`}
+                >
+                  {loc === 'all' ? 'All Locations' : loc.charAt(0).toUpperCase() + loc.slice(1)}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Category Filter Pills */}
           <div className="flex flex-wrap gap-1.5 mb-5">

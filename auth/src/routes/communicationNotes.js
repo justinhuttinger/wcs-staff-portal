@@ -26,13 +26,13 @@ router.post('/', requireRole('team_member'), async (req, res) => {
     const primaryLocation = req.staff.locations?.find(l => l.is_primary)
     const locationSlug = primaryLocation?.name?.toLowerCase() || null
 
-    // Look up location_id from locations table by slug
+    // Look up location_id from locations table by name
     let locationId = null
     if (locationSlug) {
       const { data: loc } = await supabaseAdmin
         .from('locations')
         .select('id')
-        .eq('slug', locationSlug)
+        .ilike('name', locationSlug)
         .maybeSingle()
       locationId = loc?.id || null
     }

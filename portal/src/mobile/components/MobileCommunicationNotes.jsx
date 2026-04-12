@@ -57,14 +57,18 @@ function Spinner() {
 export default function MobileCommunicationNotes({ user }) {
   const role = user?.staff?.role || 'team_member'
   const canViewNotes = ROLES.indexOf(role) >= ROLES.indexOf('fd_lead')
+  const canSeeAll = role === 'corporate' || role === 'admin'
   const userName = user?.staff?.display_name || user?.staff?.first_name || 'Staff'
-  const locationId = user?.staff?.locations?.find(l => l.is_primary)?.id || user?.staff?.locations?.[0]?.id
+  const primarySlug = (user?.staff?.locations?.find(l => l.is_primary)?.name || user?.staff?.locations?.[0]?.name || '').toLowerCase()
+
+  const ALL_LOCATIONS = ['Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
 
   const [showForm, setShowForm] = useState(false)
   const [notes, setNotes] = useState([])
   const [loading, setLoading] = useState(false)
   const [statusTab, setStatusTab] = useState('unresolved')
   const [categoryFilter, setCategoryFilter] = useState(null)
+  const [locationFilter, setLocationFilter] = useState('all')
   const [statusCounts, setStatusCounts] = useState({ unresolved: 0, in_progress: 0, completed: 0 })
 
   // Form state
@@ -87,7 +91,7 @@ export default function MobileCommunicationNotes({ user }) {
     try {
       const params = { status: statusTab }
       if (categoryFilter) params.category = categoryFilter
-      if (locationId) params.location_id = locationId
+      if (canSeeAll && locationFilter !== 'all') params.location_slug = locationFilter
       const res = await getCommunicationNotes(params)
       const list = res?.notes || res?.data || res || []
       setNotes(list)
@@ -100,7 +104,7 @@ export default function MobileCommunicationNotes({ user }) {
     } finally {
       setLoading(false)
     }
-  }, [canViewNotes, statusTab, categoryFilter, locationId])
+  }, [canViewNotes, statusTab, categoryFilter, canSeeAll, locationFilter])
 
   // Fetch counts for all tabs on mount
   useEffect(() => {
@@ -109,7 +113,7 @@ export default function MobileCommunicationNotes({ user }) {
     async function fetchCounts() {
       try {
         const params = {}
-        if (locationId) params.location_id = locationId
+        if (canSeeAll && locationFilter !== 'all') params.location_slug = locationFilter
         const [unresolved, inProgress, completed] = await Promise.all([
           getCommunicationNotes({ ...params, status: 'unresolved' }),
           getCommunicationNotes({ ...params, status: 'in_progress' }),
@@ -127,7 +131,7 @@ export default function MobileCommunicationNotes({ user }) {
     }
     fetchCounts()
     return () => { cancelled = true }
-  }, [canViewNotes, locationId])
+  }, [canViewNotes, canSeeAll, locationFilter])
 
   useEffect(() => { fetchNotes() }, [fetchNotes])
 
@@ -140,7 +144,6 @@ export default function MobileCommunicationNotes({ user }) {
         title: formTitle.trim(),
         category: formCategory,
         body: formBody.trim(),
-        location_id: locationId,
       })
       setFormTitle('')
       setFormCategory('member')
@@ -335,6 +338,25 @@ export default function MobileCommunicationNotes({ user }) {
                 </button>
               )
             })}
+          </div>
+        )}
+
+        {/* Location filter (corp/admin only) */}
+        {canSeeAll && (
+          <div className="flex gap-2 mt-2 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide">
+            {['all', ...ALL_LOCATIONS.map(l => l.toLowerCase())].map(loc => (
+              <button
+                key={loc}
+                onClick={() => setLocationFilter(loc)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap shrink-0 transition-colors ${
+                  locationFilter === loc
+                    ? 'bg-wcs-red text-white border-wcs-red'
+                    : 'bg-surface text-text-muted border-border'
+                }`}
+              >
+                {loc === 'all' ? 'All Locations' : loc.charAt(0).toUpperCase() + loc.slice(1)}
+              </button>
+            ))}
           </div>
         )}
 
