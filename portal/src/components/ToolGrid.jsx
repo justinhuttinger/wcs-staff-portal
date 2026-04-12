@@ -50,7 +50,7 @@ function ordinal(n) {
   return n + (s[(v - 20) % 10] || s[v] || s[0])
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker, onDayOneCalendar, onTrainerAvail, onMetaAds, onLeaderboard, userRole }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker, onDayOneCalendar, onTrainerAvail, onMetaAds, onLeaderboard, userRole, userName }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [tilesLoaded, setTilesLoaded] = useState(false)
@@ -192,38 +192,36 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
 
   return (
     <div className="w-full px-8 max-w-7xl mx-auto">
-      {/* Score Card — visible to all non-admin/corporate roles */}
+      {/* Score Card — compact single row */}
       {leaderboardData && !hideScoreCard && (() => {
         const totalAtLocation = leaderboardData.total_staff || totalStaff
         const displayRank = userRank || totalAtLocation || '—'
         return (
-          <div className="mb-6 rounded-[14px] bg-surface border border-border p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5 text-wcs-red">
-                  <path strokeLinecap="round" strokeLinejoin="round" d={TILE_ICONS.leaderboard} />
-                </svg>
-                <span className="text-sm font-semibold text-text-muted uppercase tracking-wide">Your Points</span>
-              </div>
-              <span className="text-sm font-bold text-text-primary">{ordinal(displayRank)} Place</span>
+          <div className="mb-5 rounded-[14px] bg-surface border border-border px-5 py-3 flex items-center gap-5">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-sm font-semibold text-text-primary">{userName}</span>
+              <span className="text-xs text-text-muted">·</span>
+              <span className="text-xs font-medium text-text-muted">{ordinal(displayRank)} Place</span>
             </div>
-            <p className="text-3xl font-black text-wcs-red mb-3">{userPoints}</p>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-xs">
+            <div className="h-5 w-px bg-border shrink-0" />
+            <span className="text-xl font-black text-wcs-red shrink-0">{userPoints} <span className="text-xs font-semibold text-text-muted">pts</span></span>
+            <div className="h-5 w-px bg-border shrink-0" />
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[11px]">
                 <strong className="text-blue-700">{myEntry?.memberships || 0}</strong>
                 <span className="text-blue-600">Sales</span>
               </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 border border-green-200 text-xs">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 border border-green-200 text-[11px]">
                 <strong className="text-green-700">{myEntry?.day_ones || 0}</strong>
-                <span className="text-green-600">Day Ones</span>
+                <span className="text-green-600">D1</span>
               </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-xs">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 border border-purple-200 text-[11px]">
                 <strong className="text-purple-700">{myEntry?.same_day || 0}</strong>
-                <span className="text-purple-600">Same Day</span>
+                <span className="text-purple-600">SD</span>
               </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-xs">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[11px]">
                 <strong className="text-amber-700">{myEntry?.vips || 0}</strong>
-                <span className="text-amber-600">VIPs</span>
+                <span className="text-amber-600">VIP</span>
               </span>
             </div>
           </div>

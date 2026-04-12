@@ -139,33 +139,35 @@ export default function HomeScreen({ user, navigate, onLogout }) {
         )}
       </div>
 
-      {/* Score card — always show for non-admin/corporate roles */}
+      {/* Score card — compact */}
       {!scoreLoading && scoreData && role !== 'admin' && role !== 'corporate' && (() => {
         const totalAtLocation = scoreData.totalStaff || scoreData.total
         const displayRank = scoreData.userRank || totalAtLocation || '—'
         return (
-          <div className="bg-surface border border-border rounded-2xl p-4 mb-6">
+          <div className="bg-surface border border-border rounded-2xl px-4 py-3 mb-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">Your Points</span>
-              <span className="text-sm font-bold text-text-primary">{ordinal(displayRank)} Place</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-black text-wcs-red">{scoreData.userPoints || 0}</span>
+                <span className="text-[11px] text-text-muted">pts</span>
+              </div>
+              <span className="text-xs font-bold text-text-primary">{ordinal(displayRank)} Place</span>
             </div>
-            <p className="text-3xl font-black text-wcs-red mb-3">{scoreData.userPoints || 0}</p>
-            <div className="flex gap-1.5 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-[11px]">
+            <div className="flex gap-1.5">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[10px]">
                 <strong className="text-blue-700">{scoreData.userEntry?.memberships || 0}</strong>
                 <span className="text-blue-600">Sales</span>
               </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 border border-green-200 text-[11px]">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 border border-green-200 text-[10px]">
                 <strong className="text-green-700">{scoreData.userEntry?.day_ones || 0}</strong>
-                <span className="text-green-600">Day Ones</span>
+                <span className="text-green-600">D1</span>
               </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-[11px]">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 border border-purple-200 text-[10px]">
                 <strong className="text-purple-700">{scoreData.userEntry?.same_day || 0}</strong>
-                <span className="text-purple-600">Same Day</span>
+                <span className="text-purple-600">SD</span>
               </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-[11px]">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[10px]">
                 <strong className="text-amber-700">{scoreData.userEntry?.vips || 0}</strong>
-                <span className="text-amber-600">VIPs</span>
+                <span className="text-amber-600">VIP</span>
               </span>
             </div>
           </div>
