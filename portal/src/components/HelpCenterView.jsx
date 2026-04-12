@@ -10,6 +10,18 @@ import {
   deleteHelpArticle,
 } from '../lib/api'
 
+const ROLES = [
+  { value: '', label: 'All Roles' },
+  { value: 'team_member', label: 'Team Member+' },
+  { value: 'fd_lead', label: 'FD Lead+' },
+  { value: 'pt_lead', label: 'PT Lead+' },
+  { value: 'manager', label: 'Manager+' },
+  { value: 'corporate', label: 'Corporate+' },
+  { value: 'admin', label: 'Admin Only' },
+]
+
+const ROLE_LABELS = { team_member: 'Team Member+', fd_lead: 'FD Lead+', pt_lead: 'PT Lead+', manager: 'Manager+', corporate: 'Corporate+', admin: 'Admin' }
+
 function formatDate(dateStr) {
   if (!dateStr) return ''
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -59,6 +71,7 @@ export default function HelpCenterView({ user, onBack }) {
   const [formTitle, setFormTitle] = useState('')
   const [formBody, setFormBody] = useState('')
   const [formCategoryId, setFormCategoryId] = useState('')
+  const [formMinRole, setFormMinRole] = useState('')
   const [saving, setSaving] = useState(false)
 
   const fetchCategories = useCallback(async () => {
@@ -94,6 +107,7 @@ export default function HelpCenterView({ user, onBack }) {
   function openAddCategory() {
     setFormName('')
     setFormDesc('')
+    setFormMinRole('')
     setEditTarget(null)
     setModal('add-category')
   }
@@ -101,6 +115,7 @@ export default function HelpCenterView({ user, onBack }) {
   function openEditCategory(cat) {
     setFormName(cat.name)
     setFormDesc(cat.description || '')
+    setFormMinRole(cat.min_role || '')
     setEditTarget(cat)
     setModal('edit-category')
   }
@@ -110,9 +125,9 @@ export default function HelpCenterView({ user, onBack }) {
     setSaving(true)
     try {
       if (modal === 'edit-category' && editTarget) {
-        await updateHelpCategory(editTarget.id, { name: formName, description: formDesc })
+        await updateHelpCategory(editTarget.id, { name: formName, description: formDesc, min_role: formMinRole || null })
       } else {
-        await createHelpCategory({ name: formName, description: formDesc })
+        await createHelpCategory({ name: formName, description: formDesc, min_role: formMinRole || null })
       }
       await fetchCategories()
       setModal(null)
@@ -134,6 +149,7 @@ export default function HelpCenterView({ user, onBack }) {
     setFormTitle('')
     setFormBody('')
     setFormCategoryId(selectedCategory || categories[0]?.id || '')
+    setFormMinRole('')
     setEditTarget(null)
     setModal('add-article')
   }
@@ -142,6 +158,7 @@ export default function HelpCenterView({ user, onBack }) {
     setFormTitle(article.title)
     setFormBody(article.body)
     setFormCategoryId(article.category_id)
+    setFormMinRole(article.min_role || '')
     setEditTarget(article)
     setModal('edit-article')
   }
@@ -151,9 +168,9 @@ export default function HelpCenterView({ user, onBack }) {
     setSaving(true)
     try {
       if (modal === 'edit-article' && editTarget) {
-        await updateHelpArticle(editTarget.id, { title: formTitle, body: formBody, category_id: formCategoryId })
+        await updateHelpArticle(editTarget.id, { title: formTitle, body: formBody, category_id: formCategoryId, min_role: formMinRole || null })
       } else {
-        await createHelpArticle({ title: formTitle, body: formBody, category_id: formCategoryId })
+        await createHelpArticle({ title: formTitle, body: formBody, category_id: formCategoryId, min_role: formMinRole || null })
       }
       await fetchArticles()
       setModal(null)
@@ -230,6 +247,12 @@ export default function HelpCenterView({ user, onBack }) {
               <div>
                 <label className="block text-sm font-semibold text-text-primary mb-1">Body</label>
                 <textarea value={formBody} onChange={e => setFormBody(e.target.value)} rows={12} className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red resize-y" />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-text-primary mb-1">Visible To</label>
+                <select value={formMinRole} onChange={e => setFormMinRole(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red">
+                  {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
               </div>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setModal(null)} className="px-4 py-2 text-sm font-semibold rounded-lg border border-border bg-surface text-text-primary hover:bg-bg transition-colors">Cancel</button>
@@ -396,6 +419,12 @@ export default function HelpCenterView({ user, onBack }) {
             <div>
               <label className="block text-sm font-semibold text-text-primary mb-1">Description (optional)</label>
               <input type="text" value={formDesc} onChange={e => setFormDesc(e.target.value)} placeholder="Brief description..." className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red" />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-text-primary mb-1">Visible To</label>
+              <select value={formMinRole} onChange={e => setFormMinRole(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red">
+                {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
             </div>
             <div className="flex gap-3 pt-2">
               <button onClick={() => setModal(null)} className="px-4 py-2 text-sm font-semibold rounded-lg border border-border bg-surface text-text-primary hover:bg-bg transition-colors">Cancel</button>
