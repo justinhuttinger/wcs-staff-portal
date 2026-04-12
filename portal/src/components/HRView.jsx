@@ -415,7 +415,7 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
 // ---------------------------------------------------------------------------
 // Worker Document Detail — VIEW ONLY, no editing/signing/uploading
 // ---------------------------------------------------------------------------
-function WorkerDocuments({ worker, location }) {
+function WorkerDocuments({ worker }) {
   const [paychexDocs, setPaychexDocs] = useState([])
   const [localDocs, setLocalDocs] = useState([])
   const [loading, setLoading] = useState(true)
@@ -440,28 +440,19 @@ function WorkerDocuments({ worker, location }) {
 
   return (
     <div className="space-y-4">
-      {/* Worker header with logo and location */}
-      <div className="bg-surface border border-border rounded-xl overflow-hidden">
-        <div className="bg-[#C41E24] px-4 py-3 flex items-center gap-3">
-          <img src="/wcs-logo.png" alt="WCS" className="h-8 w-8 rounded-full" />
-          <div>
-            <h3 className="text-white text-sm font-bold">West Coast Strength</h3>
-            {location && <p className="text-white/70 text-[11px]">{location.charAt(0).toUpperCase() + location.slice(1)}</p>}
-          </div>
+      {/* Worker header */}
+      <div className="bg-surface border border-border rounded-xl p-4 flex items-center gap-4">
+        <div className="w-12 h-12 rounded-full bg-wcs-red/10 flex items-center justify-center shrink-0">
+          <span className="text-lg font-bold text-wcs-red">
+            {(worker.givenName?.[0] || '').toUpperCase()}{(worker.familyName?.[0] || '').toUpperCase()}
+          </span>
         </div>
-        <div className="p-4 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-wcs-red/10 flex items-center justify-center shrink-0">
-            <span className="text-lg font-bold text-wcs-red">
-              {(worker.givenName?.[0] || '').toUpperCase()}{(worker.familyName?.[0] || '').toUpperCase()}
-            </span>
-          </div>
-          <div>
-            <p className="text-base font-bold text-text-primary">{worker.displayName}</p>
-            <div className="flex items-center gap-3 mt-0.5 text-xs text-text-muted">
-              {worker.employeeId && <span>ID: {worker.employeeId}</span>}
-              {worker.email && <span>{worker.email}</span>}
-              {worker.hireDate && <span>Hired {formatDate(worker.hireDate)}</span>}
-            </div>
+        <div>
+          <p className="text-base font-bold text-text-primary">{worker.displayName}</p>
+          <div className="flex items-center gap-3 mt-0.5 text-xs text-text-muted">
+            {worker.employeeId && <span>ID: {worker.employeeId}</span>}
+            {worker.email && <span>{worker.email}</span>}
+            {worker.hireDate && <span>Hired {formatDate(worker.hireDate)}</span>}
           </div>
         </div>
       </div>
@@ -674,7 +665,7 @@ export default function HRView({ user, onBack }) {
 
       {/* View Docs — Worker detail */}
       {view === 'worker-detail' && selectedWorker && (
-        <WorkerDocuments worker={selectedWorker} location={currentLocation} />
+        <WorkerDocuments worker={selectedWorker} />
       )}
     </div>
   )

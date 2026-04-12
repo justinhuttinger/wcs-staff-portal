@@ -21,7 +21,7 @@ const REASON_LABELS = {
 /**
  * Build an HTML document for the HR form, suitable for PDF rendering.
  */
-function buildDocumentHTML({ employee_name, manager_name, reason, short_reason, body, manager_signature, employee_signature, employee_acknowledged, employee_acknowledged_at, created_at }) {
+function buildDocumentHTML({ employee_name, manager_name, reason, short_reason, body, manager_signature, employee_signature, employee_acknowledged, employee_acknowledged_at, created_at, location_slug }) {
   const dateStr = new Date(created_at || Date.now()).toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric',
   })
@@ -49,9 +49,11 @@ function buildDocumentHTML({ employee_name, manager_name, reason, short_reason, 
   <meta charset="utf-8">
   <style>
     body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; color: #222; }
-    .header { background: #C41E24; color: #fff; padding: 24px 40px; }
-    .header h1 { margin: 0; font-size: 24px; letter-spacing: 1px; }
-    .header h2 { margin: 8px 0 0; font-size: 16px; font-weight: 400; opacity: 0.9; }
+    .header { background: #C41E24; color: #fff; padding: 24px 40px; display: flex; align-items: center; gap: 16px; }
+    .header img { height: 48px; width: 48px; border-radius: 50%; }
+    .header-text h1 { margin: 0; font-size: 24px; letter-spacing: 1px; }
+    .header-text h2 { margin: 4px 0 0; font-size: 14px; font-weight: 400; opacity: 0.8; }
+    .header-text h3 { margin: 2px 0 0; font-size: 12px; font-weight: 400; opacity: 0.65; }
     .content { padding: 32px 40px; }
     .meta-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
     .meta-row span { font-size: 14px; }
@@ -62,8 +64,12 @@ function buildDocumentHTML({ employee_name, manager_name, reason, short_reason, 
 </head>
 <body>
   <div class="header">
-    <h1>West Coast Strength</h1>
-    <h2>${REASON_LABELS[reason] || reason}</h2>
+    <img src="${process.env.PORTAL_URL || 'https://wcs-staff-portal.onrender.com'}/wcs-logo.png" alt="WCS" />
+    <div class="header-text">
+      <h1>West Coast Strength</h1>
+      <h2>${REASON_LABELS[reason] || reason}</h2>
+      ${location_slug ? `<h3>${location_slug.charAt(0).toUpperCase() + location_slug.slice(1)}</h3>` : ''}
+    </div>
   </div>
   <div class="content">
     <div class="meta-row"><span><strong>Date:</strong> ${dateStr}</span></div>
