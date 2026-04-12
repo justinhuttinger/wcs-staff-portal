@@ -39,11 +39,17 @@ export default function TicketEmbedsAdmin() {
     setModal('edit')
   }
 
+  function extractSrcFromHtml(input) {
+    const match = input.match(/src=["']([^"']+)["']/)
+    return match ? match[1] : input.trim()
+  }
+
   async function handleSave() {
     if (!formName.trim() || !formUrl.trim()) return
     setSaving(true)
     try {
-      const payload = { name: formName, description: formDesc, iframe_url: formUrl, sort_order: formOrder }
+      const cleanUrl = extractSrcFromHtml(formUrl)
+      const payload = { name: formName, description: formDesc, iframe_url: cleanUrl, sort_order: formOrder }
       if (modal === 'edit' && editTarget) {
         await updateTicketEmbed(editTarget.id, payload)
       } else {
