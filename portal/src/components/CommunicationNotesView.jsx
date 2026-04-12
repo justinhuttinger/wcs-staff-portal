@@ -175,6 +175,7 @@ export default function CommunicationNotesView({ user, onBack }) {
     addCommunicationNoteComment(noteId, { body: commentText.trim() })
       .then(() => {
         setCommentText('')
+        setNotes(prev => prev.map(n => n.id === noteId ? { ...n, comment_count: (n.comment_count || 0) + 1 } : n))
         return getCommunicationNoteComments(noteId)
       })
       .then(res => setComments(res.comments || []))

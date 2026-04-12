@@ -497,7 +497,7 @@ function DocumentDetailView({ docId, onBack }) {
         {/* Description */}
         <div>
           <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">Description</label>
-          <p className="text-sm text-text-primary whitespace-pre-wrap">{doc.description}</p>
+          <p className="text-sm text-text-primary whitespace-pre-wrap">{doc.body || doc.description}</p>
         </div>
 
         {/* Manager Signature */}

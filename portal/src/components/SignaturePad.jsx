@@ -1,11 +1,11 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 
 export default function SignaturePad({ value, onChange, label }) {
   const canvasRef = useRef(null)
-  const [drawing, setDrawing] = useState(false)
+  const drawingRef = useRef(false)
   const [hasDrawn, setHasDrawn] = useState(false)
 
-  useEffect(() => {
+  const initCanvas = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
@@ -16,7 +16,14 @@ export default function SignaturePad({ value, onChange, label }) {
     ctx.lineWidth = 2
     ctx.lineCap = 'round'
     ctx.strokeStyle = '#222'
+  }, [])
+
+  useEffect(() => {
+    initCanvas()
     if (value) {
+      const canvas = canvasRef.current
+      const ctx = canvas.getContext('2d')
+      const rect = canvas.getBoundingClientRect()
       const img = new Image()
       img.onload = () => {
         ctx.drawImage(img, 0, 0, rect.width, rect.height)
@@ -36,15 +43,18 @@ export default function SignaturePad({ value, onChange, label }) {
 
   function startDraw(e) {
     e.preventDefault()
-    setDrawing(true)
+    drawingRef.current = true
     const ctx = canvasRef.current.getContext('2d')
+    ctx.lineWidth = 2
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = '#222'
     const pos = getPos(e)
     ctx.beginPath()
     ctx.moveTo(pos.x, pos.y)
   }
 
   function draw(e) {
-    if (!drawing) return
+    if (!drawingRef.current) return
     e.preventDefault()
     const ctx = canvasRef.current.getContext('2d')
     const pos = getPos(e)
@@ -53,9 +63,10 @@ export default function SignaturePad({ value, onChange, label }) {
     setHasDrawn(true)
   }
 
-  function endDraw() {
-    setDrawing(false)
-    if (hasDrawn || drawing) {
+  function endDraw(e) {
+    if (e) e.preventDefault()
+    if (drawingRef.current) {
+      drawingRef.current = false
       const dataUrl = canvasRef.current.toDataURL('image/png')
       onChange(dataUrl)
     }
@@ -64,8 +75,7 @@ export default function SignaturePad({ value, onChange, label }) {
   function clear() {
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
-    const rect = canvas.getBoundingClientRect()
-    ctx.clearRect(0, 0, rect.width, rect.height)
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
     setHasDrawn(false)
     onChange('')
   }

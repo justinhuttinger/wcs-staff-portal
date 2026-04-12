@@ -185,7 +185,7 @@ export default function HRView({ user, onBack }) {
   const [expandedId, setExpandedId] = useState(null)
   const [uploading, setUploading] = useState(null)
   const [acknowledging, setAcknowledging] = useState(null)
-  const [employeeSig, setEmployeeSig] = useState('')
+  const [employeeSigs, setEmployeeSigs] = useState({})
 
   const fetchDocuments = useCallback(async () => {
     setLoading(true)
@@ -255,11 +255,12 @@ export default function HRView({ user, onBack }) {
   }
 
   async function handleAcknowledge(docId) {
-    if (!employeeSig) return
+    const sig = employeeSigs[docId]
+    if (!sig) return
     setAcknowledging(docId)
     try {
-      await acknowledgeHRDocument(docId, { employee_signature: employeeSig })
-      setEmployeeSig('')
+      await acknowledgeHRDocument(docId, { employee_signature: sig })
+      setEmployeeSigs(prev => { const next = { ...prev }; delete next[docId]; return next })
       await fetchDocuments()
     } catch {
       // silent
@@ -512,7 +513,7 @@ export default function HRView({ user, onBack }) {
                         <DocumentPreview
                           employeeName={doc.employee_name}
                           reason={doc.reason}
-                          description={doc.description}
+                          description={doc.body || doc.description}
                           managerName={doc.manager_name}
                           managerSignature={doc.manager_signature}
                           date={formatDate(doc.created_at)}
@@ -537,12 +538,12 @@ export default function HRView({ user, onBack }) {
                             <p className="text-xs font-semibold text-yellow-700">Employee Acknowledgment Required</p>
                             <SignaturePad
                               label="Employee Signature"
-                              value={employeeSig}
-                              onChange={setEmployeeSig}
+                              value={employeeSigs[doc.id] || ''}
+                              onChange={val => setEmployeeSigs(prev => ({ ...prev, [doc.id]: val }))}
                             />
                             <button
                               onClick={() => handleAcknowledge(doc.id)}
-                              disabled={!employeeSig || acknowledging === doc.id}
+                              disabled={!employeeSigs[doc.id] || acknowledging === doc.id}
                               className="px-4 py-2 text-xs font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               {acknowledging === doc.id ? 'Acknowledging...' : 'Sign & Acknowledge'}
