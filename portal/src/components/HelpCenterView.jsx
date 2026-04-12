@@ -87,21 +87,28 @@ export default function HelpCenterView({ user, onBack }) {
     } catch { /* silent */ }
   }, [])
 
+  const [articlesError, setArticlesError] = useState(null)
+
   const fetchArticles = useCallback(async () => {
+    setArticlesError(null)
     try {
       const res = await getHelpArticles(selectedCategory)
       setArticles(res.articles || [])
-    } catch { /* silent */ }
+    } catch (err) {
+      console.error('[HelpCenter] Failed to fetch articles:', err)
+      setArticlesError(err.message || 'Failed to load articles')
+      setArticles([])
+    }
   }, [selectedCategory])
 
   useEffect(() => {
     setLoading(true)
-    fetchCategories().finally(() => setLoading(false))
-  }, [fetchCategories])
+    Promise.all([fetchCategories(), fetchArticles()]).finally(() => setLoading(false))
+  }, [])
 
   useEffect(() => {
     fetchArticles()
-  }, [fetchArticles])
+  }, [selectedCategory])
 
   const filtered = articles.filter(a => {
     if (!search) return true
@@ -358,6 +365,11 @@ export default function HelpCenterView({ user, onBack }) {
       {/* Articles */}
       {loading ? (
         <p className="text-center text-text-muted text-sm py-8">Loading...</p>
+      ) : articlesError ? (
+        <div className="text-center py-8">
+          <p className="text-sm text-red-600 mb-2">{articlesError}</p>
+          <button onClick={fetchArticles} className="px-4 py-2 text-xs font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 transition-colors">Retry</button>
+        </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-10 h-10 text-text-muted mx-auto mb-3">
