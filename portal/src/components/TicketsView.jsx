@@ -16,7 +16,7 @@ export default function TicketsView({ onBack }) {
   // Viewing an embed — full-width iframe
   if (selected) {
     return (
-      <div className="w-full h-full flex flex-col px-8 pb-4">
+      <div className="w-full flex flex-col px-8 pb-4" style={{ height: 'calc(100vh - 80px)' }}>
         <div className="flex items-center gap-3 mb-4 shrink-0">
           <button
             onClick={() => setSelected(null)}
