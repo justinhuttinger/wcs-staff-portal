@@ -96,7 +96,7 @@ router.get('/', requireRole('fd_lead'), async (req, res) => {
       comment_count: note.comment_count?.[0]?.count || 0,
     }))
 
-    res.json(notes)
+    res.json({ notes })
   } catch (err) {
     console.error('[CommunicationNotes] Error listing notes:', err.message)
     res.status(500).json({ error: 'Failed to list notes: ' + err.message })
