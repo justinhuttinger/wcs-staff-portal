@@ -315,13 +315,13 @@ export default function CommunicationNotesView({ user, onBack }) {
       {isLeadPlus && (
         <>
           {/* Status Tabs + Date Range (inline) */}
-          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-            <div className="flex gap-2">
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <div className="flex gap-1.5 shrink-0">
               {STATUSES.map(s => (
                 <button
                   key={s}
                   onClick={() => { setStatusFilter(s); setExpandedId(null) }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
                     statusFilter === s
                       ? 'bg-wcs-red text-white border-wcs-red'
                       : 'bg-surface text-text-muted border-border hover:border-text-muted'
@@ -336,20 +336,10 @@ export default function CommunicationNotesView({ user, onBack }) {
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={e => setDateFrom(e.target.value)}
-                className="px-1.5 py-1 text-[11px] rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red"
-              />
-              <span className="text-[11px] text-text-muted">–</span>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={e => setDateTo(e.target.value)}
-                className="px-1.5 py-1 text-[11px] rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red"
-              />
+            <div className="flex items-center gap-1 shrink-0">
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-[108px] px-1 py-1 text-[11px] rounded border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red" />
+              <span className="text-[10px] text-text-muted">–</span>
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-[108px] px-1 py-1 text-[11px] rounded border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red" />
               {[
                 { label: '7d', days: 7 },
                 { label: '30d', days: 30 },
