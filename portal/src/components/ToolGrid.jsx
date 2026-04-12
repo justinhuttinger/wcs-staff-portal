@@ -345,17 +345,31 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
         </div>
       </div>
 
-      {/* Tools — right side */}
+      {/* Tools — right side, ordered */}
       <div className="w-1/2">
         <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">Tools</p>
         <div className="grid grid-cols-3 gap-4">
-          {onDayOneCalendar && <SvgTileButton onClick={onDayOneCalendar} iconPath={TILE_ICONS.dayOneCalendar} label="Day Ones" desc="Calendar" badge={dayOneCalBadge} dark />}
-          {onDayOneTracker && <SvgTileButton onClick={onDayOneTracker} iconPath={TILE_ICONS.dayOne} label="Day One" desc="Tracking" badge={dayOneBadge} />}
-          {onTrainerAvail && roleIdx >= ROLE_LEVELS.pt_lead && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="Availability" desc="Trainers" />}
+          {/* 1. Cancel Tool (custom tile) */}
+          {toolCustomTiles.filter(t => ['cancel', 'cancel tool'].includes((t.label || '').toLowerCase())).map(tile => {
+            const tileLabel = (tile.label || '').toLowerCase()
+            const iconPath = TILE_ICONS[tileLabel] || TILE_ICONS.reporting
+            return <SvgTileButton key={'custom-' + tile.id} onClick={() => setActiveGroup(tile)} iconPath={iconPath} label={tile.label} desc={tile.description || ''} dark />
+          })}
+          {/* 2. Tours Calendar */}
           {onTours && <SvgTileButton onClick={onTours} iconPath={TILE_ICONS.tours} label="Tours" desc="Calendar" badge={toursBadge} dark />}
+          {/* 3. Day One Calendar */}
+          {onDayOneCalendar && <SvgTileButton onClick={onDayOneCalendar} iconPath={TILE_ICONS.dayOneCalendar} label="Day Ones" desc="Calendar" badge={dayOneCalBadge} dark />}
+          {/* 4. Leaderboard */}
           {onLeaderboard && <SvgTileButton onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />}
+          {/* 5. Day One Tracking */}
+          {onDayOneTracker && <SvgTileButton onClick={onDayOneTracker} iconPath={TILE_ICONS.dayOne} label="Day One" desc="Tracking" badge={dayOneBadge} />}
+          {/* 6. Trainer Availability */}
+          {onTrainerAvail && roleIdx >= ROLE_LEVELS.pt_lead && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="Availability" desc="Trainers" />}
+          {/* 7-9. Reporting, Marketing, Tickets + remaining custom tiles */}
           {toolCustomTiles.filter((tile) => {
             const tileLabel = (tile.label || '').toLowerCase()
+            // Skip Cancel — already rendered above
+            if (['cancel', 'cancel tool'].includes(tileLabel)) return false
             // Hide Reporting tile for team_member
             if (tileLabel === 'reporting' && userRole === 'team_member') return false
             // Marketing tile only for corporate and admin
@@ -365,6 +379,12 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
             // Indeed, Operandio, VistaPrint: manager+ only
             if (['indeed', 'operandio', 'vistaprint', 'vista'].includes(tileLabel) && roleIdx < ROLE_LEVELS.manager) return false
             return true
+          }).sort((a, b) => {
+            // Order: reporting, marketing, tickets, then everything else
+            const order = { reporting: 0, marketing: 1, tickets: 2 }
+            const aOrder = order[(a.label || '').toLowerCase()] ?? 99
+            const bOrder = order[(b.label || '').toLowerCase()] ?? 99
+            return aOrder - bOrder
           }).map((tile) => {
             const hasChildren = customTiles.some(t => t.parent_id === tile.id)
             const isGroup = hasChildren || !tile.url
