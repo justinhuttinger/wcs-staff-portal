@@ -105,6 +105,14 @@ async function aggregateLocation(locationSlug, bounds) {
   const { data: vipContacts } = await vipQuery
   const vipIds = (vipContacts || []).map(v => v.id)
 
+  // Normalize name: collapse spaces, title case, trim
+  function normalizeName(raw) {
+    if (!raw) return ''
+    return raw.replace(/\s+/g, ' ').trim()
+      .toLowerCase()
+      .replace(/\b\w/g, c => c.toUpperCase())
+  }
+
   // Look up sale_team_member for VIP contacts from the report view
   let vipSalesMap = {}
   if (vipIds.length > 0) {
@@ -116,7 +124,7 @@ async function aggregateLocation(locationSlug, bounds) {
         .select('id, sale_team_member')
         .in('id', chunk)
       for (const vr of (vipReport || [])) {
-        const name = vr.sale_team_member || ''
+        const name = normalizeName(vr.sale_team_member)
         if (name && name !== 'Unassigned') {
           vipSalesMap[name] = (vipSalesMap[name] || 0) + 1
         }
@@ -124,18 +132,18 @@ async function aggregateLocation(locationSlug, bounds) {
     }
   }
 
-  // Aggregate by person
+  // Aggregate by person (normalized key)
   const personStats = {}
 
-  function ensurePerson(name) {
-    if (!personStats[name]) {
-      personStats[name] = { memberships: 0, day_ones: 0, same_day: 0, vips: 0 }
+  function ensurePerson(key) {
+    if (!personStats[key]) {
+      personStats[key] = { memberships: 0, day_ones: 0, same_day: 0, vips: 0 }
     }
   }
 
   // Memberships + same day sales
   for (const m of members) {
-    const name = m.sale_team_member || ''
+    const name = normalizeName(m.sale_team_member)
     if (!name || name === 'Unassigned') continue
     ensurePerson(name)
     personStats[name].memberships++
@@ -144,14 +152,16 @@ async function aggregateLocation(locationSlug, bounds) {
 
   // Day ones booked
   for (const d of dayOnes) {
-    const name = d.day_one_booking_team_member || ''
+    const name = normalizeName(d.day_one_booking_team_member)
     if (!name || name === 'Unassigned') continue
     ensurePerson(name)
     personStats[name].day_ones++
   }
 
   // VIPs
-  for (const [name, count] of Object.entries(vipSalesMap)) {
+  for (const [rawName, count] of Object.entries(vipSalesMap)) {
+    const name = normalizeName(rawName)
+    if (!name || name === 'Unassigned') continue
     ensurePerson(name)
     personStats[name].vips += count
   }

@@ -142,14 +142,13 @@ export default function HomeScreen({ user, navigate, onLogout }) {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] text-text-muted">Day One <span className="font-semibold text-text-secondary">10</span></span>
-            <span className="text-[11px] text-text-muted">&middot;</span>
-            <span className="text-[11px] text-text-muted">Membership <span className="font-semibold text-text-secondary">5</span></span>
-            <span className="text-[11px] text-text-muted">&middot;</span>
-            <span className="text-[11px] text-text-muted">Same Day <span className="font-semibold text-text-secondary">5</span></span>
-            <span className="text-[11px] text-text-muted">&middot;</span>
-            <span className="text-[11px] text-text-muted">VIP <span className="font-semibold text-text-secondary">2</span></span>
+          <div className="flex gap-1.5 flex-wrap">
+            {[{ l: 'Day One', p: 10 }, { l: 'Membership', p: 5 }, { l: 'Same Day', p: 5 }, { l: 'VIP', p: 2 }].map(x => (
+              <span key={x.l} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-bg border border-border text-[10px]">
+                <span className="font-bold text-wcs-red">{x.p}</span>
+                <span className="text-text-muted">{x.l}</span>
+              </span>
+            ))}
           </div>
         </div>
       )}

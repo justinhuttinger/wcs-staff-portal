@@ -143,11 +143,12 @@ export default function MobileLeaderboard({ user }) {
         </div>
 
         {/* Point legend */}
-        <div className="flex items-center justify-center gap-3 px-4 mt-2">
+        <div className="flex justify-center gap-2 px-4 mt-2">
           {POINT_LEGEND.map(p => (
-            <span key={p.label} className="text-[10px] text-text-muted">
-              {p.label} <span className="font-semibold text-text-secondary">{p.pts}</span>
-            </span>
+            <div key={p.label} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface border border-border">
+              <span className="text-sm font-bold text-wcs-red">{p.pts}</span>
+              <span className="text-[10px] text-text-muted">{p.label}</span>
+            </div>
           ))}
         </div>
 
