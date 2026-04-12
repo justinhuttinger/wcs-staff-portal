@@ -343,6 +343,21 @@ export async function acknowledgeHRDocument(id, data) {
   return api('/hr-documents/' + id + '/acknowledge', { method: 'PUT', body: JSON.stringify(data) })
 }
 
-export async function uploadHRDocumentToPaychex(id) {
-  return api('/hr-documents/' + id + '/upload-paychex', { method: 'POST' })
+export async function uploadHRDocumentToPaychex(id, workerId) {
+  return api('/hr-documents/' + id + '/upload-paychex', { method: 'POST', body: JSON.stringify({ workerId }) })
+}
+
+// Paychex Workers
+export async function getPaychexWorkers(slug) {
+  const qs = slug ? '?slug=' + encodeURIComponent(slug) : ''
+  return api('/hr-documents/paychex-workers' + qs)
+}
+
+export async function getPaychexWorkerDocuments(workerId, workerName) {
+  const qs = workerName ? '?workerName=' + encodeURIComponent(workerName) : ''
+  return api('/hr-documents/paychex-workers/' + workerId + '/documents' + qs)
+}
+
+export async function getPaychexLocations() {
+  return api('/hr-documents/paychex-locations')
 }

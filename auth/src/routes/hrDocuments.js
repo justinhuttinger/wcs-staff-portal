@@ -2,6 +2,8 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, canSeeAllLocations } = require('../middleware/role')
+const { getWorkers, getWorkerDocuments, getWorkerDocument, uploadWorkerDocument } = require('../services/paychex')
+const { getPaychexBySlug, PAYCHEX_LOCATIONS } = require('../config/paychexLocations')
 
 const router = Router()
 router.use(authenticate)
@@ -112,47 +114,16 @@ async function generatePDF(htmlContent) {
 }
 
 /**
- * Upload a document PDF to Paychex for a worker.
+ * Resolve a staff member's location slug from their primary_location_id.
  */
-async function paychexUploadDocument(workerId, pdfBuffer, fileName) {
-  const apiKey = process.env.PAYCHEX_API_KEY
-  if (!apiKey) return null
-
-  const resp = await fetch(`https://api.paychex.com/workers/${workerId}/documents`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${fileName}"`,
-    },
-    body: pdfBuffer,
-  })
-
-  if (!resp.ok) {
-    const text = await resp.text()
-    throw new Error(`Paychex upload error ${resp.status}: ${text}`)
-  }
-
-  return resp.json()
-}
-
-/**
- * Get documents for a worker from Paychex.
- */
-async function paychexGetWorkerDocuments(companyId, workerName) {
-  const apiKey = process.env.PAYCHEX_API_KEY
-  if (!apiKey) return null
-
-  const resp = await fetch(`https://api.paychex.com/companies/${companyId}/workers?givenName=${encodeURIComponent(workerName)}`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  })
-
-  if (!resp.ok) {
-    const text = await resp.text()
-    throw new Error(`Paychex API error ${resp.status}: ${text}`)
-  }
-
-  return resp.json()
+async function resolveLocationSlug(staff) {
+  if (!staff.primary_location_id) return null
+  const { data } = await supabaseAdmin
+    .from('locations')
+    .select('name')
+    .eq('id', staff.primary_location_id)
+    .maybeSingle()
+  return data?.name?.toLowerCase() || null
 }
 
 // ---------------------------------------------------------------------------
@@ -173,8 +144,7 @@ router.post('/', requireRole('manager'), async (req, res) => {
 
   try {
     const managerName = req.staff.display_name || [req.staff.first_name, req.staff.last_name].filter(Boolean).join(' ')
-    const primaryLocation = req.staff.locations?.find(l => l.is_primary)
-    const locationSlug = primaryLocation?.name?.toLowerCase() || null
+    const locationSlug = await resolveLocationSlug(req.staff)
 
     const insertPayload = {
       employee_name,
@@ -237,7 +207,7 @@ router.get('/', requireRole('manager'), async (req, res) => {
         query = query.eq('location_slug', location_slug)
       }
     } else {
-      const primarySlug = req.staff.locations?.find(l => l.is_primary)?.name?.toLowerCase() || null
+      const primarySlug = await resolveLocationSlug(req.staff)
       query = query.eq('location_slug', primarySlug)
     }
 
@@ -257,21 +227,102 @@ router.get('/', requireRole('manager'), async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
-// GET /hr-documents/paychex-worker/:employeeName  (manager+)
-// Must be before /:id to avoid route conflict
+// GET /hr-documents/paychex-workers  (manager+)
+// Returns Paychex employees for the staff member's location (or ?slug= override for corporate/admin)
 // ---------------------------------------------------------------------------
-router.get('/paychex-worker/:employeeName', requireRole('manager'), async (req, res) => {
-  if (!process.env.PAYCHEX_API_KEY || !process.env.PAYCHEX_COMPANY_ID) {
+router.get('/paychex-workers', requireRole('manager'), async (req, res) => {
+  if (!process.env.PAYCHEX_API_KEY || !process.env.PAYCHEX_API_SECRET) {
     return res.status(501).json({ error: 'Paychex integration not configured' })
   }
 
   try {
-    const result = await paychexGetWorkerDocuments(process.env.PAYCHEX_COMPANY_ID, req.params.employeeName)
-    res.json(result)
+    let slug = req.query.slug
+    if (!slug || !canSeeAllLocations(req.staff.role)) {
+      slug = await resolveLocationSlug(req.staff)
+    }
+    if (!slug) {
+      return res.status(400).json({ error: 'Could not determine location' })
+    }
+
+    const paychexLoc = getPaychexBySlug(slug)
+    if (!paychexLoc) {
+      return res.status(404).json({ error: `No Paychex company configured for location: ${slug}` })
+    }
+
+    const statusType = req.query.status || 'ACTIVE'
+    const workers = await getWorkers(paychexLoc.companyId, statusType)
+
+    // Return a simplified worker list for the frontend
+    const simplified = workers.map(w => ({
+      workerId: w.workerId,
+      employeeId: w.employeeId,
+      givenName: w.name?.givenName || '',
+      familyName: w.name?.familyName || '',
+      preferredName: w.name?.preferredName || '',
+      displayName: [w.name?.givenName, w.name?.familyName].filter(Boolean).join(' '),
+      workerType: w.workerType,
+      employmentType: w.employmentType,
+      status: w.currentStatus?.statusType || 'UNKNOWN',
+      hireDate: w.hireDate,
+    }))
+
+    // Sort alphabetically by last name
+    simplified.sort((a, b) => a.familyName.localeCompare(b.familyName))
+
+    res.json({ workers: simplified, location: slug, companyId: paychexLoc.companyId })
   } catch (err) {
-    console.error('[HRDocuments] Paychex worker lookup failed:', err.message)
-    res.status(500).json({ error: 'Paychex lookup failed: ' + err.message })
+    console.error('[HRDocuments] Paychex workers fetch failed:', err.message)
+    res.status(500).json({ error: 'Failed to fetch workers: ' + err.message })
   }
+})
+
+// ---------------------------------------------------------------------------
+// GET /hr-documents/paychex-workers/:workerId/documents  (manager+)
+// Returns documents from Paychex + local HR documents for this worker
+// ---------------------------------------------------------------------------
+router.get('/paychex-workers/:workerId/documents', requireRole('manager'), async (req, res) => {
+  if (!process.env.PAYCHEX_API_KEY || !process.env.PAYCHEX_API_SECRET) {
+    return res.status(501).json({ error: 'Paychex integration not configured' })
+  }
+
+  try {
+    const { workerId } = req.params
+    const { workerName } = req.query
+
+    // Fetch Paychex documents
+    let paychexDocs = []
+    try {
+      paychexDocs = await getWorkerDocuments(workerId)
+    } catch (err) {
+      console.error('[HRDocuments] Paychex documents fetch failed:', err.message)
+      // Continue — still show local docs even if Paychex call fails
+    }
+
+    // Fetch local HR documents matching this worker's name
+    let localDocs = []
+    if (workerName) {
+      const { data } = await supabaseAdmin
+        .from('hr_documents')
+        .select('*')
+        .ilike('employee_name', `%${workerName}%`)
+        .order('created_at', { ascending: false })
+      localDocs = data || []
+    }
+
+    res.json({ paychexDocuments: paychexDocs, localDocuments: localDocs })
+  } catch (err) {
+    console.error('[HRDocuments] Worker documents fetch failed:', err.message)
+    res.status(500).json({ error: 'Failed to fetch worker documents: ' + err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /hr-documents/paychex-locations  (manager+)
+// Returns configured Paychex locations (for location selector)
+// ---------------------------------------------------------------------------
+router.get('/paychex-locations', requireRole('manager'), async (req, res) => {
+  const locations = PAYCHEX_LOCATIONS.map(l => ({ name: l.name, slug: l.slug }))
+  res.json({ locations })
 })
 
 // ---------------------------------------------------------------------------
@@ -364,7 +415,7 @@ router.put('/:id/acknowledge', requireRole('team_member'), async (req, res) => {
 // POST /hr-documents/:id/upload-paychex  (manager+)
 // ---------------------------------------------------------------------------
 router.post('/:id/upload-paychex', requireRole('manager'), async (req, res) => {
-  if (!process.env.PAYCHEX_API_KEY || !process.env.PAYCHEX_COMPANY_ID) {
+  if (!process.env.PAYCHEX_API_KEY || !process.env.PAYCHEX_API_SECRET) {
     return res.status(501).json({ error: 'Paychex integration not configured' })
   }
 
@@ -382,17 +433,17 @@ router.post('/:id/upload-paychex', requireRole('manager'), async (req, res) => {
       return res.status(400).json({ error: 'No PDF available for this document. Generate the PDF first.' })
     }
 
-    // Decode the base64 data URL back to a buffer
-    const base64Data = doc.pdf_url.replace(/^data:application\/pdf;base64,/, '')
-    const pdfBuffer = Buffer.from(base64Data, 'base64')
-    const fileName = `hr_${doc.reason}_${doc.employee_name.replace(/\s+/g, '_')}_${doc.id}.pdf`
-
     const { workerId } = req.body || {}
     if (!workerId) {
       return res.status(400).json({ error: 'workerId is required in the request body' })
     }
 
-    const result = await paychexUploadDocument(workerId, pdfBuffer, fileName)
+    // Decode the base64 data URL back to a buffer
+    const base64Data = doc.pdf_url.replace(/^data:application\/pdf;base64,/, '')
+    const pdfBuffer = Buffer.from(base64Data, 'base64')
+    const fileName = `hr_${doc.reason}_${doc.employee_name.replace(/\s+/g, '_')}_${doc.id}.pdf`
+
+    const result = await uploadWorkerDocument(workerId, pdfBuffer, fileName)
 
     const paychexDocId = result?.documentId || result?.id || null
 
