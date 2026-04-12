@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { marked } from 'marked'
 import {
   getHelpCategories,
   createHelpCategory,
@@ -9,6 +10,9 @@ import {
   updateHelpArticle,
   deleteHelpArticle,
 } from '../lib/api'
+
+// Configure marked for safe rendering
+marked.setOptions({ breaks: true, gfm: true })
 
 const ROLES = [
   { value: '', label: 'All Roles' },
@@ -224,8 +228,9 @@ export default function HelpCenterView({ user, onBack }) {
               </button>
             )}
           </div>
-          <div className="prose prose-sm max-w-none text-text-secondary leading-relaxed whitespace-pre-wrap">
-            {selectedArticle.body}
+          <div
+            className="prose prose-sm max-w-none text-text-secondary leading-relaxed [&_img]:rounded-lg [&_img]:border [&_img]:border-border [&_img]:my-3 [&_img]:max-w-full [&_h1]:text-text-primary [&_h2]:text-text-primary [&_h3]:text-text-primary [&_h4]:text-text-primary [&_strong]:text-text-primary [&_a]:text-wcs-red"
+            dangerouslySetInnerHTML={{ __html: marked.parse(selectedArticle.body || '') }}>
           </div>
         </article>
 
@@ -436,6 +441,42 @@ export default function HelpCenterView({ user, onBack }) {
       {(modal === 'add-article' || modal === 'edit-article') && (
         <EditorModal title={modal === 'edit-article' ? 'Edit Article' : 'Add Article'} onClose={() => setModal(null)}>
           <div className="space-y-4">
+            {/* Import from Markdown file */}
+            <div className="flex items-center gap-3 p-3 bg-bg rounded-lg border border-border">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5 text-text-muted shrink-0">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+              </svg>
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-text-primary">Import from Markdown</p>
+                <p className="text-[10px] text-text-muted">Upload a .md file (e.g. from Scribe) to populate the title and body</p>
+              </div>
+              <label className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 transition-colors cursor-pointer">
+                Upload .md
+                <input type="file" accept=".md,.markdown,.txt" className="hidden" onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const reader = new FileReader()
+                  reader.onload = (ev) => {
+                    const content = ev.target?.result || ''
+                    // Extract title from first # heading
+                    const titleMatch = content.match(/^#\s+(.+)$/m)
+                    if (titleMatch && !formTitle.trim()) {
+                      setFormTitle(titleMatch[1].trim())
+                    }
+                    // Remove the Scribe attribution lines and clean up
+                    const cleaned = content
+                      .replace(/^#\s+.+\n/m, '') // remove first h1 (used as title)
+                      .replace(/####\s*\[Made.*?Scribe\]\(.*?\)\s*/g, '') // remove Scribe attribution
+                      .replace(/####\s*\[Made with Scribe\]\(.*?\)\s*/g, '')
+                      .trim()
+                    setFormBody(cleaned)
+                  }
+                  reader.readAsText(file)
+                  e.target.value = '' // reset so same file can be re-uploaded
+                }} />
+              </label>
+            </div>
+
             <div>
               <label className="block text-sm font-semibold text-text-primary mb-1">Category</label>
               <select value={formCategoryId} onChange={e => setFormCategoryId(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red">
@@ -448,8 +489,14 @@ export default function HelpCenterView({ user, onBack }) {
               <input type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)} placeholder="Article title..." className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red" autoFocus />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-text-primary mb-1">Body</label>
-              <textarea value={formBody} onChange={e => setFormBody(e.target.value)} placeholder="Write the help article content..." rows={12} className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red resize-y" />
+              <label className="block text-sm font-semibold text-text-primary mb-1">Body (Markdown supported)</label>
+              <textarea value={formBody} onChange={e => setFormBody(e.target.value)} placeholder="Write the help article content... Markdown formatting is supported." rows={12} className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red resize-y font-mono" />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-text-primary mb-1">Visible To</label>
+              <select value={formMinRole} onChange={e => setFormMinRole(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red">
+                {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
             </div>
             <div className="flex gap-3 pt-2">
               <button onClick={() => setModal(null)} className="px-4 py-2 text-sm font-semibold rounded-lg border border-border bg-surface text-text-primary hover:bg-bg transition-colors">Cancel</button>
