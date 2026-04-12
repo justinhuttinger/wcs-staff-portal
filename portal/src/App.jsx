@@ -10,6 +10,7 @@ import TrainerAvailabilityView from './components/TrainerAvailabilityView'
 import DayOneCalendarView from './components/DayOneCalendarView'
 import MarketingView from './components/MarketingView'
 import LeaderboardView from './components/LeaderboardView'
+import CommunicationNotesView from './components/CommunicationNotesView'
 import { getMe, getToken, clearToken, setToken, api } from './lib/api'
 
 function getParam(key) {
@@ -33,6 +34,7 @@ export default function App() {
   const [showDayOneCalendar, setShowDayOneCalendar] = useState(false)
   const [showMetaAds, setShowMetaAds] = useState(false)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
+  const [showCommunicationNotes, setShowCommunicationNotes] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
   const isElectron = !!window.wcsElectron
   const isAdmin = user?.staff?.role === 'admin'
@@ -76,6 +78,7 @@ export default function App() {
         setShowMetaAds(false)
         setShowReporting(false)
         setShowLeaderboard(false)
+        setShowCommunicationNotes(false)
         if (window.wcsElectron) window.wcsElectron.onLogout()
       })
     }
@@ -126,6 +129,7 @@ export default function App() {
     setShowTrainerAvail(false)
     setShowReporting(false)
     setShowLeaderboard(false)
+    setShowCommunicationNotes(false)
     // Notify Electron main process about logout
     if (window.wcsElectron) {
       window.wcsElectron.onLogout()
@@ -196,13 +200,15 @@ export default function App() {
         <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={isAdmin} />
       ) : showMetaAds ? (
         <MarketingView onBack={() => setShowMetaAds(false)} />
+      ) : showCommunicationNotes ? (
+        <CommunicationNotesView user={user} onBack={() => setShowCommunicationNotes(false)} />
       ) : showLeaderboard ? (
         <LeaderboardView user={user} onBack={() => setShowLeaderboard(false)} location={location} />
       ) : showReporting ? (
         <ReportingView user={user} onBack={() => setShowReporting(false)} location={location} isAdmin={isAdmin} />
       ) : (
         <main className="flex-1 flex items-start pt-1 pb-12">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onTours={() => setShowTours(true)} onDayOneTracker={() => setShowDayOneTracker(true)} onDayOneCalendar={() => setShowDayOneCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onMetaAds={() => setShowMetaAds(true)} onLeaderboard={() => setShowLeaderboard(true)} onReporting={() => setShowReporting(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onTours={() => setShowTours(true)} onDayOneTracker={() => setShowDayOneTracker(true)} onDayOneCalendar={() => setShowDayOneCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onMetaAds={() => setShowMetaAds(true)} onLeaderboard={() => setShowLeaderboard(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => setShowReporting(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} />
         </main>
       )}
 

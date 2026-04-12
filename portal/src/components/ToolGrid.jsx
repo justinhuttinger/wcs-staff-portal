@@ -12,6 +12,7 @@ const TILE_ICONS = {
   availability: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
   dayOneCalendar: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008ZM12 15h.008v.008H12V15Zm0 2.25h.008v.008H12v-.008ZM9.75 15h.008v.008H9.75V15Zm0 2.25h.008v.008H9.75v-.008ZM7.5 15h.008v.008H7.5V15Zm0 2.25h.008v.008H7.5v-.008Zm6.75-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V15Zm0 2.25h.008v.008h-.008v-.008Zm2.25-4.5h.008v.008H16.5v-.008Zm0 2.25h.008v.008H16.5V15Z',
   leaderboard: 'M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-4.5A3.375 3.375 0 0 0 13.125 10.875h-2.25A3.375 3.375 0 0 0 7.5 14.25v4.5m6-15V3.375c0-.621-.504-1.125-1.125-1.125h-.75a1.125 1.125 0 0 0-1.125 1.125V3.75m3 0h-3',
+  commNotes: 'M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.399-.49c1.583-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z',
 }
 
 // Which built-in tool IDs are "Apps" (external services)
@@ -74,7 +75,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker, onDayOneCalendar, onTrainerAvail, onMetaAds, onLeaderboard, onReporting, userRole, userName }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker, onDayOneCalendar, onTrainerAvail, onMetaAds, onLeaderboard, onCommunicationNotes, onReporting, userRole, userName }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [tilesLoaded, setTilesLoaded] = useState(false)
@@ -355,6 +356,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {onDayOneCalendar && <SvgTileButton onClick={onDayOneCalendar} iconPath={TILE_ICONS.dayOneCalendar} label="Day Ones" desc="Calendar" badge={dayOneCalBadge} />}
           {/* 4. Leaderboard */}
           {onLeaderboard && <SvgTileButton onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />}
+          {/* 4.5. Communication Notes */}
+          {onCommunicationNotes && <SvgTileButton onClick={onCommunicationNotes} iconPath={TILE_ICONS.commNotes} label="Comm Notes" desc="Team Notes" />}
           {/* 5. Day One Tracking */}
           {onDayOneTracker && <SvgTileButton onClick={onDayOneTracker} iconPath={TILE_ICONS.dayOne} label="Day One" desc="Tracking" badge={dayOneBadge} />}
           {/* 6. Trainer Availability */}

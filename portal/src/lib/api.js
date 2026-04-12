@@ -302,3 +302,25 @@ export async function getWebhookLogs(params = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/admin/webhook-logs' + (qs ? '?' + qs : ''))
 }
+
+// Communication Notes
+export async function getCommunicationNotes(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/communication-notes' + (qs ? '?' + qs : ''))
+}
+
+export async function createCommunicationNote(data) {
+  return api('/communication-notes', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateCommunicationNote(id, data) {
+  return api('/communication-notes/' + id, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function getCommunicationNoteComments(noteId) {
+  return api('/communication-notes/' + noteId + '/comments')
+}
+
+export async function addCommunicationNoteComment(noteId, data) {
+  return api('/communication-notes/' + noteId + '/comments', { method: 'POST', body: JSON.stringify(data) })
+}
