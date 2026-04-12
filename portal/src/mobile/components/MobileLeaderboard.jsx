@@ -48,7 +48,11 @@ export default function MobileLeaderboard({ user }) {
   const staffId = staff.id
   const isManager = ROLES.indexOf(role) >= ROLES.indexOf('manager')
 
-  const locationSlug = (userLocations.find(l => l.is_primary)?.name || userLocations[0]?.name || 'Salem').toLowerCase()
+  const defaultSlug = (userLocations.find(l => l.is_primary)?.name || userLocations[0]?.name || 'Salem').toLowerCase()
+  const [selectedLocation, setSelectedLocation] = useState(defaultSlug)
+  const locationSlug = selectedLocation
+
+  const ALL_LOCATIONS = ['Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
 
   const now = new Date()
   const [month, setMonth] = useState(new Date(now.getFullYear(), now.getMonth(), 1))
@@ -68,9 +72,9 @@ export default function MobileLeaderboard({ user }) {
       month: `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`,
     }
     if (view === 'club') {
-      params.location = locationSlug
+      params.location_slug = locationSlug
     } else {
-      params.cross_location = 'true'
+      params.location_slug = 'all'
     }
 
     getLeaderboard(params)
@@ -104,7 +108,7 @@ export default function MobileLeaderboard({ user }) {
     setMonth(new Date(now.getFullYear(), now.getMonth(), 1))
   }
 
-  const rankings = data?.rankings || data?.leaderboard || []
+  const rankings = data?.rankings || []
   const locations = data?.locations || []
 
   return (
@@ -164,6 +168,28 @@ export default function MobileLeaderboard({ user }) {
             </button>
           </div>
         )}
+
+        {/* Location selector for managers on My Club tab */}
+        {isManager && view === 'club' && (
+          <div className="flex gap-2 overflow-x-auto pb-1 px-4 mt-2 scrollbar-hide">
+            {ALL_LOCATIONS.map(loc => {
+              const slug = loc.toLowerCase()
+              return (
+                <button
+                  key={slug}
+                  onClick={() => setSelectedLocation(slug)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap shrink-0 transition-colors ${
+                    locationSlug === slug
+                      ? 'bg-wcs-red text-white border-wcs-red'
+                      : 'bg-surface text-text-muted border-border'
+                  }`}
+                >
+                  {loc}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Content */}
@@ -197,7 +223,7 @@ export default function MobileLeaderboard({ user }) {
           <div className="space-y-3">
             {rankings.map((entry, idx) => {
               const rank = entry.rank || idx + 1
-              const isCurrentUser = entry.staff_id === staffId
+              const isCurrentUser = entry.rank === data?.user_rank
               const color = rankColor(rank)
               return (
                 <div
@@ -221,7 +247,7 @@ export default function MobileLeaderboard({ user }) {
                       {[
                         entry.memberships && `${entry.memberships} sales`,
                         entry.day_ones && `${entry.day_ones} D1`,
-                        entry.same_days && `${entry.same_days} SD`,
+                        entry.same_day && `${entry.same_day} SD`,
                         entry.vips && `${entry.vips} VIP`,
                       ].filter(Boolean).join(' \u00b7 ') || 'No stats'}
                     </p>
@@ -229,7 +255,7 @@ export default function MobileLeaderboard({ user }) {
 
                   {/* Points */}
                   <div className="text-right flex-shrink-0">
-                    <span className="text-lg font-bold text-wcs-red">{entry.total_points ?? entry.points ?? 0}</span>
+                    <span className="text-lg font-bold text-wcs-red">{entry.points ?? 0}</span>
                     <p className="text-[10px] text-text-muted">pts</p>
                   </div>
                 </div>

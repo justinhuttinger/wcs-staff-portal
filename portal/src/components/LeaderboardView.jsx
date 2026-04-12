@@ -34,22 +34,25 @@ export default function LeaderboardView({ user, onBack, location }) {
   const role = user?.staff?.role || 'front_desk'
   const isManager = ROLES_ORDERED.indexOf(role) >= ROLES_ORDERED.indexOf('manager')
 
-  const locationSlug = (location || 'salem').toLowerCase()
+  const userLocations = user?.staff?.locations || []
+  const defaultSlug = (location || 'salem').toLowerCase()
+  const [selectedLocation, setSelectedLocation] = useState(defaultSlug)
+  const locationSlug = selectedLocation
   const monthKey = getMonthKey(monthDate)
 
   useEffect(() => {
     setLoading(true)
-    const params = { location_slug: locationSlug, month: monthKey }
-    getLeaderboard(params).then(res => {
-      setData(res)
-    }).catch(() => setData(null)).finally(() => setLoading(false))
+    getLeaderboard({ location_slug: locationSlug, month: monthKey })
+      .then(res => setData(res))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false))
   }, [locationSlug, monthKey])
 
   useEffect(() => {
     if (isManager && tab === 'all') {
-      getLeaderboard({ month: monthKey, cross_location: 'true' }).then(res => {
-        setCrossData(res)
-      }).catch(() => setCrossData(null))
+      getLeaderboard({ month: monthKey, location_slug: 'all' })
+        .then(res => setCrossData(res))
+        .catch(() => setCrossData(null))
     }
   }, [isManager, tab, monthKey])
 
@@ -76,8 +79,11 @@ export default function LeaderboardView({ user, onBack, location }) {
     setMonthDate(new Date())
   }
 
-  const leaderboard = data?.leaderboard || []
+  const rankings = data?.rankings || []
   const crossLocations = crossData?.locations || []
+
+  // All 7 locations for admin/director location picker
+  const ALL_LOCATIONS = ['Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
 
   return (
     <div className="w-full max-w-4xl mx-auto px-8 pb-12">
@@ -145,6 +151,28 @@ export default function LeaderboardView({ user, onBack, location }) {
         </div>
       )}
 
+      {/* Location selector for admins on My Club tab */}
+      {isManager && tab === 'club' && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {ALL_LOCATIONS.map(loc => {
+            const slug = loc.toLowerCase()
+            return (
+              <button
+                key={slug}
+                onClick={() => setSelectedLocation(slug)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  locationSlug === slug
+                    ? 'bg-wcs-red text-white border-wcs-red'
+                    : 'bg-surface text-text-muted border-border hover:text-text-primary hover:border-text-muted'
+                }`}
+              >
+                {loc}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* Content */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
@@ -152,7 +180,7 @@ export default function LeaderboardView({ user, onBack, location }) {
         </div>
       ) : tab === 'club' ? (
         /* Club leaderboard table */
-        leaderboard.length === 0 ? (
+        rankings.length === 0 ? (
           <div className="rounded-[14px] bg-surface border border-border p-12 text-center">
             <p className="text-text-muted text-sm">No activity yet this month</p>
           </div>
@@ -171,12 +199,12 @@ export default function LeaderboardView({ user, onBack, location }) {
                 </tr>
               </thead>
               <tbody>
-                {leaderboard.map((entry) => {
+                {rankings.map((entry) => {
                   const rankIdx = (entry.rank || 1) - 1
                   const isTop3 = rankIdx < 3
-                  const isMe = entry.is_current_user
+                  const isMe = entry.rank === data?.user_rank
                   return (
-                    <tr key={entry.staff_id || entry.name} className={`border-b border-border last:border-b-0 ${isMe ? 'bg-wcs-red/5' : ''}`}>
+                    <tr key={entry.name} className={`border-b border-border last:border-b-0 ${isMe ? 'bg-wcs-red/5' : ''}`}>
                       <td className="px-4 py-3">
                         {isTop3 ? (
                           <span
@@ -193,8 +221,8 @@ export default function LeaderboardView({ user, onBack, location }) {
                         {entry.name}
                         {isMe && <span className="ml-2 text-xs text-wcs-red font-bold">(You)</span>}
                       </td>
-                      <td className="px-4 py-3 text-right font-bold text-text-primary">{entry.total_points || 0}</td>
-                      <td className="px-4 py-3 text-right text-text-muted">{entry.new_sales || 0}</td>
+                      <td className="px-4 py-3 text-right font-bold text-text-primary">{entry.points || 0}</td>
+                      <td className="px-4 py-3 text-right text-text-muted">{entry.memberships || 0}</td>
                       <td className="px-4 py-3 text-right text-text-muted">{entry.day_ones || 0}</td>
                       <td className="px-4 py-3 text-right text-text-muted">{entry.same_day || 0}</td>
                       <td className="px-4 py-3 text-right text-text-muted">{entry.vips || 0}</td>
