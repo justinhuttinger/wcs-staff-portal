@@ -8,18 +8,21 @@ import {
 import SignaturePad from './SignaturePad'
 
 const REASONS = [
+  { value: 'coaching_conversation', label: 'Coaching Conversation' },
   { value: 'verbal_warning', label: 'Verbal Warning' },
   { value: 'written_warning', label: 'Written Warning' },
   { value: 'termination', label: 'Termination' },
 ]
 
 const REASON_LABELS = {
+  coaching_conversation: 'Coaching Conversation',
   verbal_warning: 'Verbal Warning',
   written_warning: 'Written Warning',
   termination: 'Termination',
 }
 
 const REASON_COLORS = {
+  coaching_conversation: 'bg-blue-50 text-blue-700 border-blue-200',
   verbal_warning: 'bg-amber-50 text-amber-700 border-amber-200',
   written_warning: 'bg-orange-50 text-orange-700 border-orange-200',
   termination: 'bg-red-50 text-red-700 border-red-200',
@@ -266,7 +269,7 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
 function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
   const userName = user?.staff?.display_name || user?.staff?.first_name || ''
 
-  const [reason, setReason] = useState('verbal_warning')
+  const [reason, setReason] = useState('coaching_conversation')
   const [shortReason, setShortReason] = useState('')
   const [description, setDescription] = useState('')
   const [managerSignature, setManagerSignature] = useState('')

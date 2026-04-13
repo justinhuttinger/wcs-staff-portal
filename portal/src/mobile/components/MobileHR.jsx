@@ -12,18 +12,21 @@ import SignaturePad from '../../components/SignaturePad'
 const ROLES = ['team_member', 'lead', 'manager', 'corporate', 'admin']
 
 const REASON_OPTIONS = [
+  { key: 'coaching_conversation', label: 'Coaching Conversation' },
   { key: 'verbal_warning', label: 'Verbal Warning' },
   { key: 'written_warning', label: 'Written Warning' },
   { key: 'termination', label: 'Termination' },
 ]
 
 const REASON_COLORS = {
+  coaching_conversation: 'bg-blue-50 text-blue-700 border-blue-200',
   verbal_warning: 'bg-amber-50 text-amber-700 border-amber-200',
   written_warning: 'bg-orange-50 text-orange-700 border-orange-200',
   termination: 'bg-red-50 text-red-700 border-red-200',
 }
 
 const REASON_LABELS = {
+  coaching_conversation: 'Coaching Conversation',
   verbal_warning: 'Verbal Warning',
   written_warning: 'Written Warning',
   termination: 'Termination',
@@ -50,6 +53,7 @@ const STATUS_FILTER_OPTIONS = [
 
 const REASON_FILTER_OPTIONS = [
   { key: 'all', label: 'All' },
+  { key: 'coaching_conversation', label: 'Coaching' },
   { key: 'verbal_warning', label: 'Verbal' },
   { key: 'written_warning', label: 'Written' },
   { key: 'termination', label: 'Termination' },
@@ -104,7 +108,7 @@ function Toast({ message, onClose }) {
 
 function SubmitDocumentView({ user, onBack, onSuccess }) {
   const [employeeName, setEmployeeName] = useState('')
-  const [reason, setReason] = useState('verbal_warning')
+  const [reason, setReason] = useState('coaching_conversation')
   const [description, setDescription] = useState('')
   const [managerSignature, setManagerSignature] = useState('')
   const [submitting, setSubmitting] = useState(false)
