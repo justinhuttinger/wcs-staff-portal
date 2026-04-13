@@ -31,7 +31,7 @@ export default function App() {
 
   const [showAdmin, setShowAdmin] = useState(false)
   const [showTours, setShowTours] = useState(false)
-  const [showReporting, setShowReporting] = useState(window.location.hash.startsWith('#reporting'))
+  const [showReporting, setShowReporting] = useState(false)
   const [showDayOneTracker, setShowDayOneTracker] = useState(false)
   const [showTrainerAvail, setShowTrainerAvail] = useState(false)
   const [showDayOneCalendar, setShowDayOneCalendar] = useState(false)
@@ -121,6 +121,20 @@ export default function App() {
         visible_tools: [],
       })
     }
+    // Reset to homepage on login
+    setShowAdmin(false)
+    setShowTours(false)
+    setShowDayOneTracker(false)
+    setShowTrainerAvail(false)
+    setShowReporting(false)
+    setShowDayOneCalendar(false)
+    setShowMetaAds(false)
+    setShowLeaderboard(false)
+    setShowCommunicationNotes(false)
+    setShowHR(false)
+    setShowHelpCenter(false)
+    setShowTickets(false)
+    if (window.location.hash) window.location.hash = ''
     // Notify Electron main process about the login
     if (window.wcsElectron) {
       window.wcsElectron.onLogin(getToken(), data.staff?.display_name || data.staff?.email || '')

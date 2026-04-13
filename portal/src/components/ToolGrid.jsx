@@ -239,7 +239,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   const hideScoreCard = userRole === 'admin' || userRole === 'corporate'
 
   return (
-    <div className="w-full px-8 max-w-7xl mx-auto">
+    <div className="w-full px-4 mx-auto">
       {/* Score Card — compact single row */}
       {leaderboardData && !hideScoreCard && (() => {
         const totalAtLocation = leaderboardData.total_staff || totalStaff
