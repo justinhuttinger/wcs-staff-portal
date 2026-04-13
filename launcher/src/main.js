@@ -318,15 +318,20 @@ app.on('ready', () => {
     const config = readConfig()
     const email = config.trainerize_email || 'justin@wcstrength.com'
     const password = config.trainerize_password || 'Jellybean31!'
+    const portalSender = e.sender
 
-    log('[Notification] Starting automation: ' + title)
+    const progress = (msg) => {
+      log('[Notification] ' + msg)
+      try { portalSender.send('notification-progress', msg) } catch {}
+    }
 
-    // Create a hidden BrowserWindow for the automation
+    progress('Starting automation...')
+
     const { session: ses } = require('electron')
     const automationWindow = new BrowserWindow({
       width: 1280,
       height: 900,
-      show: true, // DEBUG: visible so we can watch the automation
+      show: false,
       webPreferences: {
         session: ses.fromPartition('persist:trainerize-automation'),
         nodeIntegration: false,
@@ -338,216 +343,253 @@ app.on('ready', () => {
     try {
       const page = automationWindow.webContents
 
-      // Helper to run JS in the page with error handling
       const run = async (code) => {
         try {
-          return await page.executeJavaScript(`(function() { try { ${code}; return 'ok'; } catch(e) { return 'ERR: ' + e.message; } })()`)
+          return await page.executeJavaScript(
+            `(function() { try { ${code} } catch(e) { return 'ERR: ' + e.message; } })()`
+          )
         } catch (e) {
           log('[Notification] JS exec error: ' + e.message)
           return 'ERR: ' + e.message
         }
       }
       const wait = (ms) => new Promise(r => setTimeout(r, ms))
+      const waitFor = async (checkCode, label, timeout = 15000) => {
+        const start = Date.now()
+        while (Date.now() - start < timeout) {
+          const result = await run(`return (${checkCode}) ? true : false`)
+          if (result === true) return true
+          await wait(500)
+        }
+        log('[Notification] waitFor timed out: ' + label)
+        return false
+      }
 
-      // 1. Login
-      log('[Notification] Loading login page...')
+      // =====================================================================
+      // 1. LOGIN
+      // =====================================================================
+      progress('Loading Trainerize login page...')
       await page.loadURL('https://westcoaststrength.trainerize.com/app/login')
-      await wait(4000)
+      await waitFor(`document.querySelector('input')`, 'login inputs', 10000)
+      await wait(1000)
 
-      log('[Notification] v1.2.1 — Filling credentials with native setter...')
-
-      // Use native input setter to bypass React's controlled inputs
+      progress('Filling credentials...')
       await run(`
-        var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        var ns = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
         var inputs = document.querySelectorAll('input');
-        var emailEl = null;
-        var passEl = null;
+        var emailEl = null, passEl = null;
         for (var i = 0; i < inputs.length; i++) {
           var t = (inputs[i].type || '').toLowerCase();
-          if (t === 'password') { passEl = inputs[i]; }
-          else if (!emailEl && (t === 'text' || t === 'email' || t === '')) { emailEl = inputs[i]; }
+          if (t === 'password') passEl = inputs[i];
+          else if (!emailEl && (t === 'text' || t === 'email' || t === '')) emailEl = inputs[i];
         }
-        if (emailEl) {
-          emailEl.focus();
-          nativeSetter.call(emailEl, ${JSON.stringify(email)});
-          emailEl.dispatchEvent(new Event('input', {bubbles:true}));
-          emailEl.dispatchEvent(new Event('change', {bubbles:true}));
-        }
-        if (passEl) {
-          passEl.focus();
-          nativeSetter.call(passEl, ${JSON.stringify(password)});
-          passEl.dispatchEvent(new Event('input', {bubbles:true}));
-          passEl.dispatchEvent(new Event('change', {bubbles:true}));
-        }
+        if (emailEl) { emailEl.focus(); ns.call(emailEl, ${JSON.stringify(email)}); emailEl.dispatchEvent(new Event('input',{bubbles:true})); }
+        if (passEl) { passEl.focus(); ns.call(passEl, ${JSON.stringify(password)}); passEl.dispatchEvent(new Event('input',{bubbles:true})); }
+        return emailEl && passEl ? 'ok' : 'missing inputs';
       `)
       await wait(500)
-      // Button says "SIGN IN"
       await run(`
         var btn = document.querySelector('button[type="submit"]');
-        if (!btn) {
-          var buttons = document.querySelectorAll('button');
-          for (var i = 0; i < buttons.length; i++) {
-            var txt = buttons[i].textContent.trim().toUpperCase();
-            if (txt === 'SIGN IN' || txt === 'LOG IN' || txt === 'LOGIN') { btn = buttons[i]; break; }
-          }
-        }
+        if (!btn) { var bs = document.querySelectorAll('button'); for (var i=0;i<bs.length;i++) { var t=bs[i].textContent.trim().toUpperCase(); if (t==='SIGN IN'||t==='LOG IN') { btn=bs[i]; break; }}}
         if (btn) btn.click();
       `)
-      log('[Notification] Logging in...')
 
-      // Wait for login and check if we navigated away from login page
-      await wait(8000)
-      var currentUrl = await run(`return window.location.href`)
-      log('[Notification] Current URL after login: ' + currentUrl)
+      progress('Logging in...')
+      const loggedIn = await waitFor(`!window.location.href.includes('/login')`, 'login redirect', 20000)
+      if (!loggedIn) throw new Error('Login failed — still on login page')
+      await wait(2000)
 
-      // 2. Navigate to Announcements
-      log('[Notification] Navigating to Announcements...')
-      await run(`([...document.querySelectorAll('a, [role="menuitem"], li')].find(el => el.textContent.includes('Announcements'))).click()`)
-      await wait(3000)
+      // =====================================================================
+      // 2. NAVIGATE TO ANNOUNCEMENTS & OPEN FORM
+      // =====================================================================
+      progress('Navigating to Announcements...')
+      await page.loadURL('https://westcoaststrength.trainerize.com/app/announcements')
+      await waitFor(`document.querySelector('[data-testid="pushNotification-grid-newButton"]')`, 'announcements page', 15000)
+      await wait(1000)
 
-      // 3. Click Push Notifications tab if not already selected
-      try {
-        await run(`{
-          const tab = [...document.querySelectorAll('a, button, [role="tab"]')].find(el => el.textContent.includes('Push'));
-          if (tab) tab.click();
-        }`)
-        await wait(1000)
-      } catch {}
-
-      // 4. Click NEW
-      log('[Notification] Clicking NEW...')
-      await run(`([...document.querySelectorAll('button, a')].find(el => el.textContent.trim() === 'NEW' || el.textContent.trim() === 'New')).click()`)
-      await wait(3000)
-
-      // 5. Fill Title
-      log('[Notification] v1.2.2 — Filling title...')
+      progress('Opening notification form...')
       await run(`
-        var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-        var el = document.querySelector('input[type="text"]');
-        if (el) { el.focus(); nativeSetter.call(el, ${JSON.stringify(title.slice(0, 65))}); el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); }
+        var btn = document.querySelector('[data-testid="pushNotification-grid-newButton"]');
+        if (btn) btn.click();
+        return btn ? 'clicked' : 'not found';
+      `)
+      await waitFor(`document.querySelector('.ant-calendar-picker-input')`, 'form modal', 8000)
+      await wait(1000)
+
+      // =====================================================================
+      // 3. FILL TITLE
+      // =====================================================================
+      progress('Filling title...')
+      await run(`
+        var ns = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        var inputs = document.querySelectorAll('input.ant-input[type="text"]');
+        var el = null;
+        for (var i = 0; i < inputs.length; i++) {
+          if (inputs[i].offsetParent !== null && !inputs[i].classList.contains('ant-select-search__field') && !inputs[i].classList.contains('ant-calendar-picker-input') && !inputs[i].disabled) {
+            el = inputs[i]; break;
+          }
+        }
+        if (el) { el.focus(); ns.call(el, ${JSON.stringify(title.slice(0, 65))}); el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); }
+        return el ? 'ok' : 'no input';
       `)
       await wait(500)
 
-      // 6. Set send timing — this is a CUSTOM dropdown, not a <select>
-      // Click the dropdown button that shows "Schedule for" to open it
-      log('[Notification] Setting send timing: ' + sendTiming)
+      // =====================================================================
+      // 4. SEND TIMING
+      // =====================================================================
+      progress('Setting send timing: ' + sendTiming + '...')
       if (sendTiming === 'now') {
-        // Click the dropdown to open it, then select "Start sending immediately"
+        // Click the timing dropdown (it says "Scheduled" by default)
         await run(`
-          var els = document.querySelectorAll('*');
-          for (var i = 0; i < els.length; i++) {
-            if (els[i].textContent.trim() === 'Schedule for' && els[i].children.length === 0) {
-              els[i].closest('[class*="dropdown"], [class*="select"], button, div[tabindex]')?.click() || els[i].click();
-              break;
-            }
+          var selects = document.querySelectorAll('.ant-select-sm.ant-select');
+          for (var i = 0; i < selects.length; i++) {
+            if (selects[i].textContent.indexOf('Schedule') >= 0) { selects[i].click(); break; }
           }
         `)
-        await wait(1000)
+        await wait(800)
+        // Select "Start sending immediately"
         await run(`
+          var items = document.querySelectorAll('.ant-select-dropdown-menu-item');
+          for (var i = 0; i < items.length; i++) {
+            if (items[i].textContent.indexOf('Start sending immediately') >= 0) { items[i].click(); return 'clicked'; }
+          }
           var els = document.querySelectorAll('*');
           for (var i = 0; i < els.length; i++) {
-            if (els[i].textContent.trim() === 'Start sending immediately' && els[i].children.length === 0) {
-              els[i].click();
-              break;
+            if (els[i].offsetParent !== null && els[i].textContent.trim() === 'Start sending immediately' && els[i].children.length === 0) {
+              els[i].click(); return 'fallback';
             }
           }
+          return 'not found';
         `)
         await wait(500)
       } else if (sendTiming === 'scheduled' && scheduledDate) {
-        // Leave "Schedule for" selected (default)
-        // Date/time pickers are custom components — click them to focus, then type
-        log('[Notification] Setting scheduled date: ' + scheduledDate + ' ' + (scheduledTime || ''))
-        // Find and click the "Select date" text/input area
+        // Default is "Scheduled" so just fill date/time
+        progress('Setting date: ' + scheduledDate + '...')
+
+        // Date picker is readonly — must use the calendar popup
+        await run(`var el = document.querySelector('.ant-calendar-picker-input'); if (el) el.click();`)
+        await wait(1000)
+
+        // Navigate calendar to correct month/year
+        var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        var parts = scheduledDate.split('-').map(Number)
+        var targetYear = parts[0], targetMonth = parts[1], targetDay = parts[2]
+
+        await waitFor(`document.querySelector('.ant-calendar')`, 'calendar popup', 5000)
+        for (var attempt = 0; attempt < 24; attempt++) {
+          var calState = await run(`
+            var m = document.querySelector('.ant-calendar-month-select');
+            var y = document.querySelector('.ant-calendar-year-select');
+            return JSON.stringify({ month: m ? m.textContent.trim() : '', year: y ? y.textContent.trim() : '' });
+          `)
+          try { calState = JSON.parse(calState) } catch { calState = { month: '', year: '' } }
+          var curMonthIdx = MONTHS.indexOf(calState.month)
+          var curYear = parseInt(calState.year, 10)
+          if (curYear === targetYear && curMonthIdx + 1 === targetMonth) break
+          var curTotal = curYear * 12 + curMonthIdx
+          var targetTotal = targetYear * 12 + (targetMonth - 1)
+          if (targetTotal > curTotal) {
+            await run(`var b = document.querySelector('.ant-calendar-next-month-btn'); if (b) b.click();`)
+          } else {
+            await run(`var b = document.querySelector('.ant-calendar-prev-month-btn'); if (b) b.click();`)
+          }
+          await wait(300)
+        }
+
+        // Click the target day
         await run(`
-          var els = document.querySelectorAll('*');
-          for (var i = 0; i < els.length; i++) {
-            if (els[i].textContent.trim() === 'Select date' && els[i].children.length === 0) {
-              els[i].click();
-              break;
+          var cells = document.querySelectorAll('.ant-calendar-date');
+          for (var i = 0; i < cells.length; i++) {
+            var td = cells[i].closest('td');
+            if (td && !td.classList.contains('ant-calendar-last-month-cell') && !td.classList.contains('ant-calendar-next-month-btn-day') && cells[i].textContent.trim() === '${targetDay}') {
+              cells[i].click(); break;
             }
           }
         `)
-        await wait(1000)
-        // Type the date using keyboard events
-        for (const char of scheduledDate) {
-          await page.sendInputEvent({ type: 'keyDown', keyCode: char })
-          await page.sendInputEvent({ type: 'char', keyCode: char })
-          await page.sendInputEvent({ type: 'keyUp', keyCode: char })
-        }
-        // Press Enter to confirm
-        await page.sendInputEvent({ type: 'keyDown', keyCode: 'Return' })
-        await page.sendInputEvent({ type: 'keyUp', keyCode: 'Return' })
         await wait(500)
 
+        // Time picker
         if (scheduledTime) {
-          await run(`
-            var els = document.querySelectorAll('*');
-            for (var i = 0; i < els.length; i++) {
-              if (els[i].textContent.trim() === 'Select time' && els[i].children.length === 0) {
-                els[i].click();
-                break;
-              }
-            }
-          `)
+          progress('Setting time: ' + scheduledTime + '...')
+          var timeParts = scheduledTime.split(':').map(Number)
+          var tH = timeParts[0], tM = timeParts[1]
+
+          // Wait for time picker to become enabled
+          await waitFor(`!document.querySelector('.ant-time-picker-input')?.disabled`, 'time picker enabled', 5000)
           await wait(500)
-          for (const char of scheduledTime) {
-            await page.sendInputEvent({ type: 'keyDown', keyCode: char })
-            await page.sendInputEvent({ type: 'char', keyCode: char })
-            await page.sendInputEvent({ type: 'keyUp', keyCode: char })
-          }
-          await page.sendInputEvent({ type: 'keyDown', keyCode: 'Return' })
-          await page.sendInputEvent({ type: 'keyUp', keyCode: 'Return' })
+
+          // Click time picker wrapper to open panel
+          await run(`
+            var wrapper = document.querySelector('.ant-time-picker');
+            var input = document.querySelector('.ant-time-picker-input');
+            if (input && input.disabled) input.removeAttribute('disabled');
+            if (wrapper) wrapper.click();
+            if (input) { input.focus(); input.click(); }
+          `)
+          await wait(2000)
+
+          // Select hour, minute, AM/PM in the time panel columns
+          await run(`
+            var panel = document.querySelector('.ant-time-picker-panel-inner');
+            if (panel) {
+              var columns = panel.querySelectorAll('.ant-time-picker-panel-select');
+              var h = ${tH}, m = ${tM};
+              var is12h = columns.length >= 3;
+              var targetH = h, ampm = 'AM';
+              if (is12h) { ampm = h >= 12 ? 'PM' : 'AM'; targetH = h === 0 ? 12 : h > 12 ? h - 12 : h; }
+              // Click hour
+              var hItems = columns[0].querySelectorAll('li');
+              for (var i = 0; i < hItems.length; i++) { if (parseInt(hItems[i].textContent.trim(), 10) === targetH) { hItems[i].click(); break; } }
+              // Click minute
+              var mItems = columns[1].querySelectorAll('li');
+              for (var i = 0; i < mItems.length; i++) { if (parseInt(mItems[i].textContent.trim(), 10) === m) { mItems[i].click(); break; } }
+              // Click AM/PM
+              if (is12h && columns[2]) {
+                var apItems = columns[2].querySelectorAll('li');
+                for (var i = 0; i < apItems.length; i++) { if (apItems[i].textContent.trim().toUpperCase() === ampm) { apItems[i].click(); break; } }
+              }
+              return 'ok';
+            }
+            return 'no panel';
+          `)
           await wait(500)
         }
       }
 
-      // 7. Select locations
-      // The location picker is a CUSTOM GRID (baseGridRow), NOT an Ant tree
-      // Each location is a row with an ant-checkbox-input
-      log('[Notification] v1.2.8 — Selecting locations...')
-
-      // Click the locations input area to open the dropdown
+      // =====================================================================
+      // 5. SELECT LOCATIONS (Ant TreeSelect with data-testid)
+      // =====================================================================
+      progress('Selecting locations...')
       await run(`
-        var els = document.querySelectorAll('*');
-        for (var i = 0; i < els.length; i++) {
-          if (els[i].textContent.trim() === 'Which locations to send to?' && els[i].children.length === 0) {
-            var next = els[i].nextElementSibling;
-            if (next) next.click();
-            break;
-          }
-        }
+        var el = document.querySelector('[data-testid="announcements-locationTreeSelect"]');
+        if (el) el.click();
       `)
-      await wait(2000)
+      await wait(1500)
 
-      // The location grid uses baseGridRow with checkbox inside each row
-      // Click the row that contains each location name
       if (locations.includes('all')) {
-        log('[Notification] Clicking All locations row...')
+        // Click "All locations" checkbox directly
         await run(`
-          var rows = document.querySelectorAll('[data-testid="grid-row"]');
-          for (var i = 0; i < rows.length; i++) {
-            if (rows[i].textContent.indexOf('All locations') >= 0) {
-              var cb = rows[i].querySelector('.ant-checkbox-input, input[type="checkbox"]');
-              if (cb) cb.click();
-              else rows[i].click();
-              break;
-            }
-          }
+          var node = document.querySelector('[data-testid="announcements-locationTreeLeaf-allLocations"]');
+          if (node) { var cb = node.querySelector('.ant-select-tree-checkbox'); if (cb) cb.click(); }
         `)
       } else {
+        // Expand "All locations" to reveal individual locations
+        await run(`
+          var switcher = document.querySelector('[data-testid="announcements-locationTreeLeaf-allLocations"] .ant-select-tree-switcher');
+          if (switcher) switcher.click();
+        `)
+        await wait(1500)
+
+        // Select each location by title attribute on the content wrapper
         for (const slug of locations) {
           const label = TRAINERIZE_LOCATION_MAP[slug]
           if (!label) continue
-          log('[Notification] Clicking: ' + label)
+          progress('Selecting: ' + label + '...')
           await run(`
-            var rows = document.querySelectorAll('[data-testid="grid-row"]');
-            for (var i = 0; i < rows.length; i++) {
-              if (rows[i].textContent.indexOf(${JSON.stringify(label)}) >= 0) {
-                var cb = rows[i].querySelector('.ant-checkbox-input, input[type="checkbox"]');
-                if (cb) cb.click();
-                else rows[i].click();
-                break;
-              }
+            var span = document.querySelector('.ant-select-tree-node-content-wrapper[title="${label}"]');
+            if (span) {
+              var item = span.closest('[role="treeitem"]');
+              if (item) { var cb = item.querySelector('.ant-select-tree-checkbox'); if (cb) cb.click(); }
             }
           `)
           await wait(400)
@@ -555,77 +597,64 @@ app.on('ready', () => {
       }
       await wait(500)
 
-      // Close location dropdown
+      // Close location dropdown — click the Title label to move focus
       await run(`
-        var h = document.querySelector('h1');
-        if (h && h.textContent.indexOf('New Push') >= 0) h.click();
+        var labels = document.querySelectorAll('label');
+        for (var i = 0; i < labels.length; i++) {
+          if (labels[i].textContent.trim() === 'Title') { labels[i].click(); break; }
+        }
       `)
       await wait(1000)
 
-      // 7.5. "Select the clients" — this uses an Ant tree (different from locations!)
-      log('[Notification] Opening clients dropdown...')
+      // =====================================================================
+      // 6. SELECT CLIENTS ("All") — uses data-testid to avoid location tree collision
+      // =====================================================================
+      progress('Selecting client audience...')
       await run(`
-        var els = document.querySelectorAll('*');
-        for (var i = 0; i < els.length; i++) {
-          var t = els[i].textContent.trim();
-          if (t === 'Select the clients for whom this notification should appear' && els[i].children.length === 0) {
-            var next = els[i].nextElementSibling;
-            if (next) next.click();
-            break;
-          }
-        }
+        var el = document.querySelector('[data-testid="announcements-userTypesTreeSelect"]');
+        if (el) el.click();
       `)
       await wait(1500)
 
-      // The clients dropdown IS an Ant tree — check "All"
-      log('[Notification] Checking All clients...')
       await run(`
-        // Find checkbox next to text "All" in the ant tree
-        var nodes = document.querySelectorAll('.ant-select-tree-treenode, [data-testid*="userTypes"]');
-        for (var i = 0; i < nodes.length; i++) {
-          var title = nodes[i].querySelector('.ant-select-tree-title, [title="All"]');
-          if (title && title.textContent.trim() === 'All') {
-            var cb = nodes[i].querySelector('.ant-select-tree-checkbox');
-            if (cb) cb.click();
-            break;
-          }
-        }
-        // Fallback: click any checkbox labeled "All"
-        if (nodes.length === 0) {
-          var cbs = document.querySelectorAll('.ant-checkbox-input, input[type="checkbox"]');
-          for (var i = 0; i < cbs.length; i++) {
-            var parent = cbs[i].closest('label, span, div');
-            if (parent && parent.textContent.trim() === 'All') { cbs[i].click(); break; }
-          }
-        }
+        var allNode = document.querySelector('[data-testid="announcements-userTypesTreeLeaf-all"]');
+        if (allNode) { var cb = allNode.querySelector('.ant-select-tree-checkbox'); if (cb) cb.click(); }
+        return allNode ? 'checked' : 'not found';
       `)
       await wait(500)
 
       // Close clients dropdown
       await run(`
-        var h = document.querySelector('h1');
-        if (h && h.textContent.indexOf('New Push') >= 0) h.click();
+        var labels = document.querySelectorAll('label');
+        for (var i = 0; i < labels.length; i++) {
+          if (labels[i].textContent.trim() === 'Title') { labels[i].click(); break; }
+        }
       `)
       await wait(500)
 
-      // 8. Fill Message
-      log('[Notification] Filling message...')
+      // =====================================================================
+      // 7. FILL MESSAGE
+      // =====================================================================
+      progress('Filling message...')
       await run(`
-        var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-        var ta = document.querySelector('textarea');
-        if (ta) { ta.focus(); nativeSetter.call(ta, ${JSON.stringify(message.slice(0, 120))}); ta.dispatchEvent(new Event('input',{bubbles:true})); ta.dispatchEvent(new Event('change',{bubbles:true})); }
+        var ns = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+        var ta = document.querySelector('textarea.ant-input');
+        if (ta) { ta.focus(); ns.call(ta, ${JSON.stringify(message.slice(0, 120))}); ta.dispatchEvent(new Event('input',{bubbles:true})); ta.dispatchEvent(new Event('change',{bubbles:true})); }
+        return ta ? 'ok' : 'no textarea';
       `)
       await wait(1000)
 
-      // 9. Scroll to top, then screenshot — do NOT click submit
+      // =====================================================================
+      // 8. SCREENSHOT
+      // =====================================================================
+      progress('Taking screenshot for review...')
       await run(`window.scrollTo(0, 0)`)
       await wait(500)
-      log('[Notification] Taking screenshot...')
       const image = await page.capturePage()
       const screenshotBuffer = image.toPNG()
       const base64 = screenshotBuffer.toString('base64')
 
-      log('[Notification] Done! Screenshot captured.')
+      progress('Done — screenshot captured.')
       return { success: true, screenshot: 'data:image/png;base64,' + base64 }
     } catch (err) {
       log('[Notification] Error: ' + err.message)

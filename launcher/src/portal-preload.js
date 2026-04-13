@@ -33,4 +33,10 @@ contextBridge.exposeInMainWorld('wcsElectron', {
   // Trainerize push notification automation
   runNotification: (params) => ipcRenderer.invoke('run-notification', params),
   getNotificationLocations: () => ipcRenderer.invoke('get-notification-locations'),
+  onNotificationProgress: (callback) => {
+    ipcRenderer.on('notification-progress', (e, msg) => callback(msg))
+  },
+  removeNotificationProgress: () => {
+    ipcRenderer.removeAllListeners('notification-progress')
+  },
 })

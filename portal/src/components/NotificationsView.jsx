@@ -50,19 +50,14 @@ export default function NotificationsView({ onBack }) {
     if (sendTiming === 'scheduled' && !scheduledDate) return
 
     setSubmitting(true)
-    setStatus('Logging into Trainerize...')
+    setStatus('Starting automation...')
     setError(null)
     setScreenshot(null)
 
-    // Update status messages on a timer to show progress
-    const steps = [
-      { delay: 3000, text: 'Navigating to Announcements...' },
-      { delay: 6000, text: 'Opening notification form...' },
-      { delay: 9000, text: 'Filling in title and message...' },
-      { delay: 12000, text: 'Selecting locations...' },
-      { delay: 16000, text: 'Taking screenshot for review...' },
-    ]
-    const timers = steps.map(s => setTimeout(() => setStatus(s.text), s.delay))
+    // Listen for real-time progress events from Electron automation
+    if (isElectron && window.wcsElectron.onNotificationProgress) {
+      window.wcsElectron.onNotificationProgress((msg) => setStatus(msg))
+    }
 
     try {
       const payload = {
@@ -82,15 +77,16 @@ export default function NotificationsView({ onBack }) {
         res = await sendPushNotification(payload)
       }
 
-      timers.forEach(clearTimeout)
       setScreenshot(res.screenshot)
       setStatus('Form filled successfully — review the screenshot below.')
     } catch (err) {
-      timers.forEach(clearTimeout)
       setError(err.message || 'Failed to fill notification form')
       setStatus('')
     } finally {
       setSubmitting(false)
+      if (isElectron && window.wcsElectron.removeNotificationProgress) {
+        window.wcsElectron.removeNotificationProgress()
+      }
     }
   }
 
