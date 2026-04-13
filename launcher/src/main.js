@@ -183,6 +183,7 @@ app.on('ready', () => {
   // Tab IPC
   ipcMain.on('switch-tab', (e, id) => tabManager.switchTo(id))
   ipcMain.on('close-tab', (e, id) => tabManager.closeTab(id))
+  ipcMain.on('reorder-tab', (e, dragId, dropId) => tabManager.reorderTab(dragId, dropId))
   ipcMain.on('tabs-ready', () => tabManager.notifyTabBar())
 
   ipcMain.on('open-in-tab', (e, url) => {
@@ -190,12 +191,20 @@ app.on('ready', () => {
   })
 
   // Window controls
+  ipcMain.on('window-refresh', () => {
+    const active = tabManager.tabs.get(tabManager.activeTabId)
+    if (active) active.view.webContents.reload()
+  })
   ipcMain.on('window-minimize', () => mainWindow.minimize())
   ipcMain.on('window-maximize', () => {
     if (mainWindow.isMaximized()) mainWindow.unmaximize()
     else mainWindow.maximize()
   })
   ipcMain.on('window-close', () => mainWindow.close())
+
+  // Notify tab bar when maximize state changes (for icon toggle)
+  mainWindow.on('maximize', () => tabManager.tabBarView?.webContents.send('maximized-changed', true))
+  mainWindow.on('unmaximize', () => tabManager.tabBarView?.webContents.send('maximized-changed', false))
 
   // ABC scraper IPC
   let latestMemberData = {}

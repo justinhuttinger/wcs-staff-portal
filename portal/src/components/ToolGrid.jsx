@@ -377,7 +377,6 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {onHelpCenter && <SvgTileButton onClick={onHelpCenter} iconPath={TILE_ICONS.helpCenter} label="Help Center" desc="Guides" />}
           {/* 4.8. Tickets — lead+ */}
           {onTickets && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTickets} iconPath={TILE_ICONS.tickets} label="Tickets" desc="Support" />}
-          {/* 4.9. Push Notifications — manager+ */}
           {/* 5. Day One Tracking */}
           {onDayOneTracker && <SvgTileButton onClick={onDayOneTracker} iconPath={TILE_ICONS.dayOne} label="Day One" desc="Tracking" badge={dayOneBadge} />}
           {/* 6. Trainer Availability */}

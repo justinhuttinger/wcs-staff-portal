@@ -115,6 +115,21 @@ class TabManager {
     this.notifyTabBar()
   }
 
+  reorderTab(dragId, dropId) {
+    // Rebuild the Map with the dragged tab moved before the drop target
+    const entries = [...this.tabs.entries()]
+    const dragIdx = entries.findIndex(([id]) => id === dragId)
+    const dropIdx = entries.findIndex(([id]) => id === dropId)
+    if (dragIdx === -1 || dropIdx === -1 || dragIdx === dropIdx) return
+
+    const [dragEntry] = entries.splice(dragIdx, 1)
+    const newDropIdx = entries.findIndex(([id]) => id === dropId)
+    entries.splice(newDropIdx, 0, dragEntry)
+
+    this.tabs = new Map(entries)
+    this.notifyTabBar()
+  }
+
   closeAllExceptPortal() {
     const idsToClose = [...this.tabs.entries()]
       .filter(([, tab]) => tab.closable)

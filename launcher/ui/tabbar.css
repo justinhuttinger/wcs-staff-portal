@@ -44,6 +44,8 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 
 .tab:hover { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.8); }
 .tab.active { background: #f4f5f7; color: #111111; }
+.tab { transition: transform 0.2s ease, background 0.15s, color 0.15s; }
+.tab-dragging { opacity: 0.85; z-index: 100; transition: none !important; }
 
 .tab-close {
   font-size: 14px;
@@ -104,7 +106,11 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
   font-size: 14px;
   cursor: pointer;
   transition: background 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 #window-controls button:hover { background: rgba(255,255,255,0.1); color: white; }
+#btn-refresh { width: 40px; }
 #btn-close:hover { background: #e53e3e !important; color: white; }

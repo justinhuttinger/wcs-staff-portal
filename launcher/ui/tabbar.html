@@ -10,9 +10,26 @@
     <div id="tabs"></div>
     <div id="user-area"></div>
     <div id="window-controls">
-      <button id="btn-minimize">─</button>
-      <button id="btn-maximize">□</button>
-      <button id="btn-close">✕</button>
+      <button id="btn-refresh" title="Refresh tab">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M1.5 6a4.5 4.5 0 0 1 7.7-3.2L10.5 1.5M10.5 1.5V4.5H7.5M10.5 6a4.5 4.5 0 0 1-7.7 3.2L1.5 10.5M1.5 10.5V7.5H4.5"/>
+        </svg>
+      </button>
+      <button id="btn-minimize" title="Minimize">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+          <rect x="1" y="5.5" width="10" height="1"/>
+        </svg>
+      </button>
+      <button id="btn-maximize" title="Maximize">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1">
+          <rect x="0.5" y="0.5" width="9" height="9" rx="0.5"/>
+        </svg>
+      </button>
+      <button id="btn-close" title="Close">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2">
+          <path d="M2 2l8 8M10 2l-8 8"/>
+        </svg>
+      </button>
     </div>
   </div>
   <script src="tabbar.js"></script>
