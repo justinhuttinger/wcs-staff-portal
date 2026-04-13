@@ -192,6 +192,10 @@ router.put('/staff/:id', requireRole('admin'), async (req, res) => {
 router.delete('/staff/:id', requireRole('admin'), async (req, res) => {
   const staffId = req.params.id
 
+  if (staffId === req.staff.id) {
+    return res.status(400).json({ error: 'Cannot delete your own account' })
+  }
+
   try {
     // Delete in order: junction table first, then staff record, then auth user
     await supabaseAdmin.from('staff_locations').delete().eq('staff_id', staffId)
@@ -326,7 +330,7 @@ router.post('/staff/import', requireRole('admin'), async (req, res) => {
       else if (!VALID_ROLES.includes(role)) rowErrors.push('invalid role: ' + role)
       if (!locationsStr) rowErrors.push('locations is required')
       if (!tempPassword) rowErrors.push('temporary_password is required')
-      else if (tempPassword.length < 6) rowErrors.push('password must be at least 6 characters')
+      else if (tempPassword.length < 8) rowErrors.push('password must be at least 8 characters')
 
       const locationIds = []
       if (locationsStr) {

@@ -27,6 +27,15 @@ router.post('/', requireRole('admin'), async (req, res) => {
   if (!name?.trim() || !iframe_url?.trim()) {
     return res.status(400).json({ error: 'name and iframe_url are required' })
   }
+  // Validate iframe_url is a proper https URL
+  try {
+    const parsed = new URL(iframe_url.trim())
+    if (parsed.protocol !== 'https:') {
+      return res.status(400).json({ error: 'iframe_url must use HTTPS' })
+    }
+  } catch {
+    return res.status(400).json({ error: 'Invalid iframe_url' })
+  }
   try {
     const { data, error } = await supabaseAdmin
       .from('ticket_embeds')
@@ -45,6 +54,14 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
   const { name, description, iframe_url, sort_order } = req.body
   if (!name?.trim() || !iframe_url?.trim()) {
     return res.status(400).json({ error: 'name and iframe_url are required' })
+  }
+  try {
+    const parsed = new URL(iframe_url.trim())
+    if (parsed.protocol !== 'https:') {
+      return res.status(400).json({ error: 'iframe_url must use HTTPS' })
+    }
+  } catch {
+    return res.status(400).json({ error: 'Invalid iframe_url' })
   }
   try {
     const { data, error } = await supabaseAdmin

@@ -181,6 +181,20 @@ router.get('/authorize', async (req, res) => {
 router.post('/authorize', express.urlencoded({ extended: false }), async (req, res) => {
   const { email, password, redirect_uri, state, nonce, scope } = req.body
 
+  // Validate redirect_uri (same check as GET /authorize)
+  if (redirect_uri) {
+    try {
+      const url = new URL(redirect_uri)
+      const allowed = (process.env.OIDC_ALLOWED_REDIRECTS || 'leadconnectorhq.com,msgsndr.com,highlevel.com').split(',')
+      const isAllowed = allowed.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain.trim()))
+      if (!isAllowed && url.hostname !== 'localhost') {
+        return res.status(400).send('Invalid redirect_uri')
+      }
+    } catch {
+      return res.status(400).send('Invalid redirect_uri')
+    }
+  }
+
   try {
     // Authenticate with Supabase
     const { createClient } = require('@supabase/supabase-js')

@@ -128,7 +128,7 @@ router.get('/articles', async (req, res) => {
   }
 })
 
-// GET /help-center/articles/:id — all users
+// GET /help-center/articles/:id — all users (respects min_role)
 router.get('/articles/:id', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
@@ -138,6 +138,17 @@ router.get('/articles/:id', async (req, res) => {
       .maybeSingle()
     if (error) throw error
     if (!data) return res.status(404).json({ error: 'Article not found' })
+
+    // Enforce min_role access check (same as list endpoint)
+    if (data.min_role) {
+      const { ROLE_HIERARCHY, resolveRole } = require('../middleware/role')
+      const userLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
+      const minLevel = ROLE_HIERARCHY.indexOf(data.min_role)
+      if (minLevel !== -1 && userLevel < minLevel) {
+        return res.status(403).json({ error: 'Insufficient role to view this article' })
+      }
+    }
+
     res.json(data)
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch article: ' + err.message })

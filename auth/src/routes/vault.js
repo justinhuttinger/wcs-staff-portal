@@ -1,6 +1,6 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
-const { requireRole, ROLE_HIERARCHY } = require('../middleware/role')
+const { requireRole, resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
 const vault = require('../services/vault')
 
 const router = Router()
@@ -30,8 +30,8 @@ router.post('/credentials', async (req, res) => {
   }
 
   if (staff_id !== req.staff.id) {
-    const userLevel = ROLE_HIERARCHY.indexOf(req.staff.role)
-    const directorLevel = ROLE_HIERARCHY.indexOf('director')
+    const userLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
+    const directorLevel = ROLE_HIERARCHY.indexOf('corporate')
     if (userLevel < directorLevel) {
       return res.status(403).json({ error: 'Only directors and above can manage other staff credentials' })
     }
@@ -49,18 +49,19 @@ router.post('/credentials', async (req, res) => {
 router.put('/credentials/:id', async (req, res) => {
   const { username, password } = req.body
 
-  const existing = await vault.getCredentialById(req.params.id)
-  if (!existing) return res.status(404).json({ error: 'Credential not found' })
-
-  if (existing.staff_id !== req.staff.id) {
-    const userLevel = ROLE_HIERARCHY.indexOf(req.staff.role)
-    const directorLevel = ROLE_HIERARCHY.indexOf('director')
-    if (userLevel < directorLevel) {
-      return res.status(403).json({ error: 'Only directors and above can manage other staff credentials' })
-    }
-  }
-
   try {
+    const existing = await vault.getCredentialById(req.params.id)
+    if (!existing) return res.status(404).json({ error: 'Credential not found' })
+
+    if (existing.staff_id !== req.staff.id) {
+      const { resolveRole } = require('../middleware/role')
+      const userLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
+      const directorLevel = ROLE_HIERARCHY.indexOf('corporate')
+      if (userLevel < directorLevel) {
+        return res.status(403).json({ error: 'Only directors and above can manage other staff credentials' })
+      }
+    }
+
     await vault.updateCredential(req.params.id, username, password)
     res.json({ message: 'Credential updated' })
   } catch (err) {
@@ -68,12 +69,12 @@ router.put('/credentials/:id', async (req, res) => {
   }
 })
 
-// DELETE /vault/credentials/:id — director+ only
+// DELETE /vault/credentials/:id — admin only
 router.delete('/credentials/:id', requireRole('admin'), async (req, res) => {
-  const existing = await vault.getCredentialById(req.params.id)
-  if (!existing) return res.status(404).json({ error: 'Credential not found' })
-
   try {
+    const existing = await vault.getCredentialById(req.params.id)
+    if (!existing) return res.status(404).json({ error: 'Credential not found' })
+
     await vault.deleteCredential(req.params.id)
     res.json({ message: 'Credential deleted' })
   } catch (err) {

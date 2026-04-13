@@ -3,8 +3,19 @@ const { supabaseAdmin } = require('../services/supabase')
 
 const router = Router()
 
+// Webhook secret verification middleware
+function verifyWebhookSecret(req, res, next) {
+  const secret = process.env.GHL_WEBHOOK_SECRET
+  if (!secret) return next() // no secret configured, allow (backward compat)
+  const provided = req.headers['x-webhook-secret'] || req.query.secret
+  if (provided !== secret) {
+    return res.status(401).json({ error: 'Invalid webhook secret' })
+  }
+  next()
+}
+
 // POST /webhooks/ghl-appointment — GHL fires this when a day-one is booked
-router.post('/ghl-appointment', async (req, res) => {
+router.post('/ghl-appointment', verifyWebhookSecret, async (req, res) => {
   const { staff_email, contact_name, appointment_id, appointment_type, appointment_time, contact_id, form_id } = req.body
 
   if (!staff_email || !contact_name || !appointment_id) {
@@ -64,7 +75,7 @@ router.post('/ghl-appointment', async (req, res) => {
 })
 
 // POST /webhooks/ghl-form-complete — GHL fires this when the form is submitted
-router.post('/ghl-form-complete', async (req, res) => {
+router.post('/ghl-form-complete', verifyWebhookSecret, async (req, res) => {
   const { appointment_id, contact_id, sale_result } = req.body
 
   if (!appointment_id) {
