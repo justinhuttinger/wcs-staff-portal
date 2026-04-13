@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getLeaderboard } from '../lib/api'
+import { LOCATION_NAMES } from '../config/locations'
 
 const ROLES_ORDERED = ['team_member', 'lead', 'manager', 'corporate', 'admin']
 
@@ -83,7 +84,7 @@ export default function LeaderboardView({ user, onBack, location }) {
   const crossLocations = crossData?.locations || []
 
   // All 7 locations for admin/director location picker
-  const ALL_LOCATIONS = ['Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
+  const ALL_LOCATIONS = LOCATION_NAMES
 
   return (
     <div className="w-full max-w-4xl mx-auto px-8 pb-12">

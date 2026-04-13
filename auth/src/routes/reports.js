@@ -39,14 +39,27 @@ async function resolveLocationFilter(query) {
 // the UI (stored as April 12 00:00 UTC) falls outside an April 11 UTC filter.
 // Adding 7 hours aligns the filter with the displayed Pacific-time dates.
 // ---------------------------------------------------------------------------
-const PACIFIC_OFFSET_MS = 7 * 3600000 // PDT = UTC-7
+// Dynamic Pacific timezone offset (handles PDT/PST automatically)
+function getPacificOffsetMs(date) {
+  // Use Intl to determine if a date is in PDT or PST
+  const jan = new Date(date.getFullYear(), 0, 1)
+  const jul = new Date(date.getFullYear(), 6, 1)
+  const stdOffset = Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset())
+  // For server in UTC: Pacific Standard = UTC-8, Pacific Daylight = UTC-7
+  // Check if the date is in DST by comparing formatted hour
+  const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false })
+  const utcHour = date.getUTCHours()
+  const pacificHour = parseInt(formatter.format(date), 10)
+  const diff = (utcHour - pacificHour + 24) % 24
+  return diff * 3600000
+}
 
 function dateToMs(dateStr, endOfDay = false) {
   if (!dateStr) return null
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null
   const d = endOfDay ? new Date(dateStr + 'T23:59:59.999Z') : new Date(dateStr + 'T00:00:00.000Z')
   if (isNaN(d.getTime())) return null
-  return (d.getTime() + PACIFIC_OFFSET_MS).toString()
+  return (d.getTime() + getPacificOffsetMs(d)).toString()
 }
 
 // ---------------------------------------------------------------------------

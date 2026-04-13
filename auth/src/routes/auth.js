@@ -2,11 +2,21 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { createClient } = require('@supabase/supabase-js')
+const rateLimit = require('express-rate-limit')
 
 const router = Router()
 
+// Rate limit login attempts: 10 per 15 minutes per IP
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many login attempts, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
 // POST /auth/kiosk — public, authenticates with shared secret
-router.post('/kiosk', async (req, res) => {
+router.post('/kiosk', loginLimiter, async (req, res) => {
   try {
     const { key } = req.body
     const kioskSecret = process.env.KIOSK_SECRET
@@ -58,7 +68,7 @@ router.post('/kiosk', async (req, res) => {
 })
 
 // POST /auth/login — public
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
   const { email, password } = req.body
   if (!email || !password) {

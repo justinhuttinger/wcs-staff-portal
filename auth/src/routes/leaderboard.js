@@ -40,7 +40,14 @@ function setCache(key, data) {
 // ---------------------------------------------------------------------------
 // Pacific timezone offset for custom field date alignment
 // ---------------------------------------------------------------------------
-const PACIFIC_OFFSET_MS = 7 * 3600000
+// Dynamic Pacific timezone offset (handles PDT/PST automatically)
+function getPacificOffsetMs(date) {
+  const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false })
+  const utcHour = date.getUTCHours()
+  const pacificHour = parseInt(formatter.format(date), 10)
+  const diff = (utcHour - pacificHour + 24) % 24
+  return diff * 3600000
+}
 
 function monthBounds(monthStr) {
   // monthStr = "YYYY-MM"
@@ -48,8 +55,8 @@ function monthBounds(monthStr) {
   const start = new Date(Date.UTC(year, mon - 1, 1))
   const end = new Date(Date.UTC(year, mon, 0, 23, 59, 59, 999)) // last day of month
   return {
-    startMs: (start.getTime() + PACIFIC_OFFSET_MS).toString(),
-    endMs: (end.getTime() + PACIFIC_OFFSET_MS).toString(),
+    startMs: (start.getTime() + getPacificOffsetMs(start)).toString(),
+    endMs: (end.getTime() + getPacificOffsetMs(end)).toString(),
     startISO: start.toISOString(),
     endISO: end.toISOString(),
   }
@@ -231,23 +238,23 @@ router.get('/', async (req, res) => {
       const locations = allLocations || []
 
       // Derive slugs from location names
-      const locationResults = []
-      for (const loc of locations) {
+      // Parallelize per-location aggregation (was sequential N+1)
+      const locationResults = await Promise.all(locations.map(async (loc) => {
         const slug = loc.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
         const rankings = await aggregateLocation(slug, bounds)
 
         const totalPoints = rankings.reduce((sum, r) => sum + r.points, 0)
         const topPerformer = rankings.length > 0 ? rankings[0] : null
 
-        locationResults.push({
+        return {
           location: loc.name,
           location_slug: slug,
           total_points: totalPoints,
           top_performer: topPerformer ? topPerformer.name : null,
           top_performer_points: topPerformer ? topPerformer.points : 0,
           staff_count: rankings.length,
-        })
-      }
+        }
+      }))
 
       locationResults.sort((a, b) => b.total_points - a.total_points)
       locationResults.forEach((r, i) => { r.rank = i + 1 })

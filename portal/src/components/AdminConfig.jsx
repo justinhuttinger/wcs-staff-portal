@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
+import { LOCATION_NAMES as LOCATIONS } from '../config/locations'
 
 export default function AdminConfig({ isElectron, onClose }) {
   const [location, setLocation] = useState('')
   const [abcUrl, setAbcUrl] = useState('')
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
-
-  const LOCATIONS = ['Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
 
   useEffect(() => {
     if (isElectron && window.wcsElectron) {

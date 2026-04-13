@@ -6,15 +6,8 @@ function capitalize(str) {
   return str.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
 }
 
-const LOCATIONS = [
-  { slug: 'salem', label: 'Salem' },
-  { slug: 'keizer', label: 'Keizer' },
-  { slug: 'eugene', label: 'Eugene' },
-  { slug: 'springfield', label: 'Springfield' },
-  { slug: 'clackamas', label: 'Clackamas' },
-  { slug: 'milwaukie', label: 'Milwaukie' },
-  { slug: 'medford', label: 'Medford' },
-]
+import { LOCATION_NAMES } from '../config/locations'
+const LOCATIONS = LOCATION_NAMES.map(name => ({ slug: name.toLowerCase(), label: name }))
 
 function isPast(iso) {
   if (!iso) return false

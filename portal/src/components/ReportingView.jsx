@@ -22,16 +22,7 @@ function getReportTilesForRole(role) {
   }
 }
 
-const LOCATIONS = [
-  { slug: 'all', label: 'All Locations' },
-  { slug: 'salem', label: 'Salem' },
-  { slug: 'keizer', label: 'Keizer' },
-  { slug: 'eugene', label: 'Eugene' },
-  { slug: 'springfield', label: 'Springfield' },
-  { slug: 'clackamas', label: 'Clackamas' },
-  { slug: 'milwaukie', label: 'Milwaukie' },
-  { slug: 'medford', label: 'Medford' },
-]
+import { LOCATION_OPTIONS as LOCATIONS } from '../config/locations'
 
 const QUICK_RANGES = [
   { key: 'this_month', label: 'This Month' },

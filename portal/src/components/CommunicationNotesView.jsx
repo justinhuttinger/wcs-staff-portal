@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { LOCATION_NAMES } from '../config/locations'
 import {
   getCommunicationNotes,
   createCommunicationNote,
@@ -51,7 +52,7 @@ export default function CommunicationNotesView({ user, onBack }) {
   const isLeadPlus = roleIdx >= ROLE_LEVELS.lead
   const canSeeAll = role === 'corporate' || role === 'admin'
   const userName = user?.staff?.display_name || user?.staff?.first_name || ''
-  const ALL_LOCATIONS = ['Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
+  const ALL_LOCATIONS = LOCATION_NAMES
 
   // Date filter helpers
   function getDefaultDateFrom() {

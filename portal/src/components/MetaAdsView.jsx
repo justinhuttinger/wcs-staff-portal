@@ -9,7 +9,7 @@ const QUICK_RANGES = [
   { key: 'last_month', label: 'Last Month' },
 ]
 
-const LOCATIONS = ['All', 'Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
+import { LOCATIONS_WITH_ALL as LOCATIONS } from '../config/locations'
 const TYPES = ['All', 'Lead', 'Traffic', 'Retargeting', 'Other']
 
 function getQuickRange(key) {
