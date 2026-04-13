@@ -470,53 +470,37 @@ app.on('ready', () => {
       `)
       await wait(1500)
 
-      // Click the small triangle/arrow to expand "All locations"
-      // The arrow is a ▶ character or a small clickable element BEFORE the checkbox
+      // Expand "All locations" — click the ant-select-tree-switcher (arrow)
+      log('[Notification] v1.2.4 — Expanding All locations...')
       await run(`
-        var els = document.querySelectorAll('*');
-        for (var i = 0; i < els.length; i++) {
-          if (els[i].textContent.trim() === 'All locations' && els[i].children.length === 0) {
-            // The triangle arrow is typically the element just before or a sibling
-            var parent = els[i].parentElement;
-            var arrow = parent?.querySelector('span:first-child, i:first-child, svg:first-child, [class*="tree"], [class*="expand"], [class*="toggle"]');
-            if (!arrow) {
-              // Try the element 2 before in the parent's children
-              var kids = parent?.children;
-              if (kids) {
-                for (var j = 0; j < kids.length; j++) {
-                  var t = kids[j].textContent.trim();
-                  if (t === '' || t === '▶' || t === '▸' || t === '►') { arrow = kids[j]; break; }
-                }
-              }
-            }
-            if (arrow && arrow !== els[i]) { arrow.click(); }
-            else { parent?.click(); }
-            break;
-          }
+        var node = document.querySelector('[data-testid*="allLocations"]');
+        if (node) {
+          var switcher = node.querySelector('.ant-select-tree-switcher');
+          if (switcher) switcher.click();
         }
       `)
       await wait(1500)
 
-      // Check location checkboxes
+      // Check location checkboxes — WHILE dropdown is still open
       if (locations.includes('all')) {
         log('[Notification] Checking All locations...')
         await run(`
-          var cbs = document.querySelectorAll('input[type="checkbox"]');
-          for (var i = 0; i < cbs.length; i++) {
-            var txt = (cbs[i].closest('label') || cbs[i].parentElement)?.textContent || '';
-            if (txt.indexOf('All locations') >= 0) { if (!cbs[i].checked) cbs[i].click(); break; }
-          }
+          var node = document.querySelector('[data-testid*="allLocations"]');
+          if (node) { var cb = node.querySelector('.ant-select-tree-checkbox'); if (cb) cb.click(); }
         `)
       } else {
         for (const slug of locations) {
           const label = TRAINERIZE_LOCATION_MAP[slug]
           if (!label) continue
-          log('[Notification] Checking location: ' + label)
+          log('[Notification] Checking: ' + label)
           await run(`
-            var cbs = document.querySelectorAll('input[type="checkbox"]');
-            for (var i = 0; i < cbs.length; i++) {
-              var txt = (cbs[i].closest('label') || cbs[i].parentElement)?.textContent || '';
-              if (txt.indexOf(${JSON.stringify(label)}) >= 0) { if (!cbs[i].checked) cbs[i].click(); break; }
+            var nodes = document.querySelectorAll('[data-testid*="announcementLocationTreeLeaf"]');
+            for (var i = 0; i < nodes.length; i++) {
+              if (nodes[i].textContent.indexOf(${JSON.stringify(label)}) >= 0) {
+                var cb = nodes[i].querySelector('.ant-select-tree-checkbox');
+                if (cb) cb.click();
+                break;
+              }
             }
           `)
           await wait(300)
@@ -524,35 +508,64 @@ app.on('ready', () => {
       }
       await wait(500)
 
-      // Close location dropdown by clicking the title area
-      await run(`document.querySelector('h1, h2, h3, [class*="title"]')?.click()`)
-      await wait(500)
+      // Close location dropdown by pressing Escape
+      await run(`document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))`)
+      await wait(300)
+      // Also click the modal title to be safe
+      await run(`
+        var t = document.querySelector('h1');
+        if (t && t.textContent.indexOf('New Push') >= 0) t.click();
+      `)
+      await wait(1000)
 
-      // 7.5. "Select the clients" — click to open, then check "All"
-      log('[Notification] Setting clients to All...')
+      // 7.5. "Select the clients" — click to open
+      log('[Notification] Opening clients dropdown...')
       await run(`
         var els = document.querySelectorAll('*');
         for (var i = 0; i < els.length; i++) {
-          if (els[i].textContent.trim() === 'Select the clients for whom this notification should appear' && els[i].children.length === 0) {
+          var t = els[i].textContent.trim();
+          if (t === 'Select the clients for whom this notification should appear' && els[i].children.length === 0) {
             var next = els[i].nextElementSibling;
-            if (next) { next.click(); }
+            if (next) next.click();
             break;
           }
         }
       `)
       await wait(1500)
-      // Check the "All" checkbox
+
+      // Check "All" — use the SPECIFIC data-testid for client types, NOT locations
+      log('[Notification] Checking All clients...')
       await run(`
-        var cbs = document.querySelectorAll('input[type="checkbox"]');
-        for (var i = 0; i < cbs.length; i++) {
-          var txt = (cbs[i].closest('label') || cbs[i].parentElement)?.textContent?.trim() || '';
-          if (txt === 'All') { if (!cbs[i].checked) cbs[i].click(); break; }
+        var node = document.querySelector('[data-testid*="userTypesTreeLeaf-all"]');
+        if (node) {
+          var cb = node.querySelector('.ant-select-tree-checkbox');
+          if (cb) cb.click();
+        } else {
+          // Fallback: find the tree that appeared MOST RECENTLY (clients, not locations)
+          var listboxes = document.querySelectorAll('[role="listbox"]');
+          var lastListbox = listboxes[listboxes.length - 1];
+          if (lastListbox) {
+            var nodes = lastListbox.querySelectorAll('.ant-select-tree-treenode');
+            for (var i = 0; i < nodes.length; i++) {
+              var title = nodes[i].querySelector('[title="All"]') || nodes[i].querySelector('span.ant-select-tree-title');
+              if (title && title.textContent.trim() === 'All') {
+                var cb = nodes[i].querySelector('.ant-select-tree-checkbox');
+                if (cb) cb.click();
+                break;
+              }
+            }
+          }
         }
       `)
       await wait(500)
 
       // Close clients dropdown
-      await run(`document.querySelector('h1, h2, h3, [class*="title"]')?.click()`)
+      await run(`document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))`)
+      await wait(300)
+      await run(`
+        var t = document.querySelector('h1');
+        if (t && t.textContent.indexOf('New Push') >= 0) t.click();
+      `)
       await wait(500)
 
       // 8. Fill Message
