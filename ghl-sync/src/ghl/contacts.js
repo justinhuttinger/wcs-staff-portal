@@ -13,12 +13,11 @@ async function fetchAllContacts(locationId, apiKey) {
 }
 
 async function fetchContactsDelta(locationId, sinceDate, apiKey) {
-  // startAfterDate returns contacts updated after this ISO date
-  // Overlap by 5 minutes to avoid missing records
-  const overlap = new Date(new Date(sinceDate).getTime() - 5 * 60 * 1000);
+  // GHL contacts API has no date filter — fetch all and let upsert deduplicate
+  // The sinceDate is tracked in ghl_sync_state for logging purposes only
   return getPaginated(
     '/contacts/',
-    { locationId, limit: PAGE_SIZE, startAfterDate: overlap.toISOString() },
+    { locationId, limit: PAGE_SIZE },
     'contacts',
     { paginationType: 'meta' },
     apiKey

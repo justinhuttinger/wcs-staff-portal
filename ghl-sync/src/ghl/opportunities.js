@@ -13,10 +13,10 @@ async function fetchAllOpportunities(locationId, apiKey) {
 }
 
 async function fetchOpportunitiesDelta(locationId, sinceDate, apiKey) {
-  const overlap = new Date(new Date(sinceDate).getTime() - 5 * 60 * 1000);
+  // GHL opportunities search has no date filter — fetch all and let upsert deduplicate
   return getPaginated(
     '/opportunities/search',
-    { location_id: locationId, limit: PAGE_SIZE, date: overlap.toISOString() },
+    { location_id: locationId, limit: PAGE_SIZE },
     'opportunities',
     { paginationType: 'meta' },
     apiKey
