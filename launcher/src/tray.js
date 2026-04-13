@@ -11,7 +11,7 @@ function createTray(mainWindow) {
   const contextMenu = Menu.buildFromTemplate([
     {
       label: 'Show WCS App',
-      click: () => { mainWindow.show(); mainWindow.focus() },
+      click: () => { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus() } },
     },
     { type: 'separator' },
     {
@@ -30,7 +30,7 @@ function createTray(mainWindow) {
   ])
 
   tray.setContextMenu(contextMenu)
-  tray.on('click', () => { mainWindow.show(); mainWindow.focus() })
+  tray.on('click', () => { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus() } })
 
   return tray
 }

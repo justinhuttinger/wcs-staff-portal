@@ -421,12 +421,25 @@ router.put('/:id/acknowledge', requireRole('team_member'), async (req, res) => {
   try {
     const { data: existing, error: fetchErr } = await supabaseAdmin
       .from('hr_documents')
-      .select('status')
+      .select('status, employee_name, staff_id')
       .eq('id', req.params.id)
       .maybeSingle()
 
     if (fetchErr) throw fetchErr
     if (!existing) return res.status(404).json({ error: 'Document not found' })
+
+    // Ownership check: only the assigned employee (or a manager+) can acknowledge
+    const isOwner = existing.staff_id === req.staff.id
+    const staffName = (req.staff.display_name || [req.staff.first_name, req.staff.last_name].filter(Boolean).join(' ')).toLowerCase()
+    const isNameMatch = existing.employee_name && existing.employee_name.toLowerCase() === staffName
+    if (!isOwner && !isNameMatch) {
+      const { ROLE_HIERARCHY, resolveRole } = require('../middleware/role')
+      const userLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
+      const managerLevel = ROLE_HIERARCHY.indexOf('manager')
+      if (userLevel < managerLevel) {
+        return res.status(403).json({ error: 'You can only acknowledge documents assigned to you' })
+      }
+    }
 
     if (existing.status === 'completed' || existing.status === 'uploaded') {
       return res.status(400).json({ error: 'Document has already been acknowledged' })

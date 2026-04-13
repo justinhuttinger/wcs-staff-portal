@@ -7,54 +7,59 @@ const router = Router()
 
 // POST /auth/kiosk — public, authenticates with shared secret
 router.post('/kiosk', async (req, res) => {
-  const { key } = req.body
-  const kioskSecret = process.env.KIOSK_SECRET
-  const kioskEmail = process.env.KIOSK_EMAIL
-  const kioskPassword = process.env.KIOSK_PASSWORD
+  try {
+    const { key } = req.body
+    const kioskSecret = process.env.KIOSK_SECRET
+    const kioskEmail = process.env.KIOSK_EMAIL
+    const kioskPassword = process.env.KIOSK_PASSWORD
 
-  if (!kioskSecret || !kioskEmail || !kioskPassword) {
-    return res.status(500).json({ error: 'Kiosk not configured' })
+    if (!kioskSecret || !kioskEmail || !kioskPassword) {
+      return res.status(500).json({ error: 'Kiosk not configured' })
+    }
+    if (key !== kioskSecret) {
+      return res.status(401).json({ error: 'Invalid kiosk key' })
+    }
+
+    const anonClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+    const { data: authData, error: authError } = await anonClient.auth.signInWithPassword({
+      email: kioskEmail,
+      password: kioskPassword,
+    })
+
+    if (authError) {
+      return res.status(500).json({ error: 'Kiosk auth failed' })
+    }
+
+    const { data: staff } = await supabaseAdmin
+      .from('staff')
+      .select('id, email, display_name, first_name, last_name, role')
+      .eq('id', authData.user.id)
+      .single()
+
+    const { data: staffLocs } = await supabaseAdmin
+      .from('staff_locations')
+      .select('location_id, is_primary, locations(id, name)')
+      .eq('staff_id', authData.user.id)
+
+    const locations = (staffLocs || []).map(sl => ({
+      id: sl.locations.id,
+      name: sl.locations.name,
+      is_primary: sl.is_primary,
+    }))
+
+    res.json({
+      token: authData.session.access_token,
+      staff: { ...(staff || {}), locations },
+    })
+  } catch (err) {
+    console.error('[Auth] Kiosk login error:', err.message)
+    res.status(500).json({ error: 'Kiosk login failed' })
   }
-  if (key !== kioskSecret) {
-    return res.status(401).json({ error: 'Invalid kiosk key' })
-  }
-
-  // Login as the kiosk service account
-  const anonClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
-  const { data: authData, error: authError } = await anonClient.auth.signInWithPassword({
-    email: kioskEmail,
-    password: kioskPassword,
-  })
-
-  if (authError) {
-    return res.status(500).json({ error: 'Kiosk auth failed' })
-  }
-
-  const { data: staff } = await supabaseAdmin
-    .from('staff')
-    .select('id, email, display_name, first_name, last_name, role')
-    .eq('id', authData.user.id)
-    .single()
-
-  const { data: staffLocs } = await supabaseAdmin
-    .from('staff_locations')
-    .select('location_id, is_primary, locations(id, name)')
-    .eq('staff_id', authData.user.id)
-
-  const locations = (staffLocs || []).map(sl => ({
-    id: sl.locations.id,
-    name: sl.locations.name,
-    is_primary: sl.is_primary,
-  }))
-
-  res.json({
-    token: authData.session.access_token,
-    staff: { ...(staff || {}), locations },
-  })
 })
 
 // POST /auth/login — public
 router.post('/login', async (req, res) => {
+  try {
   const { email, password } = req.body
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password required' })
@@ -116,6 +121,10 @@ router.post('/login', async (req, res) => {
     },
     must_change_password: staff.must_change_password,
   })
+  } catch (err) {
+    console.error('[Auth] Login error:', err.message)
+    res.status(500).json({ error: 'Login failed' })
+  }
 })
 
 // POST /auth/change-password — authenticated
@@ -144,17 +153,22 @@ router.post('/change-password', authenticate, async (req, res) => {
 
 // POST /auth/reset-password — public
 router.post('/reset-password', async (req, res) => {
-  const { email } = req.body
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required' })
-  }
+  try {
+    const { email } = req.body
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' })
+    }
 
-  const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email)
-  if (error) {
-    return res.status(500).json({ error: 'Failed to send reset email' })
-  }
+    const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email)
+    if (error) {
+      return res.status(500).json({ error: 'Failed to send reset email' })
+    }
 
-  res.json({ message: 'Password reset email sent' })
+    res.json({ message: 'Password reset email sent' })
+  } catch (err) {
+    console.error('[Auth] Reset password error:', err.message)
+    res.status(500).json({ error: 'Failed to send reset email' })
+  }
 })
 
 // GET /auth/me — authenticated

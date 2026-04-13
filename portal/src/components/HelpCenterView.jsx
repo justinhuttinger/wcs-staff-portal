@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import {
   getHelpCategories,
   createHelpCategory,
@@ -242,7 +243,7 @@ export default function HelpCenterView({ user, onBack }) {
           </div>
           <div
             className="prose prose-sm max-w-none text-text-secondary leading-relaxed [&_img]:rounded-lg [&_img]:border [&_img]:border-border [&_img]:my-3 [&_img]:max-w-full [&_h1]:text-text-primary [&_h2]:text-text-primary [&_h3]:text-text-primary [&_h4]:text-text-primary [&_strong]:text-text-primary [&_a]:text-wcs-red"
-            dangerouslySetInnerHTML={{ __html: marked.parse(selectedArticle.body || '') }}>
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked.parse(selectedArticle.body || '')) }}>
           </div>
         </article>
 

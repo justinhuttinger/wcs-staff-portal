@@ -196,6 +196,21 @@ router.post('/upload-image', requireRole('admin'), async (req, res) => {
   const { url } = req.body
   if (!url) return res.status(400).json({ error: 'url is required' })
 
+  // SSRF protection: only allow https URLs, block internal/private IPs
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:') {
+      return res.status(400).json({ error: 'Only HTTPS URLs are allowed' })
+    }
+    // Block common internal hostnames
+    const host = parsed.hostname.toLowerCase()
+    if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host.startsWith('169.254.') || host.startsWith('10.') || host.startsWith('192.168.') || host.endsWith('.internal') || host.endsWith('.local')) {
+      return res.status(400).json({ error: 'Internal URLs are not allowed' })
+    }
+  } catch {
+    return res.status(400).json({ error: 'Invalid URL' })
+  }
+
   try {
     // Download the image
     const imgResp = await fetch(url)

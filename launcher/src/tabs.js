@@ -116,7 +116,8 @@ class TabManager {
   }
 
   reorderTab(dragId, dropId) {
-    // Rebuild the Map with the dragged tab moved before the drop target
+    const dragTab = this.tabs.get(dragId)
+    if (!dragTab || !dragTab.closable) return
     const entries = [...this.tabs.entries()]
     const dragIdx = entries.findIndex(([id]) => id === dragId)
     const dropIdx = entries.findIndex(([id]) => id === dropId)
@@ -140,6 +141,7 @@ class TabManager {
   }
 
   layoutViews() {
+    if (this.window.isDestroyed()) return
     const bounds = this.window.getContentBounds()
     const width = bounds.width
     const height = bounds.height
@@ -155,7 +157,7 @@ class TabManager {
   }
 
   notifyTabBar() {
-    if (!this.tabBarView) return
+    if (!this.tabBarView || this.tabBarView.webContents.isDestroyed()) return
     const tabData = [...this.tabs.values()].map(t => ({
       id: t.id,
       title: t.title,

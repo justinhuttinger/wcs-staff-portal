@@ -55,6 +55,16 @@ app.use('/hr-documents', require('./routes/hrDocuments'))
 app.use('/help-center', require('./routes/helpCenter'))
 app.use('/ticket-embeds', require('./routes/ticketEmbeds'))
 
+// Global error handler — catch unhandled errors, don't leak stack traces
+app.use((err, req, res, next) => {
+  console.error('[Server Error]', err.message, err.stack)
+  res.status(500).json({ error: 'Internal server error' })
+})
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Unhandled Rejection]', reason)
+})
+
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
   console.log(`WCS Auth API listening on port ${PORT}`)

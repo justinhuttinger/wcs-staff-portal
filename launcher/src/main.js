@@ -193,14 +193,15 @@ app.on('ready', () => {
   // Window controls
   ipcMain.on('window-refresh', () => {
     const active = tabManager.tabs.get(tabManager.activeTabId)
-    if (active) active.view.webContents.reload()
+    if (active && !active.view.webContents.isDestroyed()) active.view.webContents.reload()
   })
-  ipcMain.on('window-minimize', () => mainWindow.minimize())
+  ipcMain.on('window-minimize', () => { if (!mainWindow.isDestroyed()) mainWindow.minimize() })
   ipcMain.on('window-maximize', () => {
+    if (mainWindow.isDestroyed()) return
     if (mainWindow.isMaximized()) mainWindow.unmaximize()
     else mainWindow.maximize()
   })
-  ipcMain.on('window-close', () => mainWindow.close())
+  ipcMain.on('window-close', () => { if (!mainWindow.isDestroyed()) mainWindow.close() })
 
   // Notify tab bar when maximize state changes (for icon toggle)
   mainWindow.on('maximize', () => tabManager.tabBarView?.webContents.send('maximized-changed', true))

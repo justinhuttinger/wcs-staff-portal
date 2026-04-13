@@ -20,8 +20,17 @@ function renderTabs() {
     el.className = 'tab' + (tab.active ? ' active' : '')
     el.dataset.tabId = tab.id
     el.dataset.index = i
-    el.innerHTML = `<span>${tab.title}</span>` +
-      (tab.closable ? `<span class="tab-close" data-id="${tab.id}">&times;</span>` : '')
+    // Build DOM safely — avoid innerHTML with untrusted data
+    const titleSpan = document.createElement('span')
+    titleSpan.textContent = tab.title
+    el.appendChild(titleSpan)
+    if (tab.closable) {
+      const closeSpan = document.createElement('span')
+      closeSpan.className = 'tab-close'
+      closeSpan.dataset.id = tab.id
+      closeSpan.textContent = '\u00D7'
+      el.appendChild(closeSpan)
+    }
 
     // Chrome-style drag (only for closable tabs)
     if (tab.closable) {
@@ -124,13 +133,17 @@ document.addEventListener('mouseup', () => {
 
 ipcRenderer.on('user-updated', (event, user) => {
   if (user.name) {
-    userArea.innerHTML = `
-      <span class="user-name">${user.name}</span>
-      <button class="sign-out-btn" id="btn-signout">Sign Out</button>
-    `
-    document.getElementById('btn-signout').addEventListener('click', () => {
-      ipcRenderer.send('tabbar-signout')
-    })
+    userArea.innerHTML = ''
+    const nameSpan = document.createElement('span')
+    nameSpan.className = 'user-name'
+    nameSpan.textContent = user.name
+    userArea.appendChild(nameSpan)
+    const signOutBtn = document.createElement('button')
+    signOutBtn.className = 'sign-out-btn'
+    signOutBtn.id = 'btn-signout'
+    signOutBtn.textContent = 'Sign Out'
+    signOutBtn.addEventListener('click', () => ipcRenderer.send('tabbar-signout'))
+    userArea.appendChild(signOutBtn)
   } else {
     userArea.innerHTML = ''
   }

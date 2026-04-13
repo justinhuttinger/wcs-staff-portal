@@ -247,18 +247,20 @@ router.get('/performance', authenticate, requireRole('corporate'), async (req, r
       try {
         const data = await googleFetch(
           `https://businessprofileperformance.googleapis.com/v1/${locName}:fetchMultiDailyMetricsTimeSeries?` +
-          new URLSearchParams({
-            'dailyMetrics': 'BUSINESS_IMPRESSIONS_DESKTOP_MAPS',
-            'dailyMetrics': 'WEBSITE_CLICKS',
-            'dailyMetrics': 'CALL_CLICKS',
-            'dailyMetrics': 'BUSINESS_DIRECTION_REQUESTS',
-            'dailyRange.startDate.year': dailyRange.startDate.year,
-            'dailyRange.startDate.month': dailyRange.startDate.month,
-            'dailyRange.startDate.day': dailyRange.startDate.day,
-            'dailyRange.endDate.year': dailyRange.endDate.year,
-            'dailyRange.endDate.month': dailyRange.endDate.month,
-            'dailyRange.endDate.day': dailyRange.endDate.day,
-          }),
+          (() => {
+            const params = new URLSearchParams()
+            params.append('dailyMetrics', 'BUSINESS_IMPRESSIONS_DESKTOP_MAPS')
+            params.append('dailyMetrics', 'WEBSITE_CLICKS')
+            params.append('dailyMetrics', 'CALL_CLICKS')
+            params.append('dailyMetrics', 'BUSINESS_DIRECTION_REQUESTS')
+            params.append('dailyRange.startDate.year', dailyRange.startDate.year)
+            params.append('dailyRange.startDate.month', dailyRange.startDate.month)
+            params.append('dailyRange.startDate.day', dailyRange.startDate.day)
+            params.append('dailyRange.endDate.year', dailyRange.endDate.year)
+            params.append('dailyRange.endDate.month', dailyRange.endDate.month)
+            params.append('dailyRange.endDate.day', dailyRange.endDate.day)
+            return params
+          })(),
           token
         )
 

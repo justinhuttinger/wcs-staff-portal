@@ -23,18 +23,17 @@ router.post('/', requireRole('team_member'), async (req, res) => {
 
   try {
     const staffName = req.staff.display_name || [req.staff.first_name, req.staff.last_name].filter(Boolean).join(' ')
-    const primaryLocation = req.staff.locations?.find(l => l.is_primary)
-    const locationSlug = primaryLocation?.name?.toLowerCase() || null
 
-    // Look up location_id from locations table by name
-    let locationId = null
-    if (locationSlug) {
+    // Look up primary location from staff_locations
+    let locationSlug = null
+    let locationId = req.staff.primary_location_id || null
+    if (locationId) {
       const { data: loc } = await supabaseAdmin
         .from('locations')
-        .select('id')
-        .ilike('name', locationSlug)
+        .select('id, name')
+        .eq('id', locationId)
         .maybeSingle()
-      locationId = loc?.id || null
+      locationSlug = loc?.name?.toLowerCase() || null
     }
 
     const insertPayload = {
@@ -85,8 +84,13 @@ router.get('/', requireRole('lead'), async (req, res) => {
         query = query.eq('location_slug', location_slug)
       }
     } else {
-      const primarySlug = req.staff.locations?.find(l => l.is_primary)?.name?.toLowerCase() || null
-      query = query.eq('location_slug', primarySlug)
+      // Look up primary location name from location_id
+      let primarySlug = null
+      if (req.staff.primary_location_id) {
+        const { data: loc } = await supabaseAdmin.from('locations').select('name').eq('id', req.staff.primary_location_id).maybeSingle()
+        primarySlug = loc?.name?.toLowerCase() || null
+      }
+      if (primarySlug) query = query.eq('location_slug', primarySlug)
     }
 
     if (status) query = query.eq('status', status)

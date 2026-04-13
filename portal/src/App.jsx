@@ -86,6 +86,8 @@ export default function App() {
         setShowLeaderboard(false)
         setShowCommunicationNotes(false)
         setShowHR(false)
+        setShowHelpCenter(false)
+        setShowTickets(false)
         if (window.wcsElectron) window.wcsElectron.onLogout()
       })
     }
@@ -151,7 +153,7 @@ export default function App() {
     return <LoginScreen onLogin={handleLogin} />
   }
 
-  const location = locationParam || user.staff.locations?.find(l => l.is_primary)?.name || 'Salem'
+  const location = locationParam || user?.staff?.locations?.find(l => l.is_primary)?.name || 'Salem'
 
   // Kiosk mode: show only Day One Tracker, no header/navigation
   if (kioskMode === 'dayone') {
