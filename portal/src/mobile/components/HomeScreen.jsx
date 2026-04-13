@@ -58,6 +58,14 @@ function HRIcon() {
   )
 }
 
+function BellIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7 text-wcs-red">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+    </svg>
+  )
+}
+
 function LogoutIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -121,6 +129,7 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     { label: 'Leaderboard', icon: <TrophyIcon />, route: 'leaderboard' },
     { label: 'Comm Notes', icon: <NotesIcon />, route: 'comm-notes' },
     { label: 'HR', icon: <HRIcon />, route: 'hr' },
+    { label: 'Notifications', icon: <BellIcon />, route: null, url: 'https://westcoaststrength.trainerize.com/app/login', desc: 'Member App' },
   ]
 
   const ROLE_LEVELS = { team_member: 0, lead: 1, manager: 2, corporate: 3, admin: 4 }
@@ -133,6 +142,8 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     if (tile.label === 'Marketing' && role !== 'corporate' && role !== 'admin') return false
     // HR tile only for manager+
     if (tile.label === 'HR' && roleIdx < ROLE_LEVELS.manager) return false
+    // Notifications tile only for manager+
+    if (tile.label === 'Notifications' && roleIdx < ROLE_LEVELS.manager) return false
     return true
   })
 
@@ -198,14 +209,17 @@ export default function HomeScreen({ user, navigate, onLogout }) {
       <div className="grid grid-cols-2 gap-4">
         {tiles.map(tile => (
           <button
-            key={tile.route}
-            onClick={() => navigate(tile.route)}
+            key={tile.route || tile.label}
+            onClick={() => tile.url ? window.open(tile.url, '_blank') : navigate(tile.route)}
             className="bg-surface border border-border rounded-2xl p-6 flex flex-col items-center justify-center gap-3 active:scale-95 transition-transform"
           >
             <div className="w-14 h-14 rounded-full bg-bg flex items-center justify-center">
               {tile.icon}
             </div>
-            <span className="font-semibold text-text-primary text-sm">{tile.label}</span>
+            <div className="text-center">
+              <span className="block font-semibold text-text-primary text-sm">{tile.label}</span>
+              {tile.desc && <span className="block text-[10px] text-text-muted uppercase tracking-wide mt-0.5">{tile.desc}</span>}
+            </div>
           </button>
         ))}
       </div>
