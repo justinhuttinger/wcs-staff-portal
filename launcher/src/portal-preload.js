@@ -30,13 +30,4 @@ contextBridge.exposeInMainWorld('wcsElectron', {
   onSignOut: (callback) => {
     ipcRenderer.on('trigger-signout', () => callback())
   },
-  // Trainerize push notification automation
-  runNotification: (params) => ipcRenderer.invoke('run-notification', params),
-  getNotificationLocations: () => ipcRenderer.invoke('get-notification-locations'),
-  onNotificationProgress: (callback) => {
-    ipcRenderer.on('notification-progress', (e, msg) => callback(msg))
-  },
-  removeNotificationProgress: () => {
-    ipcRenderer.removeAllListeners('notification-progress')
-  },
 })
