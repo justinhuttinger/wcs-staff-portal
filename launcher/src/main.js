@@ -326,7 +326,7 @@ app.on('ready', () => {
     const automationWindow = new BrowserWindow({
       width: 1280,
       height: 900,
-      show: false,
+      show: true, // DEBUG: visible so we can watch the automation
       webPreferences: {
         session: ses.fromPartition('persist:trainerize-automation'),
         nodeIntegration: false,
@@ -354,7 +354,7 @@ app.on('ready', () => {
       await page.loadURL('https://westcoaststrength.trainerize.com/app/login')
       await wait(4000)
 
-      log('[Notification] Filling credentials...')
+      log('[Notification] v1.2.1 — Filling credentials with native setter...')
 
       // Use native input setter to bypass React's controlled inputs
       await run(`
@@ -420,95 +420,153 @@ app.on('ready', () => {
       await wait(3000)
 
       // 5. Fill Title
-      log('[Notification] Filling form...')
-      await run(`{
-        const inputs = document.querySelectorAll('input[type="text"]');
-        const titleInput = inputs[0];
-        if (titleInput) {
-          titleInput.focus();
-          titleInput.value = ${JSON.stringify(title.slice(0, 65))};
-          titleInput.dispatchEvent(new Event('input', {bubbles:true}));
-          titleInput.dispatchEvent(new Event('change', {bubbles:true}));
-        }
-      }`)
+      log('[Notification] v1.2.2 — Filling title...')
+      await run(`
+        var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        var el = document.querySelector('input[type="text"]');
+        if (el) { el.focus(); nativeSetter.call(el, ${JSON.stringify(title.slice(0, 65))}); el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); }
+      `)
       await wait(500)
 
-      // 6. Set send timing
+      // 6. Set send timing — this is a CUSTOM dropdown, not a <select>
+      // Click the dropdown button that shows "Schedule for" to open it
+      log('[Notification] Setting send timing: ' + sendTiming)
       if (sendTiming === 'now') {
-        log('[Notification] Setting "Start sending immediately"...')
-        await run(`{
-          const sel = document.querySelector('select');
-          if (sel) {
-            sel.value = 'now';
-            sel.dispatchEvent(new Event('change', {bubbles:true}));
-          } else {
-            const dd = [...document.querySelectorAll('[class*="dropdown"], [class*="select"], [role="listbox"]')].find(el => el.textContent.includes('Schedule'));
-            if (dd) dd.click();
+        // Click the dropdown to open it
+        await run(`
+          var els = document.querySelectorAll('*');
+          for (var i = 0; i < els.length; i++) {
+            if (els[i].textContent.trim() === 'Schedule for' && els[i].children.length === 0) {
+              els[i].closest('[class*="dropdown"], [class*="select"], button, div[tabindex]')?.click() || els[i].click();
+              break;
+            }
           }
-        }`)
-        await wait(500)
-        await run(`{
-          const opt = [...document.querySelectorAll('option, li, [role="option"]')].find(el => el.textContent.includes('immediately'));
-          if (opt) opt.click ? opt.click() : (opt.selected = true);
-        }`)
+        `)
+        await wait(1000)
+        // Click "Start sending immediately" option
+        await run(`
+          var els = document.querySelectorAll('*');
+          for (var i = 0; i < els.length; i++) {
+            if (els[i].textContent.trim() === 'Start sending immediately' && els[i].children.length === 0) {
+              els[i].click();
+              break;
+            }
+          }
+        `)
         await wait(500)
       }
 
-      // 7. Select locations
+      // 7. Select locations — click the input area under "Which locations to send to?"
       log('[Notification] Selecting locations...')
-      // Click the location field to open it
-      await run(`{
-        const field = [...document.querySelectorAll('label, span, div')].find(el => el.textContent.includes('Which locations'));
-        if (field) {
-          const input = field.closest('div')?.querySelector('input') || field.nextElementSibling?.querySelector('input') || field.nextElementSibling;
-          if (input) input.click();
+      await run(`
+        var els = document.querySelectorAll('*');
+        for (var i = 0; i < els.length; i++) {
+          if (els[i].textContent.trim() === 'Which locations to send to?' && els[i].children.length === 0) {
+            var next = els[i].nextElementSibling;
+            if (next) { next.click(); }
+            break;
+          }
         }
-      }`)
-      await wait(1000)
+      `)
+      await wait(1500)
 
-      // Expand "All locations"
-      await run(`{
-        const allLoc = [...document.querySelectorAll('span, label, div')].find(el => el.textContent.trim() === 'All locations');
-        if (allLoc) {
-          const arrow = allLoc.previousElementSibling || allLoc.parentElement.querySelector('[class*="arrow"], [class*="toggle"], [class*="expand"], svg, i');
-          if (arrow) arrow.click();
-          else allLoc.click();
+      // Click the small triangle/arrow to expand "All locations"
+      // The arrow is a ▶ character or a small clickable element BEFORE the checkbox
+      await run(`
+        var els = document.querySelectorAll('*');
+        for (var i = 0; i < els.length; i++) {
+          if (els[i].textContent.trim() === 'All locations' && els[i].children.length === 0) {
+            // The triangle arrow is typically the element just before or a sibling
+            var parent = els[i].parentElement;
+            var arrow = parent?.querySelector('span:first-child, i:first-child, svg:first-child, [class*="tree"], [class*="expand"], [class*="toggle"]');
+            if (!arrow) {
+              // Try the element 2 before in the parent's children
+              var kids = parent?.children;
+              if (kids) {
+                for (var j = 0; j < kids.length; j++) {
+                  var t = kids[j].textContent.trim();
+                  if (t === '' || t === '▶' || t === '▸' || t === '►') { arrow = kids[j]; break; }
+                }
+              }
+            }
+            if (arrow && arrow !== els[i]) { arrow.click(); }
+            else { parent?.click(); }
+            break;
+          }
         }
-      }`)
-      await wait(1000)
+      `)
+      await wait(1500)
 
+      // Check location checkboxes
       if (locations.includes('all')) {
-        await run(`{
-          const cb = [...document.querySelectorAll('input[type="checkbox"]')].find(cb => cb.closest('label, div')?.textContent.includes('All locations'));
-          if (cb && !cb.checked) cb.click();
-        }`)
+        log('[Notification] Checking All locations...')
+        await run(`
+          var cbs = document.querySelectorAll('input[type="checkbox"]');
+          for (var i = 0; i < cbs.length; i++) {
+            var txt = (cbs[i].closest('label') || cbs[i].parentElement)?.textContent || '';
+            if (txt.indexOf('All locations') >= 0) { if (!cbs[i].checked) cbs[i].click(); break; }
+          }
+        `)
       } else {
         for (const slug of locations) {
           const label = TRAINERIZE_LOCATION_MAP[slug]
           if (!label) continue
-          await run(`{
-            const cb = [...document.querySelectorAll('input[type="checkbox"]')].find(cb => cb.closest('label, div')?.textContent.includes(${JSON.stringify(label)}));
-            if (cb && !cb.checked) cb.click();
-          }`)
+          log('[Notification] Checking location: ' + label)
+          await run(`
+            var cbs = document.querySelectorAll('input[type="checkbox"]');
+            for (var i = 0; i < cbs.length; i++) {
+              var txt = (cbs[i].closest('label') || cbs[i].parentElement)?.textContent || '';
+              if (txt.indexOf(${JSON.stringify(label)}) >= 0) { if (!cbs[i].checked) cbs[i].click(); break; }
+            }
+          `)
           await wait(300)
         }
       }
       await wait(500)
 
+      // Close location dropdown by clicking the title area
+      await run(`document.querySelector('h1, h2, h3, [class*="title"]')?.click()`)
+      await wait(500)
+
+      // 7.5. "Select the clients" — click to open, then check "All"
+      log('[Notification] Setting clients to All...')
+      await run(`
+        var els = document.querySelectorAll('*');
+        for (var i = 0; i < els.length; i++) {
+          if (els[i].textContent.trim() === 'Select the clients for whom this notification should appear' && els[i].children.length === 0) {
+            var next = els[i].nextElementSibling;
+            if (next) { next.click(); }
+            break;
+          }
+        }
+      `)
+      await wait(1500)
+      // Check the "All" checkbox
+      await run(`
+        var cbs = document.querySelectorAll('input[type="checkbox"]');
+        for (var i = 0; i < cbs.length; i++) {
+          var txt = (cbs[i].closest('label') || cbs[i].parentElement)?.textContent?.trim() || '';
+          if (txt === 'All') { if (!cbs[i].checked) cbs[i].click(); break; }
+        }
+      `)
+      await wait(500)
+
+      // Close clients dropdown
+      await run(`document.querySelector('h1, h2, h3, [class*="title"]')?.click()`)
+      await wait(500)
+
       // 8. Fill Message
       log('[Notification] Filling message...')
-      await run(`{
-        const ta = document.querySelector('textarea');
-        if (ta) {
-          ta.focus();
-          ta.value = ${JSON.stringify(message.slice(0, 120))};
-          ta.dispatchEvent(new Event('input', {bubbles:true}));
-          ta.dispatchEvent(new Event('change', {bubbles:true}));
-        }
-      }`)
+      await run(`
+        var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+        var ta = document.querySelector('textarea');
+        if (ta) { ta.focus(); nativeSetter.call(ta, ${JSON.stringify(message.slice(0, 120))}); ta.dispatchEvent(new Event('input',{bubbles:true})); ta.dispatchEvent(new Event('change',{bubbles:true})); }
+      `)
       await wait(1000)
 
-      // 9. Take screenshot — do NOT click submit
+      // 9. Scroll to top, then screenshot — do NOT click submit
+      await run(`window.scrollTo(0, 0)`)
+      await wait(500)
       log('[Notification] Taking screenshot...')
       const image = await page.capturePage()
       const screenshotBuffer = image.toPNG()
