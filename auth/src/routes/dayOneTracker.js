@@ -1,7 +1,7 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole, ROLE_HIERARCHY } = require('../middleware/role')
+const { requireRole, resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
 const { getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
 
@@ -128,7 +128,7 @@ router.get('/appointments', async (req, res) => {
     }
 
     // Role check: managers see all, others see only their own
-    const userLevel = ROLE_HIERARCHY.indexOf(req.staff.role)
+    const userLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
     const managerLevel = ROLE_HIERARCHY.indexOf('manager')
     const isManager = userLevel >= managerLevel
     const userEmail = req.staff.email?.toLowerCase()

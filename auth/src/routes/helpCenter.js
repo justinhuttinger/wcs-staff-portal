@@ -108,7 +108,8 @@ router.get('/articles', async (req, res) => {
     const { data, error } = await query
     if (error) throw error
     // Filter by article's own min_role AND parent category's min_role
-    const userLevel = ROLE_HIERARCHY.indexOf(req.staff.role)
+    const { resolveRole } = require('../middleware/role')
+    const userLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
     const filtered = (data || []).filter(article => {
       // Check article-level role
       if (article.min_role) {

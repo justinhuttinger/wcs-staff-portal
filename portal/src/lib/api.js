@@ -35,7 +35,11 @@ export async function api(path, options = {}) {
     headers['Authorization'] = 'Bearer ' + authToken
   }
 
-  const res = await fetch(API_URL + path, { ...options, headers })
+  // Support AbortController signal for cancellable requests
+  const fetchOptions = { ...options, headers }
+  if (options.signal) fetchOptions.signal = options.signal
+
+  const res = await fetch(API_URL + path, fetchOptions)
   let data
   try {
     data = await res.json()

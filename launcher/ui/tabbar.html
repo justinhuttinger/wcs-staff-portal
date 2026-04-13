@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <link rel="stylesheet" href="tabbar.css">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Use system fonts instead of external CDN for security (contextIsolation) -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'">
 </head>
 <body>
   <div id="tabbar">

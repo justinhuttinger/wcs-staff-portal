@@ -15,8 +15,9 @@ class TabManager {
   initTabBar() {
     this.tabBarView = new BrowserView({
       webPreferences: {
-        contextIsolation: false,
-        nodeIntegration: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        preload: path.join(__dirname, '..', 'ui', 'tabbar-preload.js'),
       },
     })
     this.window.addBrowserView(this.tabBarView)

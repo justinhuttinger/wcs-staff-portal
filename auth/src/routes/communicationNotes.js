@@ -98,6 +98,12 @@ router.get('/', requireRole('lead'), async (req, res) => {
     if (date_from) query = query.gte('created_at', date_from)
     if (date_to) query = query.lte('created_at', date_to + 'T23:59:59.999Z')
 
+    // Pagination
+    const page = Math.max(1, parseInt(req.query.page) || 1)
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50))
+    const from = (page - 1) * limit
+    query = query.range(from, from + limit - 1)
+
     const { data, error } = await query
 
     if (error) throw error

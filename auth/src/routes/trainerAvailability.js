@@ -1,6 +1,6 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
-const { requireRole, ROLE_HIERARCHY } = require('../middleware/role')
+const { requireRole, resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
 const { getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
 
@@ -64,7 +64,7 @@ router.get('/', async (req, res) => {
     }
 
     // Role check
-    const userLevel = ROLE_HIERARCHY.indexOf(req.staff.role)
+    const userLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
     const isManager = userLevel >= ROLE_HIERARCHY.indexOf('manager')
     const userEmail = req.staff.email?.toLowerCase()
 

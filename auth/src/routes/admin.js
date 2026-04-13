@@ -1,7 +1,7 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole, ROLE_HIERARCHY } = require('../middleware/role')
+const { requireRole, resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
 
 const router = Router()
 
@@ -63,7 +63,7 @@ router.post('/staff', requireRole('admin'), async (req, res) => {
   if (!ROLE_HIERARCHY.includes(role)) {
     return res.status(400).json({ error: 'Invalid role. Must be one of: ' + ROLE_HIERARCHY.join(', ') })
   }
-  const callerLevel = ROLE_HIERARCHY.indexOf(req.staff.role)
+  const callerLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
   const requestedLevel = ROLE_HIERARCHY.indexOf(role)
   if (requestedLevel > callerLevel) {
     return res.status(403).json({ error: 'Cannot assign a role higher than your own' })
@@ -135,7 +135,7 @@ router.put('/staff/:id', requireRole('admin'), async (req, res) => {
     if (!ROLE_HIERARCHY.includes(role)) {
       return res.status(400).json({ error: 'Invalid role. Must be one of: ' + ROLE_HIERARCHY.join(', ') })
     }
-    const callerLevel = ROLE_HIERARCHY.indexOf(req.staff.role)
+    const callerLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
     if (ROLE_HIERARCHY.indexOf(role) > callerLevel) {
       return res.status(403).json({ error: 'Cannot assign a role higher than your own' })
     }

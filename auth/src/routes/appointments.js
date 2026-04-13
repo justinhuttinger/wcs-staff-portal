@@ -1,7 +1,7 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole, ROLE_HIERARCHY } = require('../middleware/role')
+const { requireRole, resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
 
 const router = Router()
 
@@ -10,7 +10,7 @@ router.use(authenticate)
 // GET /appointments — get appointments for current user (or all at location for managers)
 router.get('/', async (req, res) => {
   try {
-    const userLevel = ROLE_HIERARCHY.indexOf(req.staff.role)
+    const userLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
     const managerLevel = ROLE_HIERARCHY.indexOf('manager')
     const isManager = userLevel >= managerLevel
 
@@ -45,6 +45,12 @@ router.get('/', async (req, res) => {
     if (req.query.status) {
       query = query.eq('status', req.query.status)
     }
+
+    // Pagination
+    const page = Math.max(1, parseInt(req.query.page) || 1)
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50))
+    const from = (page - 1) * limit
+    query = query.range(from, from + limit - 1)
 
     const { data, error } = await query
     if (error) return res.status(500).json({ error: 'Failed to fetch appointments' })

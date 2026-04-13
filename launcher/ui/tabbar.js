@@ -1,11 +1,12 @@
-const { ipcRenderer } = require('electron')
+// Uses window.tabbarIPC exposed by tabbar-preload.js via contextBridge
+const ipc = window.tabbarIPC
 
 const tabsContainer = document.getElementById('tabs')
 const userArea = document.getElementById('user-area')
 
 let currentTabs = []
 
-ipcRenderer.on('tabs-updated', (event, tabs) => {
+ipc.on('tabs-updated', (event, tabs) => {
   currentTabs = tabs
   renderTabs()
 })
@@ -54,9 +55,9 @@ function renderTabs() {
 
     el.addEventListener('click', (e) => {
       if (e.target.classList.contains('tab-close')) {
-        ipcRenderer.send('close-tab', tab.id)
+        ipc.send('close-tab', tab.id)
       } else {
-        ipcRenderer.send('switch-tab', tab.id)
+        ipc.send('switch-tab', tab.id)
       }
     })
     tabsContainer.appendChild(el)
@@ -116,7 +117,7 @@ document.addEventListener('mouseup', () => {
 
     if (newIndex !== dragging.index) {
       const targetId = currentTabs[newIndex].id
-      ipcRenderer.send('reorder-tab', dragging.id, targetId)
+      ipc.send('reorder-tab', dragging.id, targetId)
     }
   }
 
@@ -131,7 +132,7 @@ document.addEventListener('mouseup', () => {
   dragging = null
 })
 
-ipcRenderer.on('user-updated', (event, user) => {
+ipc.on('user-updated', (event, user) => {
   if (user.name) {
     userArea.innerHTML = ''
     const nameSpan = document.createElement('span')
@@ -142,26 +143,26 @@ ipcRenderer.on('user-updated', (event, user) => {
     signOutBtn.className = 'sign-out-btn'
     signOutBtn.id = 'btn-signout'
     signOutBtn.textContent = 'Sign Out'
-    signOutBtn.addEventListener('click', () => ipcRenderer.send('tabbar-signout'))
+    signOutBtn.addEventListener('click', () => ipc.send('tabbar-signout'))
     userArea.appendChild(signOutBtn)
   } else {
     userArea.innerHTML = ''
   }
 })
 
-ipcRenderer.send('tabs-ready')
+ipc.send('tabs-ready')
 
 // Window controls
-document.getElementById('btn-refresh').addEventListener('click', () => ipcRenderer.send('window-refresh'))
-document.getElementById('btn-minimize').addEventListener('click', () => ipcRenderer.send('window-minimize'))
-document.getElementById('btn-maximize').addEventListener('click', () => ipcRenderer.send('window-maximize'))
-document.getElementById('btn-close').addEventListener('click', () => ipcRenderer.send('window-close'))
+document.getElementById('btn-refresh').addEventListener('click', () => ipc.send('window-refresh'))
+document.getElementById('btn-minimize').addEventListener('click', () => ipc.send('window-minimize'))
+document.getElementById('btn-maximize').addEventListener('click', () => ipc.send('window-maximize'))
+document.getElementById('btn-close').addEventListener('click', () => ipc.send('window-close'))
 
 // Toggle maximize/restore icon
 const maximizeSvg = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="0.5" y="0.5" width="9" height="9" rx="0.5"/></svg>'
 const restoreSvg = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="2.5" y="0.5" width="7" height="7" rx="0.5"/><rect x="0.5" y="2.5" width="7" height="7" rx="0.5"/></svg>'
 
-ipcRenderer.on('maximized-changed', (event, isMaximized) => {
+ipc.on('maximized-changed', (event, isMaximized) => {
   const btn = document.getElementById('btn-maximize')
   btn.innerHTML = isMaximized ? restoreSvg : maximizeSvg
   btn.title = isMaximized ? 'Restore' : 'Maximize'
