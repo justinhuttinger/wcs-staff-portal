@@ -432,7 +432,7 @@ app.on('ready', () => {
       // Click the dropdown button that shows "Schedule for" to open it
       log('[Notification] Setting send timing: ' + sendTiming)
       if (sendTiming === 'now') {
-        // Click the dropdown to open it
+        // Click the dropdown to open it, then select "Start sending immediately"
         await run(`
           var els = document.querySelectorAll('*');
           for (var i = 0; i < els.length; i++) {
@@ -443,7 +443,6 @@ app.on('ready', () => {
           }
         `)
         await wait(1000)
-        // Click "Start sending immediately" option
         await run(`
           var els = document.querySelectorAll('*');
           for (var i = 0; i < els.length; i++) {
@@ -454,71 +453,116 @@ app.on('ready', () => {
           }
         `)
         await wait(500)
+      } else if (sendTiming === 'scheduled' && scheduledDate) {
+        // Leave "Schedule for" selected (default)
+        // Date/time pickers are custom components — click them to focus, then type
+        log('[Notification] Setting scheduled date: ' + scheduledDate + ' ' + (scheduledTime || ''))
+        // Find and click the "Select date" text/input area
+        await run(`
+          var els = document.querySelectorAll('*');
+          for (var i = 0; i < els.length; i++) {
+            if (els[i].textContent.trim() === 'Select date' && els[i].children.length === 0) {
+              els[i].click();
+              break;
+            }
+          }
+        `)
+        await wait(1000)
+        // Type the date using keyboard events
+        for (const char of scheduledDate) {
+          await page.sendInputEvent({ type: 'keyDown', keyCode: char })
+          await page.sendInputEvent({ type: 'char', keyCode: char })
+          await page.sendInputEvent({ type: 'keyUp', keyCode: char })
+        }
+        // Press Enter to confirm
+        await page.sendInputEvent({ type: 'keyDown', keyCode: 'Return' })
+        await page.sendInputEvent({ type: 'keyUp', keyCode: 'Return' })
+        await wait(500)
+
+        if (scheduledTime) {
+          await run(`
+            var els = document.querySelectorAll('*');
+            for (var i = 0; i < els.length; i++) {
+              if (els[i].textContent.trim() === 'Select time' && els[i].children.length === 0) {
+                els[i].click();
+                break;
+              }
+            }
+          `)
+          await wait(500)
+          for (const char of scheduledTime) {
+            await page.sendInputEvent({ type: 'keyDown', keyCode: char })
+            await page.sendInputEvent({ type: 'char', keyCode: char })
+            await page.sendInputEvent({ type: 'keyUp', keyCode: char })
+          }
+          await page.sendInputEvent({ type: 'keyDown', keyCode: 'Return' })
+          await page.sendInputEvent({ type: 'keyUp', keyCode: 'Return' })
+          await wait(500)
+        }
       }
 
-      // 7. Select locations — click the input area under "Which locations to send to?"
-      log('[Notification] Selecting locations...')
+      // 7. Select locations
+      // The location picker is a CUSTOM GRID (baseGridRow), NOT an Ant tree
+      // Each location is a row with an ant-checkbox-input
+      log('[Notification] v1.2.8 — Selecting locations...')
+
+      // Click the locations input area to open the dropdown
       await run(`
         var els = document.querySelectorAll('*');
         for (var i = 0; i < els.length; i++) {
           if (els[i].textContent.trim() === 'Which locations to send to?' && els[i].children.length === 0) {
             var next = els[i].nextElementSibling;
-            if (next) { next.click(); }
+            if (next) next.click();
             break;
           }
         }
       `)
-      await wait(1500)
+      await wait(2000)
 
-      // Expand "All locations" — click the ant-select-tree-switcher (arrow)
-      log('[Notification] v1.2.4 — Expanding All locations...')
-      await run(`
-        var node = document.querySelector('[data-testid*="allLocations"]');
-        if (node) {
-          var switcher = node.querySelector('.ant-select-tree-switcher');
-          if (switcher) switcher.click();
-        }
-      `)
-      await wait(1500)
-
-      // Check location checkboxes — WHILE dropdown is still open
+      // The location grid uses baseGridRow with checkbox inside each row
+      // Click the row that contains each location name
       if (locations.includes('all')) {
-        log('[Notification] Checking All locations...')
+        log('[Notification] Clicking All locations row...')
         await run(`
-          var node = document.querySelector('[data-testid*="allLocations"]');
-          if (node) { var cb = node.querySelector('.ant-select-tree-checkbox'); if (cb) cb.click(); }
+          var rows = document.querySelectorAll('[data-testid="grid-row"]');
+          for (var i = 0; i < rows.length; i++) {
+            if (rows[i].textContent.indexOf('All locations') >= 0) {
+              var cb = rows[i].querySelector('.ant-checkbox-input, input[type="checkbox"]');
+              if (cb) cb.click();
+              else rows[i].click();
+              break;
+            }
+          }
         `)
       } else {
         for (const slug of locations) {
           const label = TRAINERIZE_LOCATION_MAP[slug]
           if (!label) continue
-          log('[Notification] Checking: ' + label)
+          log('[Notification] Clicking: ' + label)
           await run(`
-            var nodes = document.querySelectorAll('[data-testid*="announcementLocationTreeLeaf"]');
-            for (var i = 0; i < nodes.length; i++) {
-              if (nodes[i].textContent.indexOf(${JSON.stringify(label)}) >= 0) {
-                var cb = nodes[i].querySelector('.ant-select-tree-checkbox');
+            var rows = document.querySelectorAll('[data-testid="grid-row"]');
+            for (var i = 0; i < rows.length; i++) {
+              if (rows[i].textContent.indexOf(${JSON.stringify(label)}) >= 0) {
+                var cb = rows[i].querySelector('.ant-checkbox-input, input[type="checkbox"]');
                 if (cb) cb.click();
+                else rows[i].click();
                 break;
               }
             }
           `)
-          await wait(300)
+          await wait(400)
         }
       }
       await wait(500)
 
-      // Close location dropdown by pressing Escape
-      await run(`document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))`)
-      await wait(300)
-      // Also click the modal title to be safe
+      // Close location dropdown
       await run(`
-        var t = document.querySelector('h1');
-        if (t && t.textContent.indexOf('New Push') >= 0) t.click();
+        var h = document.querySelector('h1');
+        if (h && h.textContent.indexOf('New Push') >= 0) h.click();
       `)
       await wait(1000)
 
-      // 7.5. "Select the clients" — click to open
+      // 7.5. "Select the clients" — this uses an Ant tree (different from locations!)
       log('[Notification] Opening clients dropdown...')
       await run(`
         var els = document.querySelectorAll('*');
@@ -533,38 +577,34 @@ app.on('ready', () => {
       `)
       await wait(1500)
 
-      // Check "All" — use the SPECIFIC data-testid for client types, NOT locations
+      // The clients dropdown IS an Ant tree — check "All"
       log('[Notification] Checking All clients...')
       await run(`
-        var node = document.querySelector('[data-testid*="userTypesTreeLeaf-all"]');
-        if (node) {
-          var cb = node.querySelector('.ant-select-tree-checkbox');
-          if (cb) cb.click();
-        } else {
-          // Fallback: find the tree that appeared MOST RECENTLY (clients, not locations)
-          var listboxes = document.querySelectorAll('[role="listbox"]');
-          var lastListbox = listboxes[listboxes.length - 1];
-          if (lastListbox) {
-            var nodes = lastListbox.querySelectorAll('.ant-select-tree-treenode');
-            for (var i = 0; i < nodes.length; i++) {
-              var title = nodes[i].querySelector('[title="All"]') || nodes[i].querySelector('span.ant-select-tree-title');
-              if (title && title.textContent.trim() === 'All') {
-                var cb = nodes[i].querySelector('.ant-select-tree-checkbox');
-                if (cb) cb.click();
-                break;
-              }
-            }
+        // Find checkbox next to text "All" in the ant tree
+        var nodes = document.querySelectorAll('.ant-select-tree-treenode, [data-testid*="userTypes"]');
+        for (var i = 0; i < nodes.length; i++) {
+          var title = nodes[i].querySelector('.ant-select-tree-title, [title="All"]');
+          if (title && title.textContent.trim() === 'All') {
+            var cb = nodes[i].querySelector('.ant-select-tree-checkbox');
+            if (cb) cb.click();
+            break;
+          }
+        }
+        // Fallback: click any checkbox labeled "All"
+        if (nodes.length === 0) {
+          var cbs = document.querySelectorAll('.ant-checkbox-input, input[type="checkbox"]');
+          for (var i = 0; i < cbs.length; i++) {
+            var parent = cbs[i].closest('label, span, div');
+            if (parent && parent.textContent.trim() === 'All') { cbs[i].click(); break; }
           }
         }
       `)
       await wait(500)
 
       // Close clients dropdown
-      await run(`document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))`)
-      await wait(300)
       await run(`
-        var t = document.querySelector('h1');
-        if (t && t.textContent.indexOf('New Push') >= 0) t.click();
+        var h = document.querySelector('h1');
+        if (h && h.textContent.indexOf('New Push') >= 0) h.click();
       `)
       await wait(500)
 
