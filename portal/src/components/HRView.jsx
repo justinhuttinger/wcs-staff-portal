@@ -50,7 +50,7 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function DocumentPreview({ employeeName, reason, shortReason, description, managerName, managerSignature, employeeSignature, date }) {
+function DocumentPreview({ employeeName, reason, shortReason, description, actionPlan, managerName, managerSignature, employeeSignature, date }) {
   return (
     <div className="bg-white rounded-xl border border-border overflow-hidden shadow-sm">
       <div className="bg-[#C41E24] px-6 py-4">
@@ -86,6 +86,14 @@ function DocumentPreview({ employeeName, reason, shortReason, description, manag
             {description || '—'}
           </p>
         </div>
+        {actionPlan && (
+          <div>
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Action Plan / Next Steps</p>
+            <p className="text-sm text-text-secondary whitespace-pre-wrap leading-relaxed">
+              {actionPlan}
+            </p>
+          </div>
+        )}
         <div className="border-t border-border pt-4 space-y-4">
           <div>
             <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1">Manager Signature</p>
@@ -272,6 +280,7 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
   const [reason, setReason] = useState('coaching_conversation')
   const [shortReason, setShortReason] = useState('')
   const [description, setDescription] = useState('')
+  const [actionPlan, setActionPlan] = useState('')
   const [managerSignature, setManagerSignature] = useState('')
   const [employeeSignature, setEmployeeSignature] = useState('')
   const [showPreview, setShowPreview] = useState(false)
@@ -290,6 +299,7 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
         reason,
         short_reason: shortReason.trim() || null,
         description: description.trim(),
+        action_plan: actionPlan.trim() || null,
         manager_signature: managerSignature,
         employee_signature: employeeSignature || null,
       })
@@ -369,6 +379,17 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
             />
           </div>
 
+          <div>
+            <label className="block text-sm font-semibold text-text-primary mb-1">Action Plan / Next Steps</label>
+            <textarea
+              value={actionPlan}
+              onChange={e => setActionPlan(e.target.value)}
+              placeholder="Outline the expected improvements, follow-up actions, or next steps..."
+              rows={4}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red resize-y"
+            />
+          </div>
+
           <SignaturePad
             label="Manager Signature (required)"
             value={managerSignature}
@@ -408,6 +429,7 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
             reason={reason}
             shortReason={shortReason}
             description={description}
+            actionPlan={actionPlan}
             managerName={userName}
             managerSignature={managerSignature}
             employeeSignature={employeeSignature}
@@ -555,6 +577,7 @@ function WorkerDocuments({ worker }) {
                             reason={doc.reason}
                             shortReason={doc.short_reason}
                             description={doc.body || doc.description}
+                            actionPlan={doc.action_plan}
                             managerName={doc.manager_name}
                             managerSignature={doc.manager_signature}
                             employeeSignature={doc.employee_signature}

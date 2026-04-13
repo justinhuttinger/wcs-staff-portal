@@ -13,6 +13,7 @@ router.use(authenticate)
 // ---------------------------------------------------------------------------
 
 const REASON_LABELS = {
+  coaching_conversation: 'Coaching Conversation',
   verbal_warning: 'Verbal Warning',
   written_warning: 'Written Warning',
   termination: 'Termination',
@@ -21,7 +22,7 @@ const REASON_LABELS = {
 /**
  * Build an HTML document for the HR form, suitable for PDF rendering.
  */
-function buildDocumentHTML({ employee_name, manager_name, reason, short_reason, body, manager_signature, employee_signature, employee_acknowledged, employee_acknowledged_at, created_at, location_slug }) {
+function buildDocumentHTML({ employee_name, manager_name, reason, short_reason, body, action_plan, manager_signature, employee_signature, employee_acknowledged, employee_acknowledged_at, created_at, location_slug }) {
   const dateStr = new Date(created_at || Date.now()).toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric',
   })
@@ -78,6 +79,11 @@ function buildDocumentHTML({ employee_name, manager_name, reason, short_reason, 
     ${short_reason ? `<div class="meta-row"><span><strong>Reason:</strong> ${short_reason}</span></div>` : ''}
 
     <div class="body-text">${body}</div>
+
+    ${action_plan ? `<div style="margin-top:24px;">
+      <h3 style="font-size:14px;text-transform:uppercase;letter-spacing:1px;color:#666;margin-bottom:8px;">Action Plan / Next Steps</h3>
+      <div class="body-text" style="margin-top:0;">${action_plan}</div>
+    </div>` : ''}
 
     <div class="signature-section">
       <p><strong>Manager Signature:</strong></p>
@@ -139,14 +145,14 @@ async function resolveLocationSlug(staff) {
 // employee_signature is optional — if provided, document starts as 'completed'.
 // ---------------------------------------------------------------------------
 router.post('/', requireRole('manager'), async (req, res) => {
-  const { employee_name, reason, short_reason, body, description, manager_signature, employee_signature, worker_id } = req.body
+  const { employee_name, reason, short_reason, body, description, action_plan, manager_signature, employee_signature, worker_id } = req.body
   const docBody = body || description
 
   if (!employee_name || !reason || !docBody || !manager_signature) {
     return res.status(400).json({ error: 'employee_name, reason, description, and manager_signature are required' })
   }
 
-  const validReasons = ['verbal_warning', 'written_warning', 'termination']
+  const validReasons = ['coaching_conversation', 'verbal_warning', 'written_warning', 'termination']
   if (!validReasons.includes(reason)) {
     return res.status(400).json({ error: 'Invalid reason. Must be one of: ' + validReasons.join(', ') })
   }
@@ -166,6 +172,7 @@ router.post('/', requireRole('manager'), async (req, res) => {
       manager_name: managerName,
       submitted_by: req.staff.id,
       location_slug: locationSlug,
+      action_plan: action_plan?.trim() || null,
       worker_id: worker_id || null,
       status: 'completed',
     }

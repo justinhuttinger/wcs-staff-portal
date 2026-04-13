@@ -110,6 +110,7 @@ function SubmitDocumentView({ user, onBack, onSuccess }) {
   const [employeeName, setEmployeeName] = useState('')
   const [reason, setReason] = useState('coaching_conversation')
   const [description, setDescription] = useState('')
+  const [actionPlan, setActionPlan] = useState('')
   const [managerSignature, setManagerSignature] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
@@ -138,6 +139,7 @@ function SubmitDocumentView({ user, onBack, onSuccess }) {
         employee_name: employeeName.trim(),
         reason,
         description: description.trim(),
+        action_plan: actionPlan.trim() || null,
         manager_signature: managerSignature,
       })
       onSuccess()
@@ -227,6 +229,18 @@ function SubmitDocumentView({ user, onBack, onSuccess }) {
             rows={6}
             className="w-full px-3 py-2.5 bg-surface border border-border rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-wcs-red/30 focus:border-wcs-red resize-none"
             required
+          />
+        </div>
+
+        {/* Action Plan / Next Steps */}
+        <div>
+          <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1.5">Action Plan / Next Steps</label>
+          <textarea
+            value={actionPlan}
+            onChange={e => setActionPlan(e.target.value)}
+            placeholder="Outline expected improvements, follow-up actions, or next steps..."
+            rows={4}
+            className="w-full px-3 py-2.5 bg-surface border border-border rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-wcs-red/30 focus:border-wcs-red resize-none"
           />
         </div>
 
@@ -503,6 +517,14 @@ function DocumentDetailView({ docId, onBack }) {
           <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">Description</label>
           <p className="text-sm text-text-primary whitespace-pre-wrap">{doc.body || doc.description}</p>
         </div>
+
+        {/* Action Plan / Next Steps */}
+        {doc.action_plan && (
+          <div>
+            <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">Action Plan / Next Steps</label>
+            <p className="text-sm text-text-primary whitespace-pre-wrap">{doc.action_plan}</p>
+          </div>
+        )}
 
         {/* Manager Signature */}
         <div>
