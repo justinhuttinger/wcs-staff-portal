@@ -15,6 +15,14 @@ import HelpCenterView from './components/HelpCenterView'
 import TicketsView from './components/TicketsView'
 import { getMe, getToken, clearToken, setToken, api } from './lib/api'
 
+const LOCATION_BACKGROUNDS = {
+  salem: '/bg-salem.jpg',
+  keizer: '/bg-keizer.jpg',
+  eugene: '/bg-eugene.jpg',
+  springfield: '/bg-springfield.jpg',
+  clackamas: '/bg-clackamas.jpg',
+}
+
 function getParam(key) {
   return new URLSearchParams(window.location.search).get(key)
 }
@@ -176,34 +184,53 @@ export default function App() {
     )
   }
 
+  const bgImage = LOCATION_BACKGROUNDS[location.toLowerCase()]
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showMetaAds && !showTickets && !showHelpCenter && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting
+
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
-      <header className="flex items-center justify-between px-8 py-3 max-w-3xl mx-auto w-full">
+    <div className="min-h-screen bg-bg flex flex-col relative">
+      {/* Location background image — home screen only */}
+      {isHome && bgImage && (
+        <>
+          <div className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat" style={{ backgroundImage: `url(${bgImage})` }} />
+          <div className="fixed inset-0 z-0 bg-black/60" />
+        </>
+      )}
+      <header className="flex items-center justify-between px-8 py-3 max-w-3xl mx-auto w-full relative z-10">
         <div>
           <div className="flex items-center gap-3">
             <img src="/wcs-logo.png" alt="WCS" className="h-10 w-10 rounded-full" />
-            <h1 className="text-2xl font-black text-text-primary tracking-[-0.5px]">Portal</h1>
+            <h1 className={`text-2xl font-black tracking-[-0.5px] ${isHome && bgImage ? 'text-white' : 'text-text-primary'}`}>Portal</h1>
           </div>
         </div>
         <div className="flex items-center gap-4">
           {isAdmin && (
             <button
               onClick={() => setShowAdmin(true)}
-              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-text-muted hover:text-wcs-red hover:border-wcs-red transition-colors"
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                isHome && bgImage
+                  ? 'border-white/30 bg-white/10 text-white/80 hover:text-white hover:border-white/60'
+                  : 'border-border bg-surface text-text-muted hover:text-wcs-red hover:border-wcs-red'
+              }`}
             >
               Admin
             </button>
           )}
-          <span className="text-sm font-semibold text-text-muted uppercase tracking-[0.8px]">{location}</span>
+          <span className={`text-sm font-semibold uppercase tracking-[0.8px] ${isHome && bgImage ? 'text-white/70' : 'text-text-muted'}`}>{location}</span>
           <button
             onClick={handleLogout}
-            className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-text-muted hover:text-wcs-red hover:border-wcs-red transition-colors"
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+              isHome && bgImage
+                ? 'border-white/30 bg-white/10 text-white/80 hover:text-white hover:border-white/60'
+                : 'border-border bg-surface text-text-muted hover:text-wcs-red hover:border-wcs-red'
+            }`}
           >
             Sign Out
           </button>
         </div>
       </header>
 
+      <div className="relative z-10 flex-1 flex flex-col">
       {showAdmin ? (
         <AdminPanel onBack={() => setShowAdmin(false)} isElectron={isElectron} />
       ) : showCalendar ? (
@@ -229,6 +256,7 @@ export default function App() {
           <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onMetaAds={() => setShowMetaAds(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => setShowReporting(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} />
         </main>
       )}
+      </div>
 
       <p className="fixed bottom-2 right-3 text-[10px] text-text-muted/40 select-none pointer-events-none">v1.3.0</p>
 
