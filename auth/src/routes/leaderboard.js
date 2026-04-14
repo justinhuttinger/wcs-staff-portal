@@ -83,8 +83,9 @@ async function aggregateLocation(locationSlug, bounds) {
     .from('abc_members')
     .select('sales_person_name, email, membership_type')
     .eq('is_active', true)
-  if (bounds.startDate) abcQuery = abcQuery.gte('since_date', bounds.startDate)
-  if (bounds.endDate) abcQuery = abcQuery.lte('since_date', bounds.endDate)
+    .not('sign_date', 'is', null)
+  if (bounds.startDate) abcQuery = abcQuery.gte('sign_date', bounds.startDate)
+  if (bounds.endDate) abcQuery = abcQuery.lte('sign_date', bounds.endDate)
   if (clubNumber) abcQuery = abcQuery.eq('club_number', clubNumber)
 
   // Paginate

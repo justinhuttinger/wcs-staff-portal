@@ -126,13 +126,14 @@ router.get('/membership', async (req, res) => {
     const startISO = start_date ? start_date + 'T00:00:00.000Z' : null
     const endISO   = end_date ? end_date + 'T23:59:59.999Z' : null
 
-    // --- 1. ABC members with since_date in range (source of truth for sales) ---
+    // --- 1. ABC members with sign_date in range (source of truth for sales) ---
     let abcQuery = supabaseAdmin
       .from('abc_members')
-      .select('member_id, first_name, last_name, email, membership_type, since_date, sales_person_name, club_number, is_active')
+      .select('member_id, first_name, last_name, email, membership_type, since_date, sign_date, sales_person_name, club_number, is_active')
       .eq('is_active', true)
-    if (start_date) abcQuery = abcQuery.gte('since_date', start_date)
-    if (end_date) abcQuery = abcQuery.lte('since_date', end_date)
+      .not('sign_date', 'is', null)
+    if (start_date) abcQuery = abcQuery.gte('sign_date', start_date)
+    if (end_date) abcQuery = abcQuery.lte('sign_date', end_date)
 
     // Filter by location via club_number
     let clubNumber = null
@@ -251,8 +252,8 @@ router.get('/membership', async (req, res) => {
 
     for (const m of filteredMembers) {
       // by_date chart
-      if (m.since_date) {
-        const dateKey = m.since_date
+      if (m.sign_date) {
+        const dateKey = m.sign_date
         if (!byDate[dateKey]) byDate[dateKey] = { memberships: 0, vips: 0, day_ones: 0 }
         byDate[dateKey].memberships++
       }
@@ -277,7 +278,7 @@ router.get('/membership', async (req, res) => {
         name: `${m.first_name || ''} ${m.last_name || ''}`.trim(),
         email: m.email,
         membership_type: m.membership_type,
-        since_date: m.since_date,
+        since_date: m.sign_date || m.since_date,
         day_one_booked: isDayOneBooked,
         vip_count: vipCount,
         same_day_sale: isSameDaySale,
@@ -317,7 +318,7 @@ router.get('/membership', async (req, res) => {
         full_name: `${m.first_name || ''} ${m.last_name || ''}`.trim(),
         email: m.email,
         membership_type: m.membership_type,
-        member_sign_date: m.since_date,
+        member_sign_date: m.sign_date || m.since_date,
         sale_team_member: m.sales_person_name,
         day_one_booked: ghl?.day_one_booked || null,
         same_day_sale: ghl?.same_day_sale || null,
@@ -479,8 +480,9 @@ router.get('/club-health', async (req, res) => {
       .from('abc_members')
       .select('email, membership_type')
       .eq('is_active', true)
-    if (start_date) abcQuery = abcQuery.gte('since_date', start_date)
-    if (end_date) abcQuery = abcQuery.lte('since_date', end_date)
+      .not('sign_date', 'is', null)
+    if (start_date) abcQuery = abcQuery.gte('sign_date', start_date)
+    if (end_date) abcQuery = abcQuery.lte('sign_date', end_date)
     if (clubNumber) abcQuery = abcQuery.eq('club_number', clubNumber)
 
     const abcMembers = []

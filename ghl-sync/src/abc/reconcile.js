@@ -240,10 +240,11 @@ async function reconcileLocation(location, runId) {
       customFieldUpdates[memberStatusFieldId] = abc.member_status || '';
     }
 
-    // member_sign_date ← agreement.sinceDate
+    // member_sign_date ← agreement.signDate (actual contract sign date, not begin date)
+    const actualSignDate = abc.sign_date || abc.since_date;
     const signDateFieldId = fieldKeyToId[ABC_GHL_FIELD_MAP.member_sign_date];
-    if (signDateFieldId && abc.since_date && cf[signDateFieldId] !== abc.since_date) {
-      customFieldUpdates[signDateFieldId] = abc.since_date;
+    if (signDateFieldId && actualSignDate && cf[signDateFieldId] !== actualSignDate) {
+      customFieldUpdates[signDateFieldId] = actualSignDate;
     }
 
     // cancel_date ← memberStatusDate (only when inactive)
