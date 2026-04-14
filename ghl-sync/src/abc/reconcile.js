@@ -15,13 +15,23 @@ async function reconcileLocation(location, runId) {
   console.log(`[Reconcile] ${locationName}: starting (dry_run=${DRY_RUN})`);
 
   // 1. Load active ABC members + recently cancelled (last 24h) for this club
-  const { data: activeMembers, error: activeErr } = await supabase
-    .from('abc_members')
-    .select('*')
-    .eq('club_number', clubNumber)
-    .eq('is_active', true);
+  // Paginate to avoid Supabase 1000 row default limit
+  const activeMembers = [];
+  let aFrom = 0;
+  while (true) {
+    const { data: aPage, error: aErr } = await supabase
+      .from('abc_members')
+      .select('*')
+      .eq('club_number', clubNumber)
+      .eq('is_active', true)
+      .range(aFrom, aFrom + 999);
 
-  if (activeErr) throw new Error(`Failed to load active ABC members: ${activeErr.message}`);
+    if (aErr) throw new Error(`Failed to load active ABC members: ${aErr.message}`);
+    if (!aPage || aPage.length === 0) break;
+    activeMembers.push(...aPage);
+    if (aPage.length < 1000) break;
+    aFrom += 1000;
+  }
 
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const { data: recentInactive, error: inactiveErr } = await supabase
@@ -36,13 +46,23 @@ async function reconcileLocation(location, runId) {
   const abcMembers = [...activeMembers, ...recentInactive];
   console.log(`[Reconcile] ${locationName}: ${activeMembers.length} active + ${recentInactive.length} recently inactive = ${abcMembers.length} to reconcile`);
 
-  // 2. Load GHL contacts for this location from Supabase
-  const { data: locContacts, error: locErr } = await supabase
-    .from('ghl_contacts_v2')
-    .select('id, email, phone, first_name, last_name, tags, custom_fields')
-    .eq('location_id', locationId);
+  // 2. Load ALL GHL contacts for this location from Supabase (paginate past 1000 limit)
+  const locContacts = [];
+  const PAGE_SIZE = 1000;
+  let from = 0;
+  while (true) {
+    const { data: page, error: pageErr } = await supabase
+      .from('ghl_contacts_v2')
+      .select('id, email, phone, first_name, last_name, tags, custom_fields')
+      .eq('location_id', locationId)
+      .range(from, from + PAGE_SIZE - 1);
 
-  if (locErr) throw new Error(`Failed to load location contacts: ${locErr.message}`);
+    if (pageErr) throw new Error(`Failed to load location contacts: ${pageErr.message}`);
+    if (!page || page.length === 0) break;
+    locContacts.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
   console.log(`[Reconcile] ${locationName}: ${locContacts.length} GHL contacts`);
 
   // 3. Build lookup indexes for GHL contacts
