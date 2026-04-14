@@ -3,11 +3,10 @@ import ToolGrid from './components/ToolGrid'
 import LoginScreen from './components/LoginScreen'
 import AdminPanel from './components/AdminPanel'
 import SaveCredentialToast from './components/SaveCredentialToast'
-import ToursView from './components/ToursView'
+import CalendarView from './components/CalendarView'
 import ReportingView from './components/ReportingView'
 import DayOneTrackerView from './components/DayOneTrackerView'
 import TrainerAvailabilityView from './components/TrainerAvailabilityView'
-import DayOneCalendarView from './components/DayOneCalendarView'
 import MarketingView from './components/MarketingView'
 import LeaderboardView from './components/LeaderboardView'
 import CommunicationNotesView from './components/CommunicationNotesView'
@@ -30,11 +29,9 @@ export default function App() {
   const locationParam = getParam('location')
 
   const [showAdmin, setShowAdmin] = useState(false)
-  const [showTours, setShowTours] = useState(false)
+  const [showCalendar, setShowCalendar] = useState(false)
   const [showReporting, setShowReporting] = useState(false)
-  const [showDayOneTracker, setShowDayOneTracker] = useState(false)
   const [showTrainerAvail, setShowTrainerAvail] = useState(false)
-  const [showDayOneCalendar, setShowDayOneCalendar] = useState(false)
   const [showMetaAds, setShowMetaAds] = useState(false)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [showCommunicationNotes, setShowCommunicationNotes] = useState(false)
@@ -77,10 +74,8 @@ export default function App() {
         clearToken()
         setUser(null)
         setShowAdmin(false)
-        setShowTours(false)
-        setShowDayOneTracker(false)
+        setShowCalendar(false)
         setShowTrainerAvail(false)
-        setShowDayOneCalendar(false)
         setShowMetaAds(false)
         setShowReporting(false)
         setShowLeaderboard(false)
@@ -123,11 +118,9 @@ export default function App() {
     }
     // Reset to homepage on login
     setShowAdmin(false)
-    setShowTours(false)
-    setShowDayOneTracker(false)
+    setShowCalendar(false)
     setShowTrainerAvail(false)
     setShowReporting(false)
-    setShowDayOneCalendar(false)
     setShowMetaAds(false)
     setShowLeaderboard(false)
     setShowCommunicationNotes(false)
@@ -147,8 +140,7 @@ export default function App() {
     setUser(null)
     // Reset all views to homepage
     setShowAdmin(false)
-    setShowTours(false)
-    setShowDayOneTracker(false)
+    setShowCalendar(false)
     setShowTrainerAvail(false)
     setShowReporting(false)
     setShowLeaderboard(false)
@@ -214,12 +206,8 @@ export default function App() {
 
       {showAdmin ? (
         <AdminPanel onBack={() => setShowAdmin(false)} isElectron={isElectron} />
-      ) : showTours ? (
-        <ToursView user={user} onBack={() => setShowTours(false)} />
-      ) : showDayOneTracker ? (
-        <DayOneTrackerView user={user} onBack={() => setShowDayOneTracker(false)} location={location} isAdmin={isAdmin} />
-      ) : showDayOneCalendar ? (
-        <DayOneCalendarView user={user} onBack={() => setShowDayOneCalendar(false)} location={location} />
+      ) : showCalendar ? (
+        <CalendarView user={user} onBack={() => setShowCalendar(false)} location={location} isAdmin={isAdmin} />
       ) : showTrainerAvail ? (
         <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={isAdmin} />
       ) : showMetaAds ? (
@@ -238,7 +226,7 @@ export default function App() {
         <ReportingView user={user} onBack={() => setShowReporting(false)} location={location} isAdmin={isAdmin} />
       ) : (
         <main className="flex-1 flex items-start pt-1 pb-12">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onTours={() => setShowTours(true)} onDayOneTracker={() => setShowDayOneTracker(true)} onDayOneCalendar={() => setShowDayOneCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onMetaAds={() => setShowMetaAds(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => setShowReporting(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onMetaAds={() => setShowMetaAds(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => setShowReporting(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} />
         </main>
       )}
 

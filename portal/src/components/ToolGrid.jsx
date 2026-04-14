@@ -83,13 +83,11 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onTours, onDayOneTracker, onDayOneCalendar, onTrainerAvail, onMetaAds, onLeaderboard, onHR, onHelpCenter, onTickets, onCommunicationNotes, onReporting, userRole, userName }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onMetaAds, onLeaderboard, onHR, onHelpCenter, onTickets, onCommunicationNotes, onReporting, userRole, userName }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [tilesLoaded, setTilesLoaded] = useState(false)
-  const [dayOneBadge, setDayOneBadge] = useState(0)
-  const [dayOneCalBadge, setDayOneCalBadge] = useState(0)
-  const [toursBadge, setToursBadge] = useState(0)
+  const [calendarBadge, setCalendarBadge] = useState(0)
   const [commNotesBadge, setCommNotesBadge] = useState(0)
   const [leaderboardData, setLeaderboardData] = useState(null)
   const [showPointsInfo, setShowPointsInfo] = useState(false)
@@ -104,34 +102,23 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
       setTilesLoaded(true)
     }
 
-    // Fetch badge counts
+    // Fetch badge counts for combined calendar tile
     const slug = (location || 'salem').toLowerCase()
-    getDayOneTrackerAppointments({ location_slug: slug }).then(res => {
-      const apts = res.appointments || []
-      const pending = apts.filter(a => {
-        const s = (a.day_one_status || '').toLowerCase()
-        return (!s || s === 'scheduled') && new Date(a.appointment_time) < new Date()
-      })
-      setDayOneBadge(pending.length)
-      // Count today's appointments for calendar badge
-      const today = new Date()
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-      const todayApts = apts.filter(a => {
-        if (!a.appointment_time) return false
-        const d = new Date(a.appointment_time)
-        const aptDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-        return aptDate === todayStr
-      })
-      setDayOneCalBadge(todayApts.length)
-    }).catch(() => {})
-
     const today = new Date()
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-    if (locationId) {
-      getTours({ location_id: locationId, start_date: todayStr, end_date: todayStr }).then(res => {
-        setToursBadge((res.tours || []).length)
-      }).catch(() => {})
-    }
+
+    Promise.all([
+      getDayOneTrackerAppointments({ location_slug: slug }).catch(() => ({ appointments: [] })),
+      locationId ? getTours({ location_id: locationId, start_date: todayStr, end_date: todayStr }).catch(() => ({ tours: [] })) : Promise.resolve({ tours: [] }),
+    ]).then(([dayOneRes, toursRes]) => {
+      const apts = dayOneRes.appointments || []
+      const pendingDayOnes = apts.filter(a => {
+        const s = (a.day_one_status || '').toLowerCase()
+        return (!s || s === 'scheduled') && new Date(a.appointment_time) < new Date()
+      }).length
+      const todayTours = (toursRes.tours || []).length
+      setCalendarBadge(pendingDayOnes + todayTours)
+    })
 
     // Fetch unresolved comm notes count
     getCommunicationNotes({ status: 'unresolved' }).then(res => {
@@ -364,10 +351,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {toolCustomTiles.filter(t => ['cancel', 'cancel tool'].includes((t.label || '').toLowerCase())).map(tile => (
             <ToolButton key={'custom-' + tile.id} label={tile.label} description={tile.description || ''} url={tile.url} star />
           ))}
-          {/* 2. Tours Calendar */}
-          {onTours && <SvgTileButton onClick={onTours} iconPath={TILE_ICONS.tours} label="Tours" desc="Calendar" badge={toursBadge} star />}
-          {/* 3. Day One Calendar */}
-          {onDayOneCalendar && <SvgTileButton onClick={onDayOneCalendar} iconPath={TILE_ICONS.dayOneCalendar} label="Day Ones" desc="Calendar" badge={dayOneCalBadge} star />}
+          {/* 2. Calendar (Tours + Day Ones combined) */}
+          {onCalendar && <SvgTileButton onClick={onCalendar} iconPath={TILE_ICONS.tours} label="Calendar" desc="Tours & Day Ones" badge={calendarBadge} star />}
           {/* 4. Leaderboard */}
           {onLeaderboard && <SvgTileButton onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />}
           {/* 4.5. Communication Notes */}
@@ -382,8 +367,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           )}
           {/* 4.9. Tickets — lead+ */}
           {onTickets && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTickets} iconPath={TILE_ICONS.tickets} label="Tickets" desc="Support" />}
-          {/* 5. Day One Tracking */}
-          {onDayOneTracker && <SvgTileButton onClick={onDayOneTracker} iconPath={TILE_ICONS.dayOne} label="Day One" desc="Tracking" badge={dayOneBadge} />}
+          {/* (Day One Tracking merged into Calendar) */}
           {/* 6. Trainer Availability */}
           {onTrainerAvail && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="Availability" desc="Trainers" />}
           {/* 7-9. Reporting, Marketing, Tickets + remaining custom tiles */}

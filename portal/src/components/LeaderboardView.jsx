@@ -87,7 +87,7 @@ export default function LeaderboardView({ user, onBack, location }) {
   const ALL_LOCATIONS = LOCATION_NAMES
 
   return (
-    <div className="w-full max-w-4xl mx-auto px-8 pb-12">
+    <div className="w-full max-w-6xl mx-auto px-8 pb-12">
       {/* Back button */}
       <button
         onClick={onBack}

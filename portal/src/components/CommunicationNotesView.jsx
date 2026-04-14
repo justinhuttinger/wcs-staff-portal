@@ -198,7 +198,7 @@ export default function CommunicationNotesView({ user, onBack }) {
   }
 
   return (
-    <div className="w-full max-w-3xl mx-auto px-8 pb-12">
+    <div className="w-full max-w-6xl mx-auto px-8 pb-12">
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         {onBack && (

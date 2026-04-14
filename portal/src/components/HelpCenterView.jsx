@@ -205,7 +205,7 @@ export default function HelpCenterView({ user, onBack }) {
   // --- Reading an article ---
   if (selectedArticle) {
     return (
-      <div className="w-full max-w-3xl mx-auto px-8 pb-12">
+      <div className="w-full max-w-6xl mx-auto px-8 pb-12">
         <div className="flex items-center gap-3 mb-6">
           <button
             onClick={() => setSelectedArticle(null)}
@@ -284,7 +284,7 @@ export default function HelpCenterView({ user, onBack }) {
 
   // --- Main list view ---
   return (
-    <div className="w-full max-w-4xl mx-auto px-8 pb-12">
+    <div className="w-full max-w-6xl mx-auto px-8 pb-12">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
