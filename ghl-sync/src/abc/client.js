@@ -109,6 +109,10 @@ function transformABCMember(raw, clubNumber) {
     next_billing_date: a.nextBillingDate || null,
     renewal_date: a.renewalDate || null,
     sign_date: a.signDate || null,
+    sales_person_id: a.salesPersonId || null,
+    sales_person_name: a.salesPersonName || null,
+    sales_person_home_club: a.salesPersonHomeClub || null,
+    agreement_entry_source: a.agreementEntrySourceReportName || null,
     last_sync_at: new Date().toISOString(),
   };
 }
