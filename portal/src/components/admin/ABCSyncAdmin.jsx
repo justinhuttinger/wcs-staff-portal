@@ -64,14 +64,15 @@ export default function ABCSyncAdmin() {
     setLoading(false)
   }
 
-  async function loadChangelog(page = 1) {
+  async function loadChangelog(page = 1, filterOverrides = {}) {
     if (!selectedRun) return
     setClLoading(true)
     try {
+      const filters = { ...clFilters, ...filterOverrides }
       const params = { run_id: selectedRun, page, limit: 50 }
-      if (clFilters.club_number) params.club_number = clFilters.club_number
-      if (clFilters.action) params.action = clFilters.action
-      if (clFilters.search) params.search = clFilters.search
+      if (filters.club_number) params.club_number = filters.club_number
+      if (filters.action) params.action = filters.action
+      if (filters.search) params.search = filters.search
       const data = await getABCSyncChangelog(params)
       setChangelog(data)
       setClPage(page)
@@ -296,7 +297,7 @@ export default function ABCSyncAdmin() {
           <div className="flex gap-3 flex-wrap">
             <select
               value={clFilters.club_number}
-              onChange={e => { setClFilters(f => ({ ...f, club_number: e.target.value })); setTimeout(() => loadChangelog(1), 0) }}
+              onChange={e => { const v = e.target.value; setClFilters(f => ({ ...f, club_number: v })); loadChangelog(1, { club_number: v }) }}
               className="text-xs bg-surface border border-border rounded-lg px-3 py-1.5 text-text-primary"
             >
               <option value="">All Clubs</option>
@@ -304,7 +305,7 @@ export default function ABCSyncAdmin() {
             </select>
             <select
               value={clFilters.action}
-              onChange={e => { setClFilters(f => ({ ...f, action: e.target.value })); setTimeout(() => loadChangelog(1), 0) }}
+              onChange={e => { const v = e.target.value; setClFilters(f => ({ ...f, action: v })); loadChangelog(1, { action: v }) }}
               className="text-xs bg-surface border border-border rounded-lg px-3 py-1.5 text-text-primary"
             >
               <option value="">All Actions</option>
@@ -377,7 +378,7 @@ export default function ABCSyncAdmin() {
           <div className="flex gap-3">
             <select
               value={umClub}
-              onChange={e => { setUmClub(e.target.value); setTimeout(() => loadUnmatched(1), 0) }}
+              onChange={e => { setUmClub(e.target.value); loadUnmatched(1) }}
               className="text-xs bg-surface border border-border rounded-lg px-3 py-1.5 text-text-primary"
             >
               <option value="">All Clubs</option>
