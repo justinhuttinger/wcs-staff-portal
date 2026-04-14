@@ -209,6 +209,13 @@ export async function getSyncStatus() {
   return api('/sync-status')
 }
 
+export async function isSyncRunning() {
+  try {
+    const data = await api('/sync-status')
+    return data.abc_sync_running || false
+  } catch { return false }
+}
+
 // Day One Tracker
 export async function getDayOneTrackerAppointments(params = {}) {
   const qs = new URLSearchParams(params).toString()

@@ -3,6 +3,8 @@ const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 
+const GHL_SYNC_URL = process.env.GHL_SYNC_URL
+
 const router = Router()
 router.use(authenticate)
 router.use(requireRole('lead'))
@@ -65,8 +67,19 @@ router.get('/', async (req, res) => {
     // Check for errors in recent logs
     const recentErrors = (recentLogs || []).filter(l => l.errors && l.errors.length > 0)
 
+    // Check if ABC sync is currently running
+    let abcSyncRunning = false
+    if (GHL_SYNC_URL) {
+      try {
+        const healthRes = await fetch(`${GHL_SYNC_URL}/health`, { signal: AbortSignal.timeout(3000) })
+        const health = await healthRes.json()
+        abcSyncRunning = health.syncRunning || false
+      } catch { /* ignore — sync service may be down */ }
+    }
+
     res.json({
       status: recentErrors.length === 0 ? 'healthy' : 'has_errors',
+      abc_sync_running: abcSyncRunning,
       record_counts: {
         contacts: contacts.count || 0,
         opportunities: opps.count || 0,
