@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getABCSyncSummary, getABCSyncRuns, getABCSyncChangelog, getABCSyncUnmatched, getABCMembershipBreakdown } from '../../lib/api'
+import { getABCSyncSummary, getABCSyncRuns, getABCSyncChangelog, getABCSyncUnmatched, getABCMembershipBreakdown, triggerABCSync } from '../../lib/api'
 
 function formatDate(dateStr) {
   if (!dateStr) return '—'
@@ -109,6 +109,21 @@ export default function ABCSyncAdmin() {
     setBdLoading(false)
   }
 
+  const [triggering, setTriggering] = useState(false)
+  const [triggerMsg, setTriggerMsg] = useState(null)
+
+  async function handleTrigger() {
+    setTriggering(true)
+    setTriggerMsg(null)
+    try {
+      await triggerABCSync()
+      setTriggerMsg('Sync started — refresh in a few minutes to see results.')
+    } catch (err) {
+      setTriggerMsg('Failed: ' + err.message)
+    }
+    setTriggering(false)
+  }
+
   useEffect(() => {
     if (tab === 'changelog') loadChangelog(1)
     if (tab === 'unmatched') loadUnmatched(1)
@@ -148,6 +163,14 @@ export default function ABCSyncAdmin() {
           <p className="text-sm text-text-primary font-medium">{formatDate(run_at)}</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleTrigger}
+            disabled={triggering}
+            className="text-xs bg-wcs-red text-white rounded-lg px-4 py-1.5 font-medium hover:bg-wcs-red/90 disabled:opacity-50"
+          >
+            {triggering ? 'Starting...' : 'Run Sync Now'}
+          </button>
+          {triggerMsg && <span className="text-xs text-text-muted">{triggerMsg}</span>}
           <button onClick={loadInitial} className="text-xs text-wcs-red hover:underline">Refresh</button>
           {runs.length > 1 && (
             <select

@@ -1,7 +1,11 @@
 const { Router } = require('express')
+const axios = require('axios')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+
+const GHL_SYNC_URL = process.env.GHL_SYNC_URL // e.g. https://wcs-ghl-sync.onrender.com
+const SYNC_SECRET = process.env.SYNC_SECRET
 
 const router = Router()
 router.use(authenticate)
@@ -192,6 +196,28 @@ router.get('/membership-breakdown', async (req, res) => {
     res.json(data || [])
   } catch (err) {
     res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /abc-sync/trigger — manually trigger an ABC sync via ghl-sync service
+router.post('/trigger', async (req, res) => {
+  try {
+    if (!GHL_SYNC_URL) {
+      return res.status(500).json({ error: 'GHL_SYNC_URL not configured' })
+    }
+
+    const headers = {}
+    if (SYNC_SECRET) headers['x-sync-secret'] = SYNC_SECRET
+
+    const response = await axios.post(`${GHL_SYNC_URL}/api/sync/abc`, {}, {
+      headers,
+      timeout: 10000,
+    })
+
+    res.json(response.data)
+  } catch (err) {
+    const msg = err.response?.data?.error || err.message
+    res.status(err.response?.status || 500).json({ error: msg })
   }
 })
 

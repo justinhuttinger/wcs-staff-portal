@@ -428,6 +428,10 @@ export async function getABCSyncUnmatched(params = {}) {
   return api('/abc-sync/unmatched?' + qs)
 }
 
+export async function triggerABCSync() {
+  return api('/abc-sync/trigger', { method: 'POST' })
+}
+
 export async function getABCMembershipBreakdown(clubNumber) {
   const qs = clubNumber ? '?club_number=' + clubNumber : ''
   return api('/abc-sync/membership-breakdown' + qs)
