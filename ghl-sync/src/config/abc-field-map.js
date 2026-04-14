@@ -12,7 +12,7 @@ const ABC_GHL_FIELD_MAP = {
   member_status:                  'contact.member_status',
   member_sign_date:               'contact.member_sign_date',
   cancel_date:                    'contact.cancel_date',
-  salesperson:                    'contact.salesperson',
+  salesperson:                    'contact.sale_team_member',
 };
 
 // Tag names used for active/inactive members
