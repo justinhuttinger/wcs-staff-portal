@@ -78,16 +78,21 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
   if (!data) return null
 
   const totalMemberships = data.total_memberships || 0
+  const totalAgreements = data.total_agreements || 0
 
   // Ratio pie
-  const sameDayRatio = { 'Same Day': data.total_same_day_sales || 0, 'Other': Math.max(0, totalMemberships - (data.total_same_day_sales || 0)) }
+  const sameDayRatio = { 'Same Day': data.total_same_day_sales || 0, 'Other': Math.max(0, totalAgreements - (data.total_same_day_sales || 0)) }
 
   return (
     <div className="space-y-6">
       {/* Big Number Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Memberships Sold</p>
+          <p className="text-xs text-text-muted uppercase tracking-wide">Agreements</p>
+          <p className="text-4xl font-bold text-text-primary mt-2">{totalAgreements}</p>
+        </div>
+        <div className="bg-surface rounded-xl border border-border p-6 text-center">
+          <p className="text-xs text-text-muted uppercase tracking-wide">Members</p>
           <p className="text-4xl font-bold text-text-primary mt-2">{totalMemberships}</p>
         </div>
         <div className="bg-surface rounded-xl border border-border p-6 text-center">

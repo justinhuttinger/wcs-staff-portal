@@ -478,7 +478,7 @@ router.get('/club-health', async (req, res) => {
 
     let abcQuery = supabaseAdmin
       .from('abc_members')
-      .select('email, membership_type')
+      .select('email, membership_type, agreement_number')
       .eq('is_active', true)
       .not('sign_date', 'is', null)
     if (start_date) abcQuery = abcQuery.gte('sign_date', start_date)
@@ -568,8 +568,12 @@ router.get('/club-health', async (req, res) => {
       }
     }
 
+    // Count unique agreements
+    const uniqueAgreements = new Set(filteredMembers.map(m => m.agreement_number).filter(Boolean)).size
+
     res.json({
       total_memberships: filteredMembers.length,
+      total_agreements: uniqueAgreements,
       total_vips: totalVips || 0,
       total_same_day_sales: totalSameDaySales,
       total_day_ones_booked: totalDayOnesBooked,
