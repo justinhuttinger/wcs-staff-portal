@@ -236,7 +236,7 @@ async function reconcileLocation(location, runId) {
         email: abc.email || undefined,
         phone: phone || undefined,
         tags: [ABC_TAGS.active],
-        customField: newCustomFields,
+        customFields: Object.entries(newCustomFields).map(([id, value]) => ({ id, field_key: id, value })),
       };
 
       logEntries.push({
@@ -345,7 +345,7 @@ async function reconcileLocation(location, runId) {
       updateBody.tags = newTags;
     }
     if (Object.keys(customFieldUpdates).length > 0) {
-      updateBody.customField = customFieldUpdates;
+      updateBody.customFields = Object.entries(customFieldUpdates).map(([id, value]) => ({ id, field_key: id, value }));
     }
 
     // Log tag changes
