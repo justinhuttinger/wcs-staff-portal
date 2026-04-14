@@ -6,8 +6,11 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+const MAX_RETRIES = 5;
+const BACKOFF = [5000, 10000, 20000, 30000, 60000]; // exponential-ish backoff
+
 async function get(path, params = {}, apiKey) {
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const res = await axios.get(`${BASE_URL}${path}`, {
         params,
@@ -16,13 +19,14 @@ async function get(path, params = {}, apiKey) {
           'Version': '2021-07-28',
           'Content-Type': 'application/json',
         },
-        timeout: 30000, // 30s timeout to prevent hanging
+        timeout: 30000,
       });
       return res.data;
     } catch (err) {
-      if (err.response?.status === 429 && attempt < 3) {
-        console.warn(`[GHL] Rate limited on ${path}, retrying in 5s (attempt ${attempt}/3)`);
-        await sleep(5000);
+      if (err.response?.status === 429 && attempt < MAX_RETRIES) {
+        const delay = BACKOFF[attempt - 1] || 60000;
+        console.warn(`[GHL] Rate limited on ${path}, retrying in ${delay / 1000}s (attempt ${attempt}/${MAX_RETRIES})`);
+        await sleep(delay);
         continue;
       }
       throw err;
@@ -98,7 +102,7 @@ async function getPaginated(path, baseParams, itemsKey, options = {}, apiKey) {
 }
 
 async function put(path, body = {}, apiKey) {
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const res = await axios.put(`${BASE_URL}${path}`, body, {
         headers: {
@@ -110,9 +114,10 @@ async function put(path, body = {}, apiKey) {
       });
       return res.data;
     } catch (err) {
-      if (err.response?.status === 429 && attempt < 3) {
-        console.warn(`[GHL] Rate limited on PUT ${path}, retrying in 5s (attempt ${attempt}/3)`);
-        await sleep(5000);
+      if (err.response?.status === 429 && attempt < MAX_RETRIES) {
+        const delay = BACKOFF[attempt - 1] || 60000;
+        console.warn(`[GHL] Rate limited on PUT ${path}, retrying in ${delay / 1000}s (attempt ${attempt}/${MAX_RETRIES})`);
+        await sleep(delay);
         continue;
       }
       throw err;

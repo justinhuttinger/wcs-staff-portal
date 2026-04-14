@@ -1,7 +1,6 @@
 const supabase = require('../db/supabase');
 const { put, sleep } = require('../ghl/client');
 const { ABC_GHL_FIELD_MAP, ABC_TAGS, ABC_SKIP_MEMBERSHIP_TYPES } = require('../config/abc-field-map');
-const crypto = require('crypto');
 
 const DRY_RUN = (process.env.DRY_RUN || 'true') === 'true';
 
@@ -34,14 +33,23 @@ async function reconcileLocation(location, runId) {
   }
 
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const { data: recentInactive, error: inactiveErr } = await supabase
-    .from('abc_members')
-    .select('*')
-    .eq('club_number', clubNumber)
-    .eq('is_active', false)
-    .gte('member_status_date', oneDayAgo);
+  const recentInactive = [];
+  let iFrom = 0;
+  while (true) {
+    const { data: iPage, error: iErr } = await supabase
+      .from('abc_members')
+      .select('*')
+      .eq('club_number', clubNumber)
+      .eq('is_active', false)
+      .gte('member_status_date', oneDayAgo)
+      .range(iFrom, iFrom + 999);
 
-  if (inactiveErr) throw new Error(`Failed to load recent inactive ABC members: ${inactiveErr.message}`);
+    if (iErr) throw new Error(`Failed to load recent inactive ABC members: ${iErr.message}`);
+    if (!iPage || iPage.length === 0) break;
+    recentInactive.push(...iPage);
+    if (iPage.length < 1000) break;
+    iFrom += 1000;
+  }
 
   const abcMembers = [...activeMembers, ...recentInactive];
   console.log(`[Reconcile] ${locationName}: ${activeMembers.length} active + ${recentInactive.length} recently inactive = ${abcMembers.length} to reconcile`);
@@ -72,15 +80,6 @@ async function reconcileLocation(location, runId) {
   const byName = new Map();      // "first last" lowercase → contact[]
 
   for (const c of locContacts) {
-    // Index by abc_member_id if it exists in custom_fields
-    const cf = c.custom_fields || {};
-    for (const [fieldId, value] of Object.entries(cf)) {
-      if (value && typeof value === 'string' && value.length > 10) {
-        // Could be a member ID hash — we'll set these during sync
-        // For now, check if this contact already has an abc_member_id
-      }
-    }
-
     if (c.email) {
       byEmail.set(c.email.toLowerCase().trim(), c);
     }

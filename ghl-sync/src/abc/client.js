@@ -50,7 +50,12 @@ async function fetchAllABCMembers(clubNumber) {
     if (!nextPage || nextPage === '' || nextPage === String(page)) {
       break;
     }
-    page = parseInt(nextPage);
+    const parsed = parseInt(nextPage);
+    if (isNaN(parsed)) {
+      console.warn(`[ABC] nextPage value "${nextPage}" is not a number — stopping`);
+      break;
+    }
+    page = parsed;
 
     await sleep(500); // Be polite to ABC API
   }

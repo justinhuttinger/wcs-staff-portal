@@ -82,12 +82,13 @@ export default function ABCSyncAdmin() {
     setClLoading(false)
   }
 
-  async function loadUnmatched(page = 1) {
+  async function loadUnmatched(page = 1, clubOverride) {
     if (!selectedRun) return
     setUmLoading(true)
     try {
+      const club = clubOverride !== undefined ? clubOverride : umClub
       const params = { run_id: selectedRun, page, limit: 50 }
-      if (umClub) params.club_number = umClub
+      if (club) params.club_number = club
       const data = await getABCSyncUnmatched(params)
       setUnmatched(data)
       setUmPage(page)
@@ -378,7 +379,7 @@ export default function ABCSyncAdmin() {
           <div className="flex gap-3">
             <select
               value={umClub}
-              onChange={e => { setUmClub(e.target.value); loadUnmatched(1) }}
+              onChange={e => { const v = e.target.value; setUmClub(v); loadUnmatched(1, v) }}
               className="text-xs bg-surface border border-border rounded-lg px-3 py-1.5 text-text-primary"
             >
               <option value="">All Clubs</option>

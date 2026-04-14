@@ -136,7 +136,11 @@ router.get('/changelog', async (req, res) => {
     if (club_number) query = query.eq('club_number', club_number)
     if (action) query = query.eq('action', action)
     if (search) {
-      query = query.or(`ghl_contact_name.ilike.%${search}%,ghl_contact_email.ilike.%${search}%`)
+      // Sanitize search to prevent PostgREST filter injection
+      const safe = search.replace(/[,.()"'\\]/g, '')
+      if (safe) {
+        query = query.or(`ghl_contact_name.ilike.%${safe}%,ghl_contact_email.ilike.%${safe}%`)
+      }
     }
 
     const offset = (parseInt(page) - 1) * parseInt(limit)

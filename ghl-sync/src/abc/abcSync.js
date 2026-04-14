@@ -3,6 +3,9 @@ const LOCATIONS = require('../config/locations');
 const { fetchAllABCMembers, transformABCMember } = require('./client');
 const { upsertABCMembers } = require('./upsertMembers');
 const { reconcileLocation } = require('./reconcile');
+
+// Prevent concurrent sync runs (cron overlap or manual + cron)
+let abcSyncRunning = false;
 const { employeeSync } = require('./employeeSync');
 const { writeSyncLog } = require('../sync/syncLog');
 const { alertSyncFailed, alertSyncErrors } = require('../alerts');
@@ -15,6 +18,20 @@ const { alertSyncFailed, alertSyncErrors } = require('../alerts');
  * 4. Sync employee dropdowns
  */
 async function abcSync() {
+  if (abcSyncRunning) {
+    console.log('[ABC Sync] Already running — skipping this cycle');
+    return null;
+  }
+  abcSyncRunning = true;
+
+  try {
+    return await _runAbcSync();
+  } finally {
+    abcSyncRunning = false;
+  }
+}
+
+async function _runAbcSync() {
   const runId = crypto.randomUUID();
   const locationsWithClub = LOCATIONS.filter(l => l.clubNumber);
 
