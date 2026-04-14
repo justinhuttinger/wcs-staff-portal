@@ -28,45 +28,18 @@ router.get('/summary', async (req, res) => {
       return res.json({ run_id: null, message: 'No sync runs found' })
     }
 
-    // Get all log entries for this run
-    const { data: logEntries, error: logErr } = await supabaseAdmin
-      .from('abc_sync_run_log')
+    // Get per-club summary from pre-aggregated view (avoids 1000 row limit)
+    const { data: runSummary, error: sumErr } = await supabaseAdmin
+      .from('abc_sync_run_summary')
       .select('*')
       .eq('run_id', targetRunId)
-      .order('run_at', { ascending: true })
 
-    if (logErr) throw logErr
+    if (sumErr) throw sumErr
 
-    // Compute summary
-    const firstEntry = logEntries[0]
-    const isDryRun = firstEntry?.dry_run ?? true
-    const runAt = firstEntry?.run_at
+    const isDryRun = runSummary[0]?.dry_run ?? true
+    const runAt = runSummary[0]?.run_at
 
-    // Per-club breakdown
-    const clubs = {}
-    for (const entry of logEntries) {
-      const club = entry.club_number || 'unknown'
-      if (!clubs[club]) {
-        clubs[club] = {
-          club_number: club,
-          club_name: entry.club_name || club,
-          matched: 0,
-          unmatched: 0,
-          tag_changes: 0,
-          field_updates: 0,
-          errors: 0,
-        }
-      }
-      if (entry.action === 'no_match') clubs[club].unmatched++
-      else {
-        clubs[club].matched++
-        if (entry.action === 'add_tag' || entry.action === 'remove_tag') clubs[club].tag_changes++
-        if (entry.action === 'update_field') clubs[club].field_updates++
-      }
-      if (entry.error) clubs[club].errors++
-    }
-
-    // Get ABC member counts per club (using view to avoid 1000 row limit)
+    // Get ABC member counts per club
     let abcCounts = {}
     const { data: countRows } = await supabaseAdmin
       .from('abc_member_counts')
@@ -82,21 +55,27 @@ router.get('/summary', async (req, res) => {
       }
     }
 
-    // Merge ABC counts into club breakdown
-    const clubSummaries = Object.values(clubs).map(c => ({
-      ...c,
-      abc_total: abcCounts[c.club_number]?.total || 0,
-      abc_active: abcCounts[c.club_number]?.active || 0,
-      abc_inactive: abcCounts[c.club_number]?.inactive || 0,
+    // Build club summaries
+    const clubSummaries = (runSummary || []).map(r => ({
+      club_number: r.club_number,
+      club_name: r.club_name,
+      matched: r.matched || 0,
+      unmatched: r.unmatched || 0,
+      tag_changes: r.tag_changes || 0,
+      field_updates: r.field_updates || 0,
+      errors: r.errors || 0,
+      abc_total: abcCounts[r.club_number]?.total || 0,
+      abc_active: abcCounts[r.club_number]?.active || 0,
+      abc_inactive: abcCounts[r.club_number]?.inactive || 0,
     }))
 
     // Totals
     const totals = {
-      matched: logEntries.filter(e => e.action !== 'no_match').length,
-      unmatched: logEntries.filter(e => e.action === 'no_match').length,
-      tag_changes: logEntries.filter(e => e.action === 'add_tag' || e.action === 'remove_tag').length,
-      field_updates: logEntries.filter(e => e.action === 'update_field').length,
-      errors: logEntries.filter(e => e.error).length,
+      matched: clubSummaries.reduce((s, c) => s + c.matched, 0),
+      unmatched: clubSummaries.reduce((s, c) => s + c.unmatched, 0),
+      tag_changes: clubSummaries.reduce((s, c) => s + c.tag_changes, 0),
+      field_updates: clubSummaries.reduce((s, c) => s + c.field_updates, 0),
+      errors: clubSummaries.reduce((s, c) => s + c.errors, 0),
       total_abc_members: Object.values(abcCounts).reduce((s, c) => s + c.total, 0),
     }
 
