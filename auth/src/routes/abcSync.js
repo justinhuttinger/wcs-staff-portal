@@ -66,18 +66,19 @@ router.get('/summary', async (req, res) => {
       if (entry.error) clubs[club].errors++
     }
 
-    // Get ABC member counts per club
+    // Get ABC member counts per club (using view to avoid 1000 row limit)
     let abcCounts = {}
-    const { data: rawCounts } = await supabaseAdmin
-      .from('abc_members')
-      .select('club_number, is_active')
+    const { data: countRows } = await supabaseAdmin
+      .from('abc_member_counts')
+      .select('*')
 
-    if (rawCounts) {
-      for (const m of rawCounts) {
-        if (!abcCounts[m.club_number]) abcCounts[m.club_number] = { total: 0, active: 0, inactive: 0 }
-        abcCounts[m.club_number].total++
-        if (m.is_active) abcCounts[m.club_number].active++
-        else abcCounts[m.club_number].inactive++
+    if (countRows) {
+      for (const row of countRows) {
+        abcCounts[row.club_number] = {
+          total: row.total || 0,
+          active: row.active || 0,
+          inactive: row.inactive || 0,
+        }
       }
     }
 
@@ -200,33 +201,15 @@ router.get('/membership-breakdown', async (req, res) => {
     const { club_number } = req.query
 
     let query = supabaseAdmin
-      .from('abc_members')
-      .select('club_number, membership_type, is_active')
+      .from('abc_membership_type_counts')
+      .select('*')
 
     if (club_number) query = query.eq('club_number', club_number)
 
     const { data, error } = await query
     if (error) throw error
 
-    // Group by club_number + membership_type
-    const breakdown = {}
-    for (const m of (data || [])) {
-      const key = `${m.club_number}:${m.membership_type || 'Unknown'}`
-      if (!breakdown[key]) {
-        breakdown[key] = {
-          club_number: m.club_number,
-          membership_type: m.membership_type || 'Unknown',
-          active: 0,
-          inactive: 0,
-          total: 0,
-        }
-      }
-      breakdown[key].total++
-      if (m.is_active) breakdown[key].active++
-      else breakdown[key].inactive++
-    }
-
-    res.json(Object.values(breakdown))
+    res.json(data || [])
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
