@@ -97,4 +97,27 @@ async function getPaginated(path, baseParams, itemsKey, options = {}, apiKey) {
   return allItems;
 }
 
-module.exports = { get, getPaginated, sleep };
+async function put(path, body = {}, apiKey) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await axios.put(`${BASE_URL}${path}`, body, {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Version': '2021-07-28',
+          'Content-Type': 'application/json',
+        },
+        timeout: 30000,
+      });
+      return res.data;
+    } catch (err) {
+      if (err.response?.status === 429 && attempt < 3) {
+        console.warn(`[GHL] Rate limited on PUT ${path}, retrying in 5s (attempt ${attempt}/3)`);
+        await sleep(5000);
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+module.exports = { get, put, getPaginated, sleep };

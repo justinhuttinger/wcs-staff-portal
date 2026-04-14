@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const { fullSync, fullSyncForLocation } = require('./sync/fullSync');
 const { deltaSync } = require('./sync/deltaSync');
+const { abcSync, abcSyncForLocation } = require('./abc/abcSync');
 const { startScheduler } = require('./scheduler');
 const supabase = require('./db/supabase');
 
@@ -77,6 +78,26 @@ app.post('/api/sync/full/:locationSlug', requireSecret, (req, res) => {
   res.json({ status: 'started', message: `Full sync for ${req.params.locationSlug} running` });
   fullSyncForLocation(req.params.locationSlug)
     .catch(err => console.error(`[API] Full sync for ${req.params.locationSlug} failed:`, err.message))
+    .finally(() => { syncRunning = false; });
+});
+
+// POST /api/sync/abc
+app.post('/api/sync/abc', requireSecret, (req, res) => {
+  if (syncRunning) return res.status(409).json({ error: 'Sync already in progress' });
+  syncRunning = true;
+  res.json({ status: 'started', message: 'ABC sync running in background' });
+  abcSync()
+    .catch(err => console.error('[API] ABC sync failed:', err.message))
+    .finally(() => { syncRunning = false; });
+});
+
+// POST /api/sync/abc/:locationSlug
+app.post('/api/sync/abc/:locationSlug', requireSecret, (req, res) => {
+  if (syncRunning) return res.status(409).json({ error: 'Sync already in progress' });
+  syncRunning = true;
+  res.json({ status: 'started', message: `ABC sync for ${req.params.locationSlug} running` });
+  abcSyncForLocation(req.params.locationSlug)
+    .catch(err => console.error(`[API] ABC sync for ${req.params.locationSlug} failed:`, err.message))
     .finally(() => { syncRunning = false; });
 });
 

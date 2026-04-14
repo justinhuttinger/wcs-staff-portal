@@ -54,6 +54,7 @@ app.use('/communication-notes', require('./routes/communicationNotes'))
 app.use('/hr-documents', require('./routes/hrDocuments'))
 app.use('/help-center', require('./routes/helpCenter'))
 app.use('/ticket-embeds', require('./routes/ticketEmbeds'))
+app.use('/abc-sync', require('./routes/abcSync'))
 
 // Global error handler — catch unhandled errors, don't leak stack traces
 app.use((err, req, res, next) => {

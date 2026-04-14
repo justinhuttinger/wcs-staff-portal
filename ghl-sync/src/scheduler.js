@@ -1,11 +1,15 @@
 const cron = require('node-cron');
 const { fullSync } = require('./sync/fullSync');
 const { deltaSync } = require('./sync/deltaSync');
+const { abcSync } = require('./abc/abcSync');
+
 function startScheduler() {
   const intervalMinutes = process.env.SYNC_INTERVAL_MINUTES || 10;
   const fullSyncHour = process.env.FULL_SYNC_HOUR || 3; // PST
   // Convert PST to UTC: PST + 8 = UTC (or +7 during PDT)
   const fullSyncHourUTC = (parseInt(fullSyncHour) + 8) % 24;
+
+  const abcIntervalMinutes = process.env.ABC_SYNC_INTERVAL_MINUTES || 30;
 
   // Delta sync every N minutes
   cron.schedule(`*/${intervalMinutes} * * * *`, async () => {
@@ -23,7 +27,18 @@ function startScheduler() {
     fullSync().catch(err => console.error('[Scheduler] Full sync failed:', err.message));
   });
 
+  // ABC sync every N minutes (default 30)
+  cron.schedule(`*/${abcIntervalMinutes} * * * *`, async () => {
+    console.log('[Scheduler] Starting ABC sync...');
+    try {
+      await abcSync();
+    } catch (err) {
+      console.error('[Scheduler] ABC sync failed:', err.message);
+    }
+  });
+
   console.log(`[Scheduler] Delta sync every ${intervalMinutes}m, full sync daily at ${fullSyncHour}:00 PST (${fullSyncHourUTC}:00 UTC)`);
+  console.log(`[Scheduler] ABC sync every ${abcIntervalMinutes}m (DRY_RUN=${process.env.DRY_RUN || 'true'})`);
 }
 
 module.exports = { startScheduler };
