@@ -123,7 +123,7 @@ router.get('/runs', async (req, res) => {
 // GET /abc-sync/changelog — filterable change log for a run
 router.get('/changelog', async (req, res) => {
   try {
-    const { run_id, club_number, action, search, page = 1, limit = 50 } = req.query
+    const { run_id, club_number, action, errors_only, search, page = 1, limit = 50 } = req.query
     if (!run_id) return res.status(400).json({ error: 'run_id required' })
 
     let query = supabaseAdmin
@@ -135,6 +135,7 @@ router.get('/changelog', async (req, res) => {
 
     if (club_number) query = query.eq('club_number', club_number)
     if (action) query = query.eq('action', action)
+    if (errors_only === 'true') query = query.not('error', 'is', null)
     if (search) {
       // Sanitize search to prevent PostgREST filter injection
       const safe = search.replace(/[,.()"'\\]/g, '')

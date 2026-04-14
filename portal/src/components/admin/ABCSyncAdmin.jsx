@@ -19,7 +19,7 @@ export default function ABCSyncAdmin() {
   // Changelog state
   const [changelog, setChangelog] = useState({ data: [], total: 0 })
   const [clPage, setClPage] = useState(1)
-  const [clFilters, setClFilters] = useState({ club_number: '', action: '', search: '' })
+  const [clFilters, setClFilters] = useState({ club_number: '', action: '', search: '', errors_only: false })
   const [clLoading, setClLoading] = useState(false)
 
   // Unmatched state
@@ -73,6 +73,7 @@ export default function ABCSyncAdmin() {
       if (filters.club_number) params.club_number = filters.club_number
       if (filters.action) params.action = filters.action
       if (filters.search) params.search = filters.search
+      if (filters.errors_only) params.errors_only = 'true'
       const data = await getABCSyncChangelog(params)
       setChangelog(data)
       setClPage(page)
@@ -314,6 +315,14 @@ export default function ABCSyncAdmin() {
               <option value="remove_tag">Remove Tag</option>
               <option value="update_field">Update Field</option>
             </select>
+            <button
+              onClick={() => { const v = !clFilters.errors_only; setClFilters(f => ({ ...f, errors_only: v })); loadChangelog(1, { errors_only: v }) }}
+              className={`text-xs rounded-lg px-4 py-1.5 font-medium border transition-colors ${
+                clFilters.errors_only ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'border-border text-text-muted hover:text-text-primary'
+              }`}
+            >
+              Errors Only
+            </button>
             <input
               type="text"
               placeholder="Search name or email..."
