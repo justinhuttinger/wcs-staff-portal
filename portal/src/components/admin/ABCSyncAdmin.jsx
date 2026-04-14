@@ -38,6 +38,7 @@ export default function ABCSyncAdmin() {
   async function loadInitial() {
     try {
       setLoading(true)
+      setError(null)
       const [summaryData, runsData] = await Promise.all([
         getABCSyncSummary(),
         getABCSyncRuns(),
@@ -45,6 +46,9 @@ export default function ABCSyncAdmin() {
       setSummary(summaryData)
       setRuns(runsData)
       setSelectedRun(summaryData.run_id)
+      // Reload active tab data
+      if (tab === 'changelog') setTimeout(() => loadChangelog(1), 100)
+      if (tab === 'unmatched') setTimeout(() => loadUnmatched(1), 100)
     } catch (err) {
       setError(err.message)
     }
