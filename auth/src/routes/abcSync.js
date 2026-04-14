@@ -127,6 +127,7 @@ router.get('/changelog', async (req, res) => {
       .from('abc_sync_run_log')
       .select('*', { count: 'exact' })
       .eq('run_id', run_id)
+      .neq('action', 'no_match')
       .order('run_at', { ascending: true })
 
     if (club_number) query = query.eq('club_number', club_number)
