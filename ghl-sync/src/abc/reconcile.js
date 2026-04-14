@@ -14,23 +14,29 @@ async function reconcileLocation(location, runId) {
   const { id: locationId, name: locationName, clubNumber, apiKey } = location;
   console.log(`[Reconcile] ${locationName}: starting (dry_run=${DRY_RUN})`);
 
-  // 1. Load ABC members for this club from Supabase
-  const { data: abcMembers, error: abcErr } = await supabase
+  // 1. Load active ABC members + recently cancelled (last 24h) for this club
+  const { data: activeMembers, error: activeErr } = await supabase
     .from('abc_members')
     .select('*')
-    .eq('club_number', clubNumber);
+    .eq('club_number', clubNumber)
+    .eq('is_active', true);
 
-  if (abcErr) throw new Error(`Failed to load ABC members: ${abcErr.message}`);
-  console.log(`[Reconcile] ${locationName}: ${abcMembers.length} ABC members`);
+  if (activeErr) throw new Error(`Failed to load active ABC members: ${activeErr.message}`);
+
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const { data: recentInactive, error: inactiveErr } = await supabase
+    .from('abc_members')
+    .select('*')
+    .eq('club_number', clubNumber)
+    .eq('is_active', false)
+    .gte('member_status_date', oneDayAgo);
+
+  if (inactiveErr) throw new Error(`Failed to load recent inactive ABC members: ${inactiveErr.message}`);
+
+  const abcMembers = [...activeMembers, ...recentInactive];
+  console.log(`[Reconcile] ${locationName}: ${activeMembers.length} active + ${recentInactive.length} recently inactive = ${abcMembers.length} to reconcile`);
 
   // 2. Load GHL contacts for this location from Supabase
-  const { data: ghlContacts, error: ghlErr } = await supabase
-    .from('ghl_contacts_v2')
-    .select('id, email, phone, first_name, last_name, tags, custom_fields');
-
-  if (ghlErr) throw new Error(`Failed to load GHL contacts: ${ghlErr.message}`);
-
-  // Filter to this location's contacts
   const { data: locContacts, error: locErr } = await supabase
     .from('ghl_contacts_v2')
     .select('id, email, phone, first_name, last_name, tags, custom_fields')

@@ -26,7 +26,7 @@ async function fetchAllABCMembers(clubNumber) {
     console.log(`[ABC] Fetching page ${page} for club ${clubNumber}...`);
 
     const res = await axios.get(url, {
-      params: { joinStatus: 'member', page },
+      params: { joinStatus: 'member', activeStatus: 'active', page },
       headers: {
         'app_id': ABC_APP_ID,
         'app_key': ABC_APP_KEY,
