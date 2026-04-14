@@ -229,4 +229,27 @@ router.post('/trigger', async (req, res) => {
   }
 })
 
+// POST /abc-sync/stop — stop a running ABC sync
+router.post('/stop', async (req, res) => {
+  try {
+    if (!GHL_SYNC_URL) {
+      return res.status(500).json({ error: 'GHL_SYNC_URL not configured' })
+    }
+
+    const headers = { 'Content-Type': 'application/json' }
+    if (SYNC_SECRET) headers['x-sync-secret'] = SYNC_SECRET
+
+    const response = await fetch(`${GHL_SYNC_URL}/api/sync/abc/stop`, {
+      method: 'POST',
+      headers,
+      signal: AbortSignal.timeout(10000),
+    })
+
+    const data = await response.json()
+    res.json(data)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 module.exports = router

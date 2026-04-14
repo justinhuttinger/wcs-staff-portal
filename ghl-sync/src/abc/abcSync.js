@@ -6,6 +6,16 @@ const { reconcileLocation } = require('./reconcile');
 
 // Prevent concurrent sync runs (cron overlap or manual + cron)
 let abcSyncRunning = false;
+let abcSyncAbort = false;
+
+function stopAbcSync() {
+  if (!abcSyncRunning) return false;
+  abcSyncAbort = true;
+  console.log('[ABC Sync] Abort requested — will stop after current location');
+  return true;
+}
+
+function isAbcSyncRunning() { return abcSyncRunning; }
 const { employeeSync } = require('./employeeSync');
 const { writeSyncLog } = require('../sync/syncLog');
 const { alertSyncFailed, alertSyncErrors } = require('../alerts');
@@ -24,10 +34,12 @@ async function abcSync() {
   }
   abcSyncRunning = true;
 
+  abcSyncAbort = false;
   try {
     return await _runAbcSync();
   } finally {
     abcSyncRunning = false;
+    abcSyncAbort = false;
   }
 }
 
@@ -42,6 +54,10 @@ async function _runAbcSync() {
   let totalErrors = 0;
 
   for (const location of locationsWithClub) {
+    if (abcSyncAbort) {
+      console.log('[ABC Sync] Aborted by user');
+      break;
+    }
     const syncStart = new Date().toISOString();
     try {
       // Step 1: Fetch from ABC API
@@ -148,4 +164,4 @@ async function abcSyncForLocation(slug) {
   return runId;
 }
 
-module.exports = { abcSync, abcSyncForLocation };
+module.exports = { abcSync, abcSyncForLocation, stopAbcSync, isAbcSyncRunning };

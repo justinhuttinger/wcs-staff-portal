@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getABCSyncSummary, getABCSyncRuns, getABCSyncChangelog, getABCSyncUnmatched, getABCMembershipBreakdown, triggerABCSync } from '../../lib/api'
+import { getABCSyncSummary, getABCSyncRuns, getABCSyncChangelog, getABCSyncUnmatched, getABCMembershipBreakdown, triggerABCSync, stopABCSync } from '../../lib/api'
 
 function formatDate(dateStr) {
   if (!dateStr) return '—'
@@ -127,6 +127,16 @@ export default function ABCSyncAdmin() {
     setTriggering(false)
   }
 
+  async function handleStop() {
+    setTriggerMsg(null)
+    try {
+      const res = await stopABCSync()
+      setTriggerMsg(res.message || 'Stop requested.')
+    } catch (err) {
+      setTriggerMsg('Failed to stop: ' + err.message)
+    }
+  }
+
   useEffect(() => {
     if (tab === 'changelog') loadChangelog(1)
     if (tab === 'unmatched') loadUnmatched(1)
@@ -172,6 +182,12 @@ export default function ABCSyncAdmin() {
             className="text-xs bg-wcs-red text-white rounded-lg px-4 py-1.5 font-medium hover:bg-wcs-red/90 disabled:opacity-50"
           >
             {triggering ? 'Starting...' : 'Run Sync Now'}
+          </button>
+          <button
+            onClick={handleStop}
+            className="text-xs bg-surface border border-border rounded-lg px-4 py-1.5 font-medium text-text-muted hover:text-red-400 hover:border-red-400 transition-colors"
+          >
+            Stop Sync
           </button>
           {triggerMsg && <span className="text-xs text-text-muted">{triggerMsg}</span>}
           <button onClick={loadInitial} className="text-xs text-wcs-red hover:underline">Refresh</button>

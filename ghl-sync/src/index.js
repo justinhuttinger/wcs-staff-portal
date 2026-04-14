@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const { fullSync, fullSyncForLocation } = require('./sync/fullSync');
 const { deltaSync } = require('./sync/deltaSync');
-const { abcSync, abcSyncForLocation } = require('./abc/abcSync');
+const { abcSync, abcSyncForLocation, stopAbcSync } = require('./abc/abcSync');
 const { startScheduler } = require('./scheduler');
 const supabase = require('./db/supabase');
 
@@ -99,6 +99,16 @@ app.post('/api/sync/abc/:locationSlug', requireSecret, (req, res) => {
   abcSyncForLocation(req.params.locationSlug)
     .catch(err => console.error(`[API] ABC sync for ${req.params.locationSlug} failed:`, err.message))
     .finally(() => { syncRunning = false; });
+});
+
+// POST /api/sync/abc/stop — abort a running ABC sync
+app.post('/api/sync/abc/stop', requireSecret, (req, res) => {
+  const stopped = stopAbcSync();
+  if (stopped) {
+    res.json({ status: 'stopping', message: 'ABC sync will stop after current location finishes' });
+  } else {
+    res.json({ status: 'not_running', message: 'No ABC sync is currently running' });
+  }
 });
 
 // GET /api/sync/logs
