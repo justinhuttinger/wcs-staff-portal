@@ -1,5 +1,4 @@
 const { Router } = require('express')
-const axios = require('axios')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
@@ -206,18 +205,22 @@ router.post('/trigger', async (req, res) => {
       return res.status(500).json({ error: 'GHL_SYNC_URL not configured' })
     }
 
-    const headers = {}
+    const headers = { 'Content-Type': 'application/json' }
     if (SYNC_SECRET) headers['x-sync-secret'] = SYNC_SECRET
 
-    const response = await axios.post(`${GHL_SYNC_URL}/api/sync/abc`, {}, {
+    const response = await fetch(`${GHL_SYNC_URL}/api/sync/abc`, {
+      method: 'POST',
       headers,
-      timeout: 10000,
+      signal: AbortSignal.timeout(10000),
     })
 
-    res.json(response.data)
+    const data = await response.json()
+    if (!response.ok) {
+      return res.status(response.status).json({ error: data.error || 'Sync trigger failed' })
+    }
+    res.json(data)
   } catch (err) {
-    const msg = err.response?.data?.error || err.message
-    res.status(err.response?.status || 500).json({ error: msg })
+    res.status(500).json({ error: err.message })
   }
 })
 
