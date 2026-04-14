@@ -429,7 +429,7 @@ export async function getABCSyncUnmatched(params = {}) {
 }
 
 export async function triggerABCSync() {
-  return api('/abc-sync/trigger', { method: 'POST' })
+  return api('/abc-sync/trigger', { method: 'POST', body: JSON.stringify({}) })
 }
 
 export async function getABCMembershipBreakdown(clubNumber) {
