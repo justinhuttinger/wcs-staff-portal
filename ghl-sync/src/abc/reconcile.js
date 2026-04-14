@@ -258,7 +258,8 @@ async function reconcileLocation(location, runId) {
           await sleep(650);
         } catch (err) {
           const lastEntry = logEntries[logEntries.length - 1];
-          lastEntry.error = err.response?.data?.message || err.message;
+          const errDetail = err.response?.data?.message || err.response?.data || err.message;
+          lastEntry.error = typeof errDetail === 'string' ? errDetail : JSON.stringify(errDetail);
           errors++;
           console.error(`[Reconcile] Failed to create contact ${abcName}:`, lastEntry.error);
         }
@@ -396,10 +397,12 @@ async function reconcileLocation(location, runId) {
         await sleep(650); // Rate limit
       } catch (err) {
         errors++;
-        console.error(`[Reconcile] Failed to update ${contactName}:`, err.message);
+        const errDetail = err.response?.data?.message || err.response?.data || err.message;
+        const errMsg = typeof errDetail === 'string' ? errDetail : JSON.stringify(errDetail);
+        console.error(`[Reconcile] Failed to update ${contactName}:`, errMsg);
         for (const entry of logEntries) {
           if (entry.ghl_contact_id === ghlContact.id && !entry.applied) {
-            entry.error = err.message;
+            entry.error = errMsg;
           }
         }
       }
