@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { getSalespersonStats } from '../../lib/api'
 import { exportCSV, exportPDF } from '../../lib/export'
 
@@ -8,6 +8,7 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
   const [error, setError] = useState('')
   const [sortBy, setSortBy] = useState('best')
   const [search, setSearch] = useState('')
+  const [expanded, setExpanded] = useState(null)
 
   useEffect(() => { loadData() }, [startDate, endDate, locationSlug])
 
@@ -133,13 +134,55 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
           </thead>
           <tbody>
             {rows.map(([name, stats]) => (
-              <tr key={name} className="border-b border-border hover:bg-bg/50 transition-colors">
-                <td className="px-4 py-3 font-medium text-text-primary">{name}</td>
-                <td className="px-4 py-3 text-center text-wcs-red font-semibold">{stats.total_sales || 0}</td>
-                <td className="px-4 py-3 text-center text-text-primary">{stats.vips || 0}</td>
-                <td className="px-4 py-3 text-center text-green-600">{stats.day_one_booked || 0}</td>
-                <td className="px-4 py-3 text-center text-green-600">{stats.same_day_sale || 0}</td>
-              </tr>
+              <React.Fragment key={name}>
+                <tr
+                  onClick={() => setExpanded(expanded === name ? null : name)}
+                  className="border-b border-border hover:bg-bg/50 transition-colors cursor-pointer"
+                >
+                  <td className="px-4 py-3 font-medium text-text-primary flex items-center gap-2">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`w-3 h-3 text-text-muted transition-transform ${expanded === name ? 'rotate-90' : ''}`}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                    </svg>
+                    {name}
+                  </td>
+                  <td className="px-4 py-3 text-center text-wcs-red font-semibold">{stats.total_sales || 0}</td>
+                  <td className="px-4 py-3 text-center text-text-primary">{stats.vips || 0}</td>
+                  <td className="px-4 py-3 text-center text-green-600">{stats.day_one_booked || 0}</td>
+                  <td className="px-4 py-3 text-center text-green-600">{stats.same_day_sale || 0}</td>
+                </tr>
+                {expanded === name && stats.members && stats.members.length > 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-0 py-0">
+                      <div className="bg-bg/50 border-b border-border">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-border">
+                              <th className="text-left px-6 py-2 text-text-muted uppercase font-semibold">Name</th>
+                              <th className="text-left px-4 py-2 text-text-muted uppercase font-semibold">Type</th>
+                              <th className="text-left px-4 py-2 text-text-muted uppercase font-semibold">Sign Date</th>
+                              <th className="text-center px-4 py-2 text-text-muted uppercase font-semibold">Day One</th>
+                              <th className="text-center px-4 py-2 text-text-muted uppercase font-semibold">VIPs</th>
+                              <th className="text-center px-4 py-2 text-text-muted uppercase font-semibold">Same Day</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {stats.members.map((m, i) => (
+                              <tr key={i} className="border-b border-border last:border-0">
+                                <td className="px-6 py-2 text-text-primary">{m.name}</td>
+                                <td className="px-4 py-2 text-text-muted">{m.membership_type}</td>
+                                <td className="px-4 py-2 text-text-muted">{m.since_date}</td>
+                                <td className="px-4 py-2 text-center">{m.day_one_booked ? <span className="text-green-500">Yes</span> : <span className="text-text-muted">-</span>}</td>
+                                <td className="px-4 py-2 text-center text-text-primary">{m.vip_count || '-'}</td>
+                                <td className="px-4 py-2 text-center">{m.same_day_sale ? <span className="text-green-500">Yes</span> : <span className="text-text-muted">-</span>}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
             {rows.length === 0 && (
               <tr>
@@ -148,7 +191,7 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
             )}
             {rows.length > 0 && (
               <tr className="border-t-2 border-border font-bold bg-bg/30">
-                <td className="px-4 py-3 text-text-primary">Total</td>
+                <td className="px-4 py-3 text-text-primary pl-9">Total</td>
                 <td className="px-4 py-3 text-center text-wcs-red">{totalSales}</td>
                 <td className="px-4 py-3 text-center text-text-primary">{totalVIPs}</td>
                 <td className="px-4 py-3 text-center text-green-600">{totalDayOne}</td>

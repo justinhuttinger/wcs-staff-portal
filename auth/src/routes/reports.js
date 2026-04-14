@@ -97,12 +97,23 @@ function mostFrequent(arr) {
 }
 
 // ---------------------------------------------------------------------------
+// Club number → location slug mapping
+const CLUB_SLUG_MAP = {
+  '30935': 'salem', '31599': 'keizer', '7655': 'eugene',
+  '31598': 'springfield', '31600': 'clackamas', '31601': 'milwaukie', '32073': 'medford',
+}
+const SLUG_CLUB_MAP = Object.fromEntries(Object.entries(CLUB_SLUG_MAP).map(([k, v]) => [v, k]))
+
+// Membership types to skip (not real members)
+const SKIP_TYPES = ['CHILDCARE', 'Club Access', 'Event Access', 'NON-MEMBER', 'NLPT ONLY', 'PT ONLY', 'SWIM ONLY']
+
+// ---------------------------------------------------------------------------
 // GET /reports/salesperson-stats
 // Query params: start_date, end_date, location_id, location_slug
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // GET /reports/membership  (combined membership + salesperson stats)
-// Query params: start_date, end_date, location_id, location_slug
+// Uses ABC data for sales counts, GHL for day_one/VIP/same_day enrichment
 // ---------------------------------------------------------------------------
 router.get('/membership', async (req, res) => {
   const { start_date, end_date } = req.query
@@ -115,26 +126,76 @@ router.get('/membership', async (req, res) => {
     const startISO = start_date ? start_date + 'T00:00:00.000Z' : null
     const endISO   = end_date ? end_date + 'T23:59:59.999Z' : null
 
-    // --- Contacts with member_sign_date in range ---
-    let q = supabaseAdmin
+    // --- 1. ABC members with since_date in range (source of truth for sales) ---
+    let abcQuery = supabaseAdmin
+      .from('abc_members')
+      .select('member_id, first_name, last_name, email, membership_type, since_date, sales_person_name, club_number, is_active')
+      .eq('is_active', true)
+    if (start_date) abcQuery = abcQuery.gte('since_date', start_date)
+    if (end_date) abcQuery = abcQuery.lte('since_date', end_date)
+
+    // Filter by location via club_number
+    let clubNumber = null
+    if (locationFilter) {
+      const slug = locationFilter.column === 'location_slug' ? locationFilter.value : null
+      if (slug && SLUG_CLUB_MAP[slug]) {
+        clubNumber = SLUG_CLUB_MAP[slug]
+        abcQuery = abcQuery.eq('club_number', clubNumber)
+      }
+    }
+
+    // Paginate past 1000 limit
+    const abcMembers = []
+    let abcFrom = 0
+    while (true) {
+      const { data: page, error: abcErr } = await abcQuery.range(abcFrom, abcFrom + 999)
+      if (abcErr) return res.status(500).json({ error: 'Failed to fetch ABC members', detail: abcErr.message })
+      if (!page || page.length === 0) break
+      abcMembers.push(...page)
+      if (page.length < 1000) break
+      abcFrom += 1000
+    }
+
+    // Filter out non-member types
+    const filteredMembers = abcMembers.filter(m => !SKIP_TYPES.includes(m.membership_type))
+
+    // --- 2. GHL enrichment: look up day_one_booked, vip_count, same_day_sale by email ---
+    const emails = [...new Set(filteredMembers.map(m => m.email).filter(Boolean))]
+    const ghlByEmail = {}
+
+    // Batch email lookups in chunks
+    for (let i = 0; i < emails.length; i += 50) {
+      const chunk = emails.slice(i, i + 50)
+      const { data: ghlRows } = await supabaseAdmin
+        .from('ghl_contacts_report')
+        .select('email, day_one_booked, vip_count, same_day_sale')
+        .in('email', chunk)
+
+      for (const g of (ghlRows || [])) {
+        if (g.email) ghlByEmail[g.email.toLowerCase()] = g
+      }
+    }
+
+    // --- 3. Day Ones booked in range (from GHL, by booking_team_member) ---
+    let dayOneQ = supabaseAdmin
       .from('ghl_contacts_report')
-      .select(
-        'first_name, last_name, full_name, email, phone, tags,' +
-        'sale_team_member, day_one_booked,' +
-        'member_sign_date, membership_type, same_day_sale,' +
-        'origin, active, location_name, location_slug'
-      )
-      .not('member_sign_date', 'is', null)
+      .select('day_one_booking_team_member, day_one_booked, day_one_booking_date, location_slug')
+      .eq('day_one_booked', 'Yes')
+      .not('day_one_booking_date', 'is', null)
+    dayOneQ = applyLocationFilter(dayOneQ, locationFilter)
+    dayOneQ = applyDateRange(dayOneQ, 'day_one_booking_date', startMs, endMs)
 
-    q = applyLocationFilter(q, locationFilter)
-    q = applyDateRange(q, 'member_sign_date', startMs, endMs)
+    const { data: dayOneData } = await dayOneQ
+    const dayOnes = dayOneData || []
+    const totalDayOneBooked = dayOnes.length
 
-    const { data, error } = await q.order('member_sign_date', { ascending: false })
-    if (error) return res.status(500).json({ error: 'Failed to fetch membership data', detail: error.message })
+    const dayOneByPerson = {}
+    for (const d of dayOnes) {
+      const person = d.day_one_booking_team_member || 'Unassigned'
+      dayOneByPerson[person] = (dayOneByPerson[person] || 0) + 1
+    }
 
-    const contacts = data || []
-
-    // --- VIPs: contacts created in range with "vip" tag (same logic as club-health) ---
+    // --- 4. VIPs in range ---
     let vipQuery = supabaseAdmin
       .from('ghl_contacts_v2')
       .select('id, tags', { count: 'exact', head: false })
@@ -151,27 +212,7 @@ router.get('/membership', async (req, res) => {
     }
     const { count: totalVips } = await vipQuery
 
-    // --- Day Ones booked in range (by booking_team_member) ---
-    let dayOneQ = supabaseAdmin
-      .from('ghl_contacts_report')
-      .select('day_one_booking_team_member, day_one_booked, day_one_booking_date, location_slug')
-      .eq('day_one_booked', 'Yes')
-      .not('day_one_booking_date', 'is', null)
-    dayOneQ = applyLocationFilter(dayOneQ, locationFilter)
-    dayOneQ = applyDateRange(dayOneQ, 'day_one_booking_date', startMs, endMs)
-
-    const { data: dayOneData } = await dayOneQ
-    const dayOnes = dayOneData || []
-    const totalDayOneBooked = dayOnes.length
-
-    // Count day ones by booking team member
-    const dayOneByPerson = {}
-    for (const d of dayOnes) {
-      const person = d.day_one_booking_team_member || 'Unassigned'
-      dayOneByPerson[person] = (dayOneByPerson[person] || 0) + 1
-    }
-
-    // --- Trial conversion from opportunities ---
+    // --- 5. Trial conversion from opportunities ---
     let oppLocationId = null
     if (locationFilter) {
       if (locationFilter.column === 'location_id') {
@@ -204,28 +245,43 @@ router.get('/membership', async (req, res) => {
       }
     }
 
-    // --- Aggregate by salesperson + by date ---
+    // --- 6. Aggregate by salesperson + by date ---
     const byDate = {}
     const bySalesperson = {}
 
-    for (const c of contacts) {
-      // by_date for chart
-      if (c.member_sign_date) {
-        const d = new Date(parseInt(c.member_sign_date, 10))
-        const dateKey = d.toISOString().slice(0, 10)
+    for (const m of filteredMembers) {
+      // by_date chart
+      if (m.since_date) {
+        const dateKey = m.since_date
         if (!byDate[dateKey]) byDate[dateKey] = { memberships: 0, vips: 0, day_ones: 0 }
         byDate[dateKey].memberships++
-        if (Array.isArray(c.tags) && c.tags.includes('vip')) byDate[dateKey].vips++
       }
 
+      // GHL enrichment for this member
+      const ghl = m.email ? ghlByEmail[m.email.toLowerCase()] : null
+      const isDayOneBooked = ghl?.day_one_booked === 'Yes'
+      const vipCount = ghl?.vip_count ? parseInt(ghl.vip_count) || 0 : 0
+      const isSameDaySale = ghl?.same_day_sale === 'Sale'
+
       // by_salesperson
-      const sp = c.sale_team_member || 'Unassigned'
+      const sp = m.sales_person_name || 'Unassigned'
       if (!bySalesperson[sp]) {
-        bySalesperson[sp] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0 }
+        bySalesperson[sp] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0, members: [] }
       }
       bySalesperson[sp].total_sales++
-      if (Array.isArray(c.tags) && c.tags.includes('vip')) bySalesperson[sp].vips++
-      if (c.same_day_sale === 'Sale') bySalesperson[sp].same_day_sale++
+      if (vipCount > 0) bySalesperson[sp].vips += vipCount
+      if (isSameDaySale) bySalesperson[sp].same_day_sale++
+
+      // Per-member detail for drill-down
+      bySalesperson[sp].members.push({
+        name: `${m.first_name || ''} ${m.last_name || ''}`.trim(),
+        email: m.email,
+        membership_type: m.membership_type,
+        since_date: m.since_date,
+        day_one_booked: isDayOneBooked,
+        vip_count: vipCount,
+        same_day_sale: isSameDaySale,
+      })
     }
 
     // Add day one booking dates to the chart
@@ -241,7 +297,7 @@ router.get('/membership', async (req, res) => {
     // Merge day one counts into salesperson data
     for (const [person, count] of Object.entries(dayOneByPerson)) {
       if (!bySalesperson[person]) {
-        bySalesperson[person] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0 }
+        bySalesperson[person] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0, members: [] }
       }
       bySalesperson[person].day_one_booked = count
     }
@@ -252,8 +308,25 @@ router.get('/membership', async (req, res) => {
 
     const conversionRate = trialStarted > 0 ? Math.round((trialWon / trialStarted) * 100) : 0
 
+    // Build contacts array (backward compatible with existing frontend)
+    const contacts = filteredMembers.map(m => {
+      const ghl = m.email ? ghlByEmail[m.email.toLowerCase()] : null
+      return {
+        first_name: m.first_name,
+        last_name: m.last_name,
+        full_name: `${m.first_name || ''} ${m.last_name || ''}`.trim(),
+        email: m.email,
+        membership_type: m.membership_type,
+        member_sign_date: m.since_date,
+        sale_team_member: m.sales_person_name,
+        day_one_booked: ghl?.day_one_booked || null,
+        same_day_sale: ghl?.same_day_sale || null,
+        location_slug: CLUB_SLUG_MAP[m.club_number] || null,
+      }
+    })
+
     res.json({
-      total_memberships: contacts.length,
+      total_memberships: filteredMembers.length,
       trial_conversion: { trial_started: trialStarted, won: trialWon, rate: conversionRate },
       total_day_one_booked: totalDayOneBooked,
       total_vips: totalVips || 0,

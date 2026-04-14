@@ -59,8 +59,17 @@ function monthBounds(monthStr) {
     endMs: (end.getTime() + getPacificOffsetMs(end)).toString(),
     startISO: start.toISOString(),
     endISO: end.toISOString(),
+    startDate: start.toISOString().slice(0, 10),
+    endDate: end.toISOString().slice(0, 10),
   }
 }
+
+// Club number → slug mapping
+const SLUG_CLUB_MAP = {
+  'salem': '30935', 'keizer': '31599', 'eugene': '7655',
+  'springfield': '31598', 'clackamas': '31600', 'milwaukie': '31601', 'medford': '32073',
+}
+const SKIP_TYPES = ['CHILDCARE', 'Club Access', 'Event Access', 'NON-MEMBER', 'NLPT ONLY', 'PT ONLY', 'SWIM ONLY']
 
 // ---------------------------------------------------------------------------
 // Helper: aggregate leaderboard data for a single location_slug
@@ -68,17 +77,41 @@ function monthBounds(monthStr) {
 async function aggregateLocation(locationSlug, bounds) {
   const { startMs, endMs, startISO, endISO } = bounds
 
-  // 1. Memberships: ghl_contacts_report where member_sign_date in range
-  let memberQ = supabaseAdmin
-    .from('ghl_contacts_report')
-    .select('sale_team_member, same_day_sale')
-    .not('member_sign_date', 'is', null)
-    .gte('member_sign_date', startMs)
-    .lte('member_sign_date', endMs)
-  if (locationSlug) memberQ = memberQ.eq('location_slug', locationSlug)
+  // 1. Memberships from ABC (source of truth)
+  const clubNumber = locationSlug ? SLUG_CLUB_MAP[locationSlug] : null
+  let abcQuery = supabaseAdmin
+    .from('abc_members')
+    .select('sales_person_name, email, membership_type')
+    .eq('is_active', true)
+  if (bounds.startDate) abcQuery = abcQuery.gte('since_date', bounds.startDate)
+  if (bounds.endDate) abcQuery = abcQuery.lte('since_date', bounds.endDate)
+  if (clubNumber) abcQuery = abcQuery.eq('club_number', clubNumber)
 
-  const { data: memberData } = await memberQ
-  const members = memberData || []
+  // Paginate
+  const abcMembers = []
+  let abcFrom = 0
+  while (true) {
+    const { data: page } = await abcQuery.range(abcFrom, abcFrom + 999)
+    if (!page || page.length === 0) break
+    abcMembers.push(...page)
+    if (page.length < 1000) break
+    abcFrom += 1000
+  }
+  const members = abcMembers.filter(m => !SKIP_TYPES.includes(m.membership_type))
+
+  // Look up same_day_sale from GHL for these members
+  const memberEmails = [...new Set(members.map(m => m.email).filter(Boolean))]
+  const ghlByEmail = {}
+  for (let i = 0; i < memberEmails.length; i += 50) {
+    const chunk = memberEmails.slice(i, i + 50)
+    const { data: ghlRows } = await supabaseAdmin
+      .from('ghl_contacts_report')
+      .select('email, same_day_sale')
+      .in('email', chunk)
+    for (const g of (ghlRows || [])) {
+      if (g.email) ghlByEmail[g.email.toLowerCase()] = g
+    }
+  }
 
   // 2. Day Ones Booked: ghl_contacts_report where day_one_booked='Yes' and day_one_booking_date in range
   let dayOneQ = supabaseAdmin
@@ -148,13 +181,14 @@ async function aggregateLocation(locationSlug, bounds) {
     }
   }
 
-  // Memberships + same day sales
+  // Memberships + same day sales (ABC sales, GHL same_day enrichment)
   for (const m of members) {
-    const name = normalizeName(m.sale_team_member)
+    const name = normalizeName(m.sales_person_name)
     if (!name || name === 'Unassigned') continue
     ensurePerson(name)
     personStats[name].memberships++
-    if (m.same_day_sale === 'Sale') personStats[name].same_day++
+    const ghl = m.email ? ghlByEmail[m.email.toLowerCase()] : null
+    if (ghl?.same_day_sale === 'Sale') personStats[name].same_day++
   }
 
   // Day ones booked
