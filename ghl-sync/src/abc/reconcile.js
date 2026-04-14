@@ -138,6 +138,7 @@ async function reconcileLocation(location, runId) {
 
   // 4. Match and reconcile
   const logEntries = [];
+  const processedGhlIds = new Set(); // Deduplicate — skip if already processed this contact
   let matched = 0;
   let unmatched = 0;
   let tagChanges = 0;
@@ -201,6 +202,10 @@ async function reconcileLocation(location, runId) {
       });
       continue;
     }
+
+    // Skip if we already processed this GHL contact (e.g. same person has multiple ABC memberships)
+    if (processedGhlIds.has(ghlContact.id)) continue;
+    processedGhlIds.add(ghlContact.id);
 
     matched++;
     const contactName = `${ghlContact.first_name || ''} ${ghlContact.last_name || ''}`.trim();
