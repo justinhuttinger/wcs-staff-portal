@@ -257,6 +257,12 @@ async function reconcileLocation(location, runId) {
       }
     }
 
+    // salesperson
+    const salespersonFieldId = fieldKeyToId[ABC_GHL_FIELD_MAP.salesperson];
+    if (salespersonFieldId && abc.sales_person_name && cf[salespersonFieldId] !== abc.sales_person_name) {
+      customFieldUpdates[salespersonFieldId] = abc.sales_person_name;
+    }
+
     const hasChanges = needsAddTag || needsRemoveTag || Object.keys(customFieldUpdates).length > 0;
     if (!hasChanges) continue;
 
