@@ -67,25 +67,17 @@ router.get('/summary', async (req, res) => {
     }
 
     // Get ABC member counts per club
-    const { data: memberCounts } = await supabaseAdmin
-      .rpc('abc_member_counts_by_club')
-      .select('*')
-      .catch(() => ({ data: null }))
-
-    // Fallback: query directly if RPC doesn't exist
     let abcCounts = {}
-    if (!memberCounts) {
-      const { data: rawCounts } = await supabaseAdmin
-        .from('abc_members')
-        .select('club_number, is_active')
+    const { data: rawCounts } = await supabaseAdmin
+      .from('abc_members')
+      .select('club_number, is_active')
 
-      if (rawCounts) {
-        for (const m of rawCounts) {
-          if (!abcCounts[m.club_number]) abcCounts[m.club_number] = { total: 0, active: 0, inactive: 0 }
-          abcCounts[m.club_number].total++
-          if (m.is_active) abcCounts[m.club_number].active++
-          else abcCounts[m.club_number].inactive++
-        }
+    if (rawCounts) {
+      for (const m of rawCounts) {
+        if (!abcCounts[m.club_number]) abcCounts[m.club_number] = { total: 0, active: 0, inactive: 0 }
+        abcCounts[m.club_number].total++
+        if (m.is_active) abcCounts[m.club_number].active++
+        else abcCounts[m.club_number].inactive++
       }
     }
 
