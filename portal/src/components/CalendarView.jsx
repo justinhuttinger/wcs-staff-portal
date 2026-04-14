@@ -471,30 +471,43 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
         <DayItems items={getItemsForDate(currentDate)} onDayOneClick={setActiveModal} />
       )}
 
-      {/* Week View */}
+      {/* Week View — Google Calendar style columns */}
       {!loading && view === 'week' && (
-        <div className="space-y-4">
-          {weekDates.map(date => {
-            const items = getItemsForDate(date)
-            const isToday = date === todayStr
-            return (
-              <div key={date} className={`rounded-xl border ${isToday ? 'border-wcs-red' : 'border-border'} overflow-hidden`}>
-                <div className={`px-4 py-2 text-xs font-semibold ${isToday ? 'bg-wcs-red text-white' : 'bg-bg text-text-muted'}`}>
-                  {new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-                  {items.length > 0 && <span className="ml-2">({items.length})</span>}
+        <div className="border border-border rounded-xl overflow-hidden bg-surface">
+          {/* Column headers */}
+          <div className="grid grid-cols-7 border-b border-border">
+            {weekDates.map(date => {
+              const isToday = date === todayStr
+              const d = new Date(date + 'T12:00:00')
+              const dayNum = d.getDate()
+              const dayName = d.toLocaleDateString('en-US', { weekday: 'short' })
+              return (
+                <div key={date} className={`text-center py-2.5 ${isToday ? 'bg-wcs-red/5' : ''} ${date !== weekDates[0] ? 'border-l border-border' : ''}`}>
+                  <p className="text-[11px] font-medium text-text-muted uppercase tracking-wider">{dayName}</p>
+                  <p className={`text-lg font-bold mt-0.5 ${isToday ? 'text-white bg-wcs-red w-8 h-8 rounded-full flex items-center justify-center mx-auto' : 'text-text-primary'}`}>
+                    {dayNum}
+                  </p>
                 </div>
-                {items.length === 0 ? (
-                  <div className="px-4 py-3 text-xs text-text-muted">No events</div>
-                ) : (
-                  <div className="divide-y divide-border">
-                    {items.map(item => (
-                      <WeekRow key={item.id} item={item} onDayOneClick={setActiveModal} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
+          {/* Column bodies */}
+          <div className="grid grid-cols-7 min-h-[400px]">
+            {weekDates.map(date => {
+              const items = getItemsForDate(date)
+              const isToday = date === todayStr
+              return (
+                <div key={date} className={`${isToday ? 'bg-wcs-red/[0.02]' : ''} ${date !== weekDates[0] ? 'border-l border-border' : ''} p-1.5 flex flex-col gap-1`}>
+                  {items.map(item => (
+                    <CalendarCard key={item.id} item={item} onDayOneClick={setActiveModal} />
+                  ))}
+                  {items.length === 0 && (
+                    <p className="text-[10px] text-text-muted/50 text-center mt-4">—</p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 
@@ -576,27 +589,35 @@ function DayItems({ items, onDayOneClick }) {
   )
 }
 
-function WeekRow({ item, onDayOneClick }) {
+function CalendarCard({ item, onDayOneClick }) {
   const clickable = item.type === 'dayone' && (item.pending || isDayOneCompleted(item.raw))
+  const isTour = item.type === 'tour'
+  const bgColor = item.pending
+    ? 'bg-yellow-50 border-yellow-300 hover:border-yellow-400'
+    : isTour
+      ? 'bg-blue-50 border-blue-200 hover:border-blue-300'
+      : 'bg-purple-50 border-purple-200 hover:border-purple-300'
+
   return (
     <div
       onClick={clickable ? () => onDayOneClick(item.raw) : undefined}
-      className={`px-4 py-3 flex items-center gap-3 ${
-        item.pending ? 'bg-yellow-50/40 animate-[pulse_3s_ease-in-out_infinite]' : ''
-      } ${clickable ? 'cursor-pointer hover:bg-bg/50' : ''}`}
+      className={`rounded-lg border px-2 py-1.5 text-left transition-all ${bgColor} ${
+        clickable ? 'cursor-pointer' : ''
+      } ${item.pending ? 'animate-[pulse_3s_ease-in-out_infinite]' : ''}`}
     >
-      <span className="text-sm font-medium text-wcs-red min-w-[55px]">{formatTime(item.time)}</span>
-      <span className="text-sm text-text-primary flex-1">{item.name}</span>
-      <TypeBadge type={item.type} />
+      <p className={`text-[11px] font-semibold ${isTour ? 'text-blue-700' : 'text-purple-700'}`}>
+        {formatTime(item.time)}
+      </p>
+      <p className="text-xs font-medium text-text-primary truncate leading-tight mt-0.5">{item.name}</p>
       {item.type === 'dayone' && item.trainer && (
-        <span className="text-xs text-text-muted">{item.trainer}</span>
+        <p className="text-[10px] text-text-muted truncate">{item.trainer}</p>
       )}
-      <div className="flex items-center gap-1.5 ml-auto shrink-0">
-        <span className={`px-2 py-0.5 rounded-full text-xs border ${STATUS_COLORS[item.status] || STATUS_COLORS.Scheduled}`}>
+      <div className="flex items-center gap-1 mt-1 flex-wrap">
+        <span className={`px-1.5 py-0 rounded text-[10px] font-medium border ${STATUS_COLORS[item.status] || STATUS_COLORS.Scheduled}`}>
           {item.status}
         </span>
         {item.type === 'dayone' && item.sale && (
-          <span className={`px-2 py-0.5 rounded-full text-xs border ${
+          <span className={`px-1.5 py-0 rounded text-[10px] font-medium border ${
             item.sale === 'Sale' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200'
           }`}>{item.sale}</span>
         )}
