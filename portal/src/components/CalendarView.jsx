@@ -546,13 +546,11 @@ function DayItems({ items, onDayOneClick }) {
       {items.map(item => (
         <div
           key={item.id}
-          onClick={item.type === 'dayone' && (item.pending || isDayOneCompleted(item.raw)) ? () => onDayOneClick(item.raw) : undefined}
+          onClick={item.type === 'dayone' && item.pending ? () => onDayOneClick(item.raw) : undefined}
           className={`bg-surface border rounded-xl p-4 flex items-center gap-4 transition-all ${
             item.pending
               ? 'border-yellow-300 bg-yellow-50/30 cursor-pointer hover:border-wcs-red/50 animate-[pulse_3s_ease-in-out_infinite]'
-              : item.type === 'dayone' && isDayOneCompleted(item.raw)
-                ? 'border-border cursor-pointer hover:border-wcs-red/50'
-                : 'border-border'
+              : 'border-border'
           }`}
         >
           <div className="text-center min-w-[60px]">
@@ -590,7 +588,7 @@ function DayItems({ items, onDayOneClick }) {
 }
 
 function CalendarCard({ item, onDayOneClick }) {
-  const clickable = item.type === 'dayone' && (item.pending || isDayOneCompleted(item.raw))
+  const clickable = item.type === 'dayone' && item.pending
   const isTour = item.type === 'tour'
   const bgColor = item.pending
     ? 'bg-yellow-50 border-yellow-300 hover:border-yellow-400'
@@ -605,9 +603,14 @@ function CalendarCard({ item, onDayOneClick }) {
         clickable ? 'cursor-pointer' : ''
       } ${item.pending ? 'animate-[pulse_3s_ease-in-out_infinite]' : ''}`}
     >
-      <p className={`text-[11px] font-semibold ${isTour ? 'text-blue-700' : 'text-purple-700'}`}>
-        {formatTime(item.time)}
-      </p>
+      <div className="flex items-center justify-between gap-1">
+        <p className={`text-[11px] font-semibold ${isTour ? 'text-blue-700' : 'text-purple-700'}`}>
+          {formatTime(item.time)}
+        </p>
+        <span className={`px-1.5 py-0 rounded text-[9px] font-bold uppercase tracking-wider ${
+          isTour ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'
+        }`}>{isTour ? 'Tour' : 'D1'}</span>
+      </div>
       <p className="text-xs font-medium text-text-primary truncate leading-tight mt-0.5">{item.name}</p>
       {item.type === 'dayone' && item.trainer && (
         <p className="text-[10px] text-text-muted truncate">{item.trainer}</p>
