@@ -1,5 +1,5 @@
 const supabase = require('../db/supabase');
-const { put, sleep } = require('../ghl/client');
+const { post, put, sleep } = require('../ghl/client');
 const { ABC_GHL_FIELD_MAP, ABC_TAGS, ABC_SKIP_MEMBERSHIP_TYPES } = require('../config/abc-field-map');
 
 const DRY_RUN = (process.env.DRY_RUN || 'true') === 'true';
@@ -184,21 +184,87 @@ async function reconcileLocation(location, runId) {
     }
 
     if (!ghlContact) {
-      unmatched++;
+      // Skip inactive members — don't create GHL contacts for them
+      if (!abc.is_active) {
+        unmatched++;
+        logEntries.push({
+          run_id: runId, club_number: clubNumber, club_name: locationName, dry_run: DRY_RUN,
+          ghl_contact_id: null, ghl_contact_name: null, ghl_contact_email: null,
+          abc_member_id: abc.member_id, action: 'no_match',
+          detail: { abc_name: `${abc.first_name} ${abc.last_name}`, abc_email: abc.email, reason: 'inactive' },
+          applied: false, error: null,
+        });
+        continue;
+      }
+
+      // Skip members with no email AND no phone — can't reach them
+      const hasContact = abc.email || abc.primary_phone || abc.mobile_phone;
+      if (!hasContact) {
+        unmatched++;
+        logEntries.push({
+          run_id: runId, club_number: clubNumber, club_name: locationName, dry_run: DRY_RUN,
+          ghl_contact_id: null, ghl_contact_name: null, ghl_contact_email: null,
+          abc_member_id: abc.member_id, action: 'no_match',
+          detail: { abc_name: `${abc.first_name} ${abc.last_name}`, reason: 'no_contact_info' },
+          applied: false, error: null,
+        });
+        continue;
+      }
+
+      // Create new GHL contact for this active unmatched member
+      const abcName = `${abc.first_name || ''} ${abc.last_name || ''}`.trim();
+      const phone = abc.primary_phone || abc.mobile_phone || null;
+      const signDate = abc.sign_date || abc.since_date;
+
+      // Build custom fields for the new contact
+      const newCustomFields = {};
+      const memberIdFid = fieldKeyToId[ABC_GHL_FIELD_MAP.abc_member_id];
+      if (memberIdFid) newCustomFields[memberIdFid] = abc.member_id;
+      const membershipFid = fieldKeyToId[ABC_GHL_FIELD_MAP.membership_type];
+      if (membershipFid) newCustomFields[membershipFid] = abc.membership_type || '';
+      const statusFid = fieldKeyToId[ABC_GHL_FIELD_MAP.member_status];
+      if (statusFid) newCustomFields[statusFid] = abc.member_status || '';
+      const signFid = fieldKeyToId[ABC_GHL_FIELD_MAP.member_sign_date];
+      if (signFid && signDate) newCustomFields[signFid] = signDate;
+      const salespersonFid = fieldKeyToId[ABC_GHL_FIELD_MAP.salesperson];
+      if (salespersonFid && abc.sales_person_name) newCustomFields[salespersonFid] = abc.sales_person_name;
+
+      const createBody = {
+        locationId,
+        firstName: abc.first_name || '',
+        lastName: abc.last_name || '',
+        email: abc.email || undefined,
+        phone: phone || undefined,
+        tags: [ABC_TAGS.active],
+        customField: newCustomFields,
+      };
+
       logEntries.push({
-        run_id: runId,
-        club_number: clubNumber,
-        club_name: locationName,
-        dry_run: DRY_RUN,
-        ghl_contact_id: null,
-        ghl_contact_name: null,
-        ghl_contact_email: null,
-        abc_member_id: abc.member_id,
-        action: 'no_match',
-        detail: { abc_name: `${abc.first_name} ${abc.last_name}`, abc_email: abc.email },
-        applied: false,
-        error: null,
+        run_id: runId, club_number: clubNumber, club_name: locationName, dry_run: DRY_RUN,
+        ghl_contact_id: null, ghl_contact_name: abcName, ghl_contact_email: abc.email,
+        abc_member_id: abc.member_id, action: 'create_contact',
+        detail: { abc_name: abcName, abc_email: abc.email, phone, membership_type: abc.membership_type },
+        applied: false, error: null,
       });
+
+      if (!DRY_RUN) {
+        try {
+          const created = await post('/contacts/', createBody, apiKey);
+          // Mark as applied
+          const lastEntry = logEntries[logEntries.length - 1];
+          lastEntry.applied = true;
+          lastEntry.ghl_contact_id = created.contact?.id || null;
+          matched++;
+          await sleep(650);
+        } catch (err) {
+          const lastEntry = logEntries[logEntries.length - 1];
+          lastEntry.error = err.response?.data?.message || err.message;
+          errors++;
+          console.error(`[Reconcile] Failed to create contact ${abcName}:`, lastEntry.error);
+        }
+      } else {
+        unmatched++;
+      }
       continue;
     }
 

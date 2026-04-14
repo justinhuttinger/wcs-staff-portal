@@ -314,6 +314,7 @@ export default function ABCSyncAdmin() {
               <option value="add_tag">Add Tag</option>
               <option value="remove_tag">Remove Tag</option>
               <option value="update_field">Update Field</option>
+              <option value="create_contact">Create Contact</option>
             </select>
             <button
               onClick={() => { const v = !clFilters.errors_only; setClFilters(f => ({ ...f, errors_only: v })); loadChangelog(1, { errors_only: v }) }}
@@ -358,12 +359,14 @@ export default function ABCSyncAdmin() {
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
                         entry.action === 'add_tag' ? 'bg-green-500/10 text-green-400' :
                         entry.action === 'remove_tag' ? 'bg-red-500/10 text-red-400' :
+                        entry.action === 'create_contact' ? 'bg-purple-500/10 text-purple-400' :
                         'bg-blue-500/10 text-blue-400'
-                      }`}>{entry.action.replace('_', ' ')}</span>
+                      }`}>{entry.action.replace(/_/g, ' ')}</span>
                     </span>
                     <span className="col-span-3 text-text-muted truncate">
                       {entry.detail?.tag && `Tag: ${entry.detail.tag}`}
                       {entry.detail?.field && `${entry.detail.field}: ${entry.detail.from || '—'} → ${entry.detail.to}`}
+                      {entry.action === 'create_contact' && `New: ${entry.detail?.membership_type || ''}`}
                     </span>
                     <span className="text-center">{entry.applied ? '✅' : '⏸'}</span>
                     <span className="text-center">{entry.error ? '❌' : ''}</span>

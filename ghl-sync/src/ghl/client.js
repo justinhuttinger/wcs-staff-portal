@@ -34,6 +34,30 @@ async function get(path, params = {}, apiKey) {
   }
 }
 
+async function post(path, body = {}, apiKey) {
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await axios.post(`${BASE_URL}${path}`, body, {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Version': '2021-07-28',
+          'Content-Type': 'application/json',
+        },
+        timeout: 30000,
+      });
+      return res.data;
+    } catch (err) {
+      if (err.response?.status === 429 && attempt < MAX_RETRIES) {
+        const delay = BACKOFF[attempt - 1] || 60000;
+        console.warn(`[GHL] Rate limited on POST ${path}, retrying in ${delay / 1000}s (attempt ${attempt}/${MAX_RETRIES})`);
+        await sleep(delay);
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 /**
  * Paginate through a GHL endpoint.
  * @param {string} path - API path
@@ -125,4 +149,4 @@ async function put(path, body = {}, apiKey) {
   }
 }
 
-module.exports = { get, put, getPaginated, sleep };
+module.exports = { get, post, put, getPaginated, sleep };
