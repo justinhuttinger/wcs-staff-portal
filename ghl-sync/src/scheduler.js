@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const { fullSync } = require('./sync/fullSync');
 const { deltaSync } = require('./sync/deltaSync');
 const { abcSync } = require('./abc/abcSync');
+const { alertSyncFailed } = require('./alerts');
 
 function startScheduler() {
   const intervalMinutes = process.env.SYNC_INTERVAL_MINUTES || 10;
@@ -34,6 +35,7 @@ function startScheduler() {
       await abcSync();
     } catch (err) {
       console.error('[Scheduler] ABC sync failed:', err.message);
+      await alertSyncFailed(err).catch(() => {});
     }
   });
 
