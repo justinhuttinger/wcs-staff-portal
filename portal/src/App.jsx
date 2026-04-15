@@ -172,11 +172,13 @@ export default function App() {
     }
   }, [location])
 
+  const bgImage = LOCATION_BACKGROUNDS[location.toLowerCase()]
+
   if (!user) {
     if (kioskMode === 'dayone') {
       return <div className="min-h-screen bg-bg flex items-center justify-center"><p className="text-text-muted text-sm">Loading Day One Tracker...</p></div>
     }
-    return <LoginScreen onLogin={handleLogin} />
+    return <LoginScreen onLogin={handleLogin} bgImage={bgImage} />
   }
 
   // Kiosk mode: show only Day One Tracker, no header/navigation
@@ -193,8 +195,6 @@ export default function App() {
       </div>
     )
   }
-
-  const bgImage = LOCATION_BACKGROUNDS[location.toLowerCase()]
 
   return (
     <div className="min-h-screen bg-bg flex flex-col relative">
@@ -241,45 +241,25 @@ export default function App() {
 
       <div className="relative z-10 flex-1 flex flex-col">
       {showAdmin ? (
-        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
-          <AdminPanel onBack={() => setShowAdmin(false)} isElectron={isElectron} onLocationChange={(loc) => { setLocationOverride(loc); localStorage.setItem('wcs_location_override', loc) }} />
-        </div>
+        <AdminPanel onBack={() => setShowAdmin(false)} isElectron={isElectron} onLocationChange={(loc) => { setLocationOverride(loc); localStorage.setItem('wcs_location_override', loc) }} />
       ) : showCalendar ? (
-        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
-          <CalendarView user={user} onBack={() => setShowCalendar(false)} location={location} isAdmin={isAdmin} />
-        </div>
+        <CalendarView user={user} onBack={() => setShowCalendar(false)} location={location} isAdmin={isAdmin} />
       ) : showTrainerAvail ? (
-        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
-          <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={isAdmin} />
-        </div>
+        <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={isAdmin} />
       ) : showMetaAds ? (
-        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
-          <MarketingView onBack={() => setShowMetaAds(false)} />
-        </div>
+        <MarketingView onBack={() => setShowMetaAds(false)} />
       ) : showTickets ? (
-        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
-          <TicketsView onBack={() => setShowTickets(false)} />
-        </div>
+        <TicketsView onBack={() => setShowTickets(false)} />
       ) : showHelpCenter ? (
-        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
-          <HelpCenterView user={user} onBack={() => setShowHelpCenter(false)} />
-        </div>
+        <HelpCenterView user={user} onBack={() => setShowHelpCenter(false)} />
       ) : showHR ? (
-        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
-          <HRView user={user} onBack={() => setShowHR(false)} />
-        </div>
+        <HRView user={user} onBack={() => setShowHR(false)} />
       ) : showCommunicationNotes ? (
-        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
-          <CommunicationNotesView user={user} onBack={() => setShowCommunicationNotes(false)} />
-        </div>
+        <CommunicationNotesView user={user} onBack={() => setShowCommunicationNotes(false)} />
       ) : showLeaderboard ? (
-        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
-          <LeaderboardView user={user} onBack={() => setShowLeaderboard(false)} location={location} />
-        </div>
+        <LeaderboardView user={user} onBack={() => setShowLeaderboard(false)} location={location} />
       ) : showReporting ? (
-        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
-          <ReportingView user={user} onBack={() => setShowReporting(false)} location={location} isAdmin={isAdmin} />
-        </div>
+        <ReportingView user={user} onBack={() => setShowReporting(false)} location={location} isAdmin={isAdmin} />
       ) : (
         <main className="flex-1 flex items-start pt-1 pb-12">
           <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onMetaAds={() => setShowMetaAds(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => setShowReporting(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} />

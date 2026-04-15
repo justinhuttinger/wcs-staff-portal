@@ -1,7 +1,21 @@
 import { useState } from 'react'
 import { login, changePassword, resetPassword } from '../lib/api'
 
-export default function LoginScreen({ onLogin }) {
+function BgPhoto({ bgImage, children }) {
+  return (
+    <div className="min-h-screen bg-bg flex items-center justify-center relative">
+      {bgImage && (
+        <>
+          <div className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat" style={{ backgroundImage: `url(${bgImage})` }} />
+          <div className="fixed inset-0 z-0 bg-black/60" />
+        </>
+      )}
+      <div className="relative z-10">{children}</div>
+    </div>
+  )
+}
+
+export default function LoginScreen({ onLogin, bgImage }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -84,7 +98,7 @@ export default function LoginScreen({ onLogin }) {
 
   if (resetMode) {
     return (
-      <div className="min-h-screen bg-bg flex items-center justify-center">
+      <BgPhoto bgImage={bgImage}>
         <div className="bg-surface rounded-2xl border border-border p-8 w-full max-w-sm">
           <h1 className="text-xl font-bold text-text-primary mb-1">Reset Password</h1>
           <p className="text-sm text-text-muted mb-6">Enter your email to receive a reset link.</p>
@@ -116,13 +130,13 @@ export default function LoginScreen({ onLogin }) {
             </button>
           </form>
         </div>
-      </div>
+      </BgPhoto>
     )
   }
 
   if (mustChange) {
     return (
-      <div className="min-h-screen bg-bg flex items-center justify-center">
+      <BgPhoto bgImage={bgImage}>
         <div className="bg-surface rounded-2xl border border-border p-8 w-full max-w-sm">
           <h1 className="text-xl font-bold text-text-primary mb-1">Change Password</h1>
           <p className="text-sm text-text-muted mb-6">You must set a new password before continuing.</p>
@@ -189,12 +203,12 @@ export default function LoginScreen({ onLogin }) {
             </button>
           </form>
         </div>
-      </div>
+      </BgPhoto>
     )
   }
 
   return (
-    <div className="min-h-screen bg-bg flex items-center justify-center">
+    <BgPhoto bgImage={bgImage}>
       <div className="bg-surface rounded-2xl border border-border p-8 w-full max-w-sm">
         <div className="text-center mb-6">
           <img src="/wcs-logo.png" alt="WCS" className="h-16 w-16 rounded-full mx-auto mb-3" />
@@ -253,6 +267,6 @@ export default function LoginScreen({ onLogin }) {
           </button>
         </form>
       </div>
-    </div>
+    </BgPhoto>
   )
 }
