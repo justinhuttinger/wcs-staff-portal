@@ -122,32 +122,33 @@ router.get('/runs', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 20
 
-    // Use raw SQL via RPC for efficient DISTINCT ON query
-    // This grabs one row per run_id using the run_at index — fast even on large tables
-    const { data, error } = await supabaseAdmin.rpc('get_recent_run_ids', { run_limit: limit })
-
-    if (!error && data) {
-      return res.json(data)
-    }
-
-    // Fallback: scan recent entries
-    console.warn('[ABC Sync] get_recent_run_ids failed:', error?.message)
-    const { data: recent, error: fbErr } = await supabaseAdmin
+    // With change detection, runs are small (~20-400 entries), so 1000 rows covers many runs
+    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    const { data: recent, error } = await supabaseAdmin
       .from('abc_sync_run_log')
-      .select('run_id, run_at, dry_run')
+      .select('run_id, run_at, dry_run, action, error')
+      .gte('run_at', cutoff)
       .order('run_at', { ascending: false })
-      .limit(5000)
+      .limit(1000)
 
-    if (fbErr) throw fbErr
+    if (error) throw error
 
-    const seen = new Map()
+    // Aggregate per run_id
+    const runMap = new Map()
     for (const r of (recent || [])) {
-      if (!seen.has(r.run_id)) {
-        seen.set(r.run_id, { run_id: r.run_id, run_at: r.run_at, dry_run: r.dry_run })
+      if (!runMap.has(r.run_id)) {
+        runMap.set(r.run_id, {
+          run_id: r.run_id, run_at: r.run_at, dry_run: r.dry_run,
+          matched: 0, field_updates: 0, errors: 0,
+        })
       }
+      const run = runMap.get(r.run_id)
+      if (r.action !== 'no_match') run.matched++
+      if (r.action === 'update_field') run.field_updates++
+      if (r.error) run.errors++
     }
 
-    res.json(Array.from(seen.values()).slice(0, limit))
+    res.json(Array.from(runMap.values()).slice(0, limit))
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
