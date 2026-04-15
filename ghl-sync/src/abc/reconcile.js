@@ -198,7 +198,7 @@ async function reconcileLocation(location, runId) {
       }
 
       // Skip members with no email AND no phone — can't reach them
-      const hasContact = abc.email || abc.primary_phone || abc.mobile_phone;
+      const hasContact = (abc.email || '').trim() || abc.primary_phone || abc.mobile_phone;
       if (!hasContact) {
         unmatched++;
         logEntries.push({
@@ -215,6 +215,7 @@ async function reconcileLocation(location, runId) {
       const abcName = `${abc.first_name || ''} ${abc.last_name || ''}`.trim();
       const phone = abc.primary_phone || abc.mobile_phone || null;
       const signDate = abc.sign_date || abc.since_date;
+      const trimmedEmail = (abc.email || '').trim();
 
       // Build custom fields for the new contact
       const newCustomFields = {};
@@ -233,10 +234,10 @@ async function reconcileLocation(location, runId) {
         locationId,
         firstName: abc.first_name || '',
         lastName: abc.last_name || '',
-        email: abc.email || undefined,
+        email: trimmedEmail || undefined,
         phone: phone || undefined,
         tags: [ABC_TAGS.active],
-        customFields: Object.entries(newCustomFields).map(([id, value]) => ({ id, field_key: id, value })),
+        customFields: Object.entries(newCustomFields).map(([id, value]) => ({ id, value })),
       };
 
       logEntries.push({
@@ -285,40 +286,54 @@ async function reconcileLocation(location, runId) {
     const needsRemoveTag = currentTags.includes(removeTag);
 
     // --- Custom field logic ---
+    // Normalize values to strings for comparison — GHL stores everything as strings in JSONB
+    const norm = (v) => (v == null ? '' : String(v).trim());
     const customFieldUpdates = {};
     const cf = ghlContact.custom_fields || {};
 
     // abc_member_id — always write to ensure it's set
     const memberIdFieldId = fieldKeyToId[ABC_GHL_FIELD_MAP.abc_member_id];
-    if (memberIdFieldId && cf[memberIdFieldId] !== abc.member_id) {
-      customFieldUpdates[memberIdFieldId] = abc.member_id;
+    if (memberIdFieldId) {
+      const desired = norm(abc.member_id);
+      if (desired && norm(cf[memberIdFieldId]) !== desired) {
+        customFieldUpdates[memberIdFieldId] = abc.member_id;
+      }
     }
 
     // membership_type
     const membershipTypeFieldId = fieldKeyToId[ABC_GHL_FIELD_MAP.membership_type];
-    if (membershipTypeFieldId && cf[membershipTypeFieldId] !== abc.membership_type) {
-      customFieldUpdates[membershipTypeFieldId] = abc.membership_type || '';
+    if (membershipTypeFieldId) {
+      const desired = norm(abc.membership_type);
+      if (norm(cf[membershipTypeFieldId]) !== desired) {
+        customFieldUpdates[membershipTypeFieldId] = abc.membership_type || '';
+      }
     }
 
     // member_status
     const memberStatusFieldId = fieldKeyToId[ABC_GHL_FIELD_MAP.member_status];
-    if (memberStatusFieldId && cf[memberStatusFieldId] !== abc.member_status) {
-      customFieldUpdates[memberStatusFieldId] = abc.member_status || '';
+    if (memberStatusFieldId) {
+      const desired = norm(abc.member_status);
+      if (norm(cf[memberStatusFieldId]) !== desired) {
+        customFieldUpdates[memberStatusFieldId] = abc.member_status || '';
+      }
     }
 
     // member_sign_date ← agreement.signDate (actual contract sign date, not begin date)
     const actualSignDate = abc.sign_date || abc.since_date;
     const signDateFieldId = fieldKeyToId[ABC_GHL_FIELD_MAP.member_sign_date];
-    if (signDateFieldId && actualSignDate && cf[signDateFieldId] !== actualSignDate) {
-      customFieldUpdates[signDateFieldId] = actualSignDate;
+    if (signDateFieldId) {
+      const desired = norm(actualSignDate);
+      if (desired && norm(cf[signDateFieldId]) !== desired) {
+        customFieldUpdates[signDateFieldId] = actualSignDate;
+      }
     }
 
     // cancel_date ← memberStatusDate (only when inactive)
     const cancelDateFieldId = fieldKeyToId[ABC_GHL_FIELD_MAP.cancel_date];
     if (cancelDateFieldId) {
-      if (!isActive && abc.member_status_date && cf[cancelDateFieldId] !== abc.member_status_date) {
+      if (!isActive && abc.member_status_date && norm(cf[cancelDateFieldId]) !== norm(abc.member_status_date)) {
         customFieldUpdates[cancelDateFieldId] = abc.member_status_date;
-      } else if (isActive && cf[cancelDateFieldId]) {
+      } else if (isActive && norm(cf[cancelDateFieldId]) !== '') {
         // Clear cancel date if member is now active
         customFieldUpdates[cancelDateFieldId] = '';
       }
@@ -326,8 +341,11 @@ async function reconcileLocation(location, runId) {
 
     // salesperson
     const salespersonFieldId = fieldKeyToId[ABC_GHL_FIELD_MAP.salesperson];
-    if (salespersonFieldId && abc.sales_person_name && cf[salespersonFieldId] !== abc.sales_person_name) {
-      customFieldUpdates[salespersonFieldId] = abc.sales_person_name;
+    if (salespersonFieldId) {
+      const desired = norm(abc.sales_person_name);
+      if (desired && norm(cf[salespersonFieldId]) !== desired) {
+        customFieldUpdates[salespersonFieldId] = abc.sales_person_name;
+      }
     }
 
     const hasChanges = needsAddTag || needsRemoveTag || Object.keys(customFieldUpdates).length > 0;
@@ -346,7 +364,7 @@ async function reconcileLocation(location, runId) {
       updateBody.tags = newTags;
     }
     if (Object.keys(customFieldUpdates).length > 0) {
-      updateBody.customFields = Object.entries(customFieldUpdates).map(([id, value]) => ({ id, field_key: id, value }));
+      updateBody.customFields = Object.entries(customFieldUpdates).map(([id, value]) => ({ id, value }));
     }
 
     // Log tag changes
