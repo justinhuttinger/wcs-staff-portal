@@ -168,22 +168,16 @@ async function buildClients(clubNumber, clubName) {
   const recClients = Object.values(recMap)
   const recIds = new Set(Object.keys(recMap))
 
-  // Log unique type/status values for debugging
-  const typeDescs = new Set(allSvcs.map(s => s.recurringTypeDesc || '(empty)'))
-  const statuses = new Set(allSvcs.map(s => s.recurringServiceStatus || '(empty)'))
-  console.log(`[PT Roster] ${clubName}: types: [${[...typeDescs].join(', ')}] statuses: [${[...statuses].join(', ')}]`)
 
   // Build PIF candidates
   const cutoff = new Date()
   cutoff.setMonth(cutoff.getMonth() - 6)
   const pifMap = {}
-  let pifSkipRec = 0, pifSkipType = 0, pifSkipDate = 0, pifFound = 0
   for (const s of allSvcs) {
-    if (recIds.has(s.memberId)) { pifSkipRec++; continue }
-    if (!(s.recurringTypeDesc || '').includes('Paid in Full')) { pifSkipType++; continue }
+    if (recIds.has(s.memberId)) continue
+    if (!(s.recurringTypeDesc || '').includes('Paid in Full')) continue
     const sd = s.recurringServiceDates?.saleDate
-    if (!sd || new Date(sd) < cutoff) { pifSkipDate++; continue }
-    pifFound++
+    if (!sd || new Date(sd) < cutoff) continue
     if (!pifMap[s.memberId]) {
       pifMap[s.memberId] = {
         memberId: s.memberId,
@@ -219,7 +213,7 @@ async function buildClients(clubNumber, clubName) {
     pifResults.push(...batchResults.filter(Boolean))
     if (i + 5 < pifCandidates.length) await new Promise(r => setTimeout(r, 200))
   }
-  console.log(`[PT Roster] ${clubName}: ${allSvcs.length} total svcs, ${recClients.length} recurring clients, PIF scan: ${pifSkipRec} skip(already rec), ${pifSkipType} skip(not PIF type), ${pifSkipDate} skip(old date), ${pifFound} found → ${pifCandidates.length} unique candidates → ${pifResults.length} with active sessions`)
+  console.log(`[PT Roster] ${clubName}: ${recClients.length} recurring, ${pifCandidates.length} PIF candidates, ${pifResults.length} PIF with sessions`)
 
   return recClients.concat(pifResults)
 }
