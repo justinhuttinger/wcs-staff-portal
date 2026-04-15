@@ -233,7 +233,6 @@ export default function ABCSyncAdmin() {
         {[
           { key: 'overview', label: 'Per-Club Breakdown' },
           { key: 'changelog', label: `Change Log (${totals.tag_changes + totals.field_updates})` },
-          { key: 'unmatched', label: `Unmatched (${totals.unmatched})` },
         ].map(t => (
           <button
             key={t.key}
@@ -362,18 +361,17 @@ export default function ABCSyncAdmin() {
                 {/* Header */}
                 <div className="grid grid-cols-12 gap-2 px-4 py-2 text-xs text-text-muted uppercase tracking-wide font-semibold">
                   <span className="col-span-2">Club</span>
-                  <span className="col-span-3">Contact</span>
+                  <span className="col-span-2">Contact</span>
                   <span className="col-span-2">Action</span>
                   <span className="col-span-3">Detail</span>
-                  <span className="text-center">Applied</span>
-                  <span className="text-center">Error</span>
+                  <span className="col-span-3">Error</span>
                 </div>
                 {changelog.data.map((entry, i) => (
-                  <div key={i} className="grid grid-cols-12 gap-2 px-4 py-2 bg-surface border border-border rounded-lg text-xs items-center">
+                  <div key={i} className={`grid grid-cols-12 gap-2 px-4 py-2 border rounded-lg text-xs items-center ${entry.error ? 'bg-red-50 border-red-200' : 'bg-surface border-border'}`}>
                     <span className="col-span-2 text-text-muted truncate">{entry.club_name}</span>
-                    <div className="col-span-3 truncate">
+                    <div className="col-span-2 truncate">
                       <span className="text-text-primary">{entry.ghl_contact_name}</span>
-                      {entry.ghl_contact_email && <span className="text-text-muted block truncate">{entry.ghl_contact_email}</span>}
+                      {entry.ghl_contact_email && entry.ghl_contact_email.trim() && <span className="text-text-muted block truncate">{entry.ghl_contact_email}</span>}
                     </div>
                     <span className="col-span-2">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -388,8 +386,9 @@ export default function ABCSyncAdmin() {
                       {entry.detail?.field && `${entry.detail.field}: ${entry.detail.from || '—'} → ${entry.detail.to}`}
                       {entry.action === 'create_contact' && `New: ${entry.detail?.membership_type || ''}`}
                     </span>
-                    <span className="text-center">{entry.applied ? '✅' : '⏸'}</span>
-                    <span className="text-center">{entry.error ? '❌' : ''}</span>
+                    <span className="col-span-3 text-red-500 text-[11px] truncate" title={entry.error || ''}>
+                      {entry.error ? entry.error.replace(/^\["|"\]$/g, '').slice(0, 60) : ''}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -406,49 +405,6 @@ export default function ABCSyncAdmin() {
         </div>
       )}
 
-      {tab === 'unmatched' && (
-        <div className="space-y-3">
-          <div className="flex gap-3">
-            <select
-              value={umClub}
-              onChange={e => { const v = e.target.value; setUmClub(v); loadUnmatched(1, v) }}
-              className="text-xs bg-surface border border-border rounded-lg px-3 py-1.5 text-text-primary"
-            >
-              <option value="">All Clubs</option>
-              {clubs.map(c => <option key={c.club_number} value={c.club_number}>{c.club_name}</option>)}
-            </select>
-            <span className="text-xs text-text-muted py-1.5">{unmatched.total} unmatched members</span>
-          </div>
-
-          {umLoading ? <p className="text-xs text-text-muted">Loading...</p> : (
-            <>
-              <div className="space-y-1">
-                <div className="grid grid-cols-6 gap-2 px-4 py-2 text-xs text-text-muted uppercase tracking-wide font-semibold">
-                  <span className="col-span-2">Name</span>
-                  <span className="col-span-2">Email</span>
-                  <span>Club</span>
-                  <span>ABC Member ID</span>
-                </div>
-                {unmatched.data.map((entry, i) => (
-                  <div key={i} className="grid grid-cols-6 gap-2 px-4 py-2 bg-surface border border-border rounded-lg text-xs items-center">
-                    <span className="col-span-2 text-text-primary">{entry.detail?.abc_name || '—'}</span>
-                    <span className="col-span-2 text-text-muted truncate">{entry.detail?.abc_email || '—'}</span>
-                    <span className="text-text-muted">{entry.club_name}</span>
-                    <span className="text-text-muted truncate">{entry.abc_member_id}</span>
-                  </div>
-                ))}
-              </div>
-              {unmatched.total > 50 && (
-                <div className="flex justify-center gap-2 pt-2">
-                  <button disabled={umPage <= 1} onClick={() => loadUnmatched(umPage - 1)} className="text-xs px-3 py-1 border border-border rounded-lg text-text-muted hover:text-text-primary disabled:opacity-30">Prev</button>
-                  <span className="text-xs text-text-muted py-1">Page {umPage} of {Math.ceil(unmatched.total / 50)}</span>
-                  <button disabled={umPage >= Math.ceil(unmatched.total / 50)} onClick={() => loadUnmatched(umPage + 1)} className="text-xs px-3 py-1 border border-border rounded-lg text-text-muted hover:text-text-primary disabled:opacity-30">Next</button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
     </div>
   )
 }
