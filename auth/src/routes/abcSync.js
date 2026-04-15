@@ -122,12 +122,33 @@ router.get('/runs', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 20
 
-    // Use database function for efficient aggregation (avoids 1000 row limit)
+    // Try database function first (efficient aggregation)
     const { data, error } = await supabaseAdmin
       .rpc('get_abc_sync_runs', { run_limit: limit })
 
-    if (error) throw error
-    res.json(data || [])
+    if (!error && data) {
+      return res.json(data)
+    }
+
+    // Fallback: get distinct run_ids then aggregate each
+    console.warn('[ABC Sync] RPC failed, using fallback:', error?.message)
+    const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+    const { data: runIds, error: runErr } = await supabaseAdmin
+      .from('abc_sync_run_log')
+      .select('run_id, run_at, dry_run')
+      .gte('run_at', cutoff)
+      .order('run_at', { ascending: false })
+      .limit(1)
+
+    if (runErr) throw runErr
+
+    // Get unique run_ids from recent entries
+    const seen = new Map()
+    for (const r of (runIds || [])) {
+      if (!seen.has(r.run_id)) seen.set(r.run_id, { run_id: r.run_id, run_at: r.run_at, dry_run: r.dry_run })
+    }
+
+    res.json(Array.from(seen.values()).slice(0, limit))
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
