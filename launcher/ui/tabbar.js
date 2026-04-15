@@ -6,7 +6,7 @@ const userArea = document.getElementById('user-area')
 
 let currentTabs = []
 
-ipc.on('tabs-updated', (event, tabs) => {
+ipc.on('tabs-updated', (tabs) => {
   currentTabs = tabs
   renderTabs()
 })
@@ -132,7 +132,7 @@ document.addEventListener('mouseup', () => {
   dragging = null
 })
 
-ipc.on('user-updated', (event, user) => {
+ipc.on('user-updated', (user) => {
   if (user.name) {
     userArea.innerHTML = ''
     const nameSpan = document.createElement('span')
@@ -162,7 +162,7 @@ document.getElementById('btn-close').addEventListener('click', () => ipc.send('w
 const maximizeSvg = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="0.5" y="0.5" width="9" height="9" rx="0.5"/></svg>'
 const restoreSvg = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="2.5" y="0.5" width="7" height="7" rx="0.5"/><rect x="0.5" y="2.5" width="7" height="7" rx="0.5"/></svg>'
 
-ipc.on('maximized-changed', (event, isMaximized) => {
+ipc.on('maximized-changed', (isMaximized) => {
   const btn = document.getElementById('btn-maximize')
   btn.innerHTML = isMaximized ? restoreSvg : maximizeSvg
   btn.title = isMaximized ? 'Restore' : 'Maximize'
