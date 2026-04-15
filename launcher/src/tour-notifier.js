@@ -1,5 +1,9 @@
 const { Notification } = require('electron')
+const fs = require('fs')
 const auth = require('./auth')
+
+const LOG_FILE = 'C:\\WCS\\app.log'
+function log(msg) { try { fs.appendFileSync(LOG_FILE, new Date().toISOString() + ' ' + msg + '\n') } catch {} }
 
 const POLL_INTERVAL = 5 * 60 * 1000 // 5 minutes
 const NOTIFY_BEFORE_MS = 15 * 60 * 1000 // 15 minutes
@@ -96,7 +100,7 @@ function checkAndNotify(tours) {
 
       notification.show()
       notifiedTourIds.add(tour.id)
-      console.log(`[Tour Notifier] Notified: ${name} at ${timeStr} (${minutesAway} min away)`)
+      log(`[Tour Notifier] Notified: ${name} at ${timeStr} (${minutesAway} min away)`)
     }
   }
 
@@ -108,11 +112,12 @@ async function poll() {
 
   try {
     const tours = await fetchTodayTours()
+    log(`[Tour Notifier] Polled: ${tours.length} tours today`)
     if (tours.length > 0) {
       checkAndNotify(tours)
     }
   } catch (err) {
-    console.warn('[Tour Notifier] Poll error:', err.message)
+    log('[Tour Notifier] Poll error: ' + err.message)
   }
 }
 
@@ -123,7 +128,7 @@ function start(onClick) {
   notifiedTourIds = new Set()
   isFirstPoll = true
 
-  console.log('[Tour Notifier] Starting — polling every 5 min')
+  log('[Tour Notifier] Starting — polling every 5 min')
 
   // First poll immediately
   poll()
@@ -140,7 +145,7 @@ function stop() {
   notifiedTourIds = new Set()
   isFirstPoll = true
   onClickCallback = null
-  console.log('[Tour Notifier] Stopped')
+  log('[Tour Notifier] Stopped')
 }
 
 module.exports = { start, stop }
