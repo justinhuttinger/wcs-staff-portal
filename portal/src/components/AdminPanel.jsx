@@ -58,7 +58,7 @@ function TileButton({ tile, onClick }) {
   )
 }
 
-export default function AdminPanel({ onBack, isElectron }) {
+export default function AdminPanel({ onBack, isElectron, onLocationChange }) {
   const [activeSection, setActiveSection] = useState(null)
   const [activeGroup, setActiveGroup] = useState(null)
 
@@ -84,7 +84,7 @@ export default function AdminPanel({ onBack, isElectron }) {
         {activeSection === 'tiles' && <AdminTilesTab />}
         {activeSection === 'roles' && <AdminRolesTab />}
         {activeSection === 'references' && <AdminReferencesTab />}
-        {activeSection === 'config' && <AdminConfig isElectron={isElectron} onClose={() => setActiveSection(null)} embedded />}
+        {activeSection === 'config' && <AdminConfig isElectron={isElectron} onClose={() => setActiveSection(null)} onLocationChange={onLocationChange} embedded />}
         {activeSection === 'sms' && <SMSHistoryTab />}
         {activeSection === 'webhooks' && <WebhookLogs />}
         {activeSection === 'sync' && <SyncStatusTile />}

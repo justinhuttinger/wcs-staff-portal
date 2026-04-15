@@ -47,6 +47,7 @@ export default function App() {
   const [showHelpCenter, setShowHelpCenter] = useState(false)
   const [showTickets, setShowTickets] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
+  const [locationOverride, setLocationOverride] = useState(() => localStorage.getItem('wcs_location_override') || '')
   const isElectron = !!window.wcsElectron
   const isAdmin = user?.staff?.role === 'admin'
 
@@ -160,14 +161,23 @@ export default function App() {
     }
   }
 
+  const location = locationOverride || locationParam || user?.staff?.locations?.find(l => l.is_primary)?.name || 'Salem'
+
+  // Preload background image for instant display
+  useEffect(() => {
+    const bg = LOCATION_BACKGROUNDS[location.toLowerCase()]
+    if (bg) {
+      const img = new Image()
+      img.src = bg
+    }
+  }, [location])
+
   if (!user) {
     if (kioskMode === 'dayone') {
       return <div className="min-h-screen bg-bg flex items-center justify-center"><p className="text-text-muted text-sm">Loading Day One Tracker...</p></div>
     }
     return <LoginScreen onLogin={handleLogin} />
   }
-
-  const location = locationParam || user?.staff?.locations?.find(l => l.is_primary)?.name || 'Salem'
 
   // Kiosk mode: show only Day One Tracker, no header/navigation
   if (kioskMode === 'dayone') {
@@ -185,12 +195,11 @@ export default function App() {
   }
 
   const bgImage = LOCATION_BACKGROUNDS[location.toLowerCase()]
-  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showMetaAds && !showTickets && !showHelpCenter && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting
 
   return (
     <div className="min-h-screen bg-bg flex flex-col relative">
-      {/* Location background image — home screen only */}
-      {isHome && bgImage && (
+      {/* Location background image — persists on all views */}
+      {bgImage && (
         <>
           <div className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat" style={{ backgroundImage: `url(${bgImage})` }} />
           <div className="fixed inset-0 z-0 bg-black/60" />
@@ -200,7 +209,7 @@ export default function App() {
         <div>
           <div className="flex items-center gap-3">
             <img src="/wcs-logo.png" alt="WCS" className="h-10 w-10 rounded-full" />
-            <h1 className={`text-2xl font-black tracking-[-0.5px] ${isHome && bgImage ? 'text-white' : 'text-text-primary'}`}>Portal</h1>
+            <h1 className={`text-2xl font-black tracking-[-0.5px] ${bgImage ? 'text-white' : 'text-text-primary'}`}>Portal</h1>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -208,7 +217,7 @@ export default function App() {
             <button
               onClick={() => setShowAdmin(true)}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
-                isHome && bgImage
+                bgImage
                   ? 'border-white/30 bg-white/10 text-white/80 hover:text-white hover:border-white/60'
                   : 'border-border bg-surface text-text-muted hover:text-wcs-red hover:border-wcs-red'
               }`}
@@ -216,11 +225,11 @@ export default function App() {
               Admin
             </button>
           )}
-          <span className={`text-sm font-semibold uppercase tracking-[0.8px] ${isHome && bgImage ? 'text-white/70' : 'text-text-muted'}`}>{location}</span>
+          <span className={`text-sm font-semibold uppercase tracking-[0.8px] ${bgImage ? 'text-white/70' : 'text-text-muted'}`}>{location}</span>
           <button
             onClick={handleLogout}
             className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
-              isHome && bgImage
+              bgImage
                 ? 'border-white/30 bg-white/10 text-white/80 hover:text-white hover:border-white/60'
                 : 'border-border bg-surface text-text-muted hover:text-wcs-red hover:border-wcs-red'
             }`}
@@ -232,25 +241,45 @@ export default function App() {
 
       <div className="relative z-10 flex-1 flex flex-col">
       {showAdmin ? (
-        <AdminPanel onBack={() => setShowAdmin(false)} isElectron={isElectron} />
+        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+          <AdminPanel onBack={() => setShowAdmin(false)} isElectron={isElectron} onLocationChange={(loc) => { setLocationOverride(loc); localStorage.setItem('wcs_location_override', loc) }} />
+        </div>
       ) : showCalendar ? (
-        <CalendarView user={user} onBack={() => setShowCalendar(false)} location={location} isAdmin={isAdmin} />
+        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+          <CalendarView user={user} onBack={() => setShowCalendar(false)} location={location} isAdmin={isAdmin} />
+        </div>
       ) : showTrainerAvail ? (
-        <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={isAdmin} />
+        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+          <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={isAdmin} />
+        </div>
       ) : showMetaAds ? (
-        <MarketingView onBack={() => setShowMetaAds(false)} />
+        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+          <MarketingView onBack={() => setShowMetaAds(false)} />
+        </div>
       ) : showTickets ? (
-        <TicketsView onBack={() => setShowTickets(false)} />
+        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+          <TicketsView onBack={() => setShowTickets(false)} />
+        </div>
       ) : showHelpCenter ? (
-        <HelpCenterView user={user} onBack={() => setShowHelpCenter(false)} />
+        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+          <HelpCenterView user={user} onBack={() => setShowHelpCenter(false)} />
+        </div>
       ) : showHR ? (
-        <HRView user={user} onBack={() => setShowHR(false)} />
+        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+          <HRView user={user} onBack={() => setShowHR(false)} />
+        </div>
       ) : showCommunicationNotes ? (
-        <CommunicationNotesView user={user} onBack={() => setShowCommunicationNotes(false)} />
+        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+          <CommunicationNotesView user={user} onBack={() => setShowCommunicationNotes(false)} />
+        </div>
       ) : showLeaderboard ? (
-        <LeaderboardView user={user} onBack={() => setShowLeaderboard(false)} location={location} />
+        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+          <LeaderboardView user={user} onBack={() => setShowLeaderboard(false)} location={location} />
+        </div>
       ) : showReporting ? (
-        <ReportingView user={user} onBack={() => setShowReporting(false)} location={location} isAdmin={isAdmin} />
+        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+          <ReportingView user={user} onBack={() => setShowReporting(false)} location={location} isAdmin={isAdmin} />
+        </div>
       ) : (
         <main className="flex-1 flex items-start pt-1 pb-12">
           <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onMetaAds={() => setShowMetaAds(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => setShowReporting(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} />

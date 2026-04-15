@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { LOCATION_NAMES as LOCATIONS } from '../config/locations'
 
-export default function AdminConfig({ isElectron, onClose }) {
+export default function AdminConfig({ isElectron, onClose, onLocationChange }) {
   const [location, setLocation] = useState('')
   const [abcUrl, setAbcUrl] = useState('')
   const [saving, setSaving] = useState(false)
@@ -13,6 +13,8 @@ export default function AdminConfig({ isElectron, onClose }) {
         setLocation(config.location || '')
         setAbcUrl(config.abc_url || '')
       })
+    } else {
+      setLocation(localStorage.getItem('wcs_location_override') || '')
     }
   }, [isElectron])
 
@@ -25,6 +27,10 @@ export default function AdminConfig({ isElectron, onClose }) {
       if (isElectron && window.wcsElectron) {
         await window.wcsElectron.setConfig({ location, abc_url: abcUrl })
         setMessage('Saved! Reloading portal...')
+      } else {
+        localStorage.setItem('wcs_location_override', location)
+        if (onLocationChange) onLocationChange(location)
+        setMessage('Location updated!')
       }
     } catch {
       setMessage('Failed to save configuration.')
