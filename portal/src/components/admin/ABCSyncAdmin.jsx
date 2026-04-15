@@ -59,9 +59,10 @@ export default function ABCSyncAdmin() {
     try {
       setLoading(true)
       setSelectedRun(runId)
+      setChangelog({ data: [], total: 0 })
+      setUnmatched({ data: [], total: 0 })
       const data = await getABCSyncSummary(runId)
       setSummary(data)
-      setTab('overview')
     } catch (err) {
       setError(err.message)
     }
