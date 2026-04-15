@@ -572,9 +572,11 @@ function DayItems({ items, onDayOneClick }) {
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${STATUS_COLORS[item.status] || STATUS_COLORS.Scheduled}`}>
-              {item.status}
-            </span>
+            {!(item.type === 'tour' && item.status !== 'Cancelled') && (
+              <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${STATUS_COLORS[item.status] || STATUS_COLORS.Scheduled}`}>
+                {item.status}
+              </span>
+            )}
             {item.type === 'dayone' && item.sale && (
               <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
                 item.sale === 'Sale' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200'
@@ -616,9 +618,11 @@ function CalendarCard({ item, onDayOneClick }) {
         <p className="text-[10px] text-text-muted truncate">{item.trainer}</p>
       )}
       <div className="flex items-center gap-1 mt-1 flex-wrap">
-        <span className={`px-1.5 py-0 rounded text-[10px] font-medium border ${STATUS_COLORS[item.status] || STATUS_COLORS.Scheduled}`}>
-          {item.status}
-        </span>
+        {!(item.type === 'tour' && item.status !== 'Cancelled') && (
+          <span className={`px-1.5 py-0 rounded text-[10px] font-medium border ${STATUS_COLORS[item.status] || STATUS_COLORS.Scheduled}`}>
+            {item.status}
+          </span>
+        )}
         {item.type === 'dayone' && item.sale && (
           <span className={`px-1.5 py-0 rounded text-[10px] font-medium border ${
             item.sale === 'Sale' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200'
