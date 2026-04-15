@@ -122,17 +122,24 @@ router.get('/runs', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 20
 
-    // Get distinct recent run_ids efficiently using the run_at index
-    // Fetch a small batch of recent rows and extract unique run_ids
-    const { data: recent, error } = await supabaseAdmin
+    // Use raw SQL via RPC for efficient DISTINCT ON query
+    // This grabs one row per run_id using the run_at index — fast even on large tables
+    const { data, error } = await supabaseAdmin.rpc('get_recent_run_ids', { run_limit: limit })
+
+    if (!error && data) {
+      return res.json(data)
+    }
+
+    // Fallback: scan recent entries
+    console.warn('[ABC Sync] get_recent_run_ids failed:', error?.message)
+    const { data: recent, error: fbErr } = await supabaseAdmin
       .from('abc_sync_run_log')
       .select('run_id, run_at, dry_run')
       .order('run_at', { ascending: false })
-      .limit(500)
+      .limit(5000)
 
-    if (error) throw error
+    if (fbErr) throw fbErr
 
-    // Extract unique runs (most recent entry per run_id)
     const seen = new Map()
     for (const r of (recent || [])) {
       if (!seen.has(r.run_id)) {
