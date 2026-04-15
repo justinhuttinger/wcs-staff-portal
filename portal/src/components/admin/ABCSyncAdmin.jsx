@@ -232,6 +232,7 @@ export default function ABCSyncAdmin() {
       <div className="flex gap-1 border-b border-border">
         {[
           { key: 'overview', label: 'Per-Club Breakdown' },
+          { key: 'history', label: `Run History (${runs.length})` },
           { key: 'changelog', label: `Change Log (${totals.tag_changes + totals.field_updates})` },
         ].map(t => (
           <button
@@ -307,6 +308,46 @@ export default function ABCSyncAdmin() {
                   )}
                 </div>
               )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'history' && (
+        <div className="space-y-1">
+          <div className="grid grid-cols-9 gap-2 px-4 py-2 text-xs text-text-muted uppercase tracking-wide font-semibold">
+            <span className="col-span-2">Date & Time</span>
+            <span className="text-center">Clubs</span>
+            <span className="text-right">Matched</span>
+            <span className="text-right">Field Updates</span>
+            <span className="text-right">Tags +/-</span>
+            <span className="text-right">Errors</span>
+            <span className="text-center">Mode</span>
+            <span></span>
+          </div>
+          {runs.map(run => (
+            <div
+              key={run.run_id}
+              className={`grid grid-cols-9 gap-2 px-4 py-3 bg-surface border rounded-xl text-sm items-center ${
+                selectedRun === run.run_id ? 'border-wcs-red bg-wcs-red/5' : 'border-border'
+              }`}
+            >
+              <span className="col-span-2 text-text-primary font-medium">{formatDate(run.run_at)}</span>
+              <span className="text-center text-text-muted">{run.clubs}</span>
+              <span className="text-right text-text-primary">{(run.matched || 0).toLocaleString()}</span>
+              <span className="text-right text-blue-500">{(run.field_updates || 0).toLocaleString()}</span>
+              <span className="text-right text-text-muted">{(run.tag_changes || 0).toLocaleString()}</span>
+              <span className={`text-right ${run.errors > 0 ? 'text-red-500 font-semibold' : 'text-text-muted'}`}>{(run.errors || 0).toLocaleString()}</span>
+              <span className="text-center">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${run.dry_run ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-600'}`}>
+                  {run.dry_run ? 'Dry' : 'Live'}
+                </span>
+              </span>
+              <span className="text-right">
+                {selectedRun !== run.run_id && (
+                  <button onClick={() => loadRun(run.run_id)} className="text-xs text-wcs-red hover:underline">View</button>
+                )}
+              </span>
             </div>
           ))}
         </div>

@@ -94,27 +94,44 @@ router.get('/summary', async (req, res) => {
   }
 })
 
-// GET /abc-sync/runs — list of recent run IDs
+// GET /abc-sync/runs — list of recent runs with aggregate stats
 router.get('/runs', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 20
     const { data, error } = await supabaseAdmin
-      .from('abc_sync_run_log')
-      .select('run_id, run_at, dry_run')
+      .from('abc_sync_run_summary')
+      .select('run_id, run_at, dry_run, club_name, matched, unmatched, tag_changes, field_updates, errors')
       .order('run_at', { ascending: false })
-      .limit(1000)
+      .limit(500)
 
     if (error) throw error
 
-    // Deduplicate by run_id, keep first (most recent entry per run)
-    const seen = new Map()
+    // Aggregate per run_id
+    const runMap = new Map()
     for (const row of (data || [])) {
-      if (!seen.has(row.run_id)) {
-        seen.set(row.run_id, { run_id: row.run_id, run_at: row.run_at, dry_run: row.dry_run })
+      if (!runMap.has(row.run_id)) {
+        runMap.set(row.run_id, {
+          run_id: row.run_id,
+          run_at: row.run_at,
+          dry_run: row.dry_run,
+          clubs: 0,
+          matched: 0,
+          unmatched: 0,
+          tag_changes: 0,
+          field_updates: 0,
+          errors: 0,
+        })
       }
+      const run = runMap.get(row.run_id)
+      run.clubs++
+      run.matched += row.matched || 0
+      run.unmatched += row.unmatched || 0
+      run.tag_changes += row.tag_changes || 0
+      run.field_updates += row.field_updates || 0
+      run.errors += row.errors || 0
     }
 
-    res.json(Array.from(seen.values()).slice(0, limit))
+    res.json(Array.from(runMap.values()).slice(0, limit))
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
