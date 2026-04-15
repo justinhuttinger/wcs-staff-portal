@@ -2,6 +2,9 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { autoUpdater } = require('electron-updater')
+
+// Set app name for Windows notifications
+app.setAppUserModelId('Portal')
 const LOG_FILE = 'C:\\WCS\\app.log'
 function log(msg) { try { fs.appendFileSync(LOG_FILE, new Date().toISOString() + ' ' + msg + '\n') } catch {} }
 log('=== APP STARTING ===')
