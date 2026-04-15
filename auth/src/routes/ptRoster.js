@@ -49,7 +49,9 @@ function dateRanges() {
 }
 
 async function abcGet(path, params = {}) {
-  const qs = new URLSearchParams(params).toString()
+  // Build query string manually to avoid URLSearchParams encoding commas
+  // ABC Financial expects literal commas in date ranges (e.g. 2020-01-01,2020-06-29)
+  const qs = Object.entries(params).map(([k, v]) => `${k}=${v}`).join('&')
   const url = `${ABC_BASE_URL}${path}${qs ? '?' + qs : ''}`
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 30000)
