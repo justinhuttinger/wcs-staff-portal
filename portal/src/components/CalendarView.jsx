@@ -373,8 +373,8 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
 
   return (
     <div className="w-full max-w-6xl mx-auto px-8 py-6">
-      {/* Header */}
-      <div className="mb-6">
+      {/* Header card */}
+      <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
         <button onClick={onBack} className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -402,15 +402,15 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
                   key={f.key}
                   onClick={() => setFilter(f.key)}
                   className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                    filter === f.key ? 'bg-surface text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'
+                    filter === f.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'
                   }`}
                 >{f.label}</button>
               ))}
             </div>
             {/* View Toggle */}
             <div className="flex gap-1 bg-bg rounded-lg p-1">
-              <button onClick={() => setView('day')} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === 'day' ? 'bg-surface text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>Day</button>
-              <button onClick={() => setView('week')} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === 'week' ? 'bg-surface text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>Week</button>
+              <button onClick={() => setView('day')} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === 'day' ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>Day</button>
+              <button onClick={() => setView('week')} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === 'week' ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>Week</button>
             </div>
           </div>
         </div>
@@ -424,7 +424,7 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
                 className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
                   locationId === loc.id
                     ? 'bg-wcs-red text-white border-wcs-red'
-                    : 'bg-surface text-text-muted border-border hover:text-text-primary hover:border-text-muted'
+                    : 'bg-bg text-text-muted border-border hover:text-text-primary hover:border-text-muted'
                 }`}
               >{loc.name}</button>
             ))}

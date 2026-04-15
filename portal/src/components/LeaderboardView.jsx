@@ -88,91 +88,92 @@ export default function LeaderboardView({ user, onBack, location }) {
 
   return (
     <div className="w-full max-w-6xl mx-auto px-8 pb-12">
-      {/* Back button */}
-      <button
-        onClick={onBack}
-        className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary hover:border-text-muted transition-colors mb-4 mt-2"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-        </svg>
-        Back to Portal
-      </button>
-
-      {/* Header */}
-      <h2 className="text-xl font-black text-text-primary mb-4">Leaderboard</h2>
-
-      {/* Month navigation */}
-      <div className="flex items-center gap-3 mb-4">
-        <button onClick={prevMonth} className="p-1.5 rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+      {/* Header card */}
+      <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6 mt-2">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-muted hover:text-text-primary hover:border-text-muted transition-colors mb-3"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
+          Back to Portal
         </button>
-        <span className="text-sm font-bold text-text-primary min-w-[160px] text-center">{formatMonth(monthDate)}</span>
-        <button
-          onClick={nextMonth}
-          disabled={isCurrentMonth(monthDate)}
-          className="p-1.5 rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-        {!isCurrentMonth(monthDate) && (
-          <button onClick={goToCurrentMonth} className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-border bg-surface text-wcs-red hover:bg-wcs-red/5 transition-colors">
-            This Month
+
+        <h2 className="text-xl font-black text-text-primary mb-4">Leaderboard</h2>
+
+        {/* Month navigation */}
+        <div className="flex items-center gap-3 mb-4">
+          <button onClick={prevMonth} className="p-1.5 rounded-lg border border-border bg-bg text-text-muted hover:text-text-primary transition-colors">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
           </button>
+          <span className="text-sm font-bold text-text-primary min-w-[160px] text-center">{formatMonth(monthDate)}</span>
+          <button
+            onClick={nextMonth}
+            disabled={isCurrentMonth(monthDate)}
+            className="p-1.5 rounded-lg border border-border bg-bg text-text-muted hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+          {!isCurrentMonth(monthDate) && (
+            <button onClick={goToCurrentMonth} className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-border bg-bg text-wcs-red hover:bg-wcs-red/5 transition-colors">
+              This Month
+            </button>
+          )}
+        </div>
+
+        {/* Point legend */}
+        <div className="flex items-center gap-4 text-xs text-text-muted px-1">
+          <span>Day One Booked <strong className="text-text-primary">10</strong></span>
+          <span>Membership <strong className="text-text-primary">5</strong></span>
+          <span>Same Day Sale <strong className="text-text-primary">5</strong></span>
+          <span>VIP <strong className="text-text-primary">2</strong></span>
+        </div>
+
+        {/* Manager tabs */}
+        {isManager && (
+          <div className="flex gap-1 mt-4">
+            <button
+              onClick={() => setTab('club')}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${tab === 'club' ? 'border-wcs-red bg-wcs-red/10 text-wcs-red' : 'border-border bg-bg text-text-muted hover:text-text-primary'}`}
+            >
+              My Club
+            </button>
+            <button
+              onClick={() => setTab('all')}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${tab === 'all' ? 'border-wcs-red bg-wcs-red/10 text-wcs-red' : 'border-border bg-bg text-text-muted hover:text-text-primary'}`}
+            >
+              All Locations
+            </button>
+          </div>
+        )}
+
+        {/* Location selector for admins on My Club tab */}
+        {isManager && tab === 'club' && (
+          <div className="flex flex-wrap gap-2 mt-4">
+            {ALL_LOCATIONS.map(loc => {
+              const slug = loc.toLowerCase()
+              return (
+                <button
+                  key={slug}
+                  onClick={() => setSelectedLocation(slug)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                    locationSlug === slug
+                      ? 'bg-wcs-red text-white border-wcs-red'
+                      : 'bg-bg text-text-muted border-border hover:text-text-primary hover:border-text-muted'
+                  }`}
+                >
+                  {loc}
+                </button>
+              )
+            })}
+          </div>
         )}
       </div>
-
-      {/* Point legend */}
-      <div className="flex items-center gap-4 text-xs text-text-muted mb-6 px-1">
-        <span>Day One Booked <strong className="text-text-primary">10</strong></span>
-        <span>Membership <strong className="text-text-primary">5</strong></span>
-        <span>Same Day Sale <strong className="text-text-primary">5</strong></span>
-        <span>VIP <strong className="text-text-primary">2</strong></span>
-      </div>
-
-      {/* Manager tabs */}
-      {isManager && (
-        <div className="flex gap-1 mb-4">
-          <button
-            onClick={() => setTab('club')}
-            className={`px-4 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${tab === 'club' ? 'border-wcs-red bg-wcs-red/10 text-wcs-red' : 'border-border bg-surface text-text-muted hover:text-text-primary'}`}
-          >
-            My Club
-          </button>
-          <button
-            onClick={() => setTab('all')}
-            className={`px-4 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${tab === 'all' ? 'border-wcs-red bg-wcs-red/10 text-wcs-red' : 'border-border bg-surface text-text-muted hover:text-text-primary'}`}
-          >
-            All Locations
-          </button>
-        </div>
-      )}
-
-      {/* Location selector for admins on My Club tab */}
-      {isManager && tab === 'club' && (
-        <div className="flex flex-wrap gap-2 mb-4">
-          {ALL_LOCATIONS.map(loc => {
-            const slug = loc.toLowerCase()
-            return (
-              <button
-                key={slug}
-                onClick={() => setSelectedLocation(slug)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                  locationSlug === slug
-                    ? 'bg-wcs-red text-white border-wcs-red'
-                    : 'bg-surface text-text-muted border-border hover:text-text-primary hover:border-text-muted'
-                }`}
-              >
-                {loc}
-              </button>
-            )
-          })}
-        </div>
-      )}
 
       {/* Content */}
       {loading ? (

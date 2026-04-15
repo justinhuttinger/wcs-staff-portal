@@ -45,17 +45,19 @@ export default function TicketsView({ onBack }) {
   // Tile picker — always shown first
   return (
     <div className="w-full max-w-3xl mx-auto px-8 pb-12">
-      <div className="flex items-center gap-3 mb-6">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary hover:border-text-muted transition-colors"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          Back to Portal
-        </button>
-        <h2 className="text-lg font-bold text-text-primary">Tickets & Support</h2>
+      <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-muted hover:text-text-primary hover:border-text-muted transition-colors"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Portal
+          </button>
+          <h2 className="text-lg font-bold text-text-primary">Tickets & Support</h2>
+        </div>
       </div>
 
       {loading ? (

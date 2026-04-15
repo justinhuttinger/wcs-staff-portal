@@ -15,7 +15,7 @@ export default function MarketingView({ onBack }) {
 
   return (
     <div className="max-w-3xl mx-auto w-full px-8 py-6">
-      <div className="mb-6">
+      <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
         <button
           onClick={onBack}
           className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2"

@@ -187,10 +187,10 @@ export default function TrainerAvailabilityView({ user, onBack, location, isAdmi
 
   return (
     <div className="max-w-3xl mx-auto w-full px-8 py-6">
-      <div className="mb-5">
+      <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
         <button
           onClick={onBack}
-          className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary hover:border-text-muted transition-colors mb-2"
+          className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-muted hover:text-text-primary hover:border-text-muted transition-colors mb-2"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -201,27 +201,27 @@ export default function TrainerAvailabilityView({ user, onBack, location, isAdmi
         {data?.calendarName && (
           <p className="text-xs text-text-muted mt-1">Calendar: {data.calendarName}</p>
         )}
-      </div>
 
-      {isAdmin ? (
-        <div className="flex flex-wrap gap-2 mb-6">
-          {LOCATIONS.map(loc => (
-            <button
-              key={loc.slug}
-              onClick={() => setLocationSlug(loc.slug)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                locationSlug === loc.slug
-                  ? 'bg-wcs-red text-white border-wcs-red'
-                  : 'bg-surface text-text-muted border-border hover:text-text-primary hover:border-text-muted'
-              }`}
-            >
-              {loc.label}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <p className="text-xs text-text-muted mb-6 uppercase tracking-wide font-semibold">{location}</p>
-      )}
+        {isAdmin ? (
+          <div className="flex flex-wrap gap-2 mt-4">
+            {LOCATIONS.map(loc => (
+              <button
+                key={loc.slug}
+                onClick={() => setLocationSlug(loc.slug)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  locationSlug === loc.slug
+                    ? 'bg-wcs-red text-white border-wcs-red'
+                    : 'bg-bg text-text-muted border-border hover:text-text-primary hover:border-text-muted'
+                }`}
+              >
+                {loc.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-text-muted mt-3 uppercase tracking-wide font-semibold">{location}</p>
+        )}
+      </div>
 
       {error && <p className="text-sm text-wcs-red mb-4">{error}</p>}
       {loading && <p className="text-text-muted text-sm py-8 text-center">Loading availability...</p>}

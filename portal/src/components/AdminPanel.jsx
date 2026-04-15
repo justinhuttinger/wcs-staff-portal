@@ -67,7 +67,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange }) {
     const tile = ALL_TILES.find(t => t.key === activeSection)
     return (
       <div className="w-full px-8 py-6">
-        <div className="mb-6">
+        <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
           <button
             onClick={() => setActiveSection(null)}
             className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2"
@@ -101,7 +101,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange }) {
     const group = GROUPS.find(g => g.key === activeGroup)
     return (
       <div className="w-full px-8 py-6">
-        <div className="mb-6">
+        <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
           <button
             onClick={() => setActiveGroup(null)}
             className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2"
@@ -125,12 +125,14 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange }) {
   // Render top-level groups
   return (
     <div className="w-full px-8 py-6">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold text-text-primary">Admin Panel</h2>
-        <button onClick={onBack}
-          className="px-4 py-2 rounded-lg border border-border text-text-muted text-sm font-medium hover:text-text-primary transition-colors">
-          Back to Portal
-        </button>
+      <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-text-primary">Admin Panel</h2>
+          <button onClick={onBack}
+            className="px-4 py-2 rounded-lg border border-border bg-bg text-text-muted text-sm font-medium hover:text-text-primary transition-colors">
+            Back to Portal
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-6 max-w-3xl mx-auto">

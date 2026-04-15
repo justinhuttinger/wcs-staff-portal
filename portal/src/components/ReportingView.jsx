@@ -125,8 +125,8 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
 
   return (
     <div className="w-full px-8 py-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="mb-5">
+      {/* Header card */}
+      <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
         <button
           onClick={handleBack}
           className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2"
@@ -136,64 +136,64 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           </svg>
           {activeReport ? 'Back to Reports' : 'Back to Portal'}
         </button>
-        <h2 className="text-xl font-bold text-text-primary">
+        <h2 className="text-xl font-bold text-text-primary mb-4">
           {activeReport ? REPORT_TILES.find(t => t.key === activeReport)?.label || 'Report' : 'Reporting'}
         </h2>
-      </div>
 
-      {/* Location Selector */}
-      {hasMultipleReportLocations ? (
-        <div className="flex flex-wrap gap-2 mb-4">
-          {(isAdmin ? LOCATIONS : [{ slug: 'all', label: 'All Locations' }, ...reportLocations.map(l => ({ slug: l.name.toLowerCase(), label: l.name }))]).map(loc => (
-            <button
-              key={loc.slug}
-              onClick={() => setLocationSlug(loc.slug)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                locationSlug === loc.slug
-                  ? 'bg-wcs-red text-white border-wcs-red'
-                  : 'bg-surface text-text-muted border-border hover:text-text-primary hover:border-text-muted'
-              }`}
-            >
-              {loc.label}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <p className="text-xs text-text-muted mb-4 uppercase tracking-wide font-semibold">{location}</p>
-      )}
+        {/* Location Selector */}
+        {hasMultipleReportLocations ? (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {(isAdmin ? LOCATIONS : [{ slug: 'all', label: 'All Locations' }, ...reportLocations.map(l => ({ slug: l.name.toLowerCase(), label: l.name }))]).map(loc => (
+              <button
+                key={loc.slug}
+                onClick={() => setLocationSlug(loc.slug)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  locationSlug === loc.slug
+                    ? 'bg-wcs-red text-white border-wcs-red'
+                    : 'bg-bg text-text-muted border-border hover:text-text-primary hover:border-text-muted'
+                }`}
+              >
+                {loc.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-text-muted mb-4 uppercase tracking-wide font-semibold">{location}</p>
+        )}
 
-      {/* Date Controls — right aligned */}
-      <div className="flex flex-wrap items-center gap-3 mb-6 justify-end">
-        <div className="flex flex-wrap gap-1.5">
-          {QUICK_RANGES.map(qr => (
-            <button
-              key={qr.key}
-              onClick={() => applyQuickRange(qr.key)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                activeQuick === qr.key
-                  ? 'bg-text-primary text-white border-text-primary'
-                  : 'bg-surface text-text-muted border-border hover:text-text-primary'
-              }`}
-            >
-              {qr.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-text-muted">From</label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={e => handleDateChange('start', e.target.value)}
-            className="px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
-          />
-          <label className="text-xs text-text-muted">To</label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={e => handleDateChange('end', e.target.value)}
-            className="px-3 py-1.5 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
-          />
+        {/* Date Controls */}
+        <div className="flex flex-wrap items-center gap-3 justify-end">
+          <div className="flex flex-wrap gap-1.5">
+            {QUICK_RANGES.map(qr => (
+              <button
+                key={qr.key}
+                onClick={() => applyQuickRange(qr.key)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  activeQuick === qr.key
+                    ? 'bg-text-primary text-white border-text-primary'
+                    : 'bg-bg text-text-muted border-border hover:text-text-primary'
+                }`}
+              >
+                {qr.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-text-muted">From</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={e => handleDateChange('start', e.target.value)}
+              className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
+            />
+            <label className="text-xs text-text-muted">To</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={e => handleDateChange('end', e.target.value)}
+              className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
+            />
+          </div>
         </div>
       </div>
 
