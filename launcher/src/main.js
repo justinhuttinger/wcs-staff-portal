@@ -101,21 +101,27 @@ app.on('ready', () => {
   ipcMain.on('portal-auth-login', (e, token, userName) => {
     log('Portal auth: user logged in')
     auth.setToken(token).then(() => {
-      // Staff profile loaded — start tour notifications
-      const tourNotifier = require('./tour-notifier')
-      tourNotifier.start(() => {
-        // On notification click: focus window + navigate portal to calendar
-        if (mainWindow) {
-          mainWindow.show()
-          mainWindow.focus()
-        }
-        tabManager.switchTo(1)
-        const portalTab = tabManager.tabs.get(1)
-        if (portalTab) {
-          portalTab.view.webContents.send('navigate-to', 'calendar')
-        }
-      })
-    }).catch(() => {})
+      log('Staff profile loaded, starting tour notifier')
+      try {
+        const tourNotifier = require('./tour-notifier')
+        tourNotifier.start(() => {
+          // On notification click: focus window + navigate portal to calendar
+          if (mainWindow) {
+            mainWindow.show()
+            mainWindow.focus()
+          }
+          tabManager.switchTo(1)
+          const portalTab = tabManager.tabs.get(1)
+          if (portalTab) {
+            portalTab.view.webContents.send('navigate-to', 'calendar')
+          }
+        })
+      } catch (err) {
+        log('[Tour Notifier] Failed to start: ' + err.message)
+      }
+    }).catch(err => {
+      log('setToken failed: ' + (err?.message || err))
+    })
     auth.fetchAllCredentials().then(() => {
       log('Credentials cached for session')
     }).catch(err => {

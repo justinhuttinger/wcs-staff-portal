@@ -308,7 +308,7 @@ export default function App() {
       )}
       </div>
 
-      <p className="fixed bottom-2 right-3 text-[10px] text-text-muted/40 select-none pointer-events-none">v1.3.0</p>
+      <p className="fixed bottom-2 right-3 text-[10px] text-text-muted/40 select-none pointer-events-none">v1.3.6</p>
 
       {savePrompt && (
         <SaveCredentialToast
