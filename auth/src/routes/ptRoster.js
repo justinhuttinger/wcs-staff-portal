@@ -74,7 +74,7 @@ async function fetchAllRanges(clubNumber, paramName) {
     let page = 1
     while (page <= 10) {
       const data = await abcGet(`/${clubNumber}/members/recurringservices`, {
-        [paramName]: range, serviceStatus: 'active', size: 200, page,
+        [paramName]: range, size: 200, page,
       })
       const svcs = data.recurringServices || []
       for (const s of svcs) {
@@ -168,9 +168,10 @@ async function buildClients(clubNumber, clubName) {
   const recClients = Object.values(recMap)
   const recIds = new Set(Object.keys(recMap))
 
-  // Log unique recurringTypeDesc values for debugging
+  // Log unique type/status values for debugging
   const typeDescs = new Set(allSvcs.map(s => s.recurringTypeDesc || '(empty)'))
-  console.log(`[PT Roster] ${clubName}: recurringTypeDesc values:`, [...typeDescs].join(', '))
+  const statuses = new Set(allSvcs.map(s => s.recurringServiceStatus || '(empty)'))
+  console.log(`[PT Roster] ${clubName}: types: [${[...typeDescs].join(', ')}] statuses: [${[...statuses].join(', ')}]`)
 
   // Build PIF candidates
   const cutoff = new Date()
