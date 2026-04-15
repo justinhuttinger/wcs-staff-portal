@@ -49,6 +49,7 @@ export default function MobileClubHealth({ startDate, endDate, locationSlug }) {
 
   useEffect(() => {
     let cancelled = false
+    setData(null)
     setLoading(true)
     setError(null)
     const params = {}

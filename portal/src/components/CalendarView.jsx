@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getTours, getDayOneTrackerAppointments, submitDayOneResult, getDayOneFieldOptions } from '../lib/api'
 
 // --- Helpers ---
@@ -275,9 +275,12 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
   const hasMultipleLocations = userLocations.length > 1
   const locationSlug = locationName.toLowerCase()
 
-  useEffect(() => { loadData() }, [currentDate, view, locationId, locationName])
+  const calRequestRef = useRef(0)
 
-  async function loadData() {
+  useEffect(() => {
+    const id = ++calRequestRef.current
+    setTours([])
+    setDayOnes([])
     setLoading(true)
     setError('')
 
@@ -291,20 +294,22 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
       dateParams.end_date = week[6]
     }
 
-    try {
-      const [toursRes, dayOneRes] = await Promise.all([
-        locationId
-          ? getTours({ location_id: locationId, ...dateParams }).catch(() => ({ tours: [] }))
-          : Promise.resolve({ tours: [] }),
-        getDayOneTrackerAppointments({ location_slug: locationSlug, ...dateParams }).catch(() => ({ appointments: [] })),
-      ])
+    Promise.all([
+      locationId
+        ? getTours({ location_id: locationId, ...dateParams }).catch(() => ({ tours: [] }))
+        : Promise.resolve({ tours: [] }),
+      getDayOneTrackerAppointments({ location_slug: locationSlug, ...dateParams }).catch(() => ({ appointments: [] })),
+    ]).then(([toursRes, dayOneRes]) => {
+      if (id !== calRequestRef.current) return
       setTours(toursRes.tours || [])
       setDayOnes((dayOneRes.appointments || []).sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time)))
-    } catch (err) {
+      setLoading(false)
+    }).catch(err => {
+      if (id !== calRequestRef.current) return
       setError(err.message)
-    }
-    setLoading(false)
-  }
+      setLoading(false)
+    })
+  }, [currentDate, view, locationId, locationName])
 
   function navigateDate(offset) {
     const d = new Date(currentDate + 'T12:00:00')

@@ -27,6 +27,7 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
 
   useEffect(() => {
     let cancelled = false
+    setData(null)
     setLoading(true)
     setError(null)
     const params = {}
