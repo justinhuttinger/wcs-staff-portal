@@ -474,6 +474,16 @@ export async function deleteTicketEmbed(id) {
   return api('/ticket-embeds/' + id, { method: 'DELETE' })
 }
 
+// App Settings
+export async function getAppSettings(prefix) {
+  const qs = prefix ? '?prefix=' + prefix : ''
+  return api('/config/app-settings' + qs)
+}
+
+export async function saveAppSettings(settings) {
+  return api('/config/app-settings', { method: 'PUT', body: JSON.stringify({ settings }) })
+}
+
 // Custom Fields
 export async function getCustomFields(location) {
   const qs = location ? '?location=' + location : ''

@@ -273,4 +273,45 @@ router.put('/role-visibility', requireRole('admin'), async (req, res) => {
   }
 })
 
+// --- App Config (key-value settings like Day One / VIP URLs) ---
+
+// GET /config/app-settings?prefix=dayone_url — get all matching keys
+router.get('/app-settings', async (req, res) => {
+  try {
+    const { prefix, key } = req.query
+    let query = supabaseAdmin.from('app_config').select('key, value')
+    if (key) {
+      query = query.eq('key', key)
+    } else if (prefix) {
+      query = query.like('key', prefix + '%')
+    }
+    const { data, error } = await query
+    if (error) throw error
+    const settings = {}
+    for (const row of (data || [])) settings[row.key] = row.value
+    res.json(settings)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// PUT /config/app-settings — admin only, upsert key-value pairs
+router.put('/app-settings', requireRole('admin'), async (req, res) => {
+  try {
+    const { settings } = req.body // { "dayone_url_salem": "https://...", ... }
+    if (!settings || typeof settings !== 'object') {
+      return res.status(400).json({ error: 'settings object required' })
+    }
+    for (const [key, value] of Object.entries(settings)) {
+      const { error } = await supabaseAdmin
+        .from('app_config')
+        .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+      if (error) throw error
+    }
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 module.exports = router

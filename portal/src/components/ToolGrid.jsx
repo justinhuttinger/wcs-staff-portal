@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import allTools from '../config/tools.json'
 import ToolButton from './ToolButton'
-import { getTiles, getDayOneTrackerAppointments, getTours, getLeaderboard, getCommunicationNotes } from '../lib/api'
+import { getTiles, getDayOneTrackerAppointments, getTours, getLeaderboard, getCommunicationNotes, getAppSettings } from '../lib/api'
 
 const TILE_ICONS = {
   dayOne: 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9 2 2 4-4',
@@ -92,6 +92,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   const [leaderboardData, setLeaderboardData] = useState(null)
   const [showPointsInfo, setShowPointsInfo] = useState(false)
   const [motivationalMsg, setMotivationalMsg] = useState(getMotivationalMessage())
+  const [dayoneUrl, setDayoneUrl] = useState(null)
+  const [vipUrl, setVipUrl] = useState(null)
 
   useEffect(() => {
     if (locationId) {
@@ -123,6 +125,14 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
     // Fetch unresolved comm notes count
     getCommunicationNotes({ status: 'unresolved' }).then(res => {
       setCommNotesBadge((res.notes || []).length)
+    }).catch(() => {})
+
+    // Fetch action link URLs for this location
+    getAppSettings('dayone_url_' + slug).then(settings => {
+      setDayoneUrl(settings['dayone_url_' + slug] || null)
+    }).catch(() => {})
+    getAppSettings('vip_url_' + slug).then(settings => {
+      setVipUrl(settings['vip_url_' + slug] || null)
     }).catch(() => {})
   }, [locationId, location])
 
@@ -227,47 +237,80 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
 
   return (
     <div className="w-full px-4 mx-auto">
-      {/* Score Card — compact single row */}
+      {/* Top banner row — Action buttons (Apps side) + Score Card (Tools side) */}
       {leaderboardData && !hideScoreCard && (() => {
         const totalAtLocation = leaderboardData.total_staff || totalStaff
         const displayRank = userRank || totalAtLocation || '—'
         return (
           <>
-            <div className="mb-5 rounded-[14px] bg-surface border border-border px-5 py-3 flex items-center gap-4">
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-sm font-semibold text-text-primary">{userName}</span>
-                <span className="text-xs text-text-muted">·</span>
-                <span className="text-xs font-medium text-text-muted">{ordinal(displayRank)} Place</span>
+            <div className="flex gap-10 mb-5">
+              {/* Action Buttons — above Apps */}
+              <div className="w-1/2 flex gap-3">
+                {dayoneUrl && (
+                  <a
+                    href={dayoneUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-2 rounded-[14px] bg-green-500 hover:bg-green-600 text-white font-bold text-sm transition-colors border border-green-600 px-4 py-3"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+                    </svg>
+                    Book Day Ones
+                  </a>
+                )}
+                {vipUrl && (
+                  <a
+                    href={vipUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-2 rounded-[14px] bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm transition-colors border border-amber-600 px-4 py-3"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
+                    </svg>
+                    Submit VIPs
+                  </a>
+                )}
+                {!dayoneUrl && !vipUrl && <div className="flex-1" />}
               </div>
-              <div className="h-5 w-px bg-border shrink-0" />
-              <span className="text-xl font-black text-wcs-red shrink-0">{userPoints} <span className="text-xs font-semibold text-text-muted">pts</span></span>
-              <div className="h-5 w-px bg-border shrink-0" />
-              <div className="flex items-center gap-1.5">
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[11px]">
-                  <strong className="text-blue-700">{myEntry?.memberships || 0}</strong>
-                  <span className="text-blue-600">MS</span>
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 border border-green-200 text-[11px]">
-                  <strong className="text-green-700">{myEntry?.day_ones || 0}</strong>
-                  <span className="text-green-600">D1</span>
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 border border-purple-200 text-[11px]">
-                  <strong className="text-purple-700">{myEntry?.same_day || 0}</strong>
-                  <span className="text-purple-600">SD</span>
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[11px]">
-                  <strong className="text-amber-700">{myEntry?.vips || 0}</strong>
-                  <span className="text-amber-600">VIP</span>
-                </span>
+
+              {/* Score Card — above Tools */}
+              <div className="w-1/2 rounded-[14px] bg-surface border border-border px-5 py-3 flex items-center gap-4">
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-sm font-semibold text-text-primary">{userName}</span>
+                  <span className="text-xs text-text-muted">·</span>
+                  <span className="text-xs font-medium text-text-muted">{ordinal(displayRank)} Place</span>
+                </div>
+                <div className="h-5 w-px bg-border shrink-0" />
+                <span className="text-xl font-black text-wcs-red shrink-0">{userPoints} <span className="text-xs font-semibold text-text-muted">pts</span></span>
+                <div className="h-5 w-px bg-border shrink-0" />
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[11px]">
+                    <strong className="text-blue-700">{myEntry?.memberships || 0}</strong>
+                    <span className="text-blue-600">MS</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 border border-green-200 text-[11px]">
+                    <strong className="text-green-700">{myEntry?.day_ones || 0}</strong>
+                    <span className="text-green-600">D1</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 border border-purple-200 text-[11px]">
+                    <strong className="text-purple-700">{myEntry?.same_day || 0}</strong>
+                    <span className="text-purple-600">SD</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[11px]">
+                    <strong className="text-amber-700">{myEntry?.vips || 0}</strong>
+                    <span className="text-amber-600">VIP</span>
+                  </span>
+                </div>
+                <button
+                  onClick={() => setShowPointsInfo(true)}
+                  className="text-[11px] text-text-muted hover:text-wcs-red transition-colors shrink-0 underline decoration-dotted"
+                >
+                  Learn More
+                </button>
+                <p className="ml-auto text-xs italic text-text-muted shrink-0 max-w-[140px] text-right leading-tight">{motivationalMsg}</p>
               </div>
-              <div className="h-5 w-px bg-border shrink-0" />
-              <button
-                onClick={() => setShowPointsInfo(true)}
-                className="text-[11px] text-text-muted hover:text-wcs-red transition-colors shrink-0 underline decoration-dotted"
-              >
-                Learn More
-              </button>
-              <p className="ml-auto text-xs italic text-text-muted shrink-0 max-w-[180px] text-right leading-tight">{motivationalMsg}</p>
             </div>
 
             {/* Points Info Modal */}
