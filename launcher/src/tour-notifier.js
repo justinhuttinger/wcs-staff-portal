@@ -27,18 +27,21 @@ async function fetchTodayTours() {
   const staff = auth.getStaff()
   if (!staff?.locations?.length) return []
 
-  const primaryLoc = staff.locations.find(l => l.is_primary) || staff.locations[0]
-  if (!primaryLoc) return []
+  // Use the kiosk config location, fall back to staff's primary
+  const { getLocation } = require('./config')
+  const configLocation = getLocation()
+  const matchedLoc = staff.locations.find(l => l.name.toLowerCase() === configLocation.toLowerCase())
+  const loc = matchedLoc || staff.locations.find(l => l.is_primary) || staff.locations[0]
+  if (!loc) return []
 
   const today = todayDateStr()
-  const { request } = require('./auth')
-  // Use the auth module's internal request (it has the token)
-  // But auth.js doesn't export request — we need to use net directly
   const { net } = require('electron')
   const { API_URL } = require('./config')
 
+  log(`[Tour Notifier] Fetching tours for location: ${loc.name} (${loc.id}) date: ${today}`)
+
   return new Promise((resolve) => {
-    const url = `${API_URL}/tours?location_id=${primaryLoc.id}&start_date=${today}&end_date=${today}`
+    const url = `${API_URL}/tours?location_id=${loc.id}&start_date=${today}&end_date=${today}`
     const req = net.request(url)
     req.setHeader('Authorization', 'Bearer ' + auth.getToken())
     req.setHeader('Accept', 'application/json')
@@ -49,6 +52,7 @@ async function fetchTodayTours() {
       res.on('end', () => {
         try {
           const parsed = JSON.parse(data)
+          log(`[Tour Notifier] API response keys: ${Object.keys(parsed).join(', ')}, tours: ${JSON.stringify(parsed.tours || parsed).substring(0, 200)}`)
           resolve(parsed.tours || parsed || [])
         } catch {
           resolve([])
