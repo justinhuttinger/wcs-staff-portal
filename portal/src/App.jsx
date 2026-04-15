@@ -241,43 +241,43 @@ export default function App() {
 
       <div className="relative z-10 flex-1 flex flex-col">
       {showAdmin ? (
-        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
           <AdminPanel onBack={() => setShowAdmin(false)} isElectron={isElectron} onLocationChange={(loc) => { setLocationOverride(loc); localStorage.setItem('wcs_location_override', loc) }} />
         </div>
       ) : showCalendar ? (
-        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
           <CalendarView user={user} onBack={() => setShowCalendar(false)} location={location} isAdmin={isAdmin} />
         </div>
       ) : showTrainerAvail ? (
-        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
           <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={isAdmin} />
         </div>
       ) : showMetaAds ? (
-        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
           <MarketingView onBack={() => setShowMetaAds(false)} />
         </div>
       ) : showTickets ? (
-        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
           <TicketsView onBack={() => setShowTickets(false)} />
         </div>
       ) : showHelpCenter ? (
-        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
           <HelpCenterView user={user} onBack={() => setShowHelpCenter(false)} />
         </div>
       ) : showHR ? (
-        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
           <HRView user={user} onBack={() => setShowHR(false)} />
         </div>
       ) : showCommunicationNotes ? (
-        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
           <CommunicationNotesView user={user} onBack={() => setShowCommunicationNotes(false)} />
         </div>
       ) : showLeaderboard ? (
-        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
           <LeaderboardView user={user} onBack={() => setShowLeaderboard(false)} location={location} />
         </div>
       ) : showReporting ? (
-        <div className={bgImage ? 'bg-bg/90 backdrop-blur-sm flex-1' : 'flex-1'}>
+        <div className={bgImage ? 'bg-bg flex-1' : 'flex-1'}>
           <ReportingView user={user} onBack={() => setShowReporting(false)} location={location} isAdmin={isAdmin} />
         </div>
       ) : (
