@@ -164,6 +164,9 @@ export default function ABCSyncAdmin() {
 
   return (
     <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 space-y-6">
+      {/* Refresh / error feedback */}
+      {loading && summary && <div className="text-xs text-wcs-red animate-pulse">Refreshing...</div>}
+      {error && summary && <div className="text-xs text-red-400">{error}</div>}
       {/* Dry Run Banner */}
       {dry_run ? (
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-5 py-3">
@@ -210,7 +213,7 @@ export default function ABCSyncAdmin() {
             Stop GHL Sync
           </button>
           {triggerMsg && <span className="text-xs text-text-muted">{triggerMsg}</span>}
-          <button onClick={loadInitial} className="text-xs text-wcs-red hover:underline">Refresh</button>
+          <button onClick={loadInitial} disabled={loading} className="text-xs text-wcs-red hover:underline disabled:opacity-50">{loading ? 'Refreshing...' : 'Refresh'}</button>
           {runs.length > 1 && (
             <select
               value={selectedRun || ''}
