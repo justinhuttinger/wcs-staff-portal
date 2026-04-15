@@ -100,7 +100,22 @@ app.on('ready', () => {
   // Auth state bridge — portal notifies us when user logs in/out
   ipcMain.on('portal-auth-login', (e, token, userName) => {
     log('Portal auth: user logged in')
-    auth.setToken(token)
+    auth.setToken(token).then(() => {
+      // Staff profile loaded — start tour notifications
+      const tourNotifier = require('./tour-notifier')
+      tourNotifier.start(() => {
+        // On notification click: focus window + navigate portal to calendar
+        if (mainWindow) {
+          mainWindow.show()
+          mainWindow.focus()
+        }
+        tabManager.switchTo(1)
+        const portalTab = tabManager.tabs.get(1)
+        if (portalTab) {
+          portalTab.view.webContents.send('navigate-to', 'calendar')
+        }
+      })
+    }).catch(() => {})
     auth.fetchAllCredentials().then(() => {
       log('Credentials cached for session')
     }).catch(err => {
@@ -115,6 +130,9 @@ app.on('ready', () => {
   ipcMain.on('portal-auth-logout', () => {
     log('Portal auth: user logged out')
     auth.logout()
+    // Stop tour notifications
+    const tourNotifier = require('./tour-notifier')
+    tourNotifier.stop()
 
     // Close all tabs except Portal
     tabManager.closeAllExceptPortal()

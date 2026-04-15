@@ -95,6 +95,23 @@ export default function App() {
         if (window.wcsElectron) window.wcsElectron.onLogout()
       })
     }
+    if (window.wcsElectron?.onNavigate) {
+      window.wcsElectron.onNavigate((view) => {
+        // Reset all views first
+        setShowAdmin(false)
+        setShowTrainerAvail(false)
+        setShowMetaAds(false)
+        setShowReporting(false)
+        setShowLeaderboard(false)
+        setShowCommunicationNotes(false)
+        setShowHR(false)
+        setShowHelpCenter(false)
+        setShowTickets(false)
+        // Navigate to requested view
+        if (view === 'calendar') setShowCalendar(true)
+        else setShowCalendar(false)
+      })
+    }
   }, [])
 
   useEffect(() => {

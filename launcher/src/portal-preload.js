@@ -30,4 +30,8 @@ contextBridge.exposeInMainWorld('wcsElectron', {
   onSignOut: (callback) => {
     ipcRenderer.on('trigger-signout', () => callback())
   },
+  // Listen for navigation commands (e.g., from tour notifications)
+  onNavigate: (callback) => {
+    ipcRenderer.on('navigate-to', (e, view) => callback(view))
+  },
 })
