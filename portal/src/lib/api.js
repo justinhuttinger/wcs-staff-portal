@@ -473,3 +473,9 @@ export async function updateTicketEmbed(id, data) {
 export async function deleteTicketEmbed(id) {
   return api('/ticket-embeds/' + id, { method: 'DELETE' })
 }
+
+// Custom Fields
+export async function getCustomFields(location) {
+  const qs = location ? '?location=' + location : ''
+  return api('/custom-fields' + qs)
+}

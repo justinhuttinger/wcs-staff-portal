@@ -56,6 +56,7 @@ app.use('/hr-documents', require('./routes/hrDocuments'))
 app.use('/help-center', require('./routes/helpCenter'))
 app.use('/ticket-embeds', require('./routes/ticketEmbeds'))
 app.use('/abc-sync', require('./routes/abcSync'))
+app.use('/custom-fields', require('./routes/customFields'))
 
 // Global error handler — catch unhandled errors, don't leak stack traces
 app.use((err, req, res, next) => {
