@@ -9,8 +9,7 @@ import MobileClubHealth from './components/reports/MobileClubHealth'
 import MobileMembership from './components/reports/MobileMembership'
 import MobilePTReport from './components/reports/MobilePTReport'
 import MobileMarketing from './components/reports/MobileMarketing'
-import MobileTours from './components/MobileTours'
-import MobileDayOneCalendar from './components/MobileDayOneCalendar'
+import MobileCalendar from './components/MobileCalendar'
 import MobileLeaderboard from './components/MobileLeaderboard'
 import MobileCommunicationNotes from './components/MobileCommunicationNotes'
 import MobileHR from './components/MobileHR'
@@ -212,7 +211,7 @@ export default function MobileApp() {
       case 'calendar':
       case 'tours':
       case 'dayone':
-        return <MobileDayOneCalendar user={user} />
+        return <MobileCalendar user={user} />
       case 'leaderboard':
         return <MobileLeaderboard user={user} />
       case 'comm-notes':
