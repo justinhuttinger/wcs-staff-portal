@@ -348,22 +348,28 @@ export default function MobileCommunicationNotes({ user }) {
           )}
         </div>
 
-        {/* Status tabs (leads+ only) */}
+        {/* Status buttons — large, color-coded (leads+ only) */}
         {canViewNotes && (
-          <div className="flex gap-2 mt-3">
+          <div className="grid grid-cols-3 gap-2 mt-3">
             {STATUS_TABS.map(s => {
               const isActive = statusTab === s.key
+              const colors = {
+                unresolved: isActive ? 'bg-amber-500 text-white border-amber-500' : 'bg-amber-50 text-amber-700 border-amber-200',
+                in_progress: isActive ? 'bg-blue-500 text-white border-blue-500' : 'bg-blue-50 text-blue-700 border-blue-200',
+                completed: isActive ? 'bg-green-500 text-white border-green-500' : 'bg-green-50 text-green-700 border-green-200',
+              }
               return (
                 <button
                   key={s.key}
                   onClick={() => setStatusTab(s.key)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap transition-colors ${
-                    isActive
-                      ? 'bg-wcs-red text-white border-wcs-red'
-                      : 'bg-surface text-text-muted border-border'
-                  }`}
+                  className={`flex items-center justify-center gap-1.5 px-3 py-3 text-xs font-bold rounded-xl border-2 transition-all ${colors[s.key]}`}
                 >
-                  {s.label} ({statusCounts[s.key] || 0})
+                  {s.label}
+                  <span className={`min-w-[20px] h-[20px] flex items-center justify-center rounded-full text-[11px] font-bold ${
+                    isActive ? 'bg-white/25 text-white' : 'bg-white text-text-primary'
+                  }`}>
+                    {statusCounts[s.key] || 0}
+                  </span>
                 </button>
               )
             })}
@@ -389,12 +395,12 @@ export default function MobileCommunicationNotes({ user }) {
           </div>
         )}
 
-        {/* Category filter (leads+ only) */}
+        {/* Category filter — color-coded pills (leads+ only) */}
         {canViewNotes && (
           <div className="flex gap-2 mt-2 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide">
             <button
               onClick={() => setCategoryFilter(null)}
-              className={`px-3 py-1 rounded-full text-[11px] font-medium border whitespace-nowrap shrink-0 transition-colors ${
+              className={`px-4 py-2 rounded-xl text-xs font-semibold border whitespace-nowrap shrink-0 transition-colors ${
                 !categoryFilter
                   ? 'bg-text-primary text-white border-text-primary'
                   : 'bg-surface text-text-muted border-border'
@@ -404,14 +410,15 @@ export default function MobileCommunicationNotes({ user }) {
             </button>
             {CATEGORIES.map(cat => {
               const isActive = categoryFilter === cat
+              const ringColor = { member: 'ring-blue-400', billing: 'ring-green-400', cancel: 'ring-red-400', equipment: 'ring-amber-400', other: 'ring-gray-400' }
               return (
                 <button
                   key={cat}
                   onClick={() => setCategoryFilter(isActive ? null : cat)}
-                  className={`px-3 py-1 rounded-full text-[11px] font-medium border whitespace-nowrap shrink-0 capitalize transition-colors ${
+                  className={`px-4 py-2 rounded-xl text-xs font-semibold border whitespace-nowrap shrink-0 capitalize transition-colors ${
                     isActive
-                      ? CATEGORY_COLORS[cat]
-                      : 'bg-surface text-text-muted border-border'
+                      ? `${CATEGORY_COLORS[cat]} ring-2 ring-offset-1 ${ringColor[cat]}`
+                      : CATEGORY_COLORS[cat]
                   }`}
                 >
                   {cat}
