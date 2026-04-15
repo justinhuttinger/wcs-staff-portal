@@ -117,38 +117,19 @@ router.get('/summary', async (req, res) => {
   }
 })
 
-// GET /abc-sync/runs — list of recent runs
+// GET /abc-sync/runs — list of recent runs (from pre-aggregated summary table)
 router.get('/runs', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 20
 
-    // With change detection, runs are small (~20-400 entries), so 1000 rows covers many runs
-    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-    const { data: recent, error } = await supabaseAdmin
-      .from('abc_sync_run_log')
-      .select('run_id, run_at, dry_run, action, error')
-      .gte('run_at', cutoff)
+    const { data, error } = await supabaseAdmin
+      .from('abc_sync_runs')
+      .select('run_id, run_at, dry_run, clubs, matched, unmatched, tag_changes, field_updates, errors, duration_s')
       .order('run_at', { ascending: false })
-      .limit(1000)
+      .limit(limit)
 
     if (error) throw error
-
-    // Aggregate per run_id
-    const runMap = new Map()
-    for (const r of (recent || [])) {
-      if (!runMap.has(r.run_id)) {
-        runMap.set(r.run_id, {
-          run_id: r.run_id, run_at: r.run_at, dry_run: r.dry_run,
-          matched: 0, field_updates: 0, errors: 0,
-        })
-      }
-      const run = runMap.get(r.run_id)
-      if (r.action !== 'no_match') run.matched++
-      if (r.action === 'update_field') run.field_updates++
-      if (r.error) run.errors++
-    }
-
-    res.json(Array.from(runMap.values()).slice(0, limit))
+    res.json(data || [])
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

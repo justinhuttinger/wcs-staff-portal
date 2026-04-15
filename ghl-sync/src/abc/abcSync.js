@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const LOCATIONS = require('../config/locations');
+const supabase = require('../db/supabase');
 const { fetchAllABCMembers, transformABCMember } = require('./client');
 const { upsertABCMembers } = require('./upsertMembers');
 const { reconcileLocation } = require('./reconcile');
@@ -52,6 +53,8 @@ async function _runAbcSync() {
 
   const locationErrors = {};
   let totalErrors = 0;
+  let totalMatched = 0, totalUnmatched = 0, totalTagChanges = 0, totalFieldUpdates = 0, totalSyncErrors = 0;
+  let clubsProcessed = 0;
 
   for (const location of locationsWithClub) {
     if (abcSyncAbort) {
@@ -72,6 +75,12 @@ async function _runAbcSync() {
 
       // Step 3: Reconcile against GHL contacts
       const reconcileResult = await reconcileLocation(location, runId);
+      clubsProcessed++;
+      totalMatched += reconcileResult.matched || 0;
+      totalUnmatched += reconcileResult.unmatched || 0;
+      totalTagChanges += reconcileResult.tagChanges || 0;
+      totalFieldUpdates += reconcileResult.fieldUpdates || 0;
+      totalSyncErrors += reconcileResult.errors || 0;
 
       const errors = [
         ...upsertResult.errors,
@@ -131,6 +140,25 @@ async function _runAbcSync() {
 
   const duration = ((Date.now() - start) / 1000).toFixed(1);
   console.log(`[ABC Sync] Run ${runId} complete in ${duration}s`);
+
+  // Write run summary to abc_sync_runs table
+  const DRY_RUN = (process.env.DRY_RUN || 'true') === 'true';
+  try {
+    await supabase.from('abc_sync_runs').upsert({
+      run_id: runId,
+      run_at: new Date(start).toISOString(),
+      dry_run: DRY_RUN,
+      clubs: clubsProcessed,
+      matched: totalMatched,
+      unmatched: totalUnmatched,
+      tag_changes: totalTagChanges,
+      field_updates: totalFieldUpdates,
+      errors: totalSyncErrors,
+      duration_s: parseFloat(duration),
+    }, { onConflict: 'run_id' });
+  } catch (err) {
+    console.error('[ABC Sync] Failed to write run summary:', err.message);
+  }
 
   // Send alerts if there were errors
   if (totalErrors > 0) {
