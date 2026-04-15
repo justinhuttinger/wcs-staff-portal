@@ -126,13 +126,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange }) {
   return (
     <div className="w-full px-8 py-6">
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-text-primary">Admin Panel</h2>
-          <button onClick={onBack}
-            className="px-4 py-2 rounded-lg border border-border bg-bg text-text-muted text-sm font-medium hover:text-text-primary transition-colors">
-            Back to Portal
-          </button>
-        </div>
+        <h2 className="text-xl font-bold text-text-primary">Admin Panel</h2>
       </div>
 
       <div className="grid grid-cols-2 gap-6 max-w-3xl mx-auto">

@@ -16,15 +16,6 @@ export default function MarketingView({ onBack }) {
   return (
     <div className="max-w-3xl mx-auto w-full px-8 py-6">
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          Back to Portal
-        </button>
         <h2 className="text-xl font-bold text-text-primary">Marketing</h2>
         <p className="text-sm text-text-muted">Ad Reports</p>
       </div>

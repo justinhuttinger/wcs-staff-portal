@@ -127,15 +127,17 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
     <div className="w-full px-8 py-6 max-w-6xl mx-auto">
       {/* Header card */}
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
-        <button
-          onClick={handleBack}
-          className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          {activeReport ? 'Back to Reports' : 'Back to Portal'}
-        </button>
+        {activeReport && (
+          <button
+            onClick={handleBack}
+            className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Reports
+          </button>
+        )}
         <h2 className="text-xl font-bold text-text-primary mb-4">
           {activeReport ? REPORT_TILES.find(t => t.key === activeReport)?.label || 'Report' : 'Reporting'}
         </h2>

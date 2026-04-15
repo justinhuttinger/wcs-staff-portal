@@ -188,15 +188,6 @@ export default function TrainerAvailabilityView({ user, onBack, location, isAdmi
   return (
     <div className="max-w-3xl mx-auto w-full px-8 py-6">
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-muted hover:text-text-primary hover:border-text-muted transition-colors mb-2"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          Back to Portal
-        </button>
         <h2 className="text-xl font-bold text-text-primary">Trainer Availability</h2>
         {data?.calendarName && (
           <p className="text-xs text-text-muted mt-1">Calendar: {data.calendarName}</p>

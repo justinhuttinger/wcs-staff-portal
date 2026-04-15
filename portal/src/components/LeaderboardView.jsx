@@ -90,16 +90,6 @@ export default function LeaderboardView({ user, onBack, location }) {
     <div className="w-full max-w-6xl mx-auto px-8 pb-12">
       {/* Header card */}
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6 mt-2">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-muted hover:text-text-primary hover:border-text-muted transition-colors mb-3"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          Back to Portal
-        </button>
-
         <h2 className="text-xl font-black text-text-primary mb-4">Leaderboard</h2>
 
         {/* Month navigation */}

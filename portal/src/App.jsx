@@ -196,6 +196,21 @@ export default function App() {
     )
   }
 
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showMetaAds && !showTickets && !showHelpCenter && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting
+
+  function handleBackToPortal() {
+    setShowAdmin(false)
+    setShowCalendar(false)
+    setShowTrainerAvail(false)
+    setShowReporting(false)
+    setShowMetaAds(false)
+    setShowLeaderboard(false)
+    setShowCommunicationNotes(false)
+    setShowHR(false)
+    setShowHelpCenter(false)
+    setShowTickets(false)
+  }
+
   return (
     <div className="min-h-screen bg-bg flex flex-col relative">
       {/* Location background image — persists on all views */}
@@ -206,11 +221,20 @@ export default function App() {
         </>
       )}
       <header className="flex items-center justify-between px-8 py-3 max-w-3xl mx-auto w-full relative z-10">
-        <div>
-          <div className="flex items-center gap-3">
-            <img src="/wcs-logo.png" alt="WCS" className="h-10 w-10 rounded-full" />
-            <h1 className={`text-2xl font-black tracking-[-0.5px] ${bgImage ? 'text-white' : 'text-text-primary'}`}>Portal</h1>
-          </div>
+        <div className="flex items-center gap-3">
+          {!isHome && (
+            <button
+              onClick={handleBackToPortal}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-white/30 bg-white/90 text-text-primary hover:bg-white transition-colors shadow-sm"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+              {showAdmin ? 'Back to Portal' : 'Back'}
+            </button>
+          )}
+          <img src="/wcs-logo.png" alt="WCS" className="h-10 w-10 rounded-full" />
+          <h1 className={`text-2xl font-black tracking-[-0.5px] ${bgImage ? 'text-white' : 'text-text-primary'}`}>Portal</h1>
         </div>
         <div className="flex items-center gap-4">
           {isAdmin && (

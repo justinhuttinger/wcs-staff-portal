@@ -631,15 +631,17 @@ export default function HRView({ user, onBack }) {
       {/* Header card */}
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
         <div className="flex items-center gap-3">
-          <button
-            onClick={currentBackHandler}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-muted hover:text-text-primary hover:border-text-muted transition-colors"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-            {backLabel}
-          </button>
+          {view !== 'landing' && (
+            <button
+              onClick={currentBackHandler}
+              className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-muted hover:text-text-primary hover:border-text-muted transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+              Back
+            </button>
+          )}
           <h2 className="text-lg font-bold text-text-primary">HR Documents</h2>
         </div>
       </div>
