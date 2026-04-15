@@ -203,6 +203,7 @@ export default function PTRosterReport({ locationSlug }) {
           const total = group.recurring.length + group.pif.length
           const trainerRevenue = group.recurring.reduce((s, c) => s + (c.monthlyRevenue || 0), 0)
           const trainerPifRevenue = group.pif.reduce((s, c) => s + (c.service?.purchasePrice || 0), 0)
+          const bookTotal = trainerRevenue + trainerPifRevenue
           const expanded = expandedTrainers.has(trainerName)
 
           return (
@@ -235,6 +236,9 @@ export default function PTRosterReport({ locationSlug }) {
                   )}
                   {trainerPifRevenue > 0 && (
                     <span className="text-xs font-semibold text-purple-600">PIF {fmtMoney(trainerPifRevenue)}</span>
+                  )}
+                  {bookTotal > 0 && (
+                    <span className="text-xs font-bold text-text-primary bg-bg px-2 py-0.5 rounded-full border border-border">Book Total {fmtMoney(bookTotal)}</span>
                   )}
                 </div>
               </button>
