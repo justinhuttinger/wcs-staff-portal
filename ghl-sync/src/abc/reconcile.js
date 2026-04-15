@@ -288,6 +288,16 @@ async function reconcileLocation(location, runId) {
     // --- Custom field logic ---
     // Normalize values to strings for comparison — GHL stores everything as strings in JSONB
     const norm = (v) => (v == null ? '' : String(v).trim());
+    // Normalize dates: GHL stores dates as epoch ms, ABC provides YYYY-MM-DD strings
+    const normDate = (v) => {
+      if (v == null || v === '') return '';
+      // If it's a number (epoch ms), convert to YYYY-MM-DD
+      if (typeof v === 'number' || /^\d{10,13}$/.test(String(v))) {
+        const d = new Date(Number(v));
+        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+      }
+      return String(v).trim();
+    };
     const customFieldUpdates = {};
     const cf = ghlContact.custom_fields || {};
 
@@ -322,8 +332,8 @@ async function reconcileLocation(location, runId) {
     const actualSignDate = abc.sign_date || abc.since_date;
     const signDateFieldId = fieldKeyToId[ABC_GHL_FIELD_MAP.member_sign_date];
     if (signDateFieldId) {
-      const desired = norm(actualSignDate);
-      if (desired && norm(cf[signDateFieldId]) !== desired) {
+      const desired = normDate(actualSignDate);
+      if (desired && normDate(cf[signDateFieldId]) !== desired) {
         customFieldUpdates[signDateFieldId] = actualSignDate;
       }
     }
@@ -331,9 +341,9 @@ async function reconcileLocation(location, runId) {
     // cancel_date ← memberStatusDate (only when inactive)
     const cancelDateFieldId = fieldKeyToId[ABC_GHL_FIELD_MAP.cancel_date];
     if (cancelDateFieldId) {
-      if (!isActive && abc.member_status_date && norm(cf[cancelDateFieldId]) !== norm(abc.member_status_date)) {
+      if (!isActive && abc.member_status_date && normDate(cf[cancelDateFieldId]) !== normDate(abc.member_status_date)) {
         customFieldUpdates[cancelDateFieldId] = abc.member_status_date;
-      } else if (isActive && norm(cf[cancelDateFieldId]) !== '') {
+      } else if (isActive && normDate(cf[cancelDateFieldId]) !== '') {
         // Clear cancel date if member is now active
         customFieldUpdates[cancelDateFieldId] = '';
       }
