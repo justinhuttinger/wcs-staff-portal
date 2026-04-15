@@ -117,35 +117,27 @@ router.get('/summary', async (req, res) => {
   }
 })
 
-// GET /abc-sync/runs — list of recent runs with aggregate stats
+// GET /abc-sync/runs — list of recent runs
 router.get('/runs', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 20
 
-    // Try database function first (efficient aggregation)
-    const { data, error } = await supabaseAdmin
-      .rpc('get_abc_sync_runs', { run_limit: limit })
-
-    if (!error && data) {
-      return res.json(data)
-    }
-
-    // Fallback: get distinct run_ids then aggregate each
-    console.warn('[ABC Sync] RPC failed, using fallback:', error?.message)
-    const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
-    const { data: runIds, error: runErr } = await supabaseAdmin
+    // Get distinct recent run_ids efficiently using the run_at index
+    // Fetch a small batch of recent rows and extract unique run_ids
+    const { data: recent, error } = await supabaseAdmin
       .from('abc_sync_run_log')
       .select('run_id, run_at, dry_run')
-      .gte('run_at', cutoff)
       .order('run_at', { ascending: false })
-      .limit(1)
+      .limit(500)
 
-    if (runErr) throw runErr
+    if (error) throw error
 
-    // Get unique run_ids from recent entries
+    // Extract unique runs (most recent entry per run_id)
     const seen = new Map()
-    for (const r of (runIds || [])) {
-      if (!seen.has(r.run_id)) seen.set(r.run_id, { run_id: r.run_id, run_at: r.run_at, dry_run: r.dry_run })
+    for (const r of (recent || [])) {
+      if (!seen.has(r.run_id)) {
+        seen.set(r.run_id, { run_id: r.run_id, run_at: r.run_at, dry_run: r.dry_run })
+      }
     }
 
     res.json(Array.from(seen.values()).slice(0, limit))
