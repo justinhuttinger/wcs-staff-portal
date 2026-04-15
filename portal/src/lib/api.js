@@ -190,6 +190,11 @@ export async function getPTReport(params = {}) {
   return api('/reports/pt' + (qs ? '?' + qs : ''))
 }
 
+export async function getPTRoster(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/pt-roster' + (qs ? '?' + qs : ''))
+}
+
 export async function getVIPReport(params = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/reports/vip' + (qs ? '?' + qs : ''))

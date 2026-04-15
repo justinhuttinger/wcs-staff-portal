@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react'
 import MembershipReport from './reports/MembershipReport'
 import PTReport from './reports/PTReport'
 import ClubHealthReport from './reports/ClubHealthReport'
+import PTRosterReport from './reports/PTRosterReport'
 
 const ALL_REPORT_TILES = [
   { key: 'club-health', label: 'Club Health', desc: 'Dashboard', icon: '❤️' },
   { key: 'membership', label: 'Membership', desc: 'Report', icon: '🏷️' },
   { key: 'pt', label: 'PT / Day One', desc: 'Report', icon: '🏋️' },
+  { key: 'pt-roster', label: 'PT Roster', desc: 'Active Clients', icon: '📋' },
 ]
 
 function getReportTilesForRole(role) {
@@ -14,9 +16,9 @@ function getReportTilesForRole(role) {
     case 'team_member':
       return []
     case 'lead':
-      return ALL_REPORT_TILES.filter(t => ['membership', 'pt'].includes(t.key))
+      return ALL_REPORT_TILES.filter(t => ['membership', 'pt', 'pt-roster'].includes(t.key))
     case 'manager':
-      return ALL_REPORT_TILES.filter(t => ['membership', 'pt', 'club-health'].includes(t.key))
+      return ALL_REPORT_TILES.filter(t => ['membership', 'pt', 'club-health', 'pt-roster'].includes(t.key))
     default: // corporate, admin
       return ALL_REPORT_TILES
   }
@@ -228,6 +230,9 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           )}
           {activeReport === 'pt' && (
             <PTReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+          )}
+          {activeReport === 'pt-roster' && (
+            <PTRosterReport locationSlug={locationSlug} />
           )}
         </>
       )}
