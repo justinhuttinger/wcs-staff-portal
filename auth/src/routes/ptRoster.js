@@ -121,7 +121,10 @@ async function fetchLatestPIF(clubNumber, memberId) {
       totalBought: parseInt(p.purchased || '0', 10),
       purchasePrice: price,
     }
-  } catch { return null }
+  } catch (e) {
+    console.warn(`[PT Roster] PIF fetch failed for member ${memberId} at club ${clubNumber}:`, e.message)
+    return null
+  }
 }
 
 async function buildClients(clubNumber, clubName) {
@@ -185,23 +188,31 @@ async function buildClients(clubNumber, clubName) {
     }
   }
 
-  // Fetch PIF details in parallel
-  const pifResults = await Promise.all(
-    Object.values(pifMap).map(async c => {
-      const pack = await fetchLatestPIF(clubNumber, c.memberId)
-      if (!pack) return null
-      return {
-        memberId: c.memberId,
-        name: c.name,
-        trainer: c.trainer,
-        clientType: 'pif',
-        clubName,
-        service: pack,
-      }
-    })
-  )
+  // Fetch PIF details in batches of 5 to avoid overwhelming ABC API
+  const pifCandidates = Object.values(pifMap)
+  const pifResults = []
+  for (let i = 0; i < pifCandidates.length; i += 5) {
+    const batch = pifCandidates.slice(i, i + 5)
+    const batchResults = await Promise.all(
+      batch.map(async c => {
+        const pack = await fetchLatestPIF(clubNumber, c.memberId)
+        if (!pack) return null
+        return {
+          memberId: c.memberId,
+          name: c.name,
+          trainer: c.trainer,
+          clientType: 'pif',
+          clubName,
+          service: pack,
+        }
+      })
+    )
+    pifResults.push(...batchResults.filter(Boolean))
+    if (i + 5 < pifCandidates.length) await new Promise(r => setTimeout(r, 200))
+  }
+  console.log(`[PT Roster] ${clubName}: ${recClients.length} recurring, ${pifCandidates.length} PIF candidates, ${pifResults.length} PIF with sessions`)
 
-  return recClients.concat(pifResults.filter(Boolean))
+  return recClients.concat(pifResults)
 }
 
 // GET /reports/pt-roster?location_slug=salem (or "all")

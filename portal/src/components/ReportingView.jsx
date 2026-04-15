@@ -165,8 +165,8 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           <p className="text-xs text-text-muted mb-4 uppercase tracking-wide font-semibold">{location}</p>
         )}
 
-        {/* Date Controls */}
-        <div className="flex flex-wrap items-center gap-3 justify-end">
+        {/* Date Controls — hidden for PT Roster (shows active clients, no date range) */}
+        {activeReport !== 'pt-roster' && <div className="flex flex-wrap items-center gap-3 justify-end">
           <div className="flex flex-wrap gap-1.5">
             {QUICK_RANGES.map(qr => (
               <button
@@ -198,7 +198,7 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
               className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
             />
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Content — Tile Grid or Active Report */}
