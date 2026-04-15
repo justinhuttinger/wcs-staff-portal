@@ -153,7 +153,7 @@ export default function ABCSyncAdmin() {
   const { totals, clubs, dry_run, run_at } = summary
 
   return (
-    <div className="space-y-6">
+    <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 space-y-6">
       {/* Dry Run Banner */}
       {dry_run ? (
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-5 py-3">
