@@ -215,6 +215,23 @@ async function reconcileLocation(location, runId) {
         continue;
       }
 
+      // Skip family members whose phone/email is already on a claimed GHL contact
+      const abcPhone = (abc.primary_phone || abc.mobile_phone || '').replace(/[^\d]/g, '');
+      const abcEmail = (abc.email || '').trim().toLowerCase();
+      const phoneContact = abcPhone.length >= 10 ? byPhone.get(abcPhone.slice(-10)) : null;
+      const emailContact = abcEmail ? byEmail.get(abcEmail) : null;
+      if ((phoneContact && isClaimedByOther(phoneContact)) || (emailContact && isClaimedByOther(emailContact))) {
+        unmatched++;
+        logEntries.push({
+          run_id: runId, club_number: clubNumber, club_name: locationName, dry_run: DRY_RUN,
+          ghl_contact_id: null, ghl_contact_name: null, ghl_contact_email: null,
+          abc_member_id: abc.member_id, action: 'no_match',
+          detail: { abc_name: `${abc.first_name} ${abc.last_name}`, abc_email: abc.email, reason: 'family_member_on_existing_contact' },
+          applied: false, error: null,
+        });
+        continue;
+      }
+
       // Skip members with no email AND no phone — can't reach them
       const hasContact = (abc.email || '').trim() || abc.primary_phone || abc.mobile_phone;
       if (!hasContact) {
