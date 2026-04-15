@@ -10,10 +10,11 @@ export default function ActionLinksAdmin() {
 
   useEffect(() => {
     Promise.all([
+      getAppSettings('tour_url_'),
       getAppSettings('dayone_url_'),
       getAppSettings('vip_url_'),
-    ]).then(([d1, vip]) => {
-      setLinks({ ...d1, ...vip })
+    ]).then(([tour, d1, vip]) => {
+      setLinks({ ...tour, ...d1, ...vip })
     }).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
@@ -39,8 +40,8 @@ export default function ActionLinksAdmin() {
     <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-bold text-text-primary">Day One & VIP Links</h3>
-          <p className="text-xs text-text-muted mt-1">Configure the booking and survey URLs per location. These show as action buttons on the home screen.</p>
+          <h3 className="text-sm font-bold text-text-primary">Action Button Links</h3>
+          <p className="text-xs text-text-muted mt-1">Configure the Gym Tour, Day One, and VIP URLs per location. These show as action buttons on the home screen.</p>
         </div>
         <div className="flex items-center gap-3">
           {message && (
@@ -61,12 +62,23 @@ export default function ActionLinksAdmin() {
       <div className="space-y-4">
         {LOCATION_NAMES.map(loc => {
           const slug = loc.toLowerCase()
+          const tourKey = `tour_url_${slug}`
           const d1Key = `dayone_url_${slug}`
           const vipKey = `vip_url_${slug}`
           return (
             <div key={slug} className="bg-surface border border-border rounded-xl p-4">
               <h4 className="text-sm font-bold text-text-primary mb-3">{loc}</h4>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-1">Gym Tour Booking URL</label>
+                  <input
+                    type="url"
+                    value={links[tourKey] || ''}
+                    onChange={e => handleChange(tourKey, e.target.value)}
+                    placeholder="https://api.westcoaststrength.com/widget/booking/..."
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red"
+                  />
+                </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-1">Day One Booking URL</label>
                   <input

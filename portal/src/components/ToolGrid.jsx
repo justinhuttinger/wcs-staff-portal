@@ -92,6 +92,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   const [leaderboardData, setLeaderboardData] = useState(null)
   const [showPointsInfo, setShowPointsInfo] = useState(false)
   const [motivationalMsg, setMotivationalMsg] = useState(getMotivationalMessage())
+  const [tourUrl, setTourUrl] = useState(null)
   const [dayoneUrl, setDayoneUrl] = useState(null)
   const [vipUrl, setVipUrl] = useState(null)
 
@@ -128,6 +129,9 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
     }).catch(() => {})
 
     // Fetch action link URLs for this location
+    getAppSettings('tour_url_' + slug).then(settings => {
+      setTourUrl(settings['tour_url_' + slug] || null)
+    }).catch(() => {})
     getAppSettings('dayone_url_' + slug).then(settings => {
       setDayoneUrl(settings['dayone_url_' + slug] || null)
     }).catch(() => {})
@@ -283,6 +287,22 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
 
               {/* Action Buttons — above Tools (right) */}
               <div className="w-1/2 flex gap-4">
+                {tourUrl && (
+                  <a
+                    href={tourUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex-1 flex items-center justify-center gap-3 rounded-[14px] bg-surface border border-border cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)] px-4"
+                  >
+                    <div className="flex items-center justify-center w-9 h-9 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200 shrink-0">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5 text-wcs-red">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+                      </svg>
+                    </div>
+                    <span className="text-sm font-semibold text-text-primary">Book Gym Tour</span>
+                  </a>
+                )}
                 {dayoneUrl && (
                   <a
                     href={dayoneUrl}
