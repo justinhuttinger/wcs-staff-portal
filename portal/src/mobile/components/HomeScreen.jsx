@@ -123,13 +123,11 @@ export default function HomeScreen({ user, navigate, onLogout }) {
 
   const allTiles = [
     { label: 'Reports', icon: <BarChartIcon />, route: 'reports' },
-    { label: 'Tours', icon: <CalendarIcon />, route: 'tours' },
-    { label: 'Day One', icon: <ClipboardIcon />, route: 'dayone' },
+    { label: 'Calendar', icon: <CalendarIcon />, route: 'calendar', desc: 'Tours & Day Ones' },
     { label: 'Marketing', icon: <MegaphoneIcon />, route: 'reports/marketing' },
     { label: 'Leaderboard', icon: <TrophyIcon />, route: 'leaderboard' },
     { label: 'Comm Notes', icon: <NotesIcon />, route: 'comm-notes' },
     { label: 'HR', icon: <HRIcon />, route: 'hr' },
-    { label: 'Notifications', icon: <BellIcon />, route: null, url: 'https://westcoaststrength.trainerize.com/app/login', desc: 'Member App' },
   ]
 
   const ROLE_LEVELS = { team_member: 0, lead: 1, manager: 2, corporate: 3, admin: 4 }
@@ -142,8 +140,6 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     if (tile.label === 'Marketing' && role !== 'corporate' && role !== 'admin') return false
     // HR tile only for manager+
     if (tile.label === 'HR' && roleIdx < ROLE_LEVELS.manager) return false
-    // Notifications tile only for manager+
-    if (tile.label === 'Notifications' && roleIdx < ROLE_LEVELS.manager) return false
     return true
   })
 
