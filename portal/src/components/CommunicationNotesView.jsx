@@ -305,93 +305,121 @@ export default function CommunicationNotesView({ user, onBack }) {
       {/* Notes List (lead+ only) */}
       {isLeadPlus && (
         <>
-          {/* Status Tabs + Date Range (inline) */}
-          <div className="flex items-center justify-between gap-2 mb-4">
-            <div className="flex gap-1.5 shrink-0">
-              {STATUSES.map(s => (
-                <button
-                  key={s}
-                  onClick={() => { setStatusFilter(s); setExpandedId(null) }}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
-                    statusFilter === s
-                      ? 'bg-wcs-red text-white border-wcs-red'
-                      : 'bg-surface text-text-muted border-border hover:border-text-muted'
-                  }`}
-                >
-                  {STATUS_LABELS[s]}
-                  <span className={`min-w-[16px] h-[16px] flex items-center justify-center rounded-full text-[10px] font-bold px-0.5 ${
-                    statusFilter === s ? 'bg-white/20 text-white' : 'bg-bg text-text-muted'
-                  }`}>
-                    {statusCounts[s] || 0}
-                  </span>
-                </button>
-              ))}
+          {/* Filter Card */}
+          <div className="bg-surface border border-border rounded-xl p-5 mb-5 space-y-4">
+            {/* Status buttons — large, prominent */}
+            <div>
+              <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2">Status</p>
+              <div className="grid grid-cols-3 gap-2">
+                {STATUSES.map(s => {
+                  const active = statusFilter === s
+                  const colors = {
+                    unresolved: active ? 'bg-amber-500 text-white border-amber-500' : 'bg-amber-50 text-amber-700 border-amber-200 hover:border-amber-400',
+                    in_progress: active ? 'bg-blue-500 text-white border-blue-500' : 'bg-blue-50 text-blue-700 border-blue-200 hover:border-blue-400',
+                    completed: active ? 'bg-green-500 text-white border-green-500' : 'bg-green-50 text-green-700 border-green-200 hover:border-green-400',
+                  }
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => { setStatusFilter(s); setExpandedId(null) }}
+                      className={`flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold rounded-xl border-2 transition-all ${colors[s]}`}
+                    >
+                      {STATUS_LABELS[s]}
+                      <span className={`min-w-[22px] h-[22px] flex items-center justify-center rounded-full text-xs font-bold ${
+                        active ? 'bg-white/25 text-white' : 'bg-white text-text-primary'
+                      }`}>
+                        {statusCounts[s] || 0}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-[108px] px-1 py-1 text-[11px] rounded border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red" />
-              <span className="text-[10px] text-text-muted">–</span>
-              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-[108px] px-1 py-1 text-[11px] rounded border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red" />
-              {[
-                { label: '7d', days: 7 },
-                { label: '30d', days: 30 },
-                { label: '90d', days: 90 },
-              ].map(({ label, days }) => (
-                <button
-                  key={label}
-                  onClick={() => {
-                    const d = new Date()
-                    d.setDate(d.getDate() - days)
-                    setDateFrom(d.toISOString().slice(0, 10))
-                    setDateTo(new Date().toISOString().slice(0, 10))
-                  }}
-                  className="px-1.5 py-1 text-[10px] font-semibold rounded-md border border-border bg-surface text-text-muted hover:border-text-muted transition-colors"
-                >
-                  {label}
-                </button>
-              ))}
-              <button
-                onClick={() => { setDateFrom(''); setDateTo('') }}
-                className="px-1.5 py-1 text-[10px] font-semibold rounded-md border border-border bg-surface text-text-muted hover:border-text-muted transition-colors"
-              >
-                All
-              </button>
-            </div>
-          </div>
 
-          {/* Location Filter (corp/admin only) */}
-          {canSeeAll && (
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {['all', ...ALL_LOCATIONS.map(l => l.toLowerCase())].map(loc => (
-                <button
-                  key={loc}
-                  onClick={() => setLocationFilter(loc)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors ${
-                    locationFilter === loc
-                      ? 'bg-wcs-red text-white border-wcs-red'
-                      : 'bg-surface text-text-muted border-border hover:border-text-muted'
-                  }`}
-                >
-                  {loc === 'all' ? 'All Locations' : loc.charAt(0).toUpperCase() + loc.slice(1)}
-                </button>
-              ))}
+            {/* Category pills — prominent with color coding */}
+            <div>
+              <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2">Category</p>
+              <div className="flex flex-wrap gap-2">
+                {['all', ...CATEGORIES].map(c => {
+                  const active = categoryFilter === c
+                  const pillColor = c === 'all'
+                    ? (active ? 'bg-text-primary text-white border-text-primary' : 'bg-surface text-text-muted border-border hover:border-text-muted')
+                    : (active
+                      ? CATEGORY_COLORS[c].replace('bg-', 'bg-').replace(/text-\S+/, 'text-white').replace(/border-\S+/, '') + ' border-2 border-current font-bold'
+                      : `${CATEGORY_COLORS[c]} hover:shadow-sm`)
+                  return (
+                    <button
+                      key={c}
+                      onClick={() => setCategoryFilter(c)}
+                      className={`px-4 py-2 text-sm font-semibold rounded-xl border transition-all ${
+                        active && c !== 'all'
+                          ? `${CATEGORY_COLORS[c]} ring-2 ring-offset-1 ${c === 'member' ? 'ring-blue-400' : c === 'billing' ? 'ring-green-400' : c === 'cancel' ? 'ring-red-400' : c === 'equipment' ? 'ring-amber-400' : 'ring-gray-400'}`
+                          : active && c === 'all'
+                            ? 'bg-text-primary text-white border-text-primary'
+                            : c === 'all'
+                              ? 'bg-surface text-text-muted border-border hover:border-text-muted'
+                              : CATEGORY_COLORS[c]
+                      }`}
+                    >
+                      {c === 'all' ? 'All Categories' : c.charAt(0).toUpperCase() + c.slice(1)}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-          )}
 
-          {/* Category Filter Pills */}
-          <div className="flex flex-wrap gap-1.5 mb-5">
-            {['all', ...CATEGORIES].map(c => (
-              <button
-                key={c}
-                onClick={() => setCategoryFilter(c)}
-                className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors ${
-                  categoryFilter === c
-                    ? 'bg-wcs-red/10 text-wcs-red border-wcs-red/30'
-                    : 'bg-surface text-text-muted border-border hover:border-text-muted'
-                }`}
-              >
-                {c === 'all' ? 'All' : c.charAt(0).toUpperCase() + c.slice(1)}
-              </button>
-            ))}
+            {/* Location + Date row */}
+            <div className="flex items-center justify-between gap-4 pt-1">
+              {/* Location Filter (corp/admin only) */}
+              {canSeeAll ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {['all', ...ALL_LOCATIONS.map(l => l.toLowerCase())].map(loc => (
+                    <button
+                      key={loc}
+                      onClick={() => setLocationFilter(loc)}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
+                        locationFilter === loc
+                          ? 'bg-wcs-red text-white border-wcs-red'
+                          : 'bg-bg text-text-muted border-border hover:border-text-muted'
+                      }`}
+                    >
+                      {loc === 'all' ? 'All Locations' : loc.charAt(0).toUpperCase() + loc.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              ) : <div />}
+
+              {/* Date range */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-[120px] px-2 py-1.5 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red" />
+                <span className="text-xs text-text-muted">to</span>
+                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-[120px] px-2 py-1.5 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red" />
+                {[
+                  { label: '7d', days: 7 },
+                  { label: '30d', days: 30 },
+                  { label: '90d', days: 90 },
+                ].map(({ label, days }) => (
+                  <button
+                    key={label}
+                    onClick={() => {
+                      const d = new Date()
+                      d.setDate(d.getDate() - days)
+                      setDateFrom(d.toISOString().slice(0, 10))
+                      setDateTo(new Date().toISOString().slice(0, 10))
+                    }}
+                    className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-muted hover:border-text-muted hover:text-text-primary transition-colors"
+                  >
+                    {label}
+                  </button>
+                ))}
+                <button
+                  onClick={() => { setDateFrom(''); setDateTo('') }}
+                  className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-muted hover:border-text-muted hover:text-text-primary transition-colors"
+                >
+                  All
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Notes */}
