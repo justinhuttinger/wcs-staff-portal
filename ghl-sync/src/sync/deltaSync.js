@@ -5,6 +5,7 @@ const { fetchOpportunitiesDelta, transformOpportunity } = require('../ghl/opport
 const { upsertContacts } = require('../db/upsertContacts');
 const { upsertOpportunities } = require('../db/upsertOpportunities');
 const { writeSyncLog } = require('./syncLog');
+const { isGhlSyncAborted } = require('./fullSync');
 
 async function getLastDeltaSync() {
   const { data } = await supabase
@@ -40,6 +41,10 @@ async function deltaSync() {
   let anySuccess = false;
 
   for (const location of LOCATIONS) {
+    if (isGhlSyncAborted()) {
+      console.log('[Delta] Delta sync aborted by user');
+      break;
+    }
     // Contacts delta
     let ctStart = new Date().toISOString();
     try {

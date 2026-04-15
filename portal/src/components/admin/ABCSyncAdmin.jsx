@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getABCSyncSummary, getABCSyncRuns, getABCSyncChangelog, getABCSyncUnmatched, getABCMembershipBreakdown, triggerABCSync, stopABCSync } from '../../lib/api'
+import { getABCSyncSummary, getABCSyncRuns, getABCSyncChangelog, getABCSyncUnmatched, getABCMembershipBreakdown, triggerABCSync, stopABCSync, stopGHLSync } from '../../lib/api'
 
 function formatDate(dateStr) {
   if (!dateStr) return '—'
@@ -141,6 +141,16 @@ export default function ABCSyncAdmin() {
     }
   }
 
+  async function handleStopGHL() {
+    setTriggerMsg(null)
+    try {
+      const res = await stopGHLSync()
+      setTriggerMsg(res.message || 'GHL sync stop requested.')
+    } catch (err) {
+      setTriggerMsg('Failed to stop GHL sync: ' + err.message)
+    }
+  }
+
   useEffect(() => {
     if (tab === 'changelog') loadChangelog(1)
     if (tab === 'unmatched') loadUnmatched(1)
@@ -191,7 +201,13 @@ export default function ABCSyncAdmin() {
             onClick={handleStop}
             className="text-xs bg-surface border border-border rounded-lg px-4 py-1.5 font-medium text-text-muted hover:text-red-400 hover:border-red-400 transition-colors"
           >
-            Stop Sync
+            Stop ABC Sync
+          </button>
+          <button
+            onClick={handleStopGHL}
+            className="text-xs bg-surface border border-border rounded-lg px-4 py-1.5 font-medium text-text-muted hover:text-red-400 hover:border-red-400 transition-colors"
+          >
+            Stop GHL Sync
           </button>
           {triggerMsg && <span className="text-xs text-text-muted">{triggerMsg}</span>}
           <button onClick={loadInitial} className="text-xs text-wcs-red hover:underline">Refresh</button>

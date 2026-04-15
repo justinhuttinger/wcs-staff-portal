@@ -443,6 +443,10 @@ export async function stopABCSync() {
   return api('/abc-sync/stop', { method: 'POST', body: JSON.stringify({}) })
 }
 
+export async function stopGHLSync() {
+  return api('/abc-sync/stop-ghl', { method: 'POST', body: JSON.stringify({}) })
+}
+
 export async function getABCMembershipBreakdown(clubNumber) {
   const qs = clubNumber ? '?club_number=' + clubNumber : ''
   return api('/abc-sync/membership-breakdown' + qs)

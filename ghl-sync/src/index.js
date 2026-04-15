@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const { fullSync, fullSyncForLocation } = require('./sync/fullSync');
+const { fullSync, fullSyncForLocation, stopGhlSync } = require('./sync/fullSync');
 const { deltaSync } = require('./sync/deltaSync');
 const { abcSync, abcSyncForLocation, stopAbcSync } = require('./abc/abcSync');
 const { startScheduler } = require('./scheduler');
@@ -109,6 +109,16 @@ app.post('/api/sync/abc/stop', requireSecret, (req, res) => {
   } else {
     res.json({ status: 'not_running', message: 'No ABC sync is currently running' });
   }
+});
+
+// POST /api/sync/stop — abort any running GHL sync (full or delta)
+app.post('/api/sync/stop', requireSecret, (req, res) => {
+  if (!syncRunning) {
+    return res.json({ status: 'not_running', message: 'No sync is currently running' });
+  }
+  stopGhlSync();
+  syncRunning = false;
+  res.json({ status: 'stopping', message: 'GHL sync will stop after current location finishes' });
 });
 
 // GET /api/sync/logs

@@ -77,11 +77,32 @@ async function syncLocation(location, syncType) {
   console.log(`[Sync] Completed ${syncType} sync for ${location.name}`);
 }
 
+let ghlSyncAbort = false;
+
+function stopGhlSync() {
+  ghlSyncAbort = true;
+  console.log('[Sync] Abort requested — will stop after current location');
+  return true;
+}
+
+function resetGhlSyncAbort() {
+  ghlSyncAbort = false;
+}
+
+function isGhlSyncAborted() {
+  return ghlSyncAbort;
+}
+
 async function fullSync() {
   console.log(`[Sync] Starting full sync for ${LOCATIONS.length} locations`);
   const start = Date.now();
+  ghlSyncAbort = false;
 
   for (const location of LOCATIONS) {
+    if (ghlSyncAbort) {
+      console.log('[Sync] Full sync aborted by user');
+      break;
+    }
     await syncLocation(location, 'full');
   }
 
@@ -95,4 +116,4 @@ async function fullSyncForLocation(slug) {
   await syncLocation(location, 'full');
 }
 
-module.exports = { fullSync, fullSyncForLocation };
+module.exports = { fullSync, fullSyncForLocation, stopGhlSync, resetGhlSyncAbort, isGhlSyncAborted };
