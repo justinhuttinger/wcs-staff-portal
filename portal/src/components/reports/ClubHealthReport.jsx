@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getClubHealthReport } from '../../lib/api'
 
 const PIE_COLORS = ['#e53e3e', '#38a169', '#3182ce', '#d69e2e', '#805ad5', '#dd6b20', '#319795']
@@ -55,23 +55,23 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  useEffect(() => { loadData() }, [startDate, endDate, locationSlug])
+  const requestRef = useRef(0)
 
-  async function loadData() {
+  useEffect(() => {
+    const id = ++requestRef.current
+    setData(null)
     setLoading(true)
     setError('')
-    try {
-      const params = {}
-      if (startDate) params.start_date = startDate
-      if (endDate) params.end_date = endDate
-      if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
-      const res = await getClubHealthReport(params)
-      setData(res)
-    } catch (err) {
-      setError(err.message)
-    }
-    setLoading(false)
-  }
+    const params = {}
+    if (startDate) params.start_date = startDate
+    if (endDate) params.end_date = endDate
+    if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
+    getClubHealthReport(params).then(res => {
+      if (id === requestRef.current) { setData(res); setLoading(false) }
+    }).catch(err => {
+      if (id === requestRef.current) { setError(err.message); setLoading(false) }
+    })
+  }, [startDate, endDate, locationSlug])
 
   if (loading) return <p className="text-text-muted text-sm py-8 text-center">Loading club health data...</p>
   if (error) return <p className="text-wcs-red text-sm py-4">{error}</p>

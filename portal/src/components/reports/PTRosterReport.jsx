@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getPTRoster } from '../../lib/api'
 import { exportCSV } from '../../lib/export'
 
@@ -28,16 +28,21 @@ export default function PTRosterReport({ locationSlug }) {
   const [trainerFilter, setTrainerFilter] = useState('all')
   const [expandedTrainers, setExpandedTrainers] = useState(new Set())
 
+  const requestRef = useRef(0)
+
   useEffect(() => {
+    const id = ++requestRef.current
+    setData(null)
     setLoading(true)
     setError(null)
     setTypeFilter('all')
     setTrainerFilter('all')
     setExpandedTrainers(new Set())
-    getPTRoster({ location_slug: locationSlug || 'all' })
-      .then(setData)
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false))
+    getPTRoster({ location_slug: locationSlug || 'all' }).then(res => {
+      if (id === requestRef.current) { setData(res); setLoading(false) }
+    }).catch(err => {
+      if (id === requestRef.current) { setError(err.message); setLoading(false) }
+    })
   }, [locationSlug])
 
   if (loading) {

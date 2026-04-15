@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { getSalespersonStats } from '../../lib/api'
 import { exportCSV, exportPDF } from '../../lib/export'
 
@@ -10,23 +10,23 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState(null)
 
-  useEffect(() => { loadData() }, [startDate, endDate, locationSlug])
+  const requestRef = useRef(0)
 
-  async function loadData() {
+  useEffect(() => {
+    const id = ++requestRef.current
+    setData(null)
     setLoading(true)
     setError('')
-    try {
-      const params = {}
-      if (startDate) params.start_date = startDate
-      if (endDate) params.end_date = endDate
-      if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
-      const res = await getSalespersonStats(params)
-      setData(res)
-    } catch (err) {
-      setError(err.message)
-    }
-    setLoading(false)
-  }
+    const params = {}
+    if (startDate) params.start_date = startDate
+    if (endDate) params.end_date = endDate
+    if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
+    getSalespersonStats(params).then(res => {
+      if (id === requestRef.current) { setData(res); setLoading(false) }
+    }).catch(err => {
+      if (id === requestRef.current) { setError(err.message); setLoading(false) }
+    })
+  }, [startDate, endDate, locationSlug])
 
   if (loading) return <p className="text-text-muted text-sm py-8 text-center">Loading salesperson data...</p>
   if (error) return <p className="text-wcs-red text-sm py-4">{error}</p>
