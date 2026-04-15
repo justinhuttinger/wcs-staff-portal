@@ -189,12 +189,9 @@ async function main() {
   // 3. Start scheduler
   startScheduler();
 
-  // 4. Run initial full sync in background (don't block startup)
-  console.log('[Startup] Running initial full sync in background...');
-  syncRunning = true;
-  fullSync()
-    .catch(err => console.error('[Startup] Initial full sync failed:', err.message))
-    .finally(() => { syncRunning = false; });
+  // 4. Skip startup full sync — delta sync runs every 10 min and daily full sync at 3am.
+  //    Starting a full sync on every deploy blocks all other syncs for ~14 min.
+  console.log('[Startup] Ready — delta sync will run on schedule, full sync daily at 3am');
 }
 
 main();

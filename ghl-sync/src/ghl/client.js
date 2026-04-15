@@ -119,7 +119,7 @@ async function getPaginated(path, baseParams, itemsKey, options = {}, apiKey) {
       offset += limit;
     }
 
-    await sleep(650); // Rate limit: ~100 req/min
+    await sleep(300); // Rate limit for reads: ~200 req/min (writes use 650ms separately)
   }
 
   return allItems;
