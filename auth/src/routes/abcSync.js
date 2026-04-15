@@ -122,43 +122,12 @@ router.get('/runs', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 20
 
-    // Query run_log directly with a date cutoff instead of scanning the full view
-    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    // Use database function for efficient aggregation (avoids 1000 row limit)
     const { data, error } = await supabaseAdmin
-      .from('abc_sync_run_log')
-      .select('run_id, run_at, dry_run, club_name, action, error')
-      .gte('run_at', cutoff)
-      .order('run_at', { ascending: false })
+      .rpc('get_abc_sync_runs', { run_limit: limit })
 
     if (error) throw error
-
-    // Aggregate per run_id
-    const runMap = new Map()
-    for (const row of (data || [])) {
-      if (!runMap.has(row.run_id)) {
-        runMap.set(row.run_id, {
-          run_id: row.run_id,
-          run_at: row.run_at,
-          dry_run: row.dry_run,
-          clubs: new Set(),
-          matched: 0,
-          unmatched: 0,
-          tag_changes: 0,
-          field_updates: 0,
-          errors: 0,
-        })
-      }
-      const run = runMap.get(row.run_id)
-      run.clubs.add(row.club_name)
-      if (row.action === 'no_match') run.unmatched++
-      else if (row.action === 'add_tag' || row.action === 'remove_tag') { run.matched++; run.tag_changes++ }
-      else if (row.action === 'update_field') { run.matched++; run.field_updates++ }
-      else if (row.action === 'create_contact') run.matched++
-      if (row.error) run.errors++
-    }
-
-    const runs = Array.from(runMap.values()).map(r => ({ ...r, clubs: r.clubs.size })).slice(0, limit)
-    res.json(runs)
+    res.json(data || [])
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

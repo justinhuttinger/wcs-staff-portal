@@ -157,28 +157,46 @@ async function reconcileLocation(location, runId) {
     let matchMethod = null;
 
     // Match chain: member_id → email → phone → name
+    // For email/phone/name matches, skip if the GHL contact already has a different
+    // abc_member_id — that contact is claimed by another ABC member (e.g. family plans
+    // where multiple members share a phone number).
+    const isClaimedByOther = (candidate) => {
+      if (!abcMemberIdFieldId || !candidate) return false;
+      const existingId = (candidate.custom_fields || {})[abcMemberIdFieldId];
+      return existingId && existingId !== abc.member_id;
+    };
+
     if (abc.member_id && byMemberId.has(abc.member_id)) {
       ghlContact = byMemberId.get(abc.member_id);
       matchMethod = 'member_id';
     } else if (abc.email && byEmail.has(abc.email.toLowerCase().trim())) {
-      ghlContact = byEmail.get(abc.email.toLowerCase().trim());
-      matchMethod = 'email';
-    } else {
+      const candidate = byEmail.get(abc.email.toLowerCase().trim());
+      if (!isClaimedByOther(candidate)) {
+        ghlContact = candidate;
+        matchMethod = 'email';
+      }
+    }
+
+    if (!ghlContact) {
       // Try phone match
       const abcPhone = (abc.primary_phone || abc.mobile_phone || '').replace(/[^\d]/g, '');
       if (abcPhone.length >= 10 && byPhone.has(abcPhone.slice(-10))) {
-        ghlContact = byPhone.get(abcPhone.slice(-10));
-        matchMethod = 'phone';
-      } else {
-        // Try name match
-        const abcName = `${(abc.first_name || '').toLowerCase().trim()} ${(abc.last_name || '').toLowerCase().trim()}`.trim();
-        if (abcName && byName.has(abcName)) {
-          const nameMatches = byName.get(abcName);
-          if (nameMatches.length === 1) {
-            ghlContact = nameMatches[0];
-            matchMethod = 'name_review'; // Flag for review
-          }
-          // If multiple name matches, skip — too ambiguous
+        const candidate = byPhone.get(abcPhone.slice(-10));
+        if (!isClaimedByOther(candidate)) {
+          ghlContact = candidate;
+          matchMethod = 'phone';
+        }
+      }
+    }
+
+    if (!ghlContact) {
+      // Try name match
+      const abcName = `${(abc.first_name || '').toLowerCase().trim()} ${(abc.last_name || '').toLowerCase().trim()}`.trim();
+      if (abcName && byName.has(abcName)) {
+        const nameMatches = byName.get(abcName);
+        if (nameMatches.length === 1 && !isClaimedByOther(nameMatches[0])) {
+          ghlContact = nameMatches[0];
+          matchMethod = 'name_review'; // Flag for review
         }
       }
     }
