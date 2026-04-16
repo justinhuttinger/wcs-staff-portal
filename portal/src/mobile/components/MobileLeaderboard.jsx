@@ -114,15 +114,14 @@ export default function MobileLeaderboard({ user }) {
   return (
     <div className="min-h-screen bg-bg">
       {/* Sticky header */}
-      <div className="sticky top-0 z-10 bg-bg border-b border-border pb-3">
-        {/* Title bar */}
-        <div className="px-4 pt-4 pb-2">
-          <h1 className="text-lg font-semibold text-text-primary">Leaderboard</h1>
-        </div>
+      <div className="sticky top-0 z-10 pb-3">
+        {/* Title + filters in white card */}
+        <div className="mx-4 mt-4 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4 space-y-2">
+        <h1 className="text-lg font-semibold text-text-primary">Leaderboard</h1>
 
         {/* Month navigation */}
-        <div className="flex items-center justify-between px-4">
-          <button onClick={prevMonth} className="p-2 rounded-lg active:bg-surface transition-colors text-text-primary">
+        <div className="flex items-center justify-between">
+          <button onClick={prevMonth} className="p-2 rounded-lg active:bg-bg transition-colors text-text-primary">
             <ChevronLeft />
           </button>
           <div className="flex items-center gap-2">
@@ -136,16 +135,16 @@ export default function MobileLeaderboard({ user }) {
           <button
             onClick={nextMonth}
             disabled={isCurrentMonth}
-            className={`p-2 rounded-lg active:bg-surface transition-colors ${isCurrentMonth ? 'text-text-muted opacity-40' : 'text-text-primary'}`}
+            className={`p-2 rounded-lg active:bg-bg transition-colors ${isCurrentMonth ? 'text-text-muted opacity-40' : 'text-text-primary'}`}
           >
             <ChevronRight />
           </button>
         </div>
 
         {/* Point legend */}
-        <div className="flex justify-center gap-2 px-4 mt-2">
+        <div className="flex justify-center gap-2">
           {POINT_LEGEND.map(p => (
-            <div key={p.label} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface border border-border">
+            <div key={p.label} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-bg border border-border">
               <span className="text-sm font-bold text-wcs-red">{p.pts}</span>
               <span className="text-[10px] text-text-muted">{p.label}</span>
             </div>
@@ -154,16 +153,16 @@ export default function MobileLeaderboard({ user }) {
 
         {/* View toggle for managers */}
         {isManager && (
-          <div className="flex gap-2 px-4 mt-3">
+          <div className="flex gap-2">
             <button
               onClick={() => setView('club')}
-              className={`flex-1 text-sm font-medium py-1.5 rounded-full transition-colors ${view === 'club' ? 'bg-wcs-red text-white' : 'bg-surface text-text-secondary border border-border'}`}
+              className={`flex-1 text-sm font-medium py-1.5 rounded-full transition-colors ${view === 'club' ? 'bg-wcs-red text-white' : 'bg-bg text-text-secondary border border-border'}`}
             >
               My Club
             </button>
             <button
               onClick={() => setView('all')}
-              className={`flex-1 text-sm font-medium py-1.5 rounded-full transition-colors ${view === 'all' ? 'bg-wcs-red text-white' : 'bg-surface text-text-secondary border border-border'}`}
+              className={`flex-1 text-sm font-medium py-1.5 rounded-full transition-colors ${view === 'all' ? 'bg-wcs-red text-white' : 'bg-bg text-text-secondary border border-border'}`}
             >
               All Locations
             </button>
@@ -172,7 +171,7 @@ export default function MobileLeaderboard({ user }) {
 
         {/* Location selector for managers on My Club tab */}
         {isManager && view === 'club' && (
-          <div className="flex gap-2 overflow-x-auto pb-1 px-4 mt-2 scrollbar-hide">
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide">
             {ALL_LOCATIONS.map(loc => {
               const slug = loc.toLowerCase()
               return (
@@ -182,7 +181,7 @@ export default function MobileLeaderboard({ user }) {
                   className={`px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap shrink-0 transition-colors ${
                     locationSlug === slug
                       ? 'bg-wcs-red text-white border-wcs-red'
-                      : 'bg-surface text-text-muted border-border'
+                      : 'bg-bg text-text-muted border-border'
                   }`}
                 >
                   {loc}
@@ -191,6 +190,7 @@ export default function MobileLeaderboard({ user }) {
             })}
           </div>
         )}
+        </div>
       </div>
 
       {/* Content */}

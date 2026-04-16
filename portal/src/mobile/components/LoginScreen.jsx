@@ -197,9 +197,8 @@ export default function LoginScreen({ onLogin }) {
         <div className="fixed inset-0 z-0 bg-black/60" />
       <div className="w-full max-w-sm relative z-10 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-6">
         {/* Logo */}
-        <div className="text-center mb-10">
-          <img src="/wcs-logo.png" alt="WCS" className="w-24 h-24 mx-auto mb-3 rounded-full" />
-          <p className="text-text-secondary mt-1 text-lg">Staff Portal</p>
+        <div className="text-center mb-6">
+          <img src="/wcs-logo.png" alt="WCS" className="w-20 h-20 mx-auto rounded-full" />
         </div>
 
         {/* Login form */}

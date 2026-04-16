@@ -334,8 +334,8 @@ export default function MobileCommunicationNotes({ user }) {
   // ---------- Main View ----------
   return (
     <div className="flex flex-col h-full bg-bg">
-      {/* Header */}
-      <div className="bg-surface border-b border-border px-4 pt-4 pb-3">
+      {/* Header + filters in white card */}
+      <div className="mx-4 mt-4 mb-2 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4 space-y-2">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-text-primary">Comm Notes</h2>
           {!canViewNotes && (
@@ -378,7 +378,7 @@ export default function MobileCommunicationNotes({ user }) {
 
         {/* Location filter (corp/admin only) */}
         {canSeeAll && (
-          <div className="flex gap-2 mt-2 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide">
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
             {['all', ...ALL_LOCATIONS.map(l => l.toLowerCase())].map(loc => (
               <button
                 key={loc}
@@ -397,7 +397,7 @@ export default function MobileCommunicationNotes({ user }) {
 
         {/* Category filter — color-coded pills (leads+ only) */}
         {canViewNotes && (
-          <div className="flex gap-2 mt-2 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide">
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
             <button
               onClick={() => setCategoryFilter(null)}
               className={`px-4 py-2 rounded-xl text-xs font-semibold border whitespace-nowrap shrink-0 transition-colors ${
@@ -430,7 +430,7 @@ export default function MobileCommunicationNotes({ user }) {
         {/* Date filter */}
         {canViewNotes && (
           <div className="mt-2 space-y-2">
-            <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide">
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
               {[
                 { label: '7 Days', days: 7 },
                 { label: '30 Days', days: 30 },

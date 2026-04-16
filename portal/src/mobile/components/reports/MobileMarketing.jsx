@@ -398,14 +398,12 @@ export default function MobileMarketing() {
 
   return (
     <div className="pb-6">
-      {/* Header */}
-      <div className="px-4 pt-4 pb-2">
+      {/* Header + filters in white card */}
+      <div className="mx-4 mt-4 mb-3 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4 space-y-2">
         <h2 className="text-lg font-bold text-text-primary">Meta Ads</h2>
-      </div>
 
-      {/* Date range pills */}
-      <div className="px-4 mb-2">
-        <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
+        {/* Date range pills */}
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
           {DATE_PRESETS.map(p => (
             <Pill
               key={p.key}
@@ -419,37 +417,37 @@ export default function MobileMarketing() {
             Custom
           </Pill>
         </div>
-      </div>
 
-      {/* Custom date inputs */}
-      {preset === 'custom' && (
-        <div className="px-4 mb-3 flex gap-2">
-          <input
-            type="date"
-            value={customStart}
-            onChange={e => setCustomStart(e.target.value)}
-            className="flex-1 bg-surface border border-border rounded-lg px-2.5 py-2 text-xs text-text-primary"
-          />
-          <input
-            type="date"
-            value={customEnd}
-            onChange={e => setCustomEnd(e.target.value)}
-            className="flex-1 bg-surface border border-border rounded-lg px-2.5 py-2 text-xs text-text-primary"
-          />
+        {/* Custom date inputs */}
+        {preset === 'custom' && (
+          <div className="flex gap-2">
+            <input
+              type="date"
+              value={customStart}
+              onChange={e => setCustomStart(e.target.value)}
+              className="flex-1 bg-bg border border-border rounded-lg px-2.5 py-2 text-xs text-text-primary"
+            />
+            <input
+              type="date"
+              value={customEnd}
+              onChange={e => setCustomEnd(e.target.value)}
+              className="flex-1 bg-bg border border-border rounded-lg px-2.5 py-2 text-xs text-text-primary"
+            />
+          </div>
+        )}
+
+        {/* Active toggle */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-text-secondary font-medium">
+            {activeOnly ? 'Active campaigns' : 'All campaigns'}
+          </span>
+          <button
+            onClick={() => setActiveOnly(v => !v)}
+            className={`relative w-10 h-5 rounded-full transition-colors ${activeOnly ? 'bg-wcs-red' : 'bg-gray-300'}`}
+          >
+            <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${activeOnly ? 'translate-x-5' : ''}`} />
+          </button>
         </div>
-      )}
-
-      {/* Active toggle */}
-      <div className="px-4 mb-2 flex items-center justify-between">
-        <span className="text-xs text-text-secondary font-medium">
-          {activeOnly ? 'Active campaigns' : 'All campaigns'}
-        </span>
-        <button
-          onClick={() => setActiveOnly(v => !v)}
-          className={`relative w-10 h-5 rounded-full transition-colors ${activeOnly ? 'bg-wcs-red' : 'bg-gray-300'}`}
-        >
-          <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${activeOnly ? 'translate-x-5' : ''}`} />
-        </button>
       </div>
 
       {loading ? (
@@ -487,27 +485,27 @@ export default function MobileMarketing() {
             </div>
           )}
 
-          {/* Location filter pills */}
-          <div className="px-4 mb-2">
-            <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Location</p>
-            <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
-              {LOCATIONS.map(loc => (
-                <Pill key={loc} active={location === loc} onClick={() => setLocation(loc)}>
-                  {loc}
-                </Pill>
-              ))}
+          {/* Location + Type filter pills in white card */}
+          <div className="mx-4 mb-3 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4 space-y-2">
+            <div>
+              <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Location</p>
+              <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+                {LOCATIONS.map(loc => (
+                  <Pill key={loc} active={location === loc} onClick={() => setLocation(loc)}>
+                    {loc}
+                  </Pill>
+                ))}
+              </div>
             </div>
-          </div>
-
-          {/* Type filter pills */}
-          <div className="px-4 mb-3">
-            <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Type</p>
-            <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
-              {TYPES.map(t => (
-                <Pill key={t} active={type === t} onClick={() => setType(t)}>
-                  {t}
-                </Pill>
-              ))}
+            <div>
+              <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Type</p>
+              <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+                {TYPES.map(t => (
+                  <Pill key={t} active={type === t} onClick={() => setType(t)}>
+                    {t}
+                  </Pill>
+                ))}
+              </div>
             </div>
           </div>
 
