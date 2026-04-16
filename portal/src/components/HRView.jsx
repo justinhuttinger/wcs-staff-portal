@@ -344,7 +344,7 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
       {!submitMsg?.type && !showPreview && (
         <form onSubmit={handleSubmit} className="bg-surface border border-border rounded-xl p-6 space-y-5">
           <div>
-            <label className="block text-sm font-semibold text-text-primary mb-1">Document Type</label>
+            <label className="text-sm font-semibold text-text-primary mb-1 bg-bg/80 rounded-md px-2 py-0.5 inline-block">Document Type</label>
             <select
               value={reason}
               onChange={e => setReason(e.target.value)}
@@ -357,7 +357,7 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-text-primary mb-1">Reason</label>
+            <label className="text-sm font-semibold text-text-primary mb-1 bg-bg/80 rounded-md px-2 py-0.5 inline-block">Reason</label>
             <input
               type="text"
               value={shortReason}
@@ -368,7 +368,7 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-text-primary mb-1">Description</label>
+            <label className="text-sm font-semibold text-text-primary mb-1 bg-bg/80 rounded-md px-2 py-0.5 inline-block">Description</label>
             <textarea
               value={description}
               onChange={e => setDescription(e.target.value)}
@@ -380,7 +380,7 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-text-primary mb-1">Action Plan / Next Steps</label>
+            <label className="text-sm font-semibold text-text-primary mb-1 bg-bg/80 rounded-md px-2 py-0.5 inline-block">Action Plan / Next Steps</label>
             <textarea
               value={actionPlan}
               onChange={e => setActionPlan(e.target.value)}

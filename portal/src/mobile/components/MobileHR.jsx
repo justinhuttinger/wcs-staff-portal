@@ -133,20 +133,22 @@ function WorkerList({ user, onSelectWorker, actionLabel }) {
     <div className="space-y-3">
       {/* Location pills for corporate+ */}
       {canSeeAll && locations.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          {locations.map(loc => (
-            <button
-              key={loc.slug}
-              onClick={() => setLocationSlug(loc.slug)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap shrink-0 transition-colors ${
-                locationSlug === loc.slug
-                  ? 'bg-wcs-red text-white border-wcs-red'
-                  : 'bg-surface text-text-muted border-border'
-              }`}
-            >
-              {loc.name}
-            </button>
-          ))}
+        <div className="bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-3">
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+            {locations.map(loc => (
+              <button
+                key={loc.slug}
+                onClick={() => setLocationSlug(loc.slug)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap shrink-0 transition-colors ${
+                  locationSlug === loc.slug
+                    ? 'bg-wcs-red text-white border-wcs-red'
+                    : 'bg-bg text-text-muted border-border'
+                }`}
+              >
+                {loc.name}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -307,7 +309,7 @@ function WorkerDetail({ worker, user, onBack }) {
         <>
           {paychexDocs.length > 0 && (
             <div className="mb-4">
-              <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Paychex Documents</p>
+              <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2 bg-surface/95 backdrop-blur-sm rounded-lg px-3 py-1.5 inline-block">Paychex Documents</p>
               <div className="space-y-2">
                 {paychexDocs.map((doc, i) => (
                   <div key={doc.documentId || i} className="bg-surface border border-border rounded-2xl px-4 py-3 flex items-center gap-3">
@@ -328,7 +330,7 @@ function WorkerDetail({ worker, user, onBack }) {
           )}
 
           <div>
-            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2 bg-surface/95 backdrop-blur-sm rounded-lg px-3 py-1.5 inline-block">
               Portal Documents {localDocs.length > 0 && `(${localDocs.length})`}
             </p>
             {localDocs.length === 0 ? (
@@ -463,7 +465,7 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Reason pills */}
         <div>
-          <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1.5">Reason</label>
+          <label className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1.5 bg-surface/95 backdrop-blur-sm rounded-lg px-2.5 py-1 inline-block">Reason</label>
           <div className="flex gap-2 flex-wrap">
             {REASON_OPTIONS.map(opt => (
               <button
@@ -483,7 +485,7 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1.5">Description</label>
+          <label className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1.5 bg-surface/95 backdrop-blur-sm rounded-lg px-2.5 py-1 inline-block">Description</label>
           <textarea
             value={description}
             onChange={e => setDescription(e.target.value)}
@@ -495,7 +497,7 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1.5">Action Plan / Next Steps</label>
+          <label className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1.5 bg-surface/95 backdrop-blur-sm rounded-lg px-2.5 py-1 inline-block">Action Plan / Next Steps</label>
           <textarea
             value={actionPlan}
             onChange={e => setActionPlan(e.target.value)}
