@@ -240,32 +240,34 @@ export default function MetaAdsView({ onBack }) {
         <p className="text-sm text-text-muted">Meta / Facebook Ads</p>
       </div>
 
-      {/* Date Controls */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="flex gap-1">
-          {QUICK_RANGES.map(qr => (
-            <button key={qr.key} onClick={() => applyQuickRange(qr.key)}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-                activeQuick === qr.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-surface text-text-muted border-border hover:text-text-primary'
-              }`}>
-              {qr.label}
-            </button>
-          ))}
+      {/* Date Controls + Filters in white card */}
+      <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-5 space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex gap-1">
+            {QUICK_RANGES.map(qr => (
+              <button key={qr.key} onClick={() => applyQuickRange(qr.key)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  activeQuick === qr.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'
+                }`}>
+                {qr.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setActiveQuick(null) }}
+              className="px-2 py-1 bg-bg border border-border rounded-lg text-xs text-text-primary" />
+            <span className="text-text-muted text-xs">to</span>
+            <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setActiveQuick(null) }}
+              className="px-2 py-1 bg-bg border border-border rounded-lg text-xs text-text-primary" />
+            {!activeQuick && <button onClick={handleApply} className="px-3 py-1 bg-wcs-red text-white text-xs font-medium rounded-lg">Apply</button>}
+          </div>
         </div>
-        <div className="flex items-center gap-2 ml-auto">
-          <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setActiveQuick(null) }}
-            className="px-2 py-1 bg-bg border border-border rounded-lg text-xs text-text-primary" />
-          <span className="text-text-muted text-xs">to</span>
-          <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setActiveQuick(null) }}
-            className="px-2 py-1 bg-bg border border-border rounded-lg text-xs text-text-primary" />
-          {!activeQuick && <button onClick={handleApply} className="px-3 py-1 bg-wcs-red text-white text-xs font-medium rounded-lg">Apply</button>}
-        </div>
-      </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-4 mb-5">
-        <FilterPills options={LOCATIONS} value={locationFilter} onChange={setLocationFilter} label="Location" />
-        <FilterPills options={TYPES} value={typeFilter} onChange={setTypeFilter} label="Type" />
+        {/* Filters */}
+        <div className="flex flex-wrap gap-4">
+          <FilterPills options={LOCATIONS} value={locationFilter} onChange={setLocationFilter} label="Location" />
+          <FilterPills options={TYPES} value={typeFilter} onChange={setTypeFilter} label="Type" />
+        </div>
       </div>
 
       {error && <div className="bg-red-50 border border-red-200 text-wcs-red rounded-xl px-4 py-3 text-sm mb-5">{error}</div>}
