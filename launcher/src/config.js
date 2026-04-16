@@ -40,8 +40,8 @@ function getLocationFromArgs() {
 }
 
 module.exports = {
-  API_URL: process.env.WCS_API_URL || 'https://wcs-auth-api.onrender.com',
-  PORTAL_URL: process.env.WCS_PORTAL_URL || 'https://wcs-staff-portal.onrender.com',
+  API_URL: process.env.WCS_API_URL || 'https://api.wcstrength.com',
+  PORTAL_URL: process.env.WCS_PORTAL_URL || 'https://portal.wcstrength.com',
   getAbcUrl,
   getLocation: getLocationFromArgs,
   readConfig,

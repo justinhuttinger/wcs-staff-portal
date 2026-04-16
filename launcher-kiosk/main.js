@@ -1,7 +1,7 @@
 const { app, BrowserWindow } = require('electron')
 const path = require('path')
 
-const PORTAL_URL = process.env.WCS_PORTAL_URL || 'https://wcs-staff-portal.onrender.com'
+const PORTAL_URL = process.env.WCS_PORTAL_URL || 'https://portal.wcstrength.com'
 const KIOSK_KEY = '9ayf8dsa8cn439npc9sr8zpcnt3645twvc543'
 const LOCATION = 'Keizer'
 

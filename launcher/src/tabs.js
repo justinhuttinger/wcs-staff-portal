@@ -55,7 +55,7 @@ class TabManager {
 
     // Intercept OIDC authorize URLs and inject auth token for auto-SSO
     view.webContents.on('will-navigate', (e, url) => {
-      if (url.includes('/oidc/authorize') && url.includes('wcs-auth-api')) {
+      if (url.includes('/oidc/authorize') && (url.includes('api.wcstrength.com') || url.includes('wcs-auth-api'))) {
         // Get token from main process auth module
         try {
           const auth = require('./auth')

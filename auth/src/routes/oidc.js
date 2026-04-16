@@ -7,7 +7,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const router = Router()
 
 // OIDC Configuration
-const ISSUER = process.env.OIDC_ISSUER || 'https://wcs-auth-api.onrender.com'
+const ISSUER = process.env.OIDC_ISSUER || 'https://api.wcstrength.com'
 const CLIENT_ID = process.env.OIDC_CLIENT_ID
 const CLIENT_SECRET = process.env.OIDC_CLIENT_SECRET
 if (!CLIENT_ID || !CLIENT_SECRET) {

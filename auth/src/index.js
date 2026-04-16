@@ -7,7 +7,7 @@ const app = express()
 
 // CORS: whitelist known origins
 const ALLOWED_ORIGINS = [
-  process.env.PORTAL_URL || 'https://wcs-staff-portal.onrender.com',
+  process.env.PORTAL_URL || 'https://portal.wcstrength.com',
   'http://localhost:3000',
   'http://localhost:5173',
 ]

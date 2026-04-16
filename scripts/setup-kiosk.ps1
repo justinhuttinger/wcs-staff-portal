@@ -18,7 +18,7 @@
 # CONFIGURE THESE FOR EACH MACHINE
 # ============================================================
 $LocationName    = 'Salem'
-$PortalBaseURL   = 'https://wcs-staff-portal.onrender.com'
+$PortalBaseURL   = 'https://portal.wcstrength.com'
 # ============================================================
 
 $ErrorActionPreference = 'Stop'

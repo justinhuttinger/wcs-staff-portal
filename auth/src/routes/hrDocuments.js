@@ -65,7 +65,7 @@ function buildDocumentHTML({ employee_name, manager_name, reason, short_reason, 
 </head>
 <body>
   <div class="header">
-    <img src="${process.env.PORTAL_URL || 'https://wcs-staff-portal.onrender.com'}/wcs-logo.png" alt="WCS" />
+    <img src="${process.env.PORTAL_URL || 'https://portal.wcstrength.com'}/wcs-logo.png" alt="WCS" />
     <div class="header-text">
       <h1>West Coast Strength</h1>
       <h2>${REASON_LABELS[reason] || reason}</h2>

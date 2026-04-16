@@ -4,12 +4,12 @@ const REFERENCES = [
   {
     category: 'Webhooks',
     items: [
-      { label: 'Day One — Appointment Booked', value: 'POST https://wcs-auth-api.onrender.com/webhooks/ghl-appointment' },
-      { label: 'Day One — Form Completed', value: 'POST https://wcs-auth-api.onrender.com/webhooks/ghl-form-complete' },
-      { label: 'Sync All Data (hourly cron target)', value: 'POST https://wcs-auth-api.onrender.com/sync/all' },
-      { label: 'Sync Contacts Only', value: 'POST https://wcs-auth-api.onrender.com/sync/contacts' },
-      { label: 'Sync Opportunities Only', value: 'POST https://wcs-auth-api.onrender.com/sync/opportunities' },
-      { label: 'Full Sync (all contacts, not incremental)', value: 'POST https://wcs-auth-api.onrender.com/sync/contacts?full=true' },
+      { label: 'Day One — Appointment Booked', value: 'POST https://api.wcstrength.com/webhooks/ghl-appointment' },
+      { label: 'Day One — Form Completed', value: 'POST https://api.wcstrength.com/webhooks/ghl-form-complete' },
+      { label: 'Sync All Data (hourly cron target)', value: 'POST https://api.wcstrength.com/sync/all' },
+      { label: 'Sync Contacts Only', value: 'POST https://api.wcstrength.com/sync/contacts' },
+      { label: 'Sync Opportunities Only', value: 'POST https://api.wcstrength.com/sync/opportunities' },
+      { label: 'Full Sync (all contacts, not incremental)', value: 'POST https://api.wcstrength.com/sync/contacts?full=true' },
     ],
   },
   {
@@ -40,9 +40,9 @@ const REFERENCES = [
   {
     category: 'Services',
     items: [
-      { label: 'Portal (Frontend)', value: 'https://wcs-staff-portal.onrender.com' },
-      { label: 'Auth API (Backend)', value: 'https://wcs-auth-api.onrender.com' },
-      { label: 'Auth API Health Check', value: 'https://wcs-auth-api.onrender.com/health' },
+      { label: 'Portal (Frontend)', value: 'https://portal.wcstrength.com' },
+      { label: 'Auth API (Backend)', value: 'https://api.wcstrength.com' },
+      { label: 'Auth API Health Check', value: 'https://api.wcstrength.com/health' },
       { label: 'Supabase Dashboard', value: 'https://supabase.com/dashboard/project/ybopxxydsuwlbwxiuzve' },
     ],
   },
