@@ -2,7 +2,7 @@ import React from 'react'
 
 export default function MobileHeader({ title, subtitle, onBack, rightAction }) {
   return (
-    <div className="bg-surface border-b border-border px-4 py-3 flex items-center gap-3">
+    <div className="bg-surface/95 backdrop-blur-sm border-b border-border px-4 py-3 flex items-center gap-3 rounded-xl">
       {/* Back button */}
       {onBack && (
         <button

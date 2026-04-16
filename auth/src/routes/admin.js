@@ -263,17 +263,41 @@ router.get('/staff/template', requireRole('admin'), async (req, res) => {
       ['first_name', 'Yes', 'Staff member first name'],
       ['last_name', 'Yes', 'Staff member last name'],
       ['email', 'Yes', 'Unique email address'],
-      ['role', 'Yes', 'One of: front_desk, personal_trainer, lead, manager, director, admin'],
+      ['role', 'Yes', 'One of: front_desk, personal_trainer, lead, manager, director, admin (see Roles sheet for details)'],
       ['locations', 'Yes', 'Comma-separated location names: ' + locationNames],
       ['temporary_password', 'Yes', 'Initial password (staff must change on first login)'],
       [],
       ['Available Locations: ' + locationNames],
       ['Available Roles: front_desk, personal_trainer, lead, manager, director, admin'],
     ])
-    instrWs['!cols'] = [{ wch: 22 }, { wch: 10 }, { wch: 70 }]
+    instrWs['!cols'] = [{ wch: 22 }, { wch: 10 }, { wch: 80 }]
+
+    // Roles reference sheet
+    const rolesWs = XLSX.utils.aoa_to_sheet([
+      ['WCS Staff Roles — Reference Guide'],
+      [],
+      ['Role Key', 'Display Name', 'Level', 'Description', 'Portal Access'],
+      ['front_desk', 'Front Desk', '0', 'Front desk staff — basic portal access, leaderboard, limited tools', 'Desktop portal only, no mobile app, no reports'],
+      ['personal_trainer', 'Personal Trainer', '0', 'Personal trainers — same level as front desk, trainer-specific views', 'Desktop portal only, no mobile app, sees own Day One appointments'],
+      ['lead', 'Lead', '1', 'Team leads — can view membership and PT reports', 'Desktop portal, no mobile app, membership + PT + PT roster reports'],
+      ['manager', 'Manager', '2', 'Location managers — full location access, HR documents, club health reports', 'Desktop + mobile app, all reports except marketing, HR documents, single location'],
+      ['director', 'Director', '3', 'Directors — multi-location visibility, same as corporate', 'Desktop + mobile app, all reports, all locations, marketing reports'],
+      ['corporate', 'Corporate', '3', 'Corporate staff — multi-location visibility, marketing reports', 'Desktop + mobile app, all reports, all locations, marketing reports'],
+      ['admin', 'Admin', '4', 'System administrators — full access to everything including admin panel', 'Full access — admin panel, all locations, all reports, all features'],
+      [],
+      ['Notes:'],
+      ['- Roles are hierarchical: each role includes all permissions of lower roles'],
+      ['- Mobile app access requires manager role or above'],
+      ['- Multi-location view requires corporate/director role or above'],
+      ['- Marketing reports require corporate/director role or above'],
+      ['- Admin panel access requires admin role'],
+      ['- HR documents require manager role or above'],
+    ])
+    rolesWs['!cols'] = [{ wch: 18 }, { wch: 18 }, { wch: 6 }, { wch: 60 }, { wch: 60 }]
 
     XLSX.utils.book_append_sheet(wb, ws, 'Staff')
     XLSX.utils.book_append_sheet(wb, instrWs, 'Instructions')
+    XLSX.utils.book_append_sheet(wb, rolesWs, 'Roles')
 
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
 

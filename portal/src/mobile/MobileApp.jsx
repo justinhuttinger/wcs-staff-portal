@@ -13,6 +13,7 @@ import MobileCalendar from './components/MobileCalendar'
 import MobileLeaderboard from './components/MobileLeaderboard'
 import MobileCommunicationNotes from './components/MobileCommunicationNotes'
 import MobileHR from './components/MobileHR'
+import MobilePTRoster from './components/reports/MobilePTRoster'
 
 // Icons for bottom tab bar (Heroicons outline)
 function HomeIcon({ active }) {
@@ -137,6 +138,28 @@ export default function MobileApp() {
     return <LoginScreen onLogin={handleLogin} />
   }
 
+  // Manager+ only access gate
+  const ROLE_LEVELS = { team_member: 0, lead: 1, manager: 2, corporate: 3, admin: 4 }
+  const userRole = user?.staff?.role || 'team_member'
+  const roleIdx = ROLE_LEVELS[userRole] ?? 0
+
+  if (roleIdx < ROLE_LEVELS.manager) {
+    return (
+      <div className="min-h-screen bg-bg flex items-center justify-center px-6">
+        <div className="bg-surface border border-border rounded-2xl p-8 text-center max-w-sm">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 mx-auto text-text-muted mb-3">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+          </svg>
+          <h2 className="text-lg font-bold text-text-primary mb-1">Access Restricted</h2>
+          <p className="text-sm text-text-muted mb-4">The mobile app is only available to managers and above.</p>
+          <button onClick={handleLogout} className="px-4 py-2 text-sm font-medium text-wcs-red border border-wcs-red rounded-lg">
+            Sign Out
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   const activeTab = getActiveTab(route)
 
   const isAdmin = user?.staff?.role === 'admin'
@@ -199,6 +222,21 @@ export default function MobileApp() {
             </MobileReportShell>
           </div>
         )
+      case 'reports/pt-roster':
+        return (
+          <div className="pt-2">
+            <div className="px-4">
+              <MobileHeader title="PT Roster" onBack={() => navigate('reports')} />
+            </div>
+            <MobileReportShell title="PT Roster" user={user} hideDateRange>
+              {({ locationSlug }) => (
+                <div className="px-4 pb-4">
+                  <MobilePTRoster locationSlug={locationSlug} />
+                </div>
+              )}
+            </MobileReportShell>
+          </div>
+        )
       case 'reports/marketing':
         return (
           <div className="pt-2">
@@ -237,7 +275,7 @@ export default function MobileApp() {
   const bgImage = LOCATION_BACKGROUNDS[userLocation.toLowerCase()]
 
   return (
-    <div className="min-h-screen bg-bg text-text-primary relative">
+    <div className="h-screen bg-bg text-text-primary relative flex flex-col overflow-hidden">
       {/* Location background image */}
       {bgImage && (
         <>
@@ -245,13 +283,13 @@ export default function MobileApp() {
           <div className="fixed inset-0 z-0 bg-black/60" />
         </>
       )}
-      {/* Main content area with bottom padding for tab bar */}
-      <div className="pb-20 relative z-10">
+      {/* Main content area — scrollable, between fixed header space and bottom nav */}
+      <div className="flex-1 overflow-y-auto relative z-10 pb-20">
         {renderView()}
       </div>
 
       {/* Bottom tab bar */}
-      <nav className="fixed bottom-0 left-0 right-0 h-16 bg-surface border-t border-border flex items-center justify-around px-2 z-50 relative" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      <nav className="fixed bottom-0 left-0 right-0 h-16 bg-surface border-t border-border flex items-center justify-around px-2 z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         {tabs.map(({ key, label, Icon }) => {
           const isActive = activeTab === key
           return (

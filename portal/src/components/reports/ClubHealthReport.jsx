@@ -80,11 +80,39 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
   const totalMemberships = data.total_memberships || 0
   const totalAgreements = data.total_agreements || 0
 
+  // Set / Show / Close metrics from day one data
+  const dayOneSet = data.total_day_ones_booked || 0
+  const dayOneStatus = data.day_one_status || {}
+  const dayOneSale = data.day_one_sale || {}
+  const dayOneShow = (dayOneStatus['Completed'] || 0) + (dayOneStatus['Show'] || 0)
+  const dayOneClose = dayOneSale['Sale'] || 0
+  const showRate = dayOneSet > 0 ? Math.round((dayOneShow / dayOneSet) * 100) : 0
+  const closeRate = dayOneShow > 0 ? Math.round((dayOneClose / dayOneShow) * 100) : 0
+
   // Ratio pie
   const sameDayRatio = { 'Same Day': data.total_same_day_sales || 0, 'Other': Math.max(0, totalAgreements - (data.total_same_day_sales || 0)) }
 
   return (
     <div className="space-y-6">
+      {/* Set / Show / Close */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-surface rounded-xl border border-border p-6 text-center">
+          <p className="text-xs text-text-muted uppercase tracking-wide">Set</p>
+          <p className="text-4xl font-bold text-text-primary mt-2">{dayOneSet}</p>
+          <p className="text-[11px] text-text-muted mt-1">Day Ones Booked</p>
+        </div>
+        <div className="bg-surface rounded-xl border border-border p-6 text-center">
+          <p className="text-xs text-text-muted uppercase tracking-wide">Show</p>
+          <p className="text-4xl font-bold text-text-primary mt-2">{dayOneShow}</p>
+          <p className="text-[11px] text-text-muted mt-1">{showRate}% of set</p>
+        </div>
+        <div className="bg-surface rounded-xl border border-border p-6 text-center">
+          <p className="text-xs text-text-muted uppercase tracking-wide">Close</p>
+          <p className="text-4xl font-bold text-text-primary mt-2">{dayOneClose}</p>
+          <p className="text-[11px] text-text-muted mt-1">{closeRate}% of shown</p>
+        </div>
+      </div>
+
       {/* Big Number Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <div className="bg-surface rounded-xl border border-border p-6 text-center">

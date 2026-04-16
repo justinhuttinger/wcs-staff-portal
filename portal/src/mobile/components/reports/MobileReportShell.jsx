@@ -37,21 +37,27 @@ function getQuickRange(key) {
   }
 }
 
-export default function MobileReportShell({ title, children, user }) {
+export default function MobileReportShell({ title, children, user, hideDateRange }) {
+  const defaultLocSlug = ['corporate', 'admin', 'director'].includes(user?.staff?.role)
+    ? 'all'
+    : (user?.staff?.locations?.find(l => l.is_primary)?.name || user?.staff?.locations?.[0]?.name || 'salem').toLowerCase()
+
   const [activeRange, setActiveRange] = useState('this_month')
-  const [locationSlug, setLocationSlug] = useState('all')
+  const [locationSlug, setLocationSlug] = useState(defaultLocSlug)
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
 
+  const isCorporatePlus = ['corporate', 'admin', 'director'].includes(user?.staff?.role)
+
   const availableLocations = useMemo(() => {
-    const role = user?.staff?.role
-    if (role === 'admin' || role === 'director') return LOCATIONS
+    if (isCorporatePlus) return LOCATIONS
     const userLocations = user?.staff?.locations || []
     const allowed = userLocations
       .filter(loc => loc.can_view_reports !== false)
       .map(loc => (loc.name || '').toLowerCase())
-    return LOCATIONS.filter(l => l.slug === 'all' || allowed.includes(l.slug))
-  }, [user])
+    // Non-corporate users: no "All" option, only their assigned locations
+    return LOCATIONS.filter(l => l.slug !== 'all' && allowed.includes(l.slug))
+  }, [user, isCorporatePlus])
 
   const { startDate, endDate } = useMemo(() => {
     if (customStart && customEnd) return { startDate: customStart, endDate: customEnd }
@@ -97,39 +103,43 @@ export default function MobileReportShell({ title, children, user }) {
       </div>
 
       {/* Quick range pills */}
-      <div className="px-4 pb-2 overflow-x-auto scrollbar-hide">
-        <div className="flex gap-2 min-w-max">
-          {QUICK_RANGES.map(range => (
-            <button
-              key={range.key}
-              onClick={() => handleRangeSelect(range.key)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                activeRange === range.key
-                  ? 'bg-wcs-red text-white'
-                  : 'bg-surface border border-border text-text-secondary'
-              }`}
-            >
-              {range.label}
-            </button>
-          ))}
+      {!hideDateRange && (
+        <div className="px-4 pb-2 overflow-x-auto scrollbar-hide">
+          <div className="flex gap-2 min-w-max">
+            {QUICK_RANGES.map(range => (
+              <button
+                key={range.key}
+                onClick={() => handleRangeSelect(range.key)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                  activeRange === range.key
+                    ? 'bg-wcs-red text-white'
+                    : 'bg-surface border border-border text-text-secondary'
+                }`}
+              >
+                {range.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Custom date pickers */}
-      <div className="px-4 pb-3 flex gap-2">
-        <input
-          type="date"
-          value={customStart || startDate}
-          onChange={e => handleCustomDate('start', e.target.value)}
-          className="flex-1 bg-surface border border-border rounded-xl px-3 py-2 text-xs text-text-primary"
-        />
-        <input
-          type="date"
-          value={customEnd || endDate}
-          onChange={e => handleCustomDate('end', e.target.value)}
-          className="flex-1 bg-surface border border-border rounded-xl px-3 py-2 text-xs text-text-primary"
-        />
-      </div>
+      {!hideDateRange && (
+        <div className="px-4 pb-3 flex gap-2">
+          <input
+            type="date"
+            value={customStart || startDate}
+            onChange={e => handleCustomDate('start', e.target.value)}
+            className="flex-1 bg-surface border border-border rounded-xl px-3 py-2 text-xs text-text-primary"
+          />
+          <input
+            type="date"
+            value={customEnd || endDate}
+            onChange={e => handleCustomDate('end', e.target.value)}
+            className="flex-1 bg-surface border border-border rounded-xl px-3 py-2 text-xs text-text-primary"
+          />
+        </div>
+      )}
 
       {/* Report content */}
       <div className="flex-1 overflow-y-auto">

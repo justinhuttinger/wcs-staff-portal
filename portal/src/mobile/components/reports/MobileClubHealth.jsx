@@ -90,8 +90,35 @@ export default function MobileClubHealth({ startDate, endDate, locationSlug }) {
     'Other': Math.max(0, totalMemberships - (data.total_same_day_sales || 0)),
   }
 
+  // Set / Show / Close
+  const dayOneSet = data.total_day_ones_booked || 0
+  const dayOneStatus = data.day_one_status || {}
+  const dayOneSale = data.day_one_sale || {}
+  const dayOneShow = (dayOneStatus['Completed'] || 0) + (dayOneStatus['Show'] || 0)
+  const dayOneClose = dayOneSale['Sale'] || 0
+  const showRate = dayOneSet > 0 ? Math.round((dayOneShow / dayOneSet) * 100) : 0
+  const closeRate = dayOneShow > 0 ? Math.round((dayOneClose / dayOneShow) * 100) : 0
+
   return (
     <div className="space-y-3">
+      {/* Set / Show / Close */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-surface rounded-2xl border border-border p-4 text-center">
+          <p className="text-3xl font-bold text-text-primary">{dayOneSet}</p>
+          <p className="text-xs text-text-muted uppercase mt-1">Set</p>
+        </div>
+        <div className="bg-surface rounded-2xl border border-border p-4 text-center">
+          <p className="text-3xl font-bold text-text-primary">{dayOneShow}</p>
+          <p className="text-xs text-text-muted uppercase mt-1">Show</p>
+          <p className="text-[10px] text-text-secondary">{showRate}% of set</p>
+        </div>
+        <div className="bg-surface rounded-2xl border border-border p-4 text-center">
+          <p className="text-3xl font-bold text-text-primary">{dayOneClose}</p>
+          <p className="text-xs text-text-muted uppercase mt-1">Close</p>
+          <p className="text-[10px] text-text-secondary">{closeRate}% of shown</p>
+        </div>
+      </div>
+
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-3">
         <StatCard label="Memberships Sold" value={totalMemberships} />

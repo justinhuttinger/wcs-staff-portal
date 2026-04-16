@@ -542,14 +542,18 @@ function DayItems({ items, onDayOneClick }) {
 
   return (
     <div className="space-y-3">
-      {items.map(item => (
+      {items.map(item => {
+        const clickable = item.type === 'dayone' && (item.pending || item.status === 'Completed' || item.status === 'No Show')
+        return (
         <div
           key={item.id}
-          onClick={item.type === 'dayone' && item.pending ? () => onDayOneClick(item.raw) : undefined}
+          onClick={clickable ? () => onDayOneClick(item.raw) : undefined}
           className={`bg-surface border rounded-xl p-4 flex items-center gap-4 transition-all ${
             item.pending
               ? 'border-yellow-300 bg-yellow-50/30 cursor-pointer hover:border-wcs-red/50 animate-[pulse_3s_ease-in-out_infinite]'
-              : 'border-border'
+              : clickable
+                ? 'border-border cursor-pointer hover:border-wcs-red/50'
+                : 'border-border'
           }`}
         >
           <div className="text-center min-w-[60px]">
@@ -583,13 +587,14 @@ function DayItems({ items, onDayOneClick }) {
             )}
           </div>
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
 
 function CalendarCard({ item, onDayOneClick }) {
-  const clickable = item.type === 'dayone' && item.pending
+  const clickable = item.type === 'dayone' && (item.pending || item.status === 'Completed' || item.status === 'No Show')
   const isTour = item.type === 'tour'
   const bgColor = item.pending
     ? 'bg-yellow-50 border-yellow-300 hover:border-yellow-400'
@@ -601,7 +606,7 @@ function CalendarCard({ item, onDayOneClick }) {
     <div
       onClick={clickable ? () => onDayOneClick(item.raw) : undefined}
       className={`rounded-lg border px-2 py-1.5 text-left transition-all ${bgColor} ${
-        clickable ? 'cursor-pointer' : ''
+        clickable ? 'cursor-pointer hover:ring-1 hover:ring-wcs-red/30' : ''
       } ${item.pending ? 'animate-[pulse_3s_ease-in-out_infinite]' : ''}`}
     >
       <div className="flex items-center justify-between gap-1">

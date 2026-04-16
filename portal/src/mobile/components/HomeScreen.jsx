@@ -145,8 +145,8 @@ export default function HomeScreen({ user, navigate, onLogout }) {
 
   return (
     <div className="px-4 pt-6">
-      {/* User info */}
-      <div className="mb-6">
+      {/* User info — white card for readability over background */}
+      <div className="mb-6 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4">
         <h1 className="text-2xl font-bold text-text-primary">
           Welcome, {displayName}
         </h1>
