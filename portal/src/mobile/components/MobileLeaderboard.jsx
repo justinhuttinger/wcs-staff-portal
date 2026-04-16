@@ -112,9 +112,9 @@ export default function MobileLeaderboard({ user }) {
   const locations = data?.locations || []
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className="min-h-screen">
       {/* Sticky header */}
-      <div className="sticky top-0 z-10 pb-3">
+      <div className="sticky top-0 z-10 pb-3 pt-1">
         {/* Title + filters in white card */}
         <div className="mx-4 mt-4 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4 space-y-2">
         <h1 className="text-lg font-semibold text-text-primary">Leaderboard</h1>

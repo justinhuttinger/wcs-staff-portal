@@ -225,9 +225,9 @@ export default function MobileCommunicationNotes({ user }) {
   if (selectedNote) {
     const note = selectedNote
     return (
-      <div className="flex flex-col h-full bg-bg">
+      <div className="flex flex-col h-full">
         {/* Header */}
-        <div className="bg-surface border-b border-border px-4 pt-4 pb-3">
+        <div className="mx-4 mt-4 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4">
           <div className="flex items-center gap-3">
             <button onClick={() => setSelectedNote(null)} className="p-1 text-text-muted active:text-text-primary">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
@@ -333,7 +333,7 @@ export default function MobileCommunicationNotes({ user }) {
 
   // ---------- Main View ----------
   return (
-    <div className="flex flex-col h-full bg-bg">
+    <div className="flex flex-col h-full">
       {/* Header + filters in white card */}
       <div className="mx-4 mt-4 mb-2 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4 space-y-2">
         <div className="flex items-center justify-between">
