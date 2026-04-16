@@ -81,7 +81,9 @@ export default function ReportsHome({ onNavigate, user }) {
 
   return (
     <div className="p-4">
-      <h2 className="text-lg font-bold text-text-primary mb-4">Reports</h2>
+      <div className="bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4 mb-4">
+        <h2 className="text-lg font-bold text-text-primary">Reports</h2>
+      </div>
       <div className="grid grid-cols-2 gap-3">
         {visibleTiles.map(tile => (
           <button

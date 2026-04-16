@@ -616,7 +616,9 @@ export default function MobileHR({ user }) {
     <div className="px-4 pt-6 pb-8">
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
-      <h1 className="text-xl font-bold text-text-primary mb-6">HR Documents</h1>
+      <div className="bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4 mb-6">
+        <h1 className="text-xl font-bold text-text-primary">HR Documents</h1>
+      </div>
 
       <div className="space-y-4">
         <button

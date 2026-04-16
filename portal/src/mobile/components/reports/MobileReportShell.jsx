@@ -79,12 +79,11 @@ export default function MobileReportShell({ title, children, user, hideDateRange
 
   return (
     <div className="flex flex-col min-h-0">
-      <div className="px-4 pt-3 pb-2">
+      <div className="mx-4 mt-3 mb-2 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4 space-y-2">
         <h2 className="text-lg font-bold text-text-primary">{title}</h2>
-      </div>
 
       {/* Location pills */}
-      <div className="px-4 pb-2 overflow-x-auto scrollbar-hide">
+      <div className="overflow-x-auto scrollbar-hide">
         <div className="flex gap-2 min-w-max">
           {availableLocations.map(loc => (
             <button
@@ -104,7 +103,7 @@ export default function MobileReportShell({ title, children, user, hideDateRange
 
       {/* Quick range pills */}
       {!hideDateRange && (
-        <div className="px-4 pb-2 overflow-x-auto scrollbar-hide">
+        <div className="overflow-x-auto scrollbar-hide">
           <div className="flex gap-2 min-w-max">
             {QUICK_RANGES.map(range => (
               <button
@@ -125,21 +124,22 @@ export default function MobileReportShell({ title, children, user, hideDateRange
 
       {/* Custom date pickers */}
       {!hideDateRange && (
-        <div className="px-4 pb-3 flex gap-2">
+        <div className="flex gap-2">
           <input
             type="date"
             value={customStart || startDate}
             onChange={e => handleCustomDate('start', e.target.value)}
-            className="flex-1 bg-surface border border-border rounded-xl px-3 py-2 text-xs text-text-primary"
+            className="flex-1 bg-bg border border-border rounded-xl px-3 py-2 text-xs text-text-primary"
           />
           <input
             type="date"
             value={customEnd || endDate}
             onChange={e => handleCustomDate('end', e.target.value)}
-            className="flex-1 bg-surface border border-border rounded-xl px-3 py-2 text-xs text-text-primary"
+            className="flex-1 bg-bg border border-border rounded-xl px-3 py-2 text-xs text-text-primary"
           />
         </div>
       )}
+      </div>
 
       {/* Report content */}
       <div className="flex-1 overflow-y-auto">

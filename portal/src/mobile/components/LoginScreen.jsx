@@ -76,8 +76,10 @@ export default function LoginScreen({ onLogin }) {
   // Forgot password view
   if (showForgotPassword) {
     return (
-      <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-6">
-        <div className="w-full max-w-sm">
+      <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-6 relative">
+        <div className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat" style={{ backgroundImage: 'url(/bg-clackamas.jpg)' }} />
+        <div className="fixed inset-0 z-0 bg-black/60" />
+        <div className="w-full max-w-sm relative z-10 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-6">
           <div className="text-center mb-10">
             <img src="/wcs-logo.png" alt="WCS" className="w-20 h-20 mx-auto mb-2 rounded-full" />
             <p className="text-text-secondary mt-1 text-lg">Reset Password</p>
@@ -133,8 +135,10 @@ export default function LoginScreen({ onLogin }) {
   // Change password view
   if (mustChangePassword) {
     return (
-      <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-6">
-        <div className="w-full max-w-sm">
+      <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-6 relative">
+        <div className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat" style={{ backgroundImage: 'url(/bg-clackamas.jpg)' }} />
+        <div className="fixed inset-0 z-0 bg-black/60" />
+        <div className="w-full max-w-sm relative z-10 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-6">
           <div className="text-center mb-10">
             <img src="/wcs-logo.png" alt="WCS" className="w-20 h-20 mx-auto mb-2 rounded-full" />
             <p className="text-text-secondary mt-1 text-lg">Change Password</p>
@@ -188,8 +192,10 @@ export default function LoginScreen({ onLogin }) {
 
   // Main login view
   return (
-    <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-6">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-6 relative">
+        <div className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat" style={{ backgroundImage: 'url(/bg-clackamas.jpg)' }} />
+        <div className="fixed inset-0 z-0 bg-black/60" />
+      <div className="w-full max-w-sm relative z-10 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-6">
         {/* Logo */}
         <div className="text-center mb-10">
           <img src="/wcs-logo.png" alt="WCS" className="w-24 h-24 mx-auto mb-3 rounded-full" />
