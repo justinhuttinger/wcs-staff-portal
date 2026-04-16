@@ -266,7 +266,8 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
   const [view, setView] = useState('week')
   const [currentDate, setCurrentDate] = useState(getDateStr())
   const [filter, setFilter] = useState('all') // 'all' | 'tours' | 'dayones'
-  const [activeModal, setActiveModal] = useState(null)
+  const [activeModal, setActiveModal] = useState(null) // pending D1 — editable
+  const [detailModal, setDetailModal] = useState(null) // completed D1 — read-only
 
   const userLocations = user?.staff?.locations || []
   const primaryLoc = userLocations.find(l => l.is_primary) || userLocations[0]
@@ -376,6 +377,14 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
   // Count pending day ones for badge
   const pendingCount = dayOnes.filter(isDayOnePending).length
 
+  function handleDayOneClick(apt) {
+    if (isDayOnePending(apt)) {
+      setActiveModal(apt)
+    } else {
+      setDetailModal(apt)
+    }
+  }
+
   return (
     <div className="w-full max-w-6xl mx-auto px-8 py-6">
       {/* Header card */}
@@ -467,7 +476,7 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
 
       {/* Day View */}
       {!loading && view === 'day' && (
-        <DayItems items={getItemsForDate(currentDate)} onDayOneClick={setActiveModal} />
+        <DayItems items={getItemsForDate(currentDate)} onDayOneClick={handleDayOneClick} />
       )}
 
       {/* Week View — Google Calendar style columns */}
@@ -498,7 +507,7 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
               return (
                 <div key={date} className={`${isToday ? 'bg-wcs-red/[0.02]' : ''} ${date !== weekDates[0] ? 'border-l border-border' : ''} p-1.5 flex flex-col gap-1`}>
                   {items.map(item => (
-                    <CalendarCard key={item.id} item={item} onDayOneClick={setActiveModal} />
+                    <CalendarCard key={item.id} item={item} onDayOneClick={handleDayOneClick} />
                   ))}
                   {items.length === 0 && (
                     <p className="text-[10px] text-text-muted/50 text-center mt-4">—</p>
@@ -510,7 +519,7 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
         </div>
       )}
 
-      {/* Outcome Modal for Day Ones */}
+      {/* Outcome Modal for pending Day Ones (editable) */}
       {activeModal && (
         <OutcomeModal
           appointment={activeModal}
@@ -521,6 +530,57 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
             setActiveModal(null)
           }}
         />
+      )}
+
+      {/* Read-only detail modal for completed Day Ones */}
+      {detailModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setDetailModal(null)}>
+          <div className="bg-surface rounded-2xl border border-border w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-text-primary">{capitalize(detailModal.contact_name)}</h3>
+                <p className="text-xs text-text-muted">{formatDateTime(detailModal.appointment_time)}</p>
+                {detailModal.assigned_user_name && <p className="text-xs text-text-muted">Trainer: {detailModal.assigned_user_name}</p>}
+              </div>
+              <button onClick={() => setDetailModal(null)} className="text-text-muted hover:text-text-primary text-2xl leading-none">&times;</button>
+            </div>
+
+            <div className="rounded-xl bg-bg border border-border p-4 space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-text-muted">Attendance</span>
+                <span className="font-medium text-text-primary">{detailModal.show_or_no_show || (getDayOneStatus(detailModal) === 'No Show' ? 'No Show' : 'Show')}</span>
+              </div>
+              {getDayOneStatus(detailModal) !== 'No Show' && detailModal.day_one_sale && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-text-muted">Sale Result</span>
+                  <span className={`font-medium ${detailModal.day_one_sale === 'Sale' ? 'text-green-700' : 'text-text-primary'}`}>{detailModal.day_one_sale}</span>
+                </div>
+              )}
+              {detailModal.day_one_sale === 'Sale' && detailModal.pt_sale_type && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-text-muted">What Was Sold</span>
+                  <span className="font-medium text-text-primary">{detailModal.pt_sale_type}</span>
+                </div>
+              )}
+              {detailModal.day_one_sale && detailModal.day_one_sale !== 'Sale' && detailModal.why_no_sale && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-text-muted">Reason</span>
+                  <span className="font-medium text-text-primary">{detailModal.why_no_sale}</span>
+                </div>
+              )}
+              {detailModal.day_one_booking_team_member && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-text-muted">Booked By</span>
+                  <span className="font-medium text-text-primary">{detailModal.day_one_booking_team_member}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 mt-4">
+              <StatusBadge appointment={detailModal} />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -108,7 +108,12 @@ export default function MobileCalendar({ user }) {
         raw: a,
       }))
 
-      const all = [...tours, ...dayOnes].sort((a, b) => new Date(a.time) - new Date(b.time))
+      // Filter by selected date client-side to avoid timezone drift
+      // (API may return adjacent-date events due to UTC vs local)
+      const all = [...tours, ...dayOnes].filter(item => {
+        if (!item.time) return false
+        return toLocalDateStr(new Date(item.time)) === currentDate
+      }).sort((a, b) => new Date(a.time) - new Date(b.time))
       setItems(all)
       setLoading(false)
     }).catch(err => {
