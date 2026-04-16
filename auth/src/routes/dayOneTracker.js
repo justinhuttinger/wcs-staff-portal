@@ -156,7 +156,7 @@ router.get('/appointments', async (req, res) => {
       // Also get custom field status from report view
       const { data: cfData } = await supabaseAdmin
         .from('ghl_contacts_report')
-        .select('id, day_one_status, day_one_sale, show_or_no_show')
+        .select('id, day_one_status, day_one_sale, show_or_no_show, pt_sale_type, why_no_sale, day_one_booking_team_member, day_one_trainer')
         .in('id', contactIds)
       if (cfData) {
         for (const c of cfData) {
@@ -184,6 +184,10 @@ router.get('/appointments', async (req, res) => {
           day_one_status: contact.day_one_status || null,
           day_one_sale: contact.day_one_sale || null,
           show_or_no_show: contact.show_or_no_show || null,
+          pt_sale_type: contact.pt_sale_type || null,
+          why_no_sale: contact.why_no_sale || null,
+          day_one_booking_team_member: contact.day_one_booking_team_member || null,
+          day_one_trainer: contact.day_one_trainer || null,
         }
       })
       .sort((a, b) => new Date(b.appointment_time) - new Date(a.appointment_time))
