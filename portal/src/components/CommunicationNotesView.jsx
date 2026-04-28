@@ -220,7 +220,7 @@ export default function CommunicationNotesView({ user, onBack }) {
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
-            className={`w-4 h-4 text-text-muted transition-transform ${formOpen ? 'rotate-180' : ''}`}
+            className={`w-4 h-4 text-text-primary transition-transform ${formOpen ? 'rotate-180' : ''}`}
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
@@ -229,18 +229,18 @@ export default function CommunicationNotesView({ user, onBack }) {
         {formOpen && (
           <form onSubmit={handleSubmit} className="px-5 pb-5 space-y-3 border-t border-border pt-4">
             <div>
-              <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1">Title</label>
+              <label className="block text-xs font-semibold text-text-primary uppercase tracking-wide mb-1">Title</label>
               <input
                 type="text"
                 value={title}
                 onChange={e => setTitle(e.target.value)}
                 placeholder="Brief summary..."
-                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-bg text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-wcs-red"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-bg text-text-primary placeholder:text-text-primary/50 focus:outline-none focus:border-wcs-red"
                 required
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1">Category</label>
+              <label className="block text-xs font-semibold text-text-primary uppercase tracking-wide mb-1">Category</label>
               <select
                 value={category}
                 onChange={e => setCategory(e.target.value)}
@@ -256,35 +256,35 @@ export default function CommunicationNotesView({ user, onBack }) {
             {category === 'member' && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1">Member Name</label>
+                  <label className="block text-xs font-semibold text-text-primary uppercase tracking-wide mb-1">Member Name</label>
                   <input
                     type="text"
                     value={memberName}
                     onChange={e => setMemberName(e.target.value)}
                     placeholder="Member full name"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-bg text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-wcs-red"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-bg text-text-primary placeholder:text-text-primary/50 focus:outline-none focus:border-wcs-red"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1">Member Phone</label>
+                  <label className="block text-xs font-semibold text-text-primary uppercase tracking-wide mb-1">Member Phone</label>
                   <input
                     type="tel"
                     value={memberPhone}
                     onChange={e => setMemberPhone(e.target.value)}
                     placeholder="(555) 555-5555"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-bg text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-wcs-red"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-bg text-text-primary placeholder:text-text-primary/50 focus:outline-none focus:border-wcs-red"
                   />
                 </div>
               </div>
             )}
             <div>
-              <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1">Body</label>
+              <label className="block text-xs font-semibold text-text-primary uppercase tracking-wide mb-1">Body</label>
               <textarea
                 value={body}
                 onChange={e => setBody(e.target.value)}
                 placeholder="Type your message here..."
                 rows={4}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-bg text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-wcs-red resize-none"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-bg text-text-primary placeholder:text-text-primary/50 focus:outline-none focus:border-wcs-red resize-none"
                 required
               />
             </div>
@@ -321,12 +321,12 @@ export default function CommunicationNotesView({ user, onBack }) {
                     key={s}
                     onClick={() => { setStatusFilter(s); setExpandedId(null) }}
                     className={`relative flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
-                      active ? 'text-text-primary' : 'text-text-muted hover:text-text-primary'
+                      active ? 'text-text-primary' : 'text-text-primary hover:text-text-primary'
                     }`}
                   >
                     <span className={`w-2 h-2 rounded-full ${dotColor}`} />
                     <span>{STATUS_LABELS[s]}</span>
-                    <span className={`text-xs ${active ? 'text-text-primary font-semibold' : 'text-text-muted'}`}>
+                    <span className={`text-xs ${active ? 'text-text-primary font-semibold' : 'text-text-primary'}`}>
                       {statusCounts[s] || 0}
                     </span>
                     {active && <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-wcs-red rounded-full" />}
@@ -364,11 +364,11 @@ export default function CommunicationNotesView({ user, onBack }) {
               {statusFilter === 'completed' && (
                 <div className="flex items-center gap-1.5 ml-auto">
                   <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-[130px] px-2 py-1.5 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red" />
-                  <span className="text-xs text-text-muted">to</span>
+                  <span className="text-xs text-text-primary">to</span>
                   <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-[130px] px-2 py-1.5 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red" />
                   <button
                     onClick={() => { setDateFrom(''); setDateTo('') }}
-                    className="px-2.5 py-1.5 text-xs text-text-muted hover:text-text-primary"
+                    className="px-2.5 py-1.5 text-xs text-text-primary hover:text-text-primary"
                   >
                     Clear
                   </button>
@@ -379,9 +379,9 @@ export default function CommunicationNotesView({ user, onBack }) {
 
           {/* Notes */}
           {loading ? (
-            <p className="text-sm text-text-muted text-center py-8">Loading notes...</p>
+            <p className="text-sm text-text-primary text-center py-8">Loading notes...</p>
           ) : filteredNotes.length === 0 ? (
-            <p className="text-sm text-text-muted text-center py-8">No {STATUS_LABELS[statusFilter].toLowerCase()} notes{categoryFilter !== 'all' ? ` in ${categoryFilter}` : ''}</p>
+            <p className="text-sm text-text-primary text-center py-8">No {STATUS_LABELS[statusFilter].toLowerCase()} notes{categoryFilter !== 'all' ? ` in ${categoryFilter}` : ''}</p>
           ) : (
             <div className="space-y-3">
               {filteredNotes.map(note => {
@@ -407,10 +407,10 @@ export default function CommunicationNotesView({ user, onBack }) {
                               'bg-gray-400'
                             }`} title={note.category} />
                             <span className="text-sm font-semibold text-text-primary truncate">{note.title}</span>
-                            <span className="text-[11px] text-text-muted capitalize shrink-0">· {note.category}</span>
+                            <span className="text-[11px] text-text-primary capitalize shrink-0">· {note.category}</span>
                           </div>
                           {note.member_name && (
-                            <div className="flex items-center gap-2 text-xs text-text-muted mb-1">
+                            <div className="flex items-center gap-2 text-xs text-text-primary mb-1">
                               <span className="font-medium">Member: {note.member_name}</span>
                               <button
                                 type="button"
@@ -448,10 +448,10 @@ export default function CommunicationNotesView({ user, onBack }) {
                               )}
                             </div>
                           )}
-                          <p className={`text-sm text-text-muted ${isExpanded ? '' : 'line-clamp-2'}`}>
+                          <p className={`text-sm text-text-primary ${isExpanded ? '' : 'line-clamp-2'}`}>
                             {note.body}
                           </p>
-                          <div className="flex items-center gap-2 mt-2 text-xs text-text-muted">
+                          <div className="flex items-center gap-2 mt-2 text-xs text-text-primary">
                             <span>Submitted by {note.submitted_by_name || 'Unknown'}</span>
                             <span>·</span>
                             <span>{formatDate(note.created_at)}</span>
@@ -465,7 +465,7 @@ export default function CommunicationNotesView({ user, onBack }) {
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           {(note.comment_count > 0) && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-bg text-text-muted text-[11px] font-semibold">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-bg text-text-primary text-[11px] font-semibold">
                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.399-.49c1.583-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
                               </svg>
@@ -477,7 +477,7 @@ export default function CommunicationNotesView({ user, onBack }) {
                             fill="none"
                             stroke="currentColor"
                             strokeWidth="2"
-                            className={`w-4 h-4 text-text-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                            className={`w-4 h-4 text-text-primary transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                           >
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                           </svg>
@@ -490,7 +490,7 @@ export default function CommunicationNotesView({ user, onBack }) {
                       <div className="border-t border-border px-5 py-4 space-y-4">
                         {/* Status Dropdown */}
                         <div className="flex items-center gap-3">
-                          <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">Status</span>
+                          <span className="text-xs font-semibold text-text-primary uppercase tracking-wide">Status</span>
                           <select
                             value={note.status}
                             onChange={e => handleStatusChange(note, e.target.value)}
@@ -505,18 +505,18 @@ export default function CommunicationNotesView({ user, onBack }) {
 
                         {/* Comments Section */}
                         <div>
-                          <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Comments</h4>
+                          <h4 className="text-xs font-semibold text-text-primary uppercase tracking-wide mb-3">Comments</h4>
                           {commentsLoading ? (
-                            <p className="text-xs text-text-muted">Loading comments...</p>
+                            <p className="text-xs text-text-primary">Loading comments...</p>
                           ) : comments.length === 0 ? (
-                            <p className="text-xs text-text-muted mb-3">No comments yet</p>
+                            <p className="text-xs text-text-primary mb-3">No comments yet</p>
                           ) : (
                             <div className="space-y-2 mb-3">
                               {comments.map(c => (
                                 <div key={c.id} className="bg-bg rounded-lg px-3 py-2">
                                   <div className="flex items-center gap-2 mb-1">
                                     <span className="text-xs font-semibold text-text-primary">{c.author_name || 'Unknown'}</span>
-                                    <span className="text-[10px] text-text-muted">{formatDateTime(c.created_at)}</span>
+                                    <span className="text-[10px] text-text-primary">{formatDateTime(c.created_at)}</span>
                                   </div>
                                   <p className="text-sm text-text-primary">{c.body}</p>
                                 </div>
@@ -529,7 +529,7 @@ export default function CommunicationNotesView({ user, onBack }) {
                               onChange={e => setCommentText(e.target.value)}
                               placeholder="Add a comment..."
                               rows={2}
-                              className="flex-1 px-3 py-2 text-sm rounded-lg border border-border bg-bg text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-wcs-red resize-none"
+                              className="flex-1 px-3 py-2 text-sm rounded-lg border border-border bg-bg text-text-primary placeholder:text-text-primary/50 focus:outline-none focus:border-wcs-red resize-none"
                             />
                             <button
                               onClick={() => handleAddComment(note.id)}
