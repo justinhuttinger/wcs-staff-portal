@@ -106,6 +106,44 @@ function Set-WcsUsers {
 }
 
 # ============================================================
+# SECTION 2: PROFILE SWEEP - auto-delete non-allowlisted users
+# ============================================================
+function Invoke-WcsProfileSweep {
+    $preserve = @($AllowedUsers + $BuiltInUsers)
+
+    Get-LocalUser | ForEach-Object {
+        $name = $_.Name
+        if ($preserve -contains $name) {
+            Write-WcsLog 'Sweep' 'OK' "Preserving $name"
+            return
+        }
+
+        if ($name -ieq $env:USERNAME) {
+            Write-WcsLog 'Sweep' 'WARN' "Skipping $name - currently logged in"
+            return
+        }
+
+        try {
+            Remove-LocalUser -Name $name -ErrorAction Stop
+            Write-WcsLog 'Sweep' 'REMOVE' "Account: $name"
+        } catch {
+            Write-WcsLog 'Sweep' 'ERR' "Could not remove account $name`: $($_.Exception.Message)"
+            return
+        }
+
+        $profilePath = "C:\Users\$name"
+        if (Test-Path $profilePath) {
+            try {
+                Remove-Item -Path $profilePath -Recurse -Force -ErrorAction Stop
+                Write-WcsLog 'Sweep' 'REMOVE' "Profile folder: $profilePath"
+            } catch {
+                Write-WcsLog 'Sweep' 'WARN' "Could not delete $profilePath`: $($_.Exception.Message)"
+            }
+        }
+    }
+}
+
+# ============================================================
 # MAIN - mode dispatcher (sections wired in later tasks)
 # ============================================================
 if (-not (Test-IsAdmin)) {
@@ -119,9 +157,12 @@ Write-WcsLog 'Init' 'OK' "Run started - mode=$Mode, machine=$env:COMPUTERNAME, l
 switch ($Mode) {
     'Full'      {
         Set-WcsUsers
+        Invoke-WcsProfileSweep
     }
     'Lockdown'  { Write-WcsLog 'Init' 'WARN' 'Lockdown mode - sections not yet wired' }
-    'Cleanup'   { Write-WcsLog 'Init' 'WARN' 'Cleanup mode - sections not yet wired' }
+    'Cleanup'   {
+        Invoke-WcsProfileSweep
+    }
     'Inventory' { Write-WcsLog 'Init' 'WARN' 'Inventory mode - sections not yet wired' }
 }
 
