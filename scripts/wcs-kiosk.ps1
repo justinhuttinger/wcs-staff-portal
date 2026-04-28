@@ -390,6 +390,112 @@ function Set-WcsStaffLockdown {
 }
 
 # ============================================================
+# SECTION 7: LOGON SCRIPTS + SCHEDULED TASKS
+# ============================================================
+function Write-LogonScripts {
+    $staffLogon = @"
+`$ErrorActionPreference = 'SilentlyContinue'
+`$abcArg = ''
+if (Test-Path 'C:\WCS\abc-url.txt') {
+    `$abcURL = (Get-Content 'C:\WCS\abc-url.txt' -First 1).Trim()
+    if (`$abcURL) { `$abcArg = "--abc-url=`$abcURL" }
+}
+`$portalApp = 'C:\Program Files\WCS App\WCS App.exe'
+if (Test-Path `$portalApp) {
+    Start-Process -FilePath `$portalApp -ArgumentList "--location=$LocationName `$abcArg"
+}
+"@
+    Set-Content -Path "$WcsDir\staff-logon.ps1" -Value $staffLogon -Force
+
+    $adminLogon = @'
+$desktopPath = [Environment]::GetFolderPath('Desktop')
+$shell = New-Object -ComObject WScript.Shell
+$abcPath = Join-Path $desktopPath 'Set ABC URL.lnk'
+if (-not (Test-Path $abcPath)) {
+    $s = $shell.CreateShortcut($abcPath)
+    $s.TargetPath = 'powershell.exe'
+    $s.Arguments  = '-NoProfile -ExecutionPolicy Bypass -File "C:\WCS\set-abc-url.ps1"'
+    $s.Description = 'Set ABC Financial URL for this machine'
+    $s.Save()
+}
+'@
+    Set-Content -Path "$WcsDir\admin-logon.ps1" -Value $adminLogon -Force
+
+    $abcSetter = @'
+Add-Type -AssemblyName Microsoft.VisualBasic
+Add-Type -AssemblyName System.Windows.Forms
+$abcFile = 'C:\WCS\abc-url.txt'
+$current = ''
+if (Test-Path $abcFile) { $current = (Get-Content $abcFile -First 1).Trim() }
+$new = [Microsoft.VisualBasic.Interaction]::InputBox(
+    "Enter the ABC Financial URL for this machine:`n`nCurrent: $current",
+    'WCS Portal - Set ABC URL',
+    $current)
+if ($new -and $new.Trim()) {
+    if (-not (Test-Path 'C:\WCS')) { New-Item -Path 'C:\WCS' -ItemType Directory -Force | Out-Null }
+    Set-Content -Path $abcFile -Value $new.Trim() -Force
+    [System.Windows.Forms.MessageBox]::Show(
+        "ABC URL saved!`n`n$($new.Trim())`n`nThis will take effect next time Staff logs in.",
+        'WCS Portal', 'OK', 'Information')
+}
+'@
+    Set-Content -Path "$WcsDir\set-abc-url.ps1" -Value $abcSetter -Force
+}
+
+function Register-WcsTask {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$ScriptPath,
+        [Parameter(Mandatory)][string]$User,
+        [Parameter(Mandatory)][ValidateSet('AtLogon','Daily2am')][string]$Trigger
+    )
+    if (Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue) {
+        Unregister-ScheduledTask -TaskName $Name -Confirm:$false
+    }
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ScriptPath`""
+
+    if ($Trigger -eq 'AtLogon') {
+        $trig = New-ScheduledTaskTrigger -AtLogOn
+        $trig.UserId = $User
+        $principal = New-ScheduledTaskPrincipal -UserId $User -LogonType Interactive
+    } else {
+        $trig = New-ScheduledTaskTrigger -Daily -At '2:00AM'
+        $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
+    }
+    Register-ScheduledTask -TaskName $Name -Action $action -Trigger $trig -Principal $principal | Out-Null
+}
+
+function Set-WcsScheduledTasks {
+    Write-LogonScripts
+
+    Register-WcsTask -Name 'WCS-Staff-Logon' -ScriptPath "$WcsDir\staff-logon.ps1" `
+                     -User 'Staff' -Trigger AtLogon
+    Register-WcsTask -Name 'WCS-Admin-Logon' -ScriptPath "$WcsDir\admin-logon.ps1" `
+                     -User 'Admin' -Trigger AtLogon
+
+    $cleanupCmd = @'
+$root = 'C:\Users\Staff\AppData\Local\Google\Chrome\User Data'
+if (Test-Path $root) {
+    Get-ChildItem -Path $root -Directory |
+        Where-Object { $_.Name -match '^Profile' } |
+        ForEach-Object { Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+}
+'@
+    if (Get-ScheduledTask -TaskName 'WCS-Nightly-Chrome-Cleanup' -ErrorAction SilentlyContinue) {
+        Unregister-ScheduledTask -TaskName 'WCS-Nightly-Chrome-Cleanup' -Confirm:$false
+    }
+    $action    = New-ScheduledTaskAction -Execute 'powershell.exe' `
+                 -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"$cleanupCmd`""
+    $trigger   = New-ScheduledTaskTrigger -Daily -At '2:00AM'
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
+    Register-ScheduledTask -TaskName 'WCS-Nightly-Chrome-Cleanup' `
+        -Action $action -Trigger $trigger -Principal $principal | Out-Null
+
+    Write-WcsLog 'Tasks' 'OK' 'Logon scripts written + scheduled tasks registered'
+}
+
+# ============================================================
 # MAIN - mode dispatcher (sections wired in later tasks)
 # ============================================================
 if (-not (Test-IsAdmin)) {
@@ -408,6 +514,7 @@ switch ($Mode) {
         Set-WcsBranding
         Set-WcsChromePolicies
         Set-WcsStaffLockdown
+        Set-WcsScheduledTasks
     }
     'Lockdown'  {
         Set-WcsChromePolicies
