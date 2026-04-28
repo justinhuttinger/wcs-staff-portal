@@ -309,120 +309,71 @@ export default function CommunicationNotesView({ user, onBack }) {
       {/* Notes List (lead+ only) */}
       {isLeadPlus && (
         <>
-          {/* Filter Card */}
-          <div className="bg-surface border border-border rounded-xl p-5 mb-5 space-y-4">
-            {/* Status buttons — large, prominent */}
-            <div>
-              <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2">Status</p>
-              <div className="grid grid-cols-3 gap-2">
-                {STATUSES.map(s => {
-                  const active = statusFilter === s
-                  const colors = {
-                    unresolved: active ? 'bg-amber-500 text-white border-amber-500' : 'bg-amber-50 text-amber-700 border-amber-200 hover:border-amber-400',
-                    in_progress: active ? 'bg-blue-500 text-white border-blue-500' : 'bg-blue-50 text-blue-700 border-blue-200 hover:border-blue-400',
-                    completed: active ? 'bg-green-500 text-white border-green-500' : 'bg-green-50 text-green-700 border-green-200 hover:border-green-400',
-                  }
-                  return (
-                    <button
-                      key={s}
-                      onClick={() => { setStatusFilter(s); setExpandedId(null) }}
-                      className={`flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold rounded-xl border-2 transition-all ${colors[s]}`}
-                    >
-                      {STATUS_LABELS[s]}
-                      <span className={`min-w-[22px] h-[22px] flex items-center justify-center rounded-full text-xs font-bold ${
-                        active ? 'bg-white/25 text-white' : 'bg-white text-text-primary'
-                      }`}>
-                        {statusCounts[s] || 0}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Category pills — prominent with color coding */}
-            <div>
-              <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2">Category</p>
-              <div className="flex flex-wrap gap-2">
-                {['all', ...CATEGORIES].map(c => {
-                  const active = categoryFilter === c
-                  const pillColor = c === 'all'
-                    ? (active ? 'bg-text-primary text-white border-text-primary' : 'bg-surface text-text-muted border-border hover:border-text-muted')
-                    : (active
-                      ? CATEGORY_COLORS[c].replace('bg-', 'bg-').replace(/text-\S+/, 'text-white').replace(/border-\S+/, '') + ' border-2 border-current font-bold'
-                      : `${CATEGORY_COLORS[c]} hover:shadow-sm`)
-                  return (
-                    <button
-                      key={c}
-                      onClick={() => setCategoryFilter(c)}
-                      className={`px-4 py-2 text-sm font-semibold rounded-xl border transition-all ${
-                        active && c !== 'all'
-                          ? `${CATEGORY_COLORS[c]} ring-2 ring-offset-1 ${c === 'member' ? 'ring-blue-400' : c === 'billing' ? 'ring-green-400' : c === 'cancel' ? 'ring-red-400' : c === 'equipment' ? 'ring-amber-400' : 'ring-gray-400'}`
-                          : active && c === 'all'
-                            ? 'bg-text-primary text-white border-text-primary'
-                            : c === 'all'
-                              ? 'bg-surface text-text-muted border-border hover:border-text-muted'
-                              : CATEGORY_COLORS[c]
-                      }`}
-                    >
-                      {c === 'all' ? 'All Categories' : c.charAt(0).toUpperCase() + c.slice(1)}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Location + Date row */}
-            <div className="flex items-center justify-between gap-4 pt-1">
-              {/* Location Filter (corp/admin only) */}
-              {canSeeAll ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {['all', ...ALL_LOCATIONS.map(l => l.toLowerCase())].map(loc => (
-                    <button
-                      key={loc}
-                      onClick={() => setLocationFilter(loc)}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
-                        locationFilter === loc
-                          ? 'bg-wcs-red text-white border-wcs-red'
-                          : 'bg-bg text-text-muted border-border hover:border-text-muted'
-                      }`}
-                    >
-                      {loc === 'all' ? 'All Locations' : loc.charAt(0).toUpperCase() + loc.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              ) : <div />}
-
-              {/* Date range — only visible when viewing Completed */}
-              {statusFilter === 'completed' && <div className="flex items-center gap-1.5 shrink-0">
-                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-[120px] px-2 py-1.5 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red" />
-                <span className="text-xs text-text-muted">to</span>
-                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-[120px] px-2 py-1.5 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red" />
-                {[
-                  { label: '7d', days: 7 },
-                  { label: '30d', days: 30 },
-                  { label: '90d', days: 90 },
-                ].map(({ label, days }) => (
+          {/* Compact filter toolbar */}
+          <div className="bg-surface border border-border rounded-xl mb-5">
+            {/* Status tabs */}
+            <div className="flex items-center border-b border-border px-2">
+              {STATUSES.map(s => {
+                const active = statusFilter === s
+                const dotColor = s === 'unresolved' ? 'bg-amber-500' : s === 'in_progress' ? 'bg-blue-500' : 'bg-green-500'
+                return (
                   <button
-                    key={label}
-                    onClick={() => {
-                      const d = new Date()
-                      d.setDate(d.getDate() - days)
-                      setDateFrom(d.toISOString().slice(0, 10))
-                      setDateTo(new Date().toISOString().slice(0, 10))
-                    }}
-                    className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-muted hover:border-text-muted hover:text-text-primary transition-colors"
+                    key={s}
+                    onClick={() => { setStatusFilter(s); setExpandedId(null) }}
+                    className={`relative flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+                      active ? 'text-text-primary' : 'text-text-muted hover:text-text-primary'
+                    }`}
                   >
-                    {label}
+                    <span className={`w-2 h-2 rounded-full ${dotColor}`} />
+                    <span>{STATUS_LABELS[s]}</span>
+                    <span className={`text-xs ${active ? 'text-text-primary font-semibold' : 'text-text-muted'}`}>
+                      {statusCounts[s] || 0}
+                    </span>
+                    {active && <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-wcs-red rounded-full" />}
                   </button>
+                )
+              })}
+            </div>
+
+            {/* Filters row */}
+            <div className="flex items-center gap-3 px-4 py-2.5 flex-wrap">
+              <select
+                value={categoryFilter}
+                onChange={e => setCategoryFilter(e.target.value)}
+                className="px-3 py-1.5 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red"
+              >
+                <option value="all">All Categories</option>
+                {CATEGORIES.map(c => (
+                  <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
                 ))}
-                <button
-                  onClick={() => { setDateFrom(''); setDateTo('') }}
-                  className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-muted hover:border-text-muted hover:text-text-primary transition-colors"
+              </select>
+
+              {canSeeAll && (
+                <select
+                  value={locationFilter}
+                  onChange={e => setLocationFilter(e.target.value)}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red"
                 >
-                  All
-                </button>
-              </div>}
+                  <option value="all">All Locations</option>
+                  {ALL_LOCATIONS.map(loc => (
+                    <option key={loc} value={loc.toLowerCase()}>{loc}</option>
+                  ))}
+                </select>
+              )}
+
+              {statusFilter === 'completed' && (
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-[130px] px-2 py-1.5 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red" />
+                  <span className="text-xs text-text-muted">to</span>
+                  <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-[130px] px-2 py-1.5 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red" />
+                  <button
+                    onClick={() => { setDateFrom(''); setDateTo('') }}
+                    className="px-2.5 py-1.5 text-xs text-text-muted hover:text-text-primary"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -447,14 +398,16 @@ export default function CommunicationNotesView({ user, onBack }) {
                     >
                       <div className="flex items-start gap-3">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span className="text-sm font-bold text-text-primary">{note.title}</span>
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${CATEGORY_COLORS[note.category] || CATEGORY_COLORS.other}`}>
-                              {note.category}
-                            </span>
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${STATUS_COLORS[note.status] || STATUS_COLORS.unresolved}`}>
-                              {STATUS_LABELS[note.status] || note.status}
-                            </span>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`w-2 h-2 rounded-full shrink-0 ${
+                              note.category === 'member' ? 'bg-blue-500' :
+                              note.category === 'billing' ? 'bg-green-500' :
+                              note.category === 'cancel' ? 'bg-red-500' :
+                              note.category === 'equipment' ? 'bg-amber-500' :
+                              'bg-gray-400'
+                            }`} title={note.category} />
+                            <span className="text-sm font-semibold text-text-primary truncate">{note.title}</span>
+                            <span className="text-[11px] text-text-muted capitalize shrink-0">· {note.category}</span>
                           </div>
                           {note.member_name && (
                             <div className="flex items-center gap-2 text-xs text-text-muted mb-1">
