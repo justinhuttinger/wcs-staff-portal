@@ -217,6 +217,89 @@ function Install-WcsApps {
 }
 
 # ============================================================
+# SECTION 4: BRANDING (wallpaper + lockscreen)
+# ============================================================
+function Get-RemoteSha256 {
+    param([string]$Url)
+    try {
+        $tmp = New-TemporaryFile
+        Invoke-WebRequest -Uri $Url -OutFile $tmp -UseBasicParsing -ErrorAction Stop
+        $h = (Get-FileHash -Path $tmp -Algorithm SHA256).Hash
+        Remove-Item $tmp -Force
+        return $h
+    } catch {
+        return $null
+    }
+}
+
+function Sync-RemoteFile {
+    param(
+        [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][string]$LocalPath
+    )
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $remoteHash = Get-RemoteSha256 -Url $Url
+    if (-not $remoteHash) { return $false }
+
+    if (Test-Path $LocalPath) {
+        $localHash = (Get-FileHash -Path $LocalPath -Algorithm SHA256).Hash
+        if ($localHash -eq $remoteHash) { return $true }
+    }
+    Invoke-WebRequest -Uri $Url -OutFile $LocalPath -UseBasicParsing
+    return $true
+}
+
+function Set-WallpaperForUser {
+    param([string]$User, [string]$ImagePath)
+
+    $userProfile = "C:\Users\$User"
+    $hive        = "$userProfile\NTUSER.DAT"
+    if (-not (Test-Path $hive)) {
+        Write-WcsLog 'Branding' 'WARN' "Hive not found for $User (user has not logged in yet)"
+        return
+    }
+
+    $hiveKey = "WCS_$User"
+    & reg.exe load "HKU\$hiveKey" $hive 2>&1 | Out-Null
+    try {
+        $polPath = "Registry::HKEY_USERS\$hiveKey\Software\Microsoft\Windows\CurrentVersion\Policies\System"
+        if (-not (Test-Path $polPath)) { New-Item -Path $polPath -Force | Out-Null }
+        Set-ItemProperty -Path $polPath -Name 'Wallpaper'            -Value $ImagePath -Type String
+        Set-ItemProperty -Path $polPath -Name 'WallpaperStyle'       -Value '10'       -Type String
+        Set-ItemProperty -Path $polPath -Name 'NoChangingWallpaper'  -Value 1          -Type DWord
+        Write-WcsLog 'Branding' 'OK' "Wallpaper set for $User"
+    } finally {
+        [GC]::Collect(); [GC]::WaitForPendingFinalizers()
+        & reg.exe unload "HKU\$hiveKey" 2>&1 | Out-Null
+    }
+}
+
+function Set-WcsBranding {
+    $wallpaper  = "$BrandingDir\wallpaper.jpg"
+    $lockscreen = "$BrandingDir\lockscreen.jpg"
+
+    $wOk = Sync-RemoteFile -Url $WallpaperUrl  -LocalPath $wallpaper
+    $lOk = Sync-RemoteFile -Url $LockscreenUrl -LocalPath $lockscreen
+
+    if (-not $wOk -or -not $lOk) {
+        Write-WcsLog 'Branding' 'WARN' "Branding images unavailable - skipping (commit branding/*.jpg to repo)"
+        return
+    }
+
+    $lockPolPath = 'HKLM:\Software\Policies\Microsoft\Windows\Personalization'
+    if (-not (Test-Path $lockPolPath)) { New-Item -Path $lockPolPath -Force | Out-Null }
+    Set-ItemProperty -Path $lockPolPath -Name 'LockScreenImage'      -Value $lockscreen -Type String
+    Set-ItemProperty -Path $lockPolPath -Name 'NoChangingLockScreen' -Value 1           -Type DWord
+    Write-WcsLog 'Branding' 'OK' 'Lockscreen set machine-wide'
+
+    foreach ($u in @('Staff','Admin')) {
+        if (Get-LocalUser -Name $u -ErrorAction SilentlyContinue) {
+            Set-WallpaperForUser -User $u -ImagePath $wallpaper
+        }
+    }
+}
+
+# ============================================================
 # MAIN - mode dispatcher (sections wired in later tasks)
 # ============================================================
 if (-not (Test-IsAdmin)) {
@@ -232,6 +315,7 @@ switch ($Mode) {
         Set-WcsUsers
         Invoke-WcsProfileSweep
         Install-WcsApps
+        Set-WcsBranding
     }
     'Lockdown'  { Write-WcsLog 'Init' 'WARN' 'Lockdown mode - sections not yet wired' }
     'Cleanup'   {
