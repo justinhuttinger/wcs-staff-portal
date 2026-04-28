@@ -15,6 +15,26 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 })
 
+// Rate limit refresh: 100 per 15 min per IP. Active sessions hit this on each
+// access-token expiry, so the limit is generous compared to login.
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { error: 'Too many refresh attempts, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+// Rate limit logout: 20 per minute per IP. Logout is a once-per-session op;
+// 20/min is generous and prevents log flooding.
+const logoutLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { error: 'Too many logout attempts, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
 // POST /auth/kiosk — public, authenticates with shared secret
 router.post('/kiosk', loginLimiter, async (req, res) => {
   try {
@@ -168,7 +188,7 @@ router.post('/change-password', authenticate, async (req, res) => {
 // POST /auth/logout — clears the SSO session cookie and revokes the Supabase
 // session so refresh tokens stop working. Best-effort: even if Supabase signout
 // fails, the cookie still gets cleared.
-router.post('/logout', async (req, res) => {
+router.post('/logout', logoutLimiter, async (req, res) => {
   res.clearCookie('wcs_session', {
     httpOnly: true,
     secure: true,
@@ -190,7 +210,7 @@ router.post('/logout', async (req, res) => {
 })
 
 // POST /auth/refresh — public; exchanges a refresh token for a new access token
-router.post('/refresh', async (req, res) => {
+router.post('/refresh', refreshLimiter, async (req, res) => {
   try {
     const { refresh_token } = req.body
     if (!refresh_token) {
