@@ -32,15 +32,20 @@ export default function DriveFoldersAdmin() {
   })
   const [saving, setSaving] = useState(false)
 
+  const [loadError, setLoadError] = useState('')
+
   const fetchAll = useCallback(async () => {
     try {
       const [foldersRes, locsRes] = await Promise.all([
         getDriveFoldersAdmin(),
-        getLocations().catch(() => ({ locations: [] })),
+        getLocations(),
       ])
       setFolders(foldersRes.folders || [])
       setLocations(locsRes.locations || [])
-    } catch { /* silent */ } finally { setLoading(false) }
+      setLoadError('')
+    } catch (err) {
+      setLoadError(err.message || 'Failed to load')
+    } finally { setLoading(false) }
   }, [])
 
   useEffect(() => { fetchAll() }, [fetchAll])
@@ -111,6 +116,12 @@ export default function DriveFoldersAdmin() {
           + Add Folder
         </button>
       </div>
+
+      {loadError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+          {loadError}. If this says "Session expired" or 401, sign out and back in.
+        </div>
+      )}
 
       {loading ? (
         <p className="text-center text-text-muted text-sm py-8">Loading...</p>
@@ -189,18 +200,22 @@ export default function DriveFoldersAdmin() {
               <div>
                 <label className="block text-sm font-semibold text-text-primary mb-1">Locations</label>
                 <p className="text-[10px] text-text-muted mb-2">Leave all unchecked to make this visible at every location.</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {locations.map(loc => (
-                    <label key={loc.id} className="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={form.location_ids.includes(loc.id)}
-                        onChange={() => toggleLocation(loc.id)}
-                      />
-                      {loc.name}
-                    </label>
-                  ))}
-                </div>
+                {locations.length === 0 ? (
+                  <p className="text-xs text-text-muted italic">No locations loaded — check your session and refresh.</p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {locations.map(loc => (
+                      <label key={loc.id} className="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={form.location_ids.includes(loc.id)}
+                          onChange={() => toggleLocation(loc.id)}
+                        />
+                        {loc.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-4">
                 <div className="flex-1">
