@@ -1,16 +1,26 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
 let authToken = null
+let refreshToken = null
 
-// Restore token from localStorage (for new tabs like Reporting)
+// Restore tokens from localStorage (for new tabs like Reporting)
 try {
-  const stored = localStorage.getItem('wcs_token')
-  if (stored) authToken = stored
+  const storedToken = localStorage.getItem('wcs_token')
+  if (storedToken) authToken = storedToken
+  const storedRefresh = localStorage.getItem('wcs_refresh_token')
+  if (storedRefresh) refreshToken = storedRefresh
 } catch {}
 
-export function setToken(token) {
+export function setToken(token, refresh) {
   authToken = token
   try { localStorage.setItem('wcs_token', token) } catch {}
+  if (refresh !== undefined) {
+    refreshToken = refresh
+    try {
+      if (refresh) localStorage.setItem('wcs_refresh_token', refresh)
+      else localStorage.removeItem('wcs_refresh_token')
+    } catch {}
+  }
 }
 
 export function getToken() {
@@ -19,14 +29,48 @@ export function getToken() {
 
 export function clearToken() {
   authToken = null
-  try { localStorage.removeItem('wcs_token') } catch {}
+  refreshToken = null
+  try {
+    localStorage.removeItem('wcs_token')
+    localStorage.removeItem('wcs_refresh_token')
+  } catch {}
 }
 
-// Listeners for auth expiry (401) so the UI can redirect to login
+// Listeners for auth expiry (refresh failed) so the UI can redirect to login
 const authExpiredListeners = new Set()
 export function onAuthExpired(fn) {
   authExpiredListeners.add(fn)
   return () => authExpiredListeners.delete(fn)
+}
+
+// Dedupe concurrent refreshes — when many parallel requests 401, only one
+// refresh call should hit the server; the rest await the same promise.
+let refreshInFlight = null
+
+async function attemptRefresh() {
+  if (refreshInFlight) return refreshInFlight
+  if (!refreshToken) return null
+
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch(API_URL + '/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      })
+      if (!res.ok) return null
+      const data = await res.json()
+      if (!data?.token) return null
+      setToken(data.token, data.refresh_token)
+      return data.token
+    } catch {
+      return null
+    } finally {
+      refreshInFlight = null
+    }
+  })()
+
+  return refreshInFlight
 }
 
 export async function api(path, options = {}) {
@@ -47,7 +91,25 @@ export async function api(path, options = {}) {
     throw new Error('Server error — please try again')
   }
 
-  if (res.status === 401 && authToken && path !== '/auth/login') {
+  // 401 handling: try refresh + retry once. If refresh fails, sign out.
+  // Skip auth endpoints themselves so we never loop.
+  const isAuthEndpoint = path === '/auth/login' || path === '/auth/refresh' || path === '/auth/kiosk'
+  if (res.status === 401 && authToken && !isAuthEndpoint) {
+    const newToken = await attemptRefresh()
+    if (newToken) {
+      const retryHeaders = { ...headers, Authorization: 'Bearer ' + newToken }
+      const retryRes = await fetch(API_URL + path, { ...fetchOptions, headers: retryHeaders })
+      let retryData
+      try {
+        retryData = await retryRes.json()
+      } catch {
+        throw new Error('Server error — please try again')
+      }
+      if (!retryRes.ok) {
+        throw new Error(retryData.error || 'Request failed')
+      }
+      return retryData
+    }
     clearToken()
     authExpiredListeners.forEach(fn => fn())
     throw new Error('Session expired — please sign in again')
@@ -65,7 +127,7 @@ export async function login(email, password) {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   })
-  setToken(data.token)
+  setToken(data.token, data.refresh_token)
   return data
 }
 
@@ -358,6 +420,10 @@ export async function getDriveFolders() {
 }
 export async function listDriveContents(folderId) {
   return api('/drive-folders/list?folder_id=' + encodeURIComponent(folderId))
+}
+export async function searchDrive(rootId, query) {
+  const qs = new URLSearchParams({ root_id: rootId, q: query }).toString()
+  return api('/drive-folders/search?' + qs)
 }
 export async function getDriveFileMeta(fileId) {
   return api('/drive-folders/file?file_id=' + encodeURIComponent(fileId))

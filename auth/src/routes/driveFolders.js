@@ -246,6 +246,85 @@ router.get('/list', async (req, res) => {
   }
 })
 
+// GET /drive-folders/search?root_id=xxx&q=foo — recursive search of files under root_id
+// Searches the entire descendant tree by:
+//   1) BFS to collect descendant folder IDs
+//   2) running a Drive name-contains query
+//   3) filtering results to those whose parent is in the descendant set
+router.get('/search', async (req, res) => {
+  const { root_id, q } = req.query
+  if (!root_id || !q) return res.status(400).json({ error: 'root_id and q required' })
+  if (q.length < 2) return res.json({ files: [] })
+
+  try {
+    const token = await getAccessToken()
+
+    // 1) BFS descendants
+    const descendantIds = new Set([root_id])
+    const folderNamesById = new Map()
+    folderNamesById.set(root_id, 'Root')
+    let queue = [root_id]
+    let safetyLimit = 50 // max BFS levels — generous for nested drives
+    while (queue.length > 0 && safetyLimit-- > 0) {
+      // Drive q param has length limits, so chunk parents into groups of 30
+      const nextLevel = []
+      for (let i = 0; i < queue.length; i += 30) {
+        const chunk = queue.slice(i, i + 30)
+        const parentsClause = chunk.map(id => `'${id}' in parents`).join(' or ')
+        const params = new URLSearchParams({
+          q: `(${parentsClause}) and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+          fields: 'files(id,name,parents)',
+          pageSize: '500',
+          supportsAllDrives: 'true',
+          includeItemsFromAllDrives: 'true',
+        })
+        const r = await fetch('https://www.googleapis.com/drive/v3/files?' + params, {
+          headers: { Authorization: 'Bearer ' + token },
+        })
+        const data = await r.json()
+        if (data.error) throw new Error(data.error.message)
+        for (const f of (data.files || [])) {
+          if (!descendantIds.has(f.id)) {
+            descendantIds.add(f.id)
+            folderNamesById.set(f.id, f.name)
+            nextLevel.push(f.id)
+          }
+        }
+      }
+      queue = nextLevel
+    }
+
+    // 2) Search by name across the whole drive the connected account can see
+    const escapedQ = q.replace(/'/g, "\\'")
+    const searchParams = new URLSearchParams({
+      q: `name contains '${escapedQ}' and trashed = false`,
+      fields: 'files(id,name,mimeType,iconLink,modifiedTime,size,thumbnailLink,webViewLink,webContentLink,parents)',
+      pageSize: '200',
+      orderBy: 'folder,name',
+      supportsAllDrives: 'true',
+      includeItemsFromAllDrives: 'true',
+    })
+    const sr = await fetch('https://www.googleapis.com/drive/v3/files?' + searchParams, {
+      headers: { Authorization: 'Bearer ' + token },
+    })
+    const sd = await sr.json()
+    if (sd.error) return res.status(sr.status || 500).json({ error: sd.error.message })
+
+    // 3) Filter to descendants of root_id, attach parent_name for context
+    const matched = (sd.files || [])
+      .filter(f => Array.isArray(f.parents) && f.parents.some(p => descendantIds.has(p)))
+      .map(f => {
+        const parentId = (f.parents || []).find(p => descendantIds.has(p))
+        return { ...f, parent_name: folderNamesById.get(parentId) || '' }
+      })
+
+    res.json({ files: matched })
+  } catch (err) {
+    console.error('[Drive] search error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // GET /drive-folders/file?file_id=xxx — get single file metadata (for breadcrumbs)
 router.get('/file', async (req, res) => {
   const { file_id } = req.query

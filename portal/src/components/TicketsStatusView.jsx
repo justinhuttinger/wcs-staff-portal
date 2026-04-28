@@ -1,15 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getTicketStatus, refreshTicketStatus } from '../lib/api'
 
-function StatBlock({ label, value }) {
-  return (
-    <div className="text-center">
-      <p className="text-[11px] text-text-muted uppercase tracking-wide">{label}</p>
-      <p className="text-sm font-semibold text-text-primary mt-1">{value}</p>
-    </div>
-  )
-}
-
 function Dropdown({ title, items, emptyMsg, renderItem }) {
   const [open, setOpen] = useState(false)
   return (
@@ -67,12 +58,7 @@ function ListCard({ list }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 py-4">
-        <StatBlock label="Fastest Close" value={list.minFormatted} />
-        <StatBlock label="Slowest Close" value={list.maxFormatted} />
-      </div>
-
-      <div className="space-y-1 mt-2">
+      <div className="space-y-1 mt-4">
         <Dropdown
           title="Outstanding Tickets"
           items={list.outstandingTasks}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { getDriveFolders, listDriveContents } from '../lib/api'
+import { getDriveFolders, listDriveContents, searchDrive } from '../lib/api'
 
 const FOLDER_MIME = 'application/vnd.google-apps.folder'
 
@@ -176,6 +176,9 @@ function DriveBrowser({ root, onBack }) {
   const [sortBy, setSortBy] = useState('name')      // name | modified | size
   const [sortDir, setSortDir] = useState('asc')      // asc | desc
   const [dateFilter, setDateFilter] = useState('all') // all | 7d | 30d | 90d
+  const [searchResults, setSearchResults] = useState(null) // null when not searching
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState('')
 
   function changeViewMode(mode) {
     setViewMode(mode)
@@ -183,21 +186,44 @@ function DriveBrowser({ root, onBack }) {
   }
 
   // Reset search/filter on folder change
-  useEffect(() => { setSearch(''); setDateFilter('all') }, [currentFolderId])
+  useEffect(() => { setSearch(''); setDateFilter('all'); setSearchResults(null); setSearchError('') }, [currentFolderId])
+
+  // Debounced recursive search across the root
+  useEffect(() => {
+    const q = search.trim()
+    if (q.length < 2) {
+      setSearchResults(null)
+      setSearchLoading(false)
+      setSearchError('')
+      return
+    }
+    setSearchLoading(true)
+    setSearchError('')
+    const timer = setTimeout(async () => {
+      try {
+        const res = await searchDrive(root.folder_id, q)
+        setSearchResults(res.files || [])
+      } catch (err) {
+        setSearchError(err.message)
+        setSearchResults([])
+      } finally {
+        setSearchLoading(false)
+      }
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [search, root.folder_id])
+
+  const isSearching = searchResults !== null
 
   const visibleFiles = useMemo(() => {
-    let out = files
-    // Search
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      out = out.filter(f => (f.name || '').toLowerCase().includes(q))
-    }
-    // Date filter (folders are always shown so user can navigate)
+    // When searching across the whole root, use server results
+    let out = isSearching ? searchResults : files
+    // Date filter (folders always shown so user can navigate, except in search results)
     if (dateFilter !== 'all') {
       const days = dateFilter === '7d' ? 7 : dateFilter === '30d' ? 30 : 90
       const cutoff = Date.now() - days * 86400000
       out = out.filter(f => {
-        if (f.mimeType === FOLDER_MIME) return true
+        if (!isSearching && f.mimeType === FOLDER_MIME) return true
         const t = f.modifiedTime ? new Date(f.modifiedTime).getTime() : 0
         return t >= cutoff
       })
@@ -214,7 +240,7 @@ function DriveBrowser({ root, onBack }) {
       return sortDir === 'asc' ? r : -r
     }
     return [...out].sort(cmp)
-  }, [files, search, sortBy, sortDir, dateFilter])
+  }, [files, searchResults, isSearching, sortBy, sortDir, dateFilter])
 
   function toggleSort(column) {
     if (sortBy === column) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -389,7 +415,7 @@ function DriveBrowser({ root, onBack }) {
         </div>
       </div>
 
-      {!loading && !error && files.length > 0 && (
+      {!loading && !error && (files.length > 0 || isSearching) && (
         <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-3 mb-4 flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[200px]">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
@@ -399,9 +425,20 @@ function DriveBrowser({ root, onBack }) {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search this folder..."
-              className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
+              placeholder={`Search across "${root.name}"...`}
+              className="w-full pl-9 pr-9 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
             />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+                title="Clear"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-1.5">
             {[
@@ -450,44 +487,56 @@ function DriveBrowser({ root, onBack }) {
             </p>
           )}
         </div>
-      ) : files.length === 0 ? (
+      ) : isSearching && searchLoading ? (
+        <p className="text-center text-text-muted text-sm py-8">Searching across {root.name}...</p>
+      ) : isSearching && searchError ? (
+        <p className="text-wcs-red text-sm py-4 text-center">{searchError}</p>
+      ) : !isSearching && files.length === 0 ? (
         <p className="text-center text-text-muted text-sm py-8">This folder is empty.</p>
       ) : visibleFiles.length === 0 ? (
-        <p className="text-center text-text-muted text-sm py-8">No files match your filter.</p>
+        <p className="text-center text-text-muted text-sm py-8">{isSearching ? 'No matches.' : 'No files match your filter.'}</p>
       ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          {visibleFiles.map(file => (
-            <GridTile key={file.id} file={file} onClick={() => openItem(file)} />
-          ))}
-        </div>
+        <>
+          {isSearching && <p className="text-xs text-text-muted mb-2">{visibleFiles.length} match{visibleFiles.length === 1 ? '' : 'es'} across all folders</p>}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            {visibleFiles.map(file => (
+              <GridTile key={file.id} file={file} onClick={() => openItem(file)} showLocation={isSearching} />
+            ))}
+          </div>
+        </>
       ) : (
-        <div className="bg-surface border border-border rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-bg">
-              <tr>
-                <SortableTh label="Name" col="name" sortBy={sortBy} sortDir={sortDir} onClick={() => toggleSort('name')} />
-                <SortableTh label="Modified" col="modified" sortBy={sortBy} sortDir={sortDir} onClick={() => toggleSort('modified')} align="right" width="w-32" />
-                <SortableTh label="Size" col="size" sortBy={sortBy} sortDir={sortDir} onClick={() => toggleSort('size')} align="right" width="w-24" />
-              </tr>
-            </thead>
-            <tbody>
-              {visibleFiles.map(file => (
-                <tr
-                  key={file.id}
-                  onClick={() => openItem(file)}
-                  className="border-t border-border hover:bg-bg cursor-pointer"
-                >
-                  <td className="px-4 py-2 flex items-center gap-3">
-                    {fileIcon(file.mimeType)}
-                    <span className="font-medium text-text-primary truncate">{file.name}</span>
-                  </td>
-                  <td className="px-4 py-2 text-right text-xs text-text-muted">{fmtDate(file.modifiedTime)}</td>
-                  <td className="px-4 py-2 text-right text-xs text-text-muted">{file.mimeType === FOLDER_MIME ? '—' : fmtSize(file.size)}</td>
+        <>
+          {isSearching && <p className="text-xs text-text-muted mb-2">{visibleFiles.length} match{visibleFiles.length === 1 ? '' : 'es'} across all folders</p>}
+          <div className="bg-surface border border-border rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-bg">
+                <tr>
+                  <SortableTh label="Name" col="name" sortBy={sortBy} sortDir={sortDir} onClick={() => toggleSort('name')} />
+                  {isSearching && <th className="text-left px-4 py-2 text-xs font-semibold text-text-muted uppercase tracking-wide w-40">In Folder</th>}
+                  <SortableTh label="Modified" col="modified" sortBy={sortBy} sortDir={sortDir} onClick={() => toggleSort('modified')} align="right" width="w-32" />
+                  <SortableTh label="Size" col="size" sortBy={sortBy} sortDir={sortDir} onClick={() => toggleSort('size')} align="right" width="w-24" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {visibleFiles.map(file => (
+                  <tr
+                    key={file.id}
+                    onClick={() => openItem(file)}
+                    className="border-t border-border hover:bg-bg cursor-pointer"
+                  >
+                    <td className="px-4 py-2 flex items-center gap-3">
+                      {fileIcon(file.mimeType)}
+                      <span className="font-medium text-text-primary truncate">{file.name}</span>
+                    </td>
+                    {isSearching && <td className="px-4 py-2 text-xs text-text-muted truncate">{file.parent_name || ''}</td>}
+                    <td className="px-4 py-2 text-right text-xs text-text-muted">{fmtDate(file.modifiedTime)}</td>
+                    <td className="px-4 py-2 text-right text-xs text-text-muted">{file.mimeType === FOLDER_MIME ? '—' : fmtSize(file.size)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   )
@@ -503,7 +552,7 @@ function SortableTh({ label, col, sortBy, sortDir, onClick, align = 'left', widt
   )
 }
 
-function GridTile({ file, onClick }) {
+function GridTile({ file, onClick, showLocation }) {
   const isFolder = file.mimeType === FOLDER_MIME
   // thumbnailLink from Drive API contains a sized thumbnail. Default size is small;
   // we can request a bigger one by replacing the size suffix.
@@ -536,8 +585,10 @@ function GridTile({ file, onClick }) {
         <div className="shrink-0">{fileIcon(file.mimeType)}</div>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium text-text-primary truncate" title={file.name}>{file.name}</p>
-          <p className="text-[10px] text-text-muted">
-            {isFolder ? 'Folder' : fmtSize(file.size) || fmtDate(file.modifiedTime)}
+          <p className="text-[10px] text-text-muted truncate">
+            {showLocation && file.parent_name
+              ? `in ${file.parent_name}`
+              : isFolder ? 'Folder' : fmtSize(file.size) || fmtDate(file.modifiedTime)}
           </p>
         </div>
       </div>
