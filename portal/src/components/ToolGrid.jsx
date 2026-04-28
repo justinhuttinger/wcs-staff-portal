@@ -396,7 +396,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
       <div className="flex gap-10">
       {/* Apps — left side */}
       <div className="w-1/2">
-        <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">Apps</p>
+        <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">Apps</p>
         <div className="grid grid-cols-4 gap-4">
           {appTools.map((tool) => (
             <ToolButton key={tool.id} label={tool.label} description={tool.description} icon={tool.icon} url={getUrl(tool)} star={tool.id === 'grow' || tool.id === 'abc'} />
@@ -420,7 +420,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
 
       {/* Tools — right side, ordered */}
       <div className="w-1/2">
-        <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-3">Tools</p>
+        <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">Tools</p>
         <div className="grid grid-cols-4 gap-4">
           {/* 1. Cancel Tool (custom tile — direct link) */}
           {toolCustomTiles.filter(t => ['cancel', 'cancel tool'].includes((t.label || '').toLowerCase())).map(tile => (
