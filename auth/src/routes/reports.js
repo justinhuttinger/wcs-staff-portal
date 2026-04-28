@@ -478,7 +478,7 @@ router.get('/club-health', async (req, res) => {
 
     let abcQuery = supabaseAdmin
       .from('abc_members')
-      .select('sales_person_name, email, membership_type, agreement_number')
+      .select('sales_person_name, email, membership_type, agreement_number, sign_date')
       .eq('is_active', true)
       .not('sign_date', 'is', null)
     if (start_date) abcQuery = abcQuery.gte('sign_date', start_date)
@@ -627,6 +627,16 @@ router.get('/club-health', async (req, res) => {
       .sort((a, b) => b.count - a.count)
       .slice(0, 3)
 
+    // Memberships by sign_date for daily bar chart
+    const membershipsByDate = {}
+    for (const m of filteredMembers) {
+      if (!m.sign_date) continue
+      membershipsByDate[m.sign_date] = (membershipsByDate[m.sign_date] || 0) + 1
+    }
+    const byDate = Object.entries(membershipsByDate)
+      .map(([date, memberships]) => ({ date, memberships }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+
     // Top 3 trainers by Day One closes (Sale on completed day ones)
     const closesByTrainer = {}
     for (const c of dayOnes) {
@@ -652,6 +662,7 @@ router.get('/club-health', async (req, res) => {
       day_one_sale: dayOneSaleCounts,
       top_salespeople: topSalespeople,
       top_trainers: topTrainers,
+      by_date: byDate,
     })
   } catch (err) {
     res.status(500).json({ error: err.message })

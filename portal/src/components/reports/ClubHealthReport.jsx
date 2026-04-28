@@ -82,6 +82,116 @@ function TopPerformers({ title, units, performers }) {
   )
 }
 
+function buildDailyPoints(byDate, startDate, endDate) {
+  const map = {}
+  for (const d of (byDate || [])) map[d.date] = d.memberships || 0
+  if (!startDate || !endDate) {
+    return Object.entries(map)
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+  }
+  const points = []
+  const cur = new Date(startDate)
+  const end = new Date(endDate)
+  while (cur <= end) {
+    const dateStr = cur.toISOString().slice(0, 10)
+    points.push({ date: dateStr, count: map[dateStr] || 0 })
+    cur.setDate(cur.getDate() + 1)
+  }
+  return points
+}
+
+function BarChart({ title, points }) {
+  const [hover, setHover] = useState(null)
+  const total = points.reduce((s, p) => s + p.count, 0)
+
+  if (points.length === 0 || total === 0) {
+    return (
+      <div className="bg-surface rounded-xl border border-border p-6 text-center">
+        <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">{title}</p>
+        <p className="text-sm text-text-muted py-4">No data</p>
+      </div>
+    )
+  }
+
+  const max = Math.max(...points.map(p => p.count), 1)
+  const w = 600, h = 180, padL = 30, padR = 10, padT = 10, padB = 25
+  const chartW = w - padL - padR
+  const chartH = h - padT - padB
+  const barW = chartW / points.length
+  const yLabels = [0, Math.round(max / 2), max]
+  const hovered = hover !== null ? points[hover] : null
+
+  return (
+    <div className="bg-surface rounded-xl border border-border p-6">
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">{title}</p>
+      <div className="h-5 mb-1 text-xs text-text-muted">
+        {hovered && (
+          <span>
+            <span className="font-medium text-text-primary">{hovered.date}</span>
+            {' — '}
+            <span style={{ color: '#e53e3e' }}>{hovered.count} memberships</span>
+          </span>
+        )}
+      </div>
+      <svg
+        viewBox={`0 0 ${w} ${h}`}
+        className="w-full"
+        style={{ maxHeight: '200px' }}
+        onMouseLeave={() => setHover(null)}
+      >
+        {yLabels.map(v => {
+          const y = padT + chartH - (v / max) * chartH
+          return (
+            <g key={v}>
+              <line x1={padL} x2={w - padR} y1={y} y2={y} stroke="#e2e8f0" strokeWidth="0.5" />
+              <text x={padL - 4} y={y + 3} textAnchor="end" className="fill-gray-400" style={{ fontSize: '8px' }}>{v}</text>
+            </g>
+          )
+        })}
+        {points.map((p, i) => {
+          const x = padL + i * barW
+          const bh = (p.count / max) * chartH
+          return (
+            <g key={i}>
+              {p.count > 0 && (
+                <rect
+                  x={x + 1}
+                  y={padT + chartH - bh}
+                  width={Math.max(1, barW - 2)}
+                  height={bh}
+                  fill="#e53e3e"
+                  rx="1"
+                  opacity={hover === i ? 1 : 0.85}
+                />
+              )}
+              <rect
+                x={x}
+                y={0}
+                width={barW}
+                height={h}
+                fill="transparent"
+                style={{ cursor: 'crosshair' }}
+                onMouseEnter={() => setHover(i)}
+              />
+            </g>
+          )
+        })}
+        <text x={padL} y={h - 5} textAnchor="start" className="fill-gray-400" style={{ fontSize: '8px' }}>{points[0].date}</text>
+        <text x={w - padR} y={h - 5} textAnchor="end" className="fill-gray-400" style={{ fontSize: '8px' }}>{points[points.length - 1].date}</text>
+      </svg>
+    </div>
+  )
+}
+
+const STATUS_COLORS = {
+  'Scheduled': '#d69e2e', 'scheduled': '#d69e2e',
+  'Completed': '#38a169', 'completed': '#38a169',
+  'Show': '#38a169',
+  'No Show': '#805ad5', 'No-Show': '#805ad5', 'no show': '#805ad5',
+  'Cancelled': '#e53e3e', 'Canceled': '#e53e3e', 'cancelled': '#e53e3e',
+}
+
 function SectionHeader({ title }) {
   return (
     <div className="flex items-center gap-3 pt-2">
@@ -163,6 +273,7 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <PieChart title="Same Day Sales to Memberships" data={sameDayRatio} colorMap={{ 'Same Day': '#38a169', 'Other': '#e2e8f0' }} />
+        <BarChart title="Memberships by Day" points={buildDailyPoints(data.by_date, startDate, endDate)} />
       </div>
 
       {/* ---------- PT / DAY ONE ---------- */}
@@ -190,7 +301,7 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <PieChart title="Day One Booked" data={data.day_one_booked} colorMap={{ 'Yes': '#38a169', 'No': '#e53e3e' }} />
-        <PieChart title="Day One Status" data={data.day_one_status} />
+        <PieChart title="Day One Status" data={data.day_one_status} colorMap={STATUS_COLORS} />
         <PieChart title="Day One Sale" data={data.day_one_sale} colorMap={{ 'Sale': '#38a169', 'No Sale': '#e53e3e' }} />
       </div>
     </div>
