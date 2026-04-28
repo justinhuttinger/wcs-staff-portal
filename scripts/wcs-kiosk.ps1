@@ -300,6 +300,44 @@ function Set-WcsBranding {
 }
 
 # ============================================================
+# SECTION 5: CHROME HKLM HYGIENE POLICIES (no URL allowlist)
+# ============================================================
+function Set-WcsChromePolicies {
+    $root = 'HKLM:\SOFTWARE\Policies\Google\Chrome'
+    if (-not (Test-Path $root)) { New-Item -Path $root -Force | Out-Null }
+
+    $dword = @{
+        BrowserSignin              = 0
+        SyncDisabled               = 1
+        BrowserAddPersonEnabled    = 0
+        BrowserGuestModeEnabled    = 0
+        PasswordManagerEnabled     = 0
+        AutofillAddressEnabled     = 0
+        AutofillCreditCardEnabled  = 0
+        IncognitoModeAvailability  = 1
+        DownloadRestrictions       = 3
+        ForceGoogleSafeSearch      = 1
+        ForceYouTubeRestrictedMode = 2
+        ForceBingSafeSearch        = 2
+    }
+    foreach ($name in $dword.Keys) {
+        Set-ItemProperty -Path $root -Name $name -Value $dword[$name] -Type DWord
+    }
+
+    foreach ($subKey in 'URLAllowlist','URLBlocklist','RestoreOnStartupURLs','PinnedTabs') {
+        $path = Join-Path $root $subKey
+        if (Test-Path $path) { Remove-Item -Path $path -Recurse -Force }
+    }
+    foreach ($legacyVal in 'RestoreOnStartup','RestrictSigninToPattern','ClearBrowsingDataOnExit','DeveloperToolsAvailability') {
+        if (Get-ItemProperty -Path $root -Name $legacyVal -ErrorAction SilentlyContinue) {
+            Remove-ItemProperty -Path $root -Name $legacyVal -Force
+        }
+    }
+
+    Write-WcsLog 'Chrome' 'OK' 'HKLM Chrome hygiene policies applied (no URL allowlist)'
+}
+
+# ============================================================
 # MAIN - mode dispatcher (sections wired in later tasks)
 # ============================================================
 if (-not (Test-IsAdmin)) {
@@ -316,8 +354,11 @@ switch ($Mode) {
         Invoke-WcsProfileSweep
         Install-WcsApps
         Set-WcsBranding
+        Set-WcsChromePolicies
     }
-    'Lockdown'  { Write-WcsLog 'Init' 'WARN' 'Lockdown mode - sections not yet wired' }
+    'Lockdown'  {
+        Set-WcsChromePolicies
+    }
     'Cleanup'   {
         Invoke-WcsProfileSweep
     }
