@@ -51,39 +51,52 @@ export default function TicketsView({ onBack }) {
         <h2 className="text-lg font-bold text-text-primary">Tickets & Support</h2>
       </div>
 
-      {loading ? (
-        <p className="text-center text-text-muted text-sm py-8">Loading...</p>
-      ) : embeds.length === 0 ? (
-        <div className="text-center py-12">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-10 h-10 text-text-muted mx-auto mb-3">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 0 1 0 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 0 1 0-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375Z" />
-          </svg>
-          <p className="text-sm font-medium text-text-primary">No ticket forms configured yet</p>
-          <p className="text-xs text-text-muted mt-1">Ask your admin to set up ticket embeds</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-3 gap-4">
-          {embeds.map(embed => (
-            <button
-              key={embed.id}
-              onClick={() => setSelected(embed)}
-              className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
-            >
-              <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 text-wcs-red">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 0 1 0 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 0 1 0-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375Z" />
-                </svg>
-              </div>
-              <div className="text-center">
-                <span className="block text-base font-semibold text-text-primary">{embed.name}</span>
-                {embed.description && (
-                  <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">{embed.description}</span>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="grid grid-cols-3 gap-4">
+        {/* Built-in: Book a Meeting with Justin */}
+        <button
+          onClick={() => setSelected({
+            id: 'book-meeting-justin',
+            name: 'Book a Meeting with Justin',
+            iframe_url: 'https://api.westcoaststrength.com/widget/group/Xdv87CClIXaznbgqoRgq',
+            description: 'Calendar',
+          })}
+          className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+        >
+          <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 text-wcs-red">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+            </svg>
+          </div>
+          <div className="text-center">
+            <span className="block text-base font-semibold text-text-primary">Book a Meeting with Justin</span>
+            <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">Calendar</span>
+          </div>
+        </button>
+
+        {loading && embeds.length === 0 && (
+          <p className="text-center text-text-muted text-sm py-8 col-span-2">Loading...</p>
+        )}
+
+        {!loading && embeds.map(embed => (
+          <button
+            key={embed.id}
+            onClick={() => setSelected(embed)}
+            className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+          >
+            <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 text-wcs-red">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 0 1 0 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 0 1 0-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375Z" />
+              </svg>
+            </div>
+            <div className="text-center">
+              <span className="block text-base font-semibold text-text-primary">{embed.name}</span>
+              {embed.description && (
+                <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">{embed.description}</span>
+              )}
+            </div>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
