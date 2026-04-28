@@ -85,7 +85,9 @@ function TopPerformers({ title, units, performers }) {
 function SectionHeader({ title }) {
   return (
     <div className="flex items-center gap-3 pt-2">
-      <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text-primary">{title}</h3>
+      <div className="bg-surface/95 backdrop-blur-sm rounded-lg border border-border px-3 py-1.5 shadow-sm">
+        <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text-primary">{title}</h3>
+      </div>
       <div className="flex-1 h-px bg-border" />
     </div>
   )
@@ -157,7 +159,7 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
         </div>
       </div>
 
-      <TopPerformers title="Top 3 Salespeople" units="memberships" performers={data.top_salespeople} />
+      <TopPerformers title="Top 3 Salespeople" units="pts" performers={data.top_salespeople} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <PieChart title="Same Day Sales to Memberships" data={sameDayRatio} colorMap={{ 'Same Day': '#38a169', 'Other': '#e2e8f0' }} />

@@ -478,7 +478,7 @@ router.get('/club-health', async (req, res) => {
 
     let abcQuery = supabaseAdmin
       .from('abc_members')
-      .select('email, membership_type, agreement_number')
+      .select('sales_person_name, email, membership_type, agreement_number')
       .eq('is_active', true)
       .not('sign_date', 'is', null)
     if (start_date) abcQuery = abcQuery.gte('sign_date', start_date)
@@ -531,12 +531,13 @@ router.get('/club-health', async (req, res) => {
     } else if (locationFilter && locationFilter.column === 'location_id') {
       vipQuery = vipQuery.eq('location_id', locationFilter.value)
     }
-    const { count: totalVips } = await vipQuery
+    const { data: vipContacts, count: totalVips } = await vipQuery
+    const vipIds = (vipContacts || []).map(v => v.id)
 
     // --- Day Ones from GHL ---
     let dayOneQ = supabaseAdmin
       .from('ghl_contacts_report')
-      .select('day_one_booked, day_one_status, day_one_sale, day_one_booking_date, day_one_trainer, location_slug')
+      .select('day_one_booked, day_one_status, day_one_sale, day_one_booking_date, day_one_booking_team_member, day_one_trainer, location_slug')
       .eq('day_one_booked', 'Yes')
       .not('day_one_booking_date', 'is', null)
     dayOneQ = applyLocationFilter(dayOneQ, locationFilter)
@@ -571,15 +572,58 @@ router.get('/club-health', async (req, res) => {
     // Count unique agreements
     const uniqueAgreements = new Set(filteredMembers.map(m => m.agreement_number).filter(Boolean)).size
 
-    // Top 3 salespeople by membership sales
-    const salesByPerson = {}
-    for (const m of filteredMembers) {
-      const sp = m.sales_person_name
-      if (!sp) continue
-      salesByPerson[sp] = (salesByPerson[sp] || 0) + 1
+    // Top 3 salespeople by leaderboard score (matches POINTS in leaderboard.js)
+    const POINTS = { DAY_ONE_BOOKED: 10, MEMBERSHIP: 5, SAME_DAY_SALE: 5, VIP: 2 }
+    const normalizeName = (raw) => (raw || '')
+      .replace(/\s+/g, ' ').trim().toLowerCase()
+      .replace(/\b\w/g, c => c.toUpperCase())
+
+    const personStats = {}
+    const ensurePerson = (k) => {
+      if (!personStats[k]) personStats[k] = { memberships: 0, day_ones: 0, same_day: 0, vips: 0 }
     }
-    const topSalespeople = Object.entries(salesByPerson)
-      .map(([name, count]) => ({ name, count }))
+
+    for (const m of filteredMembers) {
+      const name = normalizeName(m.sales_person_name)
+      if (!name || name === 'Unassigned') continue
+      ensurePerson(name)
+      personStats[name].memberships++
+      const ghl = m.email ? ghlByEmail[m.email.toLowerCase()] : null
+      if (ghl?.same_day_sale === 'Sale') personStats[name].same_day++
+    }
+
+    for (const c of dayOnes) {
+      const name = normalizeName(c.day_one_booking_team_member)
+      if (!name || name === 'Unassigned') continue
+      ensurePerson(name)
+      personStats[name].day_ones++
+    }
+
+    if (vipIds.length > 0) {
+      for (let i = 0; i < vipIds.length; i += 100) {
+        const chunk = vipIds.slice(i, i + 100)
+        const { data: vipReport } = await supabaseAdmin
+          .from('ghl_contacts_report')
+          .select('id, sale_team_member')
+          .in('id', chunk)
+        for (const vr of (vipReport || [])) {
+          const name = normalizeName(vr.sale_team_member)
+          if (!name || name === 'Unassigned') continue
+          ensurePerson(name)
+          personStats[name].vips++
+        }
+      }
+    }
+
+    const topSalespeople = Object.entries(personStats)
+      .map(([name, s]) => ({
+        name,
+        count: s.day_ones * POINTS.DAY_ONE_BOOKED
+          + s.memberships * POINTS.MEMBERSHIP
+          + s.same_day * POINTS.SAME_DAY_SALE
+          + s.vips * POINTS.VIP,
+      }))
+      .filter(p => p.count > 0)
       .sort((a, b) => b.count - a.count)
       .slice(0, 3)
 
