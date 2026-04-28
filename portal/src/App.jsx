@@ -14,7 +14,7 @@ import HRView from './components/HRView'
 import HelpCenterView from './components/HelpCenterView'
 import TicketsView from './components/TicketsView'
 import DriveView from './components/DriveView'
-import { getMe, getToken, clearToken, setToken, api } from './lib/api'
+import { getMe, getToken, clearToken, setToken, api, onAuthExpired } from './lib/api'
 
 const LOCATION_BACKGROUNDS = {
   salem: '/bg-salem.jpg',
@@ -63,7 +63,7 @@ export default function App() {
     if (kioskMode === 'dayone' && kioskKey && !user) {
       api('/auth/kiosk', { method: 'POST', body: JSON.stringify({ key: kioskKey }) })
         .then(data => {
-          setToken(data.token)
+          setToken(data.token, data.refresh_token)
           setUser({ staff: data.staff, visible_tools: [] })
         })
         .catch(() => {})
@@ -123,6 +123,34 @@ export default function App() {
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
+
+  // When refresh fails (refresh token expired/revoked), drop to login.
+  // In kiosk mode, re-trigger the auto-login flow instead of stranding the
+  // kiosk on the loading screen.
+  useEffect(() => {
+    return onAuthExpired(() => {
+      setUser(null)
+      setShowAdmin(false)
+      setShowCalendar(false)
+      setShowTrainerAvail(false)
+      setShowMetaAds(false)
+      setShowReporting(false)
+      setShowLeaderboard(false)
+      setShowCommunicationNotes(false)
+      setShowHR(false)
+      setShowHelpCenter(false)
+      setShowTickets(false)
+      setShowDrive(false)
+      if (kioskMode === 'dayone' && kioskKey) {
+        api('/auth/kiosk', { method: 'POST', body: JSON.stringify({ key: kioskKey }) })
+          .then(data => {
+            setToken(data.token, data.refresh_token)
+            setUser({ staff: data.staff, visible_tools: [] })
+          })
+          .catch(() => {})
+      }
+    })
   }, [])
 
   useEffect(() => {

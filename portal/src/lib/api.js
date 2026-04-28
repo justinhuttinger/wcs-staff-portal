@@ -49,14 +49,23 @@ let refreshInFlight = null
 
 async function attemptRefresh() {
   if (refreshInFlight) return refreshInFlight
-  if (!refreshToken) return null
+
+  // Re-read from localStorage in case another tab rotated the refresh token.
+  // Supabase invalidates refresh tokens on use, so a stale in-memory copy
+  // would fail and bounce the user to login unnecessarily.
+  let latestRefresh = refreshToken
+  try {
+    const stored = localStorage.getItem('wcs_refresh_token')
+    if (stored) latestRefresh = stored
+  } catch {}
+  if (!latestRefresh) return null
 
   refreshInFlight = (async () => {
     try {
       const res = await fetch(API_URL + '/auth/refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken }),
+        body: JSON.stringify({ refresh_token: latestRefresh }),
       })
       if (!res.ok) return null
       const data = await res.json()

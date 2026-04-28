@@ -59,6 +59,8 @@ router.post('/kiosk', loginLimiter, async (req, res) => {
 
     res.json({
       token: authData.session.access_token,
+      refresh_token: authData.session.refresh_token,
+      expires_at: authData.session.expires_at,
       staff: { ...(staff || {}), locations },
     })
   } catch (err) {
@@ -114,12 +116,14 @@ router.post('/login', loginLimiter, async (req, res) => {
     httpOnly: true,
     secure: true,
     sameSite: 'none',
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days, matches Supabase refresh token lifetime
     path: '/',
   })
 
   res.json({
     token: authData.session.access_token,
+    refresh_token: authData.session.refresh_token,
+    expires_at: authData.session.expires_at,
     staff: {
       id: staff.id,
       email: staff.email,
@@ -159,6 +163,40 @@ router.post('/change-password', authenticate, async (req, res) => {
     .eq('id', req.staff.id)
 
   res.json({ message: 'Password updated' })
+})
+
+// POST /auth/refresh — public; exchanges a refresh token for a new access token
+router.post('/refresh', async (req, res) => {
+  try {
+    const { refresh_token } = req.body
+    if (!refresh_token) {
+      return res.status(400).json({ error: 'refresh_token required' })
+    }
+
+    const anonClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+    const { data, error } = await anonClient.auth.refreshSession({ refresh_token })
+
+    if (error || !data?.session) {
+      return res.status(401).json({ error: 'Invalid refresh token' })
+    }
+
+    res.cookie('wcs_session', data.session.access_token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: '/',
+    })
+
+    res.json({
+      token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      expires_at: data.session.expires_at,
+    })
+  } catch (err) {
+    console.error('[Auth] Refresh error:', err.message)
+    res.status(500).json({ error: 'Refresh failed' })
+  }
 })
 
 // POST /auth/reset-password — public
