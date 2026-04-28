@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import MetaAdsView from './MetaAdsView'
-import GoogleBusinessView from './GoogleBusinessView'
+import GoogleMarketingView from './GoogleMarketingView'
 
 export default function MarketingView({ onBack }) {
   const [activeReport, setActiveReport] = useState(null)
@@ -10,7 +10,7 @@ export default function MarketingView({ onBack }) {
   }
 
   if (activeReport === 'google') {
-    return <GoogleBusinessView onBack={() => setActiveReport(null)} />
+    return <GoogleMarketingView onBack={() => setActiveReport(null)} />
   }
 
   return (
@@ -49,7 +49,7 @@ export default function MarketingView({ onBack }) {
           </div>
           <div className="text-center">
             <span className="block text-base font-semibold text-text-primary">Google</span>
-            <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">Business Profile</span>
+            <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">Business + Analytics</span>
           </div>
         </button>
       </div>

@@ -313,6 +313,40 @@ export async function getGoogleBusinessPerformance(params = {}) {
   return api('/google-business/performance' + (qs ? '?' + qs : ''))
 }
 
+// Google Analytics 4
+export async function getGoogleAnalyticsStatus() {
+  return api('/google-analytics/status')
+}
+
+function gaQuery(path, params = {}) {
+  const cleaned = {}
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') cleaned[k] = v
+  }
+  const qs = new URLSearchParams(cleaned).toString()
+  return api(path + (qs ? '?' + qs : ''))
+}
+
+export async function getGoogleAnalyticsOverview(params = {}) {
+  return gaQuery('/google-analytics/overview', params)
+}
+
+export async function getGoogleAnalyticsSources(params = {}) {
+  return gaQuery('/google-analytics/sources', params)
+}
+
+export async function getGoogleAnalyticsPages(params = {}) {
+  return gaQuery('/google-analytics/pages', params)
+}
+
+export async function getGoogleAnalyticsDevicesGeo(params = {}) {
+  return gaQuery('/google-analytics/devices-geo', params)
+}
+
+export async function getGoogleAnalyticsKeyEvents(params = {}) {
+  return gaQuery('/google-analytics/key-events', params)
+}
+
 // Webhook Logs
 export async function getWebhookLogs(params = {}) {
   const qs = new URLSearchParams(params).toString()
