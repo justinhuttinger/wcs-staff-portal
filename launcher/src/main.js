@@ -136,6 +136,17 @@ app.on('ready', () => {
     }
   })
 
+  // Renderer refreshed its access token — sync to main so vault calls and
+  // tour-notifier keep using a live token past the original 1hr expiry.
+  // Does NOT restart tour-notifier or re-fetch credentials; that's only
+  // for the initial login flow.
+  ipcMain.on('portal-auth-token-refreshed', (e, token) => {
+    if (!token) return
+    auth.setToken(token).catch(err => {
+      log('[Auth] Token refresh sync failed: ' + (err?.message || err))
+    })
+  })
+
   ipcMain.on('portal-auth-logout', () => {
     log('Portal auth: user logged out')
     auth.logout()

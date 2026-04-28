@@ -165,6 +165,30 @@ router.post('/change-password', authenticate, async (req, res) => {
   res.json({ message: 'Password updated' })
 })
 
+// POST /auth/logout — clears the SSO session cookie and revokes the Supabase
+// session so refresh tokens stop working. Best-effort: even if Supabase signout
+// fails, the cookie still gets cleared.
+router.post('/logout', async (req, res) => {
+  res.clearCookie('wcs_session', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    path: '/',
+  })
+
+  const authHeader = req.headers.authorization
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice(7)
+    try {
+      await supabaseAdmin.auth.admin.signOut(token, 'local')
+    } catch (err) {
+      console.log('[Auth] Supabase signout failed (cookie still cleared):', err.message)
+    }
+  }
+
+  res.json({ message: 'Logged out' })
+})
+
 // POST /auth/refresh — public; exchanges a refresh token for a new access token
 router.post('/refresh', async (req, res) => {
   try {

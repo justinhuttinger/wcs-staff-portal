@@ -14,7 +14,7 @@ import HRView from './components/HRView'
 import HelpCenterView from './components/HelpCenterView'
 import TicketsView from './components/TicketsView'
 import DriveView from './components/DriveView'
-import { getMe, getToken, clearToken, setToken, api, onAuthExpired } from './lib/api'
+import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout } from './lib/api'
 
 const LOCATION_BACKGROUNDS = {
   salem: '/bg-salem.jpg',
@@ -82,7 +82,7 @@ export default function App() {
     }
     if (window.wcsElectron?.onSignOut) {
       window.wcsElectron.onSignOut(() => {
-        clearToken()
+        logout()
         setUser(null)
         setShowAdmin(false)
         setShowCalendar(false)
@@ -192,7 +192,7 @@ export default function App() {
   }
 
   function handleLogout() {
-    clearToken()
+    logout()
     setUser(null)
     // Reset all views to homepage
     setShowAdmin(false)

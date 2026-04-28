@@ -21,6 +21,13 @@ export function setToken(token, refresh) {
       else localStorage.removeItem('wcs_refresh_token')
     } catch {}
   }
+  // Sync the new access token to the Electron main process so its vault
+  // calls and tour-notifier keep working past the original 1hr expiry.
+  try {
+    if (typeof window !== 'undefined' && window.wcsElectron?.onTokenRefreshed) {
+      window.wcsElectron.onTokenRefreshed(token)
+    }
+  } catch {}
 }
 
 export function getToken() {
@@ -138,6 +145,21 @@ export async function login(email, password) {
   })
   setToken(data.token, data.refresh_token)
   return data
+}
+
+// Best-effort server logout (clears wcs_session cookie + revokes Supabase
+// session). Always clears local state, even if the network call fails.
+// Fire-and-forget on the server side so the UI doesn't wait.
+export function logout() {
+  const token = authToken
+  try {
+    fetch(API_URL + '/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      headers: token ? { Authorization: 'Bearer ' + token } : {},
+    }).catch(() => {})
+  } catch {}
+  clearToken()
 }
 
 export async function changePassword(newPassword) {
