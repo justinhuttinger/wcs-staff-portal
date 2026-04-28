@@ -225,7 +225,7 @@ router.get('/list', async (req, res) => {
     const token = await getAccessToken()
     const params = new URLSearchParams({
       q: `'${folder_id.replace(/'/g, "\\'")}' in parents and trashed=false`,
-      fields: 'files(id,name,mimeType,iconLink,modifiedTime,size,thumbnailLink,webViewLink)',
+      fields: 'files(id,name,mimeType,iconLink,modifiedTime,size,thumbnailLink,webViewLink,webContentLink)',
       orderBy: 'folder,name',
       pageSize: '200',
       supportsAllDrives: 'true',
