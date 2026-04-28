@@ -358,7 +358,7 @@ export default function HelpCenterView({ user, onBack }) {
 
       {/* Articles */}
       {loading ? (
-        <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm">Loading...</p>
+        <p className="loading-card mx-auto block my-6">Loading...</p>
       ) : articlesError ? (
         <div className="text-center py-8">
           <p className="text-sm text-red-600 mb-2">{articlesError}</p>

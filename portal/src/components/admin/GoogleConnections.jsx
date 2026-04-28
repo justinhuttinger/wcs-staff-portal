@@ -62,7 +62,7 @@ export default function GoogleConnections() {
       </p>
 
       {loading ? (
-        <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm">Checking connection...</p>
+        <p className="loading-card mx-auto block my-6">Checking connection...</p>
       ) : error ? (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>
       ) : (

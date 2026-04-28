@@ -197,13 +197,13 @@ export default function ToursView({ user, onBack }) {
       </div>
 
       {error && <p className="text-sm text-wcs-red mb-4">{error}</p>}
-      {loading && <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm block">Loading tours...</p>}
+      {loading && <p className="loading-card mx-auto block my-6">Loading tours...</p>}
 
       {/* Day View */}
       {!loading && view === 'day' && (
         <div className="space-y-3">
           {tours.length === 0 && (
-            <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm block">No tours scheduled for this day</p>
+            <p className="empty-card mx-auto block my-6">No tours scheduled for this day</p>
           )}
           {tours.map(tour => (
             <div key={tour.id} className="bg-surface border border-border rounded-xl p-4 flex items-center gap-4">

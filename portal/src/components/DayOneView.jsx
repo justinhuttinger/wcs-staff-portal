@@ -108,13 +108,13 @@ export default function DayOneView({ user, onBack }) {
       {error && <p className="text-sm text-wcs-red mb-4">{error}</p>}
 
       {/* Loading */}
-      {loading && <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm block">Loading appointments...</p>}
+      {loading && <p className="loading-card mx-auto block my-6">Loading appointments...</p>}
 
       {/* Appointment Cards */}
       {!loading && (
         <div className="flex flex-col gap-3">
           {appointments.length === 0 && (
-            <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm block">No appointments found</p>
+            <p className="empty-card mx-auto block my-6">No appointments found</p>
           )}
           {appointments.map(apt => (
             <AppointmentCard

@@ -342,7 +342,9 @@ export default function App() {
       )}
       </div>
 
-      <p className="fixed bottom-2 right-3 text-[10px] font-medium text-white/80 bg-black/30 backdrop-blur-sm rounded px-2 py-0.5 select-none pointer-events-none">v1.3.7</p>
+      <p className="fixed bottom-2 right-3 text-[10px] font-medium text-white/80 bg-black/30 backdrop-blur-sm rounded px-2 py-0.5 select-none pointer-events-none">
+        Portal v1.3.7{window.wcsElectron?.version ? ` · App v${window.wcsElectron.version}` : ''}
+      </p>
 
       {savePrompt && (
         <SaveCredentialToast

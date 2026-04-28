@@ -379,9 +379,9 @@ export default function CommunicationNotesView({ user, onBack }) {
 
           {/* Notes */}
           {loading ? (
-            <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm">Loading notes...</p>
+            <p className="loading-card mx-auto block my-6">Loading notes...</p>
           ) : filteredNotes.length === 0 ? (
-            <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm">No {STATUS_LABELS[statusFilter].toLowerCase()} notes{categoryFilter !== 'all' ? ` in ${categoryFilter}` : ''}</p>
+            <p className="empty-card mx-auto block my-6">No {STATUS_LABELS[statusFilter].toLowerCase()} notes{categoryFilter !== 'all' ? ` in ${categoryFilter}` : ''}</p>
           ) : (
             <div className="space-y-3">
               {filteredNotes.map(note => {
