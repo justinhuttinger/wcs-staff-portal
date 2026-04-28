@@ -354,7 +354,7 @@ export default function OperationsReport({ locationSlug }) {
 
 function TrendLegend() {
   return (
-    <div className="flex flex-wrap items-center gap-4 text-xs text-text-muted px-1">
+    <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-3 shadow-sm flex flex-wrap items-center gap-4 text-xs text-text-muted">
       <div className="flex items-center gap-1.5">
         <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: '#18CE99' }} />
         70%+ on track
