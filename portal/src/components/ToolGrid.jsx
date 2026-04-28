@@ -19,7 +19,7 @@ const TILE_ICONS = {
 }
 
 // Which built-in tool IDs are "Apps" (external services)
-const APP_IDS = ['grow', 'abc', 'wheniwork', 'paychex', 'gmail', 'drive']
+const APP_IDS = ['grow', 'abc', 'wheniwork', 'paychex', 'gmail']
 
 // Role hierarchy levels for visibility checks
 const ROLE_LEVELS = { team_member: 0, lead: 1, manager: 2, corporate: 3, admin: 4 }
@@ -401,6 +401,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {appTools.map((tool) => (
             <ToolButton key={tool.id} label={tool.label} description={tool.description} icon={tool.icon} url={getUrl(tool)} star={tool.id === 'grow' || tool.id === 'abc'} />
           ))}
+          {/* Shared Drive — in-portal Drive browser (replaces the legacy static Google Drive link) */}
+          {onDrive && <SvgTileButton onClick={onDrive} iconPath="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" label="Shared Drive" desc="Documents" />}
           {appCustomTiles.filter((tile) => {
             const tileLabel = (tile.label || '').toLowerCase()
             // Indeed, Operandio, VistaPrint: manager+ only
@@ -436,8 +438,6 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           )}
           {/* 4.9. Tickets — lead+ */}
           {onTickets && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTickets} iconPath={TILE_ICONS.tickets} label="Tickets/Support" desc="Help Desk" />}
-          {/* 4.10. Shared Drive — visible to anyone (per-folder access controlled by drive_folders.min_role) */}
-          {onDrive && <SvgTileButton onClick={onDrive} iconPath="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" label="Shared Drive" desc="Documents" />}
           {/* (Day One Tracking merged into Calendar) */}
           {/* 6. Trainer Availability */}
           {onTrainerAvail && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="Availability" desc="Trainers" />}
