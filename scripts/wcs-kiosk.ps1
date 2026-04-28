@@ -338,6 +338,58 @@ function Set-WcsChromePolicies {
 }
 
 # ============================================================
+# SECTION 6: STAFF HKCU LOCKDOWN (no Settings, no cmd, etc.)
+# ============================================================
+function Set-WcsStaffLockdown {
+    $userProfile = 'C:\Users\Staff'
+    $hive        = "$userProfile\NTUSER.DAT"
+    if (-not (Test-Path $hive)) {
+        Write-WcsLog 'StaffLock' 'WARN' 'Staff hive not found (user has not logged in yet) - skipping HKCU lockdown'
+        return
+    }
+
+    $hiveKey = 'WCS_Staff_Lock'
+    & reg.exe load "HKU\$hiveKey" $hive 2>&1 | Out-Null
+    try {
+        $explorer = "Registry::HKEY_USERS\$hiveKey\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
+        if (-not (Test-Path $explorer)) { New-Item -Path $explorer -Force | Out-Null }
+
+        $policies = @{
+            NoControlPanel       = 1
+            DisallowRun          = 1
+            NoRun                = 1
+            NoViewContextMenu    = 1
+            NoDrives             = 67108863
+        }
+        foreach ($k in $policies.Keys) {
+            Set-ItemProperty -Path $explorer -Name $k -Value $policies[$k] -Type DWord
+        }
+
+        $disallow = "$explorer\DisallowRun"
+        if (-not (Test-Path $disallow)) { New-Item -Path $disallow -Force | Out-Null }
+        $blocked = @(
+            'cmd.exe', 'powershell.exe', 'pwsh.exe', 'regedit.exe',
+            'msedge.exe', 'mmc.exe', 'msconfig.exe', 'gpedit.msc',
+            'WindowsStore.exe'
+        )
+        Get-Item -Path $disallow | Select-Object -ExpandProperty Property |
+            ForEach-Object { Remove-ItemProperty -Path $disallow -Name $_ -ErrorAction SilentlyContinue }
+        for ($i = 0; $i -lt $blocked.Count; $i++) {
+            Set-ItemProperty -Path $disallow -Name (($i + 1).ToString()) -Value $blocked[$i] -Type String
+        }
+
+        $storePol = "Registry::HKEY_USERS\$hiveKey\Software\Policies\Microsoft\WindowsStore"
+        if (-not (Test-Path $storePol)) { New-Item -Path $storePol -Force | Out-Null }
+        Set-ItemProperty -Path $storePol -Name 'RemoveWindowsStore' -Value 1 -Type DWord
+
+        Write-WcsLog 'StaffLock' 'OK' "HKCU lockdown applied to Staff (blocked $($blocked.Count) exes)"
+    } finally {
+        [GC]::Collect(); [GC]::WaitForPendingFinalizers()
+        & reg.exe unload "HKU\$hiveKey" 2>&1 | Out-Null
+    }
+}
+
+# ============================================================
 # MAIN - mode dispatcher (sections wired in later tasks)
 # ============================================================
 if (-not (Test-IsAdmin)) {
@@ -355,9 +407,11 @@ switch ($Mode) {
         Install-WcsApps
         Set-WcsBranding
         Set-WcsChromePolicies
+        Set-WcsStaffLockdown
     }
     'Lockdown'  {
         Set-WcsChromePolicies
+        Set-WcsStaffLockdown
     }
     'Cleanup'   {
         Invoke-WcsProfileSweep
