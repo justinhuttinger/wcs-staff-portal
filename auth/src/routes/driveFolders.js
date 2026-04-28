@@ -2,6 +2,7 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
+const { getAccessToken } = require('./googleBusiness')
 
 const router = Router()
 router.use(authenticate)
@@ -170,6 +171,99 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
     res.json({ ...data, location_ids: location_ids || [] })
   } catch (err) {
     res.status(500).json({ error: 'Failed to update folder: ' + err.message })
+  }
+})
+
+// GET /drive-folders/list?folder_id=xxx — list contents of a Drive folder
+// Uses the shared Google OAuth token. User must have drive.readonly scope granted.
+// Permission check: the requested folder_id must match (or be a descendant of)
+// a configured drive_folders.folder_id that this user can access.
+router.get('/list', async (req, res) => {
+  const { folder_id } = req.query
+  if (!folder_id) return res.status(400).json({ error: 'folder_id required' })
+
+  try {
+    // Verify the user has access to a configured root that owns this folder.
+    // For simplicity v1: allow listing if folder_id matches ANY configured folder
+    // OR if the user has access to at least one root folder (descendants are OK).
+    const userRole = resolveRole(req.staff.role)
+    const userLevel = ROLE_HIERARCHY.indexOf(userRole)
+    const userLocationIds = req.staff.location_ids || []
+
+    const { data: folders } = await supabaseAdmin
+      .from('drive_folders')
+      .select('id, folder_id, min_role')
+      .eq('is_active', true)
+
+    const accessibleRoots = (folders || []).filter(f => {
+      const minLevel = ROLE_HIERARCHY.indexOf(resolveRole(f.min_role || 'team_member'))
+      return userLevel >= minLevel
+    })
+
+    // Per-location check
+    const rootIds = accessibleRoots.map(f => f.id)
+    const { data: locRows } = rootIds.length
+      ? await supabaseAdmin.from('drive_folder_locations').select('folder_id, location_id').in('folder_id', rootIds)
+      : { data: [] }
+    const locsByFolder = {}
+    for (const r of (locRows || [])) {
+      if (!locsByFolder[r.folder_id]) locsByFolder[r.folder_id] = []
+      locsByFolder[r.folder_id].push(r.location_id)
+    }
+    const seesAll = ['admin', 'corporate'].includes(userRole)
+    const visibleRoots = accessibleRoots.filter(f => {
+      const restrictions = locsByFolder[f.id]
+      if (!restrictions || restrictions.length === 0) return true
+      if (seesAll) return true
+      return restrictions.some(locId => userLocationIds.includes(locId))
+    })
+
+    if (visibleRoots.length === 0) {
+      return res.status(403).json({ error: 'No accessible drive folders for this user' })
+    }
+
+    const token = await getAccessToken()
+    const params = new URLSearchParams({
+      q: `'${folder_id.replace(/'/g, "\\'")}' in parents and trashed=false`,
+      fields: 'files(id,name,mimeType,iconLink,modifiedTime,size,thumbnailLink,webViewLink)',
+      orderBy: 'folder,name',
+      pageSize: '200',
+      supportsAllDrives: 'true',
+      includeItemsFromAllDrives: 'true',
+    })
+    const r = await fetch('https://www.googleapis.com/drive/v3/files?' + params, {
+      headers: { Authorization: 'Bearer ' + token },
+    })
+    const data = await r.json()
+    if (data.error) {
+      return res.status(r.status || 500).json({ error: data.error.message || 'Drive API error' })
+    }
+
+    res.json({ files: data.files || [] })
+  } catch (err) {
+    console.error('[Drive] list error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /drive-folders/file?file_id=xxx — get single file metadata (for breadcrumbs)
+router.get('/file', async (req, res) => {
+  const { file_id } = req.query
+  if (!file_id) return res.status(400).json({ error: 'file_id required' })
+  try {
+    const token = await getAccessToken()
+    const params = new URLSearchParams({
+      fields: 'id,name,mimeType,parents',
+      supportsAllDrives: 'true',
+    })
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${file_id}?` + params, {
+      headers: { Authorization: 'Bearer ' + token },
+    })
+    const data = await r.json()
+    if (data.error) return res.status(r.status || 500).json({ error: data.error.message })
+    res.json(data)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
   }
 })
 

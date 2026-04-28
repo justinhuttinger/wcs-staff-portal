@@ -8,7 +8,7 @@ const router = Router()
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_BUSINESS_CLIENT_ID
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_BUSINESS_CLIENT_SECRET
 const REDIRECT_URI = (process.env.AUTH_API_URL || 'https://api.wcstrength.com') + '/google-business/callback'
-const SCOPES = 'https://www.googleapis.com/auth/business.manage https://www.googleapis.com/auth/analytics.readonly'
+const SCOPES = 'https://www.googleapis.com/auth/business.manage https://www.googleapis.com/auth/analytics.readonly https://www.googleapis.com/auth/drive.readonly'
 
 // Store tokens in Supabase config table (or env var as fallback)
 async function getStoredTokens() {

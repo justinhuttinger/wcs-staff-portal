@@ -356,6 +356,12 @@ export async function getOperandioLatest() {
 export async function getDriveFolders() {
   return api('/drive-folders')
 }
+export async function listDriveContents(folderId) {
+  return api('/drive-folders/list?folder_id=' + encodeURIComponent(folderId))
+}
+export async function getDriveFileMeta(fileId) {
+  return api('/drive-folders/file?file_id=' + encodeURIComponent(fileId))
+}
 export async function getDriveFoldersAdmin() {
   return api('/drive-folders/admin')
 }
