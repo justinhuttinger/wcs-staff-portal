@@ -50,6 +50,47 @@ function PieChart({ title, data, colorMap }) {
   )
 }
 
+const MEDAL_COLORS = ['#d4af37', '#9aa1a8', '#a8722c']
+const MEDAL_LABELS = ['1st', '2nd', '3rd']
+
+function TopPerformers({ title, units, performers }) {
+  const list = performers || []
+  return (
+    <div className="bg-surface rounded-xl border border-border p-6">
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">{title}</p>
+      {list.length === 0 ? (
+        <p className="text-sm text-text-muted py-4 text-center">No data</p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {list.map((p, i) => (
+            <div key={p.name} className="flex items-center gap-3 p-3 rounded-lg bg-bg border border-border">
+              <div
+                className="flex items-center justify-center w-9 h-9 rounded-full text-white text-xs font-bold flex-shrink-0"
+                style={{ backgroundColor: MEDAL_COLORS[i] || '#a8722c' }}
+              >
+                {MEDAL_LABELS[i] || `${i + 1}`}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-text-primary truncate">{p.name}</p>
+                <p className="text-xs text-text-muted">{p.count} {units}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SectionHeader({ title }) {
+  return (
+    <div className="flex items-center gap-3 pt-2">
+      <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text-primary">{title}</h3>
+      <div className="flex-1 h-px bg-border" />
+    </div>
+  )
+}
+
 export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -94,7 +135,37 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
 
   return (
     <div className="space-y-6">
-      {/* Set / Show / Close */}
+      {/* ---------- MEMBERSHIP ---------- */}
+      <SectionHeader title="Membership" />
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="bg-surface rounded-xl border border-border p-6 text-center">
+          <p className="text-xs text-text-muted uppercase tracking-wide">Agreements</p>
+          <p className="text-4xl font-bold text-text-primary mt-2">{totalAgreements}</p>
+        </div>
+        <div className="bg-surface rounded-xl border border-border p-6 text-center">
+          <p className="text-xs text-text-muted uppercase tracking-wide">Members</p>
+          <p className="text-4xl font-bold text-text-primary mt-2">{totalMemberships}</p>
+        </div>
+        <div className="bg-surface rounded-xl border border-border p-6 text-center">
+          <p className="text-xs text-text-muted uppercase tracking-wide">Total VIPs</p>
+          <p className="text-4xl font-bold text-text-primary mt-2">{data.total_vips}</p>
+        </div>
+        <div className="bg-surface rounded-xl border border-border p-6 text-center">
+          <p className="text-xs text-text-muted uppercase tracking-wide">Same Day Sales</p>
+          <p className="text-4xl font-bold text-text-primary mt-2">{data.total_same_day_sales}</p>
+        </div>
+      </div>
+
+      <TopPerformers title="Top 3 Salespeople" units="memberships" performers={data.top_salespeople} />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <PieChart title="Same Day Sales to Memberships" data={sameDayRatio} colorMap={{ 'Same Day': '#38a169', 'Other': '#e2e8f0' }} />
+      </div>
+
+      {/* ---------- PT / DAY ONE ---------- */}
+      <SectionHeader title="PT / Day One" />
+
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-surface rounded-xl border border-border p-6 text-center">
           <p className="text-xs text-text-muted uppercase tracking-wide">Set</p>
@@ -113,40 +184,12 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
         </div>
       </div>
 
-      {/* Big Number Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Agreements</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{totalAgreements}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Members</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{totalMemberships}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Total VIPs</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{data.total_vips}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Same Day Sales</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{data.total_same_day_sales}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Day Ones Booked</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{data.total_day_ones_booked}</p>
-        </div>
-      </div>
+      <TopPerformers title="Top 3 Trainers" units="closes" performers={data.top_trainers} />
 
-      {/* Day One Pie Charts */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <PieChart title="Day One Booked" data={data.day_one_booked} colorMap={{ 'Yes': '#38a169', 'No': '#e53e3e' }} />
         <PieChart title="Day One Status" data={data.day_one_status} />
         <PieChart title="Day One Sale" data={data.day_one_sale} colorMap={{ 'Sale': '#38a169', 'No Sale': '#e53e3e' }} />
-      </div>
-
-      {/* Same Day Sales Ratio */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <PieChart title="Same Day Sales to Memberships" data={sameDayRatio} colorMap={{ 'Same Day': '#38a169', 'Other': '#e2e8f0' }} />
       </div>
     </div>
   )

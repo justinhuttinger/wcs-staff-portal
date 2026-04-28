@@ -536,7 +536,7 @@ router.get('/club-health', async (req, res) => {
     // --- Day Ones from GHL ---
     let dayOneQ = supabaseAdmin
       .from('ghl_contacts_report')
-      .select('day_one_booked, day_one_status, day_one_sale, day_one_booking_date, location_slug')
+      .select('day_one_booked, day_one_status, day_one_sale, day_one_booking_date, day_one_trainer, location_slug')
       .eq('day_one_booked', 'Yes')
       .not('day_one_booking_date', 'is', null)
     dayOneQ = applyLocationFilter(dayOneQ, locationFilter)
@@ -571,6 +571,32 @@ router.get('/club-health', async (req, res) => {
     // Count unique agreements
     const uniqueAgreements = new Set(filteredMembers.map(m => m.agreement_number).filter(Boolean)).size
 
+    // Top 3 salespeople by membership sales
+    const salesByPerson = {}
+    for (const m of filteredMembers) {
+      const sp = m.sales_person_name
+      if (!sp) continue
+      salesByPerson[sp] = (salesByPerson[sp] || 0) + 1
+    }
+    const topSalespeople = Object.entries(salesByPerson)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3)
+
+    // Top 3 trainers by Day One closes (Sale on completed day ones)
+    const closesByTrainer = {}
+    for (const c of dayOnes) {
+      if ((c.day_one_status || '').toLowerCase() !== 'completed') continue
+      if (c.day_one_sale !== 'Sale') continue
+      const t = c.day_one_trainer
+      if (!t) continue
+      closesByTrainer[t] = (closesByTrainer[t] || 0) + 1
+    }
+    const topTrainers = Object.entries(closesByTrainer)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3)
+
     res.json({
       total_memberships: filteredMembers.length,
       total_agreements: uniqueAgreements,
@@ -580,6 +606,8 @@ router.get('/club-health', async (req, res) => {
       day_one_booked: dayOneBookedCounts,
       day_one_status: dayOneStatusCounts,
       day_one_sale: dayOneSaleCounts,
+      top_salespeople: topSalespeople,
+      top_trainers: topTrainers,
     })
   } catch (err) {
     res.status(500).json({ error: err.message })

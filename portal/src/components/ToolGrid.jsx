@@ -115,12 +115,15 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
       locationId ? getTours({ location_id: locationId, start_date: todayStr, end_date: todayStr }).catch(() => ({ tours: [] })) : Promise.resolve({ tours: [] }),
     ]).then(([dayOneRes, toursRes]) => {
       const apts = dayOneRes.appointments || []
-      const pendingDayOnes = apts.filter(a => {
-        const s = (a.day_one_status || '').toLowerCase()
-        return (!s || s === 'scheduled') && new Date(a.appointment_time) < new Date()
+      const todayKey = todayStr
+      const todayDayOnes = apts.filter(a => {
+        if (!a.appointment_time) return false
+        const d = new Date(a.appointment_time)
+        const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        return k === todayKey
       }).length
       const todayTours = (toursRes.tours || []).length
-      setCalendarBadge(pendingDayOnes + todayTours)
+      setCalendarBadge(todayDayOnes + todayTours)
     })
 
     // Fetch unresolved comm notes count
