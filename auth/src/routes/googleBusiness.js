@@ -217,16 +217,45 @@ router.get('/performance', authenticate, requireRole('corporate'), async (req, r
       locationData = [{ name: location_name, title: location_name }]
     } else {
       const cachedLocs = getCached('locations')
-      if (cachedLocs?.locations) {
+      if (cachedLocs?.locations?.length) {
         locationData = cachedLocs.locations
       } else {
-        // Read from stored tokens (locations saved during OAuth callback)
+        // Try stored tokens first (cached during OAuth callback)
         const tokens = await getStoredTokens()
         if (tokens?.locations?.length) {
           locationData = tokens.locations
           setCache('locations', { locations: locationData })
         } else {
-          return res.json({ metrics: [], error: 'No locations found. Try reconnecting Google Business Profile.' })
+          // Fallback: fetch fresh from GBP API. Stored cache may be empty if
+          // the OAuth callback hit a quota limit when it tried to populate it.
+          try {
+            const accounts = await googleFetch('https://mybusinessaccountmanagement.googleapis.com/v1/accounts', token)
+            const accountName = accounts.accounts?.[0]?.name
+            if (accountName) {
+              const locs = await googleFetch(
+                `https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations?readMask=name,title,storefrontAddress`,
+                token
+              )
+              locationData = (locs.locations || []).map(l => ({
+                name: l.name,
+                title: l.title || '',
+                city: l.storefrontAddress?.locality || '',
+              }))
+            }
+          } catch (e) {
+            console.warn('[Google Business] Fallback locations fetch failed:', e.message)
+            return res.json({ metrics: [], error: 'Could not load locations: ' + e.message })
+          }
+
+          if (!locationData.length) {
+            return res.json({ metrics: [], error: 'No locations found. Try reconnecting Google Business Profile.' })
+          }
+
+          // Persist for next call
+          setCache('locations', { locations: locationData })
+          if (tokens) {
+            await storeTokens({ ...tokens, locations: locationData })
+          }
         }
       }
     }
