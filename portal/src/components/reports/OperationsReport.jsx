@@ -332,6 +332,7 @@ export default function OperationsReport({ locationSlug }) {
 
           {/* ---------- Daily Trend ---------- */}
           <SectionHeader title="Daily Trend" />
+          <TrendLegend />
           {slugs.map(slug => {
             const rows = grouped[slug] || []
             const displayName = LOCATION_NAMES.find(n => n.toLowerCase() === slug) || slug
@@ -347,6 +348,29 @@ export default function OperationsReport({ locationSlug }) {
           })}
         </>
       )}
+    </div>
+  )
+}
+
+function TrendLegend() {
+  return (
+    <div className="flex flex-wrap items-center gap-4 text-xs text-text-muted px-1">
+      <div className="flex items-center gap-1.5">
+        <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: '#18CE99' }} />
+        70%+ on track
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: '#FCD34D' }} />
+        40–69% needs attention
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: '#F26C4F' }} />
+        below 40% at risk
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: '#E5E7EB' }} />
+        no data
+      </div>
     </div>
   )
 }
