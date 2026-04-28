@@ -227,7 +227,7 @@ async function calculateListStats(listConfig) {
     name,
     description,
     formUrl,
-    taskCount: tasks.length,
+    taskCount: tasks.length + (fakeClosures?.count || 0),
     closedCount: timesInStatus.length,
     tasksWithData: timesInStatus.length,
     averageFormatted,
