@@ -323,7 +323,7 @@ function GaSection({ startDate, endDate, locationSlug, compare, ga4Status }) {
       ) : errors.overview ? (
         <div className="bg-surface border border-border rounded-xl p-4 text-sm text-wcs-red">{errors.overview}</div>
       ) : (
-        <p className="text-tile-sub text-sm py-4 text-center">Loading overview...</p>
+        <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-3 rounded-lg border border-border shadow-sm block">Loading overview...</p>
       )}
 
       {/* Sources */}

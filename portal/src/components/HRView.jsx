@@ -225,7 +225,7 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
       </div>
 
       {loading ? (
-        <p className="text-center text-tile-sub text-sm py-8">Loading employees from Paychex...</p>
+        <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm">Loading employees from Paychex...</p>
       ) : error ? (
         <div className="text-center py-8">
           <p className="text-sm text-red-600 mb-3">{error}</p>
@@ -234,7 +234,7 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
           </button>
         </div>
       ) : filtered.length === 0 ? (
-        <p className="text-center text-tile-sub text-sm py-8">No employees found</p>
+        <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm">No employees found</p>
       ) : (
         <div className="space-y-2">
           {filtered.map(w => (
@@ -502,7 +502,7 @@ function WorkerDocuments({ worker }) {
       </div>
 
       {loading ? (
-        <p className="text-center text-tile-sub text-sm py-8">Loading documents...</p>
+        <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm">Loading documents...</p>
       ) : error ? (
         <div className="text-center py-8">
           <p className="text-sm text-red-600 mb-3">{error}</p>
@@ -593,7 +593,7 @@ function WorkerDocuments({ worker }) {
           </div>
 
           {paychexDocs.length === 0 && localDocs.length === 0 && (
-            <p className="text-center text-tile-sub text-sm py-8">No documents found for this employee</p>
+            <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm">No documents found for this employee</p>
           )}
         </>
       )}

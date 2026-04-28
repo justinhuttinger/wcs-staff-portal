@@ -283,7 +283,7 @@ export default function OperationsReport({ locationSlug }) {
         </div>
       </div>
 
-      {loading && <p className="text-tile-sub text-sm py-8 text-center">Loading operations data...</p>}
+      {loading && <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm block">Loading operations data...</p>}
       {error && <p className="text-wcs-red text-sm py-4">{error}</p>}
 
       {!loading && !error && (

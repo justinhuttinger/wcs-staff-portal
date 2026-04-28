@@ -112,7 +112,7 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
     })
   }, [startDate, endDate, locationSlug])
 
-  if (loading) return <p className="text-text-muted text-sm py-8 text-center">Loading PT data...</p>
+  if (loading) return <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm block">Loading PT data...</p>
   if (error) return <p className="text-wcs-red text-sm py-4">{error}</p>
   if (!data) return null
 

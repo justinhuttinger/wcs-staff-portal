@@ -103,7 +103,7 @@ export default function DriveView({ onBack }) {
       </div>
 
       {loading ? (
-        <p className="text-center text-tile-sub text-sm py-8">Loading...</p>
+        <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm">Loading...</p>
       ) : error ? (
         <p className="text-wcs-red text-sm py-4 text-center">{error}</p>
       ) : folders.length === 0 ? (
@@ -434,7 +434,7 @@ function DriveBrowser({ root, onBack }) {
       )}
 
       {loading ? (
-        <p className="text-center text-tile-sub text-sm py-8">Loading...</p>
+        <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm">Loading...</p>
       ) : error ? (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
           {error}
@@ -447,13 +447,13 @@ function DriveBrowser({ root, onBack }) {
           )}
         </div>
       ) : isSearching && searchLoading ? (
-        <p className="text-center text-tile-sub text-sm py-8">Searching across {root.name}...</p>
+        <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm">Searching across {root.name}...</p>
       ) : isSearching && searchError ? (
         <p className="text-wcs-red text-sm py-4 text-center">{searchError}</p>
       ) : !isSearching && files.length === 0 ? (
-        <p className="text-center text-tile-sub text-sm py-8">This folder is empty.</p>
+        <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm">This folder is empty.</p>
       ) : visibleFiles.length === 0 ? (
-        <p className="text-center text-tile-sub text-sm py-8">{isSearching ? 'No matches.' : 'No files match your filter.'}</p>
+        <p className="mx-auto w-fit bg-surface text-text-primary text-sm px-4 py-2 my-6 rounded-lg border border-border shadow-sm">{isSearching ? 'No matches.' : 'No files match your filter.'}</p>
       ) : viewMode === 'grid' ? (
         <>
           {isSearching && <p className="text-xs text-text-muted mb-2">{visibleFiles.length} match{visibleFiles.length === 1 ? '' : 'es'} across all folders</p>}
