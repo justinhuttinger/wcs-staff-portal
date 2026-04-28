@@ -287,46 +287,77 @@ export default function OperationsReport({ locationSlug }) {
       {error && <p className="text-wcs-red text-sm py-4">{error}</p>}
 
       {!loading && !error && (
-        slugs.map(slug => {
-          const rows = grouped[slug] || []
-          const prevRows = prevGrouped[slug] || []
-          const agg = aggregateLocation(rows)
-          const prevAgg = aggregateLocation(prevRows)
-          const displayName = LOCATION_NAMES.find(n => n.toLowerCase() === slug) || slug
+        <>
+          {/* ---------- Period Summary ---------- */}
+          <SectionHeader title="Period Summary" />
+          {slugs.map(slug => {
+            const rows = grouped[slug] || []
+            const prevRows = prevGrouped[slug] || []
+            const agg = aggregateLocation(rows)
+            const prevAgg = aggregateLocation(prevRows)
+            const displayName = LOCATION_NAMES.find(n => n.toLowerCase() === slug) || slug
 
-          if (!agg) {
+            if (!agg) {
+              return (
+                <div key={slug} className="bg-surface border border-border rounded-xl p-5">
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="text-sm font-semibold text-text-primary">{displayName}</p>
+                    <span className="text-xs text-text-muted">No data in range</span>
+                  </div>
+                </div>
+              )
+            }
+
             return (
               <div key={slug} className="bg-surface border border-border rounded-xl p-5">
-                <div className="flex items-center justify-between gap-4">
-                  <p className="text-sm font-semibold text-text-primary">{displayName}</p>
-                  <span className="text-xs text-text-muted">No data in range</span>
+                <div className="flex items-center justify-between gap-4 mb-2">
+                  <div>
+                    <p className="text-sm font-semibold text-text-primary">{displayName}</p>
+                    <p className="text-[11px] text-text-muted">{agg.days} day{agg.days === 1 ? '' : 's'} in range</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <DeltaChip current={agg.overall_pct} previous={prevAgg?.overall_pct} />
+                    <span className="text-2xl font-bold text-text-primary">{agg.overall_pct.toFixed(0)}%</span>
+                  </div>
                 </div>
+                <StackedBar
+                  on_time={agg.on_time_pct}
+                  late={agg.late_pct}
+                  skipped={agg.skipped_pct}
+                  uncompleted={agg.uncompleted_pct}
+                />
               </div>
             )
-          }
+          })}
 
-          return (
-            <div key={slug} className="bg-surface border border-border rounded-xl p-5">
-              <div className="flex items-center justify-between gap-4 mb-2">
-                <div>
-                  <p className="text-sm font-semibold text-text-primary">{displayName}</p>
-                  <p className="text-[11px] text-text-muted">{agg.days} day{agg.days === 1 ? '' : 's'} in range</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <DeltaChip current={agg.overall_pct} previous={prevAgg?.overall_pct} />
-                  <span className="text-2xl font-bold text-text-primary">{agg.overall_pct.toFixed(0)}%</span>
-                </div>
+          {/* ---------- Daily Trend ---------- */}
+          <SectionHeader title="Daily Trend" />
+          {slugs.map(slug => {
+            const rows = grouped[slug] || []
+            const displayName = LOCATION_NAMES.find(n => n.toLowerCase() === slug) || slug
+            const dailyRows = rows.filter(r => r.period_start === r.period_end)
+            if (dailyRows.length === 0) return null
+
+            return (
+              <div key={slug} className="bg-surface border border-border rounded-xl p-5">
+                <p className="text-sm font-semibold text-text-primary mb-3">{displayName}</p>
+                <Sparkline rows={rows} dateRange={{ start: startDate, end: endDate }} />
               </div>
-              <StackedBar
-                on_time={agg.on_time_pct}
-                late={agg.late_pct}
-                skipped={agg.skipped_pct}
-                uncompleted={agg.uncompleted_pct}
-              />
-            </div>
-          )
-        })
+            )
+          })}
+        </>
       )}
+    </div>
+  )
+}
+
+function SectionHeader({ title }) {
+  return (
+    <div className="flex items-center gap-3 pt-2">
+      <div className="bg-surface/95 backdrop-blur-sm rounded-lg border border-border px-3 py-1.5 shadow-sm">
+        <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text-primary">{title}</h3>
+      </div>
+      <div className="flex-1 h-px bg-border" />
     </div>
   )
 }
