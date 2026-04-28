@@ -29,6 +29,7 @@ function rangeLengthDays(start, end) {
 }
 
 const QUICK_RANGES = [
+  { key: 'yesterday', label: 'Yesterday' },
   { key: 'last_7', label: 'Last 7 Days' },
   { key: 'last_30', label: 'Last 30 Days' },
   { key: 'last_90', label: 'Last 90 Days' },
@@ -40,6 +41,7 @@ function getQuickRange(key) {
   const yesterday = yesterdayISO()
   const today = new Date()
   switch (key) {
+    case 'yesterday': return { start: yesterday, end: yesterday }
     case 'last_7': return { start: dateMinus(yesterday, 6), end: yesterday }
     case 'last_30': return { start: dateMinus(yesterday, 29), end: yesterday }
     case 'last_90': return { start: dateMinus(yesterday, 89), end: yesterday }
@@ -321,13 +323,6 @@ export default function OperationsReport({ locationSlug }) {
                 skipped={agg.skipped_pct}
                 uncompleted={agg.uncompleted_pct}
               />
-              <Sparkline rows={rows} dateRange={{ start: startDate, end: endDate }} />
-              <div className="grid grid-cols-4 gap-2 mt-2 text-[11px] text-text-muted">
-                <span>On-time {agg.on_time_pct.toFixed(0)}%</span>
-                <span>Late {agg.late_pct.toFixed(0)}%</span>
-                <span>Skipped {agg.skipped_pct.toFixed(0)}%</span>
-                <span>Uncompleted {agg.uncompleted_pct.toFixed(0)}%</span>
-              </div>
             </div>
           )
         })

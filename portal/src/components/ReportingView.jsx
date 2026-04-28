@@ -10,7 +10,7 @@ const ALL_REPORT_TILES = [
   { key: 'membership', label: 'Membership', desc: 'Report', icon: '🏷️' },
   { key: 'pt', label: 'PT / Day One', desc: 'Report', icon: '🏋️' },
   { key: 'pt-roster', label: 'PT Roster', desc: 'Active Clients', icon: '📋' },
-  { key: 'operations', label: 'Operations', desc: 'Checklists', icon: '✅' },
+  { key: 'operations', label: 'Operational Compliance', desc: 'Checklists', icon: '✅' },
 ]
 
 function getReportTilesForRole(role) {
