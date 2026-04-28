@@ -3,7 +3,10 @@
 /* Empty-state message: white card, no spinner */
 .empty-card,
 .loading-card {
-  display: inline-flex;
+  display: flex;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
   align-items: center;
   gap: 0.5rem;
   background: var(--color-surface);
