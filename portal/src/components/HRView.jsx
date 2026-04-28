@@ -225,7 +225,7 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
       </div>
 
       {loading ? (
-        <p className="text-center text-text-muted text-sm py-8">Loading employees from Paychex...</p>
+        <p className="text-center text-tile-sub text-sm py-8">Loading employees from Paychex...</p>
       ) : error ? (
         <div className="text-center py-8">
           <p className="text-sm text-red-600 mb-3">{error}</p>
@@ -234,7 +234,7 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
           </button>
         </div>
       ) : filtered.length === 0 ? (
-        <p className="text-center text-text-muted text-sm py-8">No employees found</p>
+        <p className="text-center text-tile-sub text-sm py-8">No employees found</p>
       ) : (
         <div className="space-y-2">
           {filtered.map(w => (
@@ -502,7 +502,7 @@ function WorkerDocuments({ worker }) {
       </div>
 
       {loading ? (
-        <p className="text-center text-text-muted text-sm py-8">Loading documents...</p>
+        <p className="text-center text-tile-sub text-sm py-8">Loading documents...</p>
       ) : error ? (
         <div className="text-center py-8">
           <p className="text-sm text-red-600 mb-3">{error}</p>
@@ -593,7 +593,7 @@ function WorkerDocuments({ worker }) {
           </div>
 
           {paychexDocs.length === 0 && localDocs.length === 0 && (
-            <p className="text-center text-text-muted text-sm py-8">No documents found for this employee</p>
+            <p className="text-center text-tile-sub text-sm py-8">No documents found for this employee</p>
           )}
         </>
       )}
@@ -660,7 +660,7 @@ export default function HRView({ user, onBack }) {
             </div>
             <div className="text-center">
               <span className="block text-lg font-semibold text-text-primary">Submit Document</span>
-              <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">Create New</span>
+              <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">Create New</span>
             </div>
           </button>
 
@@ -675,7 +675,7 @@ export default function HRView({ user, onBack }) {
             </div>
             <div className="text-center">
               <span className="block text-lg font-semibold text-text-primary">View Documents</span>
-              <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">Employee Files</span>
+              <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">Employee Files</span>
             </div>
           </button>
         </div>

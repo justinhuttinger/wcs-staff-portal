@@ -60,7 +60,7 @@ function TileButton({ tile, onClick }) {
       </div>
       <div className="text-center">
         <span className="block text-base font-semibold text-text-primary">{tile.label}</span>
-        <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">{tile.desc}</span>
+        <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">{tile.desc}</span>
       </div>
     </button>
   )
@@ -155,7 +155,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange }) {
             </div>
             <div className="text-center">
               <span className="block text-lg font-semibold text-text-primary">{group.label}</span>
-              <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">{group.desc}</span>
+              <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">{group.desc}</span>
             </div>
             <div className="flex flex-wrap justify-center gap-1.5 mt-1">
               {group.tiles.map(t => (

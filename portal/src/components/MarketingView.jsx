@@ -33,7 +33,7 @@ export default function MarketingView({ onBack }) {
           </div>
           <div className="text-center">
             <span className="block text-base font-semibold text-text-primary">Meta Ads</span>
-            <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">Facebook & Instagram</span>
+            <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">Facebook & Instagram</span>
           </div>
         </button>
 
@@ -49,7 +49,7 @@ export default function MarketingView({ onBack }) {
           </div>
           <div className="text-center">
             <span className="block text-base font-semibold text-text-primary">Google</span>
-            <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">Business + Analytics</span>
+            <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">Business + Analytics</span>
           </div>
         </button>
       </div>

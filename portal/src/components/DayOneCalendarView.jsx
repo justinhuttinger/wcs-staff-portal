@@ -206,13 +206,13 @@ export default function DayOneCalendarView({ user, onBack, location }) {
       </div>
 
       {error && <p className="text-sm text-wcs-red mb-4">{error}</p>}
-      {loading && <p className="text-text-muted text-sm py-8 text-center">Loading appointments...</p>}
+      {loading && <p className="text-tile-sub text-sm py-8 text-center">Loading appointments...</p>}
 
       {/* Day View */}
       {!loading && view === 'day' && (
         <div className="space-y-3">
           {dayAppointments.length === 0 && (
-            <p className="text-text-muted text-sm py-8 text-center">No Day One appointments for this day</p>
+            <p className="text-tile-sub text-sm py-8 text-center">No Day One appointments for this day</p>
           )}
           {dayAppointments.map(apt => {
             const status = getStatus(apt)

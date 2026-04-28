@@ -47,7 +47,7 @@ function SvgTileButton({ onClick, iconPath, label, desc, badge, star }) {
       </div>
       <div className="text-center">
         <span className="block text-base font-semibold text-text-primary">{label}</span>
-        <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">{desc}</span>
+        <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">{desc}</span>
       </div>
     </button>
   )

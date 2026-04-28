@@ -70,7 +70,7 @@ export default function TicketsView({ onBack }) {
           </div>
           <div className="text-center">
             <span className="block text-base font-semibold text-text-primary">Ticket Status</span>
-            <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">In Progress</span>
+            <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">In Progress</span>
           </div>
         </button>
 
@@ -91,12 +91,12 @@ export default function TicketsView({ onBack }) {
           </div>
           <div className="text-center">
             <span className="block text-base font-semibold text-text-primary">Book a Meeting with Justin</span>
-            <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">Calendar</span>
+            <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">Calendar</span>
           </div>
         </button>
 
         {loading && embeds.length === 0 && (
-          <p className="text-center text-text-muted text-sm py-8 col-span-2">Loading...</p>
+          <p className="text-center text-tile-sub text-sm py-8 col-span-2">Loading...</p>
         )}
 
         {!loading && embeds.map(embed => (
@@ -113,7 +113,7 @@ export default function TicketsView({ onBack }) {
             <div className="text-center">
               <span className="block text-base font-semibold text-text-primary">{embed.name}</span>
               {embed.description && (
-                <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">{embed.description}</span>
+                <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">{embed.description}</span>
               )}
             </div>
           </button>

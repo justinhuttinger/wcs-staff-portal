@@ -9,6 +9,8 @@
   --color-text-primary: #1a1a2e;
   --color-text-secondary: #1a1a2e;
   --color-text-muted: #1a1a2e;
+  /* Faint grey reserved for tile subtitles only (Apps/Tools/Reports/Admin tiles) */
+  --color-tile-sub: #8b90a5;
   --color-border: #e2e4e8;
 }
 

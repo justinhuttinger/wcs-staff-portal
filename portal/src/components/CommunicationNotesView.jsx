@@ -379,9 +379,9 @@ export default function CommunicationNotesView({ user, onBack }) {
 
           {/* Notes */}
           {loading ? (
-            <p className="text-sm text-text-muted text-center py-8">Loading notes...</p>
+            <p className="text-sm text-tile-sub text-center py-8">Loading notes...</p>
           ) : filteredNotes.length === 0 ? (
-            <p className="text-sm text-text-muted text-center py-8">No {STATUS_LABELS[statusFilter].toLowerCase()} notes{categoryFilter !== 'all' ? ` in ${categoryFilter}` : ''}</p>
+            <p className="text-sm text-tile-sub text-center py-8">No {STATUS_LABELS[statusFilter].toLowerCase()} notes{categoryFilter !== 'all' ? ` in ${categoryFilter}` : ''}</p>
           ) : (
             <div className="space-y-3">
               {filteredNotes.map(note => {

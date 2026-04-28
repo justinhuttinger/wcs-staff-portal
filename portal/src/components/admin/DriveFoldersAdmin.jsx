@@ -124,7 +124,7 @@ export default function DriveFoldersAdmin() {
       )}
 
       {loading ? (
-        <p className="text-center text-text-muted text-sm py-8">Loading...</p>
+        <p className="text-center text-tile-sub text-sm py-8">Loading...</p>
       ) : folders.length === 0 ? (
         <div className="text-center py-8 bg-surface border border-border rounded-xl">
           <p className="text-sm text-text-muted">No drive folders configured yet</p>

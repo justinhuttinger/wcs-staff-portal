@@ -228,7 +228,7 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
               </div>
               <div className="text-center">
                 <span className="block text-base font-semibold text-text-primary">{tile.label}</span>
-                <span className="block text-xs font-medium text-text-muted uppercase tracking-[0.8px] mt-1">{tile.desc}</span>
+                <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">{tile.desc}</span>
               </div>
             </button>
           ))}

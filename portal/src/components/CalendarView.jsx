@@ -472,7 +472,7 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
       </div>
 
       {error && <p className="text-sm text-wcs-red mb-4">{error}</p>}
-      {loading && <p className="text-text-muted text-sm py-8 text-center">Loading calendar...</p>}
+      {loading && <p className="text-tile-sub text-sm py-8 text-center">Loading calendar...</p>}
 
       {/* Day View */}
       {!loading && view === 'day' && (
@@ -597,7 +597,7 @@ function TypeBadge({ type }) {
 
 function DayItems({ items, onDayOneClick }) {
   if (items.length === 0) {
-    return <p className="text-text-muted text-sm py-8 text-center">No events for this day</p>
+    return <p className="text-tile-sub text-sm py-8 text-center">No events for this day</p>
   }
 
   return (

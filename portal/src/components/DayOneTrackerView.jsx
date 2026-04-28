@@ -360,7 +360,7 @@ export default function DayOneTrackerView({ user, onBack, location, isAdmin }) {
       </div>
 
       {error && <p className="text-sm text-wcs-red mb-4">{error}</p>}
-      {loading && <p className="text-text-muted text-sm py-8 text-center">Loading Day One appointments...</p>}
+      {loading && <p className="text-tile-sub text-sm py-8 text-center">Loading Day One appointments...</p>}
 
       {!loading && (
         <div className="flex flex-col gap-2">
@@ -381,7 +381,7 @@ export default function DayOneTrackerView({ user, onBack, location, isAdmin }) {
             </button>
           ))}
           {visibleList.length === 0 && (
-            <p className="text-text-muted text-sm py-8 text-center">
+            <p className="text-tile-sub text-sm py-8 text-center">
               {tab === 'pending' ? 'No pending Day Ones' : 'No completed Day Ones'} for this period
             </p>
           )}
