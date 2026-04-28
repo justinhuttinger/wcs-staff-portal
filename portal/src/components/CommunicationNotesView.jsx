@@ -103,13 +103,17 @@ export default function CommunicationNotesView({ user, onBack }) {
     setLoading(true)
     const params = {}
     if (canSeeAll && locationFilter !== 'all') params.location_slug = locationFilter
-    if (dateFrom) params.date_from = dateFrom
-    if (dateTo) params.date_to = dateTo
+    // Date range only applies when looking at Completed notes — unresolved /
+    // in-progress should always show everything regardless of date.
+    if (statusFilter === 'completed') {
+      if (dateFrom) params.date_from = dateFrom
+      if (dateTo) params.date_to = dateTo
+    }
     getCommunicationNotes(params)
       .then(res => setNotes(res.notes || []))
       .catch(() => setNotes([]))
       .finally(() => setLoading(false))
-  }, [isLeadPlus, canSeeAll, locationFilter, dateFrom, dateTo])
+  }, [isLeadPlus, canSeeAll, locationFilter, dateFrom, dateTo, statusFilter])
 
   useEffect(() => {
     fetchNotes()
@@ -389,8 +393,8 @@ export default function CommunicationNotesView({ user, onBack }) {
                 </div>
               ) : <div />}
 
-              {/* Date range */}
-              <div className="flex items-center gap-1.5 shrink-0">
+              {/* Date range — only visible when viewing Completed */}
+              {statusFilter === 'completed' && <div className="flex items-center gap-1.5 shrink-0">
                 <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-[120px] px-2 py-1.5 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red" />
                 <span className="text-xs text-text-muted">to</span>
                 <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-[120px] px-2 py-1.5 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red" />
@@ -418,7 +422,7 @@ export default function CommunicationNotesView({ user, onBack }) {
                 >
                   All
                 </button>
-              </div>
+              </div>}
             </div>
           </div>
 
