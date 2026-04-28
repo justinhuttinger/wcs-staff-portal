@@ -13,7 +13,13 @@ window.addEventListener('DOMContentLoaded', () => {
   }, true)
 })
 
+// Read version once at preload load — synchronous, no IPC round-trip
+const appVersion = (() => {
+  try { return require('../package.json').version } catch { return null }
+})()
+
 contextBridge.exposeInMainWorld('wcsElectron', {
+  version: appVersion,
   // Auth bridge — portal tells main process about auth state changes
   onLogin: (token, userName) => ipcRenderer.send('portal-auth-login', token, userName),
   onLogout: () => ipcRenderer.send('portal-auth-logout'),
