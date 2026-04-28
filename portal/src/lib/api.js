@@ -347,6 +347,11 @@ export async function getGoogleAnalyticsKeyEvents(params = {}) {
   return gaQuery('/google-analytics/key-events', params)
 }
 
+// Operandio
+export async function getOperandioLatest() {
+  return api('/operandio/latest')
+}
+
 // Webhook Logs
 export async function getWebhookLogs(params = {}) {
   const qs = new URLSearchParams(params).toString()

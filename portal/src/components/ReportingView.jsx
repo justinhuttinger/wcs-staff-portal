@@ -3,12 +3,14 @@ import MembershipReport from './reports/MembershipReport'
 import PTReport from './reports/PTReport'
 import ClubHealthReport from './reports/ClubHealthReport'
 import PTRosterReport from './reports/PTRosterReport'
+import OperationsReport from './reports/OperationsReport'
 
 const ALL_REPORT_TILES = [
   { key: 'club-health', label: 'Club Health', desc: 'Dashboard', icon: '❤️' },
   { key: 'membership', label: 'Membership', desc: 'Report', icon: '🏷️' },
   { key: 'pt', label: 'PT / Day One', desc: 'Report', icon: '🏋️' },
   { key: 'pt-roster', label: 'PT Roster', desc: 'Active Clients', icon: '📋' },
+  { key: 'operations', label: 'Operations', desc: 'Checklists', icon: '✅' },
 ]
 
 function getReportTilesForRole(role) {
@@ -18,7 +20,7 @@ function getReportTilesForRole(role) {
     case 'lead':
       return ALL_REPORT_TILES.filter(t => ['membership', 'pt', 'pt-roster'].includes(t.key))
     case 'manager':
-      return ALL_REPORT_TILES.filter(t => ['membership', 'pt', 'club-health', 'pt-roster'].includes(t.key))
+      return ALL_REPORT_TILES.filter(t => ['membership', 'pt', 'club-health', 'pt-roster', 'operations'].includes(t.key))
     default: // corporate, admin
       return ALL_REPORT_TILES
   }
@@ -165,8 +167,8 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           <p className="text-xs text-text-muted mb-4 uppercase tracking-wide font-semibold">{location}</p>
         )}
 
-        {/* Date Controls — hidden for PT Roster (shows active clients, no date range) */}
-        {activeReport !== 'pt-roster' && <div className="flex flex-wrap items-center gap-3 justify-end">
+        {/* Date Controls — hidden for PT Roster and Operations (no date range) */}
+        {activeReport !== 'pt-roster' && activeReport !== 'operations' && <div className="flex flex-wrap items-center gap-3 justify-end">
           <div className="flex flex-wrap gap-1.5">
             {QUICK_RANGES.map(qr => (
               <button
@@ -233,6 +235,9 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           )}
           {activeReport === 'pt-roster' && (
             <PTRosterReport locationSlug={locationSlug} />
+          )}
+          {activeReport === 'operations' && (
+            <OperationsReport locationSlug={locationSlug} />
           )}
         </>
       )}
