@@ -352,6 +352,15 @@ export async function getOperandioLatest() {
   return api('/operandio/latest')
 }
 
+export async function getOperandioRange(params = {}) {
+  const cleaned = {}
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') cleaned[k] = v
+  }
+  const qs = new URLSearchParams(cleaned).toString()
+  return api('/operandio/range' + (qs ? '?' + qs : ''))
+}
+
 // Webhook Logs
 export async function getWebhookLogs(params = {}) {
   const qs = new URLSearchParams(params).toString()

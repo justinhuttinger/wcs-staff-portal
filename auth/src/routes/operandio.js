@@ -17,19 +17,32 @@ const KNOWN_LOCATIONS = ['salem', 'keizer', 'eugene', 'springfield', 'clackamas'
 // Parse helpers
 // ---------------------------------------------------------------------------
 
-// "Weekly Activity for West Coast Strength: April 21st, 2026 to April 27th, 2026 at all locations"
+// Handles both:
+// - "Weekly Activity for West Coast Strength: April 21st, 2026 to April 27th, 2026 at all locations"
+// - "Daily Activity for West Coast Strength: April 27th, 2026 at all locations"
 function parsePeriodFromSubject(subject) {
   if (!subject) return null
-  const m = subject.match(/:\s*([A-Za-z]+ \d+\w*,?\s*\d{4})\s+to\s+([A-Za-z]+ \d+\w*,?\s*\d{4})/)
-  if (!m) return null
 
   // Strip "st", "nd", "rd", "th" suffixes that JS Date can't parse
-  const clean = (s) => s.replace(/(\d+)(st|nd|rd|th)/i, '$1')
-  const start = new Date(clean(m[1]))
-  const end = new Date(clean(m[2]))
-  if (isNaN(start) || isNaN(end)) return null
+  const clean = (s) => s.replace(/(\d+)(st|nd|rd|th)/i, '$1').trim()
   const iso = (d) => d.toISOString().slice(0, 10)
-  return { start: iso(start), end: iso(end) }
+
+  // Try range form first
+  const range = subject.match(/:\s*([A-Za-z]+ \d+\w*,?\s*\d{4})\s+to\s+([A-Za-z]+ \d+\w*,?\s*\d{4})/)
+  if (range) {
+    const start = new Date(clean(range[1]))
+    const end = new Date(clean(range[2]))
+    if (!isNaN(start) && !isNaN(end)) return { start: iso(start), end: iso(end) }
+  }
+
+  // Single date (daily report)
+  const single = subject.match(/:\s*([A-Za-z]+ \d+\w*,?\s*\d{4})/)
+  if (single) {
+    const d = new Date(clean(single[1]))
+    if (!isNaN(d)) return { start: iso(d), end: iso(d) }
+  }
+
+  return null
 }
 
 // Extract the Locations section from the plain-text body and return rows.
@@ -105,6 +118,37 @@ router.post('/webhook', upload.none(), async (req, res) => {
 
   console.log('[Operandio] Stored', rows.length, 'rows for', period.start, '→', period.end)
   res.json({ stored: rows.length, period })
+})
+
+// ---------------------------------------------------------------------------
+// GET /operandio/range — all rows in the given date range
+// Query: start_date, end_date (YYYY-MM-DD), optional location_slug
+// Returns: { rows: [{period_start, period_end, location_slug, ...pcts}] }
+// Daily rows have period_start = period_end. Weekly rows span 7 days.
+// ---------------------------------------------------------------------------
+router.get('/range', authenticate, requireRole('manager'), async (req, res) => {
+  try {
+    const { start_date, end_date, location_slug } = req.query
+    if (!start_date || !end_date) return res.status(400).json({ error: 'start_date and end_date required' })
+
+    let q = supabaseAdmin
+      .from('operandio_location_reports')
+      .select('period_start, period_end, location_slug, overall_pct, on_time_pct, late_pct, skipped_pct, uncompleted_pct')
+      .gte('period_start', start_date)
+      .lte('period_end', end_date)
+      .order('period_start', { ascending: true })
+
+    if (location_slug && location_slug !== 'all') {
+      q = q.eq('location_slug', location_slug)
+    }
+
+    const { data, error } = await q
+    if (error) throw error
+    res.json({ rows: data || [] })
+  } catch (err) {
+    console.error('[Operandio] /range error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
 })
 
 // ---------------------------------------------------------------------------
