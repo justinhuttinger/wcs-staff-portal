@@ -136,6 +136,13 @@ app.on('ready', () => {
     }
   })
 
+  // Synchronous version lookup for the renderer's preload bridge.
+  // Uses sendSync because preload reads it once at script load time
+  // (before any React render) and must be available without await.
+  ipcMain.on('get-app-version', (e) => {
+    e.returnValue = app.getVersion()
+  })
+
   // Renderer refreshed its access token — sync to main so vault calls and
   // tour-notifier keep using a live token past the original 1hr expiry.
   // Does NOT restart tour-notifier or re-fetch credentials; that's only

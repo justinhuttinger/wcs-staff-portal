@@ -13,9 +13,10 @@ window.addEventListener('DOMContentLoaded', () => {
   }, true)
 })
 
-// Read version once at preload load — synchronous, no IPC round-trip
+// Ask main process for the app version once at preload load.
+// require('../package.json') was unreliable inside the packaged asar.
 const appVersion = (() => {
-  try { return require('../package.json').version } catch { return null }
+  try { return ipcRenderer.sendSync('get-app-version') } catch { return null }
 })()
 
 contextBridge.exposeInMainWorld('wcsElectron', {
