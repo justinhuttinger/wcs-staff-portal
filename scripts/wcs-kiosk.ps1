@@ -46,14 +46,21 @@ $AdminPassword   = '!31JellybeaN31!'
 
 $WcsDir          = 'C:\WCS'
 $BrandingDir     = "$WcsDir\branding"
+$InstallersDir   = "$WcsDir\installers"
 $LogPath         = "$WcsDir\setup.log"
+
+# Bitdefender GravityZone installer path - staged here by Action1's
+# Software Repository deployment (see scripts/README.md). Contains
+# org-specific install token; never committed to public git.
+$BitdefenderInstaller = "$InstallersDir\bitdefender-setup.exe"
 
 # ============================================================
 # HELPERS
 # ============================================================
 function Initialize-WcsDir {
-    if (-not (Test-Path $WcsDir))     { New-Item -Path $WcsDir     -ItemType Directory -Force | Out-Null }
-    if (-not (Test-Path $BrandingDir)){ New-Item -Path $BrandingDir -ItemType Directory -Force | Out-Null }
+    if (-not (Test-Path $WcsDir))      { New-Item -Path $WcsDir       -ItemType Directory -Force | Out-Null }
+    if (-not (Test-Path $BrandingDir)) { New-Item -Path $BrandingDir  -ItemType Directory -Force | Out-Null }
+    if (-not (Test-Path $InstallersDir)){ New-Item -Path $InstallersDir -ItemType Directory -Force | Out-Null }
 }
 
 function Write-WcsLog {
@@ -170,6 +177,19 @@ function Test-SonosInstalled {
     return [bool]$hit
 }
 
+function Test-BitdefenderInstalled {
+    $keys = @(
+        'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    )
+    foreach ($k in $keys) {
+        $hit = Get-ItemProperty -Path $k -ErrorAction SilentlyContinue |
+               Where-Object { $_.DisplayName -match 'Bitdefender' }
+        if ($hit) { return $true }
+    }
+    return $false
+}
+
 function Install-FromUrl {
     param(
         [Parameter(Mandatory)][string]$Section,
@@ -213,6 +233,21 @@ function Install-WcsApps {
     } else {
         Install-FromUrl -Section 'Apps' -Url $SonosUrl `
                         -LocalName 'Sonos-Setup.exe' -SilentArgs @('/S')
+    }
+
+    if (Test-BitdefenderInstalled) {
+        Write-WcsLog 'Apps' 'SKIP' 'Bitdefender already installed'
+    } elseif (Test-Path $BitdefenderInstaller) {
+        try {
+            Start-Process -FilePath $BitdefenderInstaller `
+                          -ArgumentList @('/bdparams','/silent') `
+                          -Wait -ErrorAction Stop
+            Write-WcsLog 'Apps' 'INST' "Bitdefender installed from $BitdefenderInstaller"
+        } catch {
+            Write-WcsLog 'Apps' 'ERR' "Bitdefender install failed: $($_.Exception.Message)"
+        }
+    } else {
+        Write-WcsLog 'Apps' 'WARN' "Bitdefender installer missing at $BitdefenderInstaller - stage via Action1 Software Repository"
     }
 }
 
