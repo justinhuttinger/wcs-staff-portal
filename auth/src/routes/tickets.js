@@ -155,45 +155,42 @@ async function calculateListStats(listConfig) {
       }
     }
 
-    // Sum time spent in any non-closed status (history + current). This makes
-    // the metric robust to status renames and counts tasks that haven't moved
-    // out of their initial status yet.
+    // Time-to-close for closed tasks only. Open tasks contribute to the
+    // outstanding-age metric instead so their backlog age doesn't distort
+    // the processing-time average.
     const timeData = await getTimeInStatus(task.id)
     if (timeData) {
-      let minutes = 0
-      let counted = false
-
       for (const s of (timeData.status_history || [])) {
         if (s.status) statusesSeen[s.status] = (statusesSeen[s.status] || 0) + 1
-        if (s.type === 'closed') continue
-        if (s.total_time?.by_minute != null) {
-          minutes += s.total_time.by_minute
-          counted = true
+      }
+      if (timeData.current_status?.status) {
+        statusesSeen[timeData.current_status.status] = (statusesSeen[timeData.current_status.status] || 0) + 1
+      }
+    }
+
+    if (isClosed) {
+      let minutes = null
+      if (timeData) {
+        let sum = 0
+        let any = false
+        for (const s of (timeData.status_history || [])) {
+          if (s.type === 'closed') continue
+          if (s.total_time?.by_minute != null) {
+            sum += s.total_time.by_minute
+            any = true
+          }
         }
-      }
-
-      const cur = timeData.current_status
-      if (cur?.status) statusesSeen[cur.status] = (statusesSeen[cur.status] || 0) + 1
-      if (cur && cur.type !== 'closed') {
-        if (cur.total_time?.by_minute != null) {
-          minutes += cur.total_time.by_minute
-          counted = true
-        } else if (cur.total_time?.since) {
-          minutes += Math.floor((Date.now() - parseInt(cur.total_time.since)) / 60000)
-          counted = true
+        const cur = timeData.current_status
+        if (cur && cur.type !== 'closed' && cur.total_time?.by_minute != null) {
+          sum += cur.total_time.by_minute
+          any = true
         }
+        if (any) minutes = sum
       }
-
-      // Final fallback so an open task always contributes something
-      if (!counted && !isClosed) {
-        minutes = Math.floor((now - parseInt(task.date_created)) / 60000)
-        counted = true
+      if (minutes == null && task.date_done && task.date_created) {
+        minutes = Math.floor((parseInt(task.date_done) - parseInt(task.date_created)) / 60000)
       }
-
-      if (counted) timesInStatus.push(minutes)
-    } else if (!isClosed) {
-      // No time_in_status available — use task age so the open task still counts
-      timesInStatus.push(Math.floor((now - parseInt(task.date_created)) / 60000))
+      if (minutes != null && minutes >= 0) timesInStatus.push(minutes)
     }
     await new Promise(r => setTimeout(r, 50))
   }
@@ -211,16 +208,26 @@ async function calculateListStats(listConfig) {
     maxFormatted = formatTime(Math.max(...timesInStatus))
   }
 
+  // Average current age across outstanding tickets — useful context
+  // alongside the closed-task avg.
+  let outstandingAvgFormatted = 'N/A'
+  if (outstandingTasks.length > 0) {
+    const avgMs = outstandingTasks.reduce((s, t) => s + t.timeWaitingMs, 0) / outstandingTasks.length
+    outstandingAvgFormatted = formatTime(Math.floor(avgMs / 60000))
+  }
+
   return {
     name,
     description,
     formUrl,
     taskCount: tasks.length,
+    closedCount: timesInStatus.length,
     tasksWithData: timesInStatus.length,
     averageFormatted,
     minFormatted,
     maxFormatted,
     outstandingCount: outstandingTasks.length,
+    outstandingAvgFormatted,
     outstandingTasks,
     recentlyCompletedTasks,
     statusesSeen,

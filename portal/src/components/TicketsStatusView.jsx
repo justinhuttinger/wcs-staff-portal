@@ -48,21 +48,28 @@ function ListCard({ list }) {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 py-4 border-y border-border">
+      <div className="grid grid-cols-3 gap-4 py-4 border-y border-border">
         <div className="text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Avg Time</p>
+          <p className="text-xs text-text-muted uppercase tracking-wide">Avg Time to Close</p>
           <p className="text-3xl font-bold text-text-primary mt-1">{list.averageFormatted}</p>
         </div>
         <div className="text-center">
           <p className="text-xs text-text-muted uppercase tracking-wide">Outstanding</p>
           <p className="text-3xl font-bold text-text-primary mt-1">{list.outstandingCount}</p>
+          {list.outstandingAvgFormatted && list.outstandingAvgFormatted !== 'N/A' && (
+            <p className="text-[11px] text-text-muted mt-1">avg open: {list.outstandingAvgFormatted}</p>
+          )}
+        </div>
+        <div className="text-center">
+          <p className="text-xs text-text-muted uppercase tracking-wide">Closed</p>
+          <p className="text-3xl font-bold text-text-primary mt-1">{list.closedCount ?? list.tasksWithData}</p>
+          <p className="text-[11px] text-text-muted mt-1">of {list.taskCount} total</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 py-4">
-        <StatBlock label="Analyzed" value={`${list.tasksWithData} / ${list.taskCount}`} />
-        <StatBlock label="Fastest" value={list.minFormatted} />
-        <StatBlock label="Slowest" value={list.maxFormatted} />
+      <div className="grid grid-cols-2 gap-2 py-4">
+        <StatBlock label="Fastest Close" value={list.minFormatted} />
+        <StatBlock label="Slowest Close" value={list.maxFormatted} />
       </div>
 
       <div className="space-y-1 mt-2">
