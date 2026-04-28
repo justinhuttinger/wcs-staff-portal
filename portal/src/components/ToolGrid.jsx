@@ -83,7 +83,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onMetaAds, onLeaderboard, onHR, onHelpCenter, onTickets, onCommunicationNotes, onReporting, userRole, userName }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onMetaAds, onLeaderboard, onHR, onHelpCenter, onTickets, onDrive, onCommunicationNotes, onReporting, userRole, userName }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [tilesLoaded, setTilesLoaded] = useState(false)
@@ -436,6 +436,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           )}
           {/* 4.9. Tickets — lead+ */}
           {onTickets && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTickets} iconPath={TILE_ICONS.tickets} label="Tickets/Support" desc="Help Desk" />}
+          {/* 4.10. Shared Drive — visible to anyone (per-folder access controlled by drive_folders.min_role) */}
+          {onDrive && <SvgTileButton onClick={onDrive} iconPath="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" label="Shared Drive" desc="Documents" />}
           {/* (Day One Tracking merged into Calendar) */}
           {/* 6. Trainer Availability */}
           {onTrainerAvail && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="Availability" desc="Trainers" />}

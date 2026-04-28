@@ -352,6 +352,23 @@ export async function getOperandioLatest() {
   return api('/operandio/latest')
 }
 
+// Drive Folders
+export async function getDriveFolders() {
+  return api('/drive-folders')
+}
+export async function getDriveFoldersAdmin() {
+  return api('/drive-folders/admin')
+}
+export async function createDriveFolder(payload) {
+  return api('/drive-folders', { method: 'POST', body: JSON.stringify(payload) })
+}
+export async function updateDriveFolder(id, payload) {
+  return api('/drive-folders/' + id, { method: 'PUT', body: JSON.stringify(payload) })
+}
+export async function deleteDriveFolder(id) {
+  return api('/drive-folders/' + id, { method: 'DELETE' })
+}
+
 export async function getOperandioRange(params = {}) {
   const cleaned = {}
   for (const [k, v] of Object.entries(params)) {
