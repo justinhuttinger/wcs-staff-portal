@@ -132,7 +132,12 @@ async function calculateListStats(listConfig) {
   const statusesSeen = {}
 
   for (const task of tasks) {
-    const isClosed = task.status && task.status.type === 'closed'
+    // ClickUp marks completion two ways: status type 'closed' or 'done'.
+    // Some lists use 'done'-typed statuses (e.g., "Complete") and would
+    // otherwise be miscounted as outstanding. date_done is the strongest
+    // signal — if it's set, the task is finished.
+    const statusType = task.status?.type
+    const isClosed = !!task.date_done || statusType === 'closed' || statusType === 'done'
     const customField = getCustomFieldValue(task, customFieldName)
 
     if (!isClosed) {
@@ -144,7 +149,11 @@ async function calculateListStats(listConfig) {
         timeWaitingMs: timeWaiting,
       })
     } else {
-      const completedAt = task.date_done ? parseInt(task.date_done) : parseInt(task.date_updated)
+      const completedAt = task.date_done
+        ? parseInt(task.date_done)
+        : task.date_closed
+          ? parseInt(task.date_closed)
+          : parseInt(task.date_updated)
       if (completedAt >= fiveDaysAgo) {
         recentlyCompletedTasks.push({
           name: task.name,
@@ -169,21 +178,15 @@ async function calculateListStats(listConfig) {
     }
 
     if (isClosed) {
-      // Use the LAST non-closed status before closure as a proxy for actual
-      // processing time. Avoids inflating the metric with long backlog waits
-      // in the initial status (e.g., a ticket that sat in "open" for 22 days
-      // and was then closed in 5 minutes shows 5 minutes, not 22 days).
-      let minutes = null
-      const history = timeData?.status_history || []
-      for (let i = history.length - 1; i >= 0; i--) {
-        const s = history[i]
-        if (s.type === 'closed') continue
-        if (s.total_time?.by_minute != null) {
-          minutes = s.total_time.by_minute
-          break
-        }
+      const createdAt = parseInt(task.date_created)
+      const closedAt = task.date_done
+        ? parseInt(task.date_done)
+        : task.date_closed
+          ? parseInt(task.date_closed)
+          : parseInt(task.date_updated)
+      if (createdAt && closedAt && closedAt >= createdAt) {
+        timesInStatus.push(Math.floor((closedAt - createdAt) / 60000))
       }
-      if (minutes != null && minutes >= 0) timesInStatus.push(minutes)
     }
     await new Promise(r => setTimeout(r, 50))
   }
