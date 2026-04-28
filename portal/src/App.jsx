@@ -342,7 +342,7 @@ export default function App() {
       )}
       </div>
 
-      <p className="fixed bottom-2 right-3 text-[10px] text-text-muted/40 select-none pointer-events-none">v1.3.6</p>
+      <p className="fixed bottom-2 right-3 text-[10px] font-medium text-white/80 bg-black/30 backdrop-blur-sm rounded px-2 py-0.5 select-none pointer-events-none">v1.3.7</p>
 
       {savePrompt && (
         <SaveCredentialToast
