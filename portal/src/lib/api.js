@@ -437,6 +437,20 @@ export async function searchDrive(rootId, query) {
 export async function getDriveFileMeta(fileId) {
   return api('/drive-folders/file?file_id=' + encodeURIComponent(fileId))
 }
+
+// Returns a Blob of the file's bytes (Google Workspace files exported to PDF).
+// Uses raw fetch so the binary body is preserved.
+export async function fetchDriveFileBlob(fileId) {
+  const headers = {}
+  if (authToken) headers['Authorization'] = 'Bearer ' + authToken
+  const res = await fetch(API_URL + '/drive-folders/file-content?file_id=' + encodeURIComponent(fileId), { headers })
+  if (!res.ok) {
+    let msg = 'Failed to fetch file'
+    try { const j = await res.json(); msg = j.error || msg } catch {}
+    throw new Error(msg)
+  }
+  return await res.blob()
+}
 export async function getDriveFoldersAdmin() {
   return api('/drive-folders/admin')
 }

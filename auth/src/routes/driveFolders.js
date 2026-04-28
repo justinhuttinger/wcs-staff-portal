@@ -328,6 +328,55 @@ router.get('/search', async (req, res) => {
   }
 })
 
+// GET /drive-folders/file-content?file_id=xxx — proxy raw file bytes through our origin so
+// the frontend can render in a same-origin blob iframe and call print() on it.
+// For Google Workspace files (Docs/Sheets/Slides), exports to PDF.
+router.get('/file-content', async (req, res) => {
+  const { file_id } = req.query
+  if (!file_id) return res.status(400).json({ error: 'file_id required' })
+
+  try {
+    const token = await getAccessToken()
+
+    // 1) metadata to determine type
+    const metaParams = new URLSearchParams({ fields: 'id,name,mimeType', supportsAllDrives: 'true' })
+    const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file_id}?` + metaParams, {
+      headers: { Authorization: 'Bearer ' + token },
+    })
+    const meta = await metaRes.json()
+    if (meta.error) return res.status(metaRes.status || 500).json({ error: meta.error.message })
+
+    const mime = meta.mimeType || ''
+    let url, contentType, filename
+    if (mime.startsWith('application/vnd.google-apps.')) {
+      // Export Google Workspace formats as PDF
+      contentType = 'application/pdf'
+      filename = (meta.name || 'file') + '.pdf'
+      url = `https://www.googleapis.com/drive/v3/files/${file_id}/export?` + new URLSearchParams({ mimeType: 'application/pdf' })
+    } else {
+      contentType = mime || 'application/octet-stream'
+      filename = meta.name || 'file'
+      url = `https://www.googleapis.com/drive/v3/files/${file_id}?` + new URLSearchParams({ alt: 'media', supportsAllDrives: 'true' })
+    }
+
+    const fileRes = await fetch(url, { headers: { Authorization: 'Bearer ' + token } })
+    if (!fileRes.ok) {
+      const errText = await fileRes.text()
+      return res.status(fileRes.status).json({ error: 'Drive fetch failed: ' + errText.slice(0, 200) })
+    }
+
+    const buf = Buffer.from(await fileRes.arrayBuffer())
+    res.setHeader('Content-Type', contentType)
+    // inline so iframe renders rather than downloads
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(filename)}"`)
+    res.setHeader('Cache-Control', 'private, max-age=300')
+    res.send(buf)
+  } catch (err) {
+    console.error('[Drive] file-content error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // GET /drive-folders/file?file_id=xxx — get single file metadata (for breadcrumbs)
 router.get('/file', async (req, res) => {
   const { file_id } = req.query

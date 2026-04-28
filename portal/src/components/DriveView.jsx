@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { getDriveFolders, listDriveContents, searchDrive } from '../lib/api'
+import { getDriveFolders, listDriveContents, searchDrive, fetchDriveFileBlob } from '../lib/api'
 
 const FOLDER_MIME = 'application/vnd.google-apps.folder'
 
@@ -78,24 +78,6 @@ function getDownloadUrl(file) {
   return file.webContentLink || `https://drive.google.com/uc?id=${file.id}&export=download`
 }
 
-// Print URL: opens a viewable page in a new tab where the user can use Ctrl+P
-// (Never use webContentLink — that's a direct download)
-function getPrintUrl(file) {
-  if (!file) return null
-  const m = file.mimeType || ''
-  if (m === 'application/vnd.google-apps.document') {
-    return `https://docs.google.com/document/d/${file.id}/print`
-  }
-  if (m === 'application/vnd.google-apps.spreadsheet') {
-    return `https://docs.google.com/spreadsheets/d/${file.id}/preview`
-  }
-  if (m === 'application/vnd.google-apps.presentation') {
-    return `https://docs.google.com/presentation/d/${file.id}/print`
-  }
-  // For PDFs, images, and everything else: open the Google Drive viewer in a new tab.
-  // User can then Ctrl+P from the browser. Never use webContentLink (it triggers download).
-  return file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`
-}
 
 export default function DriveView({ onBack }) {
   const [folders, setFolders] = useState([])
@@ -274,7 +256,6 @@ function DriveBrowser({ root, onBack }) {
 
   if (previewFile) {
     const downloadUrl = getDownloadUrl(previewFile)
-    const printUrl = getPrintUrl(previewFile)
     return (
       <div className="w-full flex flex-col px-8 pb-4" style={{ height: 'calc(100vh - 80px)' }}>
         <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4 mb-4 shrink-0 flex items-center gap-3 flex-wrap">
@@ -289,20 +270,7 @@ function DriveBrowser({ root, onBack }) {
           </button>
           <h2 className="text-lg font-bold text-text-primary truncate flex-1 min-w-0">{previewFile.name}</h2>
           <div className="flex items-center gap-2 shrink-0">
-            {printUrl && (
-              <a
-                href={printUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-primary hover:bg-surface transition-colors"
-                title="Opens in a new tab — use your browser's print"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m10.5 0a48.536 48.536 0 0 0-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5Zm-3 0h.008v.008H15V10.5Z" />
-                </svg>
-                Print
-              </a>
-            )}
+            <PrintButton file={previewFile} />
             {downloadUrl && (
               <a
                 href={downloadUrl}
@@ -448,22 +416,6 @@ function DriveBrowser({ root, onBack }) {
             )}
           </div>
           <div className="flex items-center gap-1.5">
-            {[
-              { key: 'all', label: 'All time' },
-              { key: '7d', label: '7d' },
-              { key: '30d', label: '30d' },
-              { key: '90d', label: '90d' },
-            ].map(d => (
-              <button
-                key={d.key}
-                onClick={() => setDateFilter(d.key)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${dateFilter === d.key ? 'bg-text-primary text-white border-text-primary' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
-              >
-                {d.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1.5">
             <span className="text-xs text-text-muted">Sort:</span>
             <select
               value={`${sortBy}-${sortDir}`}
@@ -546,6 +498,67 @@ function DriveBrowser({ root, onBack }) {
         </>
       )}
     </div>
+  )
+}
+
+function PrintButton({ file }) {
+  const [printing, setPrinting] = useState(false)
+
+  async function handlePrint() {
+    if (printing) return
+    setPrinting(true)
+    let blobUrl = null
+    try {
+      const blob = await fetchDriveFileBlob(file.id)
+      blobUrl = URL.createObjectURL(blob)
+
+      const iframe = document.createElement('iframe')
+      iframe.style.position = 'fixed'
+      iframe.style.right = '0'
+      iframe.style.bottom = '0'
+      iframe.style.width = '0'
+      iframe.style.height = '0'
+      iframe.style.border = '0'
+      iframe.src = blobUrl
+
+      iframe.onload = () => {
+        try {
+          iframe.contentWindow.focus()
+          iframe.contentWindow.print()
+        } catch (err) {
+          window.open(blobUrl, '_blank')
+        }
+        // Clean up after a delay so the print dialog has time to open
+        setTimeout(() => {
+          if (blobUrl) URL.revokeObjectURL(blobUrl)
+          if (iframe.parentNode) iframe.parentNode.removeChild(iframe)
+        }, 60000)
+      }
+      document.body.appendChild(iframe)
+    } catch (err) {
+      alert('Could not load file for printing: ' + err.message)
+      if (blobUrl) URL.revokeObjectURL(blobUrl)
+    } finally {
+      setPrinting(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handlePrint}
+      disabled={printing}
+      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-primary hover:bg-surface transition-colors disabled:opacity-60"
+      title="Open browser print dialog"
+    >
+      {printing ? (
+        <span className="w-3.5 h-3.5 border-2 border-text-primary border-t-transparent rounded-full animate-spin" />
+      ) : (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m10.5 0a48.536 48.536 0 0 0-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5Zm-3 0h.008v.008H15V10.5Z" />
+        </svg>
+      )}
+      {printing ? 'Loading...' : 'Print'}
+    </button>
   )
 }
 
