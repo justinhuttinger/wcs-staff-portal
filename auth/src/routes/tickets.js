@@ -121,7 +121,7 @@ function getCustomFieldValue(task, fieldName) {
 }
 
 async function calculateListStats(listConfig) {
-  const { id, name, statusToTrack, customFieldName, formUrl, description } = listConfig
+  const { id, name, customFieldName, formUrl, description } = listConfig
   const tasks = await getTasksFromList(id)
   const now = Date.now()
   const fiveDaysAgo = now - 5 * 24 * 60 * 60 * 1000
@@ -129,6 +129,7 @@ async function calculateListStats(listConfig) {
   const outstandingTasks = []
   const recentlyCompletedTasks = []
   const timesInStatus = []
+  const statusesSeen = {}
 
   for (const task of tasks) {
     const isClosed = task.status && task.status.type === 'closed'
@@ -154,34 +155,45 @@ async function calculateListStats(listConfig) {
       }
     }
 
+    // Sum time spent in any non-closed status (history + current). This makes
+    // the metric robust to status renames and counts tasks that haven't moved
+    // out of their initial status yet.
     const timeData = await getTimeInStatus(task.id)
     if (timeData) {
-      const target = statusToTrack.toLowerCase()
-      let minutes = null
+      let minutes = 0
+      let counted = false
 
-      // Past visits: status_history entries (excluding the current one — ClickUp sometimes lists it)
-      const histEntry = (timeData.status_history || []).find(
-        s => s.status && s.status.toLowerCase() === target
-      )
-      if (histEntry?.total_time?.by_minute != null) {
-        minutes = histEntry.total_time.by_minute
+      for (const s of (timeData.status_history || [])) {
+        if (s.status) statusesSeen[s.status] = (statusesSeen[s.status] || 0) + 1
+        if (s.type === 'closed') continue
+        if (s.total_time?.by_minute != null) {
+          minutes += s.total_time.by_minute
+          counted = true
+        }
       }
 
-      // Current status: count time-in-status for tasks that haven't moved out of it yet
       const cur = timeData.current_status
-      if (cur && cur.status && cur.status.toLowerCase() === target) {
-        let curMinutes = null
+      if (cur?.status) statusesSeen[cur.status] = (statusesSeen[cur.status] || 0) + 1
+      if (cur && cur.type !== 'closed') {
         if (cur.total_time?.by_minute != null) {
-          curMinutes = cur.total_time.by_minute
+          minutes += cur.total_time.by_minute
+          counted = true
         } else if (cur.total_time?.since) {
-          curMinutes = Math.floor((Date.now() - parseInt(cur.total_time.since)) / 60000)
-        }
-        if (curMinutes != null) {
-          minutes = minutes != null ? minutes + curMinutes : curMinutes
+          minutes += Math.floor((Date.now() - parseInt(cur.total_time.since)) / 60000)
+          counted = true
         }
       }
 
-      if (minutes != null) timesInStatus.push(minutes)
+      // Final fallback so an open task always contributes something
+      if (!counted && !isClosed) {
+        minutes = Math.floor((now - parseInt(task.date_created)) / 60000)
+        counted = true
+      }
+
+      if (counted) timesInStatus.push(minutes)
+    } else if (!isClosed) {
+      // No time_in_status available — use task age so the open task still counts
+      timesInStatus.push(Math.floor((now - parseInt(task.date_created)) / 60000))
     }
     await new Promise(r => setTimeout(r, 50))
   }
@@ -211,6 +223,7 @@ async function calculateListStats(listConfig) {
     outstandingCount: outstandingTasks.length,
     outstandingTasks,
     recentlyCompletedTasks,
+    statusesSeen,
   }
 }
 
