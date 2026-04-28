@@ -27,7 +27,7 @@ const LISTS = [
     description: 'Add New Hire to WCS Systems',
     // Synthetic: dilute the historical avg with fast closures while real
     // ClickUp data catches up. Remove once date_done practices are clean.
-    fakeClosures: { count: 200, avgMinutes: 30 },
+    fakeClosures: { count: 50, avgMinutes: 30 },
   },
   {
     id: '901112959393',
