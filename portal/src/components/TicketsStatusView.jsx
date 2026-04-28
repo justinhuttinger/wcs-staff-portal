@@ -139,9 +139,7 @@ export default function TicketsStatusView({ onBack }) {
           {updatedLabel && (
             <div className="text-right leading-tight">
               <p className="text-[10px] uppercase tracking-wide text-text-muted">Last updated</p>
-              <p className="text-xs font-semibold text-text-primary">
-                {updatedLabel}{data?.fromCache ? ' · cached' : ''}
-              </p>
+              <p className="text-xs font-semibold text-text-primary">{updatedLabel}</p>
             </div>
           )}
           <button
