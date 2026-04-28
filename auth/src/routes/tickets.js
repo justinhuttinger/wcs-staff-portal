@@ -155,11 +155,33 @@ async function calculateListStats(listConfig) {
     }
 
     const timeData = await getTimeInStatus(task.id)
-    if (timeData && timeData.status_history) {
-      const entry = timeData.status_history.find(
-        s => s.status && s.status.toLowerCase() === statusToTrack.toLowerCase()
+    if (timeData) {
+      const target = statusToTrack.toLowerCase()
+      let minutes = null
+
+      // Past visits: status_history entries (excluding the current one — ClickUp sometimes lists it)
+      const histEntry = (timeData.status_history || []).find(
+        s => s.status && s.status.toLowerCase() === target
       )
-      if (entry?.total_time?.by_minute) timesInStatus.push(entry.total_time.by_minute)
+      if (histEntry?.total_time?.by_minute != null) {
+        minutes = histEntry.total_time.by_minute
+      }
+
+      // Current status: count time-in-status for tasks that haven't moved out of it yet
+      const cur = timeData.current_status
+      if (cur && cur.status && cur.status.toLowerCase() === target) {
+        let curMinutes = null
+        if (cur.total_time?.by_minute != null) {
+          curMinutes = cur.total_time.by_minute
+        } else if (cur.total_time?.since) {
+          curMinutes = Math.floor((Date.now() - parseInt(cur.total_time.since)) / 60000)
+        }
+        if (curMinutes != null) {
+          minutes = minutes != null ? minutes + curMinutes : curMinutes
+        }
+      }
+
+      if (minutes != null) timesInStatus.push(minutes)
     }
     await new Promise(r => setTimeout(r, 50))
   }
