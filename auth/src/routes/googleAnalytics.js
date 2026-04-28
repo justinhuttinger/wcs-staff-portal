@@ -136,7 +136,10 @@ router.get('/status', authenticate, requireRole('corporate'), async (req, res) =
   const tokens = await getStoredTokens()
   const propertyId = await getPropertyId()
   const scopeStr = tokens?.scope || ''
-  const scopeMissing = !!tokens && !!scopeStr && !scopeStr.includes('analytics.readonly')
+  // If we have a recorded scope, trust it. If we don't have a scope on file
+  // (legacy tokens issued before we tracked scope), assume scope is missing
+  // so the user gets a reconnect prompt — safer than a silent 403.
+  const scopeMissing = !!tokens && (!scopeStr || !scopeStr.includes('analytics.readonly'))
   res.json({
     authorized: !!(tokens?.refresh_token),
     scope_missing: scopeMissing,

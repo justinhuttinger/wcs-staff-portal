@@ -146,6 +146,7 @@ router.get('/callback', async (req, res) => {
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
       expires_at: Date.now() + (tokens.expires_in || 3600) * 1000,
+      scope: tokens.scope || '',
       locations: locationData,
     })
 
