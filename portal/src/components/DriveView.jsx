@@ -78,7 +78,8 @@ function getDownloadUrl(file) {
   return file.webContentLink || `https://drive.google.com/uc?id=${file.id}&export=download`
 }
 
-// Print URL: opens a printable view in a new tab (browser handles the print)
+// Print URL: opens a viewable page in a new tab where the user can use Ctrl+P
+// (Never use webContentLink — that's a direct download)
 function getPrintUrl(file) {
   if (!file) return null
   const m = file.mimeType || ''
@@ -91,9 +92,8 @@ function getPrintUrl(file) {
   if (m === 'application/vnd.google-apps.presentation') {
     return `https://docs.google.com/presentation/d/${file.id}/print`
   }
-  if (m === 'application/pdf' || m.startsWith('image/')) {
-    return file.webContentLink || `https://drive.google.com/uc?id=${file.id}&export=download`
-  }
+  // For PDFs, images, and everything else: open the Google Drive viewer in a new tab.
+  // User can then Ctrl+P from the browser. Never use webContentLink (it triggers download).
   return file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`
 }
 
@@ -169,6 +169,14 @@ function DriveBrowser({ root, onBack }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [previewFile, setPreviewFile] = useState(null)
+  const [viewMode, setViewMode] = useState(() => {
+    try { return localStorage.getItem('wcs_drive_view') || 'list' } catch { return 'list' }
+  })
+
+  function changeViewMode(mode) {
+    setViewMode(mode)
+    try { localStorage.setItem('wcs_drive_view', mode) } catch {}
+  }
 
   const currentFolderId = path[path.length - 1].id
 
@@ -304,14 +312,38 @@ function DriveBrowser({ root, onBack }) {
             </span>
           ))}
         </div>
-        <a
-          href={`https://drive.google.com/drive/folders/${currentFolderId}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="ml-auto text-xs font-semibold text-wcs-red hover:underline"
-        >
-          Open in Drive ↗
-        </a>
+        <div className="ml-auto flex items-center gap-3">
+          <div className="inline-flex rounded-lg border border-border bg-bg overflow-hidden">
+            <button
+              onClick={() => changeViewMode('list')}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold transition-colors ${viewMode === 'list' ? 'bg-text-primary text-white' : 'text-text-muted hover:text-text-primary'}`}
+              title="List view"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+              List
+            </button>
+            <button
+              onClick={() => changeViewMode('grid')}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold transition-colors ${viewMode === 'grid' ? 'bg-text-primary text-white' : 'text-text-muted hover:text-text-primary'}`}
+              title="Grid view"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
+              </svg>
+              Grid
+            </button>
+          </div>
+          <a
+            href={`https://drive.google.com/drive/folders/${currentFolderId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-semibold text-wcs-red hover:underline"
+          >
+            Open in Drive ↗
+          </a>
+        </div>
       </div>
 
       {loading ? (
@@ -329,6 +361,12 @@ function DriveBrowser({ root, onBack }) {
         </div>
       ) : files.length === 0 ? (
         <p className="text-center text-text-muted text-sm py-8">This folder is empty.</p>
+      ) : viewMode === 'grid' ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          {files.map(file => (
+            <GridTile key={file.id} file={file} onClick={() => openItem(file)} />
+          ))}
+        </div>
       ) : (
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
           <table className="w-full text-sm">
@@ -359,5 +397,47 @@ function DriveBrowser({ root, onBack }) {
         </div>
       )}
     </div>
+  )
+}
+
+function GridTile({ file, onClick }) {
+  const isFolder = file.mimeType === FOLDER_MIME
+  // thumbnailLink from Drive API contains a sized thumbnail. Default size is small;
+  // we can request a bigger one by replacing the size suffix.
+  const thumb = file.thumbnailLink ? file.thumbnailLink.replace(/=s\d+$/, '=s400') : null
+
+  return (
+    <button
+      onClick={onClick}
+      className="group flex flex-col bg-surface border border-border rounded-xl overflow-hidden cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)] text-left"
+    >
+      <div className="aspect-square bg-bg flex items-center justify-center overflow-hidden">
+        {isFolder ? (
+          <svg viewBox="0 0 24 24" fill="currentColor" className="w-16 h-16 text-amber-500">
+            <path d="M19.5 21a3 3 0 0 0 3-3v-7.5A3 3 0 0 0 19.5 7.5h-7.875a1.125 1.125 0 0 1-.9-.45l-1.05-1.4a3 3 0 0 0-2.4-1.2H4.5a3 3 0 0 0-3 3v10.5a3 3 0 0 0 3 3h15Z" />
+          </svg>
+        ) : thumb ? (
+          <img
+            src={thumb}
+            alt={file.name}
+            className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
+            loading="lazy"
+            onError={(e) => { e.target.style.display = 'none' }}
+          />
+        ) : (
+          <div className="scale-[2]">{fileIcon(file.mimeType)}</div>
+        )}
+      </div>
+      <div className="p-2.5 flex items-center gap-2 min-w-0">
+        <div className="shrink-0">{fileIcon(file.mimeType)}</div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-text-primary truncate" title={file.name}>{file.name}</p>
+          <p className="text-[10px] text-text-muted">
+            {isFolder ? 'Folder' : fmtSize(file.size) || fmtDate(file.modifiedTime)}
+          </p>
+        </div>
+      </div>
+    </button>
   )
 }
