@@ -58,6 +58,7 @@ app.use('/communication-notes', require('./routes/communicationNotes'))
 app.use('/hr-documents', require('./routes/hrDocuments'))
 app.use('/help-center', require('./routes/helpCenter'))
 app.use('/ticket-embeds', require('./routes/ticketEmbeds'))
+app.use('/tickets', require('./routes/tickets'))
 app.use('/abc-sync', require('./routes/abcSync'))
 app.use('/custom-fields', require('./routes/customFields'))
 

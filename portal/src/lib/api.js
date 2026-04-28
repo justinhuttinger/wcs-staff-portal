@@ -539,6 +539,15 @@ export async function deleteTicketEmbed(id) {
   return api('/ticket-embeds/' + id, { method: 'DELETE' })
 }
 
+// Ticket Status (ClickUp)
+export async function getTicketStatus() {
+  return api('/tickets/status')
+}
+
+export async function refreshTicketStatus() {
+  return api('/tickets/refresh', { method: 'POST' })
+}
+
 // App Settings
 export async function getAppSettings(prefix) {
   const qs = prefix ? '?prefix=' + prefix : ''
