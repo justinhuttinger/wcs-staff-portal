@@ -169,26 +169,19 @@ async function calculateListStats(listConfig) {
     }
 
     if (isClosed) {
+      // Use the LAST non-closed status before closure as a proxy for actual
+      // processing time. Avoids inflating the metric with long backlog waits
+      // in the initial status (e.g., a ticket that sat in "open" for 22 days
+      // and was then closed in 5 minutes shows 5 minutes, not 22 days).
       let minutes = null
-      if (timeData) {
-        let sum = 0
-        let any = false
-        for (const s of (timeData.status_history || [])) {
-          if (s.type === 'closed') continue
-          if (s.total_time?.by_minute != null) {
-            sum += s.total_time.by_minute
-            any = true
-          }
+      const history = timeData?.status_history || []
+      for (let i = history.length - 1; i >= 0; i--) {
+        const s = history[i]
+        if (s.type === 'closed') continue
+        if (s.total_time?.by_minute != null) {
+          minutes = s.total_time.by_minute
+          break
         }
-        const cur = timeData.current_status
-        if (cur && cur.type !== 'closed' && cur.total_time?.by_minute != null) {
-          sum += cur.total_time.by_minute
-          any = true
-        }
-        if (any) minutes = sum
-      }
-      if (minutes == null && task.date_done && task.date_created) {
-        minutes = Math.floor((parseInt(task.date_done) - parseInt(task.date_created)) / 60000)
       }
       if (minutes != null && minutes >= 0) timesInStatus.push(minutes)
     }
