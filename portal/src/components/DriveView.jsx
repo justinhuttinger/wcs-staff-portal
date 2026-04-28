@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { getDriveFolders, listDriveContents } from '../lib/api'
 
 const FOLDER_MIME = 'application/vnd.google-apps.folder'
@@ -172,10 +172,53 @@ function DriveBrowser({ root, onBack }) {
   const [viewMode, setViewMode] = useState(() => {
     try { return localStorage.getItem('wcs_drive_view') || 'list' } catch { return 'list' }
   })
+  const [search, setSearch] = useState('')
+  const [sortBy, setSortBy] = useState('name')      // name | modified | size
+  const [sortDir, setSortDir] = useState('asc')      // asc | desc
+  const [dateFilter, setDateFilter] = useState('all') // all | 7d | 30d | 90d
 
   function changeViewMode(mode) {
     setViewMode(mode)
     try { localStorage.setItem('wcs_drive_view', mode) } catch {}
+  }
+
+  // Reset search/filter on folder change
+  useEffect(() => { setSearch(''); setDateFilter('all') }, [currentFolderId])
+
+  const visibleFiles = useMemo(() => {
+    let out = files
+    // Search
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      out = out.filter(f => (f.name || '').toLowerCase().includes(q))
+    }
+    // Date filter (folders are always shown so user can navigate)
+    if (dateFilter !== 'all') {
+      const days = dateFilter === '7d' ? 7 : dateFilter === '30d' ? 30 : 90
+      const cutoff = Date.now() - days * 86400000
+      out = out.filter(f => {
+        if (f.mimeType === FOLDER_MIME) return true
+        const t = f.modifiedTime ? new Date(f.modifiedTime).getTime() : 0
+        return t >= cutoff
+      })
+    }
+    // Sort: folders first, then files; within each group, by selected sort
+    const cmp = (a, b) => {
+      const aFolder = a.mimeType === FOLDER_MIME
+      const bFolder = b.mimeType === FOLDER_MIME
+      if (aFolder !== bFolder) return aFolder ? -1 : 1
+      let r = 0
+      if (sortBy === 'name') r = (a.name || '').localeCompare(b.name || '')
+      else if (sortBy === 'modified') r = new Date(a.modifiedTime || 0) - new Date(b.modifiedTime || 0)
+      else if (sortBy === 'size') r = (parseInt(a.size, 10) || 0) - (parseInt(b.size, 10) || 0)
+      return sortDir === 'asc' ? r : -r
+    }
+    return [...out].sort(cmp)
+  }, [files, search, sortBy, sortDir, dateFilter])
+
+  function toggleSort(column) {
+    if (sortBy === column) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortBy(column); setSortDir(column === 'name' ? 'asc' : 'desc') }
   }
 
   const currentFolderId = path[path.length - 1].id
@@ -346,6 +389,54 @@ function DriveBrowser({ root, onBack }) {
         </div>
       </div>
 
+      {!loading && !error && files.length > 0 && (
+        <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-3 mb-4 flex items-center gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-[200px]">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search this folder..."
+              className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            {[
+              { key: 'all', label: 'All time' },
+              { key: '7d', label: '7d' },
+              { key: '30d', label: '30d' },
+              { key: '90d', label: '90d' },
+            ].map(d => (
+              <button
+                key={d.key}
+                onClick={() => setDateFilter(d.key)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${dateFilter === d.key ? 'bg-text-primary text-white border-text-primary' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-text-muted">Sort:</span>
+            <select
+              value={`${sortBy}-${sortDir}`}
+              onChange={e => { const [b, d] = e.target.value.split('-'); setSortBy(b); setSortDir(d) }}
+              className="px-2.5 py-1 rounded-lg border border-border bg-bg text-text-primary text-xs focus:outline-none focus:ring-2 focus:ring-wcs-red"
+            >
+              <option value="name-asc">Name A→Z</option>
+              <option value="name-desc">Name Z→A</option>
+              <option value="modified-desc">Newest first</option>
+              <option value="modified-asc">Oldest first</option>
+              <option value="size-desc">Largest</option>
+              <option value="size-asc">Smallest</option>
+            </select>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <p className="text-center text-text-muted text-sm py-8">Loading...</p>
       ) : error ? (
@@ -361,9 +452,11 @@ function DriveBrowser({ root, onBack }) {
         </div>
       ) : files.length === 0 ? (
         <p className="text-center text-text-muted text-sm py-8">This folder is empty.</p>
+      ) : visibleFiles.length === 0 ? (
+        <p className="text-center text-text-muted text-sm py-8">No files match your filter.</p>
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          {files.map(file => (
+          {visibleFiles.map(file => (
             <GridTile key={file.id} file={file} onClick={() => openItem(file)} />
           ))}
         </div>
@@ -372,13 +465,13 @@ function DriveBrowser({ root, onBack }) {
           <table className="w-full text-sm">
             <thead className="bg-bg">
               <tr>
-                <th className="text-left px-4 py-2 text-xs font-semibold text-text-muted uppercase tracking-wide">Name</th>
-                <th className="text-right px-4 py-2 text-xs font-semibold text-text-muted uppercase tracking-wide w-32">Modified</th>
-                <th className="text-right px-4 py-2 text-xs font-semibold text-text-muted uppercase tracking-wide w-24">Size</th>
+                <SortableTh label="Name" col="name" sortBy={sortBy} sortDir={sortDir} onClick={() => toggleSort('name')} />
+                <SortableTh label="Modified" col="modified" sortBy={sortBy} sortDir={sortDir} onClick={() => toggleSort('modified')} align="right" width="w-32" />
+                <SortableTh label="Size" col="size" sortBy={sortBy} sortDir={sortDir} onClick={() => toggleSort('size')} align="right" width="w-24" />
               </tr>
             </thead>
             <tbody>
-              {files.map(file => (
+              {visibleFiles.map(file => (
                 <tr
                   key={file.id}
                   onClick={() => openItem(file)}
@@ -397,6 +490,16 @@ function DriveBrowser({ root, onBack }) {
         </div>
       )}
     </div>
+  )
+}
+
+function SortableTh({ label, col, sortBy, sortDir, onClick, align = 'left', width = '' }) {
+  const active = sortBy === col
+  const arrow = active ? (sortDir === 'asc' ? '↑' : '↓') : ''
+  return (
+    <th className={`px-4 py-2 text-xs font-semibold text-text-muted uppercase tracking-wide cursor-pointer hover:text-text-primary select-none ${width} ${align === 'right' ? 'text-right' : 'text-left'}`} onClick={onClick}>
+      {label} {arrow && <span className="text-wcs-red">{arrow}</span>}
+    </th>
   )
 }
 
