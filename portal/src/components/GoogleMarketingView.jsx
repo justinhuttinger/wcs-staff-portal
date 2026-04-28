@@ -160,6 +160,7 @@ function PieChartSmall({ data, colorMap }) {
 
 function GbpSection({ startDate, endDate }) {
   const [metrics, setMetrics] = useState([])
+  const [apiError, setApiError] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const reqRef = useRef(0)
@@ -168,10 +169,12 @@ function GbpSection({ startDate, endDate }) {
     const id = ++reqRef.current
     setLoading(true)
     setError(null)
+    setApiError(null)
     getGoogleBusinessPerformance({ start_date: startDate, end_date: endDate })
       .then(res => {
         if (id !== reqRef.current) return
         setMetrics(res.metrics || [])
+        setApiError(res.error || null)
         setLoading(false)
       })
       .catch(err => {
@@ -183,7 +186,15 @@ function GbpSection({ startDate, endDate }) {
 
   if (loading) return <p className="text-text-muted text-sm py-6 text-center">Loading Business Profile data...</p>
   if (error) return <p className="text-wcs-red text-sm py-4">{error}</p>
-  if (!metrics.length) return <p className="text-text-muted text-sm py-4">No locations found.</p>
+  if (!metrics.length) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-6 text-center">
+        <p className="text-sm font-semibold text-text-primary">No Business Profile locations</p>
+        {apiError && <p className="text-xs text-wcs-red mt-2">{apiError}</p>}
+        <p className="text-xs text-text-muted mt-2">If this persists, click "Connect Google" above to re-authorize.</p>
+      </div>
+    )
+  }
 
   const totals = metrics.reduce((acc, m) => {
     if (m.error) return acc
