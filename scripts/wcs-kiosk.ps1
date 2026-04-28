@@ -75,6 +75,37 @@ function Test-IsAdmin {
 }
 
 # ============================================================
+# SECTION 1: USERS
+# ============================================================
+function Set-WcsUsers {
+    $users = @(
+        @{ Name='Staff'; Password=$StaffPassword; Group='Users';          FullName='WCS Staff'; Description='Kiosk account' }
+        @{ Name='Admin'; Password=$AdminPassword; Group='Administrators'; FullName='WCS Admin'; Description='IT admin account' }
+    )
+
+    foreach ($u in $users) {
+        $secure = ConvertTo-SecureString $u.Password -AsPlainText -Force
+        $existing = Get-LocalUser -Name $u.Name -ErrorAction SilentlyContinue
+
+        if (-not $existing) {
+            New-LocalUser -Name $u.Name -Password $secure -FullName $u.FullName `
+                          -Description $u.Description -PasswordNeverExpires | Out-Null
+            Add-LocalGroupMember -Group $u.Group -Member $u.Name -ErrorAction SilentlyContinue
+            Write-WcsLog 'Users' 'INST' "Created $($u.Name) in group $($u.Group)"
+        } else {
+            Set-LocalUser -Name $u.Name -Password $secure -PasswordNeverExpires $true
+            $isMember = Get-LocalGroupMember -Group $u.Group -Member $u.Name -ErrorAction SilentlyContinue
+            if (-not $isMember) {
+                Add-LocalGroupMember -Group $u.Group -Member $u.Name
+                Write-WcsLog 'Users' 'OK' "$($u.Name) re-added to $($u.Group)"
+            } else {
+                Write-WcsLog 'Users' 'OK' "$($u.Name) present, password reset"
+            }
+        }
+    }
+}
+
+# ============================================================
 # MAIN - mode dispatcher (sections wired in later tasks)
 # ============================================================
 if (-not (Test-IsAdmin)) {
@@ -86,7 +117,9 @@ Initialize-WcsDir
 Write-WcsLog 'Init' 'OK' "Run started - mode=$Mode, machine=$env:COMPUTERNAME, location=$LocationName"
 
 switch ($Mode) {
-    'Full'      { Write-WcsLog 'Init' 'WARN' 'Full mode - sections not yet wired (placeholder)' }
+    'Full'      {
+        Set-WcsUsers
+    }
     'Lockdown'  { Write-WcsLog 'Init' 'WARN' 'Lockdown mode - sections not yet wired' }
     'Cleanup'   { Write-WcsLog 'Init' 'WARN' 'Cleanup mode - sections not yet wired' }
     'Inventory' { Write-WcsLog 'Init' 'WARN' 'Inventory mode - sections not yet wired' }
