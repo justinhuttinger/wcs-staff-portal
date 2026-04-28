@@ -403,6 +403,10 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           ))}
           {/* Shared Drive — in-portal Drive browser (replaces the legacy static Google Drive link) */}
           {onDrive && <SvgTileButton onClick={onDrive} iconPath="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" label="Shared Drive" desc="Documents" />}
+          {/* Send Notifications (Trainerize Member App) — manager+ only */}
+          {roleIdx >= ROLE_LEVELS.manager && (
+            <ToolButton label="Send Notifications" description="Member App" url="https://westcoaststrength.trainerize.com/app/login" />
+          )}
           {appCustomTiles.filter((tile) => {
             const tileLabel = (tile.label || '').toLowerCase()
             // Indeed, Operandio, VistaPrint: manager+ only
@@ -432,10 +436,6 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {onHR && roleIdx >= ROLE_LEVELS.manager && <SvgTileButton onClick={onHR} iconPath={TILE_ICONS.hr} label="HR Docs" desc="Documents" />}
           {/* 4.7. Help Center — all roles */}
           {onHelpCenter && <SvgTileButton onClick={onHelpCenter} iconPath={TILE_ICONS.helpCenter} label="Help Center" desc="Guides" />}
-          {/* 4.8. Notifications — manager+ */}
-          {roleIdx >= ROLE_LEVELS.manager && (
-            <ToolButton label="Notifications" description="Member App" url="https://westcoaststrength.trainerize.com/app/login" />
-          )}
           {/* 4.9. Tickets — lead+ */}
           {onTickets && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTickets} iconPath={TILE_ICONS.tickets} label="Tickets/Support" desc="Help Desk" />}
           {/* (Day One Tracking merged into Calendar) */}
