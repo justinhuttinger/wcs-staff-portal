@@ -164,7 +164,17 @@ router.get('/callback', async (req, res) => {
 // GET /google-business/status — check if authorized
 router.get('/status', authenticate, requireRole('corporate'), async (req, res) => {
   const tokens = await getStoredTokens()
-  res.json({ authorized: !!(tokens?.refresh_token) })
+  const scopeStr = tokens?.scope || ''
+  const scopes = scopeStr ? scopeStr.split(' ') : []
+  res.json({
+    authorized: !!(tokens?.refresh_token),
+    scopes,
+    has_business_manage: scopes.some(s => s.includes('business.manage')),
+    has_analytics: scopes.some(s => s.includes('analytics.readonly')),
+    has_drive: scopes.some(s => s.includes('drive')),
+    expires_at: tokens?.expires_at || null,
+    location_count: tokens?.locations?.length || 0,
+  })
 })
 
 // GET /google-business/locations — list all business locations (cached 10 min)
