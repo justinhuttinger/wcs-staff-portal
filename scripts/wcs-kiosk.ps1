@@ -144,6 +144,79 @@ function Invoke-WcsProfileSweep {
 }
 
 # ============================================================
+# SECTION 3: APP INSTALLATION (Portal, Chrome, Sonos)
+# ============================================================
+function Test-PortalInstalled {
+    $keys = @(
+        'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    )
+    foreach ($k in $keys) {
+        $hit = Get-ItemProperty -Path $k -ErrorAction SilentlyContinue |
+               Where-Object { $_.DisplayName -match '^(Portal|WCS App)$' }
+        if ($hit) { return $true }
+    }
+    return $false
+}
+
+function Test-ChromeInstalled {
+    Test-Path 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+}
+
+function Test-SonosInstalled {
+    $key = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    $hit = Get-ItemProperty -Path $key -ErrorAction SilentlyContinue |
+           Where-Object { $_.DisplayName -match 'Sonos' }
+    return [bool]$hit
+}
+
+function Install-FromUrl {
+    param(
+        [Parameter(Mandatory)][string]$Section,
+        [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][string]$LocalName,
+        [Parameter(Mandatory)][string[]]$SilentArgs
+    )
+    $installer = Join-Path $env:TEMP $LocalName
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $installer -UseBasicParsing
+        Start-Process -FilePath $installer -ArgumentList $SilentArgs -Wait -ErrorAction Stop
+        Write-WcsLog $Section 'INST' "Installed from $Url"
+    } catch {
+        Write-WcsLog $Section 'ERR' "Install failed: $($_.Exception.Message)"
+    } finally {
+        Remove-Item $installer -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Install-WcsApps {
+    Get-Process -Name 'Portal','WCS App' -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+
+    if (Test-PortalInstalled) {
+        Write-WcsLog 'Apps' 'SKIP' 'Portal already installed (auto-updater handles upgrades)'
+    } else {
+        Install-FromUrl -Section 'Apps' -Url $LauncherUrl `
+                        -LocalName 'Portal-Setup.exe' -SilentArgs @('/S')
+    }
+
+    if (Test-ChromeInstalled) {
+        Write-WcsLog 'Apps' 'SKIP' 'Chrome already installed'
+    } else {
+        Install-FromUrl -Section 'Apps' -Url $ChromeUrl `
+                        -LocalName 'chrome-setup.exe' -SilentArgs @('/silent','/install')
+    }
+
+    if (Test-SonosInstalled) {
+        Write-WcsLog 'Apps' 'SKIP' 'Sonos already installed'
+    } else {
+        Install-FromUrl -Section 'Apps' -Url $SonosUrl `
+                        -LocalName 'Sonos-Setup.exe' -SilentArgs @('/S')
+    }
+}
+
+# ============================================================
 # MAIN - mode dispatcher (sections wired in later tasks)
 # ============================================================
 if (-not (Test-IsAdmin)) {
@@ -158,6 +231,7 @@ switch ($Mode) {
     'Full'      {
         Set-WcsUsers
         Invoke-WcsProfileSweep
+        Install-WcsApps
     }
     'Lockdown'  { Write-WcsLog 'Init' 'WARN' 'Lockdown mode - sections not yet wired' }
     'Cleanup'   {
