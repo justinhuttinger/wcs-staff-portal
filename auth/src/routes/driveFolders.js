@@ -230,6 +230,7 @@ router.get('/list', async (req, res) => {
       pageSize: '200',
       supportsAllDrives: 'true',
       includeItemsFromAllDrives: 'true',
+      corpora: 'allDrives',
     })
     const r = await fetch('https://www.googleapis.com/drive/v3/files?' + params, {
       headers: { Authorization: 'Bearer ' + token },
@@ -277,6 +278,7 @@ router.get('/search', async (req, res) => {
           pageSize: '500',
           supportsAllDrives: 'true',
           includeItemsFromAllDrives: 'true',
+          corpora: 'allDrives',
         })
         const r = await fetch('https://www.googleapis.com/drive/v3/files?' + params, {
           headers: { Authorization: 'Bearer ' + token },
@@ -303,6 +305,7 @@ router.get('/search', async (req, res) => {
       orderBy: 'folder,name',
       supportsAllDrives: 'true',
       includeItemsFromAllDrives: 'true',
+      corpora: 'allDrives',
     })
     const sr = await fetch('https://www.googleapis.com/drive/v3/files?' + searchParams, {
       headers: { Authorization: 'Bearer ' + token },

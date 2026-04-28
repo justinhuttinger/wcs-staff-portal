@@ -215,11 +215,11 @@ function DriveBrowser({ root, onBack }) {
     return () => clearTimeout(timer)
   }, [search, root.folder_id])
 
-  const isSearching = searchResults !== null
+  const isSearching = search.trim().length >= 2
 
   const visibleFiles = useMemo(() => {
-    // When searching across the whole root, use server results
-    let out = isSearching ? searchResults : files
+    // When searching across the whole root, use server results (empty until they arrive)
+    let out = isSearching ? (searchResults || []) : files
     // Date filter (folders always shown so user can navigate, except in search results)
     if (dateFilter !== 'all') {
       const days = dateFilter === '7d' ? 7 : dateFilter === '30d' ? 30 : 90
@@ -418,13 +418,22 @@ function DriveBrowser({ root, onBack }) {
       {!loading && !error && (files.length > 0 || isSearching) && (
         <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-3 mb-4 flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[200px]">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
-              <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-            </svg>
+            {searchLoading ? (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-wcs-red pointer-events-none animate-spin">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.99v4.99h-4.992" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+              </svg>
+            )}
             <input
               type="text"
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => {
+                setSearch(e.target.value)
+                if (e.target.value.trim().length >= 2) setSearchLoading(true)
+              }}
               placeholder={`Search across "${root.name}"...`}
               className="w-full pl-9 pr-9 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
             />
