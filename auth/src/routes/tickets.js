@@ -52,7 +52,7 @@ const LISTS = [
   },
 ]
 
-const CACHE_TTL = 15 * 60 * 1000
+const CACHE_TTL = 60 * 60 * 1000 // 1 hour — refreshed in the background
 let cachedResults = null
 let lastFetchTime = null
 let isFetching = null
@@ -288,5 +288,22 @@ router.post('/refresh', async (req, res) => {
     res.status(500).json({ error: err.message })
   }
 })
+
+// Background scheduler: warm the cache shortly after boot, then refresh
+// hourly so users always hit warm data and ClickUp only gets one fetch per
+// hour for everyone combined.
+if (CLICKUP_API_KEY && process.env.NODE_ENV !== 'test') {
+  setTimeout(() => {
+    getStatsWithCache(true).catch(err =>
+      console.error('[Tickets] initial warm-up failed:', err.message)
+    )
+  }, 30 * 1000)
+
+  setInterval(() => {
+    getStatsWithCache(true).catch(err =>
+      console.error('[Tickets] scheduled refresh failed:', err.message)
+    )
+  }, 60 * 60 * 1000)
+}
 
 module.exports = router
