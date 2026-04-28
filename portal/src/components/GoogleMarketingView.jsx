@@ -43,11 +43,13 @@ function fmtDuration(secs) {
   return `${m}m ${r}s`
 }
 
-function locDisplayName(title) {
-  if (!title) return 'Unknown'
+function locDisplayName(metric) {
+  // Prefer the city stored from GBP, then split on "-" in title, then fall back
+  if (metric?.city) return metric.city
+  const title = metric?.title || ''
   const dash = title.lastIndexOf('-')
   if (dash > 0) return title.substring(dash + 1).trim()
-  return title
+  return title || 'Unknown'
 }
 
 // ---------------------------------------------------------------------------
@@ -228,7 +230,7 @@ function GbpSection({ startDate, endDate }) {
           <tbody>
             {metrics.map(m => (
               <tr key={m.location} className="border-t border-border">
-                <td className="px-4 py-2 font-semibold text-text-primary">{locDisplayName(m.title)}</td>
+                <td className="px-4 py-2 font-semibold text-text-primary">{locDisplayName(m)}</td>
                 {m.error ? (
                   <td colSpan={4} className="px-4 py-2 text-xs text-wcs-red">{m.error}</td>
                 ) : (
