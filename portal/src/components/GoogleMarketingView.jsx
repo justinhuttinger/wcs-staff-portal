@@ -59,7 +59,9 @@ function locDisplayName(metric) {
 function SectionHeader({ title }) {
   return (
     <div className="flex items-center gap-3 pt-2">
-      <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text-primary">{title}</h3>
+      <div className="bg-surface/95 backdrop-blur-sm rounded-lg border border-border px-3 py-1.5 shadow-sm">
+        <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text-primary">{title}</h3>
+      </div>
       <div className="flex-1 h-px bg-border" />
     </div>
   )
