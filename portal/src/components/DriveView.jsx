@@ -185,6 +185,8 @@ function DriveBrowser({ root, onBack }) {
     try { localStorage.setItem('wcs_drive_view', mode) } catch {}
   }
 
+  const currentFolderId = path[path.length - 1].id
+
   // Reset search/filter on folder change
   useEffect(() => { setSearch(''); setDateFilter('all'); setSearchResults(null); setSearchError('') }, [currentFolderId])
 
@@ -246,8 +248,6 @@ function DriveBrowser({ root, onBack }) {
     if (sortBy === column) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortBy(column); setSortDir(column === 'name' ? 'asc' : 'desc') }
   }
-
-  const currentFolderId = path[path.length - 1].id
 
   const load = useCallback((folderId) => {
     setLoading(true)
