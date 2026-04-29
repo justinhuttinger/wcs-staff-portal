@@ -6,7 +6,7 @@
     Single idempotent script that ensures every WCS front-desk PC has:
     - Correct local users (Staff, Admin)
     - Allowlisted profiles only (Staff, Admin, abctech if present)
-    - Required apps installed (Portal, Chrome, Sonos)
+    - Required apps installed (Portal, Chrome, Sonos, Bitdefender)
     - Branded wallpaper + lockscreen
     - Chrome hygiene policies (no allowlist; SafeSearch + no downloads)
     - Staff Windows lockdown (no Settings, no cmd, etc.)
@@ -531,7 +531,46 @@ if (Test-Path $root) {
 }
 
 # ============================================================
-# MAIN - mode dispatcher (sections wired in later tasks)
+# SECTION 8: INVENTORY - read-only state report
+# ============================================================
+function Get-WcsInventory {
+    Write-WcsLog 'Inv' 'OK' "--- Kiosk inventory: $env:COMPUTERNAME ---"
+
+    $users = Get-LocalUser | Where-Object { -not ($BuiltInUsers -contains $_.Name) }
+    foreach ($u in $users) {
+        $tag = if ($AllowedUsers -contains $u.Name) { 'allowed' } else { 'WOULD-REMOVE' }
+        Write-WcsLog 'Inv' 'OK' "User: $($u.Name) [$tag] enabled=$($u.Enabled)"
+    }
+
+    $portal = Test-PortalInstalled
+    $chrome = Test-ChromeInstalled
+    $sonos  = Test-SonosInstalled
+    $bd     = Test-BitdefenderInstalled
+    Write-WcsLog 'Inv' 'OK' "Apps: Portal=$portal, Chrome=$chrome, Sonos=$sonos, Bitdefender=$bd"
+
+    $cp = Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Google\Chrome' -ErrorAction SilentlyContinue
+    if ($cp) {
+        Write-WcsLog 'Inv' 'OK' ("Chrome: DownloadRestrictions={0}, SafeSearch={1}, Incognito={2}" -f
+            $cp.DownloadRestrictions, $cp.ForceGoogleSafeSearch, $cp.IncognitoModeAvailability)
+    } else {
+        Write-WcsLog 'Inv' 'WARN' 'Chrome HKLM policies not present'
+    }
+
+    $lp = Get-ItemProperty 'HKLM:\Software\Policies\Microsoft\Windows\Personalization' -ErrorAction SilentlyContinue
+    if ($lp.LockScreenImage) {
+        Write-WcsLog 'Inv' 'OK' "Lockscreen: $($lp.LockScreenImage)"
+    } else {
+        Write-WcsLog 'Inv' 'WARN' 'Lockscreen image not configured'
+    }
+
+    $tasks = Get-ScheduledTask -TaskName 'WCS-*' -ErrorAction SilentlyContinue
+    foreach ($t in $tasks) {
+        Write-WcsLog 'Inv' 'OK' "Task: $($t.TaskName) state=$($t.State)"
+    }
+}
+
+# ============================================================
+# MAIN - mode dispatcher
 # ============================================================
 if (-not (Test-IsAdmin)) {
     Write-Error "Must run as Administrator (or SYSTEM via Action1)."
@@ -558,7 +597,9 @@ switch ($Mode) {
     'Cleanup'   {
         Invoke-WcsProfileSweep
     }
-    'Inventory' { Write-WcsLog 'Init' 'WARN' 'Inventory mode - sections not yet wired' }
+    'Inventory' {
+        Get-WcsInventory
+    }
 }
 
 Write-WcsLog 'Done' 'OK' 'Run finished'

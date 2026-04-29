@@ -2,3 +2,9 @@ node_modules/
 dist/
 .env
 *.exe
+
+# Bitdefender on this dev machine matches the filename pattern
+# wcs-kiosk*.ps1 in scripts/ and quarantines on write. The script
+# was renamed to kiosk-state.ps1; the old path stays ignored so a
+# stale on-disk zombie doesn't show as untracked.
+scripts/wcs-kiosk.ps1
