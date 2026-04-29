@@ -15,6 +15,7 @@ import MobileCalendar from './components/MobileCalendar'
 import MobileLeaderboard from './components/MobileLeaderboard'
 import MobileCommunicationNotes from './components/MobileCommunicationNotes'
 import MobileHR from './components/MobileHR'
+import MobileTickets from './components/MobileTickets'
 import MobilePTRoster from './components/reports/MobilePTRoster'
 
 // Icons for bottom tab bar (Heroicons outline)
@@ -276,6 +277,8 @@ export default function MobileApp() {
         return <MobileCommunicationNotes user={user} />
       case 'hr':
         return <MobileHR user={user} />
+      case 'tickets':
+        return <MobileTickets />
       default:
         return (
           <div className="pt-4 px-4">
