@@ -16,7 +16,6 @@ import MobileLeaderboard from './components/MobileLeaderboard'
 import MobileCommunicationNotes from './components/MobileCommunicationNotes'
 import MobileHR from './components/MobileHR'
 import MobilePTRoster from './components/reports/MobilePTRoster'
-import MobileLoading from './components/MobileLoading'
 
 // Icons for bottom tab bar (Heroicons outline)
 function HomeIcon({ active }) {
@@ -132,7 +131,7 @@ export default function MobileApp() {
   if (loading) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
-        <MobileLoading variant="list" count={2} />
+        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-wcs-red" />
       </div>
     )
   }

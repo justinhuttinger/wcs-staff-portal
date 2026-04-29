@@ -508,7 +508,9 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
           />
         </div>
 
-        <SignaturePad label="Manager Signature" value={managerSignature} onChange={setManagerSignature} />
+        <div className="bg-surface border border-border rounded-2xl p-3">
+          <SignaturePad label="Manager Signature" value={managerSignature} onChange={setManagerSignature} />
+        </div>
 
         {error && (
           <div className="px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>
