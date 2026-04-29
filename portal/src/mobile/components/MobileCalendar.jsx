@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { getDayOneTrackerAppointments, getTours } from '../../lib/api'
+import MobileDayOneOutcomeModal from './MobileDayOneOutcomeModal'
 
 function formatDate(dateStr) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
@@ -46,11 +47,6 @@ const STATUS_COLORS = {
   Completed: 'bg-green-50 text-green-700 border-green-200',
   'No Show': 'bg-red-50 text-red-500 border-red-200',
   Cancelled: 'bg-gray-50 text-gray-500 border-gray-200',
-}
-
-function capitalize(str) {
-  if (!str) return ''
-  return str.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
 }
 
 export default function MobileCalendar({ user }) {
@@ -233,7 +229,7 @@ export default function MobileCalendar({ user }) {
                   key={item.id}
                   onClick={clickable ? () => setSelectedDayOne(item) : undefined}
                   className={`bg-surface rounded-2xl border p-4 ${
-                    item.pending ? 'border-yellow-300 bg-yellow-50/50' : clickable ? 'border-border active:bg-bg' : 'border-border'
+                    item.pending ? 'border-yellow-300 bg-yellow-50/50 cursor-pointer' : clickable ? 'border-border active:bg-bg cursor-pointer' : 'border-border'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -276,50 +272,29 @@ export default function MobileCalendar({ user }) {
         )}
       </div>
 
-      {/* Day One Detail Popup */}
+      {/* Day One Outcome Modal \u2014 fill the form for pending, review for completed */}
       {selectedDayOne && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setSelectedDayOne(null)}>
-          <div className="bg-surface w-full max-w-sm rounded-2xl p-5 shadow-xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-text-primary">{capitalize(selectedDayOne.name)}</h3>
-              <button onClick={() => setSelectedDayOne(null)} className="w-8 h-8 flex items-center justify-center rounded-full bg-bg text-text-muted text-lg leading-none">&times;</button>
-            </div>
-            <div className="space-y-3 text-sm">
-              <DetailRow label="Time" value={formatTime(selectedDayOne.time)} />
-              {selectedDayOne.trainer && <DetailRow label="Trainer" value={selectedDayOne.trainer} />}
-              <DetailRow label="Status" value={selectedDayOne.status} />
-              {selectedDayOne.sale && <DetailRow label="Sale Result" value={selectedDayOne.sale} />}
-              {selectedDayOne.raw?.pt_sale_type && <DetailRow label="Sale Type" value={selectedDayOne.raw.pt_sale_type} />}
-              {selectedDayOne.raw?.why_no_sale && <DetailRow label="Why No Sale" value={selectedDayOne.raw.why_no_sale} />}
-              {selectedDayOne.raw?.day_one_booking_team_member && <DetailRow label="Booked By" value={selectedDayOne.raw.day_one_booking_team_member} />}
-            </div>
-            <div className="flex gap-2 mt-4">
-              {selectedDayOne.status !== 'Cancelled' && (
-                <>
-                  {selectedDayOne.status === 'Completed' && selectedDayOne.sale === 'Sale' && (
-                    <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">Sale</span>
-                  )}
-                  {selectedDayOne.status === 'Completed' && selectedDayOne.sale !== 'Sale' && (
-                    <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-orange-50 text-orange-600 border border-orange-200">No Sale</span>
-                  )}
-                  {selectedDayOne.status === 'No Show' && (
-                    <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-red-50 text-red-600 border border-red-200">No Show</span>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
+        <MobileDayOneOutcomeModal
+          apt={selectedDayOne.raw}
+          locationSlug={locationSlug}
+          onClose={() => setSelectedDayOne(null)}
+          onSubmitted={confirmed => {
+            // Merge confirmed outcome into the local item so the calendar reflects it without a refetch
+            setItems(prev => prev.map(i => {
+              if (i.id !== selectedDayOne.id) return i
+              const mergedRaw = { ...i.raw, ...confirmed }
+              return {
+                ...i,
+                raw: mergedRaw,
+                status: normalizeStatus(mergedRaw),
+                sale: getSaleLabel(mergedRaw),
+                pending: !mergedRaw.day_one_status || mergedRaw.day_one_status === 'Scheduled',
+              }
+            }))
+            setSelectedDayOne(null)
+          }}
+        />
       )}
-    </div>
-  )
-}
-
-function DetailRow({ label, value }) {
-  return (
-    <div className="flex justify-between">
-      <span className="text-text-muted">{label}</span>
-      <span className="text-text-primary font-medium">{value || '\u2014'}</span>
     </div>
   )
 }

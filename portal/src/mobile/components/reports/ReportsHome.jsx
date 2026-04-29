@@ -43,11 +43,31 @@ const REPORT_TILES = [
   },
   {
     key: 'marketing',
-    label: 'Marketing',
-    description: 'Meta Ads and Google profiles',
+    label: 'Meta Ads',
+    description: 'Facebook & Instagram ads',
     icon: (
       <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 110-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38a.954.954 0 01-1.233-.21 23.905 23.905 0 01-3.212-6.027M10.34 15.84A23.653 23.653 0 019 12c0-1.35.11-2.674.34-3.96m0 7.8a23.745 23.745 0 011.966-5.822M10.34 8.16c1.544-2.206 3.594-3.94 5.966-5.073A.9.9 0 0117.25 3.9v.143a2.25 2.25 0 01.398 1.257l.09.898a23.98 23.98 0 000 11.604l-.09.898a2.25 2.25 0 01-.398 1.257v.143a.9.9 0 01-.944.813 15.6 15.6 0 01-5.966-5.073" />
+      </svg>
+    ),
+  },
+  {
+    key: 'google-marketing',
+    label: 'Google Marketing',
+    description: 'Business Profile & Analytics',
+    icon: (
+      <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-9v18m9-9H3" />
+      </svg>
+    ),
+  },
+  {
+    key: 'operations',
+    label: 'Operational Compliance',
+    description: 'Operandio checklist tracking',
+    icon: (
+      <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.746 3.746 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z" />
       </svg>
     ),
   },
@@ -60,8 +80,8 @@ function getTilesForRole(role) {
     case 'lead':
       return REPORT_TILES.filter(t => ['membership', 'pt', 'pt-roster'].includes(t.key))
     case 'manager':
-      return REPORT_TILES.filter(t => ['membership', 'pt', 'club-health', 'pt-roster'].includes(t.key))
-    default: // corporate, admin
+      return REPORT_TILES.filter(t => ['membership', 'pt', 'club-health', 'pt-roster', 'operations'].includes(t.key))
+    default: // corporate, admin, director
       return REPORT_TILES
   }
 }

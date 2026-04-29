@@ -9,6 +9,8 @@ import MobileClubHealth from './components/reports/MobileClubHealth'
 import MobileMembership from './components/reports/MobileMembership'
 import MobilePTReport from './components/reports/MobilePTReport'
 import MobileMarketing from './components/reports/MobileMarketing'
+import MobileGoogleMarketing from './components/reports/MobileGoogleMarketing'
+import MobileOperations from './components/reports/MobileOperations'
 import MobileCalendar from './components/MobileCalendar'
 import MobileLeaderboard from './components/MobileLeaderboard'
 import MobileCommunicationNotes from './components/MobileCommunicationNotes'
@@ -241,9 +243,27 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="Ad Reports" onBack={() => navigate('reports')} />
+              <MobileHeader title="Meta Ads" onBack={() => navigate('reports')} />
             </div>
             <MobileMarketing />
+          </div>
+        )
+      case 'reports/google-marketing':
+        return (
+          <div className="pt-2">
+            <div className="px-4">
+              <MobileHeader title="Google Marketing" onBack={() => navigate('reports')} />
+            </div>
+            <MobileGoogleMarketing />
+          </div>
+        )
+      case 'reports/operations':
+        return (
+          <div className="pt-2">
+            <div className="px-4">
+              <MobileHeader title="Operational Compliance" onBack={() => navigate('reports')} />
+            </div>
+            <MobileOperations user={user} />
           </div>
         )
       case 'calendar':
