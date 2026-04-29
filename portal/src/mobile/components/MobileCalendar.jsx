@@ -227,8 +227,8 @@ export default function MobileCalendar({ user }) {
                 <div
                   key={item.id}
                   onClick={clickable ? () => setSelectedDayOne(item) : undefined}
-                  className={`bg-surface rounded-2xl border p-4 ${
-                    item.pending ? 'border-yellow-300 bg-yellow-50/50 cursor-pointer' : clickable ? 'border-border active:bg-bg cursor-pointer' : 'border-border'
+                  className={`bg-surface rounded-2xl border p-4 shadow-sm ${
+                    item.pending ? 'border-yellow-300 cursor-pointer' : clickable ? 'border-border active:bg-bg cursor-pointer' : 'border-border'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
