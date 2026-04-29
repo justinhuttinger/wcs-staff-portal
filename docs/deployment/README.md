@@ -42,11 +42,11 @@ tasks) idempotently — re-runnable any time without breaking anything.
 | `Inventory` | Read-only state report | Verification, no changes made |
 
 Because Action1's plan tier doesn't expose a per-run **Parameters**
-field, both `$Mode` and `$LocationName` are hardcoded into each saved
-Action1 script. You'll have **10 saved scripts total**: 7 per-location
-Full-mode scripts (`WCS Kiosk State - <Location>`) plus 3 mode-only
-utility scripts (`WCS Kiosk State - Inventory / Lockdown / Cleanup`).
-See [`01-one-time-setup.md`](01-one-time-setup.md) Part 4 for setup details.
+field, `$Mode` is hardcoded into each saved Action1 script. **Four
+saved scripts total** (`WCS Kiosk State - Full / Inventory / Lockdown /
+Cleanup`), all location-agnostic — location is set per-kiosk in the
+Portal app config UI rather than at the script level. See
+[`01-one-time-setup.md`](01-one-time-setup.md) Part 4 for setup details.
 
 ## Allowlist policy
 

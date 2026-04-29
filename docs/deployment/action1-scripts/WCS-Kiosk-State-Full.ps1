@@ -29,9 +29,12 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # ============================================================
-# CONFIGURATION - edit $LocationName per kiosk, rest is stable
+# CONFIGURATION
 # ============================================================
-$LocationName    = 'Medford'
+# Location is NOT set by this script. The kiosk's location is set
+# once in the Portal app config UI (writes C:\WCS\config.json), and
+# the launcher reads it from there on each launch. Same script body
+# runs everywhere - one Action1 script, all locations.
 $PortalBaseURL   = 'https://portal.wcstrength.com'
 $RepoRawBase     = 'https://raw.githubusercontent.com/justinhuttinger/wcs-staff-portal/master'
 $WallpaperUrl    = "$RepoRawBase/branding/wallpaper.jpg"
@@ -437,7 +440,7 @@ if (Test-Path 'C:\WCS\abc-url.txt') {
 }
 `$portalApp = 'C:\Program Files\WCS App\WCS App.exe'
 if (Test-Path `$portalApp) {
-    Start-Process -FilePath `$portalApp -ArgumentList "--location=$LocationName `$abcArg"
+    Start-Process -FilePath `$portalApp -ArgumentList "`$abcArg"
 }
 "@
     Set-Content -Path "$WcsDir\staff-logon.ps1" -Value $staffLogon -Force
@@ -578,7 +581,7 @@ if (-not (Test-IsAdmin)) {
 }
 
 Initialize-WcsDir
-Write-WcsLog 'Init' 'OK' "Run started - mode=$Mode, machine=$env:COMPUTERNAME, location=$LocationName"
+Write-WcsLog 'Init' 'OK' "Run started - mode=$Mode, machine=$env:COMPUTERNAME"
 
 switch ($Mode) {
     'Full'      {

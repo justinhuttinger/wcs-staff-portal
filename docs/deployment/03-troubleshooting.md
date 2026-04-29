@@ -135,6 +135,28 @@ If you absolutely must temporarily unlock Staff:
 
 ---
 
+## Wrong location showing in Portal on a kiosk
+
+**Symptom:** Kiosk launches Portal but shows the wrong gym's data
+(e.g. Salem booking widget on a Eugene kiosk).
+
+**Why:** The kiosk's location is read from `C:\WCS\config.json`
+(written by Portal's app config UI). If that file is missing or has
+the wrong value, the launcher falls back to `'Salem'`.
+
+**Fix:**
+1. Log in as Admin
+2. Open Portal -> app config / kiosk config screen
+3. Pick the correct location -> save
+4. Sign out, sign back in as Staff -> Portal launches with the new location
+
+To verify the saved value without opening Portal:
+```powershell
+Get-Content C:\WCS\config.json | ConvertFrom-Json | Select-Object location
+```
+
+---
+
 ## Profile sweep removed an account I wanted to keep
 
 **Symptom:** Looking at `C:\Users\<somebody>` — it's gone.

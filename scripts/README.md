@@ -16,18 +16,24 @@ Action1 to all WCS-Kiosk-tagged endpoints. Idempotent - safe to re-run.
 
 ### Configuration
 
-Edit `$LocationName` near the top of the file before pushing each
-location's run from Action1. Everything else is stable across kiosks.
+Nothing in the script needs to be edited per kiosk. The kiosk's
+location is set per-machine in the Portal app config UI (writes
+`C:\WCS\config.json`); the launcher reads it from there. One script
+body covers all locations.
 
 ### Action1 deployment
 
-1. Action1 -> Scripts -> New Script
-2. Paste full contents of `kiosk-state.ps1`
-3. Optionally append `-Mode Lockdown` (or other mode) to the
-   PowerShell command line if you want a partial run.
-4. Run as: SYSTEM
-5. Target: machines tagged `WCS-Kiosk`
-6. Logs land in `C:\WCS\setup.log` on each kiosk; Action1 console
+The full deployment runbook lives at
+[`docs/deployment/`](../docs/deployment/). The four paste-ready
+Action1 script bodies are pre-generated at
+[`docs/deployment/action1-scripts/`](../docs/deployment/action1-scripts/).
+
+Quick version:
+1. Action1 -> Scripts -> + New Script -> paste from one of the four
+   files in `docs/deployment/action1-scripts/`
+2. Run as: Local System
+3. Target: machines tagged `WCS-Kiosk`
+4. Logs land in `C:\WCS\setup.log` on each kiosk; Action1 console
    captures stdout for the run.
 
 ### Bitdefender installer staging

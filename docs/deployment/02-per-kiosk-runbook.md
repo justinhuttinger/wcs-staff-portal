@@ -39,7 +39,7 @@ minutes of the kiosk appearing in Action1. Otherwise:
 
 ## Step 3: Run the kiosk-state script (Full mode)
 
-1. Action1 -> **Scripts** -> open `WCS Kiosk State - <Location>` for this kiosk's location (this is the per-location Full-mode script)
+1. Action1 -> **Scripts** -> open `WCS Kiosk State - Full`
 2. **Run** -> target = this kiosk only (for the first run)
 3. **Run as:** SYSTEM
 4. Click **Run now**
@@ -71,7 +71,7 @@ logged in yet (no NTUSER.DAT yet) — that's expected.
 
 Now that the Staff hive exists, run the same script again:
 
-1. Action1 -> Scripts -> `WCS Kiosk State - <Location>` -> **Run** on this kiosk
+1. Action1 -> Scripts -> `WCS Kiosk State - Full` -> **Run** on this kiosk
 2. This time the Staff lockdown step will succeed (HKCU policies applied)
 
 ---
@@ -92,15 +92,24 @@ Action1 -> Endpoints -> kiosk -> **Run command** -> `type C:\WCS\setup.log`.
 
 ---
 
-## Step 7: Set the ABC URL for this location
+## Step 7: Set the location and ABC URL for this kiosk
+
+This is the only per-kiosk configuration the script doesn't auto-set.
 
 1. Log in as **Admin** (password `!31JellybeaN31!`)
-2. Double-click **Set ABC URL** desktop shortcut
-3. Paste the location's ABC Financial URL into the dialog
-4. Click OK
-5. Sign out
+2. **Set the location:**
+   - Double-click the Portal launcher (or whatever Admin shortcut launches it)
+   - Open Portal's app config / kiosk config screen
+   - Pick this kiosk's location (Salem, Eugene, etc.) and save
+   - This writes `C:\WCS\config.json` with `{ "location": "<gym>" }`
+3. **Set the ABC URL:**
+   - Double-click **Set ABC URL** desktop shortcut
+   - Paste the location's ABC Financial URL into the dialog
+   - Click OK
+4. Sign out
 
-Next time Staff logs in, Portal will launch with `--abc-url=<URL>` set.
+Next time Staff logs in, Portal reads the location from `config.json`
+and launches with the configured ABC URL.
 
 ---
 
@@ -118,14 +127,11 @@ Next time Staff logs in, Portal will launch with `--abc-url=<URL>` set.
 ## Quick reference cheat sheet
 
 ```
-Action1 saved scripts:
-   WCS Kiosk State - Salem            -> Full enforcement, Salem kiosks
-   WCS Kiosk State - Beaverton        -> Full enforcement, Beaverton kiosks
-   WCS Kiosk State - <Location>       -> ...one per gym (7 total)
-
-   WCS Kiosk State - Inventory        -> Read-only state check (any kiosk)
-   WCS Kiosk State - Lockdown         -> Chrome + Staff HKCU re-lock only
-   WCS Kiosk State - Cleanup          -> Profile sweep only
+Action1 saved scripts (4 total, all location-agnostic):
+   WCS Kiosk State - Full        -> bootstrap, full re-enforcement
+   WCS Kiosk State - Inventory   -> read-only state check
+   WCS Kiosk State - Lockdown    -> Chrome + Staff HKCU re-lock only
+   WCS Kiosk State - Cleanup     -> profile sweep only
 ```
 
 ```
@@ -137,6 +143,7 @@ Kiosk passwords:
 ```
 Files on each kiosk:
    C:\WCS\setup.log              -- script run log
+   C:\WCS\config.json            -- per-kiosk location, set via Portal app config UI
    C:\WCS\branding\               -- wallpaper + lockscreen
    C:\WCS\installers\             -- (only if BD installer staged here)
    C:\WCS\staff-logon.ps1         -- runs on Staff login

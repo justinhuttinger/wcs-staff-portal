@@ -1,6 +1,6 @@
 # Action1 Paste-Ready Scripts
 
-Ten ready-to-paste PowerShell files, one per Action1 saved script.
+Four ready-to-paste PowerShell files, one per Action1 saved script.
 
 ## How to use
 
@@ -13,36 +13,20 @@ Ten ready-to-paste PowerShell files, one per Action1 saved script.
 7. Set **Run as: Local System**
 8. Save
 
-Repeat for each of the 10 files.
+Repeat for each of the 4 files.
 
 ## What's here
 
-### 7 per-location Full-mode scripts
-
-Each runs `kiosk-state.ps1` in the default `Full` mode with
-`$LocationName` hardcoded to that gym.
-
-| File | Action1 saved-script name |
-|---|---|
-| `WCS-Kiosk-State-Salem.ps1` | `WCS Kiosk State - Salem` |
-| `WCS-Kiosk-State-Keizer.ps1` | `WCS Kiosk State - Keizer` |
-| `WCS-Kiosk-State-Eugene.ps1` | `WCS Kiosk State - Eugene` |
-| `WCS-Kiosk-State-Springfield.ps1` | `WCS Kiosk State - Springfield` |
-| `WCS-Kiosk-State-Clackamas.ps1` | `WCS Kiosk State - Clackamas` |
-| `WCS-Kiosk-State-Milwaukie.ps1` | `WCS Kiosk State - Milwaukie` |
-| `WCS-Kiosk-State-Medford.ps1` | `WCS Kiosk State - Medford` |
-
-### 3 mode-only utility scripts (location-agnostic)
-
-Each replaces the `param()` block with a hardcoded `$Mode` so the
-script always runs that mode regardless of how it's invoked.
-`$LocationName` stays as `'Salem'` but doesn't get used by these modes.
-
 | File | Action1 saved-script name | What it does |
 |---|---|---|
-| `WCS-Kiosk-State-Inventory.ps1` | `WCS Kiosk State - Inventory` | Read-only state report |
-| `WCS-Kiosk-State-Lockdown.ps1` | `WCS Kiosk State - Lockdown` | Chrome HKLM + Staff HKCU lockdown only |
-| `WCS-Kiosk-State-Cleanup.ps1` | `WCS Kiosk State - Cleanup` | Profile sweep only |
+| `WCS-Kiosk-State-Full.ps1` | `WCS Kiosk State - Full` | Default `-Mode Full`. Bootstraps a kiosk: users, profile sweep, app installs, branding, Chrome policies, Staff lockdown, scheduled tasks. |
+| `WCS-Kiosk-State-Inventory.ps1` | `WCS Kiosk State - Inventory` | Read-only state report. Run on any kiosk to verify state. |
+| `WCS-Kiosk-State-Lockdown.ps1` | `WCS Kiosk State - Lockdown` | Chrome HKLM + Staff HKCU lockdown only. Quick re-lock after drift. |
+| `WCS-Kiosk-State-Cleanup.ps1` | `WCS Kiosk State - Cleanup` | Profile sweep only. Deletes any non-allowlisted local users + their profile folders. |
+
+All four scripts run on every kiosk regardless of location — location is
+set per-kiosk in the Portal app config UI (writes `C:\WCS\config.json`),
+which the launcher reads on each launch.
 
 ## Regenerating
 
@@ -53,13 +37,5 @@ them by hand. If you change `kiosk-state.ps1`, regenerate them:
 & docs/deployment/action1-scripts/_generate.ps1
 ```
 
-The generator reads the canonical script and rewrites all 10 files
-with the appropriate `$LocationName` / `$Mode` substitution.
-
-## Why ten scripts and not just one with parameters?
-
-Action1's plan tier doesn't expose a per-run **Parameters** field for
-PowerShell scripts. So we hardcode `$Mode` and `$LocationName` into
-each saved Action1 script body. See
-[`../01-one-time-setup.md`](../01-one-time-setup.md) Part 4 for the
-full reasoning.
+The generator reads the canonical script and rewrites all 4 files
+with the appropriate `$Mode` substitution.
