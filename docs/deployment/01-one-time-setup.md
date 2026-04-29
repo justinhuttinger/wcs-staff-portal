@@ -64,10 +64,17 @@ just log `SKIP Bitdefender already installed` — that's intended.
 
 ---
 
-## Part 4: Action1 — create the kiosk-state script (one per location)
+## Part 4: Action1 — create the kiosk-state scripts
 
-Repeat this **once per location** (Salem, Beaverton, etc.). Only
-`$LocationName` differs between them.
+Action1's free / lower-tier plans don't expose a per-run **Parameters**
+field, so we hardcode `$Mode` and `$LocationName` directly in the
+saved script body. This means **10 saved scripts total** — but each is
+just a copy-paste with one or two lines edited.
+
+### 4a. Create the 7 per-location Full-mode scripts
+
+Repeat once per location (Salem, Beaverton, etc.). Only `$LocationName`
+differs between them.
 
 1. Action1 -> left nav -> **Scripts** (or **Automations** -> **Scripts**)
 2. **+ New Script** -> **PowerShell**
@@ -76,9 +83,8 @@ Repeat this **once per location** (Salem, Beaverton, etc.). Only
    | Field | Value |
    |---|---|
    | Name | `WCS Kiosk State - <LocationName>` (e.g. `WCS Kiosk State - Salem`) |
-   | Description | `Enforces full kiosk state. Idempotent.` |
+   | Description | `Full kiosk state enforcement for <LocationName>. Idempotent.` |
    | Run as | **Local System** |
-   | Parameters | (empty for Full mode; or `-Mode Inventory` for read-only) |
 
 4. **Script body:** paste the entire contents of `scripts/kiosk-state.ps1`
 5. **Edit one line** near the top of the pasted script:
@@ -88,12 +94,48 @@ Repeat this **once per location** (Salem, Beaverton, etc.). Only
    Change `'Salem'` to the location this script targets.
 6. **Save**
 
-You'll end up with 7 scripts, one per gym, each pinned to its location.
+End result: 7 scripts, one per gym, each pinned to its location. All
+run `-Mode Full` because that's the default in the `param()` block.
 
-> **Why per-location and not one parameterized script?** Action1's
-> Script parameter UI is clunky for multi-string args. Hardcoding
-> `$LocationName` per saved script means you don't have to remember
-> to set the parameter every time you push.
+### 4b. Create the 3 mode-only utility scripts (location-agnostic)
+
+These don't need per-location copies because the modes they run
+(Inventory / Lockdown / Cleanup) don't use `$LocationName` for
+anything functional — only Full mode writes the location into the
+Staff logon script.
+
+For each of the three utility scripts:
+
+1. Action1 -> **Scripts** -> **+ New Script** -> **PowerShell**
+2. Fields per the table below
+3. **Script body:** paste the entire contents of `scripts/kiosk-state.ps1`
+4. **Replace the entire `param()` block** at the top (5 lines) with
+   a single hardcoded line:
+   ```powershell
+   $Mode = 'Inventory'
+   ```
+   …or `'Lockdown'`, or `'Cleanup'`, depending on the utility script.
+5. Leave `$LocationName = 'Salem'` as-is (won't matter for these modes)
+6. **Save**
+
+| Script name | Replace `param()` with | When to run |
+|---|---|---|
+| `WCS Kiosk State - Inventory` | `$Mode = 'Inventory'` | Verify any kiosk's state, read-only |
+| `WCS Kiosk State - Lockdown` | `$Mode = 'Lockdown'` | Quick re-lock after Chrome / HKCU drift |
+| `WCS Kiosk State - Cleanup` | `$Mode = 'Cleanup'` | Periodic janitor: delete non-allowlisted users |
+
+### Total saved Action1 scripts
+
+- 7 location Full-mode scripts (`WCS Kiosk State - <Location>`)
+- 3 mode-only utility scripts (`WCS Kiosk State - Inventory / Lockdown / Cleanup`)
+- **= 10 scripts total**
+
+> **Why hardcoded and not parameterized?** Action1's Run dialog on
+> our plan tier doesn't accept script arguments — the only way to
+> control mode is to bake it into the saved script body. Same goes
+> for `$LocationName`. The "duplicate the script per variant"
+> approach is ugly but is the only one that actually works on this
+> plan.
 
 ---
 

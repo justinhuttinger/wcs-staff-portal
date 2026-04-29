@@ -41,6 +41,13 @@ tasks) idempotently — re-runnable any time without breaking anything.
 | `Cleanup` | Profile sweep only (delete non-allowlisted users) | Periodic janitor run |
 | `Inventory` | Read-only state report | Verification, no changes made |
 
+Because Action1's plan tier doesn't expose a per-run **Parameters**
+field, both `$Mode` and `$LocationName` are hardcoded into each saved
+Action1 script. You'll have **10 saved scripts total**: 7 per-location
+Full-mode scripts (`WCS Kiosk State - <Location>`) plus 3 mode-only
+utility scripts (`WCS Kiosk State - Inventory / Lockdown / Cleanup`).
+See [`01-one-time-setup.md`](01-one-time-setup.md) Part 4 for setup details.
+
 ## Allowlist policy
 
 Preserved on every kiosk: `Staff`, `Admin`, `abctech` (only if

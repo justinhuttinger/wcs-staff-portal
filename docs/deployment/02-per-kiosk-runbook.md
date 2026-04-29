@@ -37,13 +37,12 @@ minutes of the kiosk appearing in Action1. Otherwise:
 
 ---
 
-## Step 3: Run the kiosk-state script
+## Step 3: Run the kiosk-state script (Full mode)
 
-1. Action1 -> **Scripts** -> open `WCS Kiosk State - <Location>` for this kiosk's location
+1. Action1 -> **Scripts** -> open `WCS Kiosk State - <Location>` for this kiosk's location (this is the per-location Full-mode script)
 2. **Run** -> target = this kiosk only (for the first run)
 3. **Run as:** SYSTEM
-4. **Parameters:** leave empty (defaults to `-Mode Full`)
-5. Click **Run now**
+4. Click **Run now**
 
 The script will:
 - Create `Staff` and `Admin` local users
@@ -79,11 +78,11 @@ Now that the Staff hive exists, run the same script again:
 
 ## Step 6: Verify
 
-Run the script in **Inventory** mode:
+Run the read-only Inventory script:
 
-1. Action1 -> Scripts -> `WCS Kiosk State - <Location>`
-2. Edit the **Parameters** field for this run only: `-Mode Inventory`
-3. **Run now** on this kiosk
+1. Action1 -> Scripts -> `WCS Kiosk State - Inventory` (the location-agnostic utility script)
+2. Target = this kiosk
+3. **Run now**
 4. Inspect the script output (Action1 console captures stdout) — every
    line should be `OK`. Any `WARN` or `WOULD-REMOVE` indicates
    something to fix.
@@ -119,11 +118,14 @@ Next time Staff logs in, Portal will launch with `--abc-url=<URL>` set.
 ## Quick reference cheat sheet
 
 ```
-Action1 -> Scripts -> WCS Kiosk State - <Location> -> Run
-   Parameters (empty) = -Mode Full       (default, all sections)
-   Parameters: -Mode Lockdown            (just Chrome + Staff HKCU)
-   Parameters: -Mode Cleanup             (just profile sweep)
-   Parameters: -Mode Inventory           (read-only check)
+Action1 saved scripts:
+   WCS Kiosk State - Salem            -> Full enforcement, Salem kiosks
+   WCS Kiosk State - Beaverton        -> Full enforcement, Beaverton kiosks
+   WCS Kiosk State - <Location>       -> ...one per gym (7 total)
+
+   WCS Kiosk State - Inventory        -> Read-only state check (any kiosk)
+   WCS Kiosk State - Lockdown         -> Chrome + Staff HKCU re-lock only
+   WCS Kiosk State - Cleanup          -> Profile sweep only
 ```
 
 ```
