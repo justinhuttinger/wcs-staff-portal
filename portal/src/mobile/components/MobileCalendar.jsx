@@ -212,7 +212,9 @@ export default function MobileCalendar({ user }) {
         {loading && <MobileLoading variant="appointments" count={4} className="px-0 py-0" />}
 
         {!loading && filtered.length === 0 && (
-          <p className="text-text-muted text-sm py-12 text-center">No appointments for this day</p>
+          <div className="bg-surface rounded-2xl border border-border shadow-sm px-5 py-6 mt-4 text-center">
+            <p className="text-sm text-text-primary">No appointments for this day</p>
+          </div>
         )}
 
         {!loading && filtered.length > 0 && (

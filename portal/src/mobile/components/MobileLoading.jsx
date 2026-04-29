@@ -83,6 +83,49 @@ function RankingSkeleton({ count = 6 }) {
   )
 }
 
+function HrWorkersSkeleton({ count = 6 }) {
+  // Matches the worker list cards: avatar circle + name + meta row + chevron.
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: count }).map((_, i) => (
+        <PulseCard key={i} className="px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="bg-bg rounded-full h-10 w-10 shrink-0" />
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <Block className="h-3.5 w-2/3" />
+              <div className="flex gap-2">
+                <Block className="h-2.5 w-12" />
+                <Block className="h-2.5 w-20" />
+              </div>
+            </div>
+            <Block className="h-4 w-4 shrink-0" />
+          </div>
+        </PulseCard>
+      ))}
+    </div>
+  )
+}
+
+function HrDocsSkeleton({ count = 4 }) {
+  // Matches doc list cards: icon + title + date + small badge.
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: count }).map((_, i) => (
+        <PulseCard key={i} className="px-4 py-3">
+          <div className="flex items-center gap-3">
+            <Block className="h-5 w-5 shrink-0" />
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <Block className="h-3.5 w-3/4" />
+              <Block className="h-2.5 w-1/3" />
+            </div>
+            <div className="bg-bg rounded-full h-4 w-14 shrink-0" />
+          </div>
+        </PulseCard>
+      ))}
+    </div>
+  )
+}
+
 function CommNotesSkeleton({ count = 4 }) {
   return (
     <div className="space-y-3">
@@ -162,6 +205,8 @@ const VARIANTS = {
   appointments: AppointmentsSkeleton,
   ranking: RankingSkeleton,
   'comm-notes': CommNotesSkeleton,
+  'hr-workers': HrWorkersSkeleton,
+  'hr-docs': HrDocsSkeleton,
   report: ReportSkeleton,
 }
 

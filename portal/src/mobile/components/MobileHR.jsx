@@ -52,8 +52,12 @@ function formatDate(dateStr) {
   })
 }
 
-function Spinner() {
-  return <MobileLoading variant="appointments" count={5} />
+function WorkersSkeleton() {
+  return <MobileLoading variant="hr-workers" count={6} className="px-0 py-0" />
+}
+
+function DocsSkeleton() {
+  return <MobileLoading variant="hr-docs" count={4} className="px-0 py-0" />
 }
 
 function Toast({ message, onClose }) {
@@ -177,7 +181,7 @@ function WorkerList({ user, onSelectWorker, actionLabel }) {
           {!loading && <p className="text-[11px] text-text-muted">{filtered.length} employee{filtered.length !== 1 ? 's' : ''}</p>}
 
           {loading ? (
-            <Spinner />
+            <WorkersSkeleton />
           ) : error ? (
             <div className="text-center py-8">
               <p className="text-sm text-red-600 mb-3">{error}</p>
@@ -296,7 +300,7 @@ function WorkerDetail({ worker, user, onBack }) {
 
       {/* Documents */}
       {loading ? (
-        <Spinner />
+        <DocsSkeleton />
       ) : error ? (
         <div className="text-center py-8">
           <p className="text-sm text-red-600 mb-3">{error}</p>
