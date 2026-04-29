@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { getClubHealthReport } from '../../../lib/api'
+import MobileLoading from '../MobileLoading'
 
 const PIE_COLORS = ['#e53e3e', '#38a169', '#3182ce', '#d69e2e', '#805ad5', '#dd6b20', '#319795']
 
@@ -190,16 +191,7 @@ export default function MobileClubHealth({ startDate, endDate, locationSlug }) {
     return () => { cancelled = true }
   }, [startDate, endDate, locationSlug])
 
-  if (loading) return (
-    <div className="space-y-3">
-      {[...Array(4)].map((_, i) => (
-        <div key={i} className="bg-surface rounded-2xl border border-border p-4 animate-pulse">
-          <div className="h-4 bg-bg rounded w-1/3 mb-2" />
-          <div className="h-8 bg-bg rounded w-1/2" />
-        </div>
-      ))}
-    </div>
-  )
+  if (loading) return <MobileLoading count={4} className="px-0" />
 
   if (error) return (
     <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">

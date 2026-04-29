@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { getMembershipReport } from '../../../lib/api'
+import MobileLoading from '../MobileLoading'
 
 const SORT_OPTIONS = [
   { key: 'az', label: 'A-Z' },
@@ -124,16 +125,7 @@ export default function MobileMembership({ startDate, endDate, locationSlug }) {
   }, [data, salespeople])
 
 
-  if (loading) return (
-    <div className="p-4 space-y-3">
-      {[...Array(3)].map((_, i) => (
-        <div key={i} className="bg-surface rounded-2xl border border-border p-4 animate-pulse">
-          <div className="h-4 bg-bg rounded w-1/3 mb-2" />
-          <div className="h-8 bg-bg rounded w-1/2" />
-        </div>
-      ))}
-    </div>
-  )
+  if (loading) return <MobileLoading count={3} />
 
   if (error) return (
     <div className="p-4">

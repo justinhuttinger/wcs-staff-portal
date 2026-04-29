@@ -1,16 +1,17 @@
 import React from 'react'
 
-// Shared loading indicator: red spinner + dark text on a solid white bubble.
-// Use as <MobileLoading text="Loading..." /> wherever a spinner needs to sit
-// over the location background image.
-export default function MobileLoading({ text = 'Loading...', size = 'md', className = '' }) {
-  const dim = size === 'sm' ? 'h-5 w-5 border-2' : size === 'lg' ? 'h-8 w-8 border-[3px]' : 'h-6 w-6 border-2'
+// Skeleton loader: pulsing white cards with grey blocks. Used wherever
+// content is loading on mobile, including over the location background.
+export default function MobileLoading({ count = 3, className = '' }) {
   return (
-    <div className={`flex items-center justify-center py-6 ${className}`}>
-      <div className="inline-flex items-center gap-3 bg-surface rounded-2xl border border-border shadow-sm px-4 py-3">
-        <div className={`${dim} border-wcs-red border-t-transparent rounded-full animate-spin shrink-0`} />
-        {text && <span className="text-sm font-medium text-text-primary">{text}</span>}
-      </div>
+    <div className={`p-4 space-y-3 ${className}`}>
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="bg-surface rounded-2xl border border-border shadow-sm p-4 animate-pulse">
+          <div className="h-4 bg-bg rounded w-1/3 mb-3" />
+          <div className="h-8 bg-bg rounded w-1/2 mb-2" />
+          <div className="h-3 bg-bg rounded w-2/3" />
+        </div>
+      ))}
     </div>
   )
 }
