@@ -26,18 +26,11 @@ function ClipboardIcon() {
   )
 }
 
-function MegaphoneIcon() {
+function PodiumIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7 text-wcs-red">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 110-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38c-.551.318-1.26.117-1.527-.461a20.845 20.845 0 01-1.44-4.282m3.102.069a18.03 18.03 0 01-.59-4.59c0-1.586.205-3.124.59-4.59m0 9.18a23.848 23.848 0 018.835 2.535M10.34 6.66a23.847 23.847 0 008.835-2.535m0 0A23.74 23.74 0 0018.795 3m.38 1.125a23.91 23.91 0 011.014 5.395m-1.014 8.855c-.118.38-.245.754-.38 1.125m.38-1.125a23.91 23.91 0 001.014-5.395m0-3.46c.495.413.811 1.035.811 1.73 0 .695-.316 1.317-.811 1.73m0-3.46a24.347 24.347 0 010 3.46" />
-    </svg>
-  )
-}
-
-function TrophyIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7 text-wcs-red">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-4.5A3.375 3.375 0 0019.875 10.875 3.375 3.375 0 0021 8.25V6a1.5 1.5 0 00-1.5-1.5h-1.875a.375.375 0 01-.375-.375V3.75a.75.75 0 00-.75-.75h-9a.75.75 0 00-.75.75v.375a.375.375 0 01-.375.375H4.5A1.5 1.5 0 003 6v2.25a3.375 3.375 0 001.125 2.625A3.375 3.375 0 007.5 14.25v4.5m4.5-13.5v7.5a2.25 2.25 0 01-2.25 2.25h-.75a2.25 2.25 0 01-2.25-2.25v-7.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5M3.75 21V13.5h5.25V21M9.75 21V8.25h4.5V21M15 21V11.25h5.25V21" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M11 5.5l1-2 1 2 2 .5-1.5 1.5.5 2-2-1-2 1 .5-2L9.5 6z" />
     </svg>
   )
 }
@@ -124,8 +117,7 @@ export default function HomeScreen({ user, navigate, onLogout }) {
   const allTiles = [
     { label: 'Reports', icon: <BarChartIcon />, route: 'reports' },
     { label: 'Calendar', icon: <CalendarIcon />, route: 'calendar', desc: 'Tours & Day Ones' },
-    { label: 'Marketing', icon: <MegaphoneIcon />, route: 'reports/marketing' },
-    { label: 'Leaderboard', icon: <TrophyIcon />, route: 'leaderboard' },
+    { label: 'Leaderboard', icon: <PodiumIcon />, route: 'leaderboard' },
     { label: 'Comm Notes', icon: <NotesIcon />, route: 'comm-notes' },
     { label: 'HR', icon: <HRIcon />, route: 'hr' },
   ]
@@ -136,8 +128,6 @@ export default function HomeScreen({ user, navigate, onLogout }) {
   const tiles = allTiles.filter(tile => {
     // Hide Reports tile for team_member
     if (tile.label === 'Reports' && role === 'team_member') return false
-    // Marketing tile only for corporate and admin
-    if (tile.label === 'Marketing' && role !== 'corporate' && role !== 'admin') return false
     // HR tile only for manager+
     if (tile.label === 'HR' && roleIdx < ROLE_LEVELS.manager) return false
     return true
@@ -145,8 +135,8 @@ export default function HomeScreen({ user, navigate, onLogout }) {
 
   return (
     <div className="px-4 pt-6">
-      {/* User info — white card for readability over background */}
-      <div className="mb-6 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4">
+      {/* User info — solid white bubble header */}
+      <div className="mb-6 bg-surface rounded-2xl border border-border shadow-sm p-4">
         <h1 className="text-2xl font-bold text-text-primary">
           Welcome, {displayName}
         </h1>

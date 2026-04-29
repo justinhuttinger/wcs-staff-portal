@@ -84,10 +84,6 @@ export default function MobileDayOneOutcomeModal({ apt, locationSlug, onClose, o
 
   const contactName = capitalize(apt.contact_name || apt.name || 'Unknown')
 
-  function startEdit() {
-    setStep(1)
-  }
-
   return (
     <div className="fixed inset-0 bg-surface z-[60] flex flex-col">
       {/* Header */}
@@ -125,15 +121,6 @@ export default function MobileDayOneOutcomeModal({ apt, locationSlug, onClose, o
               {apt.assigned_user_name && <DetailRow label="Trainer" value={apt.assigned_user_name} />}
               {apt.day_one_booking_team_member && <DetailRow label="Booked By" value={apt.day_one_booking_team_member} />}
             </div>
-
-            {!readOnly && (
-              <button
-                onClick={startEdit}
-                className="w-full py-3 rounded-xl border-2 border-wcs-red text-wcs-red text-sm font-semibold active:bg-wcs-red/5"
-              >
-                Update Outcome
-              </button>
-            )}
           </div>
         )}
 
