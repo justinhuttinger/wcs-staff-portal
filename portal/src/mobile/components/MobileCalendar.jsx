@@ -131,8 +131,8 @@ export default function MobileCalendar({ user }) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="bg-surface/95 backdrop-blur-sm border-b border-border px-4 pt-4 pb-3 space-y-3 sticky top-0 z-20">
+      {/* Header — solid white bubble matching home / reports */}
+      <div className="mx-4 mt-4 mb-2 bg-surface border border-border rounded-2xl shadow-sm p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-bold text-text-primary">Calendar</h2>
