@@ -154,7 +154,7 @@ function WorkerList({ user, onSelectWorker, actionLabel }) {
       )}
 
       {needsLocationPick ? (
-        <div className="text-center py-12">
+        <div className="bg-surface border border-border rounded-2xl shadow-sm px-5 py-8 text-center">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-10 h-10 text-text-muted mx-auto mb-3">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
@@ -268,9 +268,9 @@ function WorkerDetail({ worker, user, onBack }) {
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
       {/* Header */}
-      <div className="flex items-center gap-3 mb-4">
+      <div className="bg-surface border border-border rounded-2xl shadow-sm px-4 py-3 flex items-center gap-3 mb-3">
         <BackButton onClick={onBack} />
-        <h2 className="text-lg font-bold text-text-primary">Employee Details</h2>
+        <h2 className="text-lg font-bold text-text-primary truncate">Employee Details</h2>
       </div>
 
       {/* Worker card */}
@@ -418,8 +418,12 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
   const [description, setDescription] = useState('')
   const [actionPlan, setActionPlan] = useState('')
   const [managerSignature, setManagerSignature] = useState('')
+  const [employeeSignature, setEmployeeSignature] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+
+  // Employee signature is optional and only offered for the more formal doc types.
+  const offerEmployeeSignature = reason === 'written_warning' || reason === 'termination'
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -427,14 +431,18 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
     setSubmitting(true)
     setError(null)
     try {
-      await createHRDocument({
+      const payload = {
         employee_name: worker.displayName,
         worker_id: worker.workerId,
         reason,
         description: description.trim(),
         action_plan: actionPlan.trim() || null,
         manager_signature: managerSignature,
-      })
+      }
+      if (offerEmployeeSignature && employeeSignature) {
+        payload.employee_signature = employeeSignature
+      }
+      await createHRDocument(payload)
       onSuccess()
     } catch (err) {
       setError(err.message || 'Failed to submit document')
@@ -445,9 +453,9 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
 
   return (
     <div className="px-4 pt-4 pb-8">
-      <div className="flex items-center gap-3 mb-4">
+      <div className="bg-surface border border-border rounded-2xl shadow-sm px-4 py-3 flex items-center gap-3 mb-3">
         <BackButton onClick={onBack} />
-        <h2 className="text-lg font-bold text-text-primary">Submit HR Document</h2>
+        <h2 className="text-lg font-bold text-text-primary truncate">Submit HR Document</h2>
       </div>
 
       {/* Worker card */}
@@ -508,9 +516,17 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
           />
         </div>
 
-        <div className="bg-surface border border-border rounded-2xl p-3">
-          <SignaturePad label="Manager Signature" value={managerSignature} onChange={setManagerSignature} />
+        <div>
+          <label className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1.5 bg-surface/95 backdrop-blur-sm rounded-lg px-2.5 py-1 inline-block">Manager Signature</label>
+          <SignaturePad label="" value={managerSignature} onChange={setManagerSignature} />
         </div>
+
+        {offerEmployeeSignature && (
+          <div>
+            <label className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1.5 bg-surface/95 backdrop-blur-sm rounded-lg px-2.5 py-1 inline-block">Employee Signature (optional)</label>
+            <SignaturePad label="" value={employeeSignature} onChange={setEmployeeSignature} />
+          </div>
+        )}
 
         {error && (
           <div className="px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>
@@ -557,11 +573,13 @@ export default function MobileHR({ user }) {
     return (
       <div className="px-4 pt-4 pb-8">
         {toast && <Toast message={toast} onClose={() => setToast(null)} />}
-        <div className="flex items-center gap-3 mb-4">
+        <div className="bg-surface border border-border rounded-2xl shadow-sm px-4 py-3 flex items-center gap-3 mb-3">
           <BackButton onClick={() => setView('landing')} />
-          <h2 className="text-lg font-bold text-text-primary">Submit Document</h2>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-bold text-text-primary truncate">Submit Document</h2>
+            <p className="text-xs text-text-muted">Select an employee</p>
+          </div>
         </div>
-        <p className="text-sm text-text-muted mb-4">Select an employee:</p>
         <WorkerList
           user={user}
           onSelectWorker={w => { setSelectedWorker(w); setView('submit-form') }}
@@ -593,11 +611,13 @@ export default function MobileHR({ user }) {
   if (view === 'view-pick') {
     return (
       <div className="px-4 pt-4 pb-8">
-        <div className="flex items-center gap-3 mb-4">
+        <div className="bg-surface border border-border rounded-2xl shadow-sm px-4 py-3 flex items-center gap-3 mb-3">
           <BackButton onClick={() => setView('landing')} />
-          <h2 className="text-lg font-bold text-text-primary">View Documents</h2>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-bold text-text-primary truncate">View Documents</h2>
+            <p className="text-xs text-text-muted">Select an employee to view their documents</p>
+          </div>
         </div>
-        <p className="text-sm text-text-muted mb-4">Select an employee to view their documents:</p>
         <WorkerList
           user={user}
           onSelectWorker={w => { setSelectedWorker(w); setView('worker-detail') }}
@@ -621,7 +641,7 @@ export default function MobileHR({ user }) {
     <div className="px-4 pt-6 pb-8">
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
-      <div className="bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4 mb-6">
+      <div className="bg-surface rounded-2xl border border-border shadow-sm p-4 mb-6">
         <h1 className="text-xl font-bold text-text-primary">HR Documents</h1>
       </div>
 
