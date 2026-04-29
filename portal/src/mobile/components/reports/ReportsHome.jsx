@@ -46,8 +46,9 @@ const REPORT_TILES = [
     label: 'Meta Ads',
     description: 'Facebook & Instagram ads',
     icon: (
+      // Cursor-arrow-rays: clicks + impressions
       <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 110-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38a.954.954 0 01-1.233-.21 23.905 23.905 0 01-3.212-6.027M10.34 15.84A23.653 23.653 0 019 12c0-1.35.11-2.674.34-3.96m0 7.8a23.745 23.745 0 011.966-5.822M10.34 8.16c1.544-2.206 3.594-3.94 5.966-5.073A.9.9 0 0117.25 3.9v.143a2.25 2.25 0 01.398 1.257l.09.898a23.98 23.98 0 000 11.604l-.09.898a2.25 2.25 0 01-.398 1.257v.143a.9.9 0 01-.944.813 15.6 15.6 0 01-5.966-5.073" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.672zM12 2.25V4.5m5.834.166l-1.591 1.591M20.25 10.5H18M7.757 14.743l-1.59 1.59M6 10.5H3.75m4.007-4.243l-1.59-1.59" />
       </svg>
     ),
   },
@@ -56,8 +57,9 @@ const REPORT_TILES = [
     label: 'Google Marketing',
     description: 'Business Profile & Analytics',
     icon: (
+      // Magnifying glass: search + visibility
       <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-9v18m9-9H3" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
       </svg>
     ),
   },

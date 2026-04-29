@@ -260,8 +260,8 @@ export default function MobileCommunicationNotes({ user }) {
   if (selectedNote) {
     const note = selectedNote
     return (
-      <div className="flex flex-col h-full">
-        <div className="mx-4 mt-4 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4">
+      <div className="flex flex-col h-full bg-bg">
+        <div className="mx-4 mt-4 bg-surface rounded-2xl border border-border shadow-sm p-4">
           <div className="flex items-center gap-3">
             <button onClick={() => setSelectedNote(null)} className="p-1 text-text-muted active:text-text-primary">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">

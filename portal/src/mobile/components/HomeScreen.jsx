@@ -115,11 +115,11 @@ export default function HomeScreen({ user, navigate, onLogout }) {
   }, [locationSlug])
 
   const allTiles = [
-    { label: 'Reports', icon: <BarChartIcon />, route: 'reports' },
+    { label: 'Reports', icon: <BarChartIcon />, route: 'reports', desc: 'Performance dashboards' },
     { label: 'Calendar', icon: <CalendarIcon />, route: 'calendar', desc: 'Tours & Day Ones' },
-    { label: 'Leaderboard', icon: <PodiumIcon />, route: 'leaderboard' },
-    { label: 'Comm Notes', icon: <NotesIcon />, route: 'comm-notes' },
-    { label: 'HR', icon: <HRIcon />, route: 'hr' },
+    { label: 'Leaderboard', icon: <PodiumIcon />, route: 'leaderboard', desc: 'Top performers' },
+    { label: 'Comm Notes', icon: <NotesIcon />, route: 'comm-notes', desc: 'Member & team notes' },
+    { label: 'HR', icon: <HRIcon />, route: 'hr', desc: 'Resources & docs' },
   ]
 
   const ROLE_LEVELS = { team_member: 0, lead: 1, manager: 2, corporate: 3, admin: 4 }
