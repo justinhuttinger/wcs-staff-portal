@@ -101,7 +101,7 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
       </div>
 
       {/* Trainer cards */}
-      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Trainers</p>
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide bg-surface/95 backdrop-blur-sm rounded-lg border border-border px-3 py-1.5 shadow-sm inline-block">Trainers</p>
       <div className="space-y-2">
         {trainers.map(trainer => {
           const tShowPct = trainer.total > 0 ? Math.round((trainer.completed / trainer.total) * 100) : 0
@@ -132,7 +132,7 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
       {/* Day One contacts */}
       {(data?.contacts || []).length > 0 && (
         <>
-          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide pt-2">Day One Contacts</p>
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide pt-2 bg-surface/95 backdrop-blur-sm rounded-lg border border-border px-3 py-1.5 shadow-sm inline-block">Day One Contacts</p>
           <div className="space-y-2">
             {(data?.contacts || []).map((c, idx) => (
               <button

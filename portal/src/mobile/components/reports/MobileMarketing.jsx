@@ -377,7 +377,9 @@ export default function MobileMarketing() {
   if (notConnected) {
     return (
       <div className="p-4">
-        <h2 className="text-lg font-bold text-text-primary mb-4">Meta Ads</h2>
+        <div className="bg-surface border border-border rounded-2xl shadow-sm p-4 mb-4">
+          <h2 className="text-lg font-bold text-text-primary">Meta Ads</h2>
+        </div>
         <div className="bg-surface rounded-2xl border border-border p-8 text-center">
           <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-red-50 flex items-center justify-center">
             <svg className="w-7 h-7 text-wcs-red" viewBox="0 0 24 24" fill="currentColor">
@@ -508,7 +510,7 @@ export default function MobileMarketing() {
 
           {/* Campaign count */}
           <div className="px-4 mb-2">
-            <p className="text-xs text-text-muted">
+            <p className="text-xs text-text-muted bg-surface/95 backdrop-blur-sm rounded-lg border border-border px-3 py-1 shadow-sm inline-block">
               {filtered.length} campaign{filtered.length !== 1 ? 's' : ''}
               {location !== 'All' || type !== 'All' ? ' (filtered)' : ''}
             </p>

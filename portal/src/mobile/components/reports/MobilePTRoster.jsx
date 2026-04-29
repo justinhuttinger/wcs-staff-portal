@@ -94,7 +94,7 @@ export default function MobilePTRoster({ locationSlug }) {
         ))}
       </div>
 
-      <p className="text-xs text-text-muted">{filtered.length} clients across {trainerNames.length} trainers</p>
+      <p className="text-xs text-text-muted bg-surface/95 backdrop-blur-sm rounded-lg border border-border px-3 py-1 shadow-sm inline-block">{filtered.length} clients across {trainerNames.length} trainers</p>
 
       {/* Trainer accordion */}
       <div className="space-y-2">
