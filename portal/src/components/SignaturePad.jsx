@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 
-export default function SignaturePad({ value, onChange, label }) {
+export default function SignaturePad({ value, onChange, label, hideHelper = false }) {
   const canvasRef = useRef(null)
   const drawingRef = useRef(false)
   const [hasDrawn, setHasDrawn] = useState(false)
@@ -100,7 +100,9 @@ export default function SignaturePad({ value, onChange, label }) {
         className="w-full h-28 rounded-lg border border-border bg-white cursor-crosshair touch-none"
         style={{ touchAction: 'none' }}
       />
-      <p className="text-[10px] text-text-muted mt-1">Draw your signature above</p>
+      {!hideHelper && (
+        <p className="text-[10px] text-text-muted mt-1">Draw your signature above</p>
+      )}
     </div>
   )
 }

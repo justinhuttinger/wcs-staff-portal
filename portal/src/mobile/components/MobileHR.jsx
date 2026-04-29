@@ -518,13 +518,15 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
 
         <div>
           <label className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1.5 bg-surface/95 backdrop-blur-sm rounded-lg px-2.5 py-1 inline-block">Manager Signature</label>
-          <SignaturePad label="" value={managerSignature} onChange={setManagerSignature} />
+          <SignaturePad label="" hideHelper value={managerSignature} onChange={setManagerSignature} />
+          <p className="text-[10px] text-text-muted mt-1 bg-surface/95 backdrop-blur-sm rounded-lg px-2.5 py-0.5 inline-block">Draw your signature above</p>
         </div>
 
         {offerEmployeeSignature && (
           <div>
             <label className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1.5 bg-surface/95 backdrop-blur-sm rounded-lg px-2.5 py-1 inline-block">Employee Signature (optional)</label>
-            <SignaturePad label="" value={employeeSignature} onChange={setEmployeeSignature} />
+            <SignaturePad label="" hideHelper value={employeeSignature} onChange={setEmployeeSignature} />
+            <p className="text-[10px] text-text-muted mt-1 bg-surface/95 backdrop-blur-sm rounded-lg px-2.5 py-0.5 inline-block">Draw your signature above</p>
           </div>
         )}
 
