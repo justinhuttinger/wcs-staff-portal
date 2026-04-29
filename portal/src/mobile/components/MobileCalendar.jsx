@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { getDayOneTrackerAppointments, getTours } from '../../lib/api'
 import MobileDayOneOutcomeModal from './MobileDayOneOutcomeModal'
+import MobileLoading from './MobileLoading'
 
 function formatDate(dateStr) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
@@ -208,11 +209,7 @@ export default function MobileCalendar({ user }) {
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {error && <p className="text-sm text-wcs-red mb-3">{error}</p>}
 
-        {loading && (
-          <div className="flex items-center justify-center py-12">
-            <div className="w-6 h-6 border-2 border-wcs-red border-t-transparent rounded-full animate-spin" />
-          </div>
-        )}
+        {loading && <MobileLoading text="Loading..." className="py-12" />}
 
         {!loading && filtered.length === 0 && (
           <p className="text-text-muted text-sm py-12 text-center">No appointments for this day</p>

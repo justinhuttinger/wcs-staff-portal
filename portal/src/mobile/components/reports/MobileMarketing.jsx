@@ -5,6 +5,7 @@ import {
   getMetaAdsets,
   getMetaAds,
 } from '../../../lib/api'
+import MobileLoading from '../MobileLoading'
 
 /* ── helpers ────────────────────────────────────────── */
 
@@ -78,11 +79,7 @@ const DATE_PRESETS = [
 /* ── spinner ────────────────────────────────────────── */
 
 function Spinner() {
-  return (
-    <div className="flex justify-center py-12">
-      <div className="w-8 h-8 border-3 border-wcs-red/20 border-t-wcs-red rounded-full animate-spin" />
-    </div>
-  )
+  return <MobileLoading text="Loading..." className="py-12" />
 }
 
 /* ── pill button ────────────────────────────────────── */

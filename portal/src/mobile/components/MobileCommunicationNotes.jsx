@@ -7,6 +7,7 @@ import {
   addCommunicationNoteComment,
 } from '../../lib/api'
 import { LOCATION_NAMES } from '../../config/locations'
+import MobileLoading from './MobileLoading'
 
 const ROLES = ['team_member', 'lead', 'manager', 'corporate', 'admin']
 const STATUSES = ['unresolved', 'in_progress', 'completed']
@@ -62,11 +63,7 @@ function getDefaultDateTo() {
 }
 
 function Spinner() {
-  return (
-    <div className="flex items-center justify-center py-12">
-      <div className="w-6 h-6 border-2 border-wcs-red border-t-transparent rounded-full animate-spin" />
-    </div>
-  )
+  return <MobileLoading text="Loading..." className="py-12" />
 }
 
 function CopyButton({ value, onCopy, copied }) {

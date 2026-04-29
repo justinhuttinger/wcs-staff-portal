@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { getOperandioRange } from '../../../lib/api'
 import { LOCATION_NAMES } from '../../../config/locations'
+import MobileLoading from '../MobileLoading'
 
 const SEGMENT_COLORS = {
   on_time: '#18CE99',
@@ -322,7 +323,7 @@ export default function MobileOperations({ user }) {
         <Legend />
       </div>
 
-      {loading && <p className="text-text-muted text-sm py-4 text-center">Loading operations data...</p>}
+      {loading && <MobileLoading text="Loading operations data..." />}
       {error && <p className="px-4 text-wcs-red text-sm py-3">{error}</p>}
 
       {!loading && !error && (

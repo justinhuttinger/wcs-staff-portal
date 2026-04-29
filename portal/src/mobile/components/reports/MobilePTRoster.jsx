@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { getPTRoster } from '../../../lib/api'
+import MobileLoading from '../MobileLoading'
 
 function fmtMoney(val) {
   const n = parseFloat(val)
@@ -34,12 +35,7 @@ export default function MobilePTRoster({ locationSlug }) {
     })
   }, [locationSlug])
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center py-12 gap-2">
-      <div className="w-6 h-6 border-2 border-wcs-red border-t-transparent rounded-full animate-spin" />
-      <p className="text-text-muted text-xs">Loading PT roster from ABC Financial...</p>
-    </div>
-  )
+  if (loading) return <MobileLoading text="Loading PT roster from ABC Financial..." className="py-12" />
 
   if (error) return (
     <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">

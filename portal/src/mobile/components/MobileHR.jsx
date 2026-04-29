@@ -6,6 +6,7 @@ import {
   getPaychexLocations,
 } from '../../lib/api'
 import SignaturePad from '../../components/SignaturePad'
+import MobileLoading from './MobileLoading'
 
 const ROLES = ['team_member', 'lead', 'manager', 'corporate', 'admin']
 
@@ -52,11 +53,7 @@ function formatDate(dateStr) {
 }
 
 function Spinner() {
-  return (
-    <div className="flex items-center justify-center py-16">
-      <div className="w-6 h-6 border-2 border-wcs-red border-t-transparent rounded-full animate-spin" />
-    </div>
-  )
+  return <MobileLoading text="Loading..." className="py-16" />
 }
 
 function Toast({ message, onClose }) {

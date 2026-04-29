@@ -10,6 +10,7 @@ import {
   getGoogleAnalyticsKeyEvents,
 } from '../../../lib/api'
 import { LOCATION_OPTIONS as LOCATIONS } from '../../../config/locations'
+import MobileLoading from '../MobileLoading'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
@@ -167,7 +168,7 @@ function GbpSection({ startDate, endDate }) {
       })
   }, [startDate, endDate])
 
-  if (loading) return <p className="px-4 text-text-muted text-sm py-4 text-center">Loading Business Profile...</p>
+  if (loading) return <MobileLoading text="Loading Business Profile..." />
   if (error) return <p className="px-4 text-wcs-red text-sm py-3">{error}</p>
   if (!metrics.length) {
     return (
@@ -284,7 +285,7 @@ function GaSection({ startDate, endDate, locationSlug, compare, ga4Status }) {
       ) : errors.overview ? (
         <div className="bg-surface border border-border rounded-2xl p-3 text-sm text-wcs-red">{errors.overview}</div>
       ) : (
-        <p className="text-sm text-text-muted py-2 text-center">Loading overview...</p>
+        <MobileLoading text="Loading overview..." size="sm" className="py-2" />
       )}
 
       {/* Top Channels */}
