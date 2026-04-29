@@ -168,7 +168,7 @@ function GbpSection({ startDate, endDate }) {
       })
   }, [startDate, endDate])
 
-  if (loading) return <MobileLoading text="Loading Business Profile..." />
+  if (loading) return <MobileLoading variant="stats" count={4} className="px-0 py-0" />
   if (error) return <p className="px-4 text-wcs-red text-sm py-3">{error}</p>
   if (!metrics.length) {
     return (
@@ -285,7 +285,7 @@ function GaSection({ startDate, endDate, locationSlug, compare, ga4Status }) {
       ) : errors.overview ? (
         <div className="bg-surface border border-border rounded-2xl p-3 text-sm text-wcs-red">{errors.overview}</div>
       ) : (
-        <MobileLoading text="Loading overview..." size="sm" className="py-2" />
+        <MobileLoading variant="stats" count={4} className="px-0 py-0" />
       )}
 
       {/* Top Channels */}

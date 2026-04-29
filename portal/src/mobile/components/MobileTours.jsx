@@ -232,7 +232,7 @@ export default function MobileTours({ user }) {
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 pb-4">
         {loading ? (
-          <MobileLoading text="Loading..." className="py-16" />
+          <MobileLoading variant="appointments" count={5} className="px-0 py-0" />
         ) : view === 'day' ? (
           /* Day view */
           tours.length === 0 ? (

@@ -323,7 +323,7 @@ export default function MobileOperations({ user }) {
         <Legend />
       </div>
 
-      {loading && <MobileLoading text="Loading operations data..." />}
+      {loading && <MobileLoading variant="list" count={4} />}
       {error && <p className="px-4 text-wcs-red text-sm py-3">{error}</p>}
 
       {!loading && !error && (

@@ -63,7 +63,7 @@ function getDefaultDateTo() {
 }
 
 function Spinner() {
-  return <MobileLoading text="Loading..." className="py-12" />
+  return <MobileLoading variant="comm-notes" count={4} />
 }
 
 function CopyButton({ value, onCopy, copied }) {

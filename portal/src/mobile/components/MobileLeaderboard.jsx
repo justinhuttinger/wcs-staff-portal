@@ -196,7 +196,7 @@ export default function MobileLeaderboard({ user }) {
 
       {/* Content */}
       <div className="px-4 py-4">
-        {loading && <MobileLoading text="Loading..." className="py-16" />}
+        {loading && <MobileLoading variant="ranking" count={6} className="px-0 py-0" />}
 
         {error && !loading && (
           <div className="text-center py-16">

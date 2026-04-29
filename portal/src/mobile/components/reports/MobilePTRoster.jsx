@@ -35,7 +35,7 @@ export default function MobilePTRoster({ locationSlug }) {
     })
   }, [locationSlug])
 
-  if (loading) return <MobileLoading text="Loading PT roster from ABC Financial..." className="py-12" />
+  if (loading) return <MobileLoading variant="appointments" count={4} />
 
   if (error) return (
     <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">

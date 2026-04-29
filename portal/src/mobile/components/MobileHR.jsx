@@ -53,7 +53,7 @@ function formatDate(dateStr) {
 }
 
 function Spinner() {
-  return <MobileLoading text="Loading..." className="py-16" />
+  return <MobileLoading variant="appointments" count={5} />
 }
 
 function Toast({ message, onClose }) {

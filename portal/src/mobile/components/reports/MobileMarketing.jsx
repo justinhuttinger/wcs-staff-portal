@@ -79,7 +79,7 @@ const DATE_PRESETS = [
 /* ── spinner ────────────────────────────────────────── */
 
 function Spinner() {
-  return <MobileLoading text="Loading..." className="py-12" />
+  return <MobileLoading variant="stats" count={4} />
 }
 
 /* ── pill button ────────────────────────────────────── */

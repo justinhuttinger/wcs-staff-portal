@@ -132,7 +132,7 @@ export default function MobileApp() {
   if (loading) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
-        <MobileLoading text="Loading..." size="lg" />
+        <MobileLoading variant="list" count={2} />
       </div>
     )
   }

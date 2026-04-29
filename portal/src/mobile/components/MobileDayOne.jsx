@@ -153,7 +153,7 @@ export default function MobileDayOne({ user }) {
 
       <div className="flex-1 overflow-y-auto px-4 pb-4">
         {loading ? (
-          <MobileLoading text="Loading..." className="py-16" />
+          <MobileLoading variant="appointments" count={5} className="px-0 py-0" />
         ) : displayList.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-text-muted">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 mb-2 opacity-40">

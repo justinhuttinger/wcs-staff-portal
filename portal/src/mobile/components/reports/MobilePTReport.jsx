@@ -70,7 +70,7 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
   }, [trainers])
 
 
-  if (loading) return <MobileLoading count={3} />
+  if (loading) return <MobileLoading variant="report" />
 
   if (error) return (
     <div className="p-4">

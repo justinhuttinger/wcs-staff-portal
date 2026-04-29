@@ -125,7 +125,7 @@ export default function MobileMembership({ startDate, endDate, locationSlug }) {
   }, [data, salespeople])
 
 
-  if (loading) return <MobileLoading count={3} />
+  if (loading) return <MobileLoading variant="report" />
 
   if (error) return (
     <div className="p-4">
