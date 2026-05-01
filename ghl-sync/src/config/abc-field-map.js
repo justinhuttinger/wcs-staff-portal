@@ -21,15 +21,4 @@ const ABC_TAGS = {
   inactive: 'cancelled / past member',
 };
 
-// Membership types to skip during reconciliation — not real members
-const ABC_SKIP_MEMBERSHIP_TYPES = [
-  'CHILDCARE',
-  'Club Access',
-  'Event Access',
-  'NON-MEMBER',
-  'NLPT ONLY',
-  'PT ONLY',
-  'SWIM ONLY',
-];
-
-module.exports = { ABC_GHL_FIELD_MAP, ABC_TAGS, ABC_SKIP_MEMBERSHIP_TYPES };
+module.exports = { ABC_GHL_FIELD_MAP, ABC_TAGS };

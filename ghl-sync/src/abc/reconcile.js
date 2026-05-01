@@ -1,6 +1,7 @@
 const supabase = require('../db/supabase');
 const { post, put, sleep } = require('../ghl/client');
-const { ABC_GHL_FIELD_MAP, ABC_TAGS, ABC_SKIP_MEMBERSHIP_TYPES } = require('../config/abc-field-map');
+const { ABC_GHL_FIELD_MAP, ABC_TAGS } = require('../config/abc-field-map');
+const { getSkipList } = require('../config/membership-skip-list');
 
 const DRY_RUN = (process.env.DRY_RUN || 'true') === 'true';
 
@@ -12,6 +13,8 @@ const DRY_RUN = (process.env.DRY_RUN || 'true') === 'true';
 async function reconcileLocation(location, runId) {
   const { id: locationId, name: locationName, clubNumber, apiKey } = location;
   console.log(`[Reconcile] ${locationName}: starting (dry_run=${DRY_RUN})`);
+
+  const skipMembershipTypes = await getSkipList();
 
   // 1. Load active ABC members + recently cancelled (last 24h) for this club
   // Paginate to avoid Supabase 1000 row default limit
@@ -148,7 +151,7 @@ async function reconcileLocation(location, runId) {
 
   for (const abc of abcMembers) {
     // Skip non-member membership types
-    if (abc.membership_type && ABC_SKIP_MEMBERSHIP_TYPES.includes(abc.membership_type)) {
+    if (abc.membership_type && skipMembershipTypes.has(abc.membership_type)) {
       skipped++;
       continue;
     }

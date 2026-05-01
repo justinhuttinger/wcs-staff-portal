@@ -16,6 +16,7 @@ import LayoutExplorer from './admin/LayoutExplorer'
 import ABCSyncAdmin from './admin/ABCSyncAdmin'
 import CustomFieldsAdmin from './admin/CustomFieldsAdmin'
 import ActionLinksAdmin from './admin/ActionLinksAdmin'
+import MembershipSkipListAdmin from './admin/MembershipSkipListAdmin'
 
 const SETUP_TILES = [
   { key: 'staff', label: 'Staff', desc: 'Accounts & Roles', icon: 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z' },
@@ -27,6 +28,7 @@ const SETUP_TILES = [
   { key: 'drive-folders', label: 'Drive Folders', desc: 'Shared Drive Tiles', icon: 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z' },
   { key: 'layouts', label: 'Layouts', desc: 'Explore UI Options', icon: 'M2.25 7.125C2.25 6.504 2.754 6 3.375 6h6c.621 0 1.125.504 1.125 1.125v3.75c0 .621-.504 1.125-1.125 1.125h-6a1.125 1.125 0 0 1-1.125-1.125v-3.75ZM14.25 8.625c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v8.25c0 .621-.504 1.125-1.125 1.125h-5.25a1.125 1.125 0 0 1-1.125-1.125v-8.25ZM3.75 16.125c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v2.25c0 .621-.504 1.125-1.125 1.125h-5.25a1.125 1.125 0 0 1-1.125-1.125v-2.25Z' },
   { key: 'action-links', label: 'Action Links', desc: 'Day One & VIP URLs', icon: 'M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m9.86-4.939a4.5 4.5 0 0 0-1.242-7.244l4.5-4.5a4.5 4.5 0 0 1 6.364 6.364l-1.757 1.757' },
+  { key: 'membership-skip', label: 'Excluded Types', desc: 'Membership Filter', icon: 'M3 4.5h13.5m-13.5 7.5H21m-7.5 7.5h-9M9 4.5l3 3m0-3-3 3' },
 ]
 
 const TECHNICAL_TILES = [
@@ -104,6 +106,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange }) {
         {activeSection === 'abc-sync' && <ABCSyncAdmin />}
         {activeSection === 'custom-fields' && <CustomFieldsAdmin />}
         {activeSection === 'action-links' && <ActionLinksAdmin />}
+        {activeSection === 'membership-skip' && <MembershipSkipListAdmin />}
       </div>
     )
   }

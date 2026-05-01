@@ -2,6 +2,7 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { invalidateSkipList } = require('../utils/membershipSkipList')
 
 const GHL_SYNC_URL = process.env.GHL_SYNC_URL // e.g. https://wcs-ghl-sync.onrender.com
 const SYNC_SECRET = process.env.SYNC_SECRET
@@ -285,6 +286,60 @@ router.post('/stop-ghl', async (req, res) => {
 
     const data = await response.json()
     res.json(data)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /abc-sync/skip-list — list excluded membership types
+router.get('/skip-list', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('abc_membership_skip_list')
+      .select('membership_type, note, created_at')
+      .order('membership_type')
+    if (error) return res.status(500).json({ error: error.message })
+    res.json({ items: data || [] })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /abc-sync/skip-list — add a membership type to the skip list
+router.post('/skip-list', async (req, res) => {
+  const membershipType = (req.body?.membership_type || '').trim()
+  const note = (req.body?.note || '').trim() || null
+  if (!membershipType) return res.status(400).json({ error: 'membership_type is required' })
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('abc_membership_skip_list')
+      .upsert({
+        membership_type: membershipType,
+        note,
+        created_by: req.staff?.id || null,
+      })
+      .select()
+      .single()
+    if (error) return res.status(500).json({ error: error.message })
+    invalidateSkipList()
+    res.json({ item: data })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /abc-sync/skip-list/:type — remove a type from the skip list
+router.delete('/skip-list/:type', async (req, res) => {
+  const membershipType = req.params.type
+  try {
+    const { error } = await supabaseAdmin
+      .from('abc_membership_skip_list')
+      .delete()
+      .eq('membership_type', membershipType)
+    if (error) return res.status(500).json({ error: error.message })
+    invalidateSkipList()
+    res.json({ ok: true })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

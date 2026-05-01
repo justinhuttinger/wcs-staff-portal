@@ -2,6 +2,7 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { getSkipList } = require('../utils/membershipSkipList')
 
 const router = Router()
 router.use(authenticate)
@@ -104,9 +105,6 @@ const CLUB_SLUG_MAP = {
 }
 const SLUG_CLUB_MAP = Object.fromEntries(Object.entries(CLUB_SLUG_MAP).map(([k, v]) => [v, k]))
 
-// Membership types to skip (not real members)
-const SKIP_TYPES = ['CHILDCARE', 'Club Access', 'Event Access', 'NON-MEMBER', 'NLPT ONLY', 'PT ONLY', 'SWIM ONLY']
-
 // ---------------------------------------------------------------------------
 // GET /reports/salesperson-stats
 // Query params: start_date, end_date, location_id, location_slug
@@ -158,7 +156,8 @@ router.get('/membership', async (req, res) => {
     }
 
     // Filter out non-member types
-    const filteredMembers = abcMembers.filter(m => !SKIP_TYPES.includes(m.membership_type))
+    const skipTypes = await getSkipList()
+    const filteredMembers = abcMembers.filter(m => !skipTypes.has(m.membership_type))
 
     // --- 2. GHL enrichment: look up day_one_booked, vip_count, same_day_sale by email ---
     const emails = [...new Set(filteredMembers.map(m => m.email).filter(Boolean))]
@@ -494,7 +493,8 @@ router.get('/club-health', async (req, res) => {
       if (page.length < 1000) break
       abcFrom += 1000
     }
-    const filteredMembers = abcMembers.filter(m => !SKIP_TYPES.includes(m.membership_type))
+    const skipTypes = await getSkipList()
+    const filteredMembers = abcMembers.filter(m => !skipTypes.has(m.membership_type))
 
     // GHL enrichment for same_day_sale
     const emails = [...new Set(filteredMembers.map(m => m.email).filter(Boolean))]
