@@ -1,7 +1,8 @@
 import { useState } from 'react'
 
 // Shared mobile horizontal-bar breakdown for membership-type tables.
-// When `collapsible` is true the body is hidden until the header is tapped.
+// When `collapsible` is true the component renders as a compact pill
+// until tapped, then expands to the full breakdown card.
 export default function MembershipTypeTable({ title, rows, collapsible = false }) {
   const [open, setOpen] = useState(!collapsible)
   const list = rows || []
@@ -9,39 +10,56 @@ export default function MembershipTypeTable({ title, rows, collapsible = false }
   const totalAgreements = list.reduce((s, r) => s + (r.agreements || 0), 0)
   const max = list.reduce((m, r) => Math.max(m, r.members || 0), 0)
 
+  // Compact bubble — collapsed state (mobile)
+  if (collapsible && !open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-expanded={false}
+        className="inline-flex items-center gap-2 px-3 py-1.5 bg-surface rounded-full border border-border active:bg-bg/40 transition-colors"
+      >
+        <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wide">
+          {title}
+        </span>
+        <span className="inline-flex items-baseline gap-0.5 text-xs border-l border-border pl-2">
+          <span className="font-bold text-text-primary tabular-nums">{totalMembers.toLocaleString()}</span>
+          <span className="text-[9px] uppercase tracking-wide text-text-muted">m</span>
+        </span>
+        <span className="inline-flex items-baseline gap-0.5 text-xs">
+          <span className="font-bold text-text-primary tabular-nums">{totalAgreements.toLocaleString()}</span>
+          <span className="text-[9px] uppercase tracking-wide text-text-muted">a</span>
+        </span>
+        <span className="flex items-center justify-center w-5 h-5 rounded-full bg-bg border border-border text-text-muted">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        </span>
+      </button>
+    )
+  }
+
+  // Expanded card — full breakdown
   return (
-    <div className={`bg-surface rounded-2xl border border-border ${collapsible ? '' : 'p-4'} ${collapsible && open ? 'p-4' : ''}`}>
+    <div className="bg-surface rounded-2xl border border-border p-4">
       {collapsible ? (
         <button
           type="button"
-          onClick={() => setOpen(o => !o)}
-          className={`flex items-center justify-between w-full text-left gap-3 group transition-colors ${open ? 'p-0 mb-3' : 'p-3 active:bg-bg/40 rounded-2xl'}`}
-          aria-expanded={open}
+          onClick={() => setOpen(false)}
+          aria-expanded={true}
+          className="flex items-center justify-between w-full text-left mb-3 group"
         >
-          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide truncate">{title}</p>
-          <span className="flex items-center gap-1.5 flex-shrink-0">
-            <span className="inline-flex items-baseline gap-1 px-2 py-0.5 rounded-full bg-bg border border-border text-[11px]">
-              <span className="font-bold text-text-primary tabular-nums">{totalMembers.toLocaleString()}</span>
-              <span className="text-[9px] uppercase tracking-wide text-text-muted">Mem</span>
-            </span>
-            <span className="inline-flex items-baseline gap-1 px-2 py-0.5 rounded-full bg-bg border border-border text-[11px]">
-              <span className="font-bold text-text-primary tabular-nums">{totalAgreements.toLocaleString()}</span>
-              <span className="text-[9px] uppercase tracking-wide text-text-muted">Agr</span>
-            </span>
-            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-bg border border-border text-text-muted">
-              <svg
-                viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-              </svg>
-            </span>
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">{title}</p>
+          <span className="flex items-center justify-center w-5 h-5 rounded-full bg-bg border border-border text-text-muted">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3 rotate-180">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+            </svg>
           </span>
         </button>
       ) : (
         <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">{title}</p>
       )}
-      {!open ? null : list.length === 0 || totalMembers === 0 ? (
+      {list.length === 0 || totalMembers === 0 ? (
         <p className="text-sm text-text-muted py-2 text-center">No data</p>
       ) : (
         <>
