@@ -80,7 +80,7 @@ async function aggregateLocation(locationSlug, bounds) {
   const clubNumber = locationSlug ? SLUG_CLUB_MAP[locationSlug] : null
   let abcQuery = supabaseAdmin
     .from('abc_members')
-    .select('sales_person_name, email, membership_type')
+    .select('sales_person_name, email, membership_type, sign_date, since_date')
     .eq('is_active', true)
     .not('sign_date', 'is', null)
   if (bounds.startDate) abcQuery = abcQuery.gte('sign_date', bounds.startDate)
@@ -98,7 +98,10 @@ async function aggregateLocation(locationSlug, bounds) {
     abcFrom += 1000
   }
   const skipTypes = await getSkipList()
-  const members = abcMembers.filter(m => !skipTypes.has((m.membership_type || '').toLowerCase()))
+  const members = abcMembers.filter(m =>
+    !skipTypes.has((m.membership_type || '').toLowerCase())
+    && m.since_date && m.sign_date && m.since_date >= m.sign_date
+  )
 
   // Look up same_day_sale from GHL for these members
   const memberEmails = [...new Set(members.map(m => m.email).filter(Boolean))]

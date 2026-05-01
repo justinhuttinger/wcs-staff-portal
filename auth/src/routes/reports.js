@@ -155,9 +155,13 @@ router.get('/membership', async (req, res) => {
       abcFrom += 1000
     }
 
-    // Filter out non-member types
+    // Filter out non-member types AND renewals (since_date < sign_date means a renewal,
+    // not a new sale; ABC's "New Member Sales" report excludes those, so we do too).
     const skipTypes = await getSkipList()
-    const filteredMembers = abcMembers.filter(m => !skipTypes.has((m.membership_type || '').toLowerCase()))
+    const filteredMembers = abcMembers.filter(m =>
+      !skipTypes.has((m.membership_type || '').toLowerCase())
+      && m.since_date && m.sign_date && m.since_date >= m.sign_date
+    )
 
     // --- 2. GHL enrichment: look up day_one_booked, vip_count, same_day_sale by email ---
     const emails = [...new Set(filteredMembers.map(m => m.email).filter(Boolean))]
@@ -477,7 +481,7 @@ router.get('/club-health', async (req, res) => {
 
     let abcQuery = supabaseAdmin
       .from('abc_members')
-      .select('sales_person_name, email, membership_type, agreement_number, sign_date')
+      .select('sales_person_name, email, membership_type, agreement_number, sign_date, since_date')
       .eq('is_active', true)
       .not('sign_date', 'is', null)
     if (start_date) abcQuery = abcQuery.gte('sign_date', start_date)
@@ -494,7 +498,10 @@ router.get('/club-health', async (req, res) => {
       abcFrom += 1000
     }
     const skipTypes = await getSkipList()
-    const filteredMembers = abcMembers.filter(m => !skipTypes.has((m.membership_type || '').toLowerCase()))
+    const filteredMembers = abcMembers.filter(m =>
+      !skipTypes.has((m.membership_type || '').toLowerCase())
+      && m.since_date && m.sign_date && m.since_date >= m.sign_date
+    )
 
     // GHL enrichment for same_day_sale
     const emails = [...new Set(filteredMembers.map(m => m.email).filter(Boolean))]
