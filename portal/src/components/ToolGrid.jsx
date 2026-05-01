@@ -16,7 +16,16 @@ const TILE_ICONS = {
   hr: 'M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Zm6-10.125a1.875 1.875 0 1 1-3.75 0 1.875 1.875 0 0 1 3.75 0Zm1.294 6.336a6.721 6.721 0 0 1-3.17.789 6.721 6.721 0 0 1-3.168-.789 3.376 3.376 0 0 1 6.338 0Z',
   helpCenter: 'M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z',
   notifications: 'M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0',
+  ordering: 'M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z',
 }
+
+// Vendor ordering sub-tiles (opens via the "Ordering" tile in Tools)
+const ORDERING_LINKS = [
+  { label: 'SportLife Distribution', description: 'Supplements', url: 'https://sportlifedistribution.com/' },
+  { label: 'MyCoke', description: 'Beverages', url: 'https://www.my-coke.com/' },
+  // TODO: replace with real Walter E. Nelson ordering portal URL
+  { label: 'Walter E. Nelson', description: 'Supplies', url: 'https://www.walterenelson.com/' },
+]
 
 // Which built-in tool IDs are "Apps" (external services)
 const APP_IDS = ['grow', 'abc', 'wheniwork', 'paychex', 'gmail']
@@ -86,6 +95,7 @@ function getMotivationalMessage() {
 export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onMetaAds, onLeaderboard, onHR, onHelpCenter, onTickets, onDrive, onCommunicationNotes, onReporting, userRole, userName }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
+  const [showOrdering, setShowOrdering] = useState(false)
   const [tilesLoaded, setTilesLoaded] = useState(false)
   const [calendarBadge, setCalendarBadge] = useState(0)
   const [commNotesBadge, setCommNotesBadge] = useState(0)
@@ -205,6 +215,28 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {childTiles.length === 0 && (
             <p className="col-span-4 text-center text-text-muted text-sm py-8">No items in this category yet</p>
           )}
+        </div>
+      </div>
+    )
+  }
+
+  if (showOrdering) {
+    return (
+      <div className="w-full max-w-4xl mx-auto px-8">
+        <button
+          onClick={() => setShowOrdering(false)}
+          className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary hover:border-text-muted transition-colors mb-4 mt-2"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to Portal
+        </button>
+        <h2 className="text-lg font-bold text-text-primary mb-4">Ordering</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
+          {ORDERING_LINKS.map((link) => (
+            <ToolButton key={link.label} label={link.label} description={link.description} url={link.url} />
+          ))}
         </div>
       </div>
     )
@@ -436,6 +468,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {onHR && roleIdx >= ROLE_LEVELS.manager && <SvgTileButton onClick={onHR} iconPath={TILE_ICONS.hr} label="HR Docs" desc="Documents" />}
           {/* 4.7. Help Center — all roles */}
           {onHelpCenter && <SvgTileButton onClick={onHelpCenter} iconPath={TILE_ICONS.helpCenter} label="Help Center" desc="Guides" />}
+          {/* 4.8. Ordering — opens sub-grid of vendor links */}
+          <SvgTileButton onClick={() => setShowOrdering(true)} iconPath={TILE_ICONS.ordering} label="Ordering" desc="Vendors" />
           {/* 4.9. Tickets — lead+ */}
           {onTickets && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTickets} iconPath={TILE_ICONS.tickets} label="Tickets/Support" desc="Help Desk" />}
           {/* (Day One Tracking merged into Calendar) */}
