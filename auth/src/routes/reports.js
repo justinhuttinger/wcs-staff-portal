@@ -670,6 +670,46 @@ router.get('/club-health', async (req, res) => {
       .sort((a, b) => b.count - a.count)
       .slice(0, 3)
 
+    // --- Active members (full club roster, ignores date range) ---
+    // Same skip-list filter as sales metrics, but no sign_date / since_date constraints.
+    let activeQuery = supabaseAdmin
+      .from('abc_members')
+      .select('agreement_number, membership_type')
+      .eq('is_active', true)
+    if (clubNumber) activeQuery = activeQuery.eq('club_number', clubNumber)
+
+    const activeMembers = []
+    let activeFrom = 0
+    while (true) {
+      const { data: page, error: actErr } = await activeQuery.range(activeFrom, activeFrom + 999)
+      if (actErr) return res.status(500).json({ error: 'Failed to fetch active members', detail: actErr.message })
+      if (!page || page.length === 0) break
+      activeMembers.push(...page)
+      if (page.length < 1000) break
+      activeFrom += 1000
+    }
+    const activeFiltered = activeMembers.filter(m => !skipTypes.has((m.membership_type || '').toLowerCase()))
+
+    const activeAgreementsByType = {}
+    const activeMembersByType = {}
+    for (const m of activeFiltered) {
+      const t = m.membership_type || 'Unknown'
+      activeMembersByType[t] = (activeMembersByType[t] || 0) + 1
+      if (m.agreement_number) {
+        if (!activeAgreementsByType[t]) activeAgreementsByType[t] = new Set()
+        activeAgreementsByType[t].add(m.agreement_number)
+      }
+    }
+    const activeByMembershipType = Object.keys(activeMembersByType)
+      .map(t => ({
+        membership_type: t,
+        members: activeMembersByType[t],
+        agreements: activeAgreementsByType[t]?.size || 0,
+      }))
+      .sort((a, b) => b.members - a.members)
+
+    const activeAgreementsTotal = new Set(activeFiltered.map(m => m.agreement_number).filter(Boolean)).size
+
     res.json({
       total_memberships: filteredMembers.length,
       total_agreements: uniqueAgreements,
@@ -683,6 +723,9 @@ router.get('/club-health', async (req, res) => {
       top_trainers: topTrainers,
       by_date: byDate,
       by_membership_type: byMembershipType,
+      active_members_total: activeFiltered.length,
+      active_agreements_total: activeAgreementsTotal,
+      active_by_membership_type: activeByMembershipType,
     })
   } catch (err) {
     res.status(500).json({ error: err.message })
