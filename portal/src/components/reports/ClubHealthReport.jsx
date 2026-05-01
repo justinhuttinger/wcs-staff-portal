@@ -262,7 +262,7 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
         </div>
       </div>
 
-      <MembershipTypeTable title="Active Members by Membership Type" rows={data.active_by_membership_type} />
+      <MembershipTypeTable title="Active Members by Membership Type" rows={data.active_by_membership_type} collapsible />
 
       {/* ---------- MEMBERSHIP (date-filtered new sales) ---------- */}
       <SectionHeader title="Membership" />

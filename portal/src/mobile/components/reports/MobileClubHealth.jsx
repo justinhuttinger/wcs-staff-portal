@@ -229,7 +229,7 @@ export default function MobileClubHealth({ startDate, endDate, locationSlug }) {
         <StatCard label="Total Agreements" value={data.active_agreements_total ?? 0} />
       </div>
 
-      <MembershipTypeTable title="Active Members by Membership Type" rows={data.active_by_membership_type} />
+      <MembershipTypeTable title="Active Members by Membership Type" rows={data.active_by_membership_type} collapsible />
 
       {/* ---------- MEMBERSHIP (date-filtered new sales) ---------- */}
       <SectionHeader title="Membership" />
