@@ -141,7 +141,7 @@ export default function MobileMembership({ startDate, endDate, locationSlug }) {
       <div className="overflow-x-auto scrollbar-hide">
         <div className="flex gap-3 min-w-max">
           <StatCard label="Total Sales" value={totals.total_sales} />
-          <StatCard label="Trial Conversion" value={`${totals.trial_rate}%`} sub={`${totals.trial_won}/${totals.trial_started}`} />
+          <StatCard label="Trial Conversion" value={`${totals.trial_rate}%`} />
           <StatCard label="Day One Booked" value={totals.day_one_booked} />
           <StatCard label="Total VIPs" value={totals.vips} />
           <StatCard label="Same Day Sales" value={totals.same_day_sale} />
