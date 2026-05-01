@@ -184,6 +184,43 @@ function BarChart({ title, points }) {
   )
 }
 
+function MembershipTypeBreakdown({ rows }) {
+  const list = rows || []
+  const total = list.reduce((s, r) => s + r.count, 0)
+  const max = list.reduce((m, r) => Math.max(m, r.count), 0)
+
+  return (
+    <div className="bg-surface rounded-xl border border-border p-6">
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">Sales by Membership Type</p>
+      {list.length === 0 || total === 0 ? (
+        <p className="text-sm text-text-muted py-4 text-center">No data</p>
+      ) : (
+        <div className="space-y-2">
+          {list.map(r => {
+            const pct = total > 0 ? (r.count / total) * 100 : 0
+            const barPct = max > 0 ? (r.count / max) * 100 : 0
+            return (
+              <div key={r.membership_type} className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-3 text-sm">
+                <span className="text-text-primary truncate" title={r.membership_type}>{r.membership_type}</span>
+                <div className="relative h-5 bg-bg rounded-md border border-border overflow-hidden">
+                  <div
+                    className="absolute inset-y-0 left-0 bg-wcs-red/80"
+                    style={{ width: `${barPct}%` }}
+                  />
+                </div>
+                <span className="text-text-muted whitespace-nowrap tabular-nums">
+                  <span className="font-semibold text-text-primary">{r.count}</span>
+                  <span className="text-xs ml-1">({pct.toFixed(1)}%)</span>
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const STATUS_COLORS = {
   'Scheduled': '#d69e2e', 'scheduled': '#d69e2e',
   'Completed': '#38a169', 'completed': '#38a169',
@@ -275,6 +312,8 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
         <PieChart title="Same Day Sales to Memberships" data={sameDayRatio} colorMap={{ 'Same Day': '#38a169', 'Other': '#e2e8f0' }} />
         <BarChart title="Memberships by Day" points={buildDailyPoints(data.by_date, startDate, endDate)} />
       </div>
+
+      <MembershipTypeBreakdown rows={data.by_membership_type} />
 
       {/* ---------- PT / DAY ONE ---------- */}
       <SectionHeader title="PT / Day One" />

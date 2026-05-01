@@ -637,6 +637,16 @@ router.get('/club-health', async (req, res) => {
       .map(([date, memberships]) => ({ date, memberships }))
       .sort((a, b) => a.date.localeCompare(b.date))
 
+    // Sales by membership_type
+    const membershipTypeCounts = {}
+    for (const m of filteredMembers) {
+      const t = m.membership_type || 'Unknown'
+      membershipTypeCounts[t] = (membershipTypeCounts[t] || 0) + 1
+    }
+    const byMembershipType = Object.entries(membershipTypeCounts)
+      .map(([membership_type, count]) => ({ membership_type, count }))
+      .sort((a, b) => b.count - a.count)
+
     // Top 3 trainers by Day One closes (Sale on completed day ones)
     const closesByTrainer = {}
     for (const c of dayOnes) {
@@ -663,6 +673,7 @@ router.get('/club-health', async (req, res) => {
       top_salespeople: topSalespeople,
       top_trainers: topTrainers,
       by_date: byDate,
+      by_membership_type: byMembershipType,
     })
   } catch (err) {
     res.status(500).json({ error: err.message })
