@@ -48,12 +48,17 @@ export default function MobileLeaderboard({ user }) {
   const userLocations = staff.locations || []
   const staffId = staff.id
   const isManager = ROLES.indexOf(role) >= ROLES.indexOf('manager')
-
-  const defaultSlug = (userLocations.find(l => l.is_primary)?.name || userLocations[0]?.name || 'Salem').toLowerCase()
-  const [selectedLocation, setSelectedLocation] = useState(defaultSlug)
-  const locationSlug = selectedLocation
+  const canViewAllClubs = role === 'admin' || role === 'corporate' || role === 'director'
 
   const ALL_LOCATIONS = ['Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
+  const viewableLocations = canViewAllClubs
+    ? ALL_LOCATIONS
+    : userLocations.map(l => l.name).filter(Boolean)
+
+  const primaryName = userLocations.find(l => l.is_primary)?.name || userLocations[0]?.name
+  const defaultSlug = (primaryName || viewableLocations[0] || 'Salem').toLowerCase()
+  const [selectedLocation, setSelectedLocation] = useState(defaultSlug)
+  const locationSlug = selectedLocation
 
   const now = new Date()
   const [month, setMonth] = useState(new Date(now.getFullYear(), now.getMonth(), 1))
@@ -170,10 +175,10 @@ export default function MobileLeaderboard({ user }) {
           </div>
         )}
 
-        {/* Location selector for managers on My Club tab */}
-        {isManager && view === 'club' && (
+        {/* Location selector on My Club tab — restricted to assigned clubs unless corporate/admin */}
+        {isManager && view === 'club' && viewableLocations.length > 1 && (
           <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-            {ALL_LOCATIONS.map(loc => {
+            {viewableLocations.map(loc => {
               const slug = loc.toLowerCase()
               return (
                 <button
