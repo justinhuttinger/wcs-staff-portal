@@ -227,7 +227,6 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
         <div className="bg-surface rounded-xl border border-border p-4">
           <p className="text-xs text-text-muted uppercase tracking-wide">Trial Conversion</p>
           <p className="text-2xl font-bold text-text-primary mt-1">{trialRate}%</p>
-          <p className="text-xs text-text-muted mt-0.5">{tc.won || 0} / {tc.trial_started || 0}</p>
         </div>
         <div className="bg-surface rounded-xl border border-border p-4">
           <p className="text-xs text-text-muted uppercase tracking-wide">Day One Booked</p>
