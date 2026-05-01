@@ -717,6 +717,34 @@ router.get('/club-health', async (req, res) => {
 
     const activeAgreementsTotal = new Set(activeFiltered.map(m => m.agreement_number).filter(Boolean)).size
 
+    // --- Cancels in period (for Net Change card) ---
+    // Counts members whose status changed to Cancelled/Expired/Return For Collection
+    // within the date range. Same skip-list filter as sales.
+    let cancelsInPeriodMembers = 0
+    let cancelsInPeriodAgreements = 0
+    if (start_date && end_date) {
+      let cancelsQuery = supabaseAdmin
+        .from('abc_members')
+        .select('membership_type, agreement_number')
+        .in('member_status', ['Cancelled', 'Expired', 'Return For Collection'])
+        .gte('member_status_date', start_date)
+        .lte('member_status_date', end_date)
+      if (clubNumber) cancelsQuery = cancelsQuery.eq('club_number', clubNumber)
+
+      const cancelRows = []
+      let cFrom = 0
+      while (true) {
+        const { data: page } = await cancelsQuery.range(cFrom, cFrom + 999)
+        if (!page || page.length === 0) break
+        cancelRows.push(...page)
+        if (page.length < 1000) break
+        cFrom += 1000
+      }
+      const cancelFiltered = cancelRows.filter(m => !skipTypes.has((m.membership_type || '').toLowerCase()))
+      cancelsInPeriodMembers = cancelFiltered.length
+      cancelsInPeriodAgreements = new Set(cancelFiltered.map(m => m.agreement_number).filter(Boolean)).size
+    }
+
     res.json({
       total_memberships: filteredMembers.length,
       total_agreements: uniqueAgreements,
@@ -733,6 +761,131 @@ router.get('/club-health', async (req, res) => {
       active_members_total: activeFiltered.length,
       active_agreements_total: activeAgreementsTotal,
       active_by_membership_type: activeByMembershipType,
+      cancels_members: cancelsInPeriodMembers,
+      cancels_agreements: cancelsInPeriodAgreements,
+      net_change_members: filteredMembers.length - cancelsInPeriodMembers,
+      net_change_agreements: uniqueAgreements - cancelsInPeriodAgreements,
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /reports/cancels
+// Counts cancellations (member_status_date in range) by status, type, club.
+// Includes a "scheduled" Pending Cancel queue.
+// ---------------------------------------------------------------------------
+router.get('/cancels', async (req, res) => {
+  const { start_date, end_date } = req.query
+
+  try {
+    const locationFilter = await resolveLocationFilter(req.query)
+    let clubNumber = null
+    if (locationFilter) {
+      const slug = locationFilter.column === 'location_slug' ? locationFilter.value : null
+      if (slug && SLUG_CLUB_MAP[slug]) clubNumber = SLUG_CLUB_MAP[slug]
+    }
+
+    const skipTypes = await getSkipList()
+
+    // 1. Cancels with member_status_date in range
+    let cancelsQuery = supabaseAdmin
+      .from('abc_members')
+      .select('first_name, last_name, email, membership_type, agreement_number, member_status, member_status_date, sales_person_name, sign_date, since_date')
+      .in('member_status', ['Cancelled', 'Expired', 'Return For Collection'])
+    if (start_date) cancelsQuery = cancelsQuery.gte('member_status_date', start_date)
+    if (end_date) cancelsQuery = cancelsQuery.lte('member_status_date', end_date)
+    if (clubNumber) cancelsQuery = cancelsQuery.eq('club_number', clubNumber)
+
+    const cancelRows = []
+    let cFrom = 0
+    while (true) {
+      const { data: page, error } = await cancelsQuery.range(cFrom, cFrom + 999)
+      if (error) return res.status(500).json({ error: 'Failed to fetch cancels', detail: error.message })
+      if (!page || page.length === 0) break
+      cancelRows.push(...page)
+      if (page.length < 1000) break
+      cFrom += 1000
+    }
+    const cancelFiltered = cancelRows.filter(m => !skipTypes.has((m.membership_type || '').toLowerCase()))
+
+    const totalMembers = cancelFiltered.length
+    const totalAgreements = new Set(cancelFiltered.map(m => m.agreement_number).filter(Boolean)).size
+
+    // By status
+    const byStatusCounts = {}
+    for (const m of cancelFiltered) {
+      const s = m.member_status || 'Unknown'
+      byStatusCounts[s] = (byStatusCounts[s] || 0) + 1
+    }
+
+    // By membership type (members + agreements per type)
+    const cancelAgreementsByType = {}
+    const cancelMembersByType = {}
+    for (const m of cancelFiltered) {
+      const t = m.membership_type || 'Unknown'
+      cancelMembersByType[t] = (cancelMembersByType[t] || 0) + 1
+      if (m.agreement_number) {
+        if (!cancelAgreementsByType[t]) cancelAgreementsByType[t] = new Set()
+        cancelAgreementsByType[t].add(m.agreement_number)
+      }
+    }
+    const byMembershipType = Object.keys(cancelMembersByType)
+      .map(t => ({
+        membership_type: t,
+        members: cancelMembersByType[t],
+        agreements: cancelAgreementsByType[t]?.size || 0,
+      }))
+      .sort((a, b) => b.agreements - a.agreements || b.members - a.members)
+
+    // Daily cancels for the bar chart
+    const cancelsByDate = {}
+    for (const m of cancelFiltered) {
+      if (!m.member_status_date) continue
+      cancelsByDate[m.member_status_date] = (cancelsByDate[m.member_status_date] || 0) + 1
+    }
+    const byDate = Object.entries(cancelsByDate)
+      .map(([date, memberships]) => ({ date, memberships }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+
+    // 2. Pending Cancel queue (still active, scheduled for future cancel)
+    let pendingQuery = supabaseAdmin
+      .from('abc_members')
+      .select('first_name, last_name, email, membership_type, agreement_number, member_status_date, sales_person_name')
+      .eq('member_status', 'Pending Cancel')
+      .eq('is_active', true)
+    if (clubNumber) pendingQuery = pendingQuery.eq('club_number', clubNumber)
+
+    const pendingRows = []
+    let pFrom = 0
+    while (true) {
+      const { data: page } = await pendingQuery.range(pFrom, pFrom + 999)
+      if (!page || page.length === 0) break
+      pendingRows.push(...page)
+      if (page.length < 1000) break
+      pFrom += 1000
+    }
+    const pendingFiltered = pendingRows
+      .filter(m => !skipTypes.has((m.membership_type || '').toLowerCase()))
+      .sort((a, b) => (a.member_status_date || '').localeCompare(b.member_status_date || ''))
+
+    res.json({
+      total_members: totalMembers,
+      total_agreements: totalAgreements,
+      by_status: byStatusCounts,
+      by_membership_type: byMembershipType,
+      by_date: byDate,
+      pending_cancel_count: pendingFiltered.length,
+      pending_cancel_agreements: new Set(pendingFiltered.map(m => m.agreement_number).filter(Boolean)).size,
+      pending_cancels: pendingFiltered.slice(0, 200).map(m => ({
+        name: [m.first_name, m.last_name].filter(Boolean).join(' '),
+        email: m.email,
+        membership_type: m.membership_type,
+        agreement_number: m.agreement_number,
+        scheduled_date: m.member_status_date,
+        sales_person_name: m.sales_person_name,
+      })),
     })
   } catch (err) {
     res.status(500).json({ error: err.message })

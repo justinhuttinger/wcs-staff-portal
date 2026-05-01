@@ -10,23 +10,36 @@ function sleep(ms) {
 }
 
 /**
- * Fetch all members from ABC Financial for a given club.
- * Paginates through all pages (5000 members per page).
+ * Fetch members from ABC Financial for a given club, paginating through all pages.
+ *
+ * @param {string} clubNumber
+ * @param {object} [opts]
+ * @param {'active'|'inactive'} [opts.activeStatus='active'] — pull active or inactive members
+ * @param {string} [opts.lastModifiedSince] — ISO date; only fetch members modified on/after this date.
+ *   Use this with activeStatus:'inactive' to avoid re-pulling tens of thousands of historical cancels every cycle.
  */
-async function fetchAllABCMembers(clubNumber) {
+async function fetchAllABCMembers(clubNumber, opts = {}) {
   if (!ABC_APP_ID || !ABC_APP_KEY) {
     throw new Error('ABC_APP_ID and ABC_APP_KEY must be set');
   }
+
+  const activeStatus = opts.activeStatus || 'active';
+  const lastModifiedSince = opts.lastModifiedSince || null;
 
   const allMembers = [];
   let page = 1;
 
   while (page <= MAX_PAGES) {
     const url = `${ABC_BASE_URL}/${clubNumber}/members`;
-    console.log(`[ABC] Fetching page ${page} for club ${clubNumber}...`);
+    console.log(`[ABC] Fetching page ${page} for club ${clubNumber} (activeStatus=${activeStatus}${lastModifiedSince ? `, lastModifiedSince=${lastModifiedSince}` : ''})...`);
+
+    const params = { joinStatus: 'member', activeStatus, page };
+    if (lastModifiedSince) {
+      params.lastModifiedTimestampRange = `${lastModifiedSince},`;
+    }
 
     const res = await axios.get(url, {
-      params: { joinStatus: 'member', activeStatus: 'active', page },
+      params,
       headers: {
         'app_id': ABC_APP_ID,
         'app_key': ABC_APP_KEY,

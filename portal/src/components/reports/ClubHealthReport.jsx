@@ -344,6 +344,29 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
 
       <MembershipTypeTable title="Sales by Membership Type" rows={data.by_membership_type} />
 
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="bg-surface rounded-xl border border-border p-6 text-center">
+          <p className="text-xs text-text-muted uppercase tracking-wide">Cancels (Members)</p>
+          <p className="text-4xl font-bold text-text-primary mt-2">{data.cancels_members ?? 0}</p>
+        </div>
+        <div className="bg-surface rounded-xl border border-border p-6 text-center">
+          <p className="text-xs text-text-muted uppercase tracking-wide">Cancels (Agreements)</p>
+          <p className="text-4xl font-bold text-text-primary mt-2">{data.cancels_agreements ?? 0}</p>
+        </div>
+        <div className="bg-surface rounded-xl border border-border p-6 text-center">
+          <p className="text-xs text-text-muted uppercase tracking-wide">Net Change (Members)</p>
+          <p className={`text-4xl font-bold mt-2 ${(data.net_change_members ?? 0) >= 0 ? 'text-green-600' : 'text-wcs-red'}`}>
+            {(data.net_change_members ?? 0) >= 0 ? '+' : ''}{data.net_change_members ?? 0}
+          </p>
+        </div>
+        <div className="bg-surface rounded-xl border border-border p-6 text-center">
+          <p className="text-xs text-text-muted uppercase tracking-wide">Net Change (Agreements)</p>
+          <p className={`text-4xl font-bold mt-2 ${(data.net_change_agreements ?? 0) >= 0 ? 'text-green-600' : 'text-wcs-red'}`}>
+            {(data.net_change_agreements ?? 0) >= 0 ? '+' : ''}{data.net_change_agreements ?? 0}
+          </p>
+        </div>
+      </div>
+
       {/* ---------- PT / DAY ONE ---------- */}
       <SectionHeader title="PT / Day One" />
 

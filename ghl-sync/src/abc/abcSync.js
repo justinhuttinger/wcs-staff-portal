@@ -63,10 +63,25 @@ async function _runAbcSync() {
     }
     const syncStart = new Date().toISOString();
     try {
-      // Step 1: Fetch from ABC API
-      console.log(`[ABC Sync] Fetching ABC members for ${location.name} (club ${location.clubNumber})...`);
-      const rawMembers = await fetchAllABCMembers(location.clubNumber);
-      console.log(`[ABC Sync] ${location.name}: ${rawMembers.length} members fetched from ABC`);
+      // Step 1: Fetch from ABC API — active members (full pull each cycle)
+      console.log(`[ABC Sync] Fetching active members for ${location.name} (club ${location.clubNumber})...`);
+      const activeMembers = await fetchAllABCMembers(location.clubNumber, { activeStatus: 'active' });
+
+      // Step 1b: Pull recently-changed inactive members so cancels stay current.
+      // ABC's API doesn't return inactive members under activeStatus=active, so we
+      // need a second pass. Filter by lastModifiedTimestamp to keep the pull small
+      // (tens of cancels per cycle, not the entire historical 60k+ cancel population).
+      const inactiveSinceDays = parseInt(process.env.ABC_INACTIVE_SINCE_DAYS || '90', 10);
+      const lastModifiedSince = new Date(Date.now() - inactiveSinceDays * 24 * 60 * 60 * 1000)
+        .toISOString().slice(0, 10);
+      console.log(`[ABC Sync] Fetching recently-changed inactive members for ${location.name} (since ${lastModifiedSince})...`);
+      const inactiveMembers = await fetchAllABCMembers(location.clubNumber, {
+        activeStatus: 'inactive',
+        lastModifiedSince,
+      });
+
+      const rawMembers = [...activeMembers, ...inactiveMembers];
+      console.log(`[ABC Sync] ${location.name}: ${activeMembers.length} active + ${inactiveMembers.length} recent-inactive = ${rawMembers.length} total`);
 
       // Step 2: Transform and upsert into Supabase
       const transformed = rawMembers.map(m => transformABCMember(m, location.clubNumber));

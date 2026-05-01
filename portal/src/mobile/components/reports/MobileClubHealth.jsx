@@ -302,6 +302,23 @@ export default function MobileClubHealth({ startDate, endDate, locationSlug }) {
 
       <MembershipTypeTable title="Sales by Membership Type" rows={data.by_membership_type} />
 
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard label="Cancels (Members)" value={data.cancels_members ?? 0} />
+        <StatCard label="Cancels (Agreements)" value={data.cancels_agreements ?? 0} />
+        <div className="bg-surface rounded-2xl border border-border p-4 text-center">
+          <p className={`text-3xl font-bold ${(data.net_change_members ?? 0) >= 0 ? 'text-green-600' : 'text-wcs-red'}`}>
+            {(data.net_change_members ?? 0) >= 0 ? '+' : ''}{data.net_change_members ?? 0}
+          </p>
+          <p className="text-[11px] text-text-muted uppercase tracking-wide mt-1">Net Change (Members)</p>
+        </div>
+        <div className="bg-surface rounded-2xl border border-border p-4 text-center">
+          <p className={`text-3xl font-bold ${(data.net_change_agreements ?? 0) >= 0 ? 'text-green-600' : 'text-wcs-red'}`}>
+            {(data.net_change_agreements ?? 0) >= 0 ? '+' : ''}{data.net_change_agreements ?? 0}
+          </p>
+          <p className="text-[11px] text-text-muted uppercase tracking-wide mt-1">Net Change (Agreements)</p>
+        </div>
+      </div>
+
       {/* ---------- PT / DAY ONE ---------- */}
       <SectionHeader title="PT / Day One" />
 

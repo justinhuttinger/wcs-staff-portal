@@ -303,6 +303,11 @@ export async function getClubHealthReport(params = {}) {
   return api('/reports/club-health' + (qs ? '?' + qs : ''))
 }
 
+export async function getCancelsReport(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/cancels' + (qs ? '?' + qs : ''))
+}
+
 export async function getSyncStatus() {
   return api('/sync-status')
 }

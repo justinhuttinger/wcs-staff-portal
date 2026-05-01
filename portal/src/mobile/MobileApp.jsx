@@ -7,6 +7,7 @@ import ReportsHome from './components/reports/ReportsHome'
 import MobileReportShell from './components/reports/MobileReportShell'
 import MobileClubHealth from './components/reports/MobileClubHealth'
 import MobileMembership from './components/reports/MobileMembership'
+import MobileCancels from './components/reports/MobileCancels'
 import MobilePTReport from './components/reports/MobilePTReport'
 import MobileMarketing from './components/reports/MobileMarketing'
 import MobileGoogleMarketing from './components/reports/MobileGoogleMarketing'
@@ -205,6 +206,21 @@ export default function MobileApp() {
               {({ startDate, endDate, locationSlug }) => (
                 <div className="px-4 pb-4">
                   <MobileMembership startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+                </div>
+              )}
+            </MobileReportShell>
+          </div>
+        )
+      case 'reports/cancels':
+        return (
+          <div className="pt-2">
+            <div className="px-4">
+              <MobileHeader title="Cancels" onBack={() => navigate('reports')} />
+            </div>
+            <MobileReportShell title="Cancels" user={user}>
+              {({ startDate, endDate, locationSlug }) => (
+                <div className="px-4 pb-4">
+                  <MobileCancels startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
                 </div>
               )}
             </MobileReportShell>
