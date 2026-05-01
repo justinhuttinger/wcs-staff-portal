@@ -3,7 +3,7 @@ import { useState } from 'react'
 // Shared horizontal-bar breakdown used by Club Health (Active Members,
 // Sales by Membership Type) and Cancels (by Membership Type).
 // Fixed-width type column so bars start at the same x across all instances.
-// When `collapsible` is true the body is hidden until the title is clicked.
+// When `collapsible` is true the body is hidden until the header is clicked.
 export default function MembershipTypeTable({ title, rows, collapsible = false }) {
   const [open, setOpen] = useState(!collapsible)
   const list = rows || []
@@ -12,27 +12,34 @@ export default function MembershipTypeTable({ title, rows, collapsible = false }
   const max = list.reduce((m, r) => Math.max(m, r.members || 0), 0)
 
   return (
-    <div className="bg-surface rounded-xl border border-border p-6">
+    <div className={`bg-surface rounded-xl border border-border ${collapsible ? '' : 'p-6'} ${collapsible && open ? 'p-6' : ''}`}>
       {collapsible ? (
         <button
           type="button"
           onClick={() => setOpen(o => !o)}
-          className="flex items-center justify-between w-full text-left mb-4 group"
+          className={`flex items-center justify-between w-full text-left gap-4 group transition-colors ${open ? 'p-0 mb-4' : 'p-5 hover:bg-bg/40 rounded-xl'}`}
           aria-expanded={open}
         >
-          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">{title}</p>
-          <span className="flex items-center gap-2 text-[11px] text-text-muted group-hover:text-text-primary">
-            <span className="tabular-nums">
-              <span className="font-semibold text-text-primary">{totalMembers}</span> mem
-              {' / '}
-              <span className="font-semibold text-text-primary">{totalAgreements}</span> agr
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide truncate">{title}</p>
+          <span className="flex items-center gap-2">
+            <span className="inline-flex items-baseline gap-1.5 px-3 py-1 rounded-full bg-bg border border-border text-sm">
+              <span className="font-bold text-text-primary tabular-nums">{totalMembers.toLocaleString()}</span>
+              <span className="text-[10px] uppercase tracking-wide text-text-muted">Members</span>
             </span>
-            <svg
-              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-              className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`}
+            <span className="inline-flex items-baseline gap-1.5 px-3 py-1 rounded-full bg-bg border border-border text-sm">
+              <span className="font-bold text-text-primary tabular-nums">{totalAgreements.toLocaleString()}</span>
+              <span className="text-[10px] uppercase tracking-wide text-text-muted">Agreements</span>
+            </span>
+            <span
+              className={`flex items-center justify-center w-8 h-8 rounded-full bg-bg border border-border text-text-muted group-hover:text-text-primary group-hover:bg-wcs-red/10 group-hover:border-wcs-red/30 transition-colors`}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-            </svg>
+              <svg
+                viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                className={`w-4 h-4 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+              </svg>
+            </span>
           </span>
         </button>
       ) : (
