@@ -33,6 +33,19 @@ function normSvc(name) {
   return name
 }
 
+// Parse the per-week frequency out of a plan name like "GROUP TRAINING 1XWEEK"
+// or "PT 60MIN 3X/WEEK" → "1x/Week" / "3x/Week". Returns null if no match.
+function parseFrequency(planName) {
+  if (!planName) return null
+  const m = String(planName).match(/(\d+)\s*X\s*\/?\s*(WEEK|WK)\b/i)
+  if (!m) return null
+  return `${m[1]}x/Week`
+}
+
+// Module-level cache of plan details, keyed by `${clubNumber}:${planId}`
+const planCache = new Map()
+const PLAN_CACHE_TTL = 60 * 60 * 1000 // 1 hour
+
 function dateRanges() {
   const ranges = []
   let start = new Date('2020-01-01')
@@ -64,6 +77,29 @@ async function abcGet(path, params = {}) {
     return res.json()
   } finally {
     clearTimeout(timeout)
+  }
+}
+
+async function fetchPlanDetail(clubNumber, planId) {
+  if (!planId) return null
+  const cacheKey = `${clubNumber}:${planId}`
+  const hit = planCache.get(cacheKey)
+  if (hit && (Date.now() - hit.ts) < PLAN_CACHE_TTL) return hit.data
+  try {
+    const data = await abcGet(`/${clubNumber}/clubs/recurringserviceplans/${planId}`)
+    const detail = data?.recurringServicePlanDetail || {}
+    const result = {
+      planId,
+      planName: detail.recurringServicePlanName || null,
+      serviceQuantity: detail.billing?.serviceQuantity || null,
+      billingFrequency: detail.billing?.billingFrequency || null,
+      useFrequency: parseFrequency(detail.recurringServicePlanName),
+    }
+    planCache.set(cacheKey, { data: result, ts: Date.now() })
+    return result
+  } catch (e) {
+    console.warn(`[PT Roster] Plan fetch failed for ${planId} at club ${clubNumber}:`, e.message)
+    return null
   }
 }
 
@@ -132,6 +168,26 @@ async function fetchLatestPIF(clubNumber, memberId) {
 async function buildClients(clubNumber, clubName) {
   const allSvcs = await fetchRecurring(clubNumber)
 
+  // Collect unique recurring service plan IDs from active services so we can
+  // fetch their plan details (the "1XWEEK"/"3XWEEK" suffix lives on the plan,
+  // not the recurring service entry).
+  const planIds = new Set()
+  for (const s of allSvcs) {
+    if (s.recurringServiceStatus !== 'active') continue
+    if ((s.recurringTypeDesc || '').includes('Paid in Full')) continue
+    const pid = s.recurringServicePlanId || s.servicePlanId
+    if (pid) planIds.add(pid)
+  }
+
+  const planMap = new Map()
+  const uniquePlans = [...planIds]
+  for (let i = 0; i < uniquePlans.length; i += 5) {
+    const batch = uniquePlans.slice(i, i + 5)
+    const results = await Promise.all(batch.map(pid => fetchPlanDetail(clubNumber, pid)))
+    results.forEach((r, idx) => { if (r) planMap.set(batch[idx], r) })
+    if (i + 5 < uniquePlans.length) await new Promise(r => setTimeout(r, 100))
+  }
+
   // Build recurring clients
   const recMap = {}
   for (const s of allSvcs) {
@@ -153,12 +209,16 @@ async function buildClients(clubNumber, clubName) {
     const sd = s.recurringServiceDates?.saleDate
     const price = parseFloat(s.invoiceTotal || '0') || 0
     e.monthlyRevenue += price
+    const pid = s.recurringServicePlanId || s.servicePlanId
+    const plan = pid ? planMap.get(pid) : null
     e.services.push({
       serviceItem: normSvc(s.serviceItem),
       frequency: s.frequency,
       totalPeriods: s.totalPeriods,
       nextBillingDate: s.recurringServiceDates?.nextBillingDate,
       invoiceTotal: price,
+      planName: plan?.planName || null,
+      useFrequency: plan?.useFrequency || null,
     })
     if (sd && (!e.latestDate || sd > e.latestDate)) {
       e.latestDate = sd
