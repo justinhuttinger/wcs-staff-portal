@@ -1,11 +1,14 @@
 const axios = require('axios');
 const { put } = require('../ghl/client');
+const supabase = require('../db/supabase');
 
 const ABC_BASE_URL = process.env.ABC_BASE_URL || 'https://api.abcfinancial.com/rest';
 const ABC_APP_ID = process.env.ABC_APP_ID;
 const ABC_APP_KEY = process.env.ABC_APP_KEY;
 
-// GHL employee dropdown field IDs per location
+// Hardcoded GHL "Day One Booking Team Member" custom field ids per location.
+// Locations missing here fall back to a Supabase lookup against
+// ghl_custom_field_defs by field_key (see resolveFieldId below).
 const EMPLOYEE_FIELD_IDS = {
   'salem':       'WOvY0CUbJQmzbHP6fj5e',
   'keizer':      'zpjNYk3vDFKKIUDbSIjD',
@@ -13,8 +16,27 @@ const EMPLOYEE_FIELD_IDS = {
   'milwaukie':   'saT5AHGtaicoFxuSNoOS',
   'clackamas':   'ErOjVabJGLMnKc2bs6nL',
   'springfield': 'YUWbpzWwCpRVDHjZp3Wl',
-  'medford':     '', // Not configured
+  'medford':     '', // Resolved dynamically from ghl_custom_field_defs
 };
+
+const EMPLOYEE_FIELD_KEY = 'contact.day_one_booking_team_member';
+
+async function resolveFieldId(location) {
+  const hardcoded = EMPLOYEE_FIELD_IDS[location.slug];
+  if (hardcoded) return hardcoded;
+  const { data, error } = await supabase
+    .from('ghl_custom_field_defs')
+    .select('id')
+    .eq('location_id', location.id)
+    .eq('field_key', EMPLOYEE_FIELD_KEY)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn(`[Employee Sync] field def lookup error for ${location.name}:`, error.message);
+    return null;
+  }
+  return data?.id || null;
+}
 
 const EXCLUDED_NAMES = [
   'easalytics bot', 'click2save bot', 'reporting bot',
@@ -102,9 +124,9 @@ async function employeeSync(locations) {
   const results = [];
 
   for (const location of locations) {
-    const fieldId = EMPLOYEE_FIELD_IDS[location.slug];
+    const fieldId = await resolveFieldId(location);
     if (!fieldId) {
-      console.log(`[Employee Sync] Skipping ${location.name} — no employee field ID`);
+      console.log(`[Employee Sync] Skipping ${location.name} — no employee field ID (hardcoded or in ghl_custom_field_defs)`);
       continue;
     }
 
