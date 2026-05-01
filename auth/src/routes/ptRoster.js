@@ -218,6 +218,30 @@ async function buildClients(clubNumber, clubName) {
   return recClients.concat(pifResults)
 }
 
+// GET /reports/pt-roster/debug-sample?location_slug=salem
+// Admin-only. Returns the first 3 raw recurring service objects from ABC for one club,
+// so we can inspect which fields encode the per-week service frequency.
+router.get('/debug-sample', async (req, res) => {
+  try {
+    if (req.staff.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' })
+    }
+    if (!ABC_APP_ID || !ABC_APP_KEY) {
+      return res.status(500).json({ error: 'ABC API credentials not configured' })
+    }
+    const slug = (req.query.location_slug || 'salem').toLowerCase()
+    const club = CLUBS.find(c => c.slug === slug)
+    if (!club) return res.status(400).json({ error: `Unknown location: ${slug}` })
+
+    const all = await fetchRecurring(club.clubNumber)
+    const samples = all.filter(s => s.recurringServiceStatus === 'active').slice(0, 3)
+    res.json({ club: club.name, count: all.length, samples })
+  } catch (err) {
+    console.error('[PT Roster Debug] Error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // GET /reports/pt-roster?location_slug=salem (or "all")
 router.get('/', async (req, res) => {
   try {
