@@ -22,14 +22,6 @@ export default function MembershipTypeTable({ title, rows, collapsible = false }
         <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wide">
           {title}
         </span>
-        <span className="inline-flex items-baseline gap-0.5 text-xs border-l border-border pl-2">
-          <span className="font-bold text-text-primary tabular-nums">{totalMembers.toLocaleString()}</span>
-          <span className="text-[9px] uppercase tracking-wide text-text-muted">m</span>
-        </span>
-        <span className="inline-flex items-baseline gap-0.5 text-xs">
-          <span className="font-bold text-text-primary tabular-nums">{totalAgreements.toLocaleString()}</span>
-          <span className="text-[9px] uppercase tracking-wide text-text-muted">a</span>
-        </span>
         <span className="flex items-center justify-center w-5 h-5 rounded-full bg-bg border border-border text-text-muted">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
