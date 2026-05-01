@@ -157,7 +157,7 @@ router.get('/membership', async (req, res) => {
 
     // Filter out non-member types
     const skipTypes = await getSkipList()
-    const filteredMembers = abcMembers.filter(m => !skipTypes.has(m.membership_type))
+    const filteredMembers = abcMembers.filter(m => !skipTypes.has((m.membership_type || '').toLowerCase()))
 
     // --- 2. GHL enrichment: look up day_one_booked, vip_count, same_day_sale by email ---
     const emails = [...new Set(filteredMembers.map(m => m.email).filter(Boolean))]
@@ -494,7 +494,7 @@ router.get('/club-health', async (req, res) => {
       abcFrom += 1000
     }
     const skipTypes = await getSkipList()
-    const filteredMembers = abcMembers.filter(m => !skipTypes.has(m.membership_type))
+    const filteredMembers = abcMembers.filter(m => !skipTypes.has((m.membership_type || '').toLowerCase()))
 
     // GHL enrichment for same_day_sale
     const emails = [...new Set(filteredMembers.map(m => m.email).filter(Boolean))]

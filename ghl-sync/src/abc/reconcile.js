@@ -151,7 +151,7 @@ async function reconcileLocation(location, runId) {
 
   for (const abc of abcMembers) {
     // Skip non-member membership types
-    if (abc.membership_type && skipMembershipTypes.has(abc.membership_type)) {
+    if (abc.membership_type && skipMembershipTypes.has(abc.membership_type.toLowerCase())) {
       skipped++;
       continue;
     }

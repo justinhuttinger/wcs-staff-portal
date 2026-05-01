@@ -98,7 +98,7 @@ async function aggregateLocation(locationSlug, bounds) {
     abcFrom += 1000
   }
   const skipTypes = await getSkipList()
-  const members = abcMembers.filter(m => !skipTypes.has(m.membership_type))
+  const members = abcMembers.filter(m => !skipTypes.has((m.membership_type || '').toLowerCase()))
 
   // Look up same_day_sale from GHL for these members
   const memberEmails = [...new Set(members.map(m => m.email).filter(Boolean))]

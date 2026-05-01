@@ -10,7 +10,10 @@ async function loadFromDb() {
     .from('abc_membership_skip_list')
     .select('membership_type')
   if (error) throw new Error(`Failed to load membership skip list: ${error.message}`)
-  return new Set((data || []).map(r => r.membership_type))
+  // Normalize to lowercase for case-insensitive comparison.
+  // ABC returns inconsistent casing ("Club Access" vs "EVENT ACCESS"),
+  // so callers should compare with `.has((type || '').toLowerCase())`.
+  return new Set((data || []).map(r => (r.membership_type || '').toLowerCase()))
 }
 
 async function getSkipList() {
