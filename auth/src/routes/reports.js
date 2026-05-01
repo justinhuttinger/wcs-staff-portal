@@ -637,14 +637,16 @@ router.get('/club-health', async (req, res) => {
       .map(([date, memberships]) => ({ date, memberships }))
       .sort((a, b) => a.date.localeCompare(b.date))
 
-    // Sales by membership_type
-    const membershipTypeCounts = {}
+    // Agreement sales by membership_type (distinct agreement_number per type)
+    const agreementsByType = {}
     for (const m of filteredMembers) {
+      if (!m.agreement_number) continue
       const t = m.membership_type || 'Unknown'
-      membershipTypeCounts[t] = (membershipTypeCounts[t] || 0) + 1
+      if (!agreementsByType[t]) agreementsByType[t] = new Set()
+      agreementsByType[t].add(m.agreement_number)
     }
-    const byMembershipType = Object.entries(membershipTypeCounts)
-      .map(([membership_type, count]) => ({ membership_type, count }))
+    const byMembershipType = Object.entries(agreementsByType)
+      .map(([membership_type, set]) => ({ membership_type, count: set.size }))
       .sort((a, b) => b.count - a.count)
 
     // Top 3 trainers by Day One closes (Sale on completed day ones)

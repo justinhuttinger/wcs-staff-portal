@@ -191,7 +191,7 @@ function MembershipTypeBreakdown({ rows }) {
 
   return (
     <div className="bg-surface rounded-xl border border-border p-6">
-      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">Sales by Membership Type</p>
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">Agreement Sales by Membership Type</p>
       {list.length === 0 || total === 0 ? (
         <p className="text-sm text-text-muted py-4 text-center">No data</p>
       ) : (
