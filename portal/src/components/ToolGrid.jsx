@@ -232,7 +232,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           </svg>
           Back to Portal
         </button>
-        <h2 className="text-lg font-bold text-text-primary mb-4">Ordering</h2>
+        <h2 className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-4 shadow-sm">Ordering</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
           {ORDERING_LINKS.map((link) => (
             <ToolButton key={link.label} label={link.label} description={link.description} url={link.url} />
