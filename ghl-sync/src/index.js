@@ -3,6 +3,8 @@ const express = require('express');
 const { fullSync, fullSyncForLocation, stopGhlSync } = require('./sync/fullSync');
 const { deltaSync } = require('./sync/deltaSync');
 const { abcSync, abcSyncForLocation, stopAbcSync } = require('./abc/abcSync');
+const { employeeSync } = require('./abc/employeeSync');
+const LOCATIONS = require('./config/locations');
 const { startScheduler } = require('./scheduler');
 const supabase = require('./db/supabase');
 
@@ -98,6 +100,25 @@ app.post('/api/sync/abc/:locationSlug', requireSecret, (req, res) => {
   res.json({ status: 'started', message: `ABC sync for ${req.params.locationSlug} running` });
   abcSyncForLocation(req.params.locationSlug)
     .catch(err => console.error(`[API] ABC sync for ${req.params.locationSlug} failed:`, err.message))
+    .finally(() => { syncRunning = false; });
+});
+
+// POST /api/sync/employees — run only the ABC → GHL employee dropdown sync
+// (no member/contact/opp work). Optional ?slug=medford to scope to one location.
+app.post('/api/sync/employees', requireSecret, (req, res) => {
+  if (syncRunning) return res.status(409).json({ error: 'Sync already in progress' });
+  const slug = (req.query.slug || req.body?.slug || '').toLowerCase();
+  const targets = slug
+    ? LOCATIONS.filter(l => l.clubNumber && l.slug === slug)
+    : LOCATIONS.filter(l => l.clubNumber);
+  if (targets.length === 0) {
+    return res.status(404).json({ error: slug ? `Unknown location: ${slug}` : 'No locations configured' });
+  }
+  syncRunning = true;
+  res.json({ status: 'started', message: `Employee sync running for ${targets.map(l => l.name).join(', ')}` });
+  employeeSync(targets)
+    .then(results => console.log('[API] Employee sync results:', JSON.stringify(results)))
+    .catch(err => console.error('[API] Employee sync failed:', err.message))
     .finally(() => { syncRunning = false; });
 });
 
