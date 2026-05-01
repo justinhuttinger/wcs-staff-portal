@@ -644,17 +644,24 @@ router.get('/club-health', async (req, res) => {
       .map(([date, memberships]) => ({ date, memberships }))
       .sort((a, b) => a.date.localeCompare(b.date))
 
-    // Agreement sales by membership_type (distinct agreement_number per type)
-    const agreementsByType = {}
+    // Sales by membership_type — both member rows and distinct agreements per type
+    const salesAgreementsByType = {}
+    const salesMembersByType = {}
     for (const m of filteredMembers) {
-      if (!m.agreement_number) continue
       const t = m.membership_type || 'Unknown'
-      if (!agreementsByType[t]) agreementsByType[t] = new Set()
-      agreementsByType[t].add(m.agreement_number)
+      salesMembersByType[t] = (salesMembersByType[t] || 0) + 1
+      if (m.agreement_number) {
+        if (!salesAgreementsByType[t]) salesAgreementsByType[t] = new Set()
+        salesAgreementsByType[t].add(m.agreement_number)
+      }
     }
-    const byMembershipType = Object.entries(agreementsByType)
-      .map(([membership_type, set]) => ({ membership_type, count: set.size }))
-      .sort((a, b) => b.count - a.count)
+    const byMembershipType = Object.keys(salesMembersByType)
+      .map(t => ({
+        membership_type: t,
+        members: salesMembersByType[t],
+        agreements: salesAgreementsByType[t]?.size || 0,
+      }))
+      .sort((a, b) => b.agreements - a.agreements || b.members - a.members)
 
     // Top 3 trainers by Day One closes (Sale on completed day ones)
     const closesByTrainer = {}

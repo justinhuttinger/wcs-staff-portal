@@ -184,16 +184,16 @@ function BarChart({ title, points }) {
   )
 }
 
-function ActiveMembersBreakdown({ rows }) {
+function MembershipTypeTable({ title, rows }) {
   const list = rows || []
-  const totalMembers = list.reduce((s, r) => s + r.members, 0)
-  const totalAgreements = list.reduce((s, r) => s + r.agreements, 0)
-  const max = list.reduce((m, r) => Math.max(m, r.members), 0)
+  const totalMembers = list.reduce((s, r) => s + (r.members || 0), 0)
+  const totalAgreements = list.reduce((s, r) => s + (r.agreements || 0), 0)
+  const max = list.reduce((m, r) => Math.max(m, r.members || 0), 0)
 
   return (
     <div className="bg-surface rounded-xl border border-border p-6">
-      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">Active Members by Membership Type</p>
-      {list.length === 0 ? (
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">{title}</p>
+      {list.length === 0 || totalMembers === 0 ? (
         <p className="text-sm text-text-muted py-4 text-center">No data</p>
       ) : (
         <>
@@ -205,8 +205,8 @@ function ActiveMembersBreakdown({ rows }) {
           </div>
           <div className="space-y-2">
             {list.map(r => {
-              const barPct = max > 0 ? (r.members / max) * 100 : 0
-              const pct = totalMembers > 0 ? (r.members / totalMembers) * 100 : 0
+              const barPct = max > 0 ? ((r.members || 0) / max) * 100 : 0
+              const pct = totalMembers > 0 ? ((r.members || 0) / totalMembers) * 100 : 0
               return (
                 <div key={r.membership_type} className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto_auto] items-center gap-3 text-sm">
                   <span className="text-text-primary truncate" title={r.membership_type}>{r.membership_type}</span>
@@ -214,10 +214,10 @@ function ActiveMembersBreakdown({ rows }) {
                     <div className="absolute inset-y-0 left-0 bg-wcs-red/80" style={{ width: `${barPct}%` }} />
                   </div>
                   <span className="text-right tabular-nums whitespace-nowrap">
-                    <span className="font-semibold text-text-primary">{r.members}</span>
+                    <span className="font-semibold text-text-primary">{r.members || 0}</span>
                     <span className="text-xs text-text-muted ml-1">({pct.toFixed(1)}%)</span>
                   </span>
-                  <span className="text-right tabular-nums whitespace-nowrap pl-3 text-text-muted">{r.agreements}</span>
+                  <span className="text-right tabular-nums whitespace-nowrap pl-3 text-text-muted">{r.agreements || 0}</span>
                 </div>
               )
             })}
@@ -229,43 +229,6 @@ function ActiveMembersBreakdown({ rows }) {
             <span className="text-right tabular-nums whitespace-nowrap pl-3 text-text-primary">{totalAgreements}</span>
           </div>
         </>
-      )}
-    </div>
-  )
-}
-
-function MembershipTypeBreakdown({ rows }) {
-  const list = rows || []
-  const total = list.reduce((s, r) => s + r.count, 0)
-  const max = list.reduce((m, r) => Math.max(m, r.count), 0)
-
-  return (
-    <div className="bg-surface rounded-xl border border-border p-6">
-      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">Agreement Sales by Membership Type</p>
-      {list.length === 0 || total === 0 ? (
-        <p className="text-sm text-text-muted py-4 text-center">No data</p>
-      ) : (
-        <div className="space-y-2">
-          {list.map(r => {
-            const pct = total > 0 ? (r.count / total) * 100 : 0
-            const barPct = max > 0 ? (r.count / max) * 100 : 0
-            return (
-              <div key={r.membership_type} className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-3 text-sm">
-                <span className="text-text-primary truncate" title={r.membership_type}>{r.membership_type}</span>
-                <div className="relative h-5 bg-bg rounded-md border border-border overflow-hidden">
-                  <div
-                    className="absolute inset-y-0 left-0 bg-wcs-red/80"
-                    style={{ width: `${barPct}%` }}
-                  />
-                </div>
-                <span className="text-text-muted whitespace-nowrap tabular-nums">
-                  <span className="font-semibold text-text-primary">{r.count}</span>
-                  <span className="text-xs ml-1">({pct.toFixed(1)}%)</span>
-                </span>
-              </div>
-            )
-          })}
-        </div>
       )}
     </div>
   )
@@ -348,7 +311,7 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
         </div>
       </div>
 
-      <ActiveMembersBreakdown rows={data.active_by_membership_type} />
+      <MembershipTypeTable title="Active Members by Membership Type" rows={data.active_by_membership_type} />
 
       {/* ---------- MEMBERSHIP (date-filtered new sales) ---------- */}
       <SectionHeader title="Membership" />
@@ -379,7 +342,7 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
         <BarChart title="Memberships by Day" points={buildDailyPoints(data.by_date, startDate, endDate)} />
       </div>
 
-      <MembershipTypeBreakdown rows={data.by_membership_type} />
+      <MembershipTypeTable title="Sales by Membership Type" rows={data.by_membership_type} />
 
       {/* ---------- PT / DAY ONE ---------- */}
       <SectionHeader title="PT / Day One" />
