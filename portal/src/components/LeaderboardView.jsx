@@ -34,9 +34,14 @@ export default function LeaderboardView({ user, onBack, location }) {
 
   const role = user?.staff?.role || 'team_member'
   const isManager = ROLES_ORDERED.indexOf(role) >= ROLES_ORDERED.indexOf('manager')
+  const canViewAllClubs = role === 'admin' || role === 'corporate' || role === 'director'
 
   const userLocations = user?.staff?.locations || []
-  const defaultSlug = (location || 'salem').toLowerCase()
+  const viewableLocations = canViewAllClubs
+    ? LOCATION_NAMES
+    : userLocations.map(l => l.name).filter(Boolean)
+  const primaryName = userLocations.find(l => l.is_primary)?.name || userLocations[0]?.name
+  const defaultSlug = (location || primaryName || viewableLocations[0] || 'Salem').toLowerCase()
   const [selectedLocation, setSelectedLocation] = useState(defaultSlug)
   const locationSlug = selectedLocation
   const monthKey = getMonthKey(monthDate)
@@ -82,9 +87,6 @@ export default function LeaderboardView({ user, onBack, location }) {
 
   const rankings = data?.rankings || []
   const crossLocations = crossData?.locations || []
-
-  // All 7 locations for admin/director location picker
-  const ALL_LOCATIONS = LOCATION_NAMES
 
   return (
     <div className="w-full max-w-6xl mx-auto px-8 pb-12">
@@ -142,10 +144,10 @@ export default function LeaderboardView({ user, onBack, location }) {
           </div>
         )}
 
-        {/* Location selector for admins on My Club tab */}
-        {isManager && tab === 'club' && (
+        {/* Location selector on My Club tab — restricted to assigned clubs unless corporate/admin */}
+        {isManager && tab === 'club' && viewableLocations.length > 1 && (
           <div className="flex flex-wrap gap-2 mt-4">
-            {ALL_LOCATIONS.map(loc => {
+            {viewableLocations.map(loc => {
               const slug = loc.toLowerCase()
               return (
                 <button

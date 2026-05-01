@@ -1,7 +1,8 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole, ROLE_HIERARCHY } = require('../middleware/role')
+const { requireRole, ROLE_HIERARCHY, canSeeAllLocations } = require('../middleware/role')
+const { getSkipList } = require('../utils/membershipSkipList')
 
 const router = Router()
 router.use(authenticate)
@@ -69,8 +70,6 @@ const SLUG_CLUB_MAP = {
   'salem': '30935', 'keizer': '31599', 'eugene': '7655',
   'springfield': '31598', 'clackamas': '31600', 'milwaukie': '31601', 'medford': '32073',
 }
-const SKIP_TYPES = ['CHILDCARE', 'Club Access', 'Event Access', 'NON-MEMBER', 'NLPT ONLY', 'PT ONLY', 'SWIM ONLY']
-
 // ---------------------------------------------------------------------------
 // Helper: aggregate leaderboard data for a single location_slug
 // ---------------------------------------------------------------------------
@@ -98,7 +97,8 @@ async function aggregateLocation(locationSlug, bounds) {
     if (page.length < 1000) break
     abcFrom += 1000
   }
-  const members = abcMembers.filter(m => !SKIP_TYPES.includes(m.membership_type))
+  const skipTypes = await getSkipList()
+  const members = abcMembers.filter(m => !skipTypes.has(m.membership_type))
 
   // Look up same_day_sale from GHL for these members
   const memberEmails = [...new Set(members.map(m => m.email).filter(Boolean))]
@@ -302,6 +302,26 @@ router.get('/', async (req, res) => {
     // Single location view
     if (!locationSlug) {
       return res.status(400).json({ error: 'location_slug is required for non-manager roles' })
+    }
+
+    // Authorize: managers (and below) can only request locations they're assigned to.
+    // Corporate/admin/director may request any location.
+    if (!canSeeAllLocations(userRole)) {
+      const allowedIds = req.staff.location_ids || []
+      let allowed = false
+      if (allowedIds.length > 0) {
+        const { data: allowedLocs } = await supabaseAdmin
+          .from('ghl_locations')
+          .select('name')
+          .in('id', allowedIds)
+        const allowedSlugs = (allowedLocs || []).map(l =>
+          l.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+        )
+        allowed = allowedSlugs.includes(locationSlug)
+      }
+      if (!allowed) {
+        return res.status(403).json({ error: 'Not authorized to view this location' })
+      }
     }
 
     const cacheKey = `leaderboard:${locationSlug}:${month}`

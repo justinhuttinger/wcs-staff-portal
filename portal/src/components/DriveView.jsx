@@ -56,6 +56,19 @@ function fmtDate(iso) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+// Native Google "Make a copy" URL — opens Google's copy dialog in the user's
+// signed-in Google account, so the copy lands in their own Drive. Only works
+// for Google Workspace files (Docs/Sheets/Slides/Drawings).
+function getCopyUrl(file) {
+  if (!file) return null
+  const m = file.mimeType || ''
+  if (m === 'application/vnd.google-apps.document') return `https://docs.google.com/document/d/${file.id}/copy`
+  if (m === 'application/vnd.google-apps.spreadsheet') return `https://docs.google.com/spreadsheets/d/${file.id}/copy`
+  if (m === 'application/vnd.google-apps.presentation') return `https://docs.google.com/presentation/d/${file.id}/copy`
+  if (m === 'application/vnd.google-apps.drawing') return `https://docs.google.com/drawings/d/${file.id}/copy`
+  return null
+}
+
 // Download URL: Google Workspace files export to PDF; binary files use direct download
 function getDownloadUrl(file) {
   if (!file) return null
@@ -256,6 +269,7 @@ function DriveBrowser({ root, onBack }) {
 
   if (previewFile) {
     const downloadUrl = getDownloadUrl(previewFile)
+    const copyUrl = getCopyUrl(previewFile)
     return (
       <div className="w-full flex flex-col px-8 pb-4" style={{ height: 'calc(100vh - 80px)' }}>
         <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4 mb-4 shrink-0 flex items-center gap-3 flex-wrap">
@@ -271,6 +285,20 @@ function DriveBrowser({ root, onBack }) {
           <h2 className="text-lg font-bold text-text-primary truncate flex-1 min-w-0">{previewFile.name}</h2>
           <div className="flex items-center gap-2 shrink-0">
             <PrintButton file={previewFile} />
+            {copyUrl && (
+              <a
+                href={copyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-primary hover:bg-surface transition-colors"
+                title="Make a copy in your own Google Drive"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
+                </svg>
+                Make a Copy
+              </a>
+            )}
             {downloadUrl && (
               <a
                 href={downloadUrl}
