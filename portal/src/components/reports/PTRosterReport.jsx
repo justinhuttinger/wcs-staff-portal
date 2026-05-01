@@ -114,6 +114,12 @@ export default function PTRosterReport({ locationSlug }) {
       Service: c.clientType === 'recurring'
         ? c.services?.map(s => s.serviceItem).join(', ')
         : c.service?.serviceItem || '',
+      'Plan Name': c.clientType === 'recurring'
+        ? c.services?.map(s => s.planName).filter(Boolean).join(', ')
+        : '',
+      Frequency: c.clientType === 'recurring'
+        ? c.services?.[0]?.useFrequency || c.services?.[0]?.frequency || ''
+        : '',
       'Monthly Revenue': c.clientType === 'recurring' ? c.monthlyRevenue?.toFixed(2) : '',
       'Sessions Left': c.clientType === 'pif' ? c.service?.sessionsLeft : '',
       'Total Bought': c.clientType === 'pif' ? c.service?.totalBought : '',
@@ -265,9 +271,12 @@ export default function PTRosterReport({ locationSlug }) {
                             <span className="col-span-3 text-text-muted text-xs truncate">
                               {c.services?.map(s => s.serviceItem).join(', ')}
                             </span>
-                            <span className="col-span-2 text-text-muted text-xs">
-                              {c.services?.[0]?.frequency || '—'}
-                              {c.services?.[0]?.totalPeriods ? ` (${c.services[0].totalPeriods} periods)` : ''}
+                            <span
+                              className="col-span-2 text-text-muted text-xs"
+                              title={c.services?.[0]?.planName || ''}
+                            >
+                              {c.services?.[0]?.useFrequency || c.services?.[0]?.frequency || '—'}
+                              {c.services?.[0]?.totalPeriods ? ` (${c.services[0].totalPeriods})` : ''}
                             </span>
                             <span className="col-span-2 text-right text-text-primary font-medium">{fmtMoney(c.monthlyRevenue)}</span>
                           </div>
