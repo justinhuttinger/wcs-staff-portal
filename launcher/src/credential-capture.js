@@ -245,23 +245,69 @@ function isLoginAutoClickDomain() {
   return LOGIN_AUTOCLICK_DOMAINS.some(d => hostname.includes(d))
 }
 
+// Walk the entire DOM tree including shadow roots and return every node
+// matching the selector. Salesforce / LWC sites (like MyCoke) hide the
+// login button inside shadow DOM, so a plain document.querySelectorAll
+// won't see it.
+function queryAllDeep(root, selector) {
+  const results = []
+  const stack = [root]
+  while (stack.length) {
+    const node = stack.pop()
+    if (!node || !node.querySelectorAll) continue
+    try {
+      for (const m of node.querySelectorAll(selector)) results.push(m)
+    } catch {}
+    let all
+    try { all = node.querySelectorAll('*') } catch { continue }
+    for (const el of all) {
+      if (el.shadowRoot) stack.push(el.shadowRoot)
+    }
+  }
+  return results
+}
+
+function isElementVisible(el) {
+  if (!el) return false
+  if (el.offsetParent !== null) return true
+  // offsetParent returns null for fixed-positioned and shadow-DOM elements
+  // even when visible — fall back to bounding rect.
+  try {
+    const rect = el.getBoundingClientRect()
+    return rect.width > 0 && rect.height > 0
+  } catch {
+    return false
+  }
+}
+
 let landingPageLoginClicked = false
 function tryAutoClickLoginOnLandingPage() {
   if (landingPageLoginClicked) return false
   if (!isLoginAutoClickDomain()) return false
   // If a password field is already on the page, we're past the landing page.
-  if (document.querySelector('input[type="password"]')) return false
+  if (queryAllDeep(document, 'input[type="password"]').length > 0) return false
 
-  const candidates = document.querySelectorAll('a, button, [role="button"]')
+  const candidates = queryAllDeep(document, 'a, button, [role="button"]')
   for (const el of candidates) {
-    const text = (el.textContent || el.getAttribute('aria-label') || '').trim().toLowerCase()
-    if (text === 'log in' || text === 'login' || text === 'sign in' || text === 'signin') {
-      if (el.offsetParent) {
-        console.log('[WCS CredCapture] Auto-clicking landing-page login link:', text)
-        landingPageLoginClicked = true
-        setTimeout(() => el.click(), 500)
-        return true
-      }
+    const text = (
+      el.textContent ||
+      el.getAttribute('aria-label') ||
+      el.getAttribute('title') ||
+      ''
+    ).trim().toLowerCase()
+    const isLoginText =
+      text === 'log in' ||
+      text === 'login' ||
+      text === 'sign in' ||
+      text === 'signin' ||
+      text === 'log on' ||
+      text.endsWith(' sign in') ||
+      text.endsWith(' log in')
+    if (isLoginText && isElementVisible(el)) {
+      console.log('[WCS CredCapture] Auto-clicking landing-page login link:', text)
+      landingPageLoginClicked = true
+      setTimeout(() => el.click(), 500)
+      return true
     }
   }
   return false

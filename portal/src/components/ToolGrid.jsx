@@ -21,7 +21,7 @@ const TILE_ICONS = {
 
 // Vendor ordering sub-tiles (opens via the "Ordering" tile in Tools)
 const ORDERING_LINKS = [
-  { label: 'SportLife Distribution', description: 'Supplements', url: 'https://sportlifedistribution.com/' },
+  { label: 'SportLife Distribution', description: 'Supplements', url: 'https://sportlifedistribution.com/my-account/' },
   { label: 'MyCoke', description: 'Beverages', url: 'https://www.my-coke.com/' },
   // TODO: replace with real Walter E. Nelson ordering portal URL
   { label: 'Walter E. Nelson', description: 'Supplies', url: 'https://www.walterenelson.com/' },
