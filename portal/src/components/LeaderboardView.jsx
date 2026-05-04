@@ -31,6 +31,7 @@ export default function LeaderboardView({ user, onBack, location }) {
   const [data, setData] = useState(null)
   const [crossData, setCrossData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [crossLoading, setCrossLoading] = useState(false)
 
   const role = user?.staff?.role || 'team_member'
   const isManager = ROLES_ORDERED.indexOf(role) >= ROLES_ORDERED.indexOf('manager')
@@ -56,9 +57,12 @@ export default function LeaderboardView({ user, onBack, location }) {
 
   useEffect(() => {
     if (isManager && tab === 'all') {
+      setCrossLoading(true)
+      setCrossData(null)
       getLeaderboard({ month: monthKey, location_slug: 'all' })
         .then(res => setCrossData(res))
         .catch(() => setCrossData(null))
+        .finally(() => setCrossLoading(false))
     }
   }, [isManager, tab, monthKey])
 
@@ -168,9 +172,12 @@ export default function LeaderboardView({ user, onBack, location }) {
       </div>
 
       {/* Content */}
-      {loading ? (
-        <div className="flex items-center justify-center py-16">
+      {(tab === 'club' ? loading : crossLoading) ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-3">
           <div className="w-6 h-6 border-2 border-wcs-red/30 border-t-wcs-red rounded-full animate-spin" />
+          {tab === 'all' && (
+            <p className="text-text-muted text-xs">Aggregating all 7 locations — this can take a moment.</p>
+          )}
         </div>
       ) : tab === 'club' ? (
         /* Club leaderboard table */
