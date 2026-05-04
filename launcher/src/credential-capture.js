@@ -389,4 +389,20 @@ window.addEventListener('DOMContentLoaded', () => {
   // Retry auto-fill for SPA-rendered forms
   setTimeout(tryAutoFill, 1000)
   setTimeout(tryAutoFill, 3000)
+
+  // Landing-page auto-click retry. LWC / shadow-DOM sites mount the login
+  // button asynchronously; MutationObserver on document does not see
+  // mutations inside shadow roots. Poll every second for up to 30 seconds.
+  if (isLoginAutoClickDomain()) {
+    let attempts = 0
+    const landingPoll = setInterval(() => {
+      attempts++
+      if (landingPageLoginClicked || attempts > 30) {
+        clearInterval(landingPoll)
+        return
+      }
+      console.log('[WCS CredCapture] landing-page poll attempt ' + attempts + ' on ' + window.location.href)
+      tryAutoClickLoginOnLandingPage()
+    }, 1000)
+  }
 })

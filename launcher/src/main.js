@@ -84,6 +84,7 @@ app.on('ready', () => {
   })
 
   tabManager = new TabManager(mainWindow, TAB_BAR_HEIGHT)
+  tabManager.setLogger(log)
   tabManager.initTabBar()
 
   // Check for updates after launch (silent background check)
