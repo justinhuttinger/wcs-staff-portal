@@ -61,6 +61,7 @@ app.use('/ticket-embeds', require('./routes/ticketEmbeds'))
 app.use('/tickets', require('./routes/tickets'))
 app.use('/abc-sync', require('./routes/abcSync'))
 app.use('/custom-fields', require('./routes/customFields'))
+app.use('/admin/shared-credentials', require('./routes/sharedCredentials'))
 
 // Global error handler — catch unhandled errors, don't leak stack traces
 app.use((err, req, res, next) => {

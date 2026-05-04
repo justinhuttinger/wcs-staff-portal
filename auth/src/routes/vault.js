@@ -2,21 +2,53 @@ const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole, resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
 const vault = require('../services/vault')
+const sharedCreds = require('../services/sharedCredentials')
 
 const router = Router()
 
 router.use(authenticate)
 
 // GET /vault/credentials?service=abc&location_id=xxx
+// Returns the staff's personal credentials plus any shared credentials for
+// services they don't have personal entries for. Shared credentials are
+// keyed by service only; personal entries take precedence when both exist.
 router.get('/credentials', async (req, res) => {
   try {
-    const credentials = await vault.getCredentials(
+    const personal = await vault.getCredentials(
       req.staff.id,
       req.query.service,
       req.query.location_id
     )
+
+    let allShared = []
+    try {
+      allShared = await sharedCreds.getAllShared()
+    } catch (sharedErr) {
+      console.error('[vault] failed to load shared credentials:', sharedErr.message)
+    }
+
+    const personalServices = new Set(personal.map(p => p.service))
+    let sharedFiltered = allShared.filter(s => !personalServices.has(s.service))
+    if (req.query.service) {
+      sharedFiltered = sharedFiltered.filter(s => s.service === req.query.service)
+    }
+
+    const credentials = [
+      ...personal,
+      ...sharedFiltered.map(s => ({
+        id: null,
+        staff_id: null,
+        service: s.service,
+        username: s.username,
+        password: s.password,
+        location_id: null,
+        shared: true,
+      })),
+    ]
+
     res.json({ credentials })
   } catch (err) {
+    console.error('[vault] credentials fetch failed:', err.message)
     res.status(500).json({ error: 'Failed to fetch credentials' })
   }
 })
