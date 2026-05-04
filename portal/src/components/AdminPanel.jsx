@@ -18,6 +18,7 @@ import CustomFieldsAdmin from './admin/CustomFieldsAdmin'
 import ActionLinksAdmin from './admin/ActionLinksAdmin'
 import MembershipSkipListAdmin from './admin/MembershipSkipListAdmin'
 import SharedCredentialsAdmin from './admin/SharedCredentialsAdmin'
+import LauncherVersionAdmin from './admin/LauncherVersionAdmin'
 
 const SETUP_TILES = [
   { key: 'staff', label: 'Staff', desc: 'Accounts & Roles', icon: 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z' },
@@ -42,6 +43,7 @@ const TECHNICAL_TILES = [
   { key: 'custom-fields', label: 'Custom Fields', desc: 'GHL Field Lookup', icon: 'M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z' },
   { key: 'google-connections', label: 'Google Connections', desc: 'OAuth Scopes & Reconnect', icon: 'M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244' },
   { key: 'shared-credentials', label: 'Shared Logins', desc: 'Master Account Credentials', icon: 'M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z' },
+  { key: 'launcher-version', label: 'Force Update', desc: 'Pin Launcher Version', icon: 'M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 0 0-3.7-3.7 48.678 48.678 0 0 0-7.324 0 4.006 4.006 0 0 0-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 0 0 3.7 3.7 48.656 48.656 0 0 0 7.324 0 4.006 4.006 0 0 0 3.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3-3 3' },
 ]
 
 const ALL_TILES = [...SETUP_TILES, ...TECHNICAL_TILES]
@@ -110,6 +112,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange }) {
         {activeSection === 'action-links' && <ActionLinksAdmin />}
         {activeSection === 'membership-skip' && <MembershipSkipListAdmin />}
         {activeSection === 'shared-credentials' && <SharedCredentialsAdmin />}
+        {activeSection === 'launcher-version' && <LauncherVersionAdmin />}
       </div>
     )
   }

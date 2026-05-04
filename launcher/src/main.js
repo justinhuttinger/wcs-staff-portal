@@ -13,6 +13,7 @@ const TabManager = require('./tabs')
 const { showOverlay, closeOverlay, onResize: onOverlayResize } = require('./overlay')
 const { createTray } = require('./tray')
 const auth = require('./auth')
+const versionCheck = require('./version-check')
 
 // --- Auto-updater setup ---
 autoUpdater.autoDownload = true
@@ -89,6 +90,11 @@ app.on('ready', () => {
   setTimeout(() => {
     autoUpdater.checkForUpdates().catch(err => log('[Updater] Check failed: ' + err.message))
   }, 5000)
+
+  // Force-update polling — relaunches the kiosk if its version drops below
+  // the min_launcher_version pinned via the admin panel.
+  versionCheck.setLogger(log)
+  versionCheck.start()
 
   // Load portal tab immediately — portal handles its own login UI
   const location = getLocation()
