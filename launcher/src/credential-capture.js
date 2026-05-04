@@ -233,6 +233,40 @@ async function tryAutoFill() {
   }
 }
 
+// Domain-scoped landing-page "Log In" auto-click. Some vendor sites land
+// you on a marketing page first and require clicking a login link before
+// the actual auth form appears (MyCoke is one). Add a hostname substring
+// here to enable click-the-login-link behavior. Only runs when there is no
+// password field already visible.
+const LOGIN_AUTOCLICK_DOMAINS = ['my-coke.com']
+
+function isLoginAutoClickDomain() {
+  const hostname = window.location.hostname
+  return LOGIN_AUTOCLICK_DOMAINS.some(d => hostname.includes(d))
+}
+
+let landingPageLoginClicked = false
+function tryAutoClickLoginOnLandingPage() {
+  if (landingPageLoginClicked) return false
+  if (!isLoginAutoClickDomain()) return false
+  // If a password field is already on the page, we're past the landing page.
+  if (document.querySelector('input[type="password"]')) return false
+
+  const candidates = document.querySelectorAll('a, button, [role="button"]')
+  for (const el of candidates) {
+    const text = (el.textContent || el.getAttribute('aria-label') || '').trim().toLowerCase()
+    if (text === 'log in' || text === 'login' || text === 'sign in' || text === 'signin') {
+      if (el.offsetParent) {
+        console.log('[WCS CredCapture] Auto-clicking landing-page login link:', text)
+        landingPageLoginClicked = true
+        setTimeout(() => el.click(), 500)
+        return true
+      }
+    }
+  }
+  return false
+}
+
 // Auto-click SSO button on login pages (e.g. GHL)
 function tryAutoClickSSO() {
   const buttons = document.querySelectorAll('button, a, [role="button"]')
@@ -252,6 +286,13 @@ function tryAutoClickSSO() {
 window.addEventListener('DOMContentLoaded', () => {
   console.log('[WCS CredCapture] Loaded on:', window.location.href)
 
+  // Landing-page login link (e.g. MyCoke "Log In") -> click to start the
+  // OAuth flow. Once the auth form loads, the regular auto-fill below
+  // takes over via the mutation observer / interval.
+  if (tryAutoClickLoginOnLandingPage()) {
+    return
+  }
+
   // Check for SSO button first (e.g. GHL login page) — no overlay for SSO
   if (!tryAutoClickSSO()) {
     // No SSO button found, try regular auto-fill with overlay
@@ -264,6 +305,7 @@ window.addEventListener('DOMContentLoaded', () => {
   captureCredentials()
   const observer = new MutationObserver(() => {
     captureCredentials()
+    if (tryAutoClickLoginOnLandingPage()) return
     if (!tryAutoClickSSO()) tryAutoFill()
   })
   observer.observe(document.body, { childList: true, subtree: true })

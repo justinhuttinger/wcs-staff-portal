@@ -22,7 +22,7 @@ const TILE_ICONS = {
 // Vendor ordering sub-tiles (opens via the "Ordering" tile in Tools)
 const ORDERING_LINKS = [
   { label: 'SportLife Distribution', description: 'Supplements', url: 'https://sportlifedistribution.com/' },
-  { label: 'MyCoke', description: 'Beverages', url: 'https://login.my-coke.com/8cedf4b6-bb3a-4248-ab5b-8d3c5989c789/b2c_1a_signinsignup/oauth2/v2.0/authorize?client_id=2a8eff9c-6765-4525-8719-dbfb8487dac7&nonce=03d9183a-a75c-cd79-1e54-234f4b85c6cd&prompt=login&redirect_uri=https%3A%2F%2Fcona.my.site.com%2Fmycokeloginvforcesite%2Fservices%2Fauthcallback%2FCONA_B2BAzureLoginAuth&response_type=code&scope=openid&state=CAAAAZ30ofUrMDAwMDAwMDAwMDAwMDAwAAABBHWK4iaiK0S0er23ivd7CEbqSsTb1Lr8c_HaPkiuwsD8QFYaCPGN88w0NN7AicD-EsPUTYuGvb7bVhwNeJhhchyAtMcgm4GOpBl60JYLBgCO8pUPqNoBsCkc6Q_iOie0eIWxduYG7Hipk4FzXj6Ru8U0du9b6LyDZVTszajnswr4BaJkFRF8-leO7omew8n3UmihIHaIO06v6YTLDZ5RcF40N98oJbXijZo-55Q4Zaksd_IjxoE44ouq-3Qc5lh0FTjWHFyCC3F_D-Zswhn1hw55kar01VLMcnAVy-XGYVwlC5F6Hc9k_MoobI9GlAwv2A%3D%3D' },
+  { label: 'MyCoke', description: 'Beverages', url: 'https://www.my-coke.com/' },
   // TODO: replace with real Walter E. Nelson ordering portal URL
   { label: 'Walter E. Nelson', description: 'Supplies', url: 'https://www.walterenelson.com/' },
 ]
