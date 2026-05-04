@@ -34,6 +34,31 @@ function getSigningKey() {
 const authCodes = new Map()
 const MAX_AUTH_CODES = 500
 
+// OIDC redirect domains that are always allowed (GHL/LeadConnector family).
+// OIDC_ALLOWED_REDIRECTS env var is ADDITIVE on top of these — it cannot
+// remove any of them. We also accept localhost for local testing.
+const CANONICAL_REDIRECT_DOMAINS = [
+  'leadconnectorhq.com',
+  'msgsndr.com',
+  'highlevel.com',
+  'gohighlevel.com',
+]
+
+function isAllowedRedirectUri(redirect_uri) {
+  try {
+    const url = new URL(redirect_uri)
+    if (url.hostname === 'localhost') return true
+    const extra = (process.env.OIDC_ALLOWED_REDIRECTS || '')
+      .split(',')
+      .map(d => d.trim())
+      .filter(Boolean)
+    const allowed = [...CANONICAL_REDIRECT_DOMAINS, ...extra]
+    return allowed.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain))
+  } catch {
+    return false
+  }
+}
+
 function pruneExpiredCodes() {
   const now = Date.now()
   for (const [key, val] of authCodes) {
@@ -77,18 +102,9 @@ router.get('/authorize', async (req, res) => {
   }
 
   // Validate redirect_uri to prevent open redirects
-  if (redirect_uri) {
-    try {
-      const url = new URL(redirect_uri)
-      const allowed = (process.env.OIDC_ALLOWED_REDIRECTS || 'leadconnectorhq.com,msgsndr.com,highlevel.com,gohighlevel.com').split(',').map(d => d.trim())
-      const isAllowed = allowed.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain))
-      if (!isAllowed && url.hostname !== 'localhost') {
-        console.warn('OIDC: blocked redirect to unauthorized URI:', redirect_uri)
-        return res.status(400).send('Invalid redirect_uri')
-      }
-    } catch {
-      return res.status(400).send('Invalid redirect_uri')
-    }
+  if (redirect_uri && !isAllowedRedirectUri(redirect_uri)) {
+    console.warn('OIDC: blocked redirect to unauthorized URI:', redirect_uri)
+    return res.status(400).send('Invalid redirect_uri')
   }
 
   // Check if user is already authenticated via session cookie or token param
@@ -182,17 +198,8 @@ router.post('/authorize', express.urlencoded({ extended: false }), async (req, r
   const { email, password, redirect_uri, state, nonce, scope } = req.body
 
   // Validate redirect_uri (same check as GET /authorize)
-  if (redirect_uri) {
-    try {
-      const url = new URL(redirect_uri)
-      const allowed = (process.env.OIDC_ALLOWED_REDIRECTS || 'leadconnectorhq.com,msgsndr.com,highlevel.com,gohighlevel.com').split(',').map(d => d.trim())
-      const isAllowed = allowed.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain))
-      if (!isAllowed && url.hostname !== 'localhost') {
-        return res.status(400).send('Invalid redirect_uri')
-      }
-    } catch {
-      return res.status(400).send('Invalid redirect_uri')
-    }
+  if (redirect_uri && !isAllowedRedirectUri(redirect_uri)) {
+    return res.status(400).send('Invalid redirect_uri')
   }
 
   try {
