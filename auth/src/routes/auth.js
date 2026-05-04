@@ -155,6 +155,12 @@ router.post('/login', loginLimiter, async (req, res) => {
     },
     must_change_password: staff.must_change_password,
   })
+
+  // Fire-and-forget audit event. Don't await — caller already got their response.
+  require('../services/auditLog').record(staff.id, 'session.login', {
+    ip: req.ip,
+    metadata: { role: staff.role, location_count: locations.length },
+  }).catch(() => {})
   } catch (err) {
     console.error('[Auth] Login error:', err.message)
     res.status(500).json({ error: 'Login failed' })
@@ -197,8 +203,13 @@ router.post('/logout', logoutLimiter, async (req, res) => {
   })
 
   const authHeader = req.headers.authorization
+  let staffId = null
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.slice(7)
+    try {
+      const { data: { user } } = await supabaseAdmin.auth.getUser(token)
+      if (user) staffId = user.id
+    } catch {}
     try {
       await supabaseAdmin.auth.admin.signOut(token, 'local')
     } catch (err) {
@@ -207,6 +218,11 @@ router.post('/logout', logoutLimiter, async (req, res) => {
   }
 
   res.json({ message: 'Logged out' })
+
+  // Fire-and-forget audit event.
+  if (staffId) {
+    require('../services/auditLog').record(staffId, 'session.logout', { ip: req.ip }).catch(() => {})
+  }
 })
 
 // POST /auth/refresh — public; exchanges a refresh token for a new access token
