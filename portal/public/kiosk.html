@@ -30,13 +30,14 @@
       background: var(--white);
       display: flex; align-items: center; justify-content: center;
       flex-direction: column; gap: 20px;
-      padding: 40px;
-      text-align: center;
     }
     #setup-screen.hidden { display: none; }
     .setup-tag { background: var(--red); color: white; font-size: 10px; font-weight: 600; letter-spacing: 3px; padding: 4px 14px; text-transform: uppercase; }
     .setup-heading { font-family: 'Bebas Neue', sans-serif; font-size: 36px; letter-spacing: 2px; color: var(--black); }
-    .setup-message { font-size: 16px; color: var(--text); max-width: 520px; line-height: 1.5; }
+    .setup-input { width: 400px; padding: 12px 16px; border: 2px solid var(--border); font-size: 14px; font-family: 'DM Sans', sans-serif; outline: none; }
+    .setup-input:focus { border-color: var(--red); }
+    .setup-btn { background: var(--red); color: white; border: none; padding: 12px 32px; font-family: 'Bebas Neue', sans-serif; font-size: 18px; letter-spacing: 2px; cursor: pointer; transition: background 0.2s; }
+    .setup-btn:hover { background: var(--red-hover); }
     .setup-note { font-size: 12px; color: var(--muted); }
 
     /* New Signup FAB */
@@ -49,6 +50,17 @@
       transition: all 0.2s;
     }
     #signup-fab:hover { background: var(--red-hover); transform: translateY(-2px); box-shadow: 0 8px 32px rgba(204,0,0,0.5); }
+
+    /* Settings gear */
+    #settings-btn {
+      position: fixed; bottom: 24px; left: 24px; z-index: 50;
+      background: rgba(0,0,0,0.05); border: none;
+      width: 36px; height: 36px; font-size: 18px;
+      cursor: pointer; color: var(--muted); border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    #settings-btn:hover { background: rgba(0,0,0,0.1); color: var(--black); }
 
     /* Overlay backdrop */
     #overlay-backdrop {
@@ -96,11 +108,14 @@
 </head>
 <body>
 
-  <!-- Setup Screen (shown when ABC is not yet configured for this location) -->
+  <!-- Setup Screen (first time) -->
   <div id="setup-screen">
-    <div class="setup-tag">NOT CONFIGURED</div>
-    <div class="setup-heading">ABC NOT YET CONFIGURED</div>
-    <div class="setup-message">Please reach out to Justin for assistance.</div>
+    <div class="setup-tag">KIOSK SETUP</div>
+    <div class="setup-heading">PASTE YOUR ABC FINANCIAL URL</div>
+    <input class="setup-input" id="abc-url-input" type="url" placeholder="https://prod02.abcfinancial.com/..." />
+    <input class="setup-input" id="location-input" placeholder="Location name (e.g. Salem)" />
+    <button class="setup-btn" id="setup-save">SAVE & LAUNCH</button>
+    <div class="setup-note">This is saved locally. You can change it later via the ⚙ icon.</div>
   </div>
 
   <!-- ABC iframe -->
@@ -119,6 +134,9 @@
     <input id="mf-salesperson" placeholder="Salesperson" />
     <button id="mf-submit">START ONBOARDING</button>
   </div>
+
+  <!-- Settings gear -->
+  <button id="settings-btn" style="display:none">⚙</button>
 
   <!-- Onboarding Overlay -->
   <div id="overlay-backdrop">
@@ -150,26 +168,47 @@
     const setupScreen = document.getElementById('setup-screen');
     const abcFrame = document.getElementById('abc-frame');
     const signupFab = document.getElementById('signup-fab');
+    const settingsBtn = document.getElementById('settings-btn');
     const memberForm = document.getElementById('member-form');
     const overlayBackdrop = document.getElementById('overlay-backdrop');
     const overlayFrame = document.getElementById('overlay-frame');
 
-    // ── Launch flow ──
-    // ABC URL is configured by admin (passed via URL param) and cached in localStorage.
-    // If neither is present, show the "not configured" lockout screen instead of letting
-    // staff paste a URL themselves.
+    // ── Setup flow ──
     if (abcUrl) {
       launchKiosk();
     } else {
       setupScreen.classList.remove('hidden');
     }
 
+    // Pre-fill from URL params
+    if (abcUrl) document.getElementById('abc-url-input').value = abcUrl;
+    if (locationName) document.getElementById('location-input').value = locationName;
+
+    document.getElementById('setup-save').addEventListener('click', () => {
+      const url = document.getElementById('abc-url-input').value.trim();
+      const loc = document.getElementById('location-input').value.trim();
+      if (!url) { alert('Please enter the ABC Financial URL'); return; }
+      abcUrl = url;
+      locationName = loc || 'Salem';
+      localStorage.setItem('wcs_abc_url', abcUrl);
+      localStorage.setItem('wcs_location', locationName);
+      launchKiosk();
+    });
+
     function launchKiosk() {
       setupScreen.classList.add('hidden');
       abcFrame.src = abcUrl;
       signupFab.style.display = '';
+      settingsBtn.style.display = '';
       document.title = 'ABC Financial — ' + (locationName || 'WCS Kiosk');
     }
+
+    // ── Settings (reset URL) ──
+    settingsBtn.addEventListener('click', () => {
+      setupScreen.classList.remove('hidden');
+      document.getElementById('abc-url-input').value = abcUrl;
+      document.getElementById('location-input').value = locationName;
+    });
 
     // ── New Signup flow ──
     let formVisible = false;
