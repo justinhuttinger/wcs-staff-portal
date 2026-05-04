@@ -96,6 +96,9 @@ app.on('ready', () => {
   versionCheck.setLogger(log)
   versionCheck.start()
 
+  // Auth module logs through the same C:\WCS\app.log
+  auth.setLogger(log)
+
   // Load portal tab immediately — portal handles its own login UI
   const location = getLocation()
   const abcUrl = getAbcUrl()
@@ -270,15 +273,28 @@ app.on('ready', () => {
     latestMemberData = {}
   })
 
-  // Credential IPC — preload scripts request creds for auto-fill
+  // Credential IPC — preload scripts request creds for auto-fill.
+  // Logs to C:\WCS\app.log for diagnostics — silent failures here have
+  // historically hidden auth-token / shared-credential issues.
   ipcMain.handle('get-credentials', async (e, service) => {
+    log('[get-credentials] request service=' + service + ' loggedIn=' + auth.isLoggedIn())
     const cred = auth.getCachedCredential(service)
-    if (cred) return { username: cred.username, password: cred.password }
+    if (cred) {
+      log('[get-credentials] cache HIT for ' + service)
+      return { username: cred.username, password: cred.password }
+    }
+    log('[get-credentials] cache MISS for ' + service + ' -> fetching')
     try {
       await auth.fetchCredentials(service)
       const fetched = auth.getCachedCredential(service)
-      if (fetched) return { username: fetched.username, password: fetched.password }
-    } catch {}
+      if (fetched) {
+        log('[get-credentials] fetch resolved ' + service)
+        return { username: fetched.username, password: fetched.password }
+      }
+      log('[get-credentials] fetch returned no entry for ' + service)
+    } catch (err) {
+      log('[get-credentials] fetch error for ' + service + ': ' + (err?.message || err))
+    }
     return null
   })
 

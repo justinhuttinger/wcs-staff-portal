@@ -81,6 +81,24 @@ class TabManager {
       return { action: 'deny' }
     })
 
+    // Per-tab DevTools shortcuts. Hooked at the webContents level (not via
+    // globalShortcut) so they survive OEM / kiosk software that grabs F12.
+    // Bindings: F12 (toggle), Ctrl+Shift+I (toggle), Ctrl+Shift+J (open).
+    view.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return
+      const isF12 = input.key === 'F12'
+      const isCtrlShiftI = input.control && input.shift && (input.key === 'I' || input.key === 'i')
+      const isCtrlShiftJ = input.control && input.shift && (input.key === 'J' || input.key === 'j')
+      if (isF12 || isCtrlShiftI) {
+        event.preventDefault()
+        if (view.webContents.isDevToolsOpened()) view.webContents.closeDevTools()
+        else view.webContents.openDevTools({ mode: 'detach' })
+      } else if (isCtrlShiftJ) {
+        event.preventDefault()
+        view.webContents.openDevTools({ mode: 'detach' })
+      }
+    })
+
     this.tabs.set(id, { view, title, closable, id })
     this.switchTo(id)
     return id
