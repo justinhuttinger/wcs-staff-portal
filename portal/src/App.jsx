@@ -68,7 +68,15 @@ export default function App() {
         })
         .catch(() => {})
     } else if (!user && getToken()) {
-      getMe().then(meData => setUser(meData)).catch(() => {
+      getMe().then(meData => {
+        setUser(meData)
+        // Sync the restored session with the Electron launcher so its main
+        // process can populate cachedCredentials. Without this, abc-scraper
+        // (and other auto-fill preloads) get null from get-credentials.
+        if (window.wcsElectron) {
+          window.wcsElectron.onLogin(getToken(), meData.staff?.display_name || meData.staff?.email || '')
+        }
+      }).catch(() => {
         clearToken()
       })
     }
