@@ -10,7 +10,10 @@ class TabManager {
     this.nextId = 1
     this.tabBarView = null
     this.onNewWindow = null
+    this.logger = null
   }
+
+  setLogger(fn) { this.logger = fn }
 
   initTabBar() {
     this.tabBarView = new BrowserView({
@@ -46,10 +49,14 @@ class TabManager {
 
     view.webContents.loadURL(url)
 
-    // Pipe console.log from renderer to main process (for debugging preload scripts)
+    // Pipe console.log from renderer to main process AND to C:\WCS\app.log
+    // (for debugging preload scripts on machines without DevTools open).
     if (preload) {
       view.webContents.on('console-message', (e, level, msg) => {
-        if (msg.includes('[WCS')) console.log(msg)
+        if (msg.includes('[WCS')) {
+          console.log(msg)
+          if (this.logger) this.logger(msg)
+        }
       })
     }
 
