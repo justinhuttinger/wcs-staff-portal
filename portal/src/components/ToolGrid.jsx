@@ -30,8 +30,14 @@ const ORDERING_LINKS = [
 // Which built-in tool IDs are "Apps" (external services)
 const APP_IDS = ['grow', 'abc', 'wheniwork', 'paychex', 'gmail']
 
-// Role hierarchy levels for visibility checks
-const ROLE_LEVELS = { team_member: 0, lead: 1, manager: 2, corporate: 3, admin: 4 }
+// Role hierarchy levels for visibility checks (legacy aliases included)
+const ROLE_LEVELS = {
+  front_desk: 0, personal_trainer: 0, team_member: 0,
+  lead: 1,
+  manager: 2,
+  director: 3, corporate: 3,
+  admin: 4,
+}
 
 function SvgTileButton({ onClick, iconPath, label, desc, badge, star }) {
   return (
@@ -272,7 +278,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   const myEntry = userRank ? rankings.find(r => r.rank === userRank) : null
   const totalStaff = rankings.length
   const roleIdx = ROLE_LEVELS[userRole] ?? 0
-  const hideScoreCard = userRole === 'admin' || userRole === 'corporate'
+  const hideScoreCard = roleIdx >= ROLE_LEVELS.corporate
 
   return (
     <div className="w-full px-4 mx-auto">
@@ -472,8 +478,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {onHR && roleIdx >= ROLE_LEVELS.manager && <SvgTileButton onClick={onHR} iconPath={TILE_ICONS.hr} label="HR Docs" desc="Documents" />}
           {/* 4.7. Help Center — all roles */}
           {onHelpCenter && <SvgTileButton onClick={onHelpCenter} iconPath={TILE_ICONS.helpCenter} label="Help Center" desc="Guides" />}
-          {/* 4.8. Ordering — opens sub-grid of vendor links */}
-          <SvgTileButton onClick={() => setShowOrdering(true)} iconPath={TILE_ICONS.ordering} label="Ordering" desc="Vendors" />
+          {/* 4.8. Ordering — lead+ only */}
+          {roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={() => setShowOrdering(true)} iconPath={TILE_ICONS.ordering} label="Ordering" desc="Vendors" />}
           {/* 4.9. Tickets — lead+ */}
           {onTickets && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTickets} iconPath={TILE_ICONS.tickets} label="Tickets/Support" desc="Help Desk" />}
           {/* (Day One Tracking merged into Calendar) */}
@@ -484,10 +490,10 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
             const tileLabel = (tile.label || '').toLowerCase()
             // Skip Cancel — already rendered above
             if (['cancel', 'cancel tool'].includes(tileLabel)) return false
-            // Hide Reporting tile for team_member
-            if (tileLabel === 'reporting' && userRole === 'team_member') return false
+            // Hide Reporting tile for team_member (and legacy aliases)
+            if (tileLabel === 'reporting' && roleIdx === ROLE_LEVELS.team_member) return false
             // Marketing tile only for corporate and admin
-            if (tileLabel === 'marketing' && userRole !== 'corporate' && userRole !== 'admin') return false
+            if (tileLabel === 'marketing' && roleIdx < ROLE_LEVELS.corporate) return false
             // Tickets: now a built-in tile — skip custom tile version
             if (tileLabel === 'tickets') return false
             // Indeed, Operandio, VistaPrint: manager+ only
