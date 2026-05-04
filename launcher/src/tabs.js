@@ -1,11 +1,5 @@
 const { BrowserView, session } = require('electron')
 const path = require('path')
-const { SCRIPT: WIDGET_FILL_SCRIPT } = require('./widget-fill')
-
-function isGhlWidgetUrl(url) {
-  if (!url) return false
-  return url.includes('/widget/booking/') || url.includes('/widget/survey/')
-}
 
 class TabManager {
   constructor(parentWindow, tabBarHeight) {
@@ -58,23 +52,6 @@ class TabManager {
         if (msg.includes('[WCS')) console.log(msg)
       })
     }
-
-    // Inject widget-fill into GHL booking/survey iframes whenever they finish
-    // loading. Cross-origin iframes block JS from same-origin parents, so this
-    // has to come from the main process via `frame.executeJavaScript`.
-    view.webContents.on('did-frame-finish-load', (event, isMainFrame, frameProcessId, frameRoutingId) => {
-      if (isMainFrame) return
-      try {
-        const mainFrame = view.webContents.mainFrame
-        if (!mainFrame) return
-        const frame = mainFrame.framesInSubtree.find(
-          f => f.processId === frameProcessId && f.routingId === frameRoutingId
-        )
-        if (!frame) return
-        if (!isGhlWidgetUrl(frame.url)) return
-        frame.executeJavaScript(WIDGET_FILL_SCRIPT).catch(() => {})
-      } catch {}
-    })
 
     // Intercept OIDC authorize URLs and inject auth token for auto-SSO
     view.webContents.on('will-navigate', (e, url) => {
