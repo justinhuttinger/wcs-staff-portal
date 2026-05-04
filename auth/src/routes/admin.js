@@ -162,7 +162,10 @@ router.put('/staff/:id', requireRole('admin'), async (req, res) => {
 
     if (Object.keys(updates).length > 0) {
       const { error } = await supabaseAdmin.from('staff').update(updates).eq('id', staffId)
-      if (error) return res.status(500).json({ error: 'Failed to update staff' })
+      if (error) {
+        console.error('[admin/staff PUT] staff update failed', { staffId, updates, error })
+        return res.status(500).json({ error: 'Failed to update staff: ' + error.message })
+      }
     }
 
     if (location_ids) {
@@ -179,12 +182,16 @@ router.put('/staff/:id', requireRole('admin'), async (req, res) => {
         }
       })
       const { error } = await supabaseAdmin.from('staff_locations').insert(assignments)
-      if (error) return res.status(500).json({ error: 'Failed to update location assignments' })
+      if (error) {
+        console.error('[admin/staff PUT] location assignment failed', { staffId, assignments, error })
+        return res.status(500).json({ error: 'Failed to update location assignments: ' + error.message })
+      }
     }
 
     res.json({ message: 'Staff updated' })
   } catch (err) {
-    res.status(500).json({ error: 'Failed to update staff' })
+    console.error('[admin/staff PUT] uncaught error', { staffId, err })
+    res.status(500).json({ error: 'Failed to update staff: ' + (err.message || 'unknown error') })
   }
 })
 
