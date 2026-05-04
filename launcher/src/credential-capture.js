@@ -9,6 +9,11 @@ const DOMAIN_SERVICE_MAP = {
   'wheniwork.com': 'wheniwork',
   'paychex.com': 'paychex',
   'myapps.paychex.com': 'paychex',
+  // Vendor ordering tiles — used for shared-credential auto-fill. Pinning
+  // these so subdomain-style URLs (e.g. login.my-coke.com) still resolve to
+  // the same service key as the apex domain.
+  'my-coke.com': 'my-coke',
+  'sportlifedistribution.com': 'sportlifedistribution',
 }
 
 function getServiceName() {
