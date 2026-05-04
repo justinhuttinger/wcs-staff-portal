@@ -196,7 +196,7 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
       )}
 
       {needsLocationPick ? (
-        <div className="text-center py-12">
+        <div className="bg-surface border border-border rounded-xl px-6 py-12 text-center">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-10 h-10 text-text-muted mx-auto mb-3">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
@@ -227,7 +227,7 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
       {loading ? (
         <p className="loading-card mx-auto block my-6">Loading employees from Paychex...</p>
       ) : error ? (
-        <div className="text-center py-8">
+        <div className="bg-surface border border-border rounded-xl px-6 py-8 text-center">
           <p className="text-sm text-red-600 mb-3">{error}</p>
           <button onClick={fetchWorkers} className="px-4 py-2 text-xs font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 transition-colors">
             Retry
@@ -504,7 +504,7 @@ function WorkerDocuments({ worker }) {
       {loading ? (
         <p className="loading-card mx-auto block my-6">Loading documents...</p>
       ) : error ? (
-        <div className="text-center py-8">
+        <div className="bg-surface border border-border rounded-xl px-6 py-8 text-center">
           <p className="text-sm text-red-600 mb-3">{error}</p>
           <button onClick={fetchDocs} className="px-4 py-2 text-xs font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 transition-colors">Retry</button>
         </div>
@@ -512,7 +512,7 @@ function WorkerDocuments({ worker }) {
         <>
           {paychexDocs.length > 0 && (
             <div>
-              <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Paychex Documents</h3>
+              <h3 className="inline-block bg-surface border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Paychex Documents</h3>
               <div className="space-y-2">
                 {paychexDocs.map((doc, i) => (
                   <div key={doc.documentId || i} className="bg-surface border border-border rounded-xl px-4 py-3 flex items-center gap-3">
@@ -533,7 +533,7 @@ function WorkerDocuments({ worker }) {
           )}
 
           <div>
-            <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+            <h3 className="inline-block bg-surface border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
               Portal Documents {localDocs.length > 0 && `(${localDocs.length})`}
             </h3>
             {localDocs.length === 0 ? (
@@ -684,7 +684,9 @@ export default function HRView({ user, onBack }) {
       {/* Submit — Step 1: Pick employee */}
       {view === 'submit-pick' && (
         <div>
-          <p className="text-sm text-text-muted mb-4">Select an employee to create a document for:</p>
+          <div className="bg-surface border border-border rounded-xl px-4 py-3 mb-4">
+            <p className="text-sm text-text-primary">Select an employee to create a document for:</p>
+          </div>
           <WorkerList
             user={user}
             onSelectWorker={w => { setSelectedWorker(w); setView('submit-form') }}
