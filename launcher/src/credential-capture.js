@@ -141,6 +141,18 @@ function hideLoginOverlay() {
   }
 }
 
+// Domain-scoped landing-page "Log In" auto-click. Declared here (above the
+// setInterval / setTimeout below that read it at module-load time) to avoid
+// a TDZ error — `const` declarations are hoisted into TDZ but not
+// initialized until their line, so any earlier call to isLoginAutoClickDomain
+// would throw "Cannot access 'LOGIN_AUTOCLICK_DOMAINS' before initialization".
+const LOGIN_AUTOCLICK_DOMAINS = ['my-coke.com']
+
+function isLoginAutoClickDomain() {
+  const hostname = window.location.hostname
+  return LOGIN_AUTOCLICK_DOMAINS.some(d => hostname.includes(d))
+}
+
 // Auto-remove overlay on navigation, MFA screen, or timeout
 let initialUrl = window.location.href
 const initialIsLandingPage = isLoginAutoClickDomain()
@@ -251,18 +263,6 @@ async function tryAutoFill() {
   } catch (err) {
     console.log('[WCS CredCapture] Auto-fill skipped:', err.message)
   }
-}
-
-// Domain-scoped landing-page "Log In" auto-click. Some vendor sites land
-// you on a marketing page first and require clicking a login link before
-// the actual auth form appears (MyCoke is one). Add a hostname substring
-// here to enable click-the-login-link behavior. Only runs when there is no
-// password field already visible.
-const LOGIN_AUTOCLICK_DOMAINS = ['my-coke.com']
-
-function isLoginAutoClickDomain() {
-  const hostname = window.location.hostname
-  return LOGIN_AUTOCLICK_DOMAINS.some(d => hostname.includes(d))
 }
 
 // Walk the entire DOM tree including shadow roots and return every node
