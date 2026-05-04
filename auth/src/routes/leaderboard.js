@@ -309,12 +309,13 @@ router.get('/', async (req, res) => {
 
     // Authorize: managers (and below) can only request locations they're assigned to.
     // Corporate/admin/director may request any location.
+    // staff_locations.location_id references the portal `locations` table — not `ghl_locations`.
     if (!canSeeAllLocations(userRole)) {
       const allowedIds = req.staff.location_ids || []
       let allowed = false
       if (allowedIds.length > 0) {
         const { data: allowedLocs } = await supabaseAdmin
-          .from('ghl_locations')
+          .from('locations')
           .select('name')
           .in('id', allowedIds)
         const allowedSlugs = (allowedLocs || []).map(l =>
@@ -337,11 +338,12 @@ router.get('/', async (req, res) => {
     const rankings = await aggregateLocation(locationSlug, bounds)
     const userInfo = findUserRank(rankings, req.staff)
 
-    // Count total staff at this location for "last place" display
+    // Count total staff at this location for "last place" display.
+    // staff_locations.location_id references the portal `locations` table.
     let totalStaff = rankings.length
     try {
       const { data: loc } = await supabaseAdmin
-        .from('ghl_locations').select('id')
+        .from('locations').select('id')
         .ilike('name', '%' + locationSlug + '%').limit(1).maybeSingle()
       if (loc) {
         const { count } = await supabaseAdmin
