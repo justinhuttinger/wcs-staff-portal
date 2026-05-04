@@ -80,8 +80,8 @@ router.get('/authorize', async (req, res) => {
   if (redirect_uri) {
     try {
       const url = new URL(redirect_uri)
-      const allowed = (process.env.OIDC_ALLOWED_REDIRECTS || 'leadconnectorhq.com,msgsndr.com,highlevel.com,gohighlevel.com').split(',').map(d => d.trim())
-      const isAllowed = allowed.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain))
+      const allowed = (process.env.OIDC_ALLOWED_REDIRECTS || 'leadconnectorhq.com,msgsndr.com,highlevel.com').split(',')
+      const isAllowed = allowed.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain.trim()))
       if (!isAllowed && url.hostname !== 'localhost') {
         console.warn('OIDC: blocked redirect to unauthorized URI:', redirect_uri)
         return res.status(400).send('Invalid redirect_uri')
@@ -185,8 +185,8 @@ router.post('/authorize', express.urlencoded({ extended: false }), async (req, r
   if (redirect_uri) {
     try {
       const url = new URL(redirect_uri)
-      const allowed = (process.env.OIDC_ALLOWED_REDIRECTS || 'leadconnectorhq.com,msgsndr.com,highlevel.com,gohighlevel.com').split(',').map(d => d.trim())
-      const isAllowed = allowed.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain))
+      const allowed = (process.env.OIDC_ALLOWED_REDIRECTS || 'leadconnectorhq.com,msgsndr.com,highlevel.com').split(',')
+      const isAllowed = allowed.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain.trim()))
       if (!isAllowed && url.hostname !== 'localhost') {
         return res.status(400).send('Invalid redirect_uri')
       }
