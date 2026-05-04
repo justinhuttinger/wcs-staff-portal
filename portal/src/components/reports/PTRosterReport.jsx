@@ -276,7 +276,6 @@ export default function PTRosterReport({ locationSlug }) {
                               title={c.services?.[0]?.planName || ''}
                             >
                               {c.services?.[0]?.useFrequency || c.services?.[0]?.frequency || '—'}
-                              {c.services?.[0]?.totalPeriods ? ` (${c.services[0].totalPeriods})` : ''}
                             </span>
                             <span className="col-span-2 text-right text-text-primary font-medium">{fmtMoney(c.monthlyRevenue)}</span>
                           </div>
