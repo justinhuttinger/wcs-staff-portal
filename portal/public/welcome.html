@@ -133,11 +133,13 @@
     if (member.phone) chipsEl.innerHTML += '<div class="chip"><span class="chip-icon">☎</span>' + member.phone + '</div>';
     if (member.salesperson) chipsEl.innerHTML += '<div class="chip"><span class="chip-icon">●</span>' + member.salesperson + '</div>';
 
+    // GHL booking widget prefill expects a bare 10-digit US number for the
+    // phone field — the +1 country-code prefix prevents the field from being
+    // populated. Strip non-digits and drop a leading 1 if present.
     function cleanPhone(raw) {
       const digits = raw.replace(/\D/g, '');
-      if (digits.length === 10) return '+1' + digits;
-      if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;
-      return '+' + digits;
+      if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1);
+      return digits;
     }
 
     function buildUrl(base) {
@@ -145,7 +147,13 @@
       if (member.firstName) url.searchParams.set('first_name', member.firstName);
       if (member.lastName) url.searchParams.set('last_name', member.lastName);
       if (member.email) url.searchParams.set('email', member.email);
-      if (member.phone) url.searchParams.set('phone', cleanPhone(member.phone));
+      if (member.phone) {
+        const phone = cleanPhone(member.phone);
+        if (phone) {
+          url.searchParams.set('phone', phone);
+          url.searchParams.set('phone_number', phone);
+        }
+      }
       if (member.salesperson) url.searchParams.set('day_one_booking_team_member', member.salesperson.replace(/\s+[A-Za-z]\s+/g, ' ').trim());
       return url.toString();
     }
