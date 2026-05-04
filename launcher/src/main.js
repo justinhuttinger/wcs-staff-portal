@@ -327,6 +327,7 @@ app.on('ready', () => {
     'memberservices.westcoaststrength.com': 'Cancel Tool',
     'forms.clickup.com': 'Form',
     'reporting.strengthcoastwest.com': 'Tickets',
+    'trainerize.com': 'Trainerize',
   }
 
   function getTabName(url) {
