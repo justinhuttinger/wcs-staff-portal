@@ -30,12 +30,16 @@ const ORDERING_LINKS = [
 // Which built-in tool IDs are "Apps" (external services)
 const APP_IDS = ['grow', 'abc', 'wheniwork', 'paychex', 'gmail']
 
-// Role hierarchy levels for visibility checks (legacy aliases included)
+// Role hierarchy levels for visibility checks (legacy aliases included).
+// 'marketing' sits at the same tier as corporate so it passes any corporate
+// gate (reports, meta ads, etc.). The portal early-returns a restricted UI
+// for marketing role, so corporate-only built-in tools never get rendered.
 const ROLE_LEVELS = {
   front_desk: 0, personal_trainer: 0, team_member: 0,
   lead: 1,
   manager: 2,
   director: 3, corporate: 3,
+  marketing: 3,
   admin: 4,
 }
 
@@ -249,6 +253,38 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   }
 
   if (!tilesLoaded) return null
+
+  // Marketing role: tightly scoped to Reporting + Marketing + Insights, all
+  // locations. Skip the normal Apps/Tools rendering entirely so nothing else
+  // can leak through.
+  if (userRole === 'marketing') {
+    return (
+      <div className="w-full max-w-4xl mx-auto px-8 pt-4">
+        <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">
+          Marketing
+        </p>
+        <div className="grid grid-cols-3 gap-5">
+          {onReporting && (
+            <SvgTileButton
+              onClick={() => { window.location.hash = '#reporting'; onReporting() }}
+              iconPath={TILE_ICONS.reporting}
+              label="Reporting"
+              desc="All Locations"
+            />
+          )}
+          {onMetaAds && (
+            <SvgTileButton
+              onClick={onMetaAds}
+              iconPath={TILE_ICONS.marketing}
+              label="Marketing"
+              desc="Ad Reports"
+            />
+          )}
+          <ToolButton label="Insights" description="ABC" url="https://app.fitnessbi.com/signin" />
+        </div>
+      </div>
+    )
+  }
 
   // Labels that should be in Apps even if their section isn't "main"
   const APP_LABELS = ['indeed', 'operandio', 'vistaprint', 'vista']

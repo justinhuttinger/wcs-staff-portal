@@ -138,7 +138,7 @@ router.post('/tiles', requireRole('admin'), async (req, res) => {
     }
 
     // Auto-create role_tool_visibility rows for this tile (all roles, visible by default)
-    const ROLES = ['team_member', 'lead', 'manager', 'corporate', 'admin']
+    const ROLES = ['team_member', 'lead', 'manager', 'marketing', 'corporate', 'admin']
     const visRows = ROLES.map(role => ({ role, tool_key: 'tile:' + tile.id, visible: true }))
     await supabaseAdmin.from('role_tool_visibility').upsert(visRows, { onConflict: 'role,tool_key' })
 
@@ -222,7 +222,7 @@ router.get('/role-visibility', requireRole('admin'), async (req, res) => {
       .order('label')
 
     // Auto-create missing visibility rows for tiles
-    const ROLES = ['team_member', 'lead', 'manager', 'corporate', 'admin']
+    const ROLES = ['team_member', 'lead', 'manager', 'marketing', 'corporate', 'admin']
     const missing = []
     for (const tile of (tiles || [])) {
       const tileKey = 'tile:' + tile.id

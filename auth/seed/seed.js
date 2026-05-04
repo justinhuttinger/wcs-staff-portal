@@ -17,7 +17,7 @@ const LOCATIONS = [
 ]
 
 const TOOLS = ['grow', 'abc', 'wheniwork', 'paychex', 'gmail', 'drive']
-const ROLES = ['team_member', 'lead', 'manager', 'corporate', 'admin']
+const ROLES = ['team_member', 'lead', 'manager', 'marketing', 'corporate', 'admin']
 
 async function seed() {
   // Seed locations

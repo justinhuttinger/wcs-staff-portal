@@ -7,7 +7,12 @@ const ROLE_ALIASES = {
   director: 'corporate',
 }
 
-const ROLE_HIERARCHY = ['team_member', 'lead', 'manager', 'corporate', 'admin']
+// 'marketing' sits ABOVE 'corporate' but below 'admin' so that
+// requireRole('corporate') checks (reports, meta ads, google analytics,
+// google business) all pass for marketing without needing per-endpoint
+// allowlists. The portal UI for the marketing role is restricted to a
+// curated 3-tile layout regardless of what the API would otherwise allow.
+const ROLE_HIERARCHY = ['team_member', 'lead', 'manager', 'corporate', 'marketing', 'admin']
 
 function resolveRole(role) {
   return ROLE_ALIASES[role] || role
@@ -15,14 +20,14 @@ function resolveRole(role) {
 
 // Report access matrix — which roles can view which reports
 const REPORT_ACCESS = {
-  membership:   ['lead', 'manager', 'corporate', 'admin'],
-  'club-health': ['manager', 'corporate', 'admin'],
-  pt:           ['lead', 'manager', 'corporate', 'admin'],
-  marketing:    ['corporate', 'admin'],
+  membership:   ['lead', 'manager', 'marketing', 'corporate', 'admin'],
+  'club-health': ['manager', 'marketing', 'corporate', 'admin'],
+  pt:           ['lead', 'manager', 'marketing', 'corporate', 'admin'],
+  marketing:    ['marketing', 'corporate', 'admin'],
 }
 
 // Roles that can see all locations (not locked to home club)
-const ALL_LOCATION_ROLES = ['corporate', 'admin']
+const ALL_LOCATION_ROLES = ['marketing', 'corporate', 'admin']
 
 function requireRole(minimumRole) {
   const minLevel = ROLE_HIERARCHY.indexOf(minimumRole)
