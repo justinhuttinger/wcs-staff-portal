@@ -15,6 +15,7 @@ import HelpCenterView from './components/HelpCenterView'
 import TicketsView from './components/TicketsView'
 import DriveView from './components/DriveView'
 import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout } from './lib/api'
+import { logEvent } from './lib/audit'
 
 const LOCATION_BACKGROUNDS = {
   salem: '/bg-salem.jpg',
@@ -56,6 +57,20 @@ export default function App() {
   useEffect(() => {
     document.title = 'WCS Staff Portal'
   }, [])
+
+  // Audit: fire a view event whenever a major view becomes active. Each one
+  // is fire-and-forget through lib/audit.
+  useEffect(() => { if (showAdmin) logEvent('view.admin') }, [showAdmin])
+  useEffect(() => { if (showCalendar) logEvent('view.calendar') }, [showCalendar])
+  useEffect(() => { if (showReporting) logEvent('view.reporting') }, [showReporting])
+  useEffect(() => { if (showTrainerAvail) logEvent('view.trainer_availability') }, [showTrainerAvail])
+  useEffect(() => { if (showMetaAds) logEvent('view.marketing') }, [showMetaAds])
+  useEffect(() => { if (showLeaderboard) logEvent('view.leaderboard') }, [showLeaderboard])
+  useEffect(() => { if (showCommunicationNotes) logEvent('view.communication_notes') }, [showCommunicationNotes])
+  useEffect(() => { if (showHR) logEvent('view.hr') }, [showHR])
+  useEffect(() => { if (showHelpCenter) logEvent('view.help_center') }, [showHelpCenter])
+  useEffect(() => { if (showTickets) logEvent('view.tickets') }, [showTickets])
+  useEffect(() => { if (showDrive) logEvent('view.drive') }, [showDrive])
 
   // Auto-login from stored token (for new tabs like Reporting)
   // Or kiosk auto-login with shared secret
