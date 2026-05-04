@@ -5,10 +5,11 @@ const { autoUpdater } = require('electron-updater')
 
 // Set app name for Windows notifications
 app.setAppUserModelId('Portal')
-const LOG_FILE = 'C:\\WCS\\app.log'
+const { PORTAL_URL, getAbcUrl, getLocation, readConfig, writeConfig, WCS_DIR, LOG_FILE } = require('./config')
+try { fs.mkdirSync(WCS_DIR, { recursive: true }) } catch {}
 function log(msg) { try { fs.appendFileSync(LOG_FILE, new Date().toISOString() + ' ' + msg + '\n') } catch {} }
 log('=== APP STARTING ===')
-const { PORTAL_URL, getAbcUrl, getLocation, readConfig, writeConfig } = require('./config')
+const firstRun = require('./first-run')
 const TabManager = require('./tabs')
 const { showOverlay, closeOverlay, onResize: onOverlayResize } = require('./overlay')
 const { createTray } = require('./tray')
@@ -49,7 +50,14 @@ const TAB_BAR_HEIGHT = 52
 let mainWindow = null
 let tabManager = null
 
-app.on('ready', () => {
+app.on('ready', async () => {
+  // First run on macOS / Linux: NSIS can't show its location-picker page on
+  // these platforms, so prompt inside the app and write config.json before
+  // anything else loads. On Windows the installer already wrote it.
+  if (process.platform !== 'win32') {
+    try { await firstRun.ensureKioskConfig() } catch (err) { log('[first-run] ' + (err?.message || err)) }
+  }
+
   const { session } = require('electron')
 
   // Strip X-Frame-Options on both default and persistent sessions
@@ -65,11 +73,15 @@ app.on('ready', () => {
   const persistSes = ses.fromPartition('persist:wcs-portal')
   persistSes.webRequest.onHeadersReceived(stripFrameHeaders)
 
+  const windowIcon = process.platform === 'win32'
+    ? path.join(__dirname, '..', 'assets', 'icon.ico')
+    : path.join(__dirname, '..', 'assets', 'icon.png')
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     title: 'Portal',
-    icon: require('path').join(__dirname, '..', 'assets', 'icon.ico'),
+    icon: windowIcon,
     autoHideMenuBar: true,
     frame: false,
     titleBarStyle: 'hidden',
@@ -78,10 +90,13 @@ app.on('ready', () => {
   mainWindow.maximize()
   createTray(mainWindow)
 
-  app.setLoginItemSettings({
-    openAtLogin: true,
-    path: app.getPath('exe'),
-  })
+  // Auto-launch at login. On macOS the bundle path is resolved automatically
+  // when `path` is omitted; passing the helper exe path breaks LaunchServices.
+  if (process.platform === 'win32') {
+    app.setLoginItemSettings({ openAtLogin: true, path: app.getPath('exe') })
+  } else {
+    app.setLoginItemSettings({ openAtLogin: true })
+  }
 
   tabManager = new TabManager(mainWindow, TAB_BAR_HEIGHT)
   tabManager.setLogger(log)

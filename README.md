@@ -29,12 +29,31 @@ cd portal && npm run build
 
 Deploy `portal/dist/` to Render as a static site.
 
-### Launcher (build installer)
+### Launcher (build Windows installer)
 ```bash
 cd launcher && npm run build
 ```
 
-Produces `launcher/dist/WCS Portal Launcher Setup.exe`.
+Produces `launcher/dist/Portal Setup <version>.exe` (NSIS).
+The installer prompts the admin to pick a location and writes
+`C:\WCS\config.json` before the launcher first runs.
+
+### Launcher (build macOS installer)
+Build on a Mac (electron-builder cannot cross-build a signed `.dmg`):
+```bash
+cd launcher && npm install && npm run build -- --mac
+```
+
+Produces `launcher/dist/Portal-<version>-arm64.dmg` and
+`launcher/dist/Portal-<version>.dmg` (Intel). On first launch the app shows
+the same location picker as the Windows installer and writes
+`~/Library/Application Support/WCS/config.json`.
+
+Code signing / notarization is opt-in — set `CSC_LINK`, `CSC_KEY_PASSWORD`,
+`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` in the
+environment before running `npm run build -- --mac`. Without them the build
+still succeeds but Gatekeeper will require a right-click → Open on first
+launch.
 
 ## Locations
 

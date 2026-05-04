@@ -19,3 +19,27 @@ nsis:
   createDesktopShortcut: always
   installerIcon: assets/icon.ico
   include: installer.nsh
+
+mac:
+  category: public.app-category.business
+  icon: assets/icon.icns
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  # Entitlements left at defaults; auto-updater requires hardened runtime.
+  # Set CSC_LINK / CSC_KEY_PASSWORD env vars (or skip signing) at build time.
+
+dmg:
+  title: ${productName} ${version}
+  icon: assets/icon.icns
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications

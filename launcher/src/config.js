@@ -1,9 +1,23 @@
 const path = require('path')
 const fs = require('fs')
+const os = require('os')
 
-const WCS_DIR = 'C:\\WCS'
+// Per-platform data directory.
+//   Windows: C:\WCS  (matches the legacy NSIS installer / Action1 scripts)
+//   macOS:   ~/Library/Application Support/WCS
+//   other:   ~/.wcs  (dev fallback)
+function resolveWcsDir() {
+  if (process.platform === 'win32') return 'C:\\WCS'
+  if (process.platform === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Application Support', 'WCS')
+  }
+  return path.join(os.homedir(), '.wcs')
+}
+
+const WCS_DIR = resolveWcsDir()
 const CONFIG_FILE = path.join(WCS_DIR, 'config.json')
 const ABC_URL_FILE = path.join(WCS_DIR, 'abc-url.txt')
+const LOG_FILE = path.join(WCS_DIR, 'app.log')
 
 function readConfig() {
   try {
@@ -63,4 +77,5 @@ module.exports = {
   WCS_DIR,
   ABC_URL_FILE,
   CONFIG_FILE,
+  LOG_FILE,
 }
