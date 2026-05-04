@@ -102,6 +102,20 @@ function captureCredentials() {
   }
 }
 
+const SERVICE_LABELS = {
+  abc: 'ABC Financial',
+  ghl: 'Grow CRM',
+  wheniwork: 'WhenIWork',
+  paychex: 'Paychex',
+  operandio: 'Operandio',
+  'my-coke': 'MyCoke',
+  sportlifedistribution: 'SportLife Distribution',
+}
+
+function getServiceLabel(service) {
+  return SERVICE_LABELS[service] || service
+}
+
 // Loading overlay — shown during auto-fill login
 let overlayEl = null
 function showLoginOverlay(serviceName) {
@@ -129,6 +143,7 @@ function hideLoginOverlay() {
 
 // Auto-remove overlay on navigation, MFA screen, or timeout
 let initialUrl = window.location.href
+const initialIsLandingPage = isLoginAutoClickDomain()
 setInterval(() => {
   if (!overlayEl) return
   // Hide on URL change (login succeeded)
@@ -136,12 +151,18 @@ setInterval(() => {
   // Hide if MFA/2FA screen appears (no password field but has a code/OTP input)
   const mfaInput = document.querySelector('input[type="tel"], input[autocomplete="one-time-code"], input[name*="code" i], input[name*="otp" i], input[name*="mfa" i], input[name*="verification" i]')
   if (mfaInput && mfaInput.offsetParent) { hideLoginOverlay(); return }
+  // For landing-page hosts (e.g. MyCoke marketing page) we deliberately
+  // keep the overlay up until we navigate away — the page has no login
+  // fields by design, and we don't want the user to see the marketing
+  // content while the auto-click is being set up.
+  if (initialIsLandingPage) return
   // Hide if the page has no login form at all (already logged in)
   const hasLoginFields = document.querySelector('input[type="password"], input[type="email"]')
   if (!hasLoginFields) { hideLoginOverlay(); return }
 }, 500)
-// Safety timeout — hide overlay after 5 seconds regardless
-setTimeout(() => hideLoginOverlay(), 5000)
+// Safety timeout — landing pages can take longer for shadow-DOM auto-click,
+// so allow more time. Otherwise 5 seconds is plenty.
+setTimeout(() => hideLoginOverlay(), initialIsLandingPage ? 30000 : 5000)
 
 // Auto-fill saved credentials
 let autoFillDone = false
@@ -159,8 +180,7 @@ async function tryAutoFill() {
     const hasLoginFields = passwordField || findUsernameField(document.body)
     if (!hasLoginFields) return
 
-    const SERVICE_LABELS = { abc: 'ABC Financial', ghl: 'Grow CRM', wheniwork: 'WhenIWork', paychex: 'Paychex', operandio: 'Operandio' }
-    showLoginOverlay(SERVICE_LABELS[service] || service)
+    showLoginOverlay(getServiceLabel(service))
 
     if (passwordField && passwordField.offsetParent) {
       // Standard login: both username + password visible
@@ -331,6 +351,14 @@ function tryAutoClickSSO() {
 
 window.addEventListener('DOMContentLoaded', () => {
   console.log('[WCS CredCapture] Loaded on:', window.location.href)
+
+  // For domains where we auto-click a landing-page login link, show the
+  // "Signing you in" overlay immediately so the marketing page stays
+  // hidden the whole time. The overlay persists until URL changes (i.e.
+  // after the auto-click navigates to the auth form).
+  if (isLoginAutoClickDomain()) {
+    showLoginOverlay(getServiceLabel(getServiceName()))
+  }
 
   // Landing-page login link (e.g. MyCoke "Log In") -> click to start the
   // OAuth flow. Once the auth form loads, the regular auto-fill below
