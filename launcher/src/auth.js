@@ -62,8 +62,17 @@ async function fetchAllCredentials() {
   for (const cred of data.credentials) {
     cachedCredentials[cred.service] = cred
   }
+  // Diagnostic: log which services we cached. The C:\WCS\app.log line lets
+  // us tell whether the auth API is returning shared credentials at all.
+  try {
+    const services = Object.keys(cachedCredentials).map(s => `${s}${data.credentials.find(c => c.service === s)?.shared ? '(shared)' : ''}`)
+    if (logFn) logFn('[auth] fetchAllCredentials cached: [' + services.join(', ') + ']')
+  } catch {}
   return data.credentials
 }
+
+let logFn = null
+function setLogger(fn) { logFn = fn }
 
 function getCachedCredential(service) {
   return cachedCredentials[service] || null
@@ -104,5 +113,5 @@ module.exports = {
   login, logout, isLoggedIn,
   setToken, getStaff, getToken,
   fetchCredentials, fetchAllCredentials, getCachedCredential,
-  storeCredential,
+  storeCredential, setLogger,
 }
