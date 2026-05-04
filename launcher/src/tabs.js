@@ -79,12 +79,25 @@ class TabManager {
     // Keep original tab title — don't update from page title
     // Tab names are set when created (Portal, Grow, ABC, etc.)
 
-    // Block all popups — ABC internal links should navigate in-place, not open new windows
+    // Block all popups. Same-host links navigate in-place (preserves the
+    // ABC kiosk's abc-scraper preload). Cross-host links go through
+    // onNewWindow so they open in a new tab with the *right* preload —
+    // otherwise an "Open MyCoke" link clicked from inside the ABC tab
+    // ends up on my-coke.com still running abc-scraper, and credential
+    // auto-fill never fires.
+    const tabManager = this
     view.webContents.setWindowOpenHandler(({ url }) => {
-      // Navigate the current tab to the URL instead of opening a popup
-      if (url && url !== 'about:blank') {
-        view.webContents.loadURL(url)
-      }
+      if (!url || url === 'about:blank') return { action: 'deny' }
+      try {
+        const next = new URL(url).hostname
+        const cur = new URL(view.webContents.getURL()).hostname
+        if (next && cur && next === cur) {
+          view.webContents.loadURL(url)
+          return { action: 'deny' }
+        }
+      } catch {}
+      // Cross-host — let TabManager route it (correct preload per URL).
+      if (tabManager.onNewWindow) tabManager.onNewWindow(url)
       return { action: 'deny' }
     })
 
