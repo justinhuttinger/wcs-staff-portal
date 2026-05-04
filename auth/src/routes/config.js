@@ -314,4 +314,43 @@ router.put('/app-settings', requireRole('admin'), async (req, res) => {
   }
 })
 
+// --- Launcher version pinning ---
+// Returns the minimum launcher version every kiosk should be running.
+// The launcher polls this endpoint and if its own app.getVersion() is
+// below the value, it calls app.relaunch() + app.exit(0) to apply any
+// pending electron-updater download.
+router.get('/launcher-version', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('app_config')
+      .select('value')
+      .eq('key', 'min_launcher_version')
+      .maybeSingle()
+    if (error) throw error
+    res.json({ min_version: data?.value || null })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// PUT /config/launcher-version — admin only. Sets min_launcher_version.
+router.put('/launcher-version', requireRole('admin'), async (req, res) => {
+  try {
+    const { min_version } = req.body
+    if (!min_version || typeof min_version !== 'string') {
+      return res.status(400).json({ error: 'min_version (string) required' })
+    }
+    const { error } = await supabaseAdmin
+      .from('app_config')
+      .upsert(
+        { key: 'min_launcher_version', value: min_version, updated_at: new Date().toISOString() },
+        { onConflict: 'key' },
+      )
+    if (error) throw error
+    res.json({ min_version })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 module.exports = router
