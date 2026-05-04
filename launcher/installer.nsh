@@ -10,6 +10,8 @@
 !include "nsDialogs.nsh"
 !include "LogicLib.nsh"
 
+!ifndef BUILD_UNINSTALLER
+
 Var WcsLocationDropdown
 Var WcsLocationChoice
 Var WcsAbcUrl
@@ -22,8 +24,6 @@ Function WcsConfigPageCreate
   ; Preserve existing config on re-install / repair.
   IfFileExists "C:\WCS\config.json" 0 +2
     Abort
-
-  !insertmacro MUI_HEADER_TEXT "Configure Kiosk" "Pick this kiosk's location."
 
   nsDialogs::Create 1018
   Pop $0
@@ -86,3 +86,5 @@ Function WcsConfigPageLeave
   FileWrite $0 '{$\r$\n  "location": "$WcsLocationChoice",$\r$\n  "abc_url": "$WcsAbcUrl"$\r$\n}$\r$\n'
   FileClose $0
 FunctionEnd
+
+!endif ; BUILD_UNINSTALLER
