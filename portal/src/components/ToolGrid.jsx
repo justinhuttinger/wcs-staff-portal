@@ -520,7 +520,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {onTickets && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTickets} iconPath={TILE_ICONS.tickets} label="Tickets/Support" desc="Help Desk" />}
           {/* (Day One Tracking merged into Calendar) */}
           {/* 6. Trainer Availability */}
-          {onTrainerAvail && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="Availability" desc="Trainers" />}
+          {onTrainerAvail && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}
           {/* 7-9. Reporting, Marketing, Tickets + remaining custom tiles */}
           {toolCustomTiles.filter((tile) => {
             const tileLabel = (tile.label || '').toLowerCase()
