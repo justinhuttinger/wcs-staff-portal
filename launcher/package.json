@@ -1,6 +1,6 @@
 {
   "name": "wcs-app",
-  "version": "1.4.15",
+  "version": "1.4.16",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
