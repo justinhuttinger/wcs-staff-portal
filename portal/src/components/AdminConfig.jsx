@@ -26,6 +26,9 @@ export default function AdminConfig({ isElectron, onClose, onLocationChange }) {
     try {
       if (isElectron && window.wcsElectron) {
         await window.wcsElectron.setConfig({ location, abc_url: abcUrl })
+        // Clear the web-only manual override so it can't outvote the
+        // URL params the launcher is about to push in via loadURL.
+        localStorage.removeItem('wcs_location_override')
         setMessage('Saved! Reloading portal...')
         // The launcher main process owns the reload — it calls
         // webContents.loadURL with a cache-buster so navigation always

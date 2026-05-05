@@ -53,3 +53,8 @@ mac:
 
 dmg:
   sign: false
+  # Fixed title (no version) so the mounted volume label and any
+  # aliases users drag to the Dock or Desktop just say "Portal".
+  # The default is "${productName} ${version}", which carries the
+  # version into the user's Dock and goes stale across updates.
+  title: Portal
