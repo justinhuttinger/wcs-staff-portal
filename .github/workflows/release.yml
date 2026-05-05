@@ -1,0 +1,96 @@
+# Release workflow for the Portal launcher.
+#
+# Triggered by pushing a tag of the form `launcher-v1.4.16` (the prefix
+# keeps it distinct from any future portal/auth tags). On tag push we
+# build for Windows AND macOS in parallel, then publish both to a
+# single GitHub Release that the in-app electron-updater reads from.
+#
+# Required GitHub repository secrets (configure in Settings -> Secrets):
+#   APPLE_ID                    - your Apple Developer email
+#   APPLE_APP_SPECIFIC_PASSWORD - app-specific password from appleid.apple.com
+#   CSC_LINK                    - base64 of your Developer ID Application .p12
+#   CSC_KEY_PASSWORD            - the password protecting that .p12
+#
+# Team ID (GVZRM9Z5SM) is baked into electron-builder.yml — it's a public
+# identifier, not a secret.
+
+name: Release Launcher
+
+on:
+  push:
+    tags:
+      - 'launcher-v*'
+  workflow_dispatch: {}
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: launcher/package-lock.json
+
+      # ---- macOS-only: generate icon.icns from assets/icon.png ----
+      # `sips` and `iconutil` ship with macOS. We render every size
+      # Apple expects, then assemble the .icns. The source PNG is only
+      # 256x256 today so the larger sizes will be upscaled — replace
+      # assets/icon.png with a 1024x1024 master at some point for crisp
+      # retina rendering.
+      - name: Generate macOS icon.icns
+        if: matrix.os == 'macos-latest'
+        working-directory: launcher
+        run: |
+          set -euo pipefail
+          mkdir -p build/icon.iconset
+          SRC="assets/icon.png"
+          for size in 16 32 64 128 256 512 1024; do
+            sips -z $size $size "$SRC" --out "build/icon.iconset/icon_${size}x${size}.png" >/dev/null
+          done
+          # Apple expects @2x variants alongside the base sizes.
+          cp build/icon.iconset/icon_32x32.png   build/icon.iconset/icon_16x16@2x.png
+          cp build/icon.iconset/icon_64x64.png   build/icon.iconset/icon_32x32@2x.png
+          cp build/icon.iconset/icon_256x256.png build/icon.iconset/icon_128x128@2x.png
+          cp build/icon.iconset/icon_512x512.png build/icon.iconset/icon_256x256@2x.png
+          cp build/icon.iconset/icon_1024x1024.png build/icon.iconset/icon_512x512@2x.png
+          rm build/icon.iconset/icon_64x64.png
+          rm build/icon.iconset/icon_1024x1024.png
+          iconutil -c icns build/icon.iconset -o build/icon.icns
+
+      - name: Install launcher dependencies
+        working-directory: launcher
+        run: npm ci
+
+      # ---- Windows build ----
+      - name: Build Windows installer
+        if: matrix.os == 'windows-latest'
+        working-directory: launcher
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win --publish always
+
+      # ---- macOS build (signed + notarized) ----
+      # CSC_LINK + CSC_KEY_PASSWORD trigger code signing.
+      # APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD trigger notarization
+      # using the team ID hardcoded in electron-builder.yml.
+      - name: Build macOS dmg + zip (signed, notarized)
+        if: matrix.os == 'macos-latest'
+        working-directory: launcher
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: npx electron-builder --mac --publish always

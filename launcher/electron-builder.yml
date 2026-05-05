@@ -2,12 +2,14 @@ appId: com.westcoaststrength.portal
 productName: Portal
 directories:
   output: dist
+  buildResources: build
 
 publish:
   provider: github
   owner: justinhuttinger
   repo: wcs-staff-portal
 
+# ---- Windows ----
 win:
   target: nsis
   icon: assets/icon.ico
@@ -19,3 +21,35 @@ nsis:
   createDesktopShortcut: always
   installerIcon: assets/icon.ico
   include: installer.nsh
+
+# ---- macOS ----
+# Universal-style build that produces both Apple Silicon (arm64) and
+# Intel (x64) artifacts. We emit dmg (drag-to-Applications installer)
+# AND zip (required by electron-updater for delta-style auto-updates
+# on macOS). Hardened runtime + entitlements + notarization are
+# required for distribution outside the Mac App Store.
+mac:
+  category: public.app-category.business
+  icon: build/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # West Coast Strength Apple Developer team. Public identifier — fine
+  # to commit. Notarization activates only when APPLE_ID +
+  # APPLE_APP_SPECIFIC_PASSWORD are set in the environment, so local
+  # dev builds (without those env vars) won't try to notarize.
+  notarize:
+    teamId: GVZRM9Z5SM
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+
+dmg:
+  sign: false

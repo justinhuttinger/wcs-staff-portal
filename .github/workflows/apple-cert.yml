@@ -1,0 +1,145 @@
+# Apple Developer ID Application certificate helper.
+#
+# Two-phase flow because Apple's portal still requires a manual
+# CSR-upload step. Run this workflow once with step=csr to get a
+# CSR you upload to https://developer.apple.com, then re-run with
+# step=p12 + the .cer Apple gives back to produce the base64-encoded
+# .p12 you'll plug into CSC_LINK + CSC_KEY_PASSWORD secrets.
+#
+# Both phases use ubuntu-latest — openssl runs identically on Mac
+# and Linux and Linux runners are faster and cheaper.
+
+name: Apple Cert Helper
+
+on:
+  workflow_dispatch:
+    inputs:
+      step:
+        description: 'csr = phase 1 (generate CSR), p12 = phase 2 (build P12 from .cer)'
+        required: true
+        type: choice
+        default: csr
+        options:
+          - csr
+          - p12
+      cer_base64:
+        description: 'Phase 2 only: base64 of the .cer file Apple emailed/downloaded'
+        required: false
+      private_key_base64:
+        description: 'Phase 2 only: base64 of private.key from the phase 1 artifact'
+        required: false
+
+jobs:
+  csr:
+    if: inputs.step == 'csr'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate 2048-bit RSA private key + CSR
+        run: |
+          openssl req -new -newkey rsa:2048 -nodes \
+            -keyout private.key \
+            -out request.csr \
+            -subj "/emailAddress=justin@wcstrength.com/CN=West Coast Strength/C=US"
+
+      - name: Upload private key + CSR as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple-cert-csr-and-key
+          path: |
+            private.key
+            request.csr
+          retention-days: 1
+
+      - name: Print next-step instructions
+        run: |
+          cat <<'EOF' >> $GITHUB_STEP_SUMMARY
+          ## Next steps
+
+          1. Download the **apple-cert-csr-and-key** artifact (top of run page).
+          2. Go to https://developer.apple.com/account/resources/certificates/add
+          3. Pick **Developer ID Application** → Continue.
+          4. Upload `request.csr` from the artifact zip.
+          5. Download the resulting `.cer` file.
+          6. Base64-encode the cer **and** the private key locally:
+
+             ```bash
+             base64 -w0 developerID_application.cer > cer.b64
+             base64 -w0 private.key > key.b64
+             ```
+
+          7. Re-run this workflow with **step=p12** and paste both base64 strings into the inputs.
+          EOF
+
+  p12:
+    if: inputs.step == 'p12'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate inputs
+        env:
+          CER_B64: ${{ inputs.cer_base64 }}
+          KEY_B64: ${{ inputs.private_key_base64 }}
+        run: |
+          if [ -z "$CER_B64" ] || [ -z "$KEY_B64" ]; then
+            echo "::error::Both cer_base64 and private_key_base64 inputs are required for step=p12"
+            exit 1
+          fi
+
+      - name: Decode .cer and private key
+        env:
+          CER_B64: ${{ inputs.cer_base64 }}
+          KEY_B64: ${{ inputs.private_key_base64 }}
+        run: |
+          printf '%s' "$CER_B64" | base64 -d > cert.cer
+          printf '%s' "$KEY_B64" | base64 -d > private.key
+          # Apple usually ships the .cer in DER form; fall back to PEM if not.
+          openssl x509 -inform DER -in cert.cer -out cert.pem 2>/dev/null \
+            || openssl x509 -inform PEM -in cert.cer -out cert.pem
+
+      - name: Generate random P12 password
+        id: pw
+        run: |
+          PW=$(openssl rand -base64 24 | tr -d '=+/' | head -c 24)
+          echo "::add-mask::$PW"
+          echo "value=$PW" >> $GITHUB_OUTPUT
+
+      - name: Build .p12
+        env:
+          P12_PASSWORD: ${{ steps.pw.outputs.value }}
+        run: |
+          openssl pkcs12 -export \
+            -inkey private.key \
+            -in cert.pem \
+            -out cert.p12 \
+            -password "pass:$P12_PASSWORD" \
+            -name "Developer ID Application: West Coast Strength (GVZRM9Z5SM)"
+          base64 -w0 cert.p12 > cert.p12.b64
+          echo "$P12_PASSWORD" > p12_password.txt
+
+      - name: Upload .p12 base64 + password as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple-cert-p12
+          path: |
+            cert.p12.b64
+            p12_password.txt
+          retention-days: 1
+
+      - name: Print next-step instructions
+        run: |
+          cat <<'EOF' >> $GITHUB_STEP_SUMMARY
+          ## Next steps
+
+          1. Download the **apple-cert-p12** artifact.
+          2. From your local Git Bash:
+
+             ```bash
+             cd ~/Downloads/apple-cert-p12     # wherever you unzipped it
+             gh secret set CSC_LINK --body "$(cat cert.p12.b64)" --repo justinhuttinger/wcs-staff-portal
+             gh secret set CSC_KEY_PASSWORD --body "$(cat p12_password.txt)" --repo justinhuttinger/wcs-staff-portal
+             ```
+
+          3. Verify: `gh secret list --repo justinhuttinger/wcs-staff-portal`
+             should show CSC_LINK + CSC_KEY_PASSWORD.
+
+          4. You're done — push a `launcher-v*` tag to trigger a real Mac build.
+          EOF

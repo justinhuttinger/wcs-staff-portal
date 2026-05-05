@@ -1,9 +1,6 @@
 const { Notification } = require('electron')
-const fs = require('fs')
 const auth = require('./auth')
-
-const LOG_FILE = 'C:\\WCS\\app.log'
-function log(msg) { try { fs.appendFileSync(LOG_FILE, new Date().toISOString() + ' ' + msg + '\n') } catch {} }
+const { appendLog: log } = require('./paths')
 
 const POLL_INTERVAL = 5 * 60 * 1000 // 5 minutes
 const NOTIFY_BEFORE_MS = 15 * 60 * 1000 // 15 minutes
