@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download Portal — West Coast Strength</title>
+  <link rel="icon" type="image/png" href="/wcs-logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --red: #cc0000;
+      --red-hover: #aa0000;
+      --red-glow: rgba(204,0,0,0.15);
+      --black: #111111;
+      --surface: #f8f8f8;
+      --surface2: #f0f0f0;
+      --border: #e0e0e0;
+      --text: #111111;
+      --muted: #777777;
+      --white: #ffffff;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      min-height: 100%;
+      background: var(--white);
+      color: var(--text);
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    .accent { height: 4px; background: var(--red); }
+
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 64px 32px 96px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 56px;
+    }
+    .tag {
+      display: inline-block;
+      background: var(--red);
+      color: white;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 3px;
+      padding: 4px 14px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(40px, 6vw, 64px);
+      line-height: 1.05;
+      letter-spacing: 2px;
+      color: var(--black);
+      margin-bottom: 12px;
+    }
+    h1 span { color: var(--red); }
+    .subtitle {
+      color: var(--muted);
+      font-size: 16px;
+      max-width: 560px;
+      margin: 0 auto;
+    }
+    .version-badge {
+      display: inline-block;
+      margin-top: 16px;
+      padding: 4px 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      font-size: 12px;
+      color: var(--muted);
+      font-feature-settings: 'tnum';
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-bottom: 32px;
+    }
+    @media (max-width: 800px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      padding: 32px 24px 28px;
+      text-align: center;
+      transition: all 0.2s;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .card.recommended {
+      border-color: var(--red);
+      box-shadow: 0 6px 24px var(--red-glow);
+    }
+    .card.recommended::before {
+      content: 'Recommended for you';
+      position: absolute;
+      top: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--red);
+      color: white;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      padding: 4px 10px;
+      text-transform: uppercase;
+    }
+    .card-icon {
+      font-size: 42px;
+      margin-bottom: 12px;
+      line-height: 1;
+    }
+    .card-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 22px;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+    .card-detail {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 24px;
+      flex: 1;
+    }
+    .download-btn {
+      display: inline-block;
+      background: var(--black);
+      color: white;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-decoration: none;
+      padding: 12px 24px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-transform: uppercase;
+    }
+    .download-btn:hover {
+      background: var(--red);
+    }
+    .download-btn[disabled] {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .filesize {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 8px;
+      font-feature-settings: 'tnum';
+    }
+
+    .help {
+      text-align: center;
+      margin-top: 56px;
+      padding-top: 32px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .help a { color: var(--red); text-decoration: none; }
+    .help a:hover { text-decoration: underline; }
+    .help h3 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 18px;
+      letter-spacing: 1px;
+      color: var(--black);
+      margin-bottom: 12px;
+    }
+
+    .skeleton {
+      color: transparent;
+      background: linear-gradient(90deg, var(--surface2) 0%, var(--border) 50%, var(--surface2) 100%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: 2px;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  </style>
+</head>
+<body>
+  <div class="accent"></div>
+
+  <main>
+    <div class="header">
+      <div class="tag">West Coast Strength</div>
+      <h1>Download <span>Portal</span></h1>
+      <p class="subtitle">The desktop app that gives you one-click access to ABC, Grow, WhenIWork, Paychex, and the rest of your daily tools.</p>
+      <div class="version-badge skeleton" id="version">Loading version…</div>
+    </div>
+
+    <div class="grid">
+      <div class="card" data-target="windows">
+        <div class="card-icon">🪟</div>
+        <div class="card-title">Windows</div>
+        <div class="card-detail">For PCs running Windows 10 or 11.</div>
+        <a class="download-btn" id="dl-windows" href="#" download>Download</a>
+        <div class="filesize" id="sz-windows">&nbsp;</div>
+      </div>
+
+      <div class="card" data-target="mac-arm">
+        <div class="card-icon">🍎</div>
+        <div class="card-title">Mac (Apple Silicon)</div>
+        <div class="card-detail">Most Macs from late 2020 onwards — M1, M2, M3, M4 chips.</div>
+        <a class="download-btn" id="dl-mac-arm" href="#" download>Download</a>
+        <div class="filesize" id="sz-mac-arm">&nbsp;</div>
+      </div>
+
+      <div class="card" data-target="mac-intel">
+        <div class="card-icon">💻</div>
+        <div class="card-title">Mac (Intel)</div>
+        <div class="card-detail">Older Macs with Intel processors.</div>
+        <a class="download-btn" id="dl-mac-intel" href="#" download>Download</a>
+        <div class="filesize" id="sz-mac-intel">&nbsp;</div>
+      </div>
+    </div>
+
+    <div class="help">
+      <h3>Need help?</h3>
+      Not sure which Mac you have? Click the apple icon in the top-left → <em>About This Mac</em>. If it says <strong>Apple M1/M2/M3/M4</strong>, pick the Apple Silicon download. If it says <strong>Intel</strong>, pick the Intel one.<br>
+      Trouble installing? Email <a href="mailto:justin@wcstrength.com">justin@wcstrength.com</a>.
+    </div>
+  </main>
+
+  <script>
+    const REPO = 'justinhuttinger/wcs-staff-portal'
+
+    // Match the GitHub Release asset names produced by electron-builder.
+    // The release notes use semver names like Portal-1.4.18.dmg, so we
+    // pattern-match instead of hardcoding the version string.
+    const PATTERNS = {
+      windows:  /^Portal[-_ ]?Setup[-_ ]?\d.*\.exe$/i,
+      'mac-arm': /^Portal[-_ ]?\d.*-arm64\.dmg$/i,
+      'mac-intel': /^Portal[-_ ]?\d(?!.*arm64).*\.dmg$/i,
+    }
+
+    function fmtSize(bytes) {
+      if (!bytes) return ''
+      const mb = bytes / (1024 * 1024)
+      return mb.toFixed(1) + ' MB'
+    }
+
+    function detectPlatform() {
+      const ua = navigator.userAgent
+      const isMac = /Mac/.test(ua) || /Macintosh/.test(ua)
+      if (!isMac) return 'windows'
+      // navigator.userAgentData is the modern way; fall back to UA-string
+      // sniffing because Safari hasn't shipped userAgentData.
+      if (navigator.userAgentData?.platform === 'macOS') {
+        // High entropy data ('architecture': 'arm' or 'x86')
+        return navigator.userAgentData
+          .getHighEntropyValues(['architecture'])
+          .then((v) => v.architecture === 'arm' ? 'mac-arm' : 'mac-intel')
+          .catch(() => 'mac-arm')
+      }
+      // Heuristic: every Mac sold since late 2020 is Apple Silicon, and
+      // those make up ~70%+ of in-use Macs in 2026. Default to arm and
+      // let users fall back to Intel manually.
+      return 'mac-arm'
+    }
+
+    async function init() {
+      let release
+      try {
+        const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
+        if (!res.ok) throw new Error('Release fetch failed: HTTP ' + res.status)
+        release = await res.json()
+      } catch (err) {
+        document.getElementById('version').textContent = 'Could not load latest version'
+        document.getElementById('version').classList.remove('skeleton')
+        document.querySelectorAll('.download-btn').forEach((b) => {
+          b.setAttribute('disabled', 'disabled')
+          b.textContent = 'Unavailable'
+        })
+        return
+      }
+
+      const versionEl = document.getElementById('version')
+      versionEl.textContent = 'Latest version: ' + release.tag_name + '  ·  released ' + new Date(release.published_at).toLocaleDateString()
+      versionEl.classList.remove('skeleton')
+
+      for (const [target, pattern] of Object.entries(PATTERNS)) {
+        const asset = release.assets.find((a) => pattern.test(a.name))
+        const btn = document.getElementById('dl-' + target)
+        const sz = document.getElementById('sz-' + target)
+        if (!asset) {
+          btn.setAttribute('disabled', 'disabled')
+          btn.textContent = 'Unavailable'
+          continue
+        }
+        btn.href = asset.browser_download_url
+        sz.textContent = fmtSize(asset.size)
+      }
+
+      // Highlight the recommended card for this user's platform.
+      const platform = await detectPlatform()
+      const card = document.querySelector(`.card[data-target="${platform}"]`)
+      if (card) card.classList.add('recommended')
+    }
+
+    init()
+  </script>
+</body>
+</html>
