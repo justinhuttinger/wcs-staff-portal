@@ -71,14 +71,22 @@ app.on('ready', () => {
     ? path.join(__dirname, '..', 'assets', 'icon.ico')
     : path.join(__dirname, '..', 'assets', 'icon.png')
 
+  // Window chrome differs by platform:
+  //   - Windows/Linux: fully frameless, custom in-tab-bar min/max/close buttons.
+  //   - macOS: keep native traffic lights (hiddenInset overlays them on
+  //     the tab bar). Going frameless on macOS hides the traffic lights
+  //     entirely, which violates Mac UX expectations.
+  const chrome = process.platform === 'darwin'
+    ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 18 } }
+    : { frame: false, titleBarStyle: 'hidden' }
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     title: 'Portal',
     icon: winIcon,
     autoHideMenuBar: true,
-    frame: false,
-    titleBarStyle: 'hidden',
+    ...chrome,
   })
 
   mainWindow.maximize()
@@ -397,6 +405,8 @@ app.on('ready', () => {
 })
 
 
-app.on('window-all-closed', (e) => {
-  if (!mainWindow || mainWindow.isDestroyed()) app.quit()
+app.on('window-all-closed', () => {
+  // Quit on close on both platforms — single-window app, no value in
+  // keeping a windowless process around on macOS.
+  app.quit()
 })

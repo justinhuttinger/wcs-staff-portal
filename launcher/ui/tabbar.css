@@ -114,3 +114,11 @@ html, body { height: 100%; overflow: hidden; font-family: -apple-system, BlinkMa
 #window-controls button:hover { background: rgba(255,255,255,0.1); color: white; }
 #btn-refresh { width: 40px; }
 #btn-close:hover { background: #e53e3e !important; color: white; }
+
+/* macOS: clear space on the left for the inset traffic lights, and
+   hide the Windows-style minimize/maximize/close buttons (the native
+   traffic lights handle those). The refresh button stays. */
+body.is-mac #tabbar { padding-left: 78px; }
+body.is-mac #btn-minimize,
+body.is-mac #btn-maximize,
+body.is-mac #btn-close { display: none; }

@@ -1,6 +1,10 @@
 // Uses window.tabbarIPC exposed by tabbar-preload.js via contextBridge
 const ipc = window.tabbarIPC
 
+// Tag the body so CSS can clear space for macOS traffic lights and
+// hide the Windows-style minimize/maximize/close buttons there.
+if (ipc.platform === 'darwin') document.body.classList.add('is-mac')
+
 const tabsContainer = document.getElementById('tabs')
 const userArea = document.getElementById('user-area')
 
