@@ -148,20 +148,7 @@ app.on('ready', async () => {
   })
 
   mainWindow.maximize()
-
-  // When a user picks a different location from the tray's "Change
-  // Location" submenu, the portal tab is reloaded with the new
-  // location + abc_url so the change takes effect without restart.
-  createTray(mainWindow, {
-    onLocationChange: (cfg) => {
-      log('[tray] location changed to ' + cfg.location)
-      const portalTab = tabManager && tabManager.tabs.get(1)
-      if (portalTab) {
-        const newUrl = `${PORTAL_URL}?location=${cfg.location}` + (cfg.abc_url ? `&abc_url=${encodeURIComponent(cfg.abc_url)}` : '')
-        portalTab.view.webContents.loadURL(newUrl)
-      }
-    },
-  })
+  createTray(mainWindow)
 
   // openAtLogin works on both Windows and macOS. The `path` option is
   // Windows-only — on macOS it's ignored at best, and providing
