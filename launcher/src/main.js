@@ -8,11 +8,63 @@ app.setName('Portal')
 if (process.platform === 'win32') app.setAppUserModelId('Portal')
 log('=== APP STARTING === platform=' + process.platform + ' version=' + app.getVersion())
 const { PORTAL_URL, getAbcUrl, getLocation, readConfig, writeConfig } = require('./config')
+const { LOCATIONS } = require('./locations')
 const TabManager = require('./tabs')
 const { showOverlay, closeOverlay, onResize: onOverlayResize } = require('./overlay')
 const { createTray } = require('./tray')
 const auth = require('./auth')
 const versionCheck = require('./version-check')
+
+// First-launch location picker. Resolves with the saved config once
+// the user picks. If they close the window without picking, quits.
+//
+// Windows kiosks deployed via the NSIS installer write config.json
+// during install, so this is a no-op for them. macOS .dmg installs
+// hit the picker on the first launch and skip it on subsequent ones.
+function pickLocationIfNeeded() {
+  const cfg = readConfig()
+  if (cfg && cfg.location) return Promise.resolve(cfg)
+
+  return new Promise((resolve) => {
+    const pickerWin = new BrowserWindow({
+      width: 480,
+      height: 540,
+      title: 'Choose Your Location',
+      autoHideMenuBar: true,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      webPreferences: {
+        preload: path.join(__dirname, 'location-picker-preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    })
+    pickerWin.loadFile(path.join(__dirname, '..', 'ui', 'location-picker.html'))
+
+    let picked = false
+
+    ipcMain.handleOnce('location-picker:get-locations', () => LOCATIONS)
+    ipcMain.once('location-picker:pick', (e, name) => {
+      const loc = LOCATIONS.find(l => l.name === name)
+      if (!loc) return
+      const newConfig = { location: loc.name, abc_url: loc.abc_url }
+      writeConfig(newConfig)
+      log('[location-picker] saved location=' + loc.name)
+      picked = true
+      pickerWin.close()
+      resolve(newConfig)
+    })
+
+    pickerWin.on('closed', () => {
+      if (!picked) {
+        log('[location-picker] window closed without selection, quitting')
+        app.quit()
+      }
+    })
+  })
+}
 
 // --- Auto-updater setup ---
 autoUpdater.autoDownload = true
@@ -48,7 +100,13 @@ const TAB_BAR_HEIGHT = 52
 let mainWindow = null
 let tabManager = null
 
-app.on('ready', () => {
+app.on('ready', async () => {
+  // First-launch flow: prompt for location before showing the main
+  // window. Windows kiosks already have config.json written by the
+  // NSIS installer, so this resolves immediately. macOS .dmg
+  // installs hit the picker.
+  await pickLocationIfNeeded()
+
   const { session } = require('electron')
 
   // Strip X-Frame-Options on both default and persistent sessions
@@ -90,7 +148,20 @@ app.on('ready', () => {
   })
 
   mainWindow.maximize()
-  createTray(mainWindow)
+
+  // When a user picks a different location from the tray's "Change
+  // Location" submenu, the portal tab is reloaded with the new
+  // location + abc_url so the change takes effect without restart.
+  createTray(mainWindow, {
+    onLocationChange: (cfg) => {
+      log('[tray] location changed to ' + cfg.location)
+      const portalTab = tabManager && tabManager.tabs.get(1)
+      if (portalTab) {
+        const newUrl = `${PORTAL_URL}?location=${cfg.location}` + (cfg.abc_url ? `&abc_url=${encodeURIComponent(cfg.abc_url)}` : '')
+        portalTab.view.webContents.loadURL(newUrl)
+      }
+    },
+  })
 
   // openAtLogin works on both Windows and macOS. The `path` option is
   // Windows-only — on macOS it's ignored at best, and providing
