@@ -27,14 +27,21 @@ export default function AdminConfig({ isElectron, onClose, onLocationChange }) {
       if (isElectron && window.wcsElectron) {
         await window.wcsElectron.setConfig({ location, abc_url: abcUrl })
         // Clear the web-only manual override so it can't outvote the
-        // URL params the launcher is about to push in via loadURL.
+        // URL params we're about to set.
         localStorage.removeItem('wcs_location_override')
         setMessage('Saved! Reloading portal...')
-        // The launcher main process owns the reload — it calls
-        // webContents.loadURL with a cache-buster so navigation always
-        // fires. Doing it here too caused a race where the renderer's
-        // window.location.href would set during the in-flight load and
-        // sometimes leave the portal in a stale state.
+        // Reload the renderer with the new params, including a cache-
+        // buster so the navigation always fires even when the URL is
+        // otherwise unchanged. This must happen renderer-side for it
+        // to work on launcher versions older than 1.5.0 — those don't
+        // have the main-process cache-buster yet.
+        const url = new URL(window.location.href)
+        url.searchParams.set('location', location)
+        if (abcUrl) url.searchParams.set('abc_url', abcUrl)
+        else url.searchParams.delete('abc_url')
+        url.searchParams.set('_t', Date.now())
+        // Small delay so the user briefly sees the success message.
+        setTimeout(() => { window.location.href = url.toString() }, 400)
       } else {
         localStorage.setItem('wcs_location_override', location)
         if (onLocationChange) onLocationChange(location)
