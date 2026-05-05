@@ -1,11 +1,15 @@
-const { Tray, Menu, dialog, app } = require('electron')
+const { Tray, Menu, dialog, app, nativeImage } = require('electron')
 const path = require('path')
 
 let tray = null
 
 function createTray(mainWindow) {
   const iconPath = path.join(__dirname, '..', 'assets', 'tray-icon.png')
-  tray = new Tray(iconPath)
+  // On macOS, mark the image as a template so the menu bar inverts it
+  // automatically for light/dark mode. Windows ignores the flag.
+  const trayImage = nativeImage.createFromPath(iconPath)
+  if (process.platform === 'darwin') trayImage.setTemplateImage(true)
+  tray = new Tray(trayImage)
   tray.setToolTip('WCS App')
 
   const contextMenu = Menu.buildFromTemplate([
