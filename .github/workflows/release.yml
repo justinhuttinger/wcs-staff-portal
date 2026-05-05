@@ -22,6 +22,11 @@ on:
       - 'launcher-v*'
   workflow_dispatch: {}
 
+# electron-builder needs to create the GitHub Release and upload assets,
+# which requires contents:write on the repo.
+permissions:
+  contents: write
+
 jobs:
   release:
     strategy:
