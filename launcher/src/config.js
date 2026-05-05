@@ -1,9 +1,5 @@
-const path = require('path')
 const fs = require('fs')
-
-const WCS_DIR = 'C:\\WCS'
-const CONFIG_FILE = path.join(WCS_DIR, 'config.json')
-const ABC_URL_FILE = path.join(WCS_DIR, 'abc-url.txt')
+const { dataDir, ensureDir, CONFIG_FILE, ABC_URL_FILE } = require('./paths')
 
 function readConfig() {
   try {
@@ -16,7 +12,7 @@ function readConfig() {
 
 function writeConfig(config) {
   try {
-    if (!fs.existsSync(WCS_DIR)) fs.mkdirSync(WCS_DIR, { recursive: true })
+    ensureDir(dataDir())
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2))
   } catch (e) {}
 }
@@ -60,7 +56,6 @@ module.exports = {
     Milwaukie: { booking: 'https://api.westcoaststrength.com/widget/booking/Gq92GXsDRAgTGZeHh7mx', vip: 'https://api.westcoaststrength.com/widget/survey/FkrsORfLFVMiVS26LV9V' },
     Medford: { booking: 'https://api.westcoaststrength.com/widget/booking/Gq92GXsDRAgTGZeHh7mx', vip: 'https://api.westcoaststrength.com/widget/survey/FkrsORfLFVMiVS26LV9V' },
   },
-  WCS_DIR,
   ABC_URL_FILE,
   CONFIG_FILE,
 }

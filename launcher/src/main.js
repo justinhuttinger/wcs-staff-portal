@@ -1,13 +1,12 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('path')
-const fs = require('fs')
 const { autoUpdater } = require('electron-updater')
+const { appendLog: log } = require('./paths')
 
-// Set app name for Windows notifications
-app.setAppUserModelId('Portal')
-const LOG_FILE = 'C:\\WCS\\app.log'
-function log(msg) { try { fs.appendFileSync(LOG_FILE, new Date().toISOString() + ' ' + msg + '\n') } catch {} }
-log('=== APP STARTING ===')
+app.setName('Portal')
+// Windows notification grouping — no-op on macOS / Linux.
+if (process.platform === 'win32') app.setAppUserModelId('Portal')
+log('=== APP STARTING === platform=' + process.platform + ' version=' + app.getVersion())
 const { PORTAL_URL, getAbcUrl, getLocation, readConfig, writeConfig } = require('./config')
 const TabManager = require('./tabs')
 const { showOverlay, closeOverlay, onResize: onOverlayResize } = require('./overlay')
@@ -65,11 +64,18 @@ app.on('ready', () => {
   const persistSes = ses.fromPartition('persist:wcs-portal')
   persistSes.webRequest.onHeadersReceived(stripFrameHeaders)
 
+  // BrowserWindow's `icon` option only matters on Windows / Linux —
+  // macOS reads its dock icon from the packaged .icns the builder
+  // emits, so we leave it unset on darwin.
+  const winIcon = process.platform === 'win32'
+    ? path.join(__dirname, '..', 'assets', 'icon.ico')
+    : path.join(__dirname, '..', 'assets', 'icon.png')
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     title: 'Portal',
-    icon: require('path').join(__dirname, '..', 'assets', 'icon.ico'),
+    icon: winIcon,
     autoHideMenuBar: true,
     frame: false,
     titleBarStyle: 'hidden',
@@ -78,10 +84,13 @@ app.on('ready', () => {
   mainWindow.maximize()
   createTray(mainWindow)
 
-  app.setLoginItemSettings({
-    openAtLogin: true,
-    path: app.getPath('exe'),
-  })
+  // openAtLogin works on both Windows and macOS. The `path` option is
+  // Windows-only — on macOS it's ignored at best, and providing
+  // app.getPath('exe') points inside the app bundle which confuses
+  // Login Items, so we omit it on darwin.
+  const loginItem = { openAtLogin: true }
+  if (process.platform === 'win32') loginItem.path = app.getPath('exe')
+  app.setLoginItemSettings(loginItem)
 
   tabManager = new TabManager(mainWindow, TAB_BAR_HEIGHT)
   tabManager.setLogger(log)
@@ -375,10 +384,15 @@ app.on('ready', () => {
   })
 
   const { globalShortcut } = require('electron')
-  globalShortcut.register('F12', () => {
+  const openActiveDevTools = () => {
     const active = tabManager.tabs.get(tabManager.activeTabId)
     if (active) active.view.webContents.openDevTools()
-  })
+  }
+  globalShortcut.register('F12', openActiveDevTools)
+  // macOS convention for opening DevTools.
+  if (process.platform === 'darwin') {
+    globalShortcut.register('CommandOrControl+Alt+I', openActiveDevTools)
+  }
 
 })
 
