@@ -378,13 +378,25 @@ app.on('ready', async () => {
   ipcMain.handle('get-kiosk-config', () => readConfig())
   ipcMain.handle('set-kiosk-config', (e, config) => {
     writeConfig(config)
-    // Reload portal tab with updated location/abc_url
+    log('[admin-config] saved location=' + config.location)
+    // Reload the portal tab with the new params. The trailing _t
+    // cache-buster is critical: webContents.loadURL is a no-op when
+    // the URL matches the currently-loaded one, which can happen if
+    // an admin re-saves the same location, or if the URL params don't
+    // appear to change (e.g. abc_url unchanged). Bumping _t forces
+    // navigation every time so the renderer re-mounts with fresh
+    // location params.
     const portalTab = tabManager.tabs.get(1)
     if (portalTab) {
       const newLocation = config.location || getLocation()
       const newAbcUrl = config.abc_url || getAbcUrl()
-      const portalUrl = `${PORTAL_URL}?location=${newLocation}` + (newAbcUrl ? `&abc_url=${encodeURIComponent(newAbcUrl)}` : '')
+      const portalUrl = `${PORTAL_URL}?location=${newLocation}` +
+        (newAbcUrl ? `&abc_url=${encodeURIComponent(newAbcUrl)}` : '') +
+        `&_t=${Date.now()}`
       portalTab.view.webContents.loadURL(portalUrl)
+      log('[admin-config] reloaded portal tab')
+    } else {
+      log('[admin-config] WARN: portal tab not found, cannot reload')
     }
     return { success: true }
   })

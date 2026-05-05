@@ -27,17 +27,11 @@ export default function AdminConfig({ isElectron, onClose, onLocationChange }) {
       if (isElectron && window.wcsElectron) {
         await window.wcsElectron.setConfig({ location, abc_url: abcUrl })
         setMessage('Saved! Reloading portal...')
-        // Reload the renderer with the new query params so kiosk.html and
-        // ToolGrid pick up the new location/abc_url. The launcher main
-        // process also tries to do this, but doing it here makes the reload
-        // independent of the main-process tab lookup.
-        const url = new URL(window.location.href)
-        if (location) url.searchParams.set('location', location)
-        else url.searchParams.delete('location')
-        if (abcUrl) url.searchParams.set('abc_url', abcUrl)
-        else url.searchParams.delete('abc_url')
-        // Small delay so the user briefly sees the "Saved!" message.
-        setTimeout(() => { window.location.href = url.toString() }, 400)
+        // The launcher main process owns the reload — it calls
+        // webContents.loadURL with a cache-buster so navigation always
+        // fires. Doing it here too caused a race where the renderer's
+        // window.location.href would set during the in-flight load and
+        // sometimes leave the portal in a stale state.
       } else {
         localStorage.setItem('wcs_location_override', location)
         if (onLocationChange) onLocationChange(location)
