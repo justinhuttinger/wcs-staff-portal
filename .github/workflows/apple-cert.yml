@@ -106,14 +106,19 @@ jobs:
         env:
           P12_PASSWORD: ${{ steps.pw.outputs.value }}
         run: |
-          openssl pkcs12 -export \
+          # -legacy forces the older PKCS12 cipher (3DES + SHA1 MAC).
+          # OpenSSL 3+ defaults to AES-256-CBC + SHA-256 MAC which the
+          # macOS Security framework cannot import — `security import`
+          # errors with "MAC verification failed during PKCS12 import
+          # (wrong password?)" even when the password is correct.
+          openssl pkcs12 -export -legacy \
             -inkey private.key \
             -in cert.pem \
             -out cert.p12 \
             -password "pass:$P12_PASSWORD" \
-            -name "Developer ID Application: West Coast Strength (GVZRM9Z5SM)"
+            -name "Developer ID Application: West Coast Strength LLC (GVZRM9Z5SM)"
           base64 -w0 cert.p12 > cert.p12.b64
-          echo "$P12_PASSWORD" > p12_password.txt
+          printf '%s' "$P12_PASSWORD" > p12_password.txt
 
       - name: Upload .p12 base64 + password as artifact
         uses: actions/upload-artifact@v4
