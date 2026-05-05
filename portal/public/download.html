@@ -301,19 +301,25 @@
       return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
     }
 
+    // Returns an array of platform keys to flag as recommended.
+    // Windows → just ['windows']. Mac with reliable arch info →
+    // [the right one]. Mac without arch info (Safari and older
+    // browsers don't expose it) → BOTH mac options, since defaulting
+    // to one would be wrong half the time for the user.
     async function detectPlatform() {
       const ua = navigator.userAgent
-      if (!/Mac/i.test(ua) && !/Macintosh/i.test(ua)) return 'windows'
-      // Modern (Chromium) — high entropy hints reveal arm vs x86.
+      if (!/Mac/i.test(ua) && !/Macintosh/i.test(ua)) return ['windows']
+      // Modern Chromium exposes architecture via the high-entropy UA data.
       if (navigator.userAgentData?.platform === 'macOS' && navigator.userAgentData.getHighEntropyValues) {
         try {
           const v = await navigator.userAgentData.getHighEntropyValues(['architecture'])
-          return v.architecture === 'arm' ? 'mac-arm' : 'mac-intel'
+          if (v.architecture === 'arm') return ['mac-arm']
+          if (v.architecture === 'x86') return ['mac-intel']
         } catch {}
       }
-      // Safari + older browsers don't expose arch — default to Apple
-      // Silicon since every Mac sold since late 2020 uses it.
-      return 'mac-arm'
+      // Safari + everything else: no arch hint available, so highlight
+      // both Mac options and let the user pick the right one.
+      return ['mac-arm', 'mac-intel']
     }
 
     async function init() {
@@ -350,9 +356,11 @@
         sz.textContent = fmtSize(asset.size)
       }
 
-      const platform = await detectPlatform()
-      const card = document.querySelector(`.option[data-target="${platform}"]`)
-      if (card) card.classList.add('recommended')
+      const platforms = await detectPlatform()
+      for (const p of platforms) {
+        const card = document.querySelector(`.option[data-target="${p}"]`)
+        if (card) card.classList.add('recommended')
+      }
     }
 
     init()
