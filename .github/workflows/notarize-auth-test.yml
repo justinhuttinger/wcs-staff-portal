@@ -1,0 +1,35 @@
+# Diagnostic: hits Apple's notary service with our APPLE_ID +
+# APPLE_APP_SPECIFIC_PASSWORD + team ID to verify the auth pair is
+# valid, without the time/cost of a full Mac build. Manual trigger only.
+
+name: Notarize Auth Test
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - name: notarytool history
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          set +e
+          # Print just the visible characters of APPLE_ID for sanity.
+          # Don't echo the password.
+          echo "Apple ID first char: $(echo -n "$APPLE_ID" | head -c 1)"
+          echo "Apple ID length: ${#APPLE_ID}"
+          echo "App-specific pw length: ${#APPLE_APP_SPECIFIC_PASSWORD}"
+          echo "App-specific pw format check (xxxx-xxxx-xxxx-xxxx):"
+          echo -n "$APPLE_APP_SPECIFIC_PASSWORD" | grep -E '^[a-z]{4}-[a-z]{4}-[a-z]{4}-[a-z]{4}$' >/dev/null && echo "  matches" || echo "  DOES NOT MATCH expected format"
+          echo ""
+          echo "--- Calling notarytool history ---"
+          xcrun notarytool history \
+            --apple-id "$APPLE_ID" \
+            --team-id "GVZRM9Z5SM" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD"
+          rc=$?
+          echo "--- exit code: $rc ---"
+          exit $rc
