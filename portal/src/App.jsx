@@ -231,7 +231,14 @@ export default function App() {
     }
   }
 
-  const location = locationOverride || locationParam || user?.staff?.locations?.find(l => l.is_primary)?.name || 'Salem'
+  // In Electron, the launcher's config.json is the source of truth and is
+  // pushed in via the `location` query param when the launcher loads the
+  // portal. The localStorage `wcs_location_override` is a web-only manual
+  // override; trusting it in Electron causes a stale value (set by an
+  // earlier admin save) to beat the freshly-loaded URL param.
+  const location = isElectron
+    ? (locationParam || user?.staff?.locations?.find(l => l.is_primary)?.name || 'Salem')
+    : (locationOverride || locationParam || user?.staff?.locations?.find(l => l.is_primary)?.name || 'Salem')
 
   // Preload background image for instant display
   useEffect(() => {
