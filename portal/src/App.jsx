@@ -139,14 +139,13 @@ export default function App() {
     }
   }, [])
 
-  useEffect(() => {
-    const handleBeforeUnload = (e) => {
-      e.preventDefault()
-      e.returnValue = ''
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [])
+  // Note: a previous version of this file installed a `beforeunload`
+  // handler that called preventDefault on every navigation attempt.
+  // In Electron that silently blocks navigation (no confirm dialog
+  // like browsers show), which broke the admin "save kiosk config"
+  // flow — the launcher would write the new config but the renderer
+  // would refuse to navigate to the reloaded URL. Intentionally not
+  // re-adding it.
 
   // When refresh fails (refresh token expired/revoked), drop to login.
   // In kiosk mode, re-trigger the auto-login flow instead of stranding the
