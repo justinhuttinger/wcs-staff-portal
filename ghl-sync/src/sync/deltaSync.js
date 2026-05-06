@@ -6,6 +6,7 @@ const { upsertContacts } = require('../db/upsertContacts');
 const { upsertOpportunities } = require('../db/upsertOpportunities');
 const { writeSyncLog } = require('./syncLog');
 const { isGhlSyncAborted } = require('./fullSync');
+const { refreshCurrentHourCheckins } = require('../abc/checkins');
 
 async function getLastDeltaSync() {
   const { data } = await supabase
@@ -75,6 +76,19 @@ async function deltaSync() {
     } catch (err) {
       console.error(`[Delta] ${location.name} opportunities failed:`, err.message);
       await writeSyncLog({ syncType: 'delta', entity: 'opportunities', locationId: location.id, recordsFetched: 0, recordsUpserted: 0, errors: [{ error: err.message }], startedAt: opStart });
+    }
+  }
+
+  // Refresh the current hour's check-in bucket for every configured club.
+  // Cheap (one ABC call per club) and idempotent — the row is replaced on
+  // each tick until the hour rolls over. Failures here don't fail the GHL
+  // delta sync.
+  if (!isGhlSyncAborted()) {
+    const clubs = LOCATIONS.map(l => l.clubNumber).filter(Boolean);
+    try {
+      await refreshCurrentHourCheckins(clubs);
+    } catch (err) {
+      console.error('[Delta] Check-ins refresh error:', err.message);
     }
   }
 
