@@ -123,16 +123,18 @@ async function getCompanies() {
 
 /**
  * Get all workers for a company, handling pagination.
+ *
+ * Paychex's /companies/{id}/workers endpoint does not support a status
+ * filter as a query param — callers should filter the returned list by
+ * `currentStatus.statusType` instead.
  */
-async function getWorkers(companyId, statusType = 'ACTIVE') {
+async function getWorkers(companyId) {
   const workers = []
   let offset = 0
   const limit = 100
 
   while (true) {
-    const params = { offset, limit }
-    if (statusType) params.statusType = statusType
-    const data = await paychexGet(`/companies/${companyId}/workers`, params)
+    const data = await paychexGet(`/companies/${companyId}/workers`, { offset, limit })
     const items = data.content || []
     workers.push(...items)
 

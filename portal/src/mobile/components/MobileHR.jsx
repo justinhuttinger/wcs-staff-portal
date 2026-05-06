@@ -92,6 +92,7 @@ function WorkerList({ user, onSelectWorker, actionLabel }) {
   const [search, setSearch] = useState('')
   const [locationSlug, setLocationSlug] = useState('')
   const [locations, setLocations] = useState([])
+  const [statusFilter, setStatusFilter] = useState('ACTIVE')
 
   const canSeeAll = ['corporate', 'admin', 'director'].includes(user?.staff?.role)
 
@@ -110,7 +111,7 @@ function WorkerList({ user, onSelectWorker, actionLabel }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await getPaychexWorkers(canSeeAll && locationSlug ? locationSlug : undefined)
+      const res = await getPaychexWorkers(canSeeAll && locationSlug ? locationSlug : undefined, statusFilter)
       setWorkers(res.workers || [])
       if (!locationSlug && res.location) setLocationSlug(res.location)
     } catch (err) {
@@ -118,7 +119,7 @@ function WorkerList({ user, onSelectWorker, actionLabel }) {
     } finally {
       setLoading(false)
     }
-  }, [locationSlug, canSeeAll, needsLocationPick])
+  }, [locationSlug, canSeeAll, needsLocationPick, statusFilter])
 
   useEffect(() => { fetchWorkers() }, [fetchWorkers])
 
@@ -164,6 +165,26 @@ function WorkerList({ user, onSelectWorker, actionLabel }) {
         </div>
       ) : (
         <>
+          {/* Active / Inactive filter pills */}
+          <div className="flex gap-2">
+            {[
+              { value: 'ACTIVE', label: 'Active' },
+              { value: 'INACTIVE', label: 'Inactive' },
+            ].map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setStatusFilter(opt.value)}
+                className={`flex-1 px-4 py-2 rounded-full text-xs font-semibold border transition-colors ${
+                  statusFilter === opt.value
+                    ? 'bg-wcs-red text-white border-wcs-red'
+                    : 'bg-surface text-text-muted border-border'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
           {/* Search */}
           <div className="relative">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">

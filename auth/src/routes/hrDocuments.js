@@ -296,8 +296,17 @@ router.get('/paychex-workers', requireRole('manager'), async (req, res) => {
       return res.status(404).json({ error: `No Paychex company configured for location: ${slug}` })
     }
 
-    const statusType = req.query.status || 'ACTIVE'
-    const workers = await getWorkers(paychexLoc.companyId, statusType)
+    // Paychex's /companies/{id}/workers endpoint doesn't document a
+    // statusType query param, so pass null to skip it and pull the full
+    // worker list, then filter here on `currentStatus.statusType`.
+    // ACTIVE = exactly 'ACTIVE'; INACTIVE = anything else (TERMINATED,
+    // LEAVE_OF_ABSENCE, etc.).
+    const statusType = (req.query.status || 'ACTIVE').toUpperCase()
+    const allWorkers = await getWorkers(paychexLoc.companyId, null)
+    const workers = allWorkers.filter(w => {
+      const s = (w.currentStatus?.statusType || '').toUpperCase()
+      return statusType === 'ACTIVE' ? s === 'ACTIVE' : s !== 'ACTIVE'
+    })
 
     // Return a simplified worker list for the frontend
     const simplified = workers.map(w => {

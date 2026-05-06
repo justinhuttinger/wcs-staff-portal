@@ -551,8 +551,11 @@ export async function uploadHRDocumentToPaychex(id, workerId) {
 }
 
 // Paychex Workers
-export async function getPaychexWorkers(slug) {
-  const qs = slug ? '?slug=' + encodeURIComponent(slug) : ''
+export async function getPaychexWorkers(slug, status) {
+  const params = new URLSearchParams()
+  if (slug) params.set('slug', slug)
+  if (status) params.set('status', status)
+  const qs = params.toString() ? '?' + params.toString() : ''
   return api('/hr-documents/paychex-workers' + qs)
 }
 
