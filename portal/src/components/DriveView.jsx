@@ -244,10 +244,10 @@ function DriveBrowser({ root, onBack }) {
     else { setSortBy(column); setSortDir(column === 'name' ? 'asc' : 'desc') }
   }
 
-  const load = useCallback((folderId) => {
+  const load = useCallback((folderId, { refresh = false } = {}) => {
     setLoading(true)
     setError('')
-    listDriveContents(folderId)
+    listDriveContents(folderId, { refresh })
       .then(res => setFiles(res.files || []))
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
@@ -267,6 +267,19 @@ function DriveBrowser({ root, onBack }) {
     setPath(p => p.slice(0, idx + 1))
   }
 
+  // Prev/Next inside the preview walks the current on-screen list (folder
+  // contents OR search results), skipping folders so we only step through
+  // previewable files.
+  const previewableSiblings = useMemo(
+    () => visibleFiles.filter(f => f.mimeType !== FOLDER_MIME),
+    [visibleFiles],
+  )
+  const previewIndex = previewFile
+    ? previewableSiblings.findIndex(f => f.id === previewFile.id)
+    : -1
+  const hasPrev = previewIndex > 0
+  const hasNext = previewIndex >= 0 && previewIndex < previewableSiblings.length - 1
+
   if (previewFile) {
     const downloadUrl = getDownloadUrl(previewFile)
     const copyUrl = getCopyUrl(previewFile)
@@ -282,6 +295,33 @@ function DriveBrowser({ root, onBack }) {
             </svg>
             Back to Folder
           </button>
+          <div className="inline-flex rounded-lg border border-border bg-bg overflow-hidden">
+            <button
+              onClick={() => hasPrev && setPreviewFile(previewableSiblings[previewIndex - 1])}
+              disabled={!hasPrev}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-text-muted hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-text-muted border-r border-border"
+              title="Previous file"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+              </svg>
+              Prev
+            </button>
+            <button
+              onClick={() => hasNext && setPreviewFile(previewableSiblings[previewIndex + 1])}
+              disabled={!hasNext}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-text-muted hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-text-muted"
+              title="Next file"
+            >
+              Next
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+              </svg>
+            </button>
+          </div>
+          {previewIndex >= 0 && previewableSiblings.length > 1 && (
+            <span className="text-[11px] text-text-muted shrink-0">{previewIndex + 1} of {previewableSiblings.length}</span>
+          )}
           <h2 className="text-lg font-bold text-text-primary truncate flex-1 min-w-0">{previewFile.name}</h2>
           <div className="flex items-center gap-2 shrink-0">
             <PrintButton file={previewFile} />
@@ -400,6 +440,17 @@ function DriveBrowser({ root, onBack }) {
               Grid
             </button>
           </div>
+          <button
+            onClick={() => load(currentFolderId, { refresh: true })}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-muted hover:text-text-primary hover:border-text-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Bypass cache and refetch from Google Drive"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+            Refresh
+          </button>
           <a
             href={`https://drive.google.com/drive/folders/${currentFolderId}`}
             target="_blank"
