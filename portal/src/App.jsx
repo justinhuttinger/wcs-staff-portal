@@ -23,6 +23,7 @@ const LOCATION_BACKGROUNDS = {
   eugene: '/bg-eugene.jpg',
   springfield: '/bg-springfield.jpg',
   clackamas: '/bg-clackamas.jpg',
+  milwaukie: '/bg-milwaukie.jpg',
 }
 
 function getParam(key) {
