@@ -67,6 +67,7 @@ const LOCATION_BACKGROUNDS = {
   springfield: '/bg-springfield.jpg',
   clackamas: '/bg-clackamas.jpg',
   milwaukie: '/bg-milwaukie.jpg',
+  medford: '/bg-medford.jpg',
 }
 
 function getActiveTab(route) {
