@@ -164,6 +164,7 @@ function DriveBrowser({ root, onBack }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [previewFile, setPreviewFile] = useState(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
   const [viewMode, setViewMode] = useState(() => {
     try { return localStorage.getItem('wcs_drive_view') || 'list' } catch { return 'list' }
   })
@@ -279,6 +280,15 @@ function DriveBrowser({ root, onBack }) {
     : -1
   const hasPrev = previewIndex > 0
   const hasNext = previewIndex >= 0 && previewIndex < previewableSiblings.length - 1
+  const prevSibling = hasPrev ? previewableSiblings[previewIndex - 1] : null
+  const nextSibling = hasNext ? previewableSiblings[previewIndex + 1] : null
+
+  // Reset the loading overlay every time we switch files. The visible iframe's
+  // onLoad handler clears it. Prev/Next prefetch iframes (rendered hidden)
+  // warm the browser cache so subsequent navigations land faster.
+  useEffect(() => {
+    if (previewFile) setPreviewLoading(true)
+  }, [previewFile?.id])
 
   if (previewFile) {
     const downloadUrl = getDownloadUrl(previewFile)
@@ -363,14 +373,46 @@ function DriveBrowser({ root, onBack }) {
             </a>
           </div>
         </div>
-        <div className="flex-1 rounded-xl border border-border overflow-hidden bg-white">
+        <div className="flex-1 rounded-xl border border-border overflow-hidden bg-white relative">
+          {previewLoading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/95 z-10 pointer-events-none">
+              <div className="w-8 h-8 border-2 border-wcs-red border-t-transparent rounded-full animate-spin" />
+              <p className="text-xs font-medium text-text-muted truncate max-w-[80%]">Loading {previewFile.name}…</p>
+            </div>
+          )}
           <iframe
+            key={previewFile.id}
             src={`https://drive.google.com/file/d/${previewFile.id}/preview`}
             title={previewFile.name}
             className="w-full h-full border-0"
             allow="autoplay"
             referrerPolicy="no-referrer-when-downgrade"
+            onLoad={() => setPreviewLoading(false)}
           />
+          {/* Hidden prefetch iframes — warm Google's auth + browser HTTP cache
+              so Prev/Next navigation lands faster. */}
+          {prevSibling && (
+            <iframe
+              key={`prefetch-prev-${prevSibling.id}`}
+              src={`https://drive.google.com/file/d/${prevSibling.id}/preview`}
+              title=""
+              aria-hidden="true"
+              tabIndex={-1}
+              className="absolute w-1 h-1 opacity-0 pointer-events-none"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+          )}
+          {nextSibling && (
+            <iframe
+              key={`prefetch-next-${nextSibling.id}`}
+              src={`https://drive.google.com/file/d/${nextSibling.id}/preview`}
+              title=""
+              aria-hidden="true"
+              tabIndex={-1}
+              className="absolute w-1 h-1 opacity-0 pointer-events-none"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+          )}
         </div>
       </div>
     )
