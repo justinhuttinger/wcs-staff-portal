@@ -6,36 +6,66 @@ const ABC_BASE_URL = process.env.ABC_BASE_URL || 'https://api.abcfinancial.com/r
 const ABC_APP_ID = process.env.ABC_APP_ID;
 const ABC_APP_KEY = process.env.ABC_APP_KEY;
 
-// Hardcoded GHL "Day One Booking Team Member" custom field ids per location.
-// Locations missing here fall back to a Supabase lookup against
-// ghl_custom_field_defs by field_key (see resolveFieldId below).
-const EMPLOYEE_FIELD_IDS = {
+// Hardcoded GHL "Tour Team Member" custom field ids per location (fast path).
+// These were the original IDs in the code; logs confirm the field GHL returns
+// for each is named "Tour Team Member".
+const TOUR_FIELD_IDS = {
   'salem':       'WOvY0CUbJQmzbHP6fj5e',
   'keizer':      'zpjNYk3vDFKKIUDbSIjD',
   'eugene':      'TwozSPfg1Mg0MTYvEXpB',
   'milwaukie':   'saT5AHGtaicoFxuSNoOS',
   'clackamas':   'ErOjVabJGLMnKc2bs6nL',
   'springfield': 'YUWbpzWwCpRVDHjZp3Wl',
-  'medford':     '', // Resolved dynamically from ghl_custom_field_defs
 };
 
-const EMPLOYEE_FIELD_KEY = 'contact.day_one_booking_team_member';
+// Both dropdowns get the same ABC employee list each run. For each target,
+// resolveFieldId tries the hardcoded map first, then falls back to a Supabase
+// lookup against ghl_custom_field_defs (populated by fullSync) by field_key
+// or display name.
+const TARGET_FIELDS = [
+  {
+    label: 'Tour Team Member',
+    fieldKey: 'contact.tour_team_member',
+    name: 'Tour Team Member',
+    hardcoded: TOUR_FIELD_IDS,
+  },
+  {
+    label: 'Day One Booking Team Member',
+    fieldKey: 'contact.day_one_booking_team_member',
+    name: 'Day One Booking Team Member',
+    hardcoded: null,
+  },
+];
 
-async function resolveFieldId(location) {
-  const hardcoded = EMPLOYEE_FIELD_IDS[location.slug];
+async function resolveFieldId(location, target) {
+  const hardcoded = target.hardcoded?.[location.slug];
   if (hardcoded) return hardcoded;
-  const { data, error } = await supabase
+
+  const byKey = await supabase
     .from('ghl_custom_field_defs')
     .select('id')
     .eq('location_id', location.id)
-    .eq('field_key', EMPLOYEE_FIELD_KEY)
+    .eq('field_key', target.fieldKey)
     .limit(1)
     .maybeSingle();
-  if (error) {
-    console.warn(`[Employee Sync] field def lookup error for ${location.name}:`, error.message);
+  if (byKey.error) {
+    console.warn(`[Employee Sync] field_key lookup error for ${location.name} (${target.label}):`, byKey.error.message);
+  } else if (byKey.data?.id) {
+    return byKey.data.id;
+  }
+
+  const byName = await supabase
+    .from('ghl_custom_field_defs')
+    .select('id')
+    .eq('location_id', location.id)
+    .eq('name', target.name)
+    .limit(1)
+    .maybeSingle();
+  if (byName.error) {
+    console.warn(`[Employee Sync] name lookup error for ${location.name} (${target.label}):`, byName.error.message);
     return null;
   }
-  return data?.id || null;
+  return byName.data?.id || null;
 }
 
 const EXCLUDED_NAMES = [
@@ -117,27 +147,39 @@ async function updateGHLEmployeeDropdown(locationId, fieldId, options, apiKey) {
 }
 
 /**
- * Run employee sync for all locations.
+ * Run employee sync for all locations. Each location pushes the same ABC
+ * employee list into every TARGET_FIELDS entry that resolves to a real GHL
+ * custom field (Tour Team Member + Day One Booking Team Member).
  */
 async function employeeSync(locations) {
   console.log(`[Employee Sync] Starting for ${locations.length} locations`);
   const results = [];
 
   for (const location of locations) {
-    const fieldId = await resolveFieldId(location);
-    if (!fieldId) {
-      console.log(`[Employee Sync] Skipping ${location.name} — no employee field ID (hardcoded or in ghl_custom_field_defs)`);
+    let names;
+    try {
+      names = await fetchEmployeesFromABC(location.clubNumber);
+    } catch (err) {
+      console.error(`[Employee Sync] ${location.name} ABC fetch failed:`, err.message);
+      results.push({ location: location.name, success: false, error: err.message });
       continue;
     }
 
-    try {
-      const names = await fetchEmployeesFromABC(location.clubNumber);
-      const result = await updateGHLEmployeeDropdown(location.id, fieldId, names, location.apiKey);
-      console.log(`[Employee Sync] ${location.name}: updated "${result.fieldName}" with ${result.optionsCount} employees`);
-      results.push({ location: location.name, success: true, count: result.optionsCount });
-    } catch (err) {
-      console.error(`[Employee Sync] ${location.name} failed:`, err.message);
-      results.push({ location: location.name, success: false, error: err.message });
+    for (const target of TARGET_FIELDS) {
+      const fieldId = await resolveFieldId(location, target);
+      if (!fieldId) {
+        console.log(`[Employee Sync] Skipping ${location.name} (${target.label}) — no field ID resolved (field may not exist in GHL or ghl_custom_field_defs not yet populated)`);
+        results.push({ location: location.name, field: target.label, success: true, skipped: true });
+        continue;
+      }
+      try {
+        const result = await updateGHLEmployeeDropdown(location.id, fieldId, names, location.apiKey);
+        console.log(`[Employee Sync] ${location.name}: updated "${result.fieldName}" with ${result.optionsCount} employees`);
+        results.push({ location: location.name, field: result.fieldName, success: true, count: result.optionsCount });
+      } catch (err) {
+        console.error(`[Employee Sync] ${location.name} (${target.label}) update failed:`, err.message);
+        results.push({ location: location.name, field: target.label, success: false, error: err.message });
+      }
     }
   }
 
