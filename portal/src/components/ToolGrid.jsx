@@ -115,6 +115,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   const [tourUrl, setTourUrl] = useState(null)
   const [dayoneUrl, setDayoneUrl] = useState(null)
   const [vipUrl, setVipUrl] = useState(null)
+  const [actionPopup, setActionPopup] = useState(null) // { title, url } or null
 
   useEffect(() => {
     if (locationId) {
@@ -365,10 +366,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
               {/* Action Buttons — above Tools (right) */}
               <div className="w-1/2 flex gap-4">
                 {tourUrl && (
-                  <a
-                    href={tourUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() => setActionPopup({ title: 'Book Gym Tour', url: tourUrl })}
                     className="group flex-1 flex items-center justify-center gap-3 rounded-[14px] bg-surface border border-border cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)] px-4"
                   >
                     <div className="flex items-center justify-center w-9 h-9 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200 shrink-0">
@@ -378,13 +377,11 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
                       </svg>
                     </div>
                     <span className="text-sm font-semibold text-text-primary">Book Gym Tour</span>
-                  </a>
+                  </button>
                 )}
                 {dayoneUrl && (
-                  <a
-                    href={dayoneUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() => setActionPopup({ title: 'Book Day Ones', url: dayoneUrl })}
                     className="group flex-1 flex items-center justify-center gap-3 rounded-[14px] bg-surface border border-border cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)] px-4"
                   >
                     <div className="flex items-center justify-center w-9 h-9 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200 shrink-0">
@@ -393,13 +390,11 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
                       </svg>
                     </div>
                     <span className="text-sm font-semibold text-text-primary">Book Day Ones</span>
-                  </a>
+                  </button>
                 )}
                 {vipUrl && (
-                  <a
-                    href={vipUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() => setActionPopup({ title: 'Submit VIPs', url: vipUrl })}
                     className="group flex-1 flex items-center justify-center gap-3 rounded-[14px] bg-surface border border-border cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)] px-4"
                   >
                     <div className="flex items-center justify-center w-9 h-9 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200 shrink-0">
@@ -408,10 +403,52 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
                       </svg>
                     </div>
                     <span className="text-sm font-semibold text-text-primary">Submit VIPs</span>
-                  </a>
+                  </button>
                 )}
               </div>
             </div>
+
+            {/* Action Popup — embeds GHL booking widget / VIP survey in an iframe */}
+            {actionPopup && (
+              <div
+                className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6"
+                onClick={() => setActionPopup(null)}
+              >
+                <div
+                  className="bg-surface rounded-2xl border border-border w-full max-w-3xl flex flex-col overflow-hidden"
+                  style={{ height: 'min(90vh, 900px)' }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
+                    <h3 className="text-base font-bold text-text-primary">{actionPopup.title}</h3>
+                    <div className="flex items-center gap-3">
+                      <a
+                        href={actionPopup.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-semibold text-wcs-red hover:underline"
+                        title="Open in a new tab"
+                      >
+                        Open in new tab ↗
+                      </a>
+                      <button
+                        onClick={() => setActionPopup(null)}
+                        className="text-text-muted hover:text-text-primary text-2xl leading-none"
+                        aria-label="Close"
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  </div>
+                  <iframe
+                    src={actionPopup.url}
+                    title={actionPopup.title}
+                    className="flex-1 border-0 bg-white"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Points Info Modal */}
             {showPointsInfo && (
