@@ -3,6 +3,12 @@ const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
 const { getAccessToken } = require('./googleBusiness')
+const memoryCache = require('../services/memoryCache')
+
+// Cache Drive folder listings for 5 minutes. The permission check still
+// runs per-request; only the Google Drive API response is cached. Pass
+// ?refresh=1 to bypass and force a fresh fetch.
+const DRIVE_LIST_TTL_MS = 5 * 60 * 1000
 
 const router = Router()
 router.use(authenticate)
@@ -222,28 +228,37 @@ router.get('/list', async (req, res) => {
       return res.status(403).json({ error: 'No accessible drive folders for this user' })
     }
 
-    const token = await getAccessToken()
-    const params = new URLSearchParams({
-      q: `'${folder_id.replace(/'/g, "\\'")}' in parents and trashed=false`,
-      fields: 'files(id,name,mimeType,iconLink,modifiedTime,size,thumbnailLink,webViewLink,webContentLink)',
-      orderBy: 'folder,name',
-      pageSize: '200',
-      supportsAllDrives: 'true',
-      includeItemsFromAllDrives: 'true',
-      corpora: 'allDrives',
-    })
-    const r = await fetch('https://www.googleapis.com/drive/v3/files?' + params, {
-      headers: { Authorization: 'Bearer ' + token },
-    })
-    const data = await r.json()
-    if (data.error) {
-      return res.status(r.status || 500).json({ error: data.error.message || 'Drive API error' })
-    }
+    const cacheKey = `drive:list:${folder_id}`
+    const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true'
+    if (forceRefresh) memoryCache.del(cacheKey)
 
-    res.json({ files: data.files || [] })
+    const files = await memoryCache.wrap(cacheKey, DRIVE_LIST_TTL_MS, async () => {
+      const token = await getAccessToken()
+      const params = new URLSearchParams({
+        q: `'${folder_id.replace(/'/g, "\\'")}' in parents and trashed=false`,
+        fields: 'files(id,name,mimeType,iconLink,modifiedTime,size,thumbnailLink,webViewLink,webContentLink)',
+        orderBy: 'folder,name',
+        pageSize: '200',
+        supportsAllDrives: 'true',
+        includeItemsFromAllDrives: 'true',
+        corpora: 'allDrives',
+      })
+      const r = await fetch('https://www.googleapis.com/drive/v3/files?' + params, {
+        headers: { Authorization: 'Bearer ' + token },
+      })
+      const data = await r.json()
+      if (data.error) {
+        const err = new Error(data.error.message || 'Drive API error')
+        err.status = r.status || 500
+        throw err
+      }
+      return data.files || []
+    })
+
+    res.json({ files })
   } catch (err) {
     console.error('[Drive] list error:', err.message)
-    res.status(500).json({ error: err.message })
+    res.status(err.status || 500).json({ error: err.message })
   }
 })
 

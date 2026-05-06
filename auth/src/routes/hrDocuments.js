@@ -4,6 +4,12 @@ const authenticate = require('../middleware/auth')
 const { requireRole, canSeeAllLocations } = require('../middleware/role')
 const { getCompanies, getWorkers, getWorkerDocuments, getWorkerDocument, uploadWorkerDocument } = require('../services/paychex')
 const { getPaychexBySlug, PAYCHEX_LOCATIONS } = require('../config/paychexLocations')
+const memoryCache = require('../services/memoryCache')
+
+// Cache the full Paychex worker roster per company for 5 minutes. Status
+// filtering (ACTIVE/INACTIVE) runs on top of the cached list, so toggling
+// the UI does not re-hit Paychex.
+const PAYCHEX_WORKERS_TTL_MS = 5 * 60 * 1000
 
 const router = Router()
 router.use(authenticate)
@@ -301,8 +307,18 @@ router.get('/paychex-workers', requireRole('manager'), async (req, res) => {
     // worker list, then filter here on `currentStatus.statusType`.
     // ACTIVE = exactly 'ACTIVE'; INACTIVE = anything else (TERMINATED,
     // LEAVE_OF_ABSENCE, etc.).
+    //
+    // The full roster is cached per company for PAYCHEX_WORKERS_TTL_MS;
+    // pass ?refresh=1 to force a fresh fetch (Refresh button in the UI).
     const statusType = (req.query.status || 'ACTIVE').toUpperCase()
-    const allWorkers = await getWorkers(paychexLoc.companyId, null)
+    const cacheKey = `paychex:workers:${paychexLoc.companyId}`
+    const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true'
+    if (forceRefresh) memoryCache.del(cacheKey)
+    const allWorkers = await memoryCache.wrap(
+      cacheKey,
+      PAYCHEX_WORKERS_TTL_MS,
+      () => getWorkers(paychexLoc.companyId, null),
+    )
     const workers = allWorkers.filter(w => {
       const s = (w.currentStatus?.statusType || '').toUpperCase()
       return statusType === 'ACTIVE' ? s === 'ACTIVE' : s !== 'ACTIVE'

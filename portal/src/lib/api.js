@@ -454,8 +454,10 @@ export async function getOperandioLatest() {
 export async function getDriveFolders() {
   return api('/drive-folders')
 }
-export async function listDriveContents(folderId) {
-  return api('/drive-folders/list?folder_id=' + encodeURIComponent(folderId))
+export async function listDriveContents(folderId, { refresh = false } = {}) {
+  const params = new URLSearchParams({ folder_id: folderId })
+  if (refresh) params.set('refresh', '1')
+  return api('/drive-folders/list?' + params.toString())
 }
 export async function searchDrive(rootId, query) {
   const qs = new URLSearchParams({ root_id: rootId, q: query }).toString()
@@ -551,10 +553,11 @@ export async function uploadHRDocumentToPaychex(id, workerId) {
 }
 
 // Paychex Workers
-export async function getPaychexWorkers(slug, status) {
+export async function getPaychexWorkers(slug, status, { refresh = false } = {}) {
   const params = new URLSearchParams()
   if (slug) params.set('slug', slug)
   if (status) params.set('status', status)
+  if (refresh) params.set('refresh', '1')
   const qs = params.toString() ? '?' + params.toString() : ''
   return api('/hr-documents/paychex-workers' + qs)
 }
