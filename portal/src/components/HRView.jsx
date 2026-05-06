@@ -131,6 +131,7 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
   const [search, setSearch] = useState('')
   const [locationSlug, setLocationSlug] = useState('')
   const [locations, setLocations] = useState([])
+  const [statusFilter, setStatusFilter] = useState('ACTIVE')
 
   const canSeeAll = ROLE_LEVELS[user?.staff?.role] >= ROLE_LEVELS.corporate
 
@@ -152,7 +153,7 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await getPaychexWorkers(canSeeAll && locationSlug ? locationSlug : undefined)
+      const res = await getPaychexWorkers(canSeeAll && locationSlug ? locationSlug : undefined, statusFilter)
       setWorkers(res.workers || [])
       if (!locationSlug && res.location) {
         setLocationSlug(res.location)
@@ -163,7 +164,7 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
     } finally {
       setLoading(false)
     }
-  }, [locationSlug, canSeeAll, needsLocationPick])
+  }, [locationSlug, canSeeAll, needsLocationPick, statusFilter])
 
   useEffect(() => { fetchWorkers() }, [fetchWorkers])
 
@@ -206,6 +207,26 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
         </div>
       ) : (
       <>
+      {/* Active / Inactive filter pills */}
+      <div className="flex gap-2">
+        {[
+          { value: 'ACTIVE', label: 'Active' },
+          { value: 'INACTIVE', label: 'Inactive' },
+        ].map(opt => (
+          <button
+            key={opt.value}
+            onClick={() => setStatusFilter(opt.value)}
+            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+              statusFilter === opt.value
+                ? 'bg-wcs-red text-white'
+                : 'bg-surface border border-border text-text-muted hover:text-text-primary'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
       <div className="bg-surface border border-border rounded-xl p-4">
         <div className="relative">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2">
