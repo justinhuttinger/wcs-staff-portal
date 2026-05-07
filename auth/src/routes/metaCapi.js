@@ -32,39 +32,55 @@ router.post('/meta-lead', verifyWebhookSecret, async (req, res) => {
       state,
       zip,
       country,
+      externalId,
       eventId,
       eventName,
+      eventSourceUrl,
       contentName,
+      leadEventSource,
       pixelId,
       actionSource,
       value,
       currency,
+      clientIpAddress,
+      clientUserAgent,
+      fbc,
+      fbp,
     } = req.body
 
     const userData = {}
-    if (email)     userData.em      = [hashData(email)]
-    if (phone)     userData.ph      = [hashData(phone)]
-    if (firstName) userData.fn      = [hashData(firstName)]
-    if (lastName)  userData.ln      = [hashData(lastName)]
-    if (city)      userData.ct      = [hashData(city)]
-    if (state)     userData.st      = [hashData(state)]
-    if (zip)       userData.zp      = [hashData(zip)]
-    if (country)   userData.country = [hashData(country)]
+    if (email)      userData.em          = [hashData(email)]
+    if (phone)      userData.ph          = [hashData(phone)]
+    if (firstName)  userData.fn          = [hashData(firstName)]
+    if (lastName)   userData.ln          = [hashData(lastName)]
+    if (city)       userData.ct          = [hashData(city)]
+    if (state)      userData.st          = [hashData(state)]
+    if (zip)        userData.zp          = [hashData(zip)]
+    if (country)    userData.country     = [hashData(country)]
+    if (externalId) userData.external_id = [hashData(externalId)]
+    if (clientIpAddress) userData.client_ip_address = clientIpAddress
+    if (clientUserAgent) userData.client_user_agent = clientUserAgent
+    if (fbc)        userData.fbc         = fbc
+    if (fbp)        userData.fbp         = fbp
 
     const customData = {}
-    if (contentName) customData.content_name = contentName
-    if (value)       customData.value        = parseFloat(value)
-    if (currency)    customData.currency     = currency
+    if (contentName)      customData.content_name      = contentName
+    if (leadEventSource)  customData.lead_event_source = leadEventSource
+    if (value)            customData.value             = parseFloat(value)
+    if (currency)         customData.currency          = currency
+
+    const eventData = {
+      event_name:    eventName || 'Lead',
+      event_time:    Math.floor(Date.now() / 1000),
+      event_id:      eventId,
+      action_source: actionSource || 'website',
+      user_data:     userData,
+      custom_data:   customData,
+    }
+    if (eventSourceUrl) eventData.event_source_url = eventSourceUrl
 
     const payload = {
-      data: [{
-        event_name:    eventName || 'Lead',
-        event_time:    Math.floor(Date.now() / 1000),
-        event_id:      eventId,
-        action_source: actionSource || 'website',
-        user_data:     userData,
-        custom_data:   customData,
-      }],
+      data: [eventData],
       access_token: process.env.META_ACCESS_TOKEN,
     }
 
