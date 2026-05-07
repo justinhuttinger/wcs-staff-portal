@@ -4,10 +4,48 @@ import { getPayrollReport } from '../../lib/api'
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
 const SECTIONS = [
-  { key: 'sales',     label: 'Sales Commissions' },
-  { key: 'recurring', label: 'Recurring Services' },
+  { key: 'sales',     label: 'POS Sale Commissions' },
+  { key: 'recurring', label: 'PT Sales Commissions' },
   { key: 'sessions',  label: 'Trainer Sessions' },
 ]
+
+// Profit centers to exclude from POS Sale Commissions (handled separately
+// under PT Sales Commissions).
+const POS_EXCLUDED_CENTERS = new Set(['TRAINING'])
+
+function lastNameKey(fullName) {
+  if (!fullName) return ''
+  const parts = String(fullName).trim().split(/\s+/)
+  return parts[parts.length - 1].toLowerCase()
+}
+
+function sortByLastName(rows) {
+  return [...rows].sort((a, b) => {
+    const ln = lastNameKey(a.employee_name).localeCompare(lastNameKey(b.employee_name))
+    if (ln !== 0) return ln
+    return (a.employee_name || '').localeCompare(b.employee_name || '')
+  })
+}
+
+function csvEscape(v) {
+  if (v == null) return ''
+  const s = String(v)
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"'
+  return s
+}
+
+function downloadCsv(filename, rows) {
+  const csv = rows.map((row) => row.map(csvEscape).join(',')).join('\r\n')
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
 
 // Build a list of months: last 12 months ending in the previous full month.
 function buildMonthOptions() {
@@ -49,25 +87,41 @@ function KpiCard({ label, value, sub }) {
 }
 
 function SalesTable({ rows }) {
-  // Collect all profit-center keys present, ordered alphabetically.
+  // Collect all profit-center keys present (excluding POS-excluded centers
+  // like TRAINING, which belongs under PT Sales Commissions).
   const allCenters = useMemo(() => {
     const set = new Set()
     for (const r of rows) {
-      for (const k of Object.keys(r.by_profit_center || {})) set.add(k)
+      for (const k of Object.keys(r.by_profit_center || {})) {
+        if (!POS_EXCLUDED_CENTERS.has(k)) set.add(k)
+      }
     }
     return [...set].sort()
   }, [rows])
 
-  if (!rows.length) {
+  // Recompute per-row totals excluding the dropped centers, then drop rows
+  // that have no remaining commissions.
+  const visibleRows = useMemo(() => {
+    const out = []
+    for (const r of rows) {
+      let total = 0
+      for (const c of allCenters) total += Number(r.by_profit_center?.[c] || 0)
+      if (total === 0 && !allCenters.some((c) => c in (r.by_profit_center || {}))) continue
+      out.push({ ...r, _displayTotal: total })
+    }
+    return sortByLastName(out)
+  }, [rows, allCenters])
+
+  if (!visibleRows.length) {
     return <p className="text-sm text-text-muted">No commissions for this period.</p>
   }
 
   const totals = {}
   for (const c of allCenters) totals[c] = 0
   let grand = 0
-  for (const r of rows) {
+  for (const r of visibleRows) {
     for (const c of allCenters) totals[c] += Number(r.by_profit_center?.[c] || 0)
-    grand += Number(r.total_commission) || 0
+    grand += r._displayTotal
   }
 
   return (
@@ -84,7 +138,7 @@ function SalesTable({ rows }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
+          {visibleRows.map((r) => (
             <tr key={`${r.club_number}|${r.employee_name}`} className="border-b border-border/40 hover:bg-bg/40">
               <td className="px-3 py-2 text-text-primary">{r.employee_name}</td>
               <td className="px-3 py-2 text-text-muted text-xs uppercase">{r.location_slug}</td>
@@ -96,7 +150,7 @@ function SalesTable({ rows }) {
                   </td>
                 )
               })}
-              <td className="px-3 py-2 text-right tabular-nums font-semibold text-text-primary">${fmtMoney(r.total_commission)}</td>
+              <td className="px-3 py-2 text-right tabular-nums font-semibold text-text-primary">${fmtMoney(r._displayTotal)}</td>
             </tr>
           ))}
           <tr className="border-t-2 border-border bg-bg/40">
@@ -114,12 +168,13 @@ function SalesTable({ rows }) {
 
 function RecurringTable({ rows }) {
   const [openKey, setOpenKey] = useState(null)
-  if (!rows.length) {
+  const sortedRows = useMemo(() => sortByLastName(rows), [rows])
+  if (!sortedRows.length) {
     return (
       <div className="text-sm text-text-muted">
-        <p>No recurring services for this period.</p>
-        <p className="mt-2 text-xs">If April just ended, run the sync from Render Shell:</p>
-        <pre className="mt-1 text-xs bg-bg p-2 rounded border border-border overflow-x-auto">cd ghl-sync && node scripts/sync-payroll-recurring.js --month 2026-04</pre>
+        <p>No PT sales for this period.</p>
+        <p className="mt-2 text-xs">If the month just ended, run the sync from Render Shell:</p>
+        <pre className="mt-1 text-xs bg-bg p-2 rounded border border-border overflow-x-auto">node scripts/sync-payroll-recurring.js --month YYYY-MM</pre>
       </div>
     )
   }
@@ -138,7 +193,7 @@ function RecurringTable({ rows }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => {
+          {sortedRows.map((r) => {
             const key = `${r.club_number}|${r.employee_id || ''}|${r.employee_name}`
             const isOpen = openKey === key
             return (
@@ -199,12 +254,23 @@ function RecurringTable({ rows }) {
   )
 }
 
-function SessionsTable({ rows, eventTypes }) {
-  if (!rows.length) {
-    return <p className="text-sm text-text-muted">No trainer sessions for this period.</p>
-  }
+function SessionsTable({ rows, eventTypes, onRefresh, refreshing }) {
+  const sortedRows = useMemo(() => sortByLastName(rows), [rows])
   return (
-    <div className="overflow-x-auto">
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-xs font-medium hover:border-text-muted disabled:opacity-50"
+        >
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </button>
+      </div>
+      {!sortedRows.length ? (
+        <p className="text-sm text-text-muted">No trainer sessions for this period.</p>
+      ) : (
+      <div className="overflow-x-auto">
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="border-b border-border">
@@ -217,7 +283,7 @@ function SessionsTable({ rows, eventTypes }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
+          {sortedRows.map((r) => (
             <tr key={`${r.club_number}|${r.employee_id}`} className="border-b border-border/40 hover:bg-bg/40">
               <td className="px-3 py-2 text-text-primary">{r.employee_name}</td>
               <td className="px-3 py-2 text-text-muted text-xs uppercase">{r.location_slug}</td>
@@ -238,6 +304,8 @@ function SessionsTable({ rows, eventTypes }) {
         </tbody>
       </table>
       <p className="text-[11px] text-text-muted mt-2">Counts show Completed; "+N" indicates additional Canceled-Charge sessions.</p>
+      </div>
+      )}
     </div>
   )
 }
@@ -249,6 +317,7 @@ export default function PayrollReport({ locationSlug }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [reloadToken, setReloadToken] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -261,7 +330,107 @@ export default function PayrollReport({ locationSlug }) {
       .catch((e) => { if (!cancelled) setError(e.message || 'Failed to load') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [period, locationSlug])
+  }, [period, locationSlug, reloadToken])
+
+  function refetch() {
+    setReloadToken((t) => t + 1)
+  }
+
+  function handleExport() {
+    if (!data) return
+    const rows = []
+    const periodLabel = (() => {
+      const m = monthOptions.find((o) => o.key === period)
+      return m ? m.label : period
+    })()
+    rows.push([`Payroll Report — ${periodLabel}`])
+    rows.push([`Location: ${locationSlug || 'all'}`])
+    rows.push([])
+    rows.push(['Summary'])
+    rows.push(['POS Sales Commission', data.summary?.sales_commission ?? 0])
+    rows.push(['PT Sales Commission', data.summary?.recurring_commission ?? 0])
+    rows.push(['PT Sales Services Count', data.summary?.recurring_services_count ?? 0])
+    rows.push(['Trainer Sessions Total', data.summary?.sessions_total ?? 0])
+    rows.push(['Sessions Completed', data.summary?.sessions_completed ?? 0])
+    rows.push(['Sessions Canceled-Charge', data.summary?.sessions_canceled_charge ?? 0])
+    rows.push(['Grand Total Commission', data.summary?.grand_total_commission ?? 0])
+    rows.push([])
+
+    // ---- POS Sale Commissions ----
+    const sales = sortByLastName(data.sales || [])
+    const posCenters = new Set()
+    for (const r of sales) {
+      for (const k of Object.keys(r.by_profit_center || {})) {
+        if (!POS_EXCLUDED_CENTERS.has(k)) posCenters.add(k)
+      }
+    }
+    const posCols = [...posCenters].sort()
+    rows.push(['POS Sale Commissions'])
+    rows.push(['Employee', 'Club', ...posCols, 'Total'])
+    for (const r of sales) {
+      let total = 0
+      const cells = posCols.map((c) => {
+        const v = Number(r.by_profit_center?.[c] || 0)
+        total += v
+        return v.toFixed(2)
+      })
+      if (total === 0 && !posCols.some((c) => c in (r.by_profit_center || {}))) continue
+      rows.push([r.employee_name, r.location_slug, ...cells, total.toFixed(2)])
+    }
+    rows.push([])
+
+    // ---- PT Sales Commissions (per-employee summary) ----
+    const recurring = sortByLastName(data.recurring || [])
+    rows.push(['PT Sales Commissions'])
+    rows.push(['Employee', 'Club', 'Services', 'Contract Value', 'Commission (4%)'])
+    for (const r of recurring) {
+      rows.push([
+        r.employee_name,
+        r.location_slug,
+        r.services_count,
+        Number(r.total_contract_value).toFixed(2),
+        Number(r.total_commission).toFixed(2),
+      ])
+    }
+    rows.push([])
+
+    // ---- PT Sales Detail (per-service) ----
+    rows.push(['PT Sales Detail'])
+    rows.push(['Employee', 'Club', 'Sale Date', 'Member', 'Service', 'Type', 'Invoice', 'Periods', 'Contract Value', 'Commission'])
+    for (const r of recurring) {
+      for (const s of r.services || []) {
+        rows.push([
+          r.employee_name,
+          r.location_slug,
+          s.sale_date || '',
+          s.member_name || '',
+          s.service_item || '',
+          s.recurring_type_desc || '',
+          Number(s.invoice_total).toFixed(2),
+          s.total_periods,
+          Number(s.total_contract_value).toFixed(2),
+          Number(s.commission).toFixed(2),
+        ])
+      }
+    }
+    rows.push([])
+
+    // ---- Trainer Sessions ----
+    const sessions = sortByLastName(data.sessions || [])
+    const eventTypes = data.session_event_types || []
+    rows.push(['Trainer Sessions'])
+    rows.push(['Trainer', 'Club', ...eventTypes.flatMap((t) => [`${t} Completed`, `${t} CxlCharge`]), 'Total Completed', 'Total CxlCharge', 'Total'])
+    for (const r of sessions) {
+      const cells = eventTypes.flatMap((t) => {
+        const cell = r.by_event_type[t] || { completed: 0, canceled_charge: 0 }
+        return [cell.completed || 0, cell.canceled_charge || 0]
+      })
+      rows.push([r.employee_name, r.location_slug, ...cells, r.completed || 0, r.canceled_charge || 0, r.total || 0])
+    }
+
+    const filename = `payroll-${period}${locationSlug && locationSlug !== 'all' ? '-' + locationSlug : ''}.csv`
+    downloadCsv(filename, rows)
+  }
 
   const summary = data?.summary || {}
 
@@ -281,17 +450,24 @@ export default function PayrollReport({ locationSlug }) {
         </select>
         {loading && <span className="text-xs text-text-muted">Loading…</span>}
         {error && <span className="text-xs text-red-500">{error}</span>}
+        <button
+          onClick={handleExport}
+          disabled={!data || loading}
+          className="ml-auto px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-xs font-medium hover:border-text-muted disabled:opacity-50"
+        >
+          Export CSV
+        </button>
       </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
-          label="Sales Commission"
+          label="POS Sales Commission"
           value={`$${fmtMoney(summary.sales_commission)}`}
           sub="From CSV upload"
         />
         <KpiCard
-          label="Recurring Commission"
+          label="PT Sales Commission"
           value={`$${fmtMoney(summary.recurring_commission)}`}
           sub={`${summary.recurring_services_count || 0} services @ 4%`}
         />
@@ -303,7 +479,7 @@ export default function PayrollReport({ locationSlug }) {
         <KpiCard
           label="Grand Total Commission"
           value={`$${fmtMoney(summary.grand_total_commission)}`}
-          sub="Sales + Recurring"
+          sub="POS + PT Sales"
         />
       </div>
 
@@ -329,7 +505,12 @@ export default function PayrollReport({ locationSlug }) {
           {data && activeTab === 'sales' && <SalesTable rows={data.sales || []} />}
           {data && activeTab === 'recurring' && <RecurringTable rows={data.recurring || []} />}
           {data && activeTab === 'sessions' && (
-            <SessionsTable rows={data.sessions || []} eventTypes={data.session_event_types || []} />
+            <SessionsTable
+              rows={data.sessions || []}
+              eventTypes={data.session_event_types || []}
+              onRefresh={refetch}
+              refreshing={loading}
+            />
           )}
         </div>
       </div>
