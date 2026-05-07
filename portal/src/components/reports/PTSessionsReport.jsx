@@ -382,12 +382,6 @@ export default function PTSessionsReport({ startDate, endDate, locationSlug }) {
         <KpiCard label="Canceled-Charge" value={data.summary.canceled_charge.toLocaleString()} />
       </div>
 
-      {/* Charts: session-type donut + trainer bars */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <SessionTypeChart trainers={data.trainers} eventTypes={data.event_types} total={data.summary.total_sessions} />
-        <TrainerChart trainers={sortedTrainers} />
-      </div>
-
       {/* Pivot table */}
       <div className="bg-surface rounded-xl border border-border p-6 overflow-x-auto">
         <table className="min-w-full text-sm border-separate border-spacing-0">
