@@ -46,7 +46,17 @@ router.post('/meta-lead', verifyWebhookSecret, async (req, res) => {
       clientUserAgent,
       fbc,
       fbp,
+      fbclid,
     } = req.body
+
+    // If fbc isn't provided directly, derive it from fbclid using Meta's spec:
+    // fbc = fb.{subdomainIndex}.{creationTimeMs}.{fbclid}
+    // Subdomain index 1 = top-level domain (most common). Timestamp = now as a
+    // safe fallback when the original click time isn't preserved by GHL.
+    let resolvedFbc = fbc
+    if (!resolvedFbc && fbclid) {
+      resolvedFbc = `fb.1.${Date.now()}.${fbclid}`
+    }
 
     const userData = {}
     if (email)      userData.em          = [hashData(email)]
@@ -60,7 +70,7 @@ router.post('/meta-lead', verifyWebhookSecret, async (req, res) => {
     if (externalId) userData.external_id = [hashData(externalId)]
     if (clientIpAddress) userData.client_ip_address = clientIpAddress
     if (clientUserAgent) userData.client_user_agent = clientUserAgent
-    if (fbc)        userData.fbc         = fbc
+    if (resolvedFbc) userData.fbc        = resolvedFbc
     if (fbp)        userData.fbp         = fbp
 
     const customData = {}
