@@ -97,9 +97,16 @@ async function syncCalendarEventsForClub(clubNumber, fromDate, toDate, statuses 
     let page = 1;
     while (true) {
       const { events, nextPage } = await fetchCalendarEvents(clubNumber, fromDate, toDate, status, page);
-      const appointments = events.filter((e) => e.category === 'Appointment');
-      if (appointments.length > 0) {
-        const rows = appointments.map((e) => transformEvent(e, clubNumber));
+      // Sync all Appointments plus the Class events that report needs (Small
+      // Group Training). Other classes (Yoga, Barbell Strength, etc.) are
+      // out of scope for the PT Sessions report.
+      const kept = events.filter((e) => {
+        if (e.category === 'Appointment') return true;
+        if (e.category === 'Class' && /small\s*group|\bsgt\b/i.test(e.eventName || '')) return true;
+        return false;
+      });
+      if (kept.length > 0) {
+        const rows = kept.map((e) => transformEvent(e, clubNumber));
         const { error } = await supabase
           .from('abc_calendar_events')
           .upsert(rows, { onConflict: 'club_number,event_id' });
@@ -109,7 +116,7 @@ async function syncCalendarEventsForClub(clubNumber, fromDate, toDate, statuses 
           totalUpserted += rows.length;
         }
       }
-      console.log(`[CalEvents] ${clubNumber} ${status} p${page}: ${events.length} fetched, ${appointments.length} appointments upserted (next=${nextPage || 'none'})`);
+      console.log(`[CalEvents] ${clubNumber} ${status} p${page}: ${events.length} fetched, ${kept.length} kept (next=${nextPage || 'none'})`);
       if (!nextPage) break;
       page = parseInt(nextPage, 10);
       if (sleepMs > 0) await new Promise((r) => setTimeout(r, sleepMs));
