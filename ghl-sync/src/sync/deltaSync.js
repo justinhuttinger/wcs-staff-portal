@@ -7,6 +7,7 @@ const { upsertOpportunities } = require('../db/upsertOpportunities');
 const { writeSyncLog } = require('./syncLog');
 const { isGhlSyncAborted } = require('./fullSync');
 const { refreshCurrentHourCheckins } = require('../abc/checkins');
+const { syncCalendarEventsForClub } = require('../abc/calendarEvents');
 
 async function getLastDeltaSync() {
   const { data } = await supabase
@@ -76,6 +77,26 @@ async function deltaSync() {
     } catch (err) {
       console.error(`[Delta] ${location.name} opportunities failed:`, err.message);
       await writeSyncLog({ syncType: 'delta', entity: 'opportunities', locationId: location.id, recordsFetched: 0, recordsUpserted: 0, errors: [{ error: err.message }], startedAt: opStart });
+    }
+
+    // Calendar events delta — last 7 days through end-of-tomorrow.
+    // Catches newly-completed sessions and Pending->Completed/Canceled-Charge flips.
+    if (location.clubNumber) {
+      const calStart = new Date().toISOString();
+      try {
+        const now = new Date();
+        const calFrom = new Date(now.getTime() - 7 * 86400000);
+        const calTo = new Date(now.getTime() + 86400000);
+        const upserted = await syncCalendarEventsForClub(location.clubNumber, calFrom, calTo);
+        if (upserted > 0) {
+          console.log(`[Delta] ${location.name}: ${upserted} calendar events upserted`);
+        }
+        await writeSyncLog({ syncType: 'delta', entity: 'calendar_events', locationId: location.id, recordsFetched: upserted, recordsUpserted: upserted, errors: [], startedAt: calStart });
+        anySuccess = true;
+      } catch (err) {
+        console.error(`[Delta] ${location.name} calendar events failed:`, err.message);
+        await writeSyncLog({ syncType: 'delta', entity: 'calendar_events', locationId: location.id, recordsFetched: 0, recordsUpserted: 0, errors: [{ error: err.message }], startedAt: calStart });
+      }
     }
   }
 
