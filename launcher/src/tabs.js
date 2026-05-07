@@ -143,8 +143,17 @@ class TabManager {
     const tab = this.tabs.get(id)
     if (!tab || !tab.closable) return
 
-    this.window.removeBrowserView(tab.view)
-    tab.view.webContents.destroy()
+    try { this.window.removeBrowserView(tab.view) } catch {}
+    // Electron 27+ removed webContents.destroy() in favor of close().
+    // Guard against undefined webContents (the view may already have been
+    // torn down, e.g. when an OAuth popup tab self-closes).
+    try {
+      const wc = tab.view && tab.view.webContents
+      if (wc && !wc.isDestroyed()) {
+        if (typeof wc.close === 'function') wc.close()
+        else if (typeof wc.destroy === 'function') wc.destroy()
+      }
+    } catch {}
     this.tabs.delete(id)
 
     if (this.activeTabId === id) {
