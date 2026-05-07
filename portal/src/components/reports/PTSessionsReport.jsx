@@ -10,6 +10,23 @@ const EVENT_GROUPS = [
   { key: 'stretch', label: 'Stretch' },
 ]
 
+// Mirror of the server's COLUMN_ORDER. Used to sort drill-down sessions
+// by event-type group, then by date within each group.
+const EVENT_TYPE_ORDER = [
+  'PT60', 'PT30',
+  'Partner60', 'Partner30',
+  'Consult',
+  'Floor Hour',
+  'Stretch 30', 'Stretch 60',
+  'Swim',
+  'Small Group',
+  'MISC',
+]
+function eventTypeRank(t) {
+  const i = EVENT_TYPE_ORDER.indexOf(t)
+  return i === -1 ? EVENT_TYPE_ORDER.length : i
+}
+
 function KpiCard({ label, value, sub }) {
   return (
     <div className="bg-surface rounded-xl border border-border p-6 text-center">
@@ -28,13 +45,15 @@ function CenterCard({ children }) {
   )
 }
 
-function Th({ children, onClick, active, dir, align = 'left' }) {
+function Th({ children, onClick, active, dir, align = 'left', minWidth }) {
+  const alignClass = align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left'
   return (
     <th
       onClick={onClick}
-      className={`py-2 cursor-pointer select-none text-xs uppercase tracking-wide ${
-        align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
-      } ${active ? 'text-text-primary' : 'text-text-muted'}`}
+      className={`px-3 py-2 cursor-pointer select-none text-xs font-semibold uppercase tracking-wide whitespace-nowrap ${alignClass} ${
+        active ? 'text-text-primary' : 'text-text-muted'
+      }`}
+      style={minWidth ? { minWidth } : undefined}
     >
       {children}
       {active && <span className="ml-1">{dir === 'asc' ? '▲' : '▼'}</span>}
@@ -124,9 +143,6 @@ export default function PTSessionsReport({ startDate, endDate, locationSlug }) {
       if (sortKey === 'name') {
         va = a.employee_name
         vb = b.employee_name
-      } else if (sortKey === 'attendance') {
-        va = a.total ? a.completed / a.total : 0
-        vb = b.total ? b.completed / b.total : 0
       } else if (sortKey.startsWith('et:')) {
         const ev = sortKey.slice(3)
         va = (a.by_event_type[ev]?.completed || 0) + (a.by_event_type[ev]?.canceled_charge || 0)
@@ -206,7 +222,7 @@ export default function PTSessionsReport({ startDate, endDate, locationSlug }) {
 
   function buildOverviewCsvLines() {
     if (!data) return []
-    const cols = ['Trainer', ...data.event_types, 'Total', 'Completed', 'Canceled-Charge', '% Attended']
+    const cols = ['Trainer', ...data.event_types, 'Total', 'Completed', 'Canceled-Charge']
     const lines = [cols.map(csvCell).join(',')]
     for (const t of sortedTrainers) {
       const row = [t.employee_name]
@@ -215,12 +231,7 @@ export default function PTSessionsReport({ startDate, endDate, locationSlug }) {
         const cc = t.by_event_type[ev]?.canceled_charge || 0
         row.push(c + cc)
       }
-      row.push(
-        t.total,
-        t.completed,
-        t.canceled_charge,
-        t.total ? Math.round((t.completed / t.total) * 100) + '%' : ''
-      )
+      row.push(t.total, t.completed, t.canceled_charge)
       lines.push(row.map(csvCell).join(','))
     }
     return lines
@@ -347,22 +358,18 @@ export default function PTSessionsReport({ startDate, endDate, locationSlug }) {
       />
 
       {/* Summary KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <KpiCard label="Total Sessions" value={data.summary.total_sessions.toLocaleString()} />
         <KpiCard label="Completed" value={data.summary.completed.toLocaleString()} />
         <KpiCard label="Canceled-Charge" value={data.summary.canceled_charge.toLocaleString()} />
-        <KpiCard
-          label="Attendance"
-          value={data.summary.total_sessions ? Math.round(data.summary.attendance_rate * 100) + '%' : '—'}
-        />
       </div>
 
       {/* Pivot table */}
       <div className="bg-surface rounded-xl border border-border p-6 overflow-x-auto">
-        <table className="min-w-full text-sm">
+        <table className="min-w-full text-sm border-separate border-spacing-0">
           <thead>
             <tr className="border-b border-border">
-              <Th onClick={() => toggleSort('name')} active={sortKey === 'name'} dir={sortDir}>
+              <Th onClick={() => toggleSort('name')} active={sortKey === 'name'} dir={sortDir} align="left" minWidth="160px">
                 Trainer
               </Th>
               {eventTypes.map((ev) => (
@@ -371,52 +378,41 @@ export default function PTSessionsReport({ startDate, endDate, locationSlug }) {
                   onClick={() => toggleSort('et:' + ev)}
                   active={sortKey === 'et:' + ev}
                   dir={sortDir}
-                  align="right"
+                  align="center"
+                  minWidth="90px"
                 >
                   {ev}
                 </Th>
               ))}
-              <Th onClick={() => toggleSort('total')} active={sortKey === 'total'} dir={sortDir} align="right">
+              <Th onClick={() => toggleSort('total')} active={sortKey === 'total'} dir={sortDir} align="center" minWidth="80px">
                 Total
               </Th>
-              <Th
-                onClick={() => toggleSort('attendance')}
-                active={sortKey === 'attendance'}
-                dir={sortDir}
-                align="right"
-              >
-                % Att
-              </Th>
-              <th className="no-print" />
+              <th className="no-print" style={{ minWidth: '40px' }} />
             </tr>
           </thead>
           <tbody>
             {sortedTrainers.map((t) => {
-              const att = t.total ? Math.round((t.completed / t.total) * 100) : 0
               const isOpen = printDetail || expanded === t.employee_id
               const dr = drill[t.employee_id]
               return (
                 <Fragment key={t.employee_id}>
                   <tr className="border-b border-border/50 hover:bg-bg">
-                    <td className="py-2 pr-2 text-text-primary font-medium">{t.employee_name}</td>
+                    <td className="px-3 py-2 text-text-primary font-medium border-b border-border/50">{t.employee_name}</td>
                     {eventTypes.map((ev) => {
                       const c = t.by_event_type[ev]?.completed || 0
                       const cc = t.by_event_type[ev]?.canceled_charge || 0
                       const total = c + cc
                       const dim = total === 0 ? 'text-text-muted' : 'text-text-primary'
                       return (
-                        <td key={ev} className={`py-2 px-2 text-right tabular-nums ${dim}`}>
+                        <td key={ev} className={`px-3 py-2 text-center tabular-nums border-b border-border/50 ${dim}`}>
                           {total}
                         </td>
                       )
                     })}
-                    <td className="py-2 px-2 text-right font-semibold tabular-nums text-text-primary">
+                    <td className="px-3 py-2 text-center font-semibold tabular-nums text-text-primary border-b border-border/50">
                       {t.total}
                     </td>
-                    <td className="py-2 px-2 text-right tabular-nums text-text-muted">
-                      {t.total ? att + '%' : '—'}
-                    </td>
-                    <td className="py-2 pl-2 text-right no-print">
+                    <td className="px-3 py-2 text-right border-b border-border/50 no-print">
                       <button
                         onClick={() => toggleExpanded(t.employee_id)}
                         className="px-2 py-0.5 rounded text-xs text-text-muted hover:text-text-primary"
@@ -427,46 +423,14 @@ export default function PTSessionsReport({ startDate, endDate, locationSlug }) {
                   </tr>
                   {isOpen && (
                     <tr className="bg-bg">
-                      <td colSpan={eventTypes.length + 4} className="px-3 py-3">
+                      <td colSpan={eventTypes.length + 3} className="px-3 py-3">
                         {dr?.loading && <div className="text-text-muted">Loading sessions…</div>}
                         {dr?.error && <div className="text-red-500">Error: {dr.error}</div>}
                         {dr?.sessions && dr.sessions.length === 0 && (
                           <div className="text-text-muted">No sessions.</div>
                         )}
                         {dr?.sessions && dr.sessions.length > 0 && (
-                          <table className="min-w-full text-xs">
-                            <thead>
-                              <tr className="text-text-muted text-[10px] uppercase tracking-wide border-b border-border">
-                                <th className="text-left py-1 pr-2">Date</th>
-                                <th className="text-left py-1 pr-2">Time</th>
-                                <th className="text-left py-1 pr-2">Member</th>
-                                <th className="text-left py-1 pr-2">Event</th>
-                                <th className="text-left py-1 pr-2">Status</th>
-                                <th className="text-left py-1 pr-2">Attended</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {dr.sessions.map((s) => {
-                                const dt = (s.event_timestamp_local || '').replace('T', ' ').slice(0, 16)
-                                const [date, time] = dt.split(' ')
-                                return (
-                                  <tr key={s.event_id} className="border-b border-border/30">
-                                    <td className="py-1 pr-2 tabular-nums">{date || '—'}</td>
-                                    <td className="py-1 pr-2 tabular-nums">{time || '—'}</td>
-                                    <td className="py-1 pr-2">{s.member_name || '—'}</td>
-                                    <td className="py-1 pr-2">
-                                      {s.event_name || '—'}
-                                      {s.event_type && s.event_type !== s.event_name && (
-                                        <span className="ml-1 text-text-muted">({s.event_type})</span>
-                                      )}
-                                    </td>
-                                    <td className="py-1 pr-2">{s.status || '—'}</td>
-                                    <td className="py-1 pr-2">{s.attended_status || '—'}</td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
+                          <DrillSessions sessions={dr.sessions} />
                         )}
                       </td>
                     </tr>
@@ -541,6 +505,72 @@ function FilterBar({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// Drill-down sessions view: groups sessions by normalized event_type
+// (in the same fixed order as the pivot columns), then sorts by date asc
+// within each group. Renders one table with headers per group.
+function DrillSessions({ sessions }) {
+  const groups = useMemo(() => {
+    const byType = new Map()
+    for (const s of sessions) {
+      const key = s.event_type || 'MISC'
+      if (!byType.has(key)) byType.set(key, [])
+      byType.get(key).push(s)
+    }
+    const ordered = [...byType.entries()].sort((a, b) => {
+      const ra = eventTypeRank(a[0])
+      const rb = eventTypeRank(b[0])
+      if (ra !== rb) return ra - rb
+      return a[0].localeCompare(b[0])
+    })
+    for (const [, list] of ordered) {
+      list.sort((a, b) => {
+        const ta = a.event_timestamp_local || ''
+        const tb = b.event_timestamp_local || ''
+        return ta < tb ? -1 : ta > tb ? 1 : 0
+      })
+    }
+    return ordered
+  }, [sessions])
+
+  return (
+    <div className="space-y-3">
+      {groups.map(([type, list]) => (
+        <div key={type}>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-1">
+            {type} <span className="text-text-muted/70">({list.length})</span>
+          </div>
+          <table className="min-w-full text-xs">
+            <thead>
+              <tr className="text-text-muted text-[10px] uppercase tracking-wide border-b border-border">
+                <th className="text-left py-1 px-2 w-24">Date</th>
+                <th className="text-left py-1 px-2 w-16">Time</th>
+                <th className="text-left py-1 px-2">Member</th>
+                <th className="text-left py-1 px-2">Original Event Name</th>
+                <th className="text-left py-1 px-2 w-32">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((s) => {
+                const dt = (s.event_timestamp_local || '').replace('T', ' ').slice(0, 16)
+                const [date, time] = dt.split(' ')
+                return (
+                  <tr key={s.event_id} className="border-b border-border/30">
+                    <td className="py-1 px-2 tabular-nums">{date || '—'}</td>
+                    <td className="py-1 px-2 tabular-nums">{time || '—'}</td>
+                    <td className="py-1 px-2">{s.member_name || '—'}</td>
+                    <td className="py-1 px-2">{s.event_name || '—'}</td>
+                    <td className="py-1 px-2">{s.status || '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   )
 }
