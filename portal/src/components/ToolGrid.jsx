@@ -292,7 +292,19 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   // Labels that should be in Tools even if their section is "main"
   const TOOL_LABELS = ['cancel', 'cancel tool']
 
-  const appTools = tools.filter(t => APP_IDS.includes(t.id))
+  const isMilwaukie = (location || '').toLowerCase() === 'milwaukie'
+
+  const appTools = tools
+    .filter(t => APP_IDS.includes(t.id))
+    // Milwaukie: remove WhenIWork (location uses different scheduling)
+    .filter(t => !(isMilwaukie && t.id === 'wheniwork'))
+    // Milwaukie: swap Gmail → Zoho Mail
+    .map(t => {
+      if (isMilwaukie && t.id === 'gmail') {
+        return { ...t, label: 'Zoho Mail', description: 'Email', icon: 'zohomail', url: 'https://www.zoho.com/mail/login.html' }
+      }
+      return t
+    })
 
   // All custom tiles, categorized
   const allCustom = [...mainTiles, ...topLevelTiles]
@@ -392,7 +404,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
                     <span className="text-sm font-semibold text-text-primary">Book Day Ones</span>
                   </button>
                 )}
-                {vipUrl && (
+                {vipUrl && !isMilwaukie && (
                   <button
                     onClick={() => setActionPopup({ title: 'Submit VIPs', url: vipUrl })}
                     className="group flex-1 flex items-center justify-center gap-3 rounded-[14px] bg-surface border border-border cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)] px-4"
