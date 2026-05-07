@@ -23,6 +23,7 @@ const REPORT_ACCESS = {
   membership:   ['lead', 'manager', 'marketing', 'corporate', 'admin'],
   'club-health': ['manager', 'marketing', 'corporate', 'admin'],
   pt:           ['lead', 'manager', 'marketing', 'corporate', 'admin'],
+  checkins:     ['lead', 'manager', 'marketing', 'corporate', 'admin'],
   marketing:    ['marketing', 'corporate', 'admin'],
 }
 

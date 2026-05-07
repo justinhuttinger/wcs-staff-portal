@@ -52,6 +52,16 @@ const REPORT_TILES = [
     ),
   },
   {
+    key: 'checkins',
+    label: 'Check-ins',
+    description: 'Traffic & popular times',
+    icon: (
+      <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M9 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-1.5a1.125 1.125 0 0 1-1.125-1.125V17.25m7.5 0v3.375c0 .621.504 1.125 1.125 1.125h1.5a1.125 1.125 0 0 0 1.125-1.125V17.25m-7.5 0h7.5M3 8.25v6a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-6a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3Z" />
+      </svg>
+    ),
+  },
+  {
     key: 'marketing',
     label: 'Meta Ads',
     description: 'Facebook & Instagram ads',
@@ -90,9 +100,9 @@ function getTilesForRole(role) {
     case 'team_member':
       return []
     case 'lead':
-      return REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'pt-roster'].includes(t.key))
+      return REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'pt-roster', 'checkins'].includes(t.key))
     case 'manager':
-      return REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'operations'].includes(t.key))
+      return REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'operations'].includes(t.key))
     default: // corporate, admin, director
       return REPORT_TILES
   }

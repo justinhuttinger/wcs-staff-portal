@@ -308,6 +308,11 @@ export async function getCancelsReport(params = {}) {
   return api('/reports/cancels' + (qs ? '?' + qs : ''))
 }
 
+export async function getCheckinsReport(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/checkins' + (qs ? '?' + qs : ''))
+}
+
 export async function getSyncStatus() {
   return api('/sync-status')
 }

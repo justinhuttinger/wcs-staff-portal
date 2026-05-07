@@ -18,6 +18,7 @@ import MobileCommunicationNotes from './components/MobileCommunicationNotes'
 import MobileHR from './components/MobileHR'
 import MobileTickets from './components/MobileTickets'
 import MobilePTRoster from './components/reports/MobilePTRoster'
+import MobileCheckins from './components/reports/MobileCheckins'
 
 // Icons for bottom tab bar (Heroicons outline)
 function HomeIcon({ active }) {
@@ -253,6 +254,21 @@ export default function MobileApp() {
               {({ locationSlug }) => (
                 <div className="px-4 pb-4">
                   <MobilePTRoster locationSlug={locationSlug} />
+                </div>
+              )}
+            </MobileReportShell>
+          </div>
+        )
+      case 'reports/checkins':
+        return (
+          <div className="pt-2">
+            <div className="px-4">
+              <MobileHeader title="Check-ins" onBack={() => navigate('reports')} />
+            </div>
+            <MobileReportShell title="Check-ins" user={user}>
+              {({ startDate, endDate, locationSlug }) => (
+                <div className="px-4 pb-4">
+                  <MobileCheckins startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
                 </div>
               )}
             </MobileReportShell>
