@@ -313,6 +313,16 @@ export async function getCheckinsReport(params = {}) {
   return api('/reports/checkins' + (qs ? '?' + qs : ''))
 }
 
+export async function getPTSessionsReport(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/pt-sessions' + (qs ? '?' + qs : ''))
+}
+
+export async function getPTSessionsTrainer(employeeId, params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api(`/reports/pt-sessions/trainer/${encodeURIComponent(employeeId)}` + (qs ? '?' + qs : ''))
+}
+
 export async function getSyncStatus() {
   return api('/sync-status')
 }
