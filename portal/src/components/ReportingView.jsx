@@ -7,6 +7,7 @@ import OperationsReport from './reports/OperationsReport'
 import CancelsReport from './reports/CancelsReport'
 import CheckinsReport from './reports/CheckinsReport'
 import PTSessionsReport from './reports/PTSessionsReport'
+import PayrollReport from './reports/PayrollReport'
 
 // SVG path data for each reporting tile (outline style, matches main page tiles via ToolButton)
 const REPORT_ICONS = {
@@ -18,6 +19,7 @@ const REPORT_ICONS = {
   cancels: 'M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
   checkins: 'M9 12.75 11.25 15 15 9.75M9 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-1.5a1.125 1.125 0 0 1-1.125-1.125V17.25m7.5 0v3.375c0 .621.504 1.125 1.125 1.125h1.5a1.125 1.125 0 0 0 1.125-1.125V17.25m-7.5 0h7.5M3 8.25v6a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-6a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3Z',
   'pt-sessions': 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
+  payroll: 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z',
 }
 
 const ALL_REPORT_TILES = [
@@ -28,6 +30,7 @@ const ALL_REPORT_TILES = [
   { key: 'pt-roster', label: 'PT Roster', desc: 'Active Clients' },
   { key: 'checkins', label: 'Check-ins', desc: 'Traffic & Times' },
   { key: 'pt-sessions', label: 'PT Sessions', desc: 'Trainer Load' },
+  { key: 'payroll', label: 'Payroll', desc: 'Monthly Commissions' },
   { key: 'operations', label: 'Operational Compliance', desc: 'Checklists' },
 ]
 
@@ -38,7 +41,7 @@ function getReportTilesForRole(role) {
     case 'lead':
       return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions'].includes(t.key))
     case 'manager':
-      return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'pt-sessions', 'operations'].includes(t.key))
+      return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'pt-sessions', 'payroll', 'operations'].includes(t.key))
     default: // corporate, admin
       return ALL_REPORT_TILES
   }
@@ -185,8 +188,8 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           <p className="text-xs text-text-muted mb-4 uppercase tracking-wide font-semibold">{location}</p>
         )}
 
-        {/* Date Controls — hidden for PT Roster and Operations (no date range) */}
-        {activeReport !== 'pt-roster' && activeReport !== 'operations' && <div className="flex flex-wrap items-center gap-3 justify-end">
+        {/* Date Controls — hidden for PT Roster, Operations, and Payroll (own pickers) */}
+        {activeReport !== 'pt-roster' && activeReport !== 'operations' && activeReport !== 'payroll' && <div className="flex flex-wrap items-center gap-3 justify-end">
           <div className="flex flex-wrap gap-1.5">
             {QUICK_RANGES.map(qr => (
               <button
@@ -264,6 +267,9 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           )}
           {activeReport === 'pt-sessions' && (
             <PTSessionsReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+          )}
+          {activeReport === 'payroll' && (
+            <PayrollReport locationSlug={locationSlug} />
           )}
           {activeReport === 'operations' && (
             <OperationsReport locationSlug={locationSlug} />

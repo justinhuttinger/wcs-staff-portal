@@ -323,6 +323,11 @@ export async function getPTSessionsTrainer(employeeId, params = {}) {
   return api(`/reports/pt-sessions/trainer/${encodeURIComponent(employeeId)}` + (qs ? '?' + qs : ''))
 }
 
+export async function getPayrollReport(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/payroll' + (qs ? '?' + qs : ''))
+}
+
 export async function getSyncStatus() {
   return api('/sync-status')
 }
