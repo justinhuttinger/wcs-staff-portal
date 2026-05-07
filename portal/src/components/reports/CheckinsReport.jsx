@@ -309,14 +309,24 @@ export default function CheckinsReport({ startDate, endDate, locationSlug }) {
   return (
     <div className="space-y-6">
       <SectionHeader title="Summary" />
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <KpiCard
           label="Total Check-ins"
           value={(s.total_checkins ?? 0).toLocaleString()}
           sub={`${s.days_with_data ?? 0} days with data`}
         />
         <KpiCard
-          label="Avg / Day"
+          label="Member-Hours"
+          value={(s.member_hours ?? 0).toLocaleString()}
+          sub={s.visits_per_member_hour ? `${s.visits_per_member_hour} visits per member-hour` : ''}
+        />
+        <KpiCard
+          label="Avg Members / Hour"
+          value={(s.avg_members_per_active_hour ?? 0).toLocaleString()}
+          sub="while gym is active"
+        />
+        <KpiCard
+          label="Avg Check-ins / Day"
           value={(s.avg_per_open_day ?? 0).toLocaleString()}
         />
         <KpiCard
