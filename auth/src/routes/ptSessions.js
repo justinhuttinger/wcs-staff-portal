@@ -20,28 +20,86 @@ const SLUG_CLUB_MAP = {
 const DEFAULT_STATUSES = ['Completed', 'Canceled-Charge']
 const PACIFIC_TZ = 'America/Los_Angeles'
 
-// Map raw ABC event names to a smaller set of canonical types so the report
-// shows e.g. "PT 60MIN" and "PT60 NFW" together as a single "PT60" column.
+// Map raw ABC event names to a small set of canonical types. Raw event_name
+// stays in abc_calendar_events; this function only runs at report time.
 function normalizeEventType(name) {
   if (!name) return 'Other'
   const n = String(name).toLowerCase()
+
+  // Specific overrides first — these win over the family rules below.
+  if (n.includes('train with your trainer')) return 'MISC'
+  if (/small\s*group|\bsgt\b/i.test(name)) return 'Small Group'
   if (n.includes('consult')) return 'Consult'
+
+  // Stretch — split by duration if present, default to Stretch 60.
+  if (n.includes('stretch')) {
+    if (/\b30\b|30\s*min/i.test(name)) return 'Stretch 30'
+    if (/\b60\b|60\s*min/i.test(name)) return 'Stretch 60'
+    return 'Stretch 60'
+  }
+
+  // Swim
   if (n.includes('swim')) return 'Swim'
-  if (n.includes('stretch')) return 'Stretch'
-  // PT60 family: "PT 60MIN", "PT60", "PT60 NFW", "PT 60 NFW", etc.
-  if (/(^|\s|-)pt\s*-?\s*60\b/i.test(name)) return 'PT60'
-  // PT30 family: "PT 30MIN", "PT30", "PT30 NFW", "PT 30 NFW", etc.
-  if (/(^|\s|-)pt\s*-?\s*30\b/i.test(name)) return 'PT30'
-  // Floor-hour family: workshops, floor hour, admin, orientations, meetings
+
+  // PT60 / PT30 family — match "PT 60MIN", "PT60", "PT60 NFW", "PT 60 NFW",
+  // "PT 60min" (no word boundary after the digits). The negative lookahead
+  // (?!\d) prevents matching "PT 600".
+  if (/(^|\s|-)pt\s*-?\s*60(?!\d)/i.test(name)) return 'PT60'
+  if (/(^|\s|-)pt\s*-?\s*30(?!\d)/i.test(name)) return 'PT30'
+
+  // Partner — Partner Training defaults to Partner60; Partner with explicit
+  // 30 in the name maps to Partner30.
+  if (n.includes('partner')) {
+    if (/\b30\b|30\s*min/i.test(name)) return 'Partner30'
+    return 'Partner60'
+  }
+
+  // Floor-hour family
   if (/workshop|floor\s*hour|^admin\b|orientation|meeting|huddle/i.test(name)) return 'Floor Hour'
-  return name
+
+  // Anything unmatched is MISC (still visible under the PT filter).
+  return 'MISC'
 }
 
-// Event-group filter for the top filter bar. 'all' means no filter.
+// Fixed column order for the pivot. Types not listed here fall to the end
+// alphabetically.
+const COLUMN_ORDER = [
+  'PT60',
+  'PT30',
+  'Partner60',
+  'Partner30',
+  'Consult',
+  'Floor Hour',
+  'Stretch 30',
+  'Stretch 60',
+  'Swim',
+  'Small Group',
+  'MISC',
+]
+
+function orderEventTypes(types) {
+  const present = new Set(types)
+  const inOrder = COLUMN_ORDER.filter((t) => present.has(t))
+  const extras = types.filter((t) => !COLUMN_ORDER.includes(t)).sort()
+  return [...inOrder, ...extras]
+}
+
+// Event-group filter for the top filter bar.
+//   - 'all'     -> no filter
+//   - 'pt'      -> EXCLUDE Swim and Stretch (everything else stays)
+//   - 'swim'    -> only Swim
+//   - 'stretch' -> Stretch 30 + Stretch 60
 const EVENT_GROUPS = {
-  pt: new Set(['PT60', 'PT30']),
-  swim: new Set(['Swim']),
-  stretch: new Set(['Stretch']),
+  pt:      { mode: 'exclude', types: new Set(['Swim', 'Stretch 30', 'Stretch 60']) },
+  swim:    { mode: 'include', types: new Set(['Swim']) },
+  stretch: { mode: 'include', types: new Set(['Stretch 30', 'Stretch 60']) },
+}
+
+function passesEventGroup(group, normalizedType) {
+  if (!group) return true
+  if (group.mode === 'include') return group.types.has(normalizedType)
+  if (group.mode === 'exclude') return !group.types.has(normalizedType)
+  return true
 }
 
 function locSlugFromName(name) {
@@ -118,7 +176,7 @@ router.get('/', async (req, res) => {
     if (eventGroup !== 'all' && !EVENT_GROUPS[eventGroup]) {
       return res.status(400).json({ error: `Unknown event_group: ${eventGroup}. Valid: all, pt, swim, stretch.` })
     }
-    const allowedTypes = EVENT_GROUPS[eventGroup] || null
+    const groupFilter = EVENT_GROUPS[eventGroup] || null
     const clubs = await authorizeAndResolveClubs(req, location_slug)
 
     const startUtcIso = pacificDayBoundsToUtc(start_date, false)
@@ -150,7 +208,7 @@ router.get('/', async (req, res) => {
 
     for (const row of rows) {
       const normalizedType = normalizeEventType(row.event_name)
-      if (allowedTypes && !allowedTypes.has(normalizedType)) continue
+      if (!passesEventGroup(groupFilter, normalizedType)) continue
 
       const tid = row.employee_id || 'unassigned'
       const tname = `${row.employee_first_name || ''} ${row.employee_last_name || ''}`.trim() || 'Unbooked'
@@ -187,7 +245,7 @@ router.get('/', async (req, res) => {
     }
 
     const trainersArr = [...trainers.values()].sort((a, b) => b.total - a.total)
-    const eventTypes = [...eventTypeTotals.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k)
+    const eventTypes = orderEventTypes([...eventTypeTotals.keys()])
 
     const total = totalCompleted + totalCanceled
     res.json({
@@ -217,7 +275,7 @@ router.get('/trainer/:employee_id', async (req, res) => {
     if (eventGroup !== 'all' && !EVENT_GROUPS[eventGroup]) {
       return res.status(400).json({ error: `Unknown event_group: ${eventGroup}. Valid: all, pt, swim, stretch.` })
     }
-    const allowedTypes = EVENT_GROUPS[eventGroup] || null
+    const groupFilter = EVENT_GROUPS[eventGroup] || null
     const clubs = await authorizeAndResolveClubs(req, location_slug)
 
     const startUtcIso = pacificDayBoundsToUtc(start_date, false)
@@ -254,7 +312,7 @@ router.get('/trainer/:employee_id', async (req, res) => {
           location_name: r.location_name,
         }
       })
-      .filter((s) => !allowedTypes || allowedTypes.has(s.event_type))
+      .filter((s) => passesEventGroup(groupFilter, s.event_type))
     res.json({ sessions })
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message })
