@@ -53,10 +53,25 @@ function parseDate(s) {
 
   console.log(`Backfilling calendar events for ${clubs.length} club(s) from ${from.toISOString().slice(0,10)} to ${to.toISOString().slice(0,10)}`);
 
+  // ABC's /calendars/events caps eventDateRange at ~31 days and silently
+  // returns empty for longer ranges. Walk the requested window in 28-day
+  // chunks (with 1-day overlap on the rolling cursor) so each request stays
+  // safely under the limit and the upsert handles any duplicate days.
+  const CHUNK_DAYS = 28;
+
   for (const club of clubs) {
     console.log(`\n=== Club ${club} ===`);
-    const upserted = await syncCalendarEventsForClub(club, from, to, ['completed', 'canceled-charge'], sleepMs);
-    console.log(`Club ${club} done: ${upserted} appointments upserted.`);
+    let totalUpserted = 0;
+    let chunkStart = new Date(from);
+    while (chunkStart < to) {
+      const chunkEnd = new Date(chunkStart.getTime() + CHUNK_DAYS * 86400000);
+      const actualEnd = chunkEnd > to ? to : chunkEnd;
+      const upserted = await syncCalendarEventsForClub(club, chunkStart, actualEnd, ['completed', 'canceled-charge'], sleepMs);
+      console.log(`  chunk ${chunkStart.toISOString().slice(0,10)} -> ${actualEnd.toISOString().slice(0,10)}: ${upserted} upserted`);
+      totalUpserted += upserted;
+      chunkStart = chunkEnd;
+    }
+    console.log(`Club ${club} done: ${totalUpserted} appointments upserted.`);
   }
 
   console.log('\nAll done.');
