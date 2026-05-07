@@ -27,6 +27,24 @@ function eventTypeRank(t) {
   return i === -1 ? EVENT_TYPE_ORDER.length : i
 }
 
+// Stable color per canonical event type. Anything not listed falls to slate.
+const EVENT_TYPE_COLOR = {
+  'PT60':        '#e53e3e', // WCS red
+  'PT30':        '#ed8936', // orange
+  'Partner60':   '#d69e2e', // amber
+  'Partner30':   '#ecc94b', // yellow
+  'Consult':     '#319795', // teal
+  'Floor Hour':  '#3182ce', // blue
+  'Stretch 30':  '#805ad5', // purple
+  'Stretch 60':  '#b794f4', // light purple
+  'Swim':        '#38b2ac', // cyan
+  'Small Group': '#48bb78', // green
+  'MISC':        '#718096', // slate
+}
+function colorFor(type) {
+  return EVENT_TYPE_COLOR[type] || '#718096'
+}
+
 function KpiCard({ label, value, sub }) {
   return (
     <div className="bg-surface rounded-xl border border-border p-6 text-center">
@@ -364,6 +382,12 @@ export default function PTSessionsReport({ startDate, endDate, locationSlug }) {
         <KpiCard label="Canceled-Charge" value={data.summary.canceled_charge.toLocaleString()} />
       </div>
 
+      {/* Charts: session-type donut + trainer bars */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <SessionTypeChart trainers={data.trainers} eventTypes={data.event_types} total={data.summary.total_sessions} />
+        <TrainerChart trainers={sortedTrainers} />
+      </div>
+
       {/* Pivot table */}
       <div className="bg-surface rounded-xl border border-border p-6 overflow-x-auto">
         <table className="min-w-full text-sm border-separate border-spacing-0">
@@ -583,6 +607,155 @@ function ExportMenuItem({ onClick, children }) {
     >
       {children}
     </button>
+  )
+}
+
+// Donut + legend for session-type breakdown. Aggregates totals across all
+// trainers (completed + canceled_charge) per event_type.
+function SessionTypeChart({ trainers, eventTypes, total }) {
+  const slices = useMemo(() => {
+    const totals = new Map()
+    for (const t of trainers) {
+      for (const [ev, cell] of Object.entries(t.by_event_type || {})) {
+        const v = (cell.completed || 0) + (cell.canceled_charge || 0)
+        if (v > 0) totals.set(ev, (totals.get(ev) || 0) + v)
+      }
+    }
+    const ordered = eventTypes
+      .map((ev) => ({ label: ev, value: totals.get(ev) || 0 }))
+      .filter((s) => s.value > 0)
+    // append any types totals has but eventTypes doesn't (defensive)
+    for (const [ev, v] of totals.entries()) {
+      if (!ordered.find((s) => s.label === ev)) ordered.push({ label: ev, value: v })
+    }
+    return ordered
+  }, [trainers, eventTypes])
+
+  const sum = slices.reduce((s, x) => s + x.value, 0) || 1
+
+  // SVG geometry
+  const size = 220
+  const cx = size / 2
+  const cy = size / 2
+  const ringR = 78
+  const stroke = 28
+  let angle = -Math.PI / 2 // start at top
+
+  return (
+    <div className="bg-surface rounded-xl border border-border p-6">
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">
+        Sessions by Type
+      </p>
+      {slices.length === 0 ? (
+        <p className="text-sm text-text-muted py-6 text-center">No data</p>
+      ) : (
+        <div className="flex flex-col sm:flex-row items-center gap-6">
+          <svg viewBox={`0 0 ${size} ${size}`} className="flex-shrink-0" style={{ width: size, height: size }}>
+            {slices.map((s) => {
+              const sliceAngle = (s.value / sum) * 2 * Math.PI
+              // Pad zero-slice protection: if only one slice, draw full circle
+              if (slices.length === 1) {
+                angle += sliceAngle
+                return (
+                  <circle
+                    key={s.label}
+                    cx={cx}
+                    cy={cy}
+                    r={ringR}
+                    fill="none"
+                    stroke={colorFor(s.label)}
+                    strokeWidth={stroke}
+                  />
+                )
+              }
+              const startA = angle
+              const endA = angle + sliceAngle
+              const x1 = cx + Math.cos(startA) * ringR
+              const y1 = cy + Math.sin(startA) * ringR
+              const x2 = cx + Math.cos(endA) * ringR
+              const y2 = cy + Math.sin(endA) * ringR
+              const largeArc = sliceAngle > Math.PI ? 1 : 0
+              const path = `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${ringR} ${ringR} 0 ${largeArc} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`
+              angle = endA
+              return (
+                <path
+                  key={s.label}
+                  d={path}
+                  fill="none"
+                  stroke={colorFor(s.label)}
+                  strokeWidth={stroke}
+                />
+              )
+            })}
+            <text x={cx} y={cy - 4} textAnchor="middle" className="fill-text-muted" style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              Total
+            </text>
+            <text x={cx} y={cy + 18} textAnchor="middle" className="fill-text-primary" style={{ fontSize: '24px', fontWeight: 700 }}>
+              {total.toLocaleString()}
+            </text>
+          </svg>
+
+          <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
+            {slices.map((s) => {
+              const pct = Math.round((s.value / sum) * 100)
+              return (
+                <div key={s.label} className="flex items-center gap-2">
+                  <span
+                    className="inline-block w-3 h-3 rounded-sm flex-shrink-0"
+                    style={{ backgroundColor: colorFor(s.label) }}
+                  />
+                  <span className="flex-1 truncate text-text-primary">{s.label}</span>
+                  <span className="tabular-nums text-text-primary font-medium">{s.value}</span>
+                  <span className="tabular-nums text-text-muted text-xs w-9 text-right">{pct}%</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Horizontal bar chart of total sessions per trainer. Sorted desc.
+function TrainerChart({ trainers }) {
+  const rows = useMemo(() => {
+    return [...trainers]
+      .filter((t) => t.total > 0)
+      .sort((a, b) => b.total - a.total)
+  }, [trainers])
+
+  const max = rows.length > 0 ? Math.max(...rows.map((r) => r.total), 1) : 1
+
+  return (
+    <div className="bg-surface rounded-xl border border-border p-6">
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">
+        Sessions by Trainer
+      </p>
+      {rows.length === 0 ? (
+        <p className="text-sm text-text-muted py-6 text-center">No data</p>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((t) => (
+            <div key={t.employee_id} className="flex items-center gap-3 text-sm">
+              <span className="w-32 truncate text-text-primary">{t.employee_name}</span>
+              <div className="flex-1 h-5 bg-bg rounded overflow-hidden">
+                <div
+                  className="h-full transition-all"
+                  style={{
+                    width: `${(t.total / max) * 100}%`,
+                    backgroundColor: '#e53e3e',
+                  }}
+                />
+              </div>
+              <span className="w-12 text-right font-semibold text-text-primary tabular-nums">
+                {t.total}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
