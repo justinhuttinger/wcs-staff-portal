@@ -45,6 +45,7 @@ app.get('/.well-known/openid-configuration', (req, res) => {
 })
 app.use('/reports/leaderboard', require('./routes/leaderboard'))
 app.use('/reports/pt-roster', require('./routes/ptRoster'))
+app.use('/reports/checkins', require('./routes/checkinsReport'))
 app.use('/reports', require('./routes/reports'))
 app.use('/sync-status', require('./routes/syncStatus'))
 app.use('/day-one-tracker', require('./routes/dayOneTracker'))
