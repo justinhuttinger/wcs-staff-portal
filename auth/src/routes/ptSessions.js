@@ -20,6 +20,30 @@ const SLUG_CLUB_MAP = {
 const DEFAULT_STATUSES = ['Completed', 'Canceled-Charge']
 const PACIFIC_TZ = 'America/Los_Angeles'
 
+// Map raw ABC event names to a smaller set of canonical types so the report
+// shows e.g. "PT 60MIN" and "PT60 NFW" together as a single "PT60" column.
+function normalizeEventType(name) {
+  if (!name) return 'Other'
+  const n = String(name).toLowerCase()
+  if (n.includes('consult')) return 'Consult'
+  if (n.includes('swim')) return 'Swim'
+  if (n.includes('stretch')) return 'Stretch'
+  // PT60 family: "PT 60MIN", "PT60", "PT60 NFW", "PT 60 NFW", etc.
+  if (/(^|\s|-)pt\s*-?\s*60\b/i.test(name)) return 'PT60'
+  // PT30 family: "PT 30MIN", "PT30", "PT30 NFW", "PT 30 NFW", etc.
+  if (/(^|\s|-)pt\s*-?\s*30\b/i.test(name)) return 'PT30'
+  // Floor-hour family: workshops, floor hour, admin, orientations, meetings
+  if (/workshop|floor\s*hour|^admin\b|orientation|meeting|huddle/i.test(name)) return 'Floor Hour'
+  return name
+}
+
+// Event-group filter for the top filter bar. 'all' means no filter.
+const EVENT_GROUPS = {
+  pt: new Set(['PT60', 'PT30']),
+  swim: new Set(['Swim']),
+  stretch: new Set(['Stretch']),
+}
+
 function locSlugFromName(name) {
   return (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 }
@@ -90,6 +114,11 @@ router.get('/', async (req, res) => {
       return res.status(400).json({ error: 'start_date and end_date are required (YYYY-MM-DD)' })
     }
     const statuses = parseStatuses(req.query.status)
+    const eventGroup = String(req.query.event_group || 'all').toLowerCase()
+    if (eventGroup !== 'all' && !EVENT_GROUPS[eventGroup]) {
+      return res.status(400).json({ error: `Unknown event_group: ${eventGroup}. Valid: all, pt, swim, stretch.` })
+    }
+    const allowedTypes = EVENT_GROUPS[eventGroup] || null
     const clubs = await authorizeAndResolveClubs(req, location_slug)
 
     const startUtcIso = pacificDayBoundsToUtc(start_date, false)
@@ -120,9 +149,12 @@ router.get('/', async (req, res) => {
     const eventTypeTotals = new Map()
 
     for (const row of rows) {
+      const normalizedType = normalizeEventType(row.event_name)
+      if (allowedTypes && !allowedTypes.has(normalizedType)) continue
+
       const tid = row.employee_id || 'unassigned'
       const tname = `${row.employee_first_name || ''} ${row.employee_last_name || ''}`.trim() || 'Unbooked'
-      const ev = row.event_name || 'Unknown'
+      const ev = normalizedType
       const st = row.status
 
       let t = trainers.get(tid)
@@ -181,6 +213,11 @@ router.get('/trainer/:employee_id', async (req, res) => {
       return res.status(400).json({ error: 'start_date and end_date are required (YYYY-MM-DD)' })
     }
     const statuses = parseStatuses(req.query.status)
+    const eventGroup = String(req.query.event_group || 'all').toLowerCase()
+    if (eventGroup !== 'all' && !EVENT_GROUPS[eventGroup]) {
+      return res.status(400).json({ error: `Unknown event_group: ${eventGroup}. Valid: all, pt, swim, stretch.` })
+    }
+    const allowedTypes = EVENT_GROUPS[eventGroup] || null
     const clubs = await authorizeAndResolveClubs(req, location_slug)
 
     const startUtcIso = pacificDayBoundsToUtc(start_date, false)
@@ -200,18 +237,24 @@ router.get('/trainer/:employee_id', async (req, res) => {
     const { data, error } = await q
     if (error) throw new Error(error.message)
 
-    const sessions = (data || []).map((r) => ({
-      event_id: r.event_id,
-      event_timestamp: r.event_timestamp,
-      event_timestamp_local: r.event_timestamp_local,
-      event_name: r.event_name,
-      status: r.status,
-      duration_minutes: r.duration_minutes,
-      member_id: r.member_id,
-      member_name: `${r.member_first_name || ''} ${r.member_last_name || ''}`.trim() || null,
-      attended_status: r.attended_status,
-      location_name: r.location_name,
-    }))
+    const sessions = (data || [])
+      .map((r) => {
+        const normalizedType = normalizeEventType(r.event_name)
+        return {
+          event_id: r.event_id,
+          event_timestamp: r.event_timestamp,
+          event_timestamp_local: r.event_timestamp_local,
+          event_name: r.event_name,
+          event_type: normalizedType,
+          status: r.status,
+          duration_minutes: r.duration_minutes,
+          member_id: r.member_id,
+          member_name: `${r.member_first_name || ''} ${r.member_last_name || ''}`.trim() || null,
+          attended_status: r.attended_status,
+          location_name: r.location_name,
+        }
+      })
+      .filter((s) => !allowedTypes || allowedTypes.has(s.event_type))
     res.json({ sessions })
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message })
