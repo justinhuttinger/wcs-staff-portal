@@ -24,42 +24,34 @@ const PACIFIC_TZ = 'America/Los_Angeles'
 const HOURS = Array.from({ length: 24 }, (_, h) => h)
 const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-const PACIFIC_FMT = new Intl.DateTimeFormat('en-US', {
-  timeZone: PACIFIC_TZ,
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  hour12: false,
-  weekday: 'short',
-})
-
+// IMPORTANT: ABC's /members/checkins/summaries interprets the
+// `checkInTimestampRange` parameter as **club local time**, NOT UTC. Our
+// backfill (ghl-sync/src/abc/checkins.js) sends UTC-formatted strings, so
+// every row in checkins_hourly has hour_start tagged with a UTC timestamp
+// whose digits actually correspond to the local Pacific clock. e.g. a row
+// at "2026-05-06 05:00:00+00" represents 5am local Pacific (the morning
+// rush), not 5am UTC.
+//
+// Until the backfill is corrected and the table is migrated, the report
+// must NOT convert hour_start through Pacific TZ — instead it should read
+// the UTC components directly as if they were local Pacific clock values.
 function toPacificParts(utcDate) {
-  const parts = PACIFIC_FMT.formatToParts(utcDate)
-  const lookup = {}
-  for (const p of parts) lookup[p.type] = p.value
-  const hour = parseInt(lookup.hour, 10) % 24
   return {
-    date: `${lookup.year}-${lookup.month}-${lookup.day}`,
-    hour,
-    dow: DOW_NAMES.indexOf(lookup.weekday),
+    date: utcDate.toISOString().slice(0, 10),
+    hour: utcDate.getUTCHours(),
+    dow: utcDate.getUTCDay(),
   }
 }
 
+// For the date filter: clients pass start_date/end_date as YYYY-MM-DD
+// representing Pacific calendar dates. Because hour_start is mislabeled
+// per the comment above, the matching range in the DB is simply
+// midnight-to-midnight UTC of the same date strings (no offset).
 function pacificDayBoundsToUtc(dateStr, endOfDay = false) {
   if (!dateStr) return null
-  const noonUtc = new Date(dateStr + 'T12:00:00Z')
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: PACIFIC_TZ,
-    hour: 'numeric',
-    hour12: false,
-  })
-  const pacificHourAtNoonUtc = parseInt(fmt.format(noonUtc), 10)
-  const offsetHours = 12 - pacificHourAtNoonUtc
-  const baseMs = endOfDay
-    ? new Date(dateStr + 'T23:59:59.999Z').getTime()
-    : new Date(dateStr + 'T00:00:00.000Z').getTime()
-  return new Date(baseMs + offsetHours * 3600000).toISOString()
+  return endOfDay
+    ? new Date(dateStr + 'T23:59:59.999Z').toISOString()
+    : new Date(dateStr + 'T00:00:00.000Z').toISOString()
 }
 
 function locSlugFromName(name) {
