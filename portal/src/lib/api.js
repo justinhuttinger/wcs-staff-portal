@@ -335,6 +335,19 @@ export async function exportPayrollToSheet(params = {}) {
   })
 }
 
+// ---- Per-user Google Sheets connection ----
+export async function getGoogleSheetsStatus() {
+  return api('/google-sheets/status')
+}
+
+export async function startGoogleSheetsAuth() {
+  return api('/google-sheets/authorize-url', { method: 'POST' })
+}
+
+export async function disconnectGoogleSheets() {
+  return api('/google-sheets/disconnect', { method: 'POST' })
+}
+
 export async function getSyncStatus() {
   return api('/sync-status')
 }

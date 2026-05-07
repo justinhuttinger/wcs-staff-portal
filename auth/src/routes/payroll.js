@@ -331,7 +331,23 @@ router.get('/', async (req, res) => {
 router.post('/export-sheet', async (req, res) => {
   try {
     const { exportToGoogleSheet } = require('../services/googleSheets')
+    const { getStaffGoogleAccessToken } = require('../services/googleUserToken')
     const POS_EXCLUDED = new Set(['TRAINING'])
+
+    // Per-user auth: the Sheet lands in the requesting user's Drive.
+    let accessToken
+    try {
+      ({ accessToken } = await getStaffGoogleAccessToken(req.staff.id))
+    } catch (err) {
+      if (err.notConnected) {
+        return res.status(412).json({
+          error: 'google_not_connected',
+          message: 'Connect your Google account first.',
+        })
+      }
+      throw err
+    }
+
     const data = await buildPayrollData(req)
 
     const lastNameKey = (n) => {
@@ -437,19 +453,14 @@ router.post('/export-sheet', async (req, res) => {
     }
 
     const title = `WCS Payroll — ${data.period}${data.location_slug && data.location_slug !== 'all' ? ' — ' + data.location_slug : ''}`
-    const shareWith = []
-    if (req.staff?.email) shareWith.push(req.staff.email)
-    const result = await exportToGoogleSheet({ title, rows, boldRowIndices, shareWith })
+    // Sheet lives in the user's own Drive — no extra share needed.
+    const result = await exportToGoogleSheet({ accessToken, title, rows, boldRowIndices })
     res.json({ url: result.url, id: result.id })
   } catch (err) {
-    const msg = err.message || 'Export failed'
-    if (/not authorized|authorize/i.test(msg)) {
-      return res.status(503).json({
-        error: msg,
-        action: 'visit /google-business/authorize to (re-)connect Google with Sheets + Drive scopes',
-      })
+    if (err.notConnected) {
+      return res.status(412).json({ error: 'google_not_connected', message: err.message })
     }
-    res.status(err.status || 500).json({ error: msg })
+    res.status(err.status || 500).json({ error: err.message || 'Export failed' })
   }
 })
 

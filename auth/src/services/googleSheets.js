@@ -1,32 +1,21 @@
 /**
  * Google Sheets export helper. Designed to be reused across reports.
  *
- * Flow:
- *  1. Create a new spreadsheet via Sheets API.
- *  2. Bulk-write a 2D array of rows into Sheet1 (single tab — the user
- *     specifically wants one file with everything stacked, not separate
- *     tabs per section).
- *  3. Apply lightweight formatting: bold the rows the caller flags as
- *     section headers, freeze the top row.
- *  4. Optionally move the file into a Drive folder.
- *  5. Optionally share with a list of emails (defaults to the caller).
- *
- * Auth uses the existing user-OAuth flow in routes/googleBusiness.js,
- * which now requests `drive.file` and `spreadsheets` scopes. The user
- * (the org's Google account owner) needs to re-authorize once after
- * this change deploys.
+ * Auth model: the caller passes in an `accessToken` for the Google
+ * account that should *own* the resulting Sheet. With per-user OAuth
+ * (see services/googleUserToken.js), each staff member's exports land
+ * in their own Drive.
  *
  * Public API:
  *   exportToGoogleSheet({
- *     title,            // string — spreadsheet name
+ *     accessToken,      // required — Google OAuth access_token
+ *     title,            // spreadsheet name
  *     rows,             // 2D array of cell values (numbers/strings)
- *     boldRowIndices,   // optional array of zero-based row indices to bold
+ *     boldRowIndices,   // optional zero-based row indices to bold
  *     folderId,         // optional Drive folder ID to move the file into
- *     shareWith,        // optional array of emails to grant write access
+ *     shareWith,        // optional array of emails to grant writer access
  *   }) -> { id, url }
  */
-
-const { getAccessToken } = require('../routes/googleBusiness')
 
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets'
 const DRIVE_BASE = 'https://www.googleapis.com/drive/v3/files'
@@ -66,16 +55,17 @@ function toCellValue(v) {
 }
 
 async function exportToGoogleSheet({
+  accessToken,
   title,
   rows,
   boldRowIndices = [],
   folderId = null,
   shareWith = [],
 }) {
+  if (!accessToken) throw new Error('accessToken required')
   if (!Array.isArray(rows) || rows.length === 0) {
     throw new Error('rows must be a non-empty 2D array')
   }
-  const accessToken = await getAccessToken()
 
   // 1. Create the spreadsheet (single tab, sized to fit our data).
   const colCount = rows.reduce((m, r) => Math.max(m, r.length), 0)

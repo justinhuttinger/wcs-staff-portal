@@ -1,5 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { getPayrollReport, exportPayrollToSheet } from '../../lib/api'
+import {
+  getPayrollReport,
+  exportPayrollToSheet,
+  getGoogleSheetsStatus,
+  startGoogleSheetsAuth,
+  disconnectGoogleSheets,
+} from '../../lib/api'
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
@@ -338,8 +344,70 @@ export default function PayrollReport({ locationSlug }) {
 
   const [exportingSheet, setExportingSheet] = useState(false)
   const [exportError, setExportError] = useState(null)
+
+  // ---- Per-user Google connection ----
+  const [googleStatus, setGoogleStatus] = useState({ loaded: false, connected: false, email: null })
+  const [connectingGoogle, setConnectingGoogle] = useState(false)
+
+  async function refreshGoogleStatus() {
+    try {
+      const s = await getGoogleSheetsStatus()
+      setGoogleStatus({ loaded: true, connected: !!s.connected, email: s.email || null })
+    } catch {
+      setGoogleStatus({ loaded: true, connected: false, email: null })
+    }
+  }
+
+  useEffect(() => { refreshGoogleStatus() }, [])
+
+  // Watch for the popup posting back after a successful connect.
+  useEffect(() => {
+    function onMessage(e) {
+      if (e.data && e.data.type === 'google-sheets-auth') {
+        refreshGoogleStatus()
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
+
+  async function handleConnectGoogle() {
+    if (connectingGoogle) return
+    setConnectingGoogle(true)
+    setExportError(null)
+    try {
+      const { url } = await startGoogleSheetsAuth()
+      const popup = window.open(url, 'wcs-google-auth', 'width=520,height=720')
+      if (!popup) throw new Error('Popup blocked — allow popups for this site and retry.')
+      // Poll for closure as a backup if postMessage is missed.
+      const timer = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(timer)
+          refreshGoogleStatus()
+          setConnectingGoogle(false)
+        }
+      }, 800)
+    } catch (e) {
+      setExportError(e.message || 'Failed to start Google sign-in')
+      setConnectingGoogle(false)
+    }
+  }
+
+  async function handleDisconnectGoogle() {
+    try {
+      await disconnectGoogleSheets()
+      await refreshGoogleStatus()
+    } catch (e) {
+      setExportError(e.message || 'Disconnect failed')
+    }
+  }
+
   async function handleExportSheet() {
     if (exportingSheet) return
+    if (!googleStatus.connected) {
+      handleConnectGoogle()
+      return
+    }
     setExportingSheet(true)
     setExportError(null)
     try {
@@ -349,10 +417,12 @@ export default function PayrollReport({ locationSlug }) {
       if (result?.url) window.open(result.url, '_blank', 'noopener')
     } catch (e) {
       const msg = e?.message || 'Export failed'
-      // Surface the connect-Google hint if the API said so
-      setExportError(/authoriz/i.test(msg)
-        ? 'Google not connected. An admin needs to visit /google-business/authorize first.'
-        : msg)
+      if (/google_not_connected/i.test(msg)) {
+        await refreshGoogleStatus()
+        setExportError('Google not connected — click Connect Google.')
+      } else {
+        setExportError(msg)
+      }
     } finally {
       setExportingSheet(false)
     }
@@ -474,6 +544,17 @@ export default function PayrollReport({ locationSlug }) {
         {error && <span className="text-xs text-red-500">{error}</span>}
         {exportError && <span className="text-xs text-red-500">{exportError}</span>}
         <div className="ml-auto flex items-center gap-2">
+          {googleStatus.loaded && googleStatus.connected && (
+            <span className="text-[11px] text-text-muted">
+              Google: {googleStatus.email}{' '}
+              <button
+                onClick={handleDisconnectGoogle}
+                className="underline hover:text-text-primary"
+              >
+                Disconnect
+              </button>
+            </span>
+          )}
           <button
             onClick={handleExport}
             disabled={!data || loading}
@@ -481,13 +562,23 @@ export default function PayrollReport({ locationSlug }) {
           >
             Export CSV
           </button>
-          <button
-            onClick={handleExportSheet}
-            disabled={!data || loading || exportingSheet}
-            className="px-3 py-1.5 rounded-lg border border-wcs-red bg-wcs-red text-white text-xs font-medium hover:bg-wcs-red/90 disabled:opacity-50"
-          >
-            {exportingSheet ? 'Creating Sheet…' : 'Export to Google Sheets'}
-          </button>
+          {googleStatus.loaded && !googleStatus.connected ? (
+            <button
+              onClick={handleConnectGoogle}
+              disabled={connectingGoogle}
+              className="px-3 py-1.5 rounded-lg border border-wcs-red bg-wcs-red text-white text-xs font-medium hover:bg-wcs-red/90 disabled:opacity-50"
+            >
+              {connectingGoogle ? 'Connecting…' : 'Connect Google to Export Sheet'}
+            </button>
+          ) : (
+            <button
+              onClick={handleExportSheet}
+              disabled={!data || loading || exportingSheet || !googleStatus.loaded}
+              className="px-3 py-1.5 rounded-lg border border-wcs-red bg-wcs-red text-white text-xs font-medium hover:bg-wcs-red/90 disabled:opacity-50"
+            >
+              {exportingSheet ? 'Creating Sheet…' : 'Export to Google Sheets'}
+            </button>
+          )}
         </div>
       </div>
 
