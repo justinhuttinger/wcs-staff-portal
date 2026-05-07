@@ -328,6 +328,13 @@ export async function getPayrollReport(params = {}) {
   return api('/reports/payroll' + (qs ? '?' + qs : ''))
 }
 
+export async function exportPayrollToSheet(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/payroll/export-sheet' + (qs ? '?' + qs : ''), {
+    method: 'POST',
+  })
+}
+
 export async function getSyncStatus() {
   return api('/sync-status')
 }

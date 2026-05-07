@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { getPayrollReport } from '../../lib/api'
+import { getPayrollReport, exportPayrollToSheet } from '../../lib/api'
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
@@ -336,6 +336,28 @@ export default function PayrollReport({ locationSlug }) {
     setReloadToken((t) => t + 1)
   }
 
+  const [exportingSheet, setExportingSheet] = useState(false)
+  const [exportError, setExportError] = useState(null)
+  async function handleExportSheet() {
+    if (exportingSheet) return
+    setExportingSheet(true)
+    setExportError(null)
+    try {
+      const params = { period }
+      if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
+      const result = await exportPayrollToSheet(params)
+      if (result?.url) window.open(result.url, '_blank', 'noopener')
+    } catch (e) {
+      const msg = e?.message || 'Export failed'
+      // Surface the connect-Google hint if the API said so
+      setExportError(/authoriz/i.test(msg)
+        ? 'Google not connected. An admin needs to visit /google-business/authorize first.'
+        : msg)
+    } finally {
+      setExportingSheet(false)
+    }
+  }
+
   function handleExport() {
     if (!data) return
     const rows = []
@@ -450,13 +472,23 @@ export default function PayrollReport({ locationSlug }) {
         </select>
         {loading && <span className="text-xs text-text-muted">Loading…</span>}
         {error && <span className="text-xs text-red-500">{error}</span>}
-        <button
-          onClick={handleExport}
-          disabled={!data || loading}
-          className="ml-auto px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-xs font-medium hover:border-text-muted disabled:opacity-50"
-        >
-          Export CSV
-        </button>
+        {exportError && <span className="text-xs text-red-500">{exportError}</span>}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            disabled={!data || loading}
+            className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-xs font-medium hover:border-text-muted disabled:opacity-50"
+          >
+            Export CSV
+          </button>
+          <button
+            onClick={handleExportSheet}
+            disabled={!data || loading || exportingSheet}
+            className="px-3 py-1.5 rounded-lg border border-wcs-red bg-wcs-red text-white text-xs font-medium hover:bg-wcs-red/90 disabled:opacity-50"
+          >
+            {exportingSheet ? 'Creating Sheet…' : 'Export to Google Sheets'}
+          </button>
+        </div>
       </div>
 
       {/* KPIs */}
