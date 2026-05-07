@@ -328,6 +328,26 @@ export async function getPayrollReport(params = {}) {
   return api('/reports/payroll' + (qs ? '?' + qs : ''))
 }
 
+export async function exportPayrollToSheet(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/payroll/export-sheet' + (qs ? '?' + qs : ''), {
+    method: 'POST',
+  })
+}
+
+// ---- Per-user Google Sheets connection ----
+export async function getGoogleSheetsStatus() {
+  return api('/google-sheets/status')
+}
+
+export async function startGoogleSheetsAuth() {
+  return api('/google-sheets/authorize-url', { method: 'POST' })
+}
+
+export async function disconnectGoogleSheets() {
+  return api('/google-sheets/disconnect', { method: 'POST' })
+}
+
 export async function getSyncStatus() {
   return api('/sync-status')
 }
