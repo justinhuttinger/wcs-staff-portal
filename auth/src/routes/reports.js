@@ -870,6 +870,75 @@ router.get('/cancels', async (req, res) => {
       .filter(m => !skipTypes.has((m.membership_type || '').toLowerCase()))
       .sort((a, b) => (a.member_status_date || '').localeCompare(b.member_status_date || ''))
 
+    // 3. Click2Save aggregations: cancel reasons, save count, save options.
+    // Sourced from click2save_events_expanded + click2save_offers views.
+    // Filtered by occurred_at within [start_date, end_date+1day) so the full
+    // end-day is inclusive against the timestamptz column.
+    const c2sStart = start_date ? `${start_date}T00:00:00Z` : null
+    const c2sEnd = end_date ? `${end_date}T23:59:59.999Z` : null
+
+    let c2sCancelReasons = []
+    let c2sSaveCount = 0
+    let c2sSaveOptions = []
+    let c2sError = null
+
+    try {
+      // Cancel reasons (CANCEL events)
+      let reasonsQuery = supabaseAdmin
+        .from('click2save_events_expanded')
+        .select('cancel_reason, cancel_code')
+        .eq('request_type', 'CANCEL')
+      if (c2sStart) reasonsQuery = reasonsQuery.gte('occurred_at', c2sStart)
+      if (c2sEnd) reasonsQuery = reasonsQuery.lte('occurred_at', c2sEnd)
+      if (clubNumber) reasonsQuery = reasonsQuery.eq('club_code', clubNumber)
+      const { data: reasonRows, error: reasonsErr } = await reasonsQuery
+      if (reasonsErr) throw reasonsErr
+      const reasonCounts = {}
+      for (const r of reasonRows || []) {
+        const key = r.cancel_reason || r.cancel_code || 'Unspecified'
+        reasonCounts[key] = (reasonCounts[key] || 0) + 1
+      }
+      c2sCancelReasons = Object.entries(reasonCounts)
+        .map(([reason, count]) => ({ reason, count }))
+        .sort((a, b) => b.count - a.count)
+
+      // Save count (OFFER events)
+      let savesQuery = supabaseAdmin
+        .from('click2save_events_expanded')
+        .select('request_id', { count: 'exact', head: true })
+        .eq('request_type', 'OFFER')
+      if (c2sStart) savesQuery = savesQuery.gte('occurred_at', c2sStart)
+      if (c2sEnd) savesQuery = savesQuery.lte('occurred_at', c2sEnd)
+      if (clubNumber) savesQuery = savesQuery.eq('club_code', clubNumber)
+      const { count: saveCount, error: savesErr } = await savesQuery
+      if (savesErr) throw savesErr
+      c2sSaveCount = saveCount || 0
+
+      // Save options (offer subtypes within OFFER events).
+      // click2save_offers exposes received_at; same-day-or-next-day from occurred_at.
+      let offersQuery = supabaseAdmin
+        .from('click2save_offers')
+        .select('offer_subtype')
+      if (c2sStart) offersQuery = offersQuery.gte('received_at', c2sStart)
+      if (c2sEnd) offersQuery = offersQuery.lte('received_at', c2sEnd)
+      if (clubNumber) offersQuery = offersQuery.eq('club_code', clubNumber)
+      const { data: offerRows, error: offersErr } = await offersQuery
+      if (offersErr) throw offersErr
+      const offerCounts = {}
+      for (const o of offerRows || []) {
+        const key = o.offer_subtype || 'Unknown'
+        offerCounts[key] = (offerCounts[key] || 0) + 1
+      }
+      c2sSaveOptions = Object.entries(offerCounts)
+        .map(([subtype, count]) => ({ subtype, count }))
+        .sort((a, b) => b.count - a.count)
+    } catch (err) {
+      // Don't fail the whole report if Click2Save data is unavailable —
+      // surface the error in the response so the UI can show a soft warning.
+      console.error('[reports/cancels] click2save aggregation failed:', err.message)
+      c2sError = err.message
+    }
+
     res.json({
       total_members: totalMembers,
       total_agreements: totalAgreements,
@@ -886,6 +955,11 @@ router.get('/cancels', async (req, res) => {
         scheduled_date: m.member_status_date,
         sales_person_name: m.sales_person_name,
       })),
+      // Click2Save additions (null/empty when no data or feature unavailable)
+      c2s_cancel_reasons: c2sCancelReasons,
+      c2s_save_count: c2sSaveCount,
+      c2s_save_options: c2sSaveOptions,
+      c2s_error: c2sError,
     })
   } catch (err) {
     res.status(500).json({ error: err.message })
