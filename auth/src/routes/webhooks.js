@@ -14,6 +14,18 @@ function verifyWebhookSecret(req, res, next) {
   next()
 }
 
+// Click2Save events use their own optional shared secret so they don't have
+// to share a key with the GHL webhooks.
+function verifyClick2SaveSecret(req, res, next) {
+  const secret = process.env.CLICK2SAVE_WEBHOOK_SECRET
+  if (!secret) return next()
+  const provided = req.headers['x-webhook-secret'] || req.query.secret
+  if (provided !== secret) {
+    return res.status(401).json({ error: 'Invalid webhook secret' })
+  }
+  next()
+}
+
 // POST /webhooks/ghl-appointment — GHL fires this when a day-one is booked
 router.post('/ghl-appointment', verifyWebhookSecret, async (req, res) => {
   const { staff_email, contact_name, appointment_id, appointment_type, appointment_time, contact_id, form_id } = req.body
@@ -99,6 +111,48 @@ router.post('/ghl-form-complete', verifyWebhookSecret, async (req, res) => {
     res.json({ success: true })
   } catch (err) {
     res.status(500).json({ error: 'Internal error' })
+  }
+})
+
+// POST /webhooks/click2save — forwarded from prospects---documents service
+// after Click2Save signature/timestamp/payload validation. Persists each
+// event to click2save_events for retention/save reporting. Idempotent on
+// requestId.
+router.post('/click2save', verifyClick2SaveSecret, async (req, res) => {
+  const event = req.body
+  if (!event || typeof event !== 'object') {
+    return res.status(400).json({ error: 'invalid body' })
+  }
+  if (!event.requestId || !event.requestType) {
+    return res.status(400).json({ error: 'missing requestId or requestType' })
+  }
+
+  try {
+    const { error } = await supabaseAdmin
+      .from('click2save_events')
+      .upsert({
+        request_id: event.requestId,
+        request_type: event.requestType,
+        occurred_at: event.occurredAt || null,
+        producer: event.producer || null,
+        club_code: event.data?.clubCode || null,
+        member_id: event.data?.member?.memberId || null,
+        member_email: event.data?.member?.email || null,
+        member_barcode: event.data?.member?.barcode || null,
+        agreement_id: event.data?.member?.agreementId || null,
+        result_status: event.data?.result?.status || null,
+        event_data: event,
+      }, { onConflict: 'request_id' })
+
+    if (error) {
+      console.error('click2save webhook persist error:', error.message)
+      return res.status(500).json({ error: 'failed to persist event' })
+    }
+
+    res.json({ success: true, requestId: event.requestId })
+  } catch (err) {
+    console.error('click2save webhook error:', err.message)
+    res.status(500).json({ error: 'internal error' })
   }
 })
 
