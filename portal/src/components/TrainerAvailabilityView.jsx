@@ -1,5 +1,11 @@
 import { useState, useEffect } from 'react'
-import { getTrainerAvailability, updateTrainerAvailability } from '../lib/api'
+import { getTrainerAvailability, updateTrainerAvailability, updateTrainerPriority } from '../lib/api'
+
+const PRIORITY_OPTIONS = [
+  { value: 0, label: 'Low' },
+  { value: 0.5, label: 'Medium' },
+  { value: 1, label: 'High' },
+]
 
 const LOCATIONS = [
   { slug: 'salem', label: 'Salem' },
@@ -66,11 +72,16 @@ function buildRules(schedule) {
   return rules
 }
 
-function TrainerScheduleCard({ trainer, locationSlug, onUpdated }) {
+function TrainerScheduleCard({ trainer, locationSlug, calendarId, onUpdated }) {
   const [schedule, setSchedule] = useState(() => parseSchedule(trainer.schedule?.rules || trainer.schedule))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
+
+  const [priority, setPriority] = useState(typeof trainer.priority === 'number' ? trainer.priority : 0.5)
+  const [savingPriority, setSavingPriority] = useState(false)
+  const [priorityError, setPriorityError] = useState('')
+  const [prioritySaved, setPrioritySaved] = useState(false)
 
   function toggleDay(day) {
     setSchedule(prev => ({ ...prev, [day]: { ...prev[day], enabled: !prev[day].enabled } }))
@@ -105,6 +116,30 @@ function TrainerScheduleCard({ trainer, locationSlug, onUpdated }) {
     setSaving(false)
   }
 
+  async function handlePriorityChange(nextValue) {
+    if (nextValue === priority || savingPriority) return
+    const previous = priority
+    setPriority(nextValue)
+    setSavingPriority(true)
+    setPriorityError('')
+    setPrioritySaved(false)
+    try {
+      if (!calendarId) throw new Error('No calendar loaded')
+      await updateTrainerPriority({
+        location_slug: locationSlug,
+        calendarId,
+        userId: trainer.userId,
+        priority: nextValue,
+      })
+      setPrioritySaved(true)
+      setTimeout(() => setPrioritySaved(false), 2000)
+    } catch (err) {
+      setPriority(previous)
+      setPriorityError(err.message)
+    }
+    setSavingPriority(false)
+  }
+
   return (
     <div className="bg-surface rounded-xl border border-border p-5">
       <div className="flex items-center justify-between mb-4">
@@ -123,6 +158,29 @@ function TrainerScheduleCard({ trainer, locationSlug, onUpdated }) {
             {saving ? 'Saving...' : 'Save'}
           </button>
         </div>
+      </div>
+
+      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border">
+        <span className="text-xs text-text-muted uppercase tracking-wide font-semibold w-16">Priority</span>
+        <div className="flex gap-1">
+          {PRIORITY_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => handlePriorityChange(opt.value)}
+              disabled={savingPriority}
+              className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 ${
+                priority === opt.value
+                  ? 'bg-wcs-red text-white'
+                  : 'bg-bg text-text-muted border border-border hover:text-text-primary'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {savingPriority && <span className="text-xs text-text-muted">Saving...</span>}
+        {prioritySaved && <span className="text-xs text-green-600">Saved</span>}
+        {priorityError && <span className="text-xs text-wcs-red">{priorityError}</span>}
       </div>
 
       <div className="space-y-2">
@@ -232,6 +290,7 @@ export default function TrainerAvailabilityView({ user, onBack, location, isAdmi
               key={trainer.userId}
               trainer={trainer}
               locationSlug={locationSlug}
+              calendarId={data.calendarId}
               onUpdated={loadData}
             />
           ))}
