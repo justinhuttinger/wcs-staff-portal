@@ -1,4 +1,5 @@
 const { Router } = require('express')
+const crypto = require('crypto')
 const authenticate = require('../middleware/auth')
 const { requireRole, resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
 const { getLocationBySlug } = require('../config/ghlLocations')
@@ -9,6 +10,25 @@ router.use(authenticate)
 router.use(requireRole('lead'))
 
 const CAL_VERSION = '2021-04-15'
+const PRIORITY_VALUES = [0, 0.5, 1]
+
+function hashRules(rules) {
+  return crypto.createHash('sha256').update(JSON.stringify(rules || [])).digest('hex')
+}
+
+async function fetchUserScheduleHash(locationId, apiKey, userId, calendarId) {
+  try {
+    const params = { locationId, userId, limit: 10 }
+    if (calendarId) params.calendarId = calendarId
+    const data = await ghlFetch('/calendars/schedules/search', apiKey, { params, version: CAL_VERSION })
+    const schedules = data.schedules || []
+    const first = schedules[0]
+    if (!first) return { scheduleId: null, hash: null }
+    return { scheduleId: first.id, hash: hashRules(first.rules || first.openHours || []) }
+  } catch (e) {
+    return { scheduleId: null, hash: null, error: e.message }
+  }
+}
 
 // GET /trainer-availability
 router.get('/', async (req, res) => {
@@ -46,11 +66,15 @@ router.get('/', async (req, res) => {
       console.warn('[TrainerAvail] Could not fetch calendar detail:', e.message)
     }
 
-    // Get team member user IDs
-    let teamMemberIds = []
-    if (Array.isArray(calDetail.teamMembers)) {
-      teamMemberIds = calDetail.teamMembers.map(m => typeof m === 'string' ? m : m.userId || m.id || m)
+    // Get team member entries (preserve full member object so priority/isPrimary/locationConfigurations are visible)
+    const teamMembers = Array.isArray(calDetail.teamMembers) ? calDetail.teamMembers : []
+    const memberByUserId = {}
+    for (const m of teamMembers) {
+      const userId = typeof m === 'string' ? m : m.userId || m.id
+      if (!userId) continue
+      memberByUserId[userId] = typeof m === 'string' ? { userId } : m
     }
+    const teamMemberIds = Object.keys(memberByUserId)
 
     // Fetch GHL users
     let userMap = {}
@@ -113,12 +137,16 @@ router.get('/', async (req, res) => {
         console.warn(`[TrainerAvail] Could not fetch schedule for ${user.name}:`, e.message)
       }
 
+      const member = memberByUserId[memberId] || {}
+      const priority = typeof member.priority === 'number' ? member.priority : 0.5
+
       trainers.push({
         userId: memberId,
         name: user.name,
         email: user.email,
         scheduleId,
         schedule: userSchedule,
+        priority,
       })
     }
 
@@ -130,6 +158,127 @@ router.get('/', async (req, res) => {
   } catch (err) {
     console.error('[TrainerAvail] Error:', err.message)
     res.status(500).json({ error: 'Failed to fetch availability: ' + err.message })
+  }
+})
+
+// PUT /trainer-availability/priority — update one trainer's round-robin priority on the Day One calendar
+// Read-modify-write: re-fetches the calendar, mutates only the target user's priority, validates the
+// teamMembers set is unchanged, posts the full array back, then verifies each trainer's hours rules
+// hash is identical before/after so we can prove availability was untouched.
+router.put('/priority', async (req, res) => {
+  const { location_slug, calendarId, userId, priority } = req.body
+
+  if (!location_slug || !calendarId || !userId) {
+    return res.status(400).json({ error: 'location_slug, calendarId, and userId are required' })
+  }
+  if (!PRIORITY_VALUES.includes(priority)) {
+    return res.status(400).json({ error: 'priority must be one of 0, 0.5, 1' })
+  }
+
+  const location = getLocationBySlug(location_slug)
+  if (!location) {
+    return res.status(400).json({ error: 'Unknown location: ' + location_slug })
+  }
+
+  // Trainer self-edit guard: managers+ can edit anyone, others only themselves
+  const userLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
+  const isManager = userLevel >= ROLE_HIERARCHY.indexOf('manager')
+
+  try {
+    // 1. Read fresh calendar
+    const detail = await ghlFetch(`/calendars/${calendarId}`, location.apiKey, { version: CAL_VERSION })
+    const cal = detail.calendar || detail
+    const current = Array.isArray(cal.teamMembers) ? cal.teamMembers : []
+
+    if (current.length === 0) {
+      return res.status(404).json({ error: 'Calendar has no team members' })
+    }
+
+    // Normalize current to objects (the API may return strings or objects mixed)
+    const currentNorm = current.map(m => typeof m === 'string' ? { userId: m } : { ...m })
+    const target = currentNorm.find(m => m.userId === userId)
+    if (!target) return res.status(404).json({ error: 'User is not on this calendar' })
+
+    // Self-edit gate (need to resolve target's email)
+    if (!isManager) {
+      try {
+        const usersData = await ghlFetch('/users/', location.apiKey, { params: { locationId: location.id } })
+        const targetUser = (usersData.users || []).find(u => u.id === userId)
+        const targetEmail = (targetUser?.email || '').toLowerCase()
+        const myEmail = (req.staff.email || '').toLowerCase()
+        if (targetEmail !== myEmail) {
+          return res.status(403).json({ error: 'You can only change your own priority' })
+        }
+      } catch (e) {
+        return res.status(403).json({ error: 'Could not verify ownership: ' + e.message })
+      }
+    }
+
+    // 2. Snapshot every trainer's schedule hash before the write (proves availability untouched)
+    const beforeHashes = {}
+    for (const m of currentNorm) {
+      beforeHashes[m.userId] = await fetchUserScheduleHash(location.id, location.apiKey, m.userId, calendarId)
+    }
+
+    // 3. Build updated teamMembers — preserve every other field on every member
+    const updated = currentNorm.map(m => m.userId === userId ? { ...m, priority } : m)
+
+    // 4. Length + set guard — abort if anything would change beyond priority
+    if (updated.length !== currentNorm.length) {
+      return res.status(500).json({ error: 'team member count mismatch — aborted' })
+    }
+    const beforeIds = currentNorm.map(m => m.userId).sort()
+    const afterIds = updated.map(m => m.userId).sort()
+    if (beforeIds.length !== afterIds.length || beforeIds.some((id, i) => id !== afterIds[i])) {
+      return res.status(500).json({ error: 'team member set mismatch — aborted' })
+    }
+
+    // 5. PUT — send only teamMembers so other calendar fields use GHL's partial-update merge
+    await ghlFetch(`/calendars/${calendarId}`, location.apiKey, {
+      method: 'PUT',
+      version: CAL_VERSION,
+      body: { teamMembers: updated },
+    })
+
+    // 6. Verify: re-read the calendar, confirm the team set, and confirm every schedule hash is identical
+    const verifyDetail = await ghlFetch(`/calendars/${calendarId}`, location.apiKey, { version: CAL_VERSION })
+    const verifyCal = verifyDetail.calendar || verifyDetail
+    const verifyMembers = Array.isArray(verifyCal.teamMembers) ? verifyCal.teamMembers : []
+    const verifyIds = verifyMembers.map(m => typeof m === 'string' ? m : m.userId).sort()
+    if (verifyIds.length !== beforeIds.length || verifyIds.some((id, i) => id !== beforeIds[i])) {
+      console.error('[TrainerAvail] team members changed after PUT! before=', beforeIds, 'after=', verifyIds)
+      return res.status(500).json({ error: 'Verify failed: team member set changed after write' })
+    }
+
+    const afterHashes = {}
+    const driftedUsers = []
+    for (const m of verifyMembers) {
+      const id = typeof m === 'string' ? m : m.userId
+      afterHashes[id] = await fetchUserScheduleHash(location.id, location.apiKey, id, calendarId)
+      const before = beforeHashes[id]
+      if (before && before.hash && afterHashes[id].hash && before.hash !== afterHashes[id].hash) {
+        driftedUsers.push(id)
+      }
+    }
+    if (driftedUsers.length > 0) {
+      console.error('[TrainerAvail] schedule rules drifted for users:', driftedUsers)
+      return res.status(500).json({
+        error: 'Availability changed unexpectedly — investigate',
+        driftedUsers,
+      })
+    }
+
+    const updatedTarget = verifyMembers.find(m => (typeof m === 'string' ? m : m.userId) === userId) || {}
+    res.json({
+      success: true,
+      userId,
+      priority: typeof updatedTarget.priority === 'number' ? updatedTarget.priority : priority,
+      teamMemberCount: verifyIds.length,
+      verified: true,
+    })
+  } catch (err) {
+    console.error('[TrainerAvail] Priority update error:', err.message)
+    res.status(500).json({ error: 'Failed to update priority: ' + err.message })
   }
 })
 

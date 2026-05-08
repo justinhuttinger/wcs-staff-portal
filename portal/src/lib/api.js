@@ -390,6 +390,13 @@ export async function updateTrainerAvailability(calendarId, data) {
   })
 }
 
+export async function updateTrainerPriority({ location_slug, calendarId, userId, priority }) {
+  return api('/trainer-availability/priority', {
+    method: 'PUT',
+    body: JSON.stringify({ location_slug, calendarId, userId, priority }),
+  })
+}
+
 // SMS History
 export async function getSMSMessages(params = {}) {
   const qs = new URLSearchParams(params).toString()
