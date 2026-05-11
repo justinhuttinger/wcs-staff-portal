@@ -444,6 +444,12 @@ export async function getMetaAds(params = {}) {
   return api('/meta-ads/ads' + (qs ? '?' + qs : ''))
 }
 
+// FB ROAS — own-calculated from GHL 'sale' tag × $990 LTV ÷ Meta spend
+export async function getFbRoas(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/fb-roas' + (qs ? '?' + qs : ''))
+}
+
 // Google Business Profile
 export async function getGoogleBusinessStatus() {
   return api('/google-business/status')
