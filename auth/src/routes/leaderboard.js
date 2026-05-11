@@ -3,6 +3,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, ROLE_HIERARCHY, canSeeAllLocations } = require('../middleware/role')
 const { getSkipList } = require('../utils/membershipSkipList')
+const { countVipsByTeamMember } = require('../utils/vipsByTeamMember')
 
 const router = Router()
 router.use(authenticate)
@@ -130,24 +131,9 @@ async function aggregateLocation(locationSlug, bounds) {
   const { data: dayOneData } = await dayOneQ
   const dayOnes = dayOneData || []
 
-  // 3. VIPs: ghl_contacts_v2 with "vip" tag, created_at_ghl in range, then join for sale_team_member
-  let vipQuery = supabaseAdmin
-    .from('ghl_contacts_v2')
-    .select('id, tags')
-    .contains('tags', ['vip'])
-    .gte('created_at_ghl', startISO)
-    .lte('created_at_ghl', endISO)
-  if (locationSlug) {
-    const { data: loc } = await supabaseAdmin
-      .from('ghl_locations')
-      .select('id')
-      .ilike('name', '%' + locationSlug + '%')
-      .limit(1)
-      .maybeSingle()
-    if (loc) vipQuery = vipQuery.eq('location_id', loc.id)
-  }
-  const { data: vipContacts } = await vipQuery
-  const vipIds = (vipContacts || []).map(v => v.id)
+  // 3. VIPs: count by `contact.vip_team_member` custom field (per-location)
+  const locationFilter = locationSlug ? { column: 'location_slug', value: locationSlug } : null
+  const { byPerson: vipSalesMap } = await countVipsByTeamMember(supabaseAdmin, { startISO, endISO, locationFilter })
 
   // Normalize name: collapse spaces, title case, trim
   function normalizeName(raw) {
@@ -155,25 +141,6 @@ async function aggregateLocation(locationSlug, bounds) {
     return raw.replace(/\s+/g, ' ').trim()
       .toLowerCase()
       .replace(/\b\w/g, c => c.toUpperCase())
-  }
-
-  // Look up sale_team_member for VIP contacts from the report view
-  let vipSalesMap = {}
-  if (vipIds.length > 0) {
-    // Batch in chunks of 100 to avoid URL length issues
-    for (let i = 0; i < vipIds.length; i += 100) {
-      const chunk = vipIds.slice(i, i + 100)
-      const { data: vipReport } = await supabaseAdmin
-        .from('ghl_contacts_report')
-        .select('id, sale_team_member')
-        .in('id', chunk)
-      for (const vr of (vipReport || [])) {
-        const name = normalizeName(vr.sale_team_member)
-        if (name && name !== 'Unassigned') {
-          vipSalesMap[name] = (vipSalesMap[name] || 0) + 1
-        }
-      }
-    }
   }
 
   // Aggregate by person (normalized key)
