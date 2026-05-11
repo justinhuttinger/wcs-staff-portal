@@ -3,6 +3,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { getSkipList } = require('../utils/membershipSkipList')
+const { countVipsByTeamMember: _countVipsByTeamMember } = require('../utils/vipsByTeamMember')
 
 const router = Router()
 router.use(authenticate)
@@ -97,6 +98,9 @@ function mostFrequent(arr) {
   return best
 }
 
+// Bound the shared helper to our supabaseAdmin client for convenience.
+const countVipsByTeamMember = (opts) => _countVipsByTeamMember(supabaseAdmin, opts)
+
 // ---------------------------------------------------------------------------
 // Club number → location slug mapping
 const CLUB_SLUG_MAP = {
@@ -163,7 +167,7 @@ router.get('/membership', async (req, res) => {
       && m.since_date && m.sign_date && m.since_date >= m.sign_date
     )
 
-    // --- 2. GHL enrichment: look up day_one_booked, vip_count, same_day_sale by email ---
+    // --- 2. GHL enrichment: look up day_one_booked + same_day_sale by email ---
     const emails = [...new Set(filteredMembers.map(m => m.email).filter(Boolean))]
     const ghlByEmail = {}
 
@@ -172,7 +176,7 @@ router.get('/membership', async (req, res) => {
       const chunk = emails.slice(i, i + 50)
       const { data: ghlRows } = await supabaseAdmin
         .from('ghl_contacts_report')
-        .select('email, day_one_booked, vip_count, same_day_sale')
+        .select('email, day_one_booked, same_day_sale')
         .in('email', chunk)
 
       for (const g of (ghlRows || [])) {
@@ -199,22 +203,8 @@ router.get('/membership', async (req, res) => {
       dayOneByPerson[person] = (dayOneByPerson[person] || 0) + 1
     }
 
-    // --- 4. VIPs in range ---
-    let vipQuery = supabaseAdmin
-      .from('ghl_contacts_v2')
-      .select('id, tags', { count: 'exact', head: false })
-      .contains('tags', ['vip'])
-    if (startISO) vipQuery = vipQuery.gte('created_at_ghl', startISO)
-    if (endISO) vipQuery = vipQuery.lte('created_at_ghl', endISO)
-    if (locationFilter && locationFilter.column === 'location_slug') {
-      const { data: loc } = await supabaseAdmin
-        .from('ghl_locations').select('id')
-        .ilike('name', '%' + locationFilter.value + '%').limit(1).maybeSingle()
-      if (loc) vipQuery = vipQuery.eq('location_id', loc.id)
-    } else if (locationFilter && locationFilter.column === 'location_id') {
-      vipQuery = vipQuery.eq('location_id', locationFilter.value)
-    }
-    const { count: totalVips } = await vipQuery
+    // --- 4. VIPs in range, counted by `contact.vip_team_member` custom field ---
+    const { total: totalVips, byPerson: vipsByPerson } = await countVipsByTeamMember({ startISO, endISO, locationFilter })
 
     // --- 5. Trial conversion from opportunities ---
     let oppLocationId = null
@@ -264,7 +254,6 @@ router.get('/membership', async (req, res) => {
       // GHL enrichment for this member
       const ghl = m.email ? ghlByEmail[m.email.toLowerCase()] : null
       const isDayOneBooked = ghl?.day_one_booked === 'Yes'
-      const vipCount = ghl?.vip_count ? parseInt(ghl.vip_count) || 0 : 0
       const isSameDaySale = ghl?.same_day_sale === 'Sale'
 
       // by_salesperson
@@ -273,7 +262,6 @@ router.get('/membership', async (req, res) => {
         bySalesperson[sp] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0, members: [] }
       }
       bySalesperson[sp].total_sales++
-      if (vipCount > 0) bySalesperson[sp].vips += vipCount
       if (isSameDaySale) bySalesperson[sp].same_day_sale++
 
       // Per-member detail for drill-down
@@ -283,9 +271,19 @@ router.get('/membership', async (req, res) => {
         membership_type: m.membership_type,
         since_date: m.sign_date || m.since_date,
         day_one_booked: isDayOneBooked,
-        vip_count: vipCount,
         same_day_sale: isSameDaySale,
       })
+    }
+
+    // Attribute VIPs to each salesperson via the vip_team_member field.
+    // Match by case-insensitive trimmed name so "John Smith" and "john smith" align.
+    const lowerSpKeys = Object.fromEntries(Object.keys(bySalesperson).map(k => [k.toLowerCase().trim(), k]))
+    for (const [name, count] of Object.entries(vipsByPerson)) {
+      const key = lowerSpKeys[name.toLowerCase().trim()] || name
+      if (!bySalesperson[key]) {
+        bySalesperson[key] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0, members: [] }
+      }
+      bySalesperson[key].vips += count
     }
 
     // Add day one booking dates to the chart
@@ -523,23 +521,8 @@ router.get('/club-health', async (req, res) => {
       if (ghl?.same_day_sale === 'Sale') totalSameDaySales++
     }
 
-    // --- VIPs: contacts created in date range with "vip" tag ---
-    let vipQuery = supabaseAdmin
-      .from('ghl_contacts_v2')
-      .select('id, tags', { count: 'exact', head: false })
-      .contains('tags', ['vip'])
-    if (startISO) vipQuery = vipQuery.gte('created_at_ghl', startISO)
-    if (endISO) vipQuery = vipQuery.lte('created_at_ghl', endISO)
-    if (locationFilter && locationFilter.column === 'location_slug') {
-      const { data: loc } = await supabaseAdmin
-        .from('ghl_locations').select('id')
-        .ilike('name', '%' + locationFilter.value + '%').limit(1).maybeSingle()
-      if (loc) vipQuery = vipQuery.eq('location_id', loc.id)
-    } else if (locationFilter && locationFilter.column === 'location_id') {
-      vipQuery = vipQuery.eq('location_id', locationFilter.value)
-    }
-    const { data: vipContacts, count: totalVips } = await vipQuery
-    const vipIds = (vipContacts || []).map(v => v.id)
+    // --- VIPs in range, counted by `contact.vip_team_member` custom field ---
+    const { total: totalVips, byPerson: vipsByPerson } = await countVipsByTeamMember({ startISO, endISO, locationFilter })
 
     // --- Day Ones from GHL ---
     let dayOneQ = supabaseAdmin
@@ -606,20 +589,12 @@ router.get('/club-health', async (req, res) => {
       personStats[name].day_ones++
     }
 
-    if (vipIds.length > 0) {
-      for (let i = 0; i < vipIds.length; i += 100) {
-        const chunk = vipIds.slice(i, i + 100)
-        const { data: vipReport } = await supabaseAdmin
-          .from('ghl_contacts_report')
-          .select('id, sale_team_member')
-          .in('id', chunk)
-        for (const vr of (vipReport || [])) {
-          const name = normalizeName(vr.sale_team_member)
-          if (!name || name === 'Unassigned') continue
-          ensurePerson(name)
-          personStats[name].vips++
-        }
-      }
+    // Attribute VIPs to each team member via the vip_team_member field.
+    for (const [rawName, count] of Object.entries(vipsByPerson)) {
+      const name = normalizeName(rawName)
+      if (!name || name === 'Unassigned') continue
+      ensurePerson(name)
+      personStats[name].vips += count
     }
 
     const topSalespeople = Object.entries(personStats)
