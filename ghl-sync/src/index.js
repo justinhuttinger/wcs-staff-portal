@@ -4,6 +4,7 @@ const { fullSync, fullSyncForLocation, stopGhlSync } = require('./sync/fullSync'
 const { deltaSync } = require('./sync/deltaSync');
 const { abcSync, abcSyncForLocation, stopAbcSync } = require('./abc/abcSync');
 const { employeeSync } = require('./abc/employeeSync');
+const { enrichAll: enrichAttributionAll, enrichForLocation: enrichAttributionForLocation } = require('./sync/attributionEnrich');
 const LOCATIONS = require('./config/locations');
 const { startScheduler } = require('./scheduler');
 const supabase = require('./db/supabase');
@@ -80,6 +81,31 @@ app.post('/api/sync/full/:locationSlug', requireSecret, (req, res) => {
   res.json({ status: 'started', message: `Full sync for ${req.params.locationSlug} running` });
   fullSyncForLocation(req.params.locationSlug)
     .catch(err => console.error(`[API] Full sync for ${req.params.locationSlug} failed:`, err.message))
+    .finally(() => { syncRunning = false; });
+});
+
+// POST /api/sync/attribution — enrich attribution_source / last_attribution_source
+// for all locations using POST /contacts/search. Additive: does not touch other
+// contact fields. Long-running (full pass across all locations is ~hours).
+app.post('/api/sync/attribution', requireSecret, (req, res) => {
+  if (syncRunning) return res.status(409).json({ error: 'Sync already in progress' });
+  syncRunning = true;
+  res.json({ status: 'started', message: 'Attribution enrichment running in background' });
+  enrichAttributionAll()
+    .then(results => console.log('[API] Attribution enrichment results:', JSON.stringify(results)))
+    .catch(err => console.error('[API] Attribution enrichment failed:', err.message))
+    .finally(() => { syncRunning = false; });
+});
+
+// POST /api/sync/attribution/:locationSlug — enrich a single location
+app.post('/api/sync/attribution/:locationSlug', requireSecret, (req, res) => {
+  if (syncRunning) return res.status(409).json({ error: 'Sync already in progress' });
+  syncRunning = true;
+  const slug = req.params.locationSlug;
+  res.json({ status: 'started', message: `Attribution enrichment for ${slug} running` });
+  enrichAttributionForLocation(slug)
+    .then(result => console.log(`[API] Attribution enrichment ${slug} result:`, JSON.stringify(result)))
+    .catch(err => console.error(`[API] Attribution enrichment ${slug} failed:`, err.message))
     .finally(() => { syncRunning = false; });
 });
 
