@@ -328,10 +328,7 @@ export default function MetaAdsView({ onBack }) {
           {roasData?.totals && (
             <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4 mb-5">
               <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="text-sm font-bold text-text-primary">Our ROAS (GHL-based)</p>
-                  <p className="text-xs text-text-muted">Memberships sold (GHL tag <code className="text-[10px]">sale</code> × ${ltv} LTV) ÷ Meta spend. First-touch attribution.</p>
-                </div>
+                <p className="text-sm font-bold text-text-primary">Our ROAS</p>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <StatCard label="Memberships Sold" value={fmtNum(roasData.totals.sales)} />
