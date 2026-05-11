@@ -20,6 +20,7 @@ import MembershipSkipListAdmin from './admin/MembershipSkipListAdmin'
 import SharedCredentialsAdmin from './admin/SharedCredentialsAdmin'
 import LauncherVersionAdmin from './admin/LauncherVersionAdmin'
 import AuditLogAdmin from './admin/AuditLogAdmin'
+import PtSchedulerView from './admin/PtSchedulerView'
 
 const SETUP_TILES = [
   { key: 'staff', label: 'Staff', desc: 'Accounts & Roles', icon: 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z' },
@@ -48,11 +49,17 @@ const TECHNICAL_TILES = [
   { key: 'audit-log', label: 'Activity', desc: 'Audit Log', icon: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
 ]
 
-const ALL_TILES = [...SETUP_TILES, ...TECHNICAL_TILES]
+// Experimental Tools — admin-only sandbox for in-progress features
+const EXPERIMENTAL_TILES = [
+  { key: 'pt-scheduler', label: 'PT Scheduler', desc: 'Trainer Calendar (Beta)', icon: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5' },
+]
+
+const ALL_TILES = [...SETUP_TILES, ...TECHNICAL_TILES, ...EXPERIMENTAL_TILES]
 
 const GROUPS = [
   { key: 'setup', label: 'Set Up', desc: 'Portal Configuration', icon: 'M11.42 15.17 17.25 21A2.652 2.652 0 0 0 21 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 1 1-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 0 0 4.486-6.336l-3.276 3.277a3.004 3.004 0 0 1-2.25-2.25l3.276-3.276a4.5 4.5 0 0 0-6.336 4.486c.049.58.025 1.193-.14 1.743', tiles: SETUP_TILES },
   { key: 'technical', label: 'Technical', desc: 'Syncs & Integrations', icon: 'M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5', tiles: TECHNICAL_TILES },
+  { key: 'experimental', label: 'Experimental Tools', desc: 'In-Progress Features', icon: 'M10.5 1.5H8.25A2.25 2.25 0 0 0 6 3.75v16.5a2.25 2.25 0 0 0 2.25 2.25h7.5A2.25 2.25 0 0 0 18 20.25V3.75a2.25 2.25 0 0 0-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3', tiles: EXPERIMENTAL_TILES },
 ]
 
 function TileButton({ tile, onClick }) {
@@ -116,6 +123,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange }) {
         {activeSection === 'shared-credentials' && <SharedCredentialsAdmin />}
         {activeSection === 'launcher-version' && <LauncherVersionAdmin />}
         {activeSection === 'audit-log' && <AuditLogAdmin />}
+        {activeSection === 'pt-scheduler' && <PtSchedulerView />}
       </div>
     )
   }
@@ -153,7 +161,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange }) {
         <h2 className="text-xl font-bold text-text-primary">Admin Panel</h2>
       </div>
 
-      <div className="grid grid-cols-2 gap-6 max-w-3xl mx-auto">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
         {GROUPS.map(group => (
           <button
             key={group.key}
