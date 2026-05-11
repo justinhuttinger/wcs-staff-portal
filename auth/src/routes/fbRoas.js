@@ -111,9 +111,10 @@ async function fetchMetaAdSpend(startDate, endDate) {
   const { token, accountId } = getMetaConfig()
   const byAd = new Map()
   let after = null
-  const limit = 200
+  const limit = 500
+  const MAX_PAGES = 20  // safety cap: 20 × 500 = 10k ads max
 
-  while (true) {
+  for (let page = 0; page < MAX_PAGES; page++) {
     const params = {
       level: 'ad',
       fields: 'ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,clicks,actions',
@@ -122,7 +123,8 @@ async function fetchMetaAdSpend(startDate, endDate) {
     }
     if (after) params.after = after
     const data = await metaFetch(`/${accountId}/insights`, params, token)
-    for (const row of (data.data || [])) {
+    const rows = data.data || []
+    for (const row of rows) {
       const actions = row.actions || []
       byAd.set(row.ad_id, {
         adId: row.ad_id,
@@ -138,8 +140,7 @@ async function fetchMetaAdSpend(startDate, endDate) {
       })
     }
     after = data.paging?.cursors?.after
-    const next = data.paging?.next
-    if (!after || !next) break
+    if (!after || rows.length < limit) break
   }
   return byAd
 }
@@ -188,10 +189,16 @@ router.get('/', async (req, res) => {
   }
 
   try {
-    const [salesByAd, spendByAd] = await Promise.all([
+    // GHL side is required; Meta side is best-effort so a Meta-API hiccup
+    // doesn't blank the whole report.
+    const [salesByAd, spendResult] = await Promise.all([
       fetchGhlSalesByAd(start_date, end_date),
-      fetchMetaAdSpend(start_date, end_date),
+      fetchMetaAdSpend(start_date, end_date).catch(err => {
+        console.error('[FB ROAS] Meta spend fetch failed (continuing with GHL only):', err.message)
+        return new Map()
+      }),
     ])
+    const spendByAd = spendResult
 
     // Build per-ad rows by unioning the two maps
     const adIds = new Set([...salesByAd.keys(), ...spendByAd.keys()])
