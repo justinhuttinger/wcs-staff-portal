@@ -89,13 +89,15 @@ function FilterPills({ options, value, onChange, label }) {
 }
 
 // Shared table row component
-function MetricRow({ name, spend, leads, costPerLead, costPerLinkClick, isTraffic, clicks, impressions, budget, updatedTime, onClick, depth = 0, sales, revenue, ltv }) {
+// roasApplies = false → render ROAS columns as "—" regardless of sales data
+// (e.g. Traffic / Retargeting campaigns where ROAS is meaningless)
+function MetricRow({ name, spend, leads, costPerLead, costPerLinkClick, isTraffic, clicks, impressions, budget, updatedTime, onClick, depth = 0, sales, revenue, ltv, roasApplies = true }) {
   const displayLeads = isTraffic ? 0 : leads
   const costLabel = isTraffic ? (costPerLinkClick ? fmtMoney(costPerLinkClick) : '—') : (costPerLead ? fmtMoney(costPerLead) : '—')
-  const salesNum = sales || 0
-  const rev = revenue != null ? revenue : (salesNum * (ltv || 0))
-  const roas = spend > 0 ? rev / spend : null
-  const cps = salesNum > 0 ? spend / salesNum : null
+  const salesNum = roasApplies ? (sales || 0) : 0
+  const rev = roasApplies ? (revenue != null ? revenue : (salesNum * (ltv || 0))) : 0
+  const roas = roasApplies && spend > 0 ? rev / spend : null
+  const cps = roasApplies && salesNum > 0 ? spend / salesNum : null
   return (
     <tr onClick={onClick} className={`border-b border-border last:border-0 hover:bg-bg transition-colors ${onClick ? 'cursor-pointer' : ''}`}>
       <td className="px-4 py-2.5 text-text-primary font-medium text-xs max-w-[260px]">
@@ -104,7 +106,7 @@ function MetricRow({ name, spend, leads, costPerLead, costPerLinkClick, isTraffi
       <td className="px-3 py-2.5 text-right text-text-primary text-xs">{fmtMoney(spend)}</td>
       <td className="px-3 py-2.5 text-right text-text-primary text-xs font-medium">{fmtNum(displayLeads)}</td>
       <td className="px-3 py-2.5 text-right text-text-muted text-xs">{costLabel}</td>
-      <td className={`px-3 py-2.5 text-right text-xs font-semibold ${salesNum > 0 ? 'text-green-600' : 'text-text-muted'}`}>{salesNum > 0 ? fmtNum(salesNum) : '—'}</td>
+      <td className={`px-3 py-2.5 text-right text-xs font-semibold ${roasApplies && salesNum > 0 ? 'text-green-600' : 'text-text-muted'}`}>{roasApplies && salesNum > 0 ? fmtNum(salesNum) : '—'}</td>
       <td className={`px-3 py-2.5 text-right text-xs font-semibold ${roas != null && roas >= 1 ? 'text-green-600' : roas != null ? 'text-wcs-red' : 'text-text-muted'}`}>{roas != null ? roas.toFixed(2) + 'x' : '—'}</td>
       <td className="px-3 py-2.5 text-right text-text-muted text-xs">{cps != null ? fmtMoney(cps) : '—'}</td>
       <td className="px-3 py-2.5 text-right text-text-muted text-xs">{fmtNum(clicks)}</td>
@@ -228,13 +230,32 @@ export default function MetaAdsView({ onBack }) {
     return true
   })
 
-  // Build ROAS lookups by adId / adsetId / campaignId from per-ad rows
+  // ROAS only applies to Lead-classified campaigns. We restrict the ROAS
+  // card and table columns to campaigns that:
+  //   1. Are classified as 'Lead' (by name heuristic in classifyCampaign)
+  //   2. Pass the active location filter
+  //   3. Pass the active type filter (so if user picks Traffic/Retargeting,
+  //      they see an empty ROAS card — there's no Lead conversion to measure)
+  // Date range is already enforced server-side via the API call.
+  const leadCampaignIds = new Set(
+    filteredCampaigns
+      .filter(c => classifyCampaign(c.campaign_name) === 'Lead')
+      .map(c => c.campaign_id)
+  )
+  const isLeadCampaign = (cid) => cid != null && leadCampaignIds.has(cid)
+
+  // Build ROAS lookups by adId / adsetId / campaignId from per-ad rows,
+  // limiting to Lead campaigns inside the active filter scope.
   const ltv = roasData?.ltv || 990
   const salesByAdId = new Map()
   const salesByAdsetId = new Map()
   const salesByCampaignId = new Map()
+  let filteredRoasTotals = { sales: 0, revenue: 0, spend: 0, ads_with_sales: 0, ads_with_spend: 0 }
   if (roasData?.rows) {
     for (const r of roasData.rows) {
+      // Drop rows whose campaign isn't in our Lead-only filtered set.
+      if (!isLeadCampaign(r.campaignId)) continue
+
       if (r.adId) salesByAdId.set(r.adId, { sales: r.sales, revenue: r.revenue })
       if (r.adsetId) {
         const agg = salesByAdsetId.get(r.adsetId) || { sales: 0, revenue: 0 }
@@ -248,7 +269,14 @@ export default function MetaAdsView({ onBack }) {
         agg.revenue += r.revenue || 0
         salesByCampaignId.set(r.campaignId, agg)
       }
+      filteredRoasTotals.sales += r.sales || 0
+      filteredRoasTotals.revenue += r.revenue || 0
+      filteredRoasTotals.spend += r.spend || 0
+      if (r.sales > 0) filteredRoasTotals.ads_with_sales += 1
+      if (r.spend > 0) filteredRoasTotals.ads_with_spend += 1
     }
+    filteredRoasTotals.roas = filteredRoasTotals.spend > 0 ? filteredRoasTotals.revenue / filteredRoasTotals.spend : null
+    filteredRoasTotals.cost_per_sale = filteredRoasTotals.sales > 0 ? filteredRoasTotals.spend / filteredRoasTotals.sales : null
   }
 
   // Compute filtered overview from campaign-level data when filters are active
@@ -324,24 +352,25 @@ export default function MetaAdsView({ onBack }) {
             <StatCard label="Landing Views" value={fmtNum(displayOverview.landing_page_views)} />
           </div>
 
-          {/* Own-calculated ROAS Cards — visible only when ROAS endpoint returned data */}
-          {roasData?.totals && (
+          {/* Own-calculated ROAS Cards — Lead campaigns only, respects active filters */}
+          {roasData?.rows && (
             <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4 mb-5">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm font-bold text-text-primary">Our ROAS</p>
+                <p className="text-[10px] text-text-muted">Lead campaigns only{typeFilter !== 'All' && typeFilter !== 'Lead' ? ` · no Lead match for type "${typeFilter}"` : ''}</p>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <StatCard label="Memberships Sold" value={fmtNum(roasData.totals.sales)} />
-                <StatCard label="Revenue" value={fmtMoney(roasData.totals.revenue)} />
+                <StatCard label="Memberships Sold" value={fmtNum(filteredRoasTotals.sales)} />
+                <StatCard label="Revenue" value={fmtMoney(filteredRoasTotals.revenue)} />
                 <StatCard
                   label="ROAS"
-                  value={roasData.totals.roas != null ? roasData.totals.roas.toFixed(2) + 'x' : '—'}
-                  sub={roasData.totals.roas != null && roasData.totals.roas >= 1 ? 'profitable' : roasData.totals.roas != null ? 'below 1x' : null}
+                  value={filteredRoasTotals.roas != null ? filteredRoasTotals.roas.toFixed(2) + 'x' : '—'}
+                  sub={filteredRoasTotals.roas != null && filteredRoasTotals.roas >= 1 ? 'profitable' : filteredRoasTotals.roas != null ? 'below 1x' : null}
                 />
                 <StatCard
                   label="Cost / Membership"
-                  value={roasData.totals.cost_per_sale != null ? fmtMoney(roasData.totals.cost_per_sale) : '—'}
-                  sub={roasData.totals.sales > 0 ? `${roasData.totals.ads_with_sales} ads with sales` : null}
+                  value={filteredRoasTotals.cost_per_sale != null ? fmtMoney(filteredRoasTotals.cost_per_sale) : '—'}
+                  sub={filteredRoasTotals.sales > 0 ? `${filteredRoasTotals.ads_with_sales} ads with sales` : null}
                 />
               </div>
             </div>
@@ -386,6 +415,7 @@ export default function MetaAdsView({ onBack }) {
                   )}
                   {filteredCampaigns.map(c => {
                     const campSales = salesByCampaignId.get(c.campaign_id)
+                    const campIsLead = isLeadCampaign(c.campaign_id)
                     return (
                       <>
                         <MetricRow
@@ -397,6 +427,7 @@ export default function MetaAdsView({ onBack }) {
                           budget={fmtBudget(c.daily_budget, c.lifetime_budget)}
                           updatedTime={c.updated_time}
                           sales={campSales?.sales} revenue={campSales?.revenue} ltv={ltv}
+                          roasApplies={campIsLead}
                           onClick={() => toggleCampaign(c.campaign_id)}
                         />
                         {/* Ad Sets */}
@@ -415,6 +446,7 @@ export default function MetaAdsView({ onBack }) {
                                   budget={fmtBudget(as.daily_budget, as.lifetime_budget)}
                                   updatedTime={as.updated_time}
                                   sales={adsetSales?.sales} revenue={adsetSales?.revenue} ltv={ltv}
+                                  roasApplies={campIsLead}
                                   onClick={() => toggleAdset(as.adset_id)}
                                   depth={1}
                                 />
@@ -433,6 +465,7 @@ export default function MetaAdsView({ onBack }) {
                                         budget="—"
                                         updatedTime={ad.updated_time}
                                         sales={adSales?.sales} revenue={adSales?.revenue} ltv={ltv}
+                                        roasApplies={campIsLead}
                                         depth={2}
                                       />
                                     )
