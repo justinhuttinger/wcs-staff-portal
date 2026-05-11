@@ -43,26 +43,54 @@ async function metaFetch(endpoint, params, token) {
 }
 
 /**
- * Fetch every FB-attributed sale within [start, end] from Supabase, grouped
- * by adId. The filter uses created_at_ghl (lead-acquisition date) since
- * attribution_source is first-touch and corresponds to that date.
+ * Fetch FB-attributed sales within [start, end] from Supabase, grouped by adId.
  *
- * Pagination is required: a single page caps at ~1000 rows. We rely on
- * server-side aggregation via the contacts table — for the count of sales
- * per ad we just group in JS after fetching the matching rows.
+ * Primary path: `fb_sales_by_ad` RPC (migration 018) — aggregates in Postgres
+ * with the right indexes, sub-second. Fall-back path: paginated row scan
+ * (original impl) so the endpoint keeps working before the migration lands.
  *
  * Filters:
  *   - tags contains 'sale'
  *   - attribution_source->>'adId' IS NOT NULL
- *   - created_at_ghl in [start, end]
+ *   - created_at_ghl in [start, end]  (first-touch attribution date)
  *
- * Returns Map<adId, { adId, adsetId, adsetName, campaignId, campaignName, salesCount, sampleContactIds }>
+ * Returns Map<adId, { adId, adsetId, adsetName, campaignId, campaignName,
+ *                     salesCount, sampleContactIds }>
  */
 async function fetchGhlSalesByAd(startDate, endDate) {
+  const startISO = startDate + 'T00:00:00.000Z'
+  const endISO = endDate + 'T23:59:59.999Z'
+
+  // Fast path: SQL aggregation via RPC.
+  const rpc = await supabaseAdmin.rpc('fb_sales_by_ad', {
+    start_iso: startISO,
+    end_iso: endISO,
+  })
+  if (!rpc.error) {
+    const byAd = new Map()
+    for (const r of (rpc.data || [])) {
+      byAd.set(r.ad_id, {
+        adId: r.ad_id,
+        adsetId: r.ad_group_id || null,
+        adsetName: r.utm_medium || null,
+        campaignId: r.campaign_id || null,
+        campaignName: r.campaign_name || null,
+        salesCount: parseInt(r.sales, 10) || 0,
+        sampleContactIds: r.sample_ids || [],
+      })
+    }
+    return byAd
+  }
+  // PGRST202 = function not found (migration not yet applied)
+  const missing = rpc.error.code === 'PGRST202' || /Could not find the function/i.test(rpc.error.message || '')
+  if (!missing) throw new Error(`Supabase fetch failed: ${rpc.error.message}`)
+
+  console.warn('[FB ROAS] fb_sales_by_ad RPC missing; falling back to row scan. Apply migration 018_perf_helpers.sql.')
+
+  // Fall-back: paginated scan + JS aggregation.
   const byAd = new Map()
   const PAGE = 1000
   let offset = 0
-
   while (true) {
     const { data, error } = await supabaseAdmin
       .from('ghl_contacts_v2')
@@ -70,12 +98,10 @@ async function fetchGhlSalesByAd(startDate, endDate) {
       .contains('tags', ['sale'])
       .not('attribution_source->>adId', 'is', null)
       .gte('created_at_ghl', startDate)
-      .lte('created_at_ghl', endDate + 'T23:59:59.999Z')
+      .lte('created_at_ghl', endISO)
       .range(offset, offset + PAGE - 1)
-
     if (error) throw new Error(`Supabase fetch failed: ${error.message}`)
     if (!data || data.length === 0) break
-
     for (const row of data) {
       const a = row.attribution_source || {}
       const adId = a.adId
@@ -84,8 +110,8 @@ async function fetchGhlSalesByAd(startDate, endDate) {
       if (!entry) {
         entry = {
           adId,
-          adsetId: a.adGroupId || null,                  // GHL stores ad set under adGroupId
-          adsetName: a.utmMedium || null,                // typical GHL convention
+          adsetId: a.adGroupId || null,
+          adsetName: a.utmMedium || null,
           campaignId: a.campaignId || null,
           campaignName: a.campaign || null,
           salesCount: 0,
@@ -96,11 +122,9 @@ async function fetchGhlSalesByAd(startDate, endDate) {
       entry.salesCount += 1
       if (entry.sampleContactIds.length < 5) entry.sampleContactIds.push(row.id)
     }
-
     if (data.length < PAGE) break
     offset += PAGE
   }
-
   return byAd
 }
 
