@@ -1,4 +1,7 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+// Second backend service — prospects-documents (Render). Hosts the Online
+// Join admin + public API. Same Supabase JWT works as the auth header.
+const PROSPECTS_API_URL = import.meta.env.VITE_PROSPECTS_API_URL || 'https://prospects-documents.onrender.com'
 
 let authToken = null
 let refreshToken = null
@@ -136,6 +139,61 @@ export async function api(path, options = {}) {
   }
 
   return data
+}
+
+/**
+ * Same fetch shape as `api()` but targets the prospects-documents service.
+ * No refresh-retry here — admin endpoints are infrequent; a 401 just bubbles.
+ */
+export async function prospectsApi(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...options.headers }
+  if (authToken) headers['Authorization'] = 'Bearer ' + authToken
+  const res = await fetch(PROSPECTS_API_URL + path, { ...options, headers })
+  let data
+  try { data = await res.json() } catch { throw new Error('Server error — please try again') }
+  if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`)
+  return data
+}
+
+// ---- Online Join admin (prospects-documents) -----------------------------
+export const onlineJoin = {
+  // Locations
+  listLocations: () => prospectsApi('/api/admin/online-join/locations'),
+  getLocation: (id) => prospectsApi(`/api/admin/online-join/locations/${id}`),
+  createLocation: (body) => prospectsApi('/api/admin/online-join/locations', { method: 'POST', body: JSON.stringify(body) }),
+  updateLocation: (id, body) => prospectsApi(`/api/admin/online-join/locations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deactivateLocation: (id) => prospectsApi(`/api/admin/online-join/locations/${id}`, { method: 'DELETE' }),
+
+  // Plans
+  listPlans: (location) => prospectsApi('/api/admin/online-join/plans' + (location ? `?location=${encodeURIComponent(location)}` : '')),
+  getPlan: (id) => prospectsApi(`/api/admin/online-join/plans/${id}`),
+  createPlan: (body) => prospectsApi('/api/admin/online-join/plans', { method: 'POST', body: JSON.stringify(body) }),
+  updatePlan: (id, body) => prospectsApi(`/api/admin/online-join/plans/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deactivatePlan: (id) => prospectsApi(`/api/admin/online-join/plans/${id}`, { method: 'DELETE' }),
+
+  // Age rules
+  listAgeRules: () => prospectsApi('/api/admin/online-join/age-rules'),
+  getAgeRule: (id) => prospectsApi(`/api/admin/online-join/age-rules/${id}`),
+  createAgeRule: (body) => prospectsApi('/api/admin/online-join/age-rules', { method: 'POST', body: JSON.stringify(body) }),
+  updateAgeRule: (id, body) => prospectsApi(`/api/admin/online-join/age-rules/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteAgeRule: (id) => prospectsApi(`/api/admin/online-join/age-rules/${id}`, { method: 'DELETE' }),
+
+  // Copy
+  listCopy: () => prospectsApi('/api/admin/online-join/copy'),
+  updateCopy: (key, copy_value) => prospectsApi(`/api/admin/online-join/copy/${encodeURIComponent(key)}`, { method: 'PATCH', body: JSON.stringify({ copy_value }) }),
+
+  // Signups (read-only)
+  listSignups: (params = {}) => {
+    const qs = new URLSearchParams(params).toString()
+    return prospectsApi('/api/admin/online-join/signups' + (qs ? '?' + qs : ''))
+  },
+  getSignup: (id) => prospectsApi(`/api/admin/online-join/signups/${id}`),
+
+  // ABC plan discovery (used by Plans editor "Pull from ABC")
+  abcPlans: (clubNumber) => prospectsApi(`/api/admin/online-join/abc-plans/${encodeURIComponent(clubNumber)}`),
+  abcPlanDetails: (clubNumber, planId) => prospectsApi(`/api/admin/online-join/abc-plans/${encodeURIComponent(clubNumber)}/${encodeURIComponent(planId)}`),
+
+  invalidateCache: () => prospectsApi('/api/admin/online-join/cache/invalidate', { method: 'POST' }),
 }
 
 export async function login(email, password) {
