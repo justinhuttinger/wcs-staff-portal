@@ -26,7 +26,10 @@ export default function SessionFrequencyReport({ startDate, endDate, locationSlu
   const [error, setError] = useState(null)
   const [trainerFilter, setTrainerFilter] = useState('all')
   const [search, setSearch] = useState('')
-  const [onlyActive, setOnlyActive] = useState(false)
+  // Default ON: most users want to see who's actively training in the
+  // selected period. Toggle off to also see members who only trained in the
+  // prior window (i.e. dropped off).
+  const [onlyActive, setOnlyActive] = useState(true)
 
   const reqRef = useRef(0)
 
@@ -140,6 +143,13 @@ export default function SessionFrequencyReport({ startDate, endDate, locationSlu
         )}
       </div>
 
+      {/* Who-is-on-this-list explainer */}
+      <p className="text-xs text-text-muted">
+        {onlyActive
+          ? 'Showing members with at least one completed session in the current period. Turn off "Has current sessions" to also see members who only trained in the prior window (dropped off).'
+          : 'Showing members with at least one completed session in EITHER the current OR prior window. Rows with "0" in the Current column trained only in the prior period.'}
+      </p>
+
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <SummaryCard label="Active Members (Current)" value={fmtNum(filteredSummary.activeMembers)} tone="green" />
@@ -221,9 +231,9 @@ export default function SessionFrequencyReport({ startDate, endDate, locationSlu
                 <th className="text-left px-4 py-2 font-semibold">Service Employee</th>
                 <th className="text-left px-4 py-2 font-semibold">Club</th>
                 <th className="text-right px-4 py-2 font-semibold">Current</th>
-                <th className="text-right px-4 py-2 font-semibold">Cur / wk</th>
+                <th className="text-right px-4 py-2 font-semibold" title="sessions ÷ (days in current period ÷ 7)">Cur / wk</th>
                 <th className="text-right px-4 py-2 font-semibold">Prior</th>
-                <th className="text-right px-4 py-2 font-semibold">Prior / wk</th>
+                <th className="text-right px-4 py-2 font-semibold" title="sessions ÷ (days in prior period ÷ 7)">Prior / wk</th>
                 <th className="text-left px-4 py-2 font-semibold">Trend</th>
               </tr>
             </thead>
@@ -273,7 +283,9 @@ export default function SessionFrequencyReport({ startDate, endDate, locationSlu
         Counts include only <span className="font-semibold">Completed</span> calendar events tagged as PT-style training
         (Swim, Stretch, and admin entries are excluded). The comparison window is the prior calendar month when the
         current range is exactly one calendar month; otherwise it's a same-length window ending the day before the
-        current range starts. Per-week averages divide each period's total by its week count.
+        current range starts. <span className="font-semibold">Per-week math:</span> sessions ÷ (days in that period ÷ 7).
+        Example: 12 sessions across the {period.current_days || '—'} days of the current period = 12 ÷ (
+        {period.current_days || '—'} ÷ 7) ≈ {period.current_days ? fmtPerWeek(12 / (period.current_days / 7)) : '—'}/wk.
       </p>
     </div>
   )
