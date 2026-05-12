@@ -356,6 +356,11 @@ export async function getSessionFrequency(params = {}) {
   return api('/reports/session-frequency' + (qs ? '?' + qs : ''))
 }
 
+export async function getDeactivatedPT(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/deactivated-pt' + (qs ? '?' + qs : ''))
+}
+
 export async function getVIPReport(params = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/reports/vip' + (qs ? '?' + qs : ''))
