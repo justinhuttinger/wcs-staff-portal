@@ -5,7 +5,7 @@ const { deltaSync } = require('./sync/deltaSync');
 const { abcSync, abcSyncForLocation, stopAbcSync } = require('./abc/abcSync');
 const { employeeSync } = require('./abc/employeeSync');
 const { enrichAll: enrichAttributionAll, enrichForLocation: enrichAttributionForLocation } = require('./sync/attributionEnrich');
-const { refreshCurrentHourCheckins, fetchCheckinsForRange } = require('./abc/checkins');
+const { refreshCurrentHourCheckins, fetchCheckinsForRange, backfillClub } = require('./abc/checkins');
 const axios = require('axios');
 const LOCATIONS = require('./config/locations');
 const { startScheduler } = require('./scheduler');
@@ -178,6 +178,77 @@ async function probeAbc(clubNumber, fromStr, toStr) {
     firstMember: members[0] || null,
   };
 }
+
+// Track backfill state so we can poll status without overlapping runs.
+let checkinsBackfillState = { running: false, startedAt: null, from: null, to: null, clubs: null, finishedAt: null, errors: [] };
+
+// POST /api/sync/checkins/backfill — fill historical hours in checkins_hourly
+// using the same Pacific-aware backfillClub() helper as the live sync. Runs in
+// background; poll `GET /api/sync/checkins/backfill/status` for completion.
+//
+// Defaults to filling from MAX(hour_start) currently in checkins_hourly up to
+// "now". Override via ?from=YYYY-MM-DD, ?to=YYYY-MM-DD, ?clubs=all|csv.
+app.post('/api/sync/checkins/backfill', requireSecret, async (req, res) => {
+  if (checkinsBackfillState.running) {
+    return res.status(409).json({ error: 'Backfill already in progress', state: checkinsBackfillState });
+  }
+  try {
+    const allClubs = LOCATIONS.map(l => l.clubNumber).filter(Boolean);
+    let clubs = allClubs;
+    if (req.query.clubs && req.query.clubs !== 'all') {
+      clubs = req.query.clubs.split(',').map(s => s.trim()).filter(Boolean);
+    }
+
+    let fromDate;
+    if (req.query.from) {
+      fromDate = new Date(req.query.from + 'T00:00:00Z');
+    } else {
+      // Default: pick up from the latest hour we already have. Backfill is
+      // idempotent so re-running the same hour is harmless.
+      const { data } = await supabase
+        .from('checkins_hourly')
+        .select('hour_start')
+        .order('hour_start', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      fromDate = data?.hour_start ? new Date(data.hour_start) : new Date(Date.now() - 7 * 86400000);
+    }
+    const toDate = req.query.to ? new Date(req.query.to + 'T23:59:59Z') : new Date();
+
+    checkinsBackfillState = {
+      running: true,
+      startedAt: new Date().toISOString(),
+      from: fromDate.toISOString(),
+      to: toDate.toISOString(),
+      clubs,
+      finishedAt: null,
+      errors: [],
+    };
+
+    res.json({ status: 'started', state: checkinsBackfillState });
+
+    // Fan out: one club at a time concurrently (so all 7 progress in parallel)
+    // with a short per-hour sleep inside each. Total wall time ≈ hours × 100ms.
+    Promise.all(clubs.map(c =>
+      backfillClub(c, fromDate, toDate, 100).catch(err => {
+        console.error(`[API] backfill ${c} failed:`, err.message);
+        checkinsBackfillState.errors.push({ club: c, error: err.message });
+      })
+    )).finally(() => {
+      checkinsBackfillState.running = false;
+      checkinsBackfillState.finishedAt = new Date().toISOString();
+      console.log('[API] Check-ins backfill complete');
+    });
+  } catch (err) {
+    checkinsBackfillState.running = false;
+    console.error('[API] backfill kickoff failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/sync/checkins/backfill/status', requireSecret, (req, res) => {
+  res.json(checkinsBackfillState);
+});
 
 // POST /api/sync/checkins/probe — hits ABC for the previous complete hour to
 // rule out "partial-hour query returns zero" and dumps the raw ABC response
