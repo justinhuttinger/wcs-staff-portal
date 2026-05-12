@@ -322,6 +322,7 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
     return `${hh}:${mm}`
   })
   const [duration, setDuration] = useState(60)
+  const [allowUnfunded, setAllowUnfunded] = useState(false)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -389,16 +390,19 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
     if (!selectedMember) { setSubmitError('Pick a member'); return }
     if (!date || !time) { setSubmitError('Pick a date and time'); return }
 
-    // Best-guess ABC body shape. The backend forwards verbatim so we can
-    // adjust without redeploying if ABC rejects.
+    // ABC body shape (discovered via 2026-05-12 test against Salem):
+    //   error API-CAL-EVT-0063 confirmed the event type needs a member
+    //   identified — top-level `memberId`, not a `members[]` array.
+    //   `allowUnfunded` defaults false per ABC's example response.
     const eventTimestamp = `${date}T${time}:00`
     const body = {
       club_number: club.clubNumber, // stripped by backend before forwarding
       eventTypeId,
-      eventTimestamp,             // local naive ISO; ABC has historically returned eventTimestampLocal in this shape
-      duration: Number(duration),
       employeeId,
-      members: [{ memberId: selectedMember.member_id }],
+      memberId: selectedMember.member_id,
+      eventTimestamp,         // local naive ISO; matches the eventTimestampLocal field GET returns
+      duration: Number(duration),
+      allowUnfunded,
     }
 
     setSubmitting(true)
@@ -541,6 +545,20 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
                   </select>
                 </label>
               </div>
+
+              {/* Allow unfunded — book the session even with no funded sessions on file */}
+              <label className="flex items-start gap-2 text-xs text-text-primary cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={allowUnfunded}
+                  onChange={e => setAllowUnfunded(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-wcs-red"
+                />
+                <span>
+                  <span className="font-semibold">Allow unfunded</span>
+                  <span className="block text-text-muted">Book even if the member has no funded PT sessions remaining.</span>
+                </span>
+              </label>
 
               {submitError && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">{submitError}</div>}
               {success && <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg px-3 py-2 text-sm">{success}</div>}
