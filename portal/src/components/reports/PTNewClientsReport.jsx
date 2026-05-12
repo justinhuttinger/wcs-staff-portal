@@ -94,10 +94,11 @@ export default function PTNewClientsReport({ startDate, endDate, locationSlug })
 
   function handleExportCSV() {
     if (!filtered.length) return
-    const header = ['Sell Date', 'Classification', 'Member', 'Package', 'Price', 'Commission Employee', 'Service Employee', 'Location']
+    const header = ['Sell Date', 'Classification', 'Type', 'Member', 'Package', 'Price', 'Commission Employee', 'Service Employee', 'Location']
     const rows = filtered.map(r => [
       r.saleDate,
       r.classification,
+      r.type,
       r.memberName,
       r.package,
       r.price.toFixed(2),
@@ -216,6 +217,7 @@ export default function PTNewClientsReport({ startDate, endDate, locationSlug })
             <thead className="bg-bg">
               <tr className="text-xs uppercase tracking-wide text-text-muted">
                 <th className="text-left px-4 py-2 font-semibold">Sell Date</th>
+                <th className="text-left px-4 py-2 font-semibold">Class</th>
                 <th className="text-left px-4 py-2 font-semibold">Type</th>
                 <th className="text-left px-4 py-2 font-semibold">Member</th>
                 <th className="text-left px-4 py-2 font-semibold">Package</th>
@@ -228,7 +230,7 @@ export default function PTNewClientsReport({ startDate, endDate, locationSlug })
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-text-muted text-sm">
+                  <td colSpan={9} className="px-4 py-8 text-center text-text-muted text-sm">
                     No new PT clients in this date range.
                   </td>
                 </tr>
@@ -238,6 +240,9 @@ export default function PTNewClientsReport({ startDate, endDate, locationSlug })
                     <td className="px-4 py-2 text-text-primary whitespace-nowrap">{fmtDate(r.saleDate)}</td>
                     <td className="px-4 py-2">
                       <ClassificationPill kind={r.classification} />
+                    </td>
+                    <td className="px-4 py-2">
+                      <TypePill kind={r.type} />
                     </td>
                     <td className="px-4 py-2 font-medium text-text-primary">{r.memberName}</td>
                     <td className="px-4 py-2 text-text-muted">{r.package}</td>
@@ -252,7 +257,7 @@ export default function PTNewClientsReport({ startDate, endDate, locationSlug })
             {filtered.length > 0 && (
               <tfoot className="border-t-2 border-border">
                 <tr className="bg-bg font-semibold">
-                  <td className="px-4 py-2 text-text-primary" colSpan={4}>
+                  <td className="px-4 py-2 text-text-primary" colSpan={5}>
                     Total: {filtered.length} {filtered.length === 1 ? 'sale' : 'sales'}
                   </td>
                   <td className="px-4 py-2 text-right text-text-primary">{fmtMoney(filteredSummary.totalRevenue)}</td>
@@ -293,6 +298,19 @@ function ClassificationPill({ kind }) {
   return (
     <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold border ${cls}`}>
       {kind}
+    </span>
+  )
+}
+
+function TypePill({ kind }) {
+  const isRS = kind === 'RS'
+  const cls = isRS
+    ? 'bg-purple-50 text-purple-700 border-purple-200'
+    : 'bg-amber-50 text-amber-700 border-amber-200'
+  const label = isRS ? 'RS' : 'PIF'
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold border ${cls}`}>
+      {label}
     </span>
   )
 }
