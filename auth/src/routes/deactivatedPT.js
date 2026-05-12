@@ -1,6 +1,7 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { supabaseAdmin } = require('../services/supabase')
 
 // 'Deactivated PT' — surfaces two flavors of PT churn that overlap in the
 // front-desk mental model:
@@ -121,6 +122,61 @@ async function fetchPTPurchaseHistory(clubNumber, memberId) {
   }
 }
 
+// Pull every recurring service for a single member, regardless of date — used
+// to verify "no different active RS exists" before we flag someone as PIF
+// Burned. The window-filtered club fetch can miss long-running active services
+// that haven't been modified recently.
+const memberRSCache = new Map()
+async function fetchMemberAllRS(clubNumber, memberId) {
+  if (!memberId) return []
+  const key = `${clubNumber}:${memberId}`
+  if (memberRSCache.has(key)) return memberRSCache.get(key)
+  try {
+    const all = []
+    let page = 1
+    while (page <= 5) {
+      const data = await abcGet(`/${clubNumber}/members/recurringservices`, {
+        memberId, size: 200, page,
+      })
+      const svcs = data.recurringServices || []
+      for (const s of svcs) {
+        if (!isPT(s.serviceItem)) continue
+        all.push(s)
+      }
+      if (svcs.length < 200) break
+      page++
+    }
+    memberRSCache.set(key, all)
+    return all
+  } catch (e) {
+    console.warn(`[Deactivated PT] member RS fetch failed for ${memberId}@${clubNumber}:`, e.message)
+    memberRSCache.set(key, [])
+    return []
+  }
+}
+
+// Plan-detail cache for rich names — same pattern as ptNewClients.js. The
+// recurring-services payload returns the short `serviceItem` ("PT 60MIN");
+// the full name with frequency + duration ("PT60 3X/WEEK 12 MONTHS") lives
+// on the recurringServicePlan entity.
+const planCache = new Map()
+const PLAN_CACHE_TTL = 60 * 60 * 1000
+async function fetchPlanName(clubNumber, planId) {
+  if (!planId) return null
+  const key = `${clubNumber}:${planId}`
+  const hit = planCache.get(key)
+  if (hit && (Date.now() - hit.ts) < PLAN_CACHE_TTL) return hit.name
+  try {
+    const data = await abcGet(`/${clubNumber}/clubs/recurringserviceplans/${planId}`)
+    const name = data?.recurringServicePlanDetail?.recurringServicePlanName || null
+    planCache.set(key, { name, ts: Date.now() })
+    return name
+  } catch (e) {
+    console.warn(`[Deactivated PT] plan fetch failed for ${planId}@${clubNumber}:`, e.message)
+    return null
+  }
+}
+
 function memberName(s) {
   const f = (s.memberFirstName || '').trim()
   const l = (s.memberLastName || '').trim()
@@ -151,16 +207,38 @@ function deactivationDate(s) {
   return ''
 }
 
-function parsePrice(s) {
-  const raw = s.invoiceTotal ?? s.totalPrice ?? '0'
-  const cleaned = String(raw).replace(/[$,]/g, '')
-  const n = parseFloat(cleaned)
-  return Number.isFinite(n) ? n : 0
+function normalizeRSName(name) {
+  if (!name) return name
+  return name.replace(/\bSINGLE\b/gi, 'PT60')
 }
 
-function rsPackageName(s) {
-  const name = s.recurringServicePlanName || s.serviceItem || 'Unknown'
-  return name.replace(/\bSINGLE\b/gi, 'PT60')
+// Look up the last completed-session timestamp per (club, member) for a batch
+// of members, all in one Supabase query. Returns Map<memberId, 'YYYY-MM-DD'>.
+async function fetchLastSessionDates(clubNumber, memberIds) {
+  const out = new Map()
+  if (!memberIds.length) return out
+  // Chunk into batches of 500 to avoid query length issues
+  for (let i = 0; i < memberIds.length; i += 500) {
+    const chunk = memberIds.slice(i, i + 500)
+    const { data, error } = await supabaseAdmin
+      .from('abc_calendar_events')
+      .select('member_id, event_timestamp')
+      .eq('club_number', clubNumber)
+      .eq('status', 'Completed')
+      .in('member_id', chunk)
+      .order('event_timestamp', { ascending: false })
+      .limit(50000)
+    if (error) {
+      console.warn(`[Deactivated PT] last-session query failed:`, error.message)
+      continue
+    }
+    for (const r of (data || [])) {
+      if (out.has(r.member_id)) continue // already have the most recent (DESC order)
+      const day = String(r.event_timestamp || '').slice(0, 10)
+      if (day) out.set(r.member_id, day)
+    }
+  }
+  return out
 }
 
 async function buildClub(club, startDate, endDate) {
@@ -173,27 +251,40 @@ async function buildClub(club, startDate, endDate) {
     'lastModifiedTimestampRange'
   )
 
-  // Bucket each member's full footprint we saw in this window so we can
-  // answer "do they have an active RS?" without a second roundtrip.
-  const memberFootprint = new Map() // memberId -> { activeRS, anyPIF, latestPIF, latestRS }
+  // Bucket each member's window-modified footprint. Used for: identifying
+  // PIF-burn candidates (anyPIF). Active-RS check is done separately against
+  // the member's FULL RS history below so we don't miss steady-state active
+  // services that didn't change in this window.
+  const memberFootprint = new Map() // memberId -> { anyPIF, latestPIF }
   for (const s of allSvcs) {
-    const f = memberFootprint.get(s.memberId) || {
-      activeRS: false, anyPIF: false, latestPIF: null, latestRS: null,
-    }
+    const f = memberFootprint.get(s.memberId) || { anyPIF: false, latestPIF: null }
     if (isPIF(s)) {
       f.anyPIF = true
       const sd = s.recurringServiceDates?.saleDate
       if (!f.latestPIF || (sd && sd > (f.latestPIF.recurringServiceDates?.saleDate || ''))) {
         f.latestPIF = s
       }
-    } else {
-      if (String(s.recurringServiceStatus || '').toLowerCase() === 'active') f.activeRS = true
-      const sd = s.recurringServiceDates?.saleDate
-      if (!f.latestRS || (sd && sd > (f.latestRS.recurringServiceDates?.saleDate || ''))) {
-        f.latestRS = s
-      }
     }
     memberFootprint.set(s.memberId, f)
+  }
+
+  // Collect plan IDs we'll need rich names for (deactivated RS rows only —
+  // PIF rows use a synthesized "N PACK" label).
+  const planIds = new Set()
+  for (const s of allSvcs) {
+    if (isPIF(s)) continue
+    const status = String(s.recurringServiceStatus || '').toLowerCase()
+    if (status === 'active' || !status) continue
+    const pid = s.recurringServicePlanId || s.servicePlanId
+    if (pid) planIds.add(String(pid))
+  }
+  const planNames = new Map()
+  const uniquePlans = [...planIds]
+  for (let i = 0; i < uniquePlans.length; i += 5) {
+    const batch = uniquePlans.slice(i, i + 5)
+    const results = await Promise.all(batch.map(pid => fetchPlanName(club.clubNumber, pid)))
+    results.forEach((name, idx) => { if (name) planNames.set(batch[idx], name) })
+    if (i + 5 < uniquePlans.length) await new Promise(r => setTimeout(r, 100))
   }
 
   const rows = []
@@ -203,60 +294,83 @@ async function buildClub(club, startDate, endDate) {
     if (isPIF(s)) continue
     const status = String(s.recurringServiceStatus || '').toLowerCase()
     if (status === 'active' || !status) continue
+    const pid = s.recurringServicePlanId || s.servicePlanId
+    const planName = (pid && planNames.get(String(pid))) || s.recurringServicePlanName || s.serviceItem || 'Unknown'
     rows.push({
       type: 'Deactivated RS',
       memberId: s.memberId,
       memberName: memberName(s),
-      package: rsPackageName(s),
-      status: s.recurringServiceStatus || 'Unknown',
+      package: normalizeRSName(planName),
       serviceEmployee: serviceEmployee(s),
       saleDate: s.recurringServiceDates?.saleDate?.slice(0, 10) || '',
-      changedDate: deactivationDate(s),
-      price: parsePrice(s),
-      sessionsLeft: null,
-      sessionsBought: null,
+      cancelDate: deactivationDate(s),
       clubName: club.name,
       locationSlug: club.slug,
     })
   }
 
   // --- PIF Burned rows -------------------------------------------------------
-  // For each member who has any PIF activity in the window, fetch purchase
-  // history (cached, batched 5-at-a-time, 200ms pause).
-  const pifMembers = [...memberFootprint.entries()]
-    .filter(([, f]) => f.anyPIF && !f.activeRS)
+  // Candidate set: members with PIF activity in the window. We verify each
+  // against their full history before flagging as burned: must have zero
+  // sessions left AND no different active RS anywhere on their record.
+  const pifCandidates = [...memberFootprint.entries()]
+    .filter(([, f]) => f.anyPIF)
     .map(([memberId]) => memberId)
 
-  for (let i = 0; i < pifMembers.length; i += 5) {
-    const batch = pifMembers.slice(i, i + 5)
+  const verifiedBurned = []
+  for (let i = 0; i < pifCandidates.length; i += 5) {
+    const batch = pifCandidates.slice(i, i + 5)
     await Promise.all(batch.map(async memberId => {
-      const history = await fetchPTPurchaseHistory(club.clubNumber, memberId)
+      const [history, allMemberRS] = await Promise.all([
+        fetchPTPurchaseHistory(club.clubNumber, memberId),
+        fetchMemberAllRS(club.clubNumber, memberId),
+      ])
       if (!history.length) return
       const hasSessionsLeft = history.some(h => parseInt(h.available || '0', 10) > 0)
       if (hasSessionsLeft) return
-      // Member is PIF-burned. Pick the freshest PIF for display context.
-      const sorted = [...history].sort((a, b) => (b.purchaseDate || '').localeCompare(a.purchaseDate || ''))
-      const latest = sorted[0]
-      const footprint = memberFootprint.get(memberId)
-      const latestPIFRow = footprint?.latestPIF
-      const totalBought = parseInt(latest.purchased || '0', 10)
-      rows.push({
-        type: 'PIF Burned',
-        memberId,
-        memberName: latestPIFRow ? memberName(latestPIFRow) : (`${(latest.memberFirstName || '').trim()} ${(latest.memberLastName || '').trim()}`.trim() || 'Unknown'),
-        package: totalBought > 0 ? `${totalBought} PACK` : 'PACK',
-        status: 'Exhausted',
-        serviceEmployee: latestPIFRow ? serviceEmployee(latestPIFRow) : '',
-        saleDate: latest.purchaseDate?.slice(0, 10) || '',
-        changedDate: latestPIFRow?.lastModifiedTimestamp?.slice(0, 10) || '',
-        price: parseFloat(String(latest.totalPrice || '0').replace(/[$,]/g, '')) || 0,
-        sessionsLeft: 0,
-        sessionsBought: totalBought,
-        clubName: club.name,
-        locationSlug: club.slug,
-      })
+      const hasActiveRS = allMemberRS.some(s =>
+        !isPIF(s) && String(s.recurringServiceStatus || '').toLowerCase() === 'active'
+      )
+      if (hasActiveRS) return
+      verifiedBurned.push({ memberId, history, allMemberRS })
     }))
-    if (i + 5 < pifMembers.length) await new Promise(r => setTimeout(r, 200))
+    if (i + 5 < pifCandidates.length) await new Promise(r => setTimeout(r, 200))
+  }
+
+  // Fetch the last completed-session date for the verified burned set in one
+  // bulk query against abc_calendar_events.
+  const lastSessionMap = await fetchLastSessionDates(
+    club.clubNumber,
+    verifiedBurned.map(v => v.memberId)
+  )
+
+  for (const v of verifiedBurned) {
+    const sorted = [...v.history].sort((a, b) => (b.purchaseDate || '').localeCompare(a.purchaseDate || ''))
+    const latestSummary = sorted[0]
+    const footprint = memberFootprint.get(v.memberId)
+    const latestPIFRow = footprint?.latestPIF
+    const totalBought = parseInt(latestSummary.purchased || '0', 10)
+    // Prefer the plan name from the recurring service row (which we'll then
+    // try to enrich via a plan-detail fetch). PIF entries also have a
+    // recurringServicePlanName field and a plan id.
+    let pkg = totalBought > 0 ? `${totalBought} PACK` : 'PACK'
+    if (latestPIFRow) {
+      const pid = latestPIFRow.recurringServicePlanId || latestPIFRow.servicePlanId
+      const richName = pid ? await fetchPlanName(club.clubNumber, pid) : null
+      const planName = richName || latestPIFRow.recurringServicePlanName
+      if (planName) pkg = normalizeRSName(planName)
+    }
+    rows.push({
+      type: 'PIF Burned',
+      memberId: v.memberId,
+      memberName: latestPIFRow ? memberName(latestPIFRow) : (`${(latestSummary.memberFirstName || '').trim()} ${(latestSummary.memberLastName || '').trim()}`.trim() || 'Unknown'),
+      package: pkg,
+      serviceEmployee: latestPIFRow ? serviceEmployee(latestPIFRow) : '',
+      saleDate: latestSummary.purchaseDate?.slice(0, 10) || '',
+      cancelDate: lastSessionMap.get(v.memberId) || '',
+      clubName: club.name,
+      locationSlug: club.slug,
+    })
   }
 
   return rows
@@ -299,7 +413,7 @@ router.get('/', async (req, res) => {
     })
 
     rows.sort((a, b) =>
-      (b.changedDate || '').localeCompare(a.changedDate || '') ||
+      (b.cancelDate || '').localeCompare(a.cancelDate || '') ||
       (a.memberName || '').localeCompare(b.memberName || '')
     )
 
