@@ -8,6 +8,7 @@ import CancelsReport from './reports/CancelsReport'
 import CheckinsReport from './reports/CheckinsReport'
 import PTSessionsReport from './reports/PTSessionsReport'
 import PTNewClientsReport from './reports/PTNewClientsReport'
+import SessionFrequencyReport from './reports/SessionFrequencyReport'
 import PayrollReport from './reports/PayrollReport'
 
 // SVG path data for each reporting tile (outline style, matches main page tiles via ToolButton)
@@ -21,6 +22,7 @@ const REPORT_ICONS = {
   checkins: 'M9 12.75 11.25 15 15 9.75M9 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-1.5a1.125 1.125 0 0 1-1.125-1.125V17.25m7.5 0v3.375c0 .621.504 1.125 1.125 1.125h1.5a1.125 1.125 0 0 0 1.125-1.125V17.25m-7.5 0h7.5M3 8.25v6a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-6a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3Z',
   'pt-sessions': 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
   'pt-new-clients': 'M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z',
+  'session-frequency': 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z',
   payroll: 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z',
 }
 
@@ -33,6 +35,7 @@ const ALL_REPORT_TILES = [
   { key: 'checkins', label: 'Check-ins', desc: 'Traffic & Times' },
   { key: 'pt-sessions', label: 'PT Sessions', desc: 'Trainer Load' },
   { key: 'pt-new-clients', label: 'PT New Clients', desc: 'New + Resign Sales' },
+  { key: 'session-frequency', label: 'Session Frequency', desc: 'Sessions / Member / Week' },
   { key: 'payroll', label: 'Payroll', desc: 'Monthly Commissions' },
   { key: 'operations', label: 'Operational Compliance', desc: 'Checklists' },
 ]
@@ -53,7 +56,7 @@ const REPORT_GROUPS = [
     label: 'Training',
     desc: 'PT Reports',
     iconPath: REPORT_ICONS['pt-roster'],
-    reports: ['pt', 'pt-roster', 'pt-sessions', 'pt-new-clients'],
+    reports: ['pt', 'pt-roster', 'pt-sessions', 'pt-new-clients', 'session-frequency'],
   },
 ]
 
@@ -62,9 +65,9 @@ function getReportTilesForRole(role) {
     case 'team_member':
       return []
     case 'lead':
-      return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients'].includes(t.key))
+      return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency'].includes(t.key))
     case 'manager':
-      return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'payroll', 'operations'].includes(t.key))
+      return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'payroll', 'operations'].includes(t.key))
     default: // corporate, admin
       return ALL_REPORT_TILES
   }
@@ -267,8 +270,8 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           <p className="text-xs text-text-muted mb-4 uppercase tracking-wide font-semibold">{location}</p>
         )}
 
-        {/* Date Controls — hidden for PT Roster, Operations, and Payroll (own pickers) */}
-        {activeReport !== 'pt-roster' && activeReport !== 'operations' && activeReport !== 'payroll' && <div className="flex flex-wrap items-center gap-3 justify-end">
+        {/* Date Controls — hidden for reports with fixed or self-managed date ranges */}
+        {activeReport !== 'pt-roster' && activeReport !== 'operations' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && <div className="flex flex-wrap items-center gap-3 justify-end">
           <div className="flex flex-wrap gap-1.5">
             {QUICK_RANGES.map(qr => (
               <button
@@ -349,6 +352,9 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           )}
           {activeReport === 'pt-new-clients' && (
             <PTNewClientsReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+          )}
+          {activeReport === 'session-frequency' && (
+            <SessionFrequencyReport locationSlug={locationSlug} />
           )}
           {activeReport === 'payroll' && (
             <PayrollReport locationSlug={locationSlug} />

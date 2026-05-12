@@ -351,6 +351,11 @@ export async function getPTNewClients(params = {}) {
   return api('/reports/pt-new-clients' + (qs ? '?' + qs : ''))
 }
 
+export async function getSessionFrequency(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/session-frequency' + (qs ? '?' + qs : ''))
+}
+
 export async function getVIPReport(params = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/reports/vip' + (qs ? '?' + qs : ''))
