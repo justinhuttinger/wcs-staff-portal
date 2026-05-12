@@ -323,6 +323,9 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
   })
   const [duration, setDuration] = useState(60)
   const [allowUnfunded, setAllowUnfunded] = useState(false)
+  const [trainingLevels, setTrainingLevels] = useState([])
+  const [trainingLevelId, setTrainingLevelId] = useState('')
+  const [trainingLevelsLoading, setTrainingLevelsLoading] = useState(false)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -381,6 +384,33 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
     return () => clearTimeout(t)
   }, [memberQuery, club.clubNumber])
 
+  // Training levels — refetch when event type changes
+  useEffect(() => {
+    if (!eventTypeId) {
+      setTrainingLevels([])
+      setTrainingLevelId('')
+      return
+    }
+    let cancelled = false
+    async function load() {
+      setTrainingLevelsLoading(true)
+      try {
+        const r = await api(`/abc-scheduler/training-levels?club_number=${encodeURIComponent(club.clubNumber)}&event_type_id=${encodeURIComponent(eventTypeId)}`)
+        if (cancelled) return
+        const levels = r.training_levels || []
+        setTrainingLevels(levels)
+        // Default to most-observed (already sorted) so the common case is one click.
+        setTrainingLevelId(levels[0]?.level_id || '')
+      } catch (_) {
+        if (!cancelled) { setTrainingLevels([]); setTrainingLevelId('') }
+      } finally {
+        if (!cancelled) setTrainingLevelsLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [eventTypeId, club.clubNumber])
+
   const selectedType = eventTypes.find(t => t.event_type_id === eventTypeId)
 
   async function submit() {
@@ -390,10 +420,11 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
     if (!selectedMember) { setSubmitError('Pick a member'); return }
     if (!date || !time) { setSubmitError('Pick a date and time'); return }
 
-    // ABC body shape (discovered via 2026-05-12 test against Salem):
-    //   error API-CAL-EVT-0063 confirmed the event type needs a member
-    //   identified — top-level `memberId`, not a `members[]` array.
-    //   `allowUnfunded` defaults false per ABC's example response.
+    // ABC body shape (discovered iteratively against Salem on 2026-05-12):
+    //   API-CAL-EVT-0063 → member must be top-level `memberId`
+    //   API-CAL-EVT-0060 → event types with training levels need
+    //                      `eventTrainingLevelId`
+    //   `allowUnfunded` appeared in ABC's example response.
     const eventTimestamp = `${date}T${time}:00`
     const body = {
       club_number: club.clubNumber, // stripped by backend before forwarding
@@ -404,6 +435,7 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
       duration: Number(duration),
       allowUnfunded,
     }
+    if (trainingLevelId) body.eventTrainingLevelId = trainingLevelId
 
     setSubmitting(true)
     try {
@@ -465,6 +497,29 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
                   </span>
                 )}
               </label>
+
+              {/* Training level — shown when the event type has known levels */}
+              {(trainingLevels.length > 0 || trainingLevelsLoading) && (
+                <label className="block">
+                  <span className="block text-xs font-medium text-text-muted mb-1">Training level</span>
+                  <select
+                    value={trainingLevelId}
+                    onChange={e => setTrainingLevelId(e.target.value)}
+                    disabled={trainingLevelsLoading}
+                    className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red disabled:opacity-60"
+                  >
+                    {trainingLevelsLoading && <option value="">Loading…</option>}
+                    {!trainingLevelsLoading && trainingLevels.length === 0 && (
+                      <option value="">No cached levels — pick another event type or check ABC</option>
+                    )}
+                    {trainingLevels.map(l => (
+                      <option key={l.level_id} value={l.level_id}>
+                        {l.level_name} · {l.observed_count}× last seen
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
 
               {/* Member search */}
               <label className="block">

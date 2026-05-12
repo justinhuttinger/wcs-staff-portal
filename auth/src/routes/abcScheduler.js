@@ -323,4 +323,49 @@ router.get('/event-types', async (req, res) => {
   }
 })
 
+// GET /abc-scheduler/training-levels?club_number=&event_type_id=
+// Returns distinct training levels seen for this event type in our cached
+// events. The raw ABC payload is stored in `abc_calendar_events.raw` —
+// we mine `raw.eventTrainingLevel.{levelId, levelName}` from there.
+//
+// Booking via POST /calendars/events requires `eventTrainingLevelId` for
+// event types that have one (ABC error API-CAL-EVT-0060). Surfacing the
+// historically-used levels in a dropdown lets staff pick without guessing.
+router.get('/training-levels', async (req, res) => {
+  const { club_number, event_type_id } = req.query
+  if (!club_number || !event_type_id) {
+    return res.status(400).json({ error: 'club_number and event_type_id are required' })
+  }
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('abc_calendar_events')
+      .select('raw, training_level')
+      .eq('club_number', String(club_number))
+      .eq('event_type_id', String(event_type_id))
+      .not('raw', 'is', null)
+      .limit(500)
+    if (error) throw new Error(error.message)
+
+    const byId = new Map()
+    for (const row of (data || [])) {
+      const tl = row.raw?.eventTrainingLevel
+      const levelId = tl?.levelId || tl?.id
+      if (!levelId) continue
+      if (!byId.has(levelId)) {
+        byId.set(levelId, {
+          level_id: levelId,
+          level_name: tl.levelName || row.training_level || levelId,
+          observed_count: 0,
+        })
+      }
+      byId.get(levelId).observed_count += 1
+    }
+    const levels = [...byId.values()].sort((a, b) => b.observed_count - a.observed_count)
+    res.json({ training_levels: levels })
+  } catch (err) {
+    console.error('[abcScheduler] /training-levels failed:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 module.exports = router
