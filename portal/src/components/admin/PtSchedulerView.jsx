@@ -327,6 +327,22 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
   const [trainingLevelId, setTrainingLevelId] = useState('')
   const [trainingLevelManual, setTrainingLevelManual] = useState('')
   const [trainingLevelsLoading, setTrainingLevelsLoading] = useState(false)
+  const [rawSample, setRawSample] = useState(null)
+  const [rawSampleLoading, setRawSampleLoading] = useState(false)
+  const [rawSampleError, setRawSampleError] = useState(null)
+
+  async function loadRawSample() {
+    if (!eventTypeId) return
+    setRawSampleLoading(true); setRawSampleError(null); setRawSample(null)
+    try {
+      const r = await api(`/abc-scheduler/event-types/${encodeURIComponent(eventTypeId)}/raw-sample?club_number=${encodeURIComponent(club.clubNumber)}`)
+      setRawSample(r.sample || { _none: 'No cached events for this event type' })
+    } catch (e) {
+      setRawSampleError(e.message || 'Failed to fetch sample')
+    } finally {
+      setRawSampleLoading(false)
+    }
+  }
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -436,11 +452,20 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
       duration: Number(duration),
       allowUnfunded,
     }
-    // Manual text input wins if filled; otherwise use whatever the dropdown
-    // resolved to. Either way, ABC requires `eventTrainingLevelId` for event
-    // types that have training levels (API-CAL-EVT-0060).
+    // Manual text input wins if filled; otherwise use the dropdown value.
+    //
+    // 2026-05-12 discovery: ABC's request-body echo only includes fields it
+    // PARSED. `eventTrainingLevelId` (flat) was being silently stripped from
+    // every previous attempt. ABC's GET responses use the nested form
+    // `eventTrainingLevel: { levelId, levelName }`, so POST is likely symmetric.
+    // We now send BOTH shapes (nested + flat + legacy alternatives) and ABC
+    // will echo back whichever it recognized — that tells us the right shape.
     const finalLevelId = (trainingLevelManual && trainingLevelManual.trim()) || trainingLevelId
-    if (finalLevelId) body.eventTrainingLevelId = finalLevelId
+    if (finalLevelId) {
+      body.eventTrainingLevel = { levelId: finalLevelId } // nested, mirrors GET shape (likely correct)
+      body.eventTrainingLevelId = finalLevelId            // flat — kept in case ABC accepts this too
+      body.trainingLevelId = finalLevelId                 // alt naming, just in case
+    }
 
     setSubmitting(true)
     try {
@@ -510,7 +535,18 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
                   text input lets staff paste an ID when the cache is empty
                   (new event type, or ABC never returned levelId in GET).   */}
               <div className="space-y-1.5">
-                <span className="block text-xs font-medium text-text-muted">Training level</span>
+                <div className="flex items-center justify-between">
+                  <span className="block text-xs font-medium text-text-muted">Training level</span>
+                  <button
+                    type="button"
+                    onClick={loadRawSample}
+                    disabled={!eventTypeId || rawSampleLoading}
+                    className="text-[10px] text-wcs-red hover:underline disabled:opacity-50"
+                    title="Show the most recent cached event's raw JSON so you can find a real levelId"
+                  >
+                    {rawSampleLoading ? 'Loading…' : 'Show ABC raw sample'}
+                  </button>
+                </div>
                 {trainingLevelsLoading ? (
                   <div className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm text-text-muted">Loading…</div>
                 ) : trainingLevels.length > 0 ? (
@@ -540,8 +576,19 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
                 <p className="text-[10px] text-text-muted">
                   {trainingLevels.length > 0
                     ? 'Manual override wins if filled.'
-                    : 'If you don\'t know the ID, check Salem ABC web admin for this event type, or ask the rep.'}
+                    : 'If you don\'t know the ID, click "Show ABC raw sample" above to inspect a cached event — copy the `eventTrainingLevel.levelId` value from there.'}
                 </p>
+                {rawSampleError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-2 py-1 text-[11px]">
+                    {rawSampleError}
+                  </div>
+                )}
+                {rawSample && (
+                  <details open className="bg-bg border border-border rounded-lg px-3 py-2 text-[11px]">
+                    <summary className="cursor-pointer text-text-muted font-medium">Most recent cached event raw JSON (find levelId here)</summary>
+                    <pre className="mt-2 bg-surface border border-border rounded p-2 overflow-x-auto text-[10px] max-h-72">{JSON.stringify(rawSample, null, 2)}</pre>
+                  </details>
+                )}
               </div>
 
               {/* Member search */}

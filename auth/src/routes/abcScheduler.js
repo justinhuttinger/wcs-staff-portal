@@ -368,4 +368,31 @@ router.get('/training-levels', async (req, res) => {
   }
 })
 
+// GET /abc-scheduler/event-types/:eventTypeId/raw-sample?club_number=
+// Debug helper — returns the full `raw` JSON of the most recent cached
+// event with this event_type_id. Used by the booking modal so an admin
+// can SEE exactly what fields ABC includes in a GET response (training
+// level shape, timestamp keys, etc) and copy a real ID into the form.
+router.get('/event-types/:eventTypeId/raw-sample', async (req, res) => {
+  const { eventTypeId } = req.params
+  const { club_number } = req.query
+  if (!club_number) return res.status(400).json({ error: 'club_number is required' })
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('abc_calendar_events')
+      .select('event_id, event_timestamp, status, attended_status, raw')
+      .eq('club_number', String(club_number))
+      .eq('event_type_id', String(eventTypeId))
+      .not('raw', 'is', null)
+      .order('event_timestamp', { ascending: false })
+      .limit(1)
+    if (error) throw new Error(error.message)
+    if (!data || data.length === 0) return res.json({ sample: null })
+    res.json({ sample: data[0] })
+  } catch (err) {
+    console.error('[abcScheduler] raw-sample failed:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 module.exports = router
