@@ -162,4 +162,165 @@ router.get('/members/search', async (req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// Phase 2-4 mutations — write access via ABC endpoints confirmed by ABC rep:
+//   POST   /calendars/events                                  (book)
+//   PUT    /calendars/events/{eventId}/members/{memberId}/attendance
+//   DELETE /calendars/events/{eventId}                        (cancel)
+//   DELETE /calendars/events/{eventId}/members/{memberId}     (drop member)
+//
+// These are thin admin-only proxies. Bodies are passed through unchanged so
+// the frontend can iterate on the exact ABC payload shape without backend
+// redeploys. ABC's response is returned verbatim.
+// ---------------------------------------------------------------------------
+
+// POST /abc-scheduler/events
+//   body: ABC POST /calendars/events payload (plus a top-level club_number
+//   we strip before forwarding)
+// Returns ABC's response body.
+router.post('/events', async (req, res) => {
+  const { club_number, ...payload } = req.body || {}
+  if (!club_number) return res.status(400).json({ error: 'club_number is required in body' })
+  if (!payload || Object.keys(payload).length === 0) {
+    return res.status(400).json({ error: 'request body required (ABC event payload)' })
+  }
+  try {
+    const url = `${ABC_BASE_URL}/${club_number}/calendars/events`
+    const r = await axios.post(url, payload, {
+      headers: { ...abcHeaders(), 'Content-Type': 'application/json' },
+      timeout: 30000,
+      validateStatus: () => true,
+    })
+    if (r.status < 200 || r.status >= 300) {
+      console.error('[abcScheduler] POST /events ABC error:', r.status, r.data)
+    }
+    res.status(r.status).json(r.data)
+  } catch (err) {
+    console.error('[abcScheduler] POST /events failed:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// PUT /abc-scheduler/events/:eventId/attendance
+//   body: { club_number, member_id, attended_status }
+//   attended_status: same string GET returns ("Attended", "Did Not Attend",
+//   "Pending", etc — mirrored from abc_calendar_events.attended_status).
+router.put('/events/:eventId/attendance', async (req, res) => {
+  const { eventId } = req.params
+  const { club_number, member_id, attended_status } = req.body || {}
+  if (!club_number || !member_id || !attended_status) {
+    return res.status(400).json({ error: 'club_number, member_id, attended_status are required' })
+  }
+  try {
+    // ABC rep confirmed: drop "secured" from the documented path.
+    const url = `${ABC_BASE_URL}/${club_number}/calendars/events/${encodeURIComponent(eventId)}/members/${encodeURIComponent(member_id)}/attendance`
+    const r = await axios.put(url, { attendedStatus: attended_status }, {
+      headers: { ...abcHeaders(), 'Content-Type': 'application/json' },
+      timeout: 30000,
+      validateStatus: () => true,
+    })
+    if (r.status < 200 || r.status >= 300) {
+      console.error('[abcScheduler] PUT attendance ABC error:', r.status, r.data)
+    }
+    res.status(r.status).json(r.data)
+  } catch (err) {
+    console.error('[abcScheduler] PUT attendance failed:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /abc-scheduler/events/:eventId?club_number=
+// Cancels the entire event (all members).
+router.delete('/events/:eventId', async (req, res) => {
+  const { eventId } = req.params
+  const { club_number } = req.query
+  // Guard against `/events/:eventId/members/:memberId` falling through to this
+  // handler — Express routes are ordered but be explicit anyway.
+  if (req.params.memberId) {
+    return res.status(400).json({ error: 'use /events/:eventId/members/:memberId for member removal' })
+  }
+  if (!club_number) return res.status(400).json({ error: 'club_number query param required' })
+  try {
+    const url = `${ABC_BASE_URL}/${club_number}/calendars/events/${encodeURIComponent(eventId)}`
+    const r = await axios.delete(url, {
+      headers: abcHeaders(),
+      timeout: 30000,
+      validateStatus: () => true,
+    })
+    if (r.status < 200 || r.status >= 300) {
+      console.error('[abcScheduler] DELETE event ABC error:', r.status, r.data)
+    }
+    res.status(r.status).json(r.data || { ok: true })
+  } catch (err) {
+    console.error('[abcScheduler] DELETE event failed:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /abc-scheduler/events/:eventId/members/:memberId?club_number=
+// Removes one member from an event without cancelling the event.
+router.delete('/events/:eventId/members/:memberId', async (req, res) => {
+  const { eventId, memberId } = req.params
+  const { club_number } = req.query
+  if (!club_number) return res.status(400).json({ error: 'club_number query param required' })
+  try {
+    const url = `${ABC_BASE_URL}/${club_number}/calendars/events/${encodeURIComponent(eventId)}/members/${encodeURIComponent(memberId)}`
+    const r = await axios.delete(url, {
+      headers: abcHeaders(),
+      timeout: 30000,
+      validateStatus: () => true,
+    })
+    if (r.status < 200 || r.status >= 300) {
+      console.error('[abcScheduler] DELETE event member ABC error:', r.status, r.data)
+    }
+    res.status(r.status).json(r.data || { ok: true })
+  } catch (err) {
+    console.error('[abcScheduler] DELETE event member failed:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /abc-scheduler/event-types?club_number=
+// Supports PR C's booking modal: returns distinct (event_type_id, event_name,
+// category) seen at this club in the last 180 days of cached calendar events.
+// Pulled from the local cache, no ABC call.
+router.get('/event-types', async (req, res) => {
+  const { club_number } = req.query
+  if (!club_number) return res.status(400).json({ error: 'club_number is required' })
+  try {
+    const since = new Date()
+    since.setDate(since.getDate() - 180)
+    const { data, error } = await supabaseAdmin
+      .from('abc_calendar_events')
+      .select('event_type_id, event_name, category, duration_minutes')
+      .eq('club_number', String(club_number))
+      .gte('event_timestamp', since.toISOString())
+      .not('event_type_id', 'is', null)
+      .limit(10000)
+    if (error) throw new Error(error.message)
+
+    // Dedupe by event_type_id; keep the most common duration per type as the
+    // default. (Stored as the most-recently-seen duration for simplicity.)
+    const byId = new Map()
+    for (const r of (data || [])) {
+      if (!byId.has(r.event_type_id)) {
+        byId.set(r.event_type_id, {
+          event_type_id: r.event_type_id,
+          event_name: r.event_name || 'Unknown',
+          category: r.category || 'Appointment',
+          default_duration_minutes: r.duration_minutes || null,
+          observed_count: 0,
+        })
+      }
+      byId.get(r.event_type_id).observed_count += 1
+    }
+    const types = [...byId.values()]
+      .sort((a, b) => b.observed_count - a.observed_count) // most common first
+    res.json({ event_types: types })
+  } catch (err) {
+    console.error('[abcScheduler] /event-types failed:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 module.exports = router
