@@ -2,12 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { getDeactivatedPT } from '../../lib/api'
 import { exportCSV, exportPDF } from '../../lib/export'
 
-function fmtMoney(n) {
-  const v = Number(n || 0)
-  if (!v) return '—'
-  return '$' + v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-}
-
 function fmtDate(d) {
   if (!d) return '—'
   const dt = new Date(d + 'T00:00:00')
@@ -66,7 +60,7 @@ export default function DeactivatedPTReport({ startDate, endDate, locationSlug }
       if (typeFilter !== 'all' && r.type !== typeFilter) return false
       if (trainerFilter !== 'all' && r.serviceEmployee !== trainerFilter) return false
       if (q) {
-        const hay = `${r.memberName} ${r.package} ${r.serviceEmployee || ''} ${r.clubName} ${r.status || ''}`.toLowerCase()
+        const hay = `${r.memberName} ${r.package} ${r.serviceEmployee || ''} ${r.clubName}`.toLowerCase()
         if (!hay.includes(q)) return false
       }
       return true
@@ -87,18 +81,14 @@ export default function DeactivatedPTReport({ startDate, endDate, locationSlug }
   function handleExportCSV() {
     if (!filtered.length) return
     const header = [
-      'Changed Date', 'Type', 'Status', 'Member', 'Package',
-      'Sessions Left', 'Sessions Bought', 'Sale Date',
-      'Service Employee', 'Location',
+      'Cancel / Last Used', 'Type', 'Member', 'Package',
+      'Sale Date', 'Service Employee', 'Location',
     ]
     const rows = filtered.map(r => [
-      r.changedDate || '',
+      r.cancelDate || '',
       r.type,
-      r.status || '',
       r.memberName,
       r.package,
-      r.sessionsLeft ?? '',
-      r.sessionsBought ?? '',
       r.saleDate || '',
       r.serviceEmployee || '',
       r.clubName,
@@ -134,8 +124,8 @@ export default function DeactivatedPTReport({ startDate, endDate, locationSlug }
 
       {/* Explainer */}
       <div className="bg-surface border border-border rounded-xl px-4 py-2.5 text-xs text-text-primary">
-        <span className="font-semibold">Deactivated RS</span> — a PT recurring service whose status flipped off-active inside the window.
-        <span className="font-semibold"> · PIF Burned</span> — a member whose Paid-in-Full PT sessions have all been used up AND who has no active recurring service. Both row types are anchored to ABC's last-modified date so the date range filters by "things that changed in this window".
+        <span className="font-semibold">Deactivated RS</span> — PT recurring service whose status flipped off-active inside the window. Cancel date = the deactivation date.
+        <span className="font-semibold"> · PIF Burned</span> — member whose Paid-in-Full PT sessions are all used AND has no other active recurring service anywhere on their record. Cancel date = the date of their last completed session. Both row types are anchored to ABC's last-modified timestamp so the date range filters by "things that changed in this window".
       </div>
 
       {/* Filters */}
@@ -207,39 +197,31 @@ export default function DeactivatedPTReport({ startDate, endDate, locationSlug }
           <table className="w-full text-sm">
             <thead className="bg-bg">
               <tr className="text-xs uppercase tracking-wide text-text-muted">
-                <th className="text-left px-4 py-2 font-semibold">Changed</th>
+                <th className="text-left px-4 py-2 font-semibold" title="Deactivation date for RS rows; last completed session for PIF Burned">Cancel / Last Used</th>
                 <th className="text-left px-4 py-2 font-semibold">Type</th>
-                <th className="text-left px-4 py-2 font-semibold">Status</th>
                 <th className="text-left px-4 py-2 font-semibold">Member</th>
                 <th className="text-left px-4 py-2 font-semibold">Package</th>
-                <th className="text-right px-4 py-2 font-semibold">Sessions</th>
-                <th className="text-left px-4 py-2 font-semibold">Service Employee</th>
                 <th className="text-left px-4 py-2 font-semibold">Sale Date</th>
+                <th className="text-left px-4 py-2 font-semibold">Service Employee</th>
                 <th className="text-left px-4 py-2 font-semibold">Location</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-text-muted text-sm">
+                  <td colSpan={7} className="px-4 py-8 text-center text-text-muted text-sm">
                     No deactivated PT in this date range.
                   </td>
                 </tr>
               ) : (
                 filtered.map((r, i) => (
                   <tr key={`${r.memberId}-${r.type}-${r.saleDate}-${i}`} className="border-t border-border hover:bg-bg/60">
-                    <td className="px-4 py-2 text-text-primary whitespace-nowrap">{fmtDate(r.changedDate)}</td>
+                    <td className="px-4 py-2 text-text-primary whitespace-nowrap">{fmtDate(r.cancelDate)}</td>
                     <td className="px-4 py-2"><TypePill kind={r.type} /></td>
-                    <td className="px-4 py-2 text-text-muted">{r.status || '—'}</td>
                     <td className="px-4 py-2 font-medium text-text-primary">{r.memberName}</td>
                     <td className="px-4 py-2 text-text-muted">{r.package}</td>
-                    <td className="px-4 py-2 text-right text-text-primary">
-                      {r.sessionsBought != null
-                        ? `${r.sessionsLeft ?? 0} / ${r.sessionsBought}`
-                        : '—'}
-                    </td>
-                    <td className="px-4 py-2 text-text-muted">{r.serviceEmployee || '—'}</td>
                     <td className="px-4 py-2 text-text-muted whitespace-nowrap">{fmtDate(r.saleDate)}</td>
+                    <td className="px-4 py-2 text-text-muted">{r.serviceEmployee || '—'}</td>
                     <td className="px-4 py-2 text-text-muted">{r.clubName}</td>
                   </tr>
                 ))
@@ -248,7 +230,7 @@ export default function DeactivatedPTReport({ startDate, endDate, locationSlug }
             {filtered.length > 0 && (
               <tfoot className="border-t-2 border-border">
                 <tr className="bg-bg font-semibold">
-                  <td className="px-4 py-2 text-text-primary" colSpan={9}>
+                  <td className="px-4 py-2 text-text-primary" colSpan={7}>
                     {filteredSummary.deactivatedCount} Deactivated RS · {filteredSummary.burnedCount} PIF Burned ·
                     Total {filtered.length}
                   </td>
