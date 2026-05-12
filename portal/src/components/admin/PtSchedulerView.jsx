@@ -53,10 +53,14 @@ function fmtTime12(hour, min) {
   return `${hh}:${mm} ${ampm}`
 }
 
-// "YYYY-MM-DDTHH:mm:ss" → { date: 'YYYY-MM-DD', hour, min }
+// "YYYY-MM-DD[T or space]HH:mm:ss" → { date: 'YYYY-MM-DD', hour, min }
+// Cached rows from ghl-sync use 'T'; live ABC rows (via /abc-scheduler/events
+// merge introduced in PR #130) come through with a space separator —
+// accept either. Before this fix, every live event silently failed the
+// parse and was dropped from the day buckets.
 function parseLocalTimestamp(ts) {
   if (!ts) return null
-  const m = String(ts).match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/)
+  const m = String(ts).match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})/)
   if (!m) return null
   return { date: m[1], hour: parseInt(m[2], 10), min: parseInt(m[3], 10) }
 }
