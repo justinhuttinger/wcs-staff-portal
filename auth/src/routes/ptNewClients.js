@@ -220,6 +220,53 @@ function pifPackageName(s, planDetail) {
   return qty ? `${qty} PACK` : 'PACK'
 }
 
+// The recurring-services payload doesn't include the PIF session count in any
+// of the fields we've tried. The /members/{id}/services/purchasehistory
+// endpoint is the canonical source — its `serviceSummaries[].purchased` is the
+// sessions-bought count (same field ptRoster.js reads). Cached per-member for
+// the lifetime of this request batch.
+const purchaseHistoryCache = new Map() // key: `${clubNumber}:${memberId}` → serviceSummaries[]
+
+async function fetchMemberPTPurchaseHistory(clubNumber, memberId) {
+  if (!memberId) return []
+  const key = `${clubNumber}:${memberId}`
+  if (purchaseHistoryCache.has(key)) return purchaseHistoryCache.get(key)
+  try {
+    const data = await abcGet(`/${clubNumber}/members/${memberId}/services/purchasehistory`, {
+      purchaseDateRange: '2020-01-01',
+    })
+    const summaries = (data.serviceSummaries || []).filter(s => isPT(s.serviceName))
+    purchaseHistoryCache.set(key, summaries)
+    return summaries
+  } catch (e) {
+    console.warn(`[PT New Clients] purchasehistory failed for ${memberId}@${clubNumber}:`, e.message)
+    purchaseHistoryCache.set(key, [])
+    return []
+  }
+}
+
+// Pick the serviceSummary whose purchaseDate sits closest to this row's
+// saleDate. Anything farther than 7 days off is treated as a non-match — the
+// member probably bought multiple PT packs and we don't want to attach the
+// wrong count.
+function matchPurchaseSummary(summaries, saleDate) {
+  if (!summaries.length) return null
+  const target = new Date(saleDate + 'T00:00:00').getTime()
+  const SEVEN_DAYS = 7 * 86400000
+  let best = null
+  let bestDiff = Infinity
+  for (const s of summaries) {
+    const pd = String(s.purchaseDate || '').slice(0, 10)
+    if (!pd) continue
+    const diff = Math.abs(new Date(pd + 'T00:00:00').getTime() - target)
+    if (diff < bestDiff) {
+      best = s
+      bestDiff = diff
+    }
+  }
+  return bestDiff <= SEVEN_DAYS ? best : null
+}
+
 async function buildClub(club, startDate, endDate) {
   // 90-day lookback before the window start
   const lookbackStart = new Date(startDate + 'T00:00:00')
@@ -306,6 +353,21 @@ async function buildClub(club, startDate, endDate) {
         locationSlug: club.slug,
       })
     }
+  }
+
+  // Enrich PIF rows with session counts from the per-member purchase-history
+  // endpoint (the recurring-services payload doesn't include it). Batches of 5
+  // with a 200ms pause so we don't hammer ABC.
+  const pifRows = rows.filter(r => r.type === 'PIF')
+  for (let i = 0; i < pifRows.length; i += 5) {
+    const batch = pifRows.slice(i, i + 5)
+    await Promise.all(batch.map(async r => {
+      const summaries = await fetchMemberPTPurchaseHistory(club.clubNumber, r.memberId)
+      const match = matchPurchaseSummary(summaries, r.saleDate)
+      const qty = toPosInt(match?.purchased)
+      if (qty) r.package = `${qty} PACK`
+    }))
+    if (i + 5 < pifRows.length) await new Promise(r => setTimeout(r, 200))
   }
 
   return rows
