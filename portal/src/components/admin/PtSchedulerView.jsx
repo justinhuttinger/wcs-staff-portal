@@ -465,20 +465,32 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
     // ABC body shape (discovered iteratively against Salem on 2026-05-12):
     //   API-CAL-EVT-0063 → member must be top-level `memberId`
     //   API-CAL-EVT-0060 → training level must be top-level `levelId`
-    //                      (NOT eventTrainingLevelId, NOT a nested object —
-    //                       both proven by ABC's request echo)
-    //   API-CAL-EVT-0065 → eventTimestamp must be "yyyy-MM-dd HH:mm:ss"
-    //                      (space separator, NOT ISO with 'T')
+    //   API-CAL-EVT-0065 → timestamp format is "yyyy-MM-dd HH:mm:ss" but the
+    //                      FIELD NAME isn't eventTimestamp (still rejected
+    //                      with correct format). Error wording "booking time
+    //                      stamp" hints at bookingTimeStamp. Shotgunning.
+    //   `duration` never echoed → field name probably wrong too.
     //   `allowUnfunded` appeared in ABC's example response.
-    const eventTimestamp = `${date} ${time}:00`
+    const timestampValue = `${date} ${time}:00`
+    const durationNum = Number(duration)
     const body = {
       club_number: club.clubNumber, // stripped by backend before forwarding
       eventTypeId,
       employeeId,
       memberId: selectedMember.member_id,
-      eventTimestamp,
-      duration: Number(duration),
       allowUnfunded,
+      // Timestamp shotgun — error wording "booking time stamp" → most likely
+      // bookingTimeStamp. Keep alt casings.
+      bookingTimeStamp: timestampValue,
+      bookingTimestamp: timestampValue,
+      eventTimestamp: timestampValue,         // proven wrong; left for echo comparison
+      startTime: timestampValue,              // common alt
+      eventStartTime: timestampValue,         // common alt
+      // Duration shotgun
+      duration: durationNum,                  // proven not-echoed
+      durationMinutes: durationNum,           // most likely guess
+      eventDuration: durationNum,             // alt
+      length: durationNum,                    // alt
     }
     // Training level — confirmed 2026-05-12 by ABC's echo: top-level `levelId`
     // is the field ABC parses. (eventTrainingLevelId, trainingLevelId, nested
