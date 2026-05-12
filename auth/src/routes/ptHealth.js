@@ -287,29 +287,32 @@ function pacificDateToMs(dateStr, endOfDay = false) {
 async function computeDayOnes(slug, startDate, endDate) {
   const startMs = pacificDateToMs(startDate, false)
   const endMs = pacificDateToMs(endDate, true)
+
+  // Mirror /reports/pt exactly: same select shape, same filter chain, single
+  // .order() query (no manual pagination) so the result set matches even at
+  // the Supabase-default row-limit boundary.
   let q = supabaseAdmin
     .from('ghl_contacts_report')
-    .select('day_one_status, day_one_sale, day_one_date, location_slug')
+    .select(
+      'id, day_one_booked, day_one_booking_date, day_one_date, day_one_status, day_one_sale, day_one_trainer, location_slug'
+    )
     .not('day_one_booked', 'is', null)
     .neq('day_one_booked', '')
   if (slug && slug !== 'all') q = q.eq('location_slug', slug)
-  q = q.gte('day_one_date', startMs).lte('day_one_date', endMs)
+  if (startMs) q = q.gte('day_one_date', startMs)
+  if (endMs) q = q.lte('day_one_date', endMs)
 
-  const rows = []
-  let from = 0
-  while (true) {
-    const { data, error } = await q.range(from, from + 999)
-    if (error) throw new Error(error.message)
-    if (!data || data.length === 0) break
-    rows.push(...data)
-    if (data.length < 1000) break
-    from += 1000
-  }
+  const { data, error } = await q.order('day_one_date', { ascending: false })
+  if (error) throw new Error(error.message)
+  const rows = data || []
 
+  // Set = total contacts in result. Show = byStatus['Completed'] (strict,
+  // case-sensitive — matches PT report which keys a dictionary on the raw
+  // status string). Close = subset of Show with day_one_sale = 'Sale'.
   let show = 0
   let close = 0
   for (const r of rows) {
-    if (String(r.day_one_status || '').toLowerCase() !== 'completed') continue
+    if (r.day_one_status !== 'Completed') continue
     show++
     if (r.day_one_sale === 'Sale') close++
   }
@@ -390,6 +393,56 @@ router.get('/', async (req, res) => {
   } catch (err) {
     console.error('[PT Health] Error:', err.message)
     res.status(err.status || 500).json({ error: err.message })
+  }
+})
+
+// GET /reports/pt-health/debug-day-one?start_date=&end_date=&location_slug=
+// Admin-only. Returns the exact rows PT Health is using for Day Ones so we
+// can compare against /reports/pt row-for-row when numbers diverge.
+router.get('/debug-day-one', async (req, res) => {
+  try {
+    if (req.staff.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' })
+    }
+    const { start_date, end_date, location_slug } = req.query
+    const startMs = pacificDateToMs(start_date, false)
+    const endMs = pacificDateToMs(end_date, true)
+    let q = supabaseAdmin
+      .from('ghl_contacts_report')
+      .select('id, full_name, day_one_booked, day_one_booking_date, day_one_date, day_one_status, day_one_sale, location_slug')
+      .not('day_one_booked', 'is', null)
+      .neq('day_one_booked', '')
+    if (location_slug && location_slug !== 'all') q = q.eq('location_slug', location_slug)
+    if (startMs) q = q.gte('day_one_date', startMs)
+    if (endMs) q = q.lte('day_one_date', endMs)
+    const { data, error } = await q.order('day_one_date', { ascending: false })
+    if (error) return res.status(500).json({ error: error.message })
+    const rows = data || []
+    const byStatus = {}
+    const bySale = {}
+    let showCount = 0
+    let closeCount = 0
+    for (const r of rows) {
+      const st = r.day_one_status || 'Unknown'
+      byStatus[st] = (byStatus[st] || 0) + 1
+      if (r.day_one_status === 'Completed') {
+        showCount++
+        const sale = r.day_one_sale || 'No Sale'
+        bySale[sale] = (bySale[sale] || 0) + 1
+        if (r.day_one_sale === 'Sale') closeCount++
+      }
+    }
+    res.json({
+      query: { startMs, endMs, location_slug },
+      set: rows.length,
+      show: showCount,
+      close: closeCount,
+      byStatus,
+      bySaleOnCompleted: bySale,
+      sampleRows: rows.slice(0, 5),
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
   }
 })
 
