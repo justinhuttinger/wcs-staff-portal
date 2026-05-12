@@ -326,7 +326,6 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
   const [trainingLevels, setTrainingLevels] = useState([])
   const [trainingLevelId, setTrainingLevelId] = useState('')
   const [trainingLevelManual, setTrainingLevelManual] = useState('')
-  const [trainingLevelNameManual, setTrainingLevelNameManual] = useState('')
   const [trainingLevelsLoading, setTrainingLevelsLoading] = useState(false)
   const [rawSample, setRawSample] = useState(null)
   const [rawSampleLoading, setRawSampleLoading] = useState(false)
@@ -465,47 +464,27 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
 
     // ABC body shape (discovered iteratively against Salem on 2026-05-12):
     //   API-CAL-EVT-0063 → member must be top-level `memberId`
-    //   API-CAL-EVT-0060 → event types with training levels need
-    //                      `eventTrainingLevelId`
+    //   API-CAL-EVT-0060 → training level must be top-level `levelId`
+    //                      (NOT eventTrainingLevelId, NOT a nested object —
+    //                       both proven by ABC's request echo)
+    //   API-CAL-EVT-0065 → eventTimestamp must be "yyyy-MM-dd HH:mm:ss"
+    //                      (space separator, NOT ISO with 'T')
     //   `allowUnfunded` appeared in ABC's example response.
-    const eventTimestamp = `${date}T${time}:00`
+    const eventTimestamp = `${date} ${time}:00`
     const body = {
       club_number: club.clubNumber, // stripped by backend before forwarding
       eventTypeId,
       employeeId,
       memberId: selectedMember.member_id,
-      eventTimestamp,         // local naive ISO; matches the eventTimestampLocal field GET returns
+      eventTimestamp,
       duration: Number(duration),
       allowUnfunded,
     }
-    // Level shotgun — confirmed 2026-05-12 with a REAL levelId
-    // (`xzx...001` for PT 60MIN level "1"): ABC still says "doesn't exist"
-    // and echoes none of our level fields. Field name + shape is wrong.
-    //
-    // Sending many variants in parallel using both levelId and levelName.
-    // Whichever ABC accepts will surface in the echo (for scalar fields)
-    // OR will land a successful booking. We'll pare down once one works.
+    // Training level — confirmed 2026-05-12 by ABC's echo: top-level `levelId`
+    // is the field ABC parses. (eventTrainingLevelId, trainingLevelId, nested
+    // object, and all levelName variants were silently dropped.)
     const finalLevelId = (trainingLevelManual && trainingLevelManual.trim()) || trainingLevelId
-    const finalLevelName = (trainingLevelNameManual && trainingLevelNameManual.trim())
-    if (finalLevelId || finalLevelName) {
-      // Nested object variants (mirror GET shape).
-      body.eventTrainingLevel = {
-        ...(finalLevelId && { levelId: finalLevelId }),
-        ...(finalLevelName && { levelName: finalLevelName }),
-      }
-      // Flat scalar variants by ID.
-      if (finalLevelId) {
-        body.eventTrainingLevelId = finalLevelId
-        body.trainingLevelId = finalLevelId
-        body.levelId = finalLevelId
-      }
-      // Flat scalar variants by name.
-      if (finalLevelName) {
-        body.eventTrainingLevelName = finalLevelName
-        body.trainingLevelName = finalLevelName
-        body.levelName = finalLevelName
-      }
-    }
+    if (finalLevelId) body.levelId = finalLevelId
 
     setSubmitting(true)
     try {
@@ -613,16 +592,8 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
                   placeholder={trainingLevels.length > 0 ? 'Manual levelId override (optional)' : 'levelId (e.g. xzxxx…001)'}
                   className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-xs font-mono focus:outline-none focus:border-wcs-red"
                 />
-                <input
-                  type="text"
-                  value={trainingLevelNameManual}
-                  onChange={e => setTrainingLevelNameManual(e.target.value)}
-                  placeholder='levelName (e.g. "1" for PT 60MIN level 1)'
-                  className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-xs font-mono focus:outline-none focus:border-wcs-red"
-                />
                 <p className="text-[10px] text-text-muted">
-                  Manual override wins if filled. Submit shotguns 7+ field-shape variants; whichever ABC parses will succeed.
-                  If still failing with a real ID + name, ask your ABC rep for the exact POST body specification for training level (field name + nested vs flat).
+                  Manual override wins if filled. ABC's POST expects a top-level <code>levelId</code> (confirmed 2026-05-12).
                 </p>
                 {rawSampleError && (
                   <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-2 py-1 text-[11px]">
@@ -630,24 +601,19 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
                   </div>
                 )}
                 {cachedLevelId && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-[11px]">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-green-900">
-                        Found in cached events:<br/>
-                        <code className="font-mono">levelId={cachedLevelId}</code>
-                        {cachedLevelName && <><br/><code className="font-mono">levelName={cachedLevelName}</code></>}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTrainingLevelManual(cachedLevelId)
-                          if (cachedLevelName) setTrainingLevelNameManual(cachedLevelName)
-                        }}
-                        className="px-2 py-1 rounded bg-wcs-red text-white text-[10px] font-semibold shrink-0"
-                      >
-                        Use these
-                      </button>
-                    </div>
+                  <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2 text-[11px]">
+                    <span className="text-green-900">
+                      Found a real levelId in cached events:{' '}
+                      <code className="font-mono">{cachedLevelId}</code>
+                      {cachedLevelName && <span className="text-green-800"> ({cachedLevelName})</span>}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setTrainingLevelManual(cachedLevelId)}
+                      className="px-2 py-1 rounded bg-wcs-red text-white text-[10px] font-semibold shrink-0"
+                    >
+                      Use this ID
+                    </button>
                   </div>
                 )}
                 {rawSample && (
