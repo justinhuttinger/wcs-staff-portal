@@ -462,40 +462,29 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
     if (!selectedMember) { setSubmitError('Pick a member'); return }
     if (!date || !time) { setSubmitError('Pick a date and time'); return }
 
-    // ABC body shape (discovered iteratively against Salem on 2026-05-12):
-    //   API-CAL-EVT-0063 → member must be top-level `memberId`
-    //   API-CAL-EVT-0060 → training level must be top-level `levelId`
-    //   API-CAL-EVT-0065 → timestamp format is "yyyy-MM-dd HH:mm:ss" but the
-    //                      FIELD NAME isn't eventTimestamp (still rejected
-    //                      with correct format). Error wording "booking time
-    //                      stamp" hints at bookingTimeStamp. Shotgunning.
-    //   `duration` never echoed → field name probably wrong too.
-    //   `allowUnfunded` appeared in ABC's example response.
-    const timestampValue = `${date} ${time}:00`
-    const durationNum = Number(duration)
+    // ABC POST /calendars/events body shape — locked in 2026-05-12 by
+    // iterative discovery (see git log of this file for the trail).
+    // Confirmed required + accepted fields (echoed by ABC on success):
+    //   eventTypeId, employeeId, memberId, levelId, startTime, allowUnfunded
+    // Notes:
+    //   - startTime format: "yyyy-MM-dd HH:mm:ss" (space, NOT ISO 'T')
+    //   - Field names DIFFER from what GET returns:
+    //       GET response                →  POST request
+    //       eventTimestamp                 startTime
+    //       eventTrainingLevel.levelId  →  levelId (flat top-level)
+    //   - Duration is NOT accepted — ABC uses the event type's configured
+    //     default duration. None of our duration field variants ever
+    //     appeared in ABC's echo, yet bookings still succeed.
+    //   - The portal modal's Duration picker is UI-only; not sent.
+    const finalLevelId = (trainingLevelManual && trainingLevelManual.trim()) || trainingLevelId
     const body = {
       club_number: club.clubNumber, // stripped by backend before forwarding
       eventTypeId,
       employeeId,
       memberId: selectedMember.member_id,
+      startTime: `${date} ${time}:00`,
       allowUnfunded,
-      // Timestamp shotgun — error wording "booking time stamp" → most likely
-      // bookingTimeStamp. Keep alt casings.
-      bookingTimeStamp: timestampValue,
-      bookingTimestamp: timestampValue,
-      eventTimestamp: timestampValue,         // proven wrong; left for echo comparison
-      startTime: timestampValue,              // common alt
-      eventStartTime: timestampValue,         // common alt
-      // Duration shotgun
-      duration: durationNum,                  // proven not-echoed
-      durationMinutes: durationNum,           // most likely guess
-      eventDuration: durationNum,             // alt
-      length: durationNum,                    // alt
     }
-    // Training level — confirmed 2026-05-12 by ABC's echo: top-level `levelId`
-    // is the field ABC parses. (eventTrainingLevelId, trainingLevelId, nested
-    // object, and all levelName variants were silently dropped.)
-    const finalLevelId = (trainingLevelManual && trainingLevelManual.trim()) || trainingLevelId
     if (finalLevelId) body.levelId = finalLevelId
 
     setSubmitting(true)
@@ -506,6 +495,20 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
       })
       setSuccess('Event created.')
       setDebugResponse({ sent: body, received: r })
+
+      // Extract new eventId from the success response and pull it into our
+      // local cache so the calendar view shows it without waiting for the
+      // next ghl-sync run. Best-effort; calendar refetch happens either way.
+      const newEventId = r?.result?.links?.[0]?.href?.split('/').filter(Boolean).pop()
+      if (newEventId) {
+        try {
+          await api(`/abc-scheduler/events/${encodeURIComponent(newEventId)}/refresh-from-abc?club_number=${encodeURIComponent(club.clubNumber)}&near_date=${encodeURIComponent(date)}`, {
+            method: 'POST',
+          })
+        } catch (_) {
+          // Non-fatal — the user can still see it after next sync.
+        }
+      }
       if (onCreated) onCreated()
     } catch (e) {
       setSubmitError(e.message || 'Failed to create event')
