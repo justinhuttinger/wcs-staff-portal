@@ -66,10 +66,15 @@ async function fetchCheckinsForRange(clubNumber, fromDate, toDate) {
 /**
  * Refresh the current hour's bucket for every club in `clubs`.
  * Call this on every delta tick. Idempotent — UPSERTs by (club_number, hour_start).
+ *
+ * Returns a summary object: { hourStart, results: [{ clubNumber, ok, error?, totalCheckins?, uniqueMembers? }] }
+ * so callers can write a sync-log entry and surface failures in monitoring
+ * instead of letting them swallow into console output.
  */
 async function refreshCurrentHourCheckins(clubs) {
   const now = new Date();
   const hourStart = hourFloor(now);
+  const results = [];
 
   for (const clubNumber of clubs) {
     try {
@@ -94,6 +99,7 @@ async function refreshCurrentHourCheckins(clubs) {
 
       if (error) {
         console.error(`[Checkins] ${clubNumber} upsert error: ${error.message}`);
+        results.push({ clubNumber, ok: false, error: `upsert: ${error.message}` });
         continue;
       }
 
@@ -101,10 +107,14 @@ async function refreshCurrentHourCheckins(clubs) {
         `[Checkins] ${clubNumber} ${hourStart.toISOString().slice(0, 16)}Z: ` +
           `${totalCheckins} check-ins, ${uniqueMembers} members`,
       );
+      results.push({ clubNumber, ok: true, totalCheckins, uniqueMembers });
     } catch (err) {
       console.error(`[Checkins] ${clubNumber} fetch error: ${err.message}`);
+      results.push({ clubNumber, ok: false, error: `fetch: ${err.message}` });
     }
   }
+
+  return { hourStart: hourStart.toISOString(), results };
 }
 
 /**

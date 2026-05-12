@@ -102,14 +102,34 @@ async function deltaSync() {
 
   // Refresh the current hour's check-in bucket for every configured club.
   // Cheap (one ABC call per club) and idempotent — the row is replaced on
-  // each tick until the hour rolls over. Failures here don't fail the GHL
-  // delta sync.
+  // each tick until the hour rolls over. Per-club failures don't fail the
+  // GHL delta sync but each location now writes a ghl_sync_log entry so
+  // silent ABC failures show up in /api/sync/logs and monitoring.
   if (!isGhlSyncAborted()) {
+    const ckStart = new Date();
     const clubs = LOCATIONS.map(l => l.clubNumber).filter(Boolean);
+    const clubToLocation = new Map(LOCATIONS.map(l => [l.clubNumber, l]));
     try {
-      await refreshCurrentHourCheckins(clubs);
+      const { results } = await refreshCurrentHourCheckins(clubs);
+      for (const r of results) {
+        const loc = clubToLocation.get(r.clubNumber);
+        await writeSyncLog({
+          syncType: 'delta',
+          entity: 'checkins',
+          locationId: loc?.id || null,
+          recordsFetched: r.ok ? (r.totalCheckins || 0) : 0,
+          recordsUpserted: r.ok ? 1 : 0,
+          errors: r.ok ? [] : [{ club: r.clubNumber, error: r.error }],
+          startedAt: ckStart,
+        });
+      }
     } catch (err) {
       console.error('[Delta] Check-ins refresh error:', err.message);
+      await writeSyncLog({
+        syncType: 'delta', entity: 'checkins', locationId: null,
+        recordsFetched: 0, recordsUpserted: 0,
+        errors: [{ error: err.message }], startedAt: ckStart,
+      });
     }
   }
 
