@@ -395,4 +395,45 @@ router.get('/event-types/:eventTypeId/raw-sample', async (req, res) => {
   }
 })
 
+// GET /abc-scheduler/event-types/:eventTypeId/abc-detail?club_number=
+// Live ABC discovery — tries a handful of likely ABC paths to fetch the
+// event-type definition (which should expose its valid training levels).
+// Returns the first 2xx response along with which path matched, plus the
+// list of attempts for debugging. Cached `abc_calendar_events.raw` only
+// surfaces what GET responses include, which may not include the levels
+// list itself.
+router.get('/event-types/:eventTypeId/abc-detail', async (req, res) => {
+  const { eventTypeId } = req.params
+  const { club_number } = req.query
+  if (!club_number) return res.status(400).json({ error: 'club_number is required' })
+
+  const candidatePaths = [
+    `/${club_number}/calendars/eventtypes/${eventTypeId}`,
+    `/${club_number}/calendars/eventtypes/${eventTypeId}/details`,
+    `/${club_number}/clubs/eventtypes/${eventTypeId}`,
+    `/${club_number}/calendars/eventtypes`,                          // list endpoint (filter client-side)
+    `/${club_number}/clubs/eventtypes`,                              // alt list endpoint
+    `/${club_number}/calendars/eventtypes/${eventTypeId}/levels`,    // dedicated levels path
+    `/${club_number}/calendars/eventtypes/${eventTypeId}/traininglevels`,
+  ]
+
+  const attempts = []
+  for (const path of candidatePaths) {
+    try {
+      const r = await axios.get(ABC_BASE_URL + path, {
+        headers: abcHeaders(),
+        timeout: 15000,
+        validateStatus: () => true,
+      })
+      attempts.push({ path, status: r.status })
+      if (r.status >= 200 && r.status < 300) {
+        return res.json({ matched_path: path, attempts, body: r.data })
+      }
+    } catch (err) {
+      attempts.push({ path, status: 'error', error: err.message })
+    }
+  }
+  res.status(404).json({ error: 'No ABC eventtypes path returned 2xx', attempts })
+})
+
 module.exports = router

@@ -330,19 +330,41 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
   const [rawSample, setRawSample] = useState(null)
   const [rawSampleLoading, setRawSampleLoading] = useState(false)
   const [rawSampleError, setRawSampleError] = useState(null)
+  const [abcDetail, setAbcDetail] = useState(null)
+  const [abcDetailLoading, setAbcDetailLoading] = useState(false)
 
-  async function loadRawSample() {
+  // Look at the cache first; if no useful levelId surfaces, hit ABC directly.
+  async function loadLevelDiscovery() {
     if (!eventTypeId) return
-    setRawSampleLoading(true); setRawSampleError(null); setRawSample(null)
+    setRawSampleLoading(true); setRawSampleError(null); setRawSample(null); setAbcDetail(null)
     try {
       const r = await api(`/abc-scheduler/event-types/${encodeURIComponent(eventTypeId)}/raw-sample?club_number=${encodeURIComponent(club.clubNumber)}`)
-      setRawSample(r.sample || { _none: 'No cached events for this event type' })
+      setRawSample(r.sample || null)
+      const cachedLevelId = r.sample?.raw?.eventTrainingLevel?.levelId
+        || r.sample?.raw?.eventTrainingLevel?.id
+      if (!cachedLevelId) {
+        // Cache had nothing useful — ask ABC directly.
+        setAbcDetailLoading(true)
+        try {
+          const abc = await api(`/abc-scheduler/event-types/${encodeURIComponent(eventTypeId)}/abc-detail?club_number=${encodeURIComponent(club.clubNumber)}`)
+          setAbcDetail(abc)
+        } catch (e2) {
+          setAbcDetail({ error: e2.message || 'ABC discovery failed' })
+        } finally {
+          setAbcDetailLoading(false)
+        }
+      }
     } catch (e) {
       setRawSampleError(e.message || 'Failed to fetch sample')
     } finally {
       setRawSampleLoading(false)
     }
   }
+
+  // Extract a likely levelId from either source.
+  const cachedLevelId = rawSample?.raw?.eventTrainingLevel?.levelId
+    || rawSample?.raw?.eventTrainingLevel?.id
+    || null
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -539,12 +561,12 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
                   <span className="block text-xs font-medium text-text-muted">Training level</span>
                   <button
                     type="button"
-                    onClick={loadRawSample}
-                    disabled={!eventTypeId || rawSampleLoading}
+                    onClick={loadLevelDiscovery}
+                    disabled={!eventTypeId || rawSampleLoading || abcDetailLoading}
                     className="text-[10px] text-wcs-red hover:underline disabled:opacity-50"
-                    title="Show the most recent cached event's raw JSON so you can find a real levelId"
+                    title="Cache + live ABC lookup to discover valid training levels"
                   >
-                    {rawSampleLoading ? 'Loading…' : 'Show ABC raw sample'}
+                    {rawSampleLoading ? 'Searching cache…' : abcDetailLoading ? 'Querying ABC…' : 'Discover real levelId'}
                   </button>
                 </div>
                 {trainingLevelsLoading ? (
@@ -583,10 +605,44 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
                     {rawSampleError}
                   </div>
                 )}
+                {cachedLevelId && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2 text-[11px]">
+                    <span className="text-green-900">
+                      Found a real levelId in cached events:{' '}
+                      <code className="font-mono">{cachedLevelId}</code>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setTrainingLevelManual(cachedLevelId)}
+                      className="px-2 py-1 rounded bg-wcs-red text-white text-[10px] font-semibold"
+                    >
+                      Use this ID
+                    </button>
+                  </div>
+                )}
                 {rawSample && (
-                  <details open className="bg-bg border border-border rounded-lg px-3 py-2 text-[11px]">
-                    <summary className="cursor-pointer text-text-muted font-medium">Most recent cached event raw JSON (find levelId here)</summary>
+                  <details className="bg-bg border border-border rounded-lg px-3 py-2 text-[11px]">
+                    <summary className="cursor-pointer text-text-muted font-medium">Most recent cached event raw JSON</summary>
                     <pre className="mt-2 bg-surface border border-border rounded p-2 overflow-x-auto text-[10px] max-h-72">{JSON.stringify(rawSample, null, 2)}</pre>
+                  </details>
+                )}
+                {abcDetail && (
+                  <details open className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-[11px]">
+                    <summary className="cursor-pointer text-blue-900 font-medium">
+                      Live ABC response (path: <code>{abcDetail.matched_path || 'none matched'}</code>)
+                    </summary>
+                    {abcDetail.error && <div className="mt-1 text-red-700">{abcDetail.error}</div>}
+                    {abcDetail.attempts && (
+                      <div className="mt-1 text-[10px] text-blue-900">
+                        Tried: {abcDetail.attempts.map(a => `${a.path}=${a.status}`).join(' · ')}
+                      </div>
+                    )}
+                    {abcDetail.body && (
+                      <pre className="mt-2 bg-surface border border-blue-200 rounded p-2 overflow-x-auto text-[10px] max-h-72">{JSON.stringify(abcDetail.body, null, 2)}</pre>
+                    )}
+                    <p className="mt-1 text-[10px] text-blue-900">
+                      Look for a training-levels array in the body above. Copy the <code>levelId</code> (or <code>id</code>) of the level you want into the manual input.
+                    </p>
                   </details>
                 )}
               </div>
