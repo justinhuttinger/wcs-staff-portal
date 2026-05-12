@@ -5,7 +5,8 @@ const { deltaSync } = require('./sync/deltaSync');
 const { abcSync, abcSyncForLocation, stopAbcSync } = require('./abc/abcSync');
 const { employeeSync } = require('./abc/employeeSync');
 const { enrichAll: enrichAttributionAll, enrichForLocation: enrichAttributionForLocation } = require('./sync/attributionEnrich');
-const { refreshCurrentHourCheckins } = require('./abc/checkins');
+const { refreshCurrentHourCheckins, fetchCheckinsForRange } = require('./abc/checkins');
+const axios = require('axios');
 const LOCATIONS = require('./config/locations');
 const { startScheduler } = require('./scheduler');
 const supabase = require('./db/supabase');
@@ -121,6 +122,72 @@ app.post('/api/sync/checkins', requireSecret, async (req, res) => {
     res.json({ status: 'ok', ...summary });
   } catch (err) {
     console.error('[API] Checkins refresh failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/sync/checkins/probe — hits ABC for the previous complete hour to
+// rule out "partial-hour query returns zero" and dumps the raw ABC response
+// (truncated) for one sample club so we can see the actual response shape.
+// SECRET-gated. Does NOT write to checkins_hourly.
+app.post('/api/sync/checkins/probe', requireSecret, async (req, res) => {
+  try {
+    const clubs = LOCATIONS.map(l => l.clubNumber).filter(Boolean);
+    // Previous complete hour: floor(now) - 1h.
+    const now = new Date();
+    const end = new Date(now);
+    end.setUTCMinutes(0, 0, 0);
+    const start = new Date(end);
+    start.setUTCHours(start.getUTCHours() - 1);
+
+    // Aggregated counts per club (parsed via the same helper as the live sync).
+    const aggregated = []
+    for (const clubNumber of clubs) {
+      try {
+        const { totalCheckins, uniqueMembers } = await fetchCheckinsForRange(clubNumber, start, end);
+        aggregated.push({ clubNumber, ok: true, totalCheckins, uniqueMembers });
+      } catch (err) {
+        aggregated.push({ clubNumber, ok: false, error: err.message });
+      }
+    }
+
+    // Raw ABC response for ONE sample club so we can eyeball field names if
+    // the parser is returning zero against a renamed payload shape.
+    let rawSample = null;
+    try {
+      const sampleClub = req.query.club || clubs[0];
+      const fmt = (d) => {
+        const pad = (n) => String(n).padStart(2, '0');
+        return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) + ' ' +
+               pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
+      };
+      const url = `${process.env.ABC_BASE_URL || 'https://api.abcfinancial.com/rest'}/${sampleClub}/members/checkins/summaries`;
+      const r = await axios.get(url, {
+        params: { checkInTimestampRange: `${fmt(start)},${fmt(end)}`, size: 5000 },
+        headers: { app_id: process.env.ABC_APP_ID, app_key: process.env.ABC_APP_KEY, Accept: 'application/json' },
+        timeout: 60000,
+      });
+      const data = r.data || {};
+      const members = Array.isArray(data.members) ? data.members : [];
+      rawSample = {
+        clubNumber: sampleClub,
+        status: r.status,
+        topLevelKeys: Object.keys(data),
+        memberCount: members.length,
+        firstMember: members[0] || null,
+        firstMemberKeys: members[0] ? Object.keys(members[0]) : null,
+      };
+    } catch (err) {
+      rawSample = { error: err.message, response: err.response?.data || null };
+    }
+
+    res.json({
+      probedWindow: { start: start.toISOString(), end: end.toISOString() },
+      aggregated,
+      rawSample,
+    });
+  } catch (err) {
+    console.error('[API] Checkins probe failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
