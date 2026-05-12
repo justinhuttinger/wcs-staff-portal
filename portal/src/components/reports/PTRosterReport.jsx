@@ -244,10 +244,13 @@ export default function PTRosterReport({ locationSlug }) {
         </div>
       </div>
 
-      {/* Results count */}
-      <p className="text-xs text-text-muted">
-        {filtered.length} {filtered.length === 1 ? 'client' : 'clients'} across {trainerRows.length} {trainerRows.length === 1 ? 'trainer' : 'trainers'}
-      </p>
+      {/* Count summary bubble */}
+      <div className="bg-surface border border-border rounded-xl px-4 py-2.5 inline-flex items-center gap-2 text-sm">
+        <span className="font-bold text-text-primary">{filtered.length}</span>
+        <span className="text-text-muted">{filtered.length === 1 ? 'client' : 'clients'} across</span>
+        <span className="font-bold text-text-primary">{trainerRows.length}</span>
+        <span className="text-text-muted">{trainerRows.length === 1 ? 'trainer' : 'trainers'}</span>
+      </div>
 
       {/* Errors */}
       {data.errors?.length > 0 && (
