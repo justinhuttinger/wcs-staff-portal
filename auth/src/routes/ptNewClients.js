@@ -135,12 +135,41 @@ function parsePrice(s) {
   return Number.isFinite(n) ? n : 0
 }
 
-function packageName(s) {
-  return s.recurringServicePlanName || s.serviceItem || 'Unknown'
-}
-
 function isPIF(s) {
   return (s.recurringTypeDesc || '').toLowerCase().includes('paid in full')
+}
+
+// Plan-detail cache keyed by `${clubNumber}:${planId}`. The recurring services
+// endpoint returns only the short `serviceItem` (e.g. "PT 60MIN"); the rich
+// name with frequency or pack count ("PT 60MIN 3XWEEK", "PT 30MIN 10 PACK")
+// lives on the recurringServicePlan entity, fetched separately.
+const planCache = new Map()
+const PLAN_CACHE_TTL = 60 * 60 * 1000 // 1h
+
+async function fetchPlanName(clubNumber, planId) {
+  if (!planId) return null
+  const key = `${clubNumber}:${planId}`
+  const hit = planCache.get(key)
+  if (hit && (Date.now() - hit.ts) < PLAN_CACHE_TTL) return hit.name
+  try {
+    const data = await abcGet(`/${clubNumber}/clubs/recurringserviceplans/${planId}`)
+    const name = data?.recurringServicePlanDetail?.recurringServicePlanName || null
+    planCache.set(key, { name, ts: Date.now() })
+    return name
+  } catch (e) {
+    console.warn(`[PT New Clients] Plan fetch failed for ${planId}@${clubNumber}:`, e.message)
+    return null
+  }
+}
+
+function fallbackPackageName(s) {
+  // No plan-detail name — synthesize something readable. For PIF entries the
+  // recurring services payload sometimes encodes the pack count in totalPeriods.
+  const base = s.serviceItem || 'Unknown'
+  if (isPIF(s) && s.totalPeriods) {
+    return `${base} · ${s.totalPeriods} Pack`
+  }
+  return base
 }
 
 async function buildClub(club, startDate, endDate) {
@@ -165,12 +194,32 @@ async function buildClub(club, startDate, endDate) {
     list.sort((a, b) => a.saleDate.localeCompare(b.saleDate))
   }
 
-  // Build the rows: recurring (non-PIF) sales that fall inside [startDate, endDate]
+  // Collect unique plan IDs across rows that will appear in the window so we
+  // can resolve rich plan names ("3XWEEK", "10 PACK") in batches of 5.
+  const windowPlanIds = new Set()
+  for (const [, sales] of byMember) {
+    for (const { saleDate, raw } of sales) {
+      if (saleDate < startDate || saleDate > endDate) continue
+      const pid = raw.recurringServicePlanId || raw.servicePlanId
+      if (pid) windowPlanIds.add(String(pid))
+    }
+  }
+  const planNames = new Map()
+  const uniquePlans = [...windowPlanIds]
+  for (let i = 0; i < uniquePlans.length; i += 5) {
+    const batch = uniquePlans.slice(i, i + 5)
+    const results = await Promise.all(batch.map(pid => fetchPlanName(club.clubNumber, pid)))
+    results.forEach((name, idx) => {
+      if (name) planNames.set(batch[idx], name)
+    })
+    if (i + 5 < uniquePlans.length) await new Promise(r => setTimeout(r, 100))
+  }
+
+  // Build rows for every sale in [startDate, endDate] — both RS and PIF.
   const rows = []
   for (const [memberId, sales] of byMember) {
     for (let i = 0; i < sales.length; i++) {
       const { saleDate, raw } = sales[i]
-      if (isPIF(raw)) continue
       if (saleDate < startDate || saleDate > endDate) continue
 
       // Look for ANY prior PT purchase (PIF or recurring) by this member
@@ -188,10 +237,14 @@ async function buildClub(club, startDate, endDate) {
         break
       }
 
+      const pid = raw.recurringServicePlanId || raw.servicePlanId
+      const pkg = (pid && planNames.get(String(pid))) || fallbackPackageName(raw)
+
       rows.push({
         memberId,
         memberName: memberName(raw),
-        package: packageName(raw),
+        package: pkg,
+        type: isPIF(raw) ? 'PIF' : 'RS',
         price: parsePrice(raw),
         commissionEmployee: commissionEmployee(raw),
         serviceEmployee: serviceEmployee(raw),
