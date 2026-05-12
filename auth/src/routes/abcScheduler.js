@@ -72,22 +72,57 @@ router.get('/events', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // GET /abc-scheduler/employees?club_number=
-// Returns the distinct list of (employee_id, employee_name) seen in recent
-// calendar events for the club — used to render trainer columns.
+// Proxies ABC's GET /employees for the club to return the full roster of
+// active staff. Previously this was derived from cached events, which
+// missed trainers who hadn't been booked recently (Salem was only showing
+// "Matthew Aslety" because nobody else had an Appointment in 90 days).
+// Falls back to events-derived list if ABC's /employees endpoint fails.
 // ---------------------------------------------------------------------------
+const EMPLOYEE_EXCLUDED_NAMES = new Set([
+  'easalytics bot', 'click2save bot', 'reporting bot',
+  'abc support', 'test test', 'personal trainer',
+])
+
 router.get('/employees', async (req, res) => {
   const { club_number } = req.query
   if (!club_number) return res.status(400).json({ error: 'club_number is required' })
 
+  // Primary: live ABC
   try {
-    // Last 90 days of events to derive a roster of active trainers
+    const r = await axios.get(`${ABC_BASE_URL}/${club_number}/employees`, {
+      headers: abcHeaders(),
+      timeout: 20000,
+      validateStatus: () => true,
+    })
+    if (r.status >= 200 && r.status < 300) {
+      const raw = r.data?.employees || []
+      const employees = raw
+        .filter(emp => (emp.employment?.employeeStatus || '').toLowerCase() === 'active')
+        .map(emp => ({
+          employee_id: emp.employeeId || emp.id,
+          first_name: emp.personal?.firstName || '',
+          last_name: emp.personal?.lastName || '',
+          display_name: `${emp.personal?.firstName || ''} ${emp.personal?.lastName || ''}`.trim() || 'Unknown',
+          email: emp.personal?.email || null,
+          role: emp.employment?.role || null,
+        }))
+        .filter(e => e.employee_id && !EMPLOYEE_EXCLUDED_NAMES.has(e.display_name.toLowerCase()))
+        .sort((a, b) => a.display_name.localeCompare(b.display_name))
+      return res.json({ employees, source: 'abc' })
+    }
+    console.warn(`[abcScheduler] /employees ABC returned ${r.status}, falling back to events`)
+  } catch (err) {
+    console.warn('[abcScheduler] /employees ABC fetch failed, falling back to events:', err.message)
+  }
+
+  // Fallback: events-derived (legacy behavior)
+  try {
     const since = new Date()
-    since.setDate(since.getDate() - 90)
+    since.setDate(since.getDate() - 180) // wider window than before
     const { data, error } = await supabaseAdmin
       .from('abc_calendar_events')
       .select('employee_id, employee_first_name, employee_last_name')
       .eq('club_number', String(club_number))
-      .eq('category', 'Appointment')
       .gte('event_timestamp', since.toISOString())
       .not('employee_id', 'is', null)
       .limit(5000)
@@ -105,9 +140,9 @@ router.get('/employees', async (req, res) => {
       }
     }
     const employees = [...byId.values()].sort((a, b) => a.display_name.localeCompare(b.display_name))
-    res.json({ employees })
+    res.json({ employees, source: 'events-fallback' })
   } catch (err) {
-    console.error('[abcScheduler] /employees failed:', err.message)
+    console.error('[abcScheduler] /employees fallback failed:', err.message)
     res.status(500).json({ error: err.message })
   }
 })
@@ -434,6 +469,95 @@ router.get('/event-types/:eventTypeId/abc-detail', async (req, res) => {
     }
   }
   res.status(404).json({ error: 'No ABC eventtypes path returned 2xx', attempts })
+})
+
+// ---------------------------------------------------------------------------
+// POST /abc-scheduler/events/:eventId/refresh-from-abc?club_number=
+// After a successful booking, ABC's cache copy on our side is stale until the
+// next ghl-sync run. This endpoint hits ABC for the single newly-created
+// event by its eventDateRange day, finds it, and upserts to abc_calendar_events.
+// Returns the upserted row.
+// ---------------------------------------------------------------------------
+function isDstPacific(d) {
+  const y = d.getUTCFullYear()
+  const mar = new Date(Date.UTC(y, 2, 1)); mar.setUTCDate(mar.getUTCDate() + ((7 - mar.getUTCDay()) % 7) + 7)
+  const nov = new Date(Date.UTC(y, 10, 1)); nov.setUTCDate(nov.getUTCDate() + ((7 - nov.getUTCDay()) % 7))
+  return d >= mar && d < nov
+}
+function parseAbcTs(s) {
+  if (!s) return { utc: null, local: null }
+  const cleaned = String(s).replace('T', ' ').replace(/\.\d+$/, '')
+  const d = new Date(cleaned + 'Z')
+  const offset = isDstPacific(d) ? '-07:00' : '-08:00'
+  return { utc: new Date(cleaned.replace(' ', 'T') + offset).toISOString(), local: cleaned }
+}
+function transformEvent(evt, clubNumber) {
+  const ts = parseAbcTs(evt.eventTimestamp)
+  const member = (evt.members && evt.members[0]) || {}
+  return {
+    club_number: clubNumber,
+    event_id: evt.eventId,
+    event_type_id: evt.eventTypeId || null,
+    event_name: evt.eventName || null,
+    category: evt.category || null,
+    event_timestamp: ts.utc,
+    event_timestamp_local: ts.local,
+    status: evt.status || null,
+    duration_minutes: evt.duration ? parseInt(evt.duration, 10) : null,
+    employee_id: evt.employeeId || null,
+    employee_first_name: evt.employeeFirstName || null,
+    employee_last_name: evt.employeeLastName || null,
+    location_id: evt.locationId || null,
+    location_name: evt.locationName || null,
+    training_level: evt.eventTrainingLevel?.levelName || null,
+    earnings_code: evt.earningsCode || null,
+    member_id: member.memberId || null,
+    member_first_name: member.firstName || null,
+    member_last_name: member.lastName || null,
+    attended_status: member.attendedStatus || null,
+    modified_timestamp_abc: parseAbcTs(evt.modifiedTimestamp).utc,
+    fetched_at: new Date().toISOString(),
+    raw: evt,
+  }
+}
+
+router.post('/events/:eventId/refresh-from-abc', async (req, res) => {
+  const { eventId } = req.params
+  const { club_number, near_date } = req.query
+  if (!club_number) return res.status(400).json({ error: 'club_number is required' })
+  // ABC's GET /calendars/events doesn't accept a single-event filter; we have
+  // to scan a date range and pick out our eventId. `near_date` from the
+  // booking form narrows the search to ±1 day.
+  const center = near_date ? new Date(near_date + 'T00:00:00Z') : new Date()
+  const start = new Date(center); start.setUTCDate(start.getUTCDate() - 1)
+  const end = new Date(center); end.setUTCDate(end.getUTCDate() + 1)
+  const fmtDate = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`
+
+  try {
+    let found = null
+    // Try both common statuses
+    for (const status of ['completed', 'canceled-charge', 'scheduled', 'incomplete']) {
+      const r = await axios.get(`${ABC_BASE_URL}/${club_number}/calendars/events`, {
+        headers: abcHeaders(),
+        params: { eventDateRange: `${fmtDate(start)},${fmtDate(end)}`, eventStatus: status, size: 200 },
+        timeout: 30000,
+        validateStatus: () => true,
+      })
+      if (r.status >= 200 && r.status < 300) {
+        const hit = (r.data?.events || []).find(e => e.eventId === eventId)
+        if (hit) { found = hit; break }
+      }
+    }
+    if (!found) return res.status(404).json({ error: 'Event not found in ABC date-range scan', eventId })
+
+    const row = transformEvent(found, String(club_number))
+    const { error: upErr } = await supabaseAdmin.from('abc_calendar_events').upsert(row, { onConflict: 'club_number,event_id' })
+    if (upErr) throw new Error(upErr.message)
+    res.json({ ok: true, event: row })
+  } catch (err) {
+    console.error('[abcScheduler] refresh-from-abc failed:', err.message)
+    res.status(500).json({ error: err.message })
+  }
 })
 
 module.exports = router
