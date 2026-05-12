@@ -325,6 +325,7 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
   const [allowUnfunded, setAllowUnfunded] = useState(false)
   const [trainingLevels, setTrainingLevels] = useState([])
   const [trainingLevelId, setTrainingLevelId] = useState('')
+  const [trainingLevelManual, setTrainingLevelManual] = useState('')
   const [trainingLevelsLoading, setTrainingLevelsLoading] = useState(false)
 
   const [loading, setLoading] = useState(true)
@@ -435,7 +436,11 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
       duration: Number(duration),
       allowUnfunded,
     }
-    if (trainingLevelId) body.eventTrainingLevelId = trainingLevelId
+    // Manual text input wins if filled; otherwise use whatever the dropdown
+    // resolved to. Either way, ABC requires `eventTrainingLevelId` for event
+    // types that have training levels (API-CAL-EVT-0060).
+    const finalLevelId = (trainingLevelManual && trainingLevelManual.trim()) || trainingLevelId
+    if (finalLevelId) body.eventTrainingLevelId = finalLevelId
 
     setSubmitting(true)
     try {
@@ -444,10 +449,12 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
         body: JSON.stringify(body),
       })
       setSuccess('Event created.')
-      setDebugResponse(r)
+      setDebugResponse({ sent: body, received: r })
       if (onCreated) onCreated()
     } catch (e) {
       setSubmitError(e.message || 'Failed to create event')
+      // Show what we shipped so the user can compare against ABC's echo.
+      setDebugResponse({ sent: body, error: e.message })
     } finally {
       setSubmitting(false)
     }
@@ -498,28 +505,44 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
                 )}
               </label>
 
-              {/* Training level — shown when the event type has known levels */}
-              {(trainingLevels.length > 0 || trainingLevelsLoading) && (
-                <label className="block">
-                  <span className="block text-xs font-medium text-text-muted mb-1">Training level</span>
+              {/* Training level — always shown. Dropdown is populated from our
+                  cache of seen levels for this event type; manual override
+                  text input lets staff paste an ID when the cache is empty
+                  (new event type, or ABC never returned levelId in GET).   */}
+              <div className="space-y-1.5">
+                <span className="block text-xs font-medium text-text-muted">Training level</span>
+                {trainingLevelsLoading ? (
+                  <div className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm text-text-muted">Loading…</div>
+                ) : trainingLevels.length > 0 ? (
                   <select
                     value={trainingLevelId}
                     onChange={e => setTrainingLevelId(e.target.value)}
-                    disabled={trainingLevelsLoading}
-                    className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red disabled:opacity-60"
+                    className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red"
                   >
-                    {trainingLevelsLoading && <option value="">Loading…</option>}
-                    {!trainingLevelsLoading && trainingLevels.length === 0 && (
-                      <option value="">No cached levels — pick another event type or check ABC</option>
-                    )}
                     {trainingLevels.map(l => (
                       <option key={l.level_id} value={l.level_id}>
                         {l.level_name} · {l.observed_count}× last seen
                       </option>
                     ))}
                   </select>
-                </label>
-              )}
+                ) : (
+                  <div className="text-[11px] text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-2 py-1">
+                    No training levels cached for this event type. Paste one below if ABC requires it.
+                  </div>
+                )}
+                <input
+                  type="text"
+                  value={trainingLevelManual}
+                  onChange={e => setTrainingLevelManual(e.target.value)}
+                  placeholder={trainingLevels.length > 0 ? 'Override with a manual ID (optional)' : 'eventTrainingLevelId (32 hex chars from ABC)'}
+                  className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-xs font-mono focus:outline-none focus:border-wcs-red"
+                />
+                <p className="text-[10px] text-text-muted">
+                  {trainingLevels.length > 0
+                    ? 'Manual override wins if filled.'
+                    : 'If you don\'t know the ID, check Salem ABC web admin for this event type, or ask the rep.'}
+                </p>
+              </div>
 
               {/* Member search */}
               <label className="block">
