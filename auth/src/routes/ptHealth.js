@@ -262,16 +262,38 @@ async function computeDeactivatedPT(club, startDate, endDate) {
 //   Set   = total contacts in the filter
 //   Show  = day_one_status = 'Completed'
 //   Close = Show ∩ day_one_sale = 'Sale'
+// Mirror /reports/pt's date-to-ms helper. GHL stores custom-field dates as
+// UTC ms but the UI thinks in Pacific calendar dates, so the day boundaries
+// need a Pacific offset (+7h PDT, +8h PST) added before they hit Supabase.
+// Without this, PT Health was sweeping in ~7h of events from the prior
+// Pacific day at the start of the range.
+function getPacificOffsetMs(date) {
+  const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false })
+  const utcHour = date.getUTCHours()
+  const pacificHour = parseInt(formatter.format(date), 10)
+  const diff = (utcHour - pacificHour + 24) % 24
+  return diff * 3600000
+}
+
+function pacificDateToMs(dateStr, endOfDay = false) {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null
+  const d = endOfDay
+    ? new Date(dateStr + 'T23:59:59.999Z')
+    : new Date(dateStr + 'T00:00:00.000Z')
+  if (isNaN(d.getTime())) return null
+  return (d.getTime() + getPacificOffsetMs(d)).toString()
+}
+
 async function computeDayOnes(slug, startDate, endDate) {
-  const startMs = new Date(startDate + 'T00:00:00').getTime()
-  const endMs = new Date(endDate + 'T23:59:59').getTime()
+  const startMs = pacificDateToMs(startDate, false)
+  const endMs = pacificDateToMs(endDate, true)
   let q = supabaseAdmin
     .from('ghl_contacts_report')
     .select('day_one_status, day_one_sale, day_one_date, location_slug')
     .not('day_one_booked', 'is', null)
     .neq('day_one_booked', '')
   if (slug && slug !== 'all') q = q.eq('location_slug', slug)
-  q = q.gte('day_one_date', String(startMs)).lte('day_one_date', String(endMs))
+  q = q.gte('day_one_date', startMs).lte('day_one_date', endMs)
 
   const rows = []
   let from = 0
