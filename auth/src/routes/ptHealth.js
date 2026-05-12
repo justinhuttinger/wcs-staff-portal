@@ -251,22 +251,27 @@ async function computeDeactivatedPT(club, startDate, endDate) {
   }
 }
 
-// Day Ones — mirror the existing /reports/pt logic exactly so the funnel
-// numbers reconcile cell-for-cell with the Day One dashboard:
-//   Set   = day_one_booked='Yes' AND day_one_booking_date in range
-//   Show  = Set ∩ day_one_status='Completed'
-//   Close = Show ∩ day_one_sale='Sale'   (the literal value is "Sale",
-//                                          NOT "Yes" — that was the bug)
+// Day Ones — mirror /reports/pt exactly so PT Health funnel reconciles
+// cell-for-cell with the Day One dashboard. Two non-obvious details:
+//   • Filter on `day_one_date` (when the appointment is), NOT
+//     `day_one_booking_date` (when it was booked). These are different
+//     fields and produce different cohorts.
+//   • `day_one_booked` must be non-null + non-empty (any value) — not
+//     strictly equal to 'Yes'.
+//
+//   Set   = total contacts in the filter
+//   Show  = day_one_status = 'Completed'
+//   Close = Show ∩ day_one_sale = 'Sale'
 async function computeDayOnes(slug, startDate, endDate) {
   const startMs = new Date(startDate + 'T00:00:00').getTime()
   const endMs = new Date(endDate + 'T23:59:59').getTime()
   let q = supabaseAdmin
     .from('ghl_contacts_report')
-    .select('day_one_status, day_one_sale, day_one_booking_date, location_slug')
-    .eq('day_one_booked', 'Yes')
-    .not('day_one_booking_date', 'is', null)
+    .select('day_one_status, day_one_sale, day_one_date, location_slug')
+    .not('day_one_booked', 'is', null)
+    .neq('day_one_booked', '')
   if (slug && slug !== 'all') q = q.eq('location_slug', slug)
-  q = q.gte('day_one_booking_date', String(startMs)).lte('day_one_booking_date', String(endMs))
+  q = q.gte('day_one_date', String(startMs)).lte('day_one_date', String(endMs))
 
   const rows = []
   let from = 0
