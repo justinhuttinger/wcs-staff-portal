@@ -181,7 +181,7 @@ router.get('/', async (req, res) => {
 
     let q = supabaseAdmin
       .from('abc_calendar_events')
-      .select('club_number, member_id, employee_first_name, employee_last_name, event_name, event_timestamp')
+      .select('club_number, member_id, member_first_name, member_last_name, employee_first_name, employee_last_name, event_name, event_timestamp')
       .gte('event_timestamp', rangeStartIso)
       .lte('event_timestamp', rangeEndIso)
       .eq('status', 'Completed')
@@ -222,6 +222,7 @@ router.get('/', async (req, res) => {
         m = {
           club_number: r.club_number,
           member_id: r.member_id,
+          memberName: null,
           currentSessions: 0,
           priorSessions: 0,
           latestTs: null,
@@ -236,17 +237,27 @@ router.get('/', async (req, res) => {
         m.latestTs = r.event_timestamp
         m.latestTrainer = trainer
       }
+      // Capture the freshest non-empty member name we see on any event for this
+      // (club, member). ABC events carry first/last directly; abc_members is
+      // only a backup when the event row was synced before name fields were
+      // populated.
+      if (!m.memberName) {
+        const evName = `${r.member_first_name || ''} ${r.member_last_name || ''}`.trim()
+        if (evName) m.memberName = evName
+      }
     }
 
-    // Pull display names from abc_members in chunks of 500. The table is keyed
-    // by (club_number, member_id) so we group requests by club.
-    const byClubMembers = new Map() // club_number -> Set<member_id>
+    // For any member whose event rows didn't carry a name (older syncs may
+    // have left those columns null), fall back to abc_members.
+    const missingByClub = new Map()
     for (const m of byMember.values()) {
-      if (!byClubMembers.has(m.club_number)) byClubMembers.set(m.club_number, new Set())
-      byClubMembers.get(m.club_number).add(m.member_id)
+      if (!m.memberName) {
+        if (!missingByClub.has(m.club_number)) missingByClub.set(m.club_number, new Set())
+        missingByClub.get(m.club_number).add(m.member_id)
+      }
     }
-    const nameMap = new Map() // key: `${club_number}:${member_id}` -> name
-    for (const [club, set] of byClubMembers) {
+    const fallbackNameMap = new Map() // `${club}:${member_id}` -> name
+    for (const [club, set] of missingByClub) {
       const ids = [...set]
       for (let i = 0; i < ids.length; i += 500) {
         const chunk = ids.slice(i, i + 500)
@@ -257,19 +268,20 @@ router.get('/', async (req, res) => {
           .in('member_id', chunk)
         if (error) throw new Error(error.message)
         for (const mm of (members || [])) {
-          const name = `${mm.first_name || ''} ${mm.last_name || ''}`.trim() || mm.member_id
-          nameMap.set(`${club}:${mm.member_id}`, name)
+          const name = `${mm.first_name || ''} ${mm.last_name || ''}`.trim()
+          if (name) fallbackNameMap.set(`${club}:${mm.member_id}`, name)
         }
       }
     }
 
     const responseRows = []
     for (const m of byMember.values()) {
+      const name = m.memberName || fallbackNameMap.get(`${m.club_number}:${m.member_id}`) || `Member ${m.member_id}`
       responseRows.push({
         clubNumber: m.club_number,
         clubName: CLUB_NAMES[m.club_number] || m.club_number,
         memberId: m.member_id,
-        memberName: nameMap.get(`${m.club_number}:${m.member_id}`) || m.member_id,
+        memberName: name,
         serviceEmployee: m.latestTrainer || '',
         currentSessions: m.currentSessions,
         priorSessions: m.priorSessions,
