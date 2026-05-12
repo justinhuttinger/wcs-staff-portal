@@ -28,13 +28,33 @@ const ALL_REPORT_TILES = [
   { key: 'club-health', label: 'Club Health', desc: 'Dashboard' },
   { key: 'membership', label: 'Membership', desc: 'Report' },
   { key: 'cancels', label: 'Cancels', desc: 'Report' },
-  { key: 'pt', label: 'PT / Day One', desc: 'Report' },
+  { key: 'pt', label: 'Day One', desc: 'Report' },
   { key: 'pt-roster', label: 'PT Roster', desc: 'Active Clients' },
   { key: 'checkins', label: 'Check-ins', desc: 'Traffic & Times' },
   { key: 'pt-sessions', label: 'PT Sessions', desc: 'Trainer Load' },
   { key: 'pt-new-clients', label: 'PT New Clients', desc: 'New + Resign Sales' },
   { key: 'payroll', label: 'Payroll', desc: 'Monthly Commissions' },
   { key: 'operations', label: 'Operational Compliance', desc: 'Checklists' },
+]
+
+// Group tiles surface fewer items at the top level. Each group holds an
+// ordered list of report keys; reports outside any group still render as
+// top-level tiles (none today, but easy to add).
+const REPORT_GROUPS = [
+  {
+    key: 'health',
+    label: 'Club Health',
+    desc: 'Health, Activity & Compliance',
+    iconPath: REPORT_ICONS['club-health'],
+    reports: ['club-health', 'membership', 'cancels', 'operations', 'checkins', 'payroll'],
+  },
+  {
+    key: 'training',
+    label: 'Training',
+    desc: 'PT Reports',
+    iconPath: REPORT_ICONS['pt-roster'],
+    reports: ['pt', 'pt-roster', 'pt-sessions', 'pt-new-clients'],
+  },
 ]
 
 function getReportTilesForRole(role) {
@@ -48,6 +68,11 @@ function getReportTilesForRole(role) {
     default: // corporate, admin
       return ALL_REPORT_TILES
   }
+}
+
+// Find the group a report belongs to, if any.
+function findGroupForReport(reportKey) {
+  return REPORT_GROUPS.find(g => g.reports.includes(reportKey)) || null
 }
 
 import { LOCATION_OPTIONS as LOCATIONS } from '../config/locations'
@@ -97,16 +122,30 @@ function getToday() {
   return new Date().toISOString().split('T')[0]
 }
 
-function getSubRoute() {
+// Hash format: `#reporting`, `#reporting/<groupKey>`, or `#reporting/<reportKey>`.
+// We disambiguate by checking REPORT_GROUPS for the key.
+function parseHash() {
   const hash = window.location.hash
-  if (hash.startsWith('#reporting/')) return hash.replace('#reporting/', '')
-  return null
+  if (!hash.startsWith('#reporting/')) return { group: null, report: null }
+  const slug = hash.replace('#reporting/', '')
+  if (!slug) return { group: null, report: null }
+  if (REPORT_GROUPS.some(g => g.key === slug)) return { group: slug, report: null }
+  return { group: findGroupForReport(slug)?.key || null, report: slug }
 }
 
 export default function ReportingView({ user, onBack, location, isAdmin }) {
   const userRole = user?.staff?.role || 'team_member'
   const REPORT_TILES = getReportTilesForRole(userRole)
-  const [activeReport, setActiveReport] = useState(getSubRoute())
+  const VISIBLE_REPORT_KEYS = new Set(REPORT_TILES.map(t => t.key))
+
+  // Only show groups that contain at least one report the user can see.
+  const visibleGroups = REPORT_GROUPS
+    .map(g => ({ ...g, reports: g.reports.filter(k => VISIBLE_REPORT_KEYS.has(k)) }))
+    .filter(g => g.reports.length > 0)
+
+  const initial = parseHash()
+  const [activeGroup, setActiveGroup] = useState(initial.group)
+  const [activeReport, setActiveReport] = useState(initial.report)
   const [startDate, setStartDate] = useState(getMonthStart())
   const [endDate, setEndDate] = useState(getToday())
 
@@ -119,15 +158,31 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
 
   useEffect(() => {
     function onHashChange() {
-      setActiveReport(getSubRoute())
+      const next = parseHash()
+      setActiveGroup(next.group)
+      setActiveReport(next.report)
     }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
-  function navigateTo(key) {
-    window.location.hash = key ? '#reporting/' + key : '#reporting'
-    setActiveReport(key || null)
+  function navigateToGroup(groupKey) {
+    window.location.hash = groupKey ? '#reporting/' + groupKey : '#reporting'
+    setActiveGroup(groupKey || null)
+    setActiveReport(null)
+  }
+
+  function navigateToReport(reportKey) {
+    if (!reportKey) {
+      // Step back to the current group if we have one, otherwise root.
+      window.location.hash = activeGroup ? '#reporting/' + activeGroup : '#reporting'
+      setActiveReport(null)
+      return
+    }
+    const group = findGroupForReport(reportKey)
+    window.location.hash = '#reporting/' + reportKey
+    setActiveGroup(group?.key || null)
+    setActiveReport(reportKey)
   }
 
   function applyQuickRange(key) {
@@ -143,19 +198,40 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
     else setEndDate(value)
   }
 
+  const currentGroup = activeGroup ? visibleGroups.find(g => g.key === activeGroup) : null
+  const activeReportTile = activeReport ? REPORT_TILES.find(t => t.key === activeReport) : null
+
   function handleBack() {
     if (activeReport) {
-      navigateTo(null)
+      // Drop the report; stay inside the group if we were inside one.
+      navigateToReport(null)
+    } else if (activeGroup) {
+      // Step out of the group view to the root tile grid.
+      navigateToGroup(null)
     } else if (onBack) {
       onBack()
     }
   }
 
+  // Tiles shown in the current view: groups at root, that group's reports inside a group.
+  const tilesAtRoot = visibleGroups.map(g => ({ key: g.key, label: g.label, desc: g.desc, iconPath: g.iconPath, isGroup: true }))
+  const tilesInGroup = currentGroup
+    ? currentGroup.reports
+        .map(k => ALL_REPORT_TILES.find(t => t.key === k))
+        .filter(Boolean)
+        .map(t => ({ key: t.key, label: t.label, desc: t.desc, iconPath: REPORT_ICONS[t.key], isGroup: false }))
+    : []
+  const tilesToShow = activeReport ? [] : (currentGroup ? tilesInGroup : tilesAtRoot)
+
+  const backLabel = activeReport
+    ? (currentGroup ? `Back to ${currentGroup.label}` : 'Back to Reports')
+    : (currentGroup ? 'Back to Reports' : '')
+
   return (
     <div className="w-full px-8 py-6 max-w-6xl mx-auto">
       {/* Header card */}
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
-        {activeReport && (
+        {(activeReport || activeGroup) && (
           <button
             onClick={handleBack}
             className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2"
@@ -163,11 +239,11 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
-            Back to Reports
+            {backLabel}
           </button>
         )}
         <h2 className="text-xl font-bold text-text-primary mb-4">
-          {activeReport ? REPORT_TILES.find(t => t.key === activeReport)?.label || 'Report' : 'Reporting'}
+          {activeReportTile?.label || currentGroup?.label || 'Reporting'}
         </h2>
 
         {/* Location Selector */}
@@ -227,18 +303,18 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
         </div>}
       </div>
 
-      {/* Content — Tile Grid or Active Report */}
+      {/* Content — Tile Grid (root or group) or Active Report */}
       {!activeReport ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
-          {REPORT_TILES.map(tile => (
+          {tilesToShow.map(tile => (
             <button
               key={tile.key}
-              onClick={() => navigateTo(tile.key)}
+              onClick={() => tile.isGroup ? navigateToGroup(tile.key) : navigateToReport(tile.key)}
               className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
             >
               <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg text-wcs-red group-hover:bg-wcs-red/10 transition-all duration-200">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7">
-                  <path strokeLinecap="round" strokeLinejoin="round" d={REPORT_ICONS[tile.key]} />
+                  <path strokeLinecap="round" strokeLinejoin="round" d={tile.iconPath} />
                 </svg>
               </div>
               <div className="text-center">
