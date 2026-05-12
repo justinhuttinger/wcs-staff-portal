@@ -5,6 +5,7 @@ const { deltaSync } = require('./sync/deltaSync');
 const { abcSync, abcSyncForLocation, stopAbcSync } = require('./abc/abcSync');
 const { employeeSync } = require('./abc/employeeSync');
 const { enrichAll: enrichAttributionAll, enrichForLocation: enrichAttributionForLocation } = require('./sync/attributionEnrich');
+const { refreshCurrentHourCheckins } = require('./abc/checkins');
 const LOCATIONS = require('./config/locations');
 const { startScheduler } = require('./scheduler');
 const supabase = require('./db/supabase');
@@ -45,12 +46,38 @@ app.get('/health', async (req, res) => {
     .limit(1)
     .single();
 
+  // Latest check-in hour per club + the most recent ghl_sync_log entry for
+  // entity='checkins' so we can see at a glance whether the silent failure
+  // path is firing.
+  const { data: checkinRows } = await supabase
+    .from('checkins_hourly')
+    .select('club_number, hour_start, fetched_at')
+    .order('hour_start', { ascending: false })
+    .limit(200);
+  const latestByClub = {};
+  for (const r of (checkinRows || [])) {
+    if (!latestByClub[r.club_number]) {
+      latestByClub[r.club_number] = { hour_start: r.hour_start, fetched_at: r.fetched_at };
+    }
+  }
+  const { data: lastCheckinLog } = await supabase
+    .from('ghl_sync_log')
+    .select('completed_at, records_fetched, records_upserted, errors')
+    .eq('entity', 'checkins')
+    .order('completed_at', { ascending: false })
+    .limit(1)
+    .single();
+
   res.json({
     status: 'ok',
     uptime: process.uptime(),
     syncRunning,
     lastDelta: lastDelta?.completed_at || null,
     lastFull: lastFull?.completed_at || null,
+    checkins: {
+      latestByClub,
+      lastSyncLogEntry: lastCheckinLog || null,
+    },
   });
 });
 
@@ -82,6 +109,20 @@ app.post('/api/sync/full/:locationSlug', requireSecret, (req, res) => {
   fullSyncForLocation(req.params.locationSlug)
     .catch(err => console.error(`[API] Full sync for ${req.params.locationSlug} failed:`, err.message))
     .finally(() => { syncRunning = false; });
+});
+
+// POST /api/sync/checkins — run only the current-hour check-in refresh so we
+// can isolation-test ABC's /members/checkins/summaries endpoint without
+// kicking off a full delta. Synchronous (fast — one ABC call per club).
+app.post('/api/sync/checkins', requireSecret, async (req, res) => {
+  try {
+    const clubs = LOCATIONS.map(l => l.clubNumber).filter(Boolean);
+    const summary = await refreshCurrentHourCheckins(clubs);
+    res.json({ status: 'ok', ...summary });
+  } catch (err) {
+    console.error('[API] Checkins refresh failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/sync/attribution — enrich attribution_source / last_attribution_source
