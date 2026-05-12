@@ -126,6 +126,59 @@ app.post('/api/sync/checkins', requireSecret, async (req, res) => {
   }
 });
 
+// Format a Date as ABC's expected string but using the Pacific clock digits
+// instead of UTC. The migration comment in 004_checkins_hourly.sql says ABC
+// interprets the checkInTimestampRange parameter as **club local time**, so
+// we should send Pacific digits even though we think of times in UTC.
+function fmtAbcPacific(d) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(d);
+  const get = (t) => parts.find(p => p.type === t)?.value || '00';
+  let hour = get('hour');
+  if (hour === '24') hour = '00';
+  return `${get('year')}-${get('month')}-${get('day')} ${hour}:${get('minute')}:${get('second')}`;
+}
+
+function fmtAbcUtc(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return (
+    d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) + ' ' +
+    pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds())
+  );
+}
+
+async function probeAbc(clubNumber, fromStr, toStr) {
+  const url = `${process.env.ABC_BASE_URL || 'https://api.abcfinancial.com/rest'}/${clubNumber}/members/checkins/summaries`;
+  const r = await axios.get(url, {
+    params: { checkInTimestampRange: `${fromStr},${toStr}`, size: 5000 },
+    headers: { app_id: process.env.ABC_APP_ID, app_key: process.env.ABC_APP_KEY, Accept: 'application/json' },
+    timeout: 60000,
+  });
+  const data = r.data || {};
+  const members = Array.isArray(data.members) ? data.members : [];
+  let totalCheckins = 0;
+  for (const m of members) {
+    const arr = m.checkInCounts?.checkInCount || [];
+    for (const entry of arr) {
+      const n = parseInt(entry.count, 10);
+      if (!isNaN(n)) totalCheckins += n;
+    }
+  }
+  return {
+    sent: { from: fromStr, to: toStr },
+    httpStatus: r.status,
+    topLevelKeys: Object.keys(data),
+    abcStatus: data.status || null,
+    abcRequest: data.request || null,
+    memberCount: members.length,
+    totalCheckins,
+    firstMember: members[0] || null,
+  };
+}
+
 // POST /api/sync/checkins/probe — hits ABC for the previous complete hour to
 // rule out "partial-hour query returns zero" and dumps the raw ABC response
 // (truncated) for one sample club so we can see the actual response shape.
@@ -151,40 +204,28 @@ app.post('/api/sync/checkins/probe', requireSecret, async (req, res) => {
       }
     }
 
-    // Raw ABC response for ONE sample club so we can eyeball field names if
-    // the parser is returning zero against a renamed payload shape.
-    let rawSample = null;
+    // Hypothesis test: same window, both timestamp interpretations, side by
+    // side. If `pacific` returns non-zero and `utc` returns zero, we've
+    // confirmed ABC reads checkInTimestampRange as Pacific local time —
+    // which is what the migration comment in 004_checkins_hourly.sql says.
+    const sampleClub = req.query.club || clubs[0];
+    const probes = {};
     try {
-      const sampleClub = req.query.club || clubs[0];
-      const fmt = (d) => {
-        const pad = (n) => String(n).padStart(2, '0');
-        return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) + ' ' +
-               pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
-      };
-      const url = `${process.env.ABC_BASE_URL || 'https://api.abcfinancial.com/rest'}/${sampleClub}/members/checkins/summaries`;
-      const r = await axios.get(url, {
-        params: { checkInTimestampRange: `${fmt(start)},${fmt(end)}`, size: 5000 },
-        headers: { app_id: process.env.ABC_APP_ID, app_key: process.env.ABC_APP_KEY, Accept: 'application/json' },
-        timeout: 60000,
-      });
-      const data = r.data || {};
-      const members = Array.isArray(data.members) ? data.members : [];
-      rawSample = {
-        clubNumber: sampleClub,
-        status: r.status,
-        topLevelKeys: Object.keys(data),
-        memberCount: members.length,
-        firstMember: members[0] || null,
-        firstMemberKeys: members[0] ? Object.keys(members[0]) : null,
-      };
+      probes.utc = await probeAbc(sampleClub, fmtAbcUtc(start), fmtAbcUtc(end));
     } catch (err) {
-      rawSample = { error: err.message, response: err.response?.data || null };
+      probes.utc = { error: err.message, response: err.response?.data || null };
+    }
+    try {
+      probes.pacific = await probeAbc(sampleClub, fmtAbcPacific(start), fmtAbcPacific(end));
+    } catch (err) {
+      probes.pacific = { error: err.message, response: err.response?.data || null };
     }
 
     res.json({
       probedWindow: { start: start.toISOString(), end: end.toISOString() },
       aggregated,
-      rawSample,
+      sampleClub,
+      probes,
     });
   } catch (err) {
     console.error('[API] Checkins probe failed:', err.message);
