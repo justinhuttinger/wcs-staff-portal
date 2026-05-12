@@ -16,7 +16,7 @@ const TABS = [
 ]
 
 export default function OnlineJoinAdmin() {
-  const [tab, setTab] = useState('locations')
+  const [tab, setTab] = useState('preview')
 
   return (
     <div className="space-y-4">
