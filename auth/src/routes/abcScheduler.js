@@ -44,26 +44,94 @@ router.get('/events', async (req, res) => {
   if (!club_number || !start || !end) {
     return res.status(400).json({ error: 'club_number, start, end are required' })
   }
-  // event_timestamp is stored UTC; we filter by start-of-start-day-Pacific to
-  // end-of-end-day-Pacific. Pacific is UTC-7 (PDT) or UTC-8 (PST). To avoid
-  // a timezone library, just pad by ±1 day and let the client trim.
+
   const startISO = new Date(start + 'T00:00:00.000Z').toISOString()
   const endDate = new Date(end + 'T23:59:59.999Z')
-  endDate.setUTCDate(endDate.getUTCDate() + 1) // +1 day padding
+  endDate.setUTCDate(endDate.getUTCDate() + 1)
   const endISO = endDate.toISOString()
 
+  const fmtAbcDate = (s) => s // 'yyyy-MM-dd' already
+  const COLS = 'event_id, event_type_id, event_name, category, event_timestamp, event_timestamp_local, status, duration_minutes, employee_id, employee_first_name, employee_last_name, member_id, member_first_name, member_last_name, attended_status, training_level'
+
   try {
-    const { data, error } = await supabaseAdmin
+    // Cache query — completed + canceled events (ghl-sync only syncs these).
+    const cachedPromise = supabaseAdmin
       .from('abc_calendar_events')
-      .select('event_id, event_type_id, event_name, category, event_timestamp, event_timestamp_local, status, duration_minutes, employee_id, employee_first_name, employee_last_name, member_id, member_first_name, member_last_name, attended_status, training_level')
+      .select(COLS)
       .eq('club_number', String(club_number))
       .eq('category', category)
       .gte('event_timestamp', startISO)
       .lte('event_timestamp', endISO)
       .order('event_timestamp', { ascending: true })
       .limit(2000)
-    if (error) throw new Error(error.message)
-    res.json({ events: data || [] })
+
+    // Live ABC fetch for scheduled + incomplete events (future bookings that
+    // haven't been synced because ghl-sync only pulls completed/canceled).
+    async function fetchLiveAbc(status) {
+      try {
+        const r = await axios.get(`${ABC_BASE_URL}/${club_number}/calendars/events`, {
+          headers: abcHeaders(),
+          params: { eventDateRange: `${fmtAbcDate(start)},${fmtAbcDate(end)}`, eventStatus: status, size: 500 },
+          timeout: 30000,
+          validateStatus: () => true,
+        })
+        if (r.status >= 200 && r.status < 300) return r.data?.events || []
+        console.warn(`[abcScheduler] live ABC ${status} returned ${r.status}`)
+        return []
+      } catch (err) {
+        console.warn(`[abcScheduler] live ABC ${status} threw:`, err.message)
+        return []
+      }
+    }
+
+    const [cachedRes, liveScheduled, liveIncomplete] = await Promise.all([
+      cachedPromise,
+      fetchLiveAbc('scheduled'),
+      fetchLiveAbc('incomplete'),
+    ])
+
+    if (cachedRes.error) throw new Error(cachedRes.error.message)
+    const cached = cachedRes.data || []
+
+    // Transform live ABC events to the same shape as our cached rows so the
+    // frontend can render uniformly. Uses inline transform (subset of
+    // ghl-sync's full transformEvent — we only need display fields).
+    function liveToRow(evt) {
+      const ts = parseAbcTs(evt.eventTimestamp)
+      const member = (evt.members && evt.members[0]) || {}
+      return {
+        event_id: evt.eventId,
+        event_type_id: evt.eventTypeId || null,
+        event_name: evt.eventName || null,
+        category: evt.category || null,
+        event_timestamp: ts.utc,
+        event_timestamp_local: ts.local,
+        status: evt.status || null,
+        duration_minutes: evt.duration ? parseInt(evt.duration, 10) : null,
+        employee_id: evt.employeeId || null,
+        employee_first_name: evt.employeeFirstName || null,
+        employee_last_name: evt.employeeLastName || null,
+        member_id: member.memberId || null,
+        member_first_name: member.firstName || null,
+        member_last_name: member.lastName || null,
+        attended_status: member.attendedStatus || null,
+        training_level: evt.eventTrainingLevel?.levelName || null,
+      }
+    }
+
+    const live = [...liveScheduled, ...liveIncomplete]
+      .filter(e => (e.category || 'Appointment') === category)
+      .map(liveToRow)
+
+    // Merge — cache wins if both sources have the same event_id (cache has
+    // attended_status which live future events won't have).
+    const byId = new Map()
+    for (const e of live) byId.set(e.event_id, e)
+    for (const e of cached) byId.set(e.event_id, e)
+    const events = [...byId.values()].sort((a, b) =>
+      String(a.event_timestamp || '').localeCompare(String(b.event_timestamp || ''))
+    )
+    res.json({ events, sources: { cached: cached.length, liveScheduled: liveScheduled.length, liveIncomplete: liveIncomplete.length } })
   } catch (err) {
     console.error('[abcScheduler] /events failed:', err.message)
     res.status(500).json({ error: err.message })
