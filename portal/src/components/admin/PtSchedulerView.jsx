@@ -823,6 +823,7 @@ export default function PtSchedulerView() {
   const [club, setClub] = useState(CLUB_NUMBERS[0])
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [events, setEvents] = useState([])
+  const [sources, setSources] = useState(null)
   const [allEmployees, setAllEmployees] = useState([])
   const [trainerFilter, setTrainerFilter] = useState('all')
   const [loading, setLoading] = useState(false)
@@ -844,7 +845,10 @@ export default function PtSchedulerView() {
           club_number: club.clubNumber, start, end, category: 'Appointment',
         }).toString()
         const r = await api('/abc-scheduler/events?' + qs)
-        if (!cancelled) setEvents(r.events || [])
+        if (!cancelled) {
+          setEvents(r.events || [])
+          setSources(r.sources || null)
+        }
       } catch (e) {
         if (!cancelled) setError(e.message || 'Failed to load events')
       } finally {
@@ -1092,6 +1096,30 @@ export default function PtSchedulerView() {
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-300" /> No Show</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-orange-300" /> Canceled</span>
       </div>
+
+      {/* Data source diagnostic — shows which ABC status filter actually
+          returns events. If everything is 0, ABC isn't returning anything
+          for this club/date range; if one row has http != 200, that's the
+          error to act on. */}
+      {sources && (
+        <details className="text-[11px] text-text-muted px-1">
+          <summary className="cursor-pointer select-none">
+            Data sources — cached: <b>{sources.cached ?? 0}</b> · live (deduped): <b>{sources.liveTotal ?? 0}</b>
+            {sources.abcDateRange && <> · ABC range <code className="text-[10px]">{sources.abcDateRange}</code></>}
+          </summary>
+          <div className="mt-1 ml-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1 font-mono">
+            {Object.entries(sources.live || {}).map(([key, info]) => {
+              const ok = info.http >= 200 && info.http < 300
+              return (
+                <div key={key} className={`px-2 py-0.5 rounded ${ok ? 'bg-bg' : 'bg-red-50 text-red-700'}`}>
+                  <span className="font-semibold">{key}</span>: {info.kept}/{info.raw} (http {info.http})
+                  {info.error && <span className="text-red-600"> · {info.error}</span>}
+                </div>
+              )
+            })}
+          </div>
+        </details>
+      )}
 
       {selectedEvent && (
         <SessionBalanceModal

@@ -50,7 +50,15 @@ router.get('/events', async (req, res) => {
   endDate.setUTCDate(endDate.getUTCDate() + 1)
   const endISO = endDate.toISOString()
 
+  // Widen the ABC date range by ±1 day to absorb timezone differences — ABC
+  // interprets eventDateRange in club-local Pacific while we pass UTC dates.
   const fmtAbcDate = (s) => s // 'yyyy-MM-dd' already
+  const padDate = (s, days) => {
+    const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + days)
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`
+  }
+  const abcStart = padDate(start, -1)
+  const abcEnd = padDate(end, 1)
   const COLS = 'event_id, event_type_id, event_name, category, event_timestamp, event_timestamp_local, status, duration_minutes, employee_id, employee_first_name, employee_last_name, member_id, member_first_name, member_last_name, attended_status, training_level'
 
   try {
@@ -65,30 +73,43 @@ router.get('/events', async (req, res) => {
       .order('event_timestamp', { ascending: true })
       .limit(2000)
 
-    // Live ABC fetch for scheduled + incomplete events (future bookings that
-    // haven't been synced because ghl-sync only pulls completed/canceled).
+    // Live ABC fetch for events that aren't yet in our cache (ghl-sync only
+    // pulls completed + canceled-charge). We don't know the exact status
+    // strings ABC uses for future bookings, so we try several known/plausible
+    // values plus a no-status catch-all. Each result is returned in
+    // `sources.live.<statusKey>` so the UI can show whether ABC returned
+    // anything at all.
     async function fetchLiveAbc(status) {
       try {
+        const params = { eventDateRange: `${fmtAbcDate(abcStart)},${fmtAbcDate(abcEnd)}`, size: 500 }
+        if (status) params.eventStatus = status
         const r = await axios.get(`${ABC_BASE_URL}/${club_number}/calendars/events`, {
           headers: abcHeaders(),
-          params: { eventDateRange: `${fmtAbcDate(start)},${fmtAbcDate(end)}`, eventStatus: status, size: 500 },
+          params,
           timeout: 30000,
           validateStatus: () => true,
         })
-        if (r.status >= 200 && r.status < 300) return r.data?.events || []
-        console.warn(`[abcScheduler] live ABC ${status} returned ${r.status}`)
-        return []
+        if (r.status >= 200 && r.status < 300) {
+          return { events: r.data?.events || [], http: r.status }
+        }
+        console.warn(`[abcScheduler] live ABC ${status || '(none)'} returned ${r.status}`)
+        return { events: [], http: r.status, error: r.data?.message || r.data?.error || null }
       } catch (err) {
-        console.warn(`[abcScheduler] live ABC ${status} threw:`, err.message)
-        return []
+        console.warn(`[abcScheduler] live ABC ${status || '(none)'} threw:`, err.message)
+        return { events: [], http: 0, error: err.message }
       }
     }
 
-    const [cachedRes, liveScheduled, liveIncomplete] = await Promise.all([
+    const LIVE_STATUSES = ['scheduled', 'incomplete', 'pending', 'open', '']
+    const liveResults = await Promise.all([
       cachedPromise,
-      fetchLiveAbc('scheduled'),
-      fetchLiveAbc('incomplete'),
+      ...LIVE_STATUSES.map(s => fetchLiveAbc(s)),
     ])
+    const cachedRes = liveResults[0]
+    const liveByStatus = {}
+    LIVE_STATUSES.forEach((s, i) => {
+      liveByStatus[s || 'noFilter'] = liveResults[i + 1]
+    })
 
     if (cachedRes.error) throw new Error(cachedRes.error.message)
     const cached = cachedRes.data || []
@@ -119,9 +140,24 @@ router.get('/events', async (req, res) => {
       }
     }
 
-    const live = [...liveScheduled, ...liveIncomplete]
-      .filter(e => (e.category || 'Appointment') === category)
-      .map(liveToRow)
+    // Filter the live results to the week window (we widened ±1 day to catch
+    // timezone edges, so trim back to what the UI requested) and dedupe across
+    // the multiple status calls before merging with cache.
+    const startMs = new Date(start + 'T00:00:00Z').getTime() - 24 * 3600 * 1000 // 1 day grace
+    const endMs = new Date(end + 'T23:59:59Z').getTime() + 24 * 3600 * 1000
+    const liveById = new Map()
+    const liveCounts = {}
+    for (const [key, result] of Object.entries(liveByStatus)) {
+      const filtered = (result.events || []).filter(e => (e.category || 'Appointment') === category)
+      liveCounts[key] = { http: result.http, raw: (result.events || []).length, kept: filtered.length, error: result.error || null }
+      for (const e of filtered) {
+        const row = liveToRow(e)
+        const ts = row.event_timestamp ? new Date(row.event_timestamp).getTime() : null
+        if (ts !== null && (ts < startMs || ts > endMs)) continue
+        if (!liveById.has(row.event_id)) liveById.set(row.event_id, row)
+      }
+    }
+    const live = [...liveById.values()]
 
     // Merge — cache wins if both sources have the same event_id (cache has
     // attended_status which live future events won't have).
@@ -131,7 +167,15 @@ router.get('/events', async (req, res) => {
     const events = [...byId.values()].sort((a, b) =>
       String(a.event_timestamp || '').localeCompare(String(b.event_timestamp || ''))
     )
-    res.json({ events, sources: { cached: cached.length, liveScheduled: liveScheduled.length, liveIncomplete: liveIncomplete.length } })
+    res.json({
+      events,
+      sources: {
+        cached: cached.length,
+        liveTotal: live.length,
+        live: liveCounts,
+        abcDateRange: `${abcStart},${abcEnd}`,
+      },
+    })
   } catch (err) {
     console.error('[abcScheduler] /events failed:', err.message)
     res.status(500).json({ error: err.message })
