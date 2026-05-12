@@ -45,6 +45,7 @@ app.get('/.well-known/openid-configuration', (req, res) => {
 })
 app.use('/reports/leaderboard', require('./routes/leaderboard'))
 app.use('/reports/pt-roster', require('./routes/ptRoster'))
+app.use('/reports/pt-new-clients', require('./routes/ptNewClients'))
 app.use('/reports/checkins', require('./routes/checkinsReport'))
 app.use('/reports/pt-sessions', require('./routes/ptSessions'))
 app.use('/reports/payroll', require('./routes/payroll'))
