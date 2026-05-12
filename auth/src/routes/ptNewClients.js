@@ -141,35 +141,49 @@ function isPIF(s) {
 
 // Plan-detail cache keyed by `${clubNumber}:${planId}`. The recurring services
 // endpoint returns only the short `serviceItem` (e.g. "PT 60MIN"); the rich
-// name with frequency or pack count ("PT 60MIN 3XWEEK", "PT 30MIN 10 PACK")
-// lives on the recurringServicePlan entity, fetched separately.
+// name with frequency or pack count ("PT 60MIN 3XWEEK") and the per-purchase
+// quantity for PIF packs live on the recurringServicePlan entity, fetched
+// separately.
 const planCache = new Map()
 const PLAN_CACHE_TTL = 60 * 60 * 1000 // 1h
 
-async function fetchPlanName(clubNumber, planId) {
+async function fetchPlanDetail(clubNumber, planId) {
   if (!planId) return null
   const key = `${clubNumber}:${planId}`
   const hit = planCache.get(key)
-  if (hit && (Date.now() - hit.ts) < PLAN_CACHE_TTL) return hit.name
+  if (hit && (Date.now() - hit.ts) < PLAN_CACHE_TTL) return hit.detail
   try {
     const data = await abcGet(`/${clubNumber}/clubs/recurringserviceplans/${planId}`)
-    const name = data?.recurringServicePlanDetail?.recurringServicePlanName || null
-    planCache.set(key, { name, ts: Date.now() })
-    return name
+    const d = data?.recurringServicePlanDetail || {}
+    const qRaw = d.billing?.serviceQuantity
+    const quantity = qRaw === undefined || qRaw === null || qRaw === '' ? null : parseInt(qRaw, 10)
+    const detail = {
+      name: d.recurringServicePlanName || null,
+      quantity: Number.isFinite(quantity) ? quantity : null,
+    }
+    planCache.set(key, { detail, ts: Date.now() })
+    return detail
   } catch (e) {
     console.warn(`[PT New Clients] Plan fetch failed for ${planId}@${clubNumber}:`, e.message)
     return null
   }
 }
 
-function fallbackPackageName(s) {
-  // No plan-detail name — synthesize something readable. For PIF entries the
-  // recurring services payload sometimes encodes the pack count in totalPeriods.
-  const base = s.serviceItem || 'Unknown'
-  if (isPIF(s) && s.totalPeriods) {
-    return `${base} · ${s.totalPeriods} Pack`
-  }
-  return base
+// "SINGLE" is ABC's marker for solo (1-on-1) PT in plan names. The front-desk
+// folks read "SINGLE" as "PT60" so we swap it inline. Word-boundary so we don't
+// hit substrings like "SINGLES".
+function normalizeRSName(name) {
+  if (!name) return name
+  return name.replace(/\bSINGLE\b/gi, 'PT60')
+}
+
+// For PIF rows the package column shows only the pack count, e.g. "10 Pack".
+// Prefer the plan's purchase quantity, fall back to the recurring service's
+// totalPeriods.
+function pifPackageName(s, planDetail) {
+  const qty = planDetail?.quantity ?? (s.totalPeriods ? parseInt(s.totalPeriods, 10) : null)
+  if (Number.isFinite(qty) && qty > 0) return `${qty} Pack`
+  return 'Pack'
 }
 
 async function buildClub(club, startDate, endDate) {
@@ -204,13 +218,13 @@ async function buildClub(club, startDate, endDate) {
       if (pid) windowPlanIds.add(String(pid))
     }
   }
-  const planNames = new Map()
+  const planDetails = new Map()
   const uniquePlans = [...windowPlanIds]
   for (let i = 0; i < uniquePlans.length; i += 5) {
     const batch = uniquePlans.slice(i, i + 5)
-    const results = await Promise.all(batch.map(pid => fetchPlanName(club.clubNumber, pid)))
-    results.forEach((name, idx) => {
-      if (name) planNames.set(batch[idx], name)
+    const results = await Promise.all(batch.map(pid => fetchPlanDetail(club.clubNumber, pid)))
+    results.forEach((detail, idx) => {
+      if (detail) planDetails.set(batch[idx], detail)
     })
     if (i + 5 < uniquePlans.length) await new Promise(r => setTimeout(r, 100))
   }
@@ -238,13 +252,17 @@ async function buildClub(club, startDate, endDate) {
       }
 
       const pid = raw.recurringServicePlanId || raw.servicePlanId
-      const pkg = (pid && planNames.get(String(pid))) || fallbackPackageName(raw)
+      const detail = pid ? planDetails.get(String(pid)) : null
+      const type = isPIF(raw) ? 'PIF' : 'RS'
+      const pkg = type === 'PIF'
+        ? pifPackageName(raw, detail)
+        : normalizeRSName(detail?.name || raw.serviceItem || 'Unknown')
 
       rows.push({
         memberId,
         memberName: memberName(raw),
         package: pkg,
-        type: isPIF(raw) ? 'PIF' : 'RS',
+        type,
         price: parsePrice(raw),
         commissionEmployee: commissionEmployee(raw),
         serviceEmployee: serviceEmployee(raw),
