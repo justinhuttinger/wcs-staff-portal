@@ -53,38 +53,53 @@ function locSlugFromName(name) {
   return (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 }
 
-function pacificTodayISO() {
-  const now = new Date()
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone: PACIFIC_TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
-  return fmt.format(now) // YYYY-MM-DD
+function parseISODate(iso) {
+  // YYYY-MM-DD → Date at noon UTC (avoids tz edge cases)
+  return new Date(iso + 'T12:00:00Z')
 }
 
-function startOfMonth(iso) {
-  const [y, m] = iso.split('-')
-  return `${y}-${m}-01`
-}
-
-function lastMonthRange(iso) {
-  const [yStr, mStr] = iso.split('-')
-  const y = parseInt(yStr, 10)
-  const m = parseInt(mStr, 10)
-  const lmY = m === 1 ? y - 1 : y
-  const lmM = m === 1 ? 12 : m - 1
-  // Days in the last month: Date(year, month, 0) where month is 1-based gives
-  // the last day of (month-1), so passing lmM here lands on the last day of
-  // lmM itself (using UTC to dodge tz drift).
-  const days = new Date(Date.UTC(lmY, lmM, 0)).getUTCDate()
+function fmtISO(d) {
   const pad = n => String(n).padStart(2, '0')
-  return {
-    start: `${lmY}-${pad(lmM)}-01`,
-    end: `${lmY}-${pad(lmM)}-${pad(days)}`,
-    days,
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
+}
+
+function daysInclusive(startIso, endIso) {
+  const s = parseISODate(startIso)
+  const e = parseISODate(endIso)
+  return Math.round((e - s) / 86400000) + 1
+}
+
+function isFullCalendarMonth(startIso, endIso) {
+  const s = parseISODate(startIso)
+  const e = parseISODate(endIso)
+  if (s.getUTCDate() !== 1) return false
+  if (e.getUTCFullYear() !== s.getUTCFullYear()) return false
+  if (e.getUTCMonth() !== s.getUTCMonth()) return false
+  const lastDay = new Date(Date.UTC(s.getUTCFullYear(), s.getUTCMonth() + 1, 0)).getUTCDate()
+  return e.getUTCDate() === lastDay
+}
+
+// Compute the comparison window for a given [start, end] range.
+//
+//   • If the range is exactly a full calendar month (e.g. Apr 1 – Apr 30),
+//     the comparison is the previous full calendar month (Mar 1 – Mar 31).
+//     This is the "last month vs the month before" mode.
+//   • Otherwise we use a same-length window immediately abutting the start
+//     date. Apr 1 – Apr 15 → Mar 17 – Mar 31.
+function computeComparisonRange(startIso, endIso) {
+  if (isFullCalendarMonth(startIso, endIso)) {
+    const s = parseISODate(startIso)
+    const prevMonth = new Date(Date.UTC(s.getUTCFullYear(), s.getUTCMonth() - 1, 1))
+    const lastDay = new Date(Date.UTC(prevMonth.getUTCFullYear(), prevMonth.getUTCMonth() + 1, 0)).getUTCDate()
+    const compStart = new Date(Date.UTC(prevMonth.getUTCFullYear(), prevMonth.getUTCMonth(), 1))
+    const compEnd = new Date(Date.UTC(prevMonth.getUTCFullYear(), prevMonth.getUTCMonth(), lastDay))
+    return { start: fmtISO(compStart), end: fmtISO(compEnd), days: lastDay, mode: 'calendar-month' }
   }
+  const days = daysInclusive(startIso, endIso)
+  const s = parseISODate(startIso)
+  const compEnd = new Date(Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), s.getUTCDate() - 1))
+  const compStart = new Date(Date.UTC(compEnd.getUTCFullYear(), compEnd.getUTCMonth(), compEnd.getUTCDate() - days + 1))
+  return { start: fmtISO(compStart), end: fmtISO(compEnd), days, mode: 'same-length' }
 }
 
 // Default filter: PT-style events only. Skips Swim, Stretch, and floor-hour /
@@ -130,23 +145,38 @@ async function authorizeAndResolveClubs(req, location_slug) {
   return [SLUG_CLUB_MAP[location_slug]]
 }
 
-// GET /reports/session-frequency?location_slug=salem|all[&event_group=all|pt]
+// GET /reports/session-frequency?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+//   &location_slug=salem|all [&event_group=all|pt]
+//
+// The comparison window is computed automatically from [start_date, end_date]:
+//   • full calendar month → previous calendar month
+//   • otherwise          → same-length window immediately before start_date
 router.get('/', async (req, res) => {
   try {
     const location_slug = req.query.location_slug
     const eventGroup = String(req.query.event_group || 'pt').toLowerCase()
     const clubs = await authorizeAndResolveClubs(req, location_slug)
 
-    const today = pacificTodayISO()
-    const currentStart = startOfMonth(today)
-    const currentEnd = today
-    const lastMonth = lastMonthRange(today)
+    const { start_date, end_date } = req.query
+    if (!start_date || !end_date) {
+      return res.status(400).json({ error: 'start_date and end_date are required (YYYY-MM-DD)' })
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start_date) || !/^\d{4}-\d{2}-\d{2}$/.test(end_date)) {
+      return res.status(400).json({ error: 'Dates must be YYYY-MM-DD' })
+    }
+    if (start_date > end_date) {
+      return res.status(400).json({ error: 'start_date must be on or before end_date' })
+    }
 
-    const currentDayOfMonth = parseInt(today.slice(-2), 10)
-    const currentWeeks = currentDayOfMonth / 7
-    const lastMonthWeeks = lastMonth.days / 7
+    const currentStart = start_date
+    const currentEnd = end_date
+    const currentDays = daysInclusive(currentStart, currentEnd)
+    const currentWeeks = currentDays / 7
 
-    const rangeStartIso = pacificDayBoundsToUtc(lastMonth.start, false)
+    const prior = computeComparisonRange(currentStart, currentEnd)
+    const priorWeeks = prior.days / 7
+
+    const rangeStartIso = pacificDayBoundsToUtc(prior.start, false)
     const rangeEndIso = pacificDayBoundsToUtc(currentEnd, true)
 
     let q = supabaseAdmin
@@ -184,8 +214,8 @@ router.get('/', async (req, res) => {
       if (eventGroup === 'pt' && !isPTEvent(r.event_name)) continue
       const pacificDate = fmt.format(new Date(r.event_timestamp))
       const inCurrent = pacificDate >= currentStart && pacificDate <= currentEnd
-      const inLast = pacificDate >= lastMonth.start && pacificDate <= lastMonth.end
-      if (!inCurrent && !inLast) continue
+      const inPrior = pacificDate >= prior.start && pacificDate <= prior.end
+      if (!inCurrent && !inPrior) continue
       const key = `${r.club_number}:${r.member_id}`
       let m = byMember.get(key)
       if (!m) {
@@ -193,14 +223,14 @@ router.get('/', async (req, res) => {
           club_number: r.club_number,
           member_id: r.member_id,
           currentSessions: 0,
-          lastMonthSessions: 0,
+          priorSessions: 0,
           latestTs: null,
           latestTrainer: null,
         }
         byMember.set(key, m)
       }
       if (inCurrent) m.currentSessions++
-      if (inLast) m.lastMonthSessions++
+      if (inPrior) m.priorSessions++
       const trainer = `${r.employee_first_name || ''} ${r.employee_last_name || ''}`.trim()
       if (trainer && (!m.latestTs || r.event_timestamp > m.latestTs)) {
         m.latestTs = r.event_timestamp
@@ -242,38 +272,41 @@ router.get('/', async (req, res) => {
         memberName: nameMap.get(`${m.club_number}:${m.member_id}`) || m.member_id,
         serviceEmployee: m.latestTrainer || '',
         currentSessions: m.currentSessions,
-        lastMonthSessions: m.lastMonthSessions,
+        priorSessions: m.priorSessions,
         currentPerWeek: currentWeeks > 0 ? m.currentSessions / currentWeeks : 0,
-        lastMonthPerWeek: lastMonthWeeks > 0 ? m.lastMonthSessions / lastMonthWeeks : 0,
+        priorPerWeek: priorWeeks > 0 ? m.priorSessions / priorWeeks : 0,
       })
     }
 
     responseRows.sort((a, b) => {
       if (b.currentSessions !== a.currentSessions) return b.currentSessions - a.currentSessions
-      if (b.lastMonthSessions !== a.lastMonthSessions) return b.lastMonthSessions - a.lastMonthSessions
+      if (b.priorSessions !== a.priorSessions) return b.priorSessions - a.priorSessions
       return (a.memberName || '').localeCompare(b.memberName || '')
     })
 
     const currentTotal = responseRows.reduce((s, r) => s + r.currentSessions, 0)
-    const lastMonthTotal = responseRows.reduce((s, r) => s + r.lastMonthSessions, 0)
+    const priorTotal = responseRows.reduce((s, r) => s + r.priorSessions, 0)
     const activeCurrent = responseRows.filter(r => r.currentSessions > 0).length
 
     res.json({
       period: {
         current_start: currentStart,
         current_end: currentEnd,
+        current_days: currentDays,
         current_weeks: currentWeeks,
-        last_month_start: lastMonth.start,
-        last_month_end: lastMonth.end,
-        last_month_weeks: lastMonthWeeks,
+        prior_start: prior.start,
+        prior_end: prior.end,
+        prior_days: prior.days,
+        prior_weeks: priorWeeks,
+        comparison_mode: prior.mode,
       },
       rows: responseRows,
       summary: {
         active_members_current: activeCurrent,
         current_total: currentTotal,
-        last_month_total: lastMonthTotal,
+        prior_total: priorTotal,
         current_per_week_avg: currentWeeks > 0 ? currentTotal / currentWeeks : 0,
-        last_month_per_week_avg: lastMonthWeeks > 0 ? lastMonthTotal / lastMonthWeeks : 0,
+        prior_per_week_avg: priorWeeks > 0 ? priorTotal / priorWeeks : 0,
       },
     })
   } catch (err) {

@@ -20,7 +20,7 @@ function fmtDateRange(start, end) {
   return `${fmt(s)} – ${fmt(e)}`
 }
 
-export default function SessionFrequencyReport({ locationSlug }) {
+export default function SessionFrequencyReport({ startDate, endDate, locationSlug }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -31,11 +31,16 @@ export default function SessionFrequencyReport({ locationSlug }) {
   const reqRef = useRef(0)
 
   useEffect(() => {
+    if (!startDate || !endDate) return
     const id = ++reqRef.current
     setData(null)
     setLoading(true)
     setError(null)
-    getSessionFrequency({ location_slug: locationSlug || 'all' })
+    getSessionFrequency({
+      start_date: startDate,
+      end_date: endDate,
+      location_slug: locationSlug || 'all',
+    })
       .then(res => {
         if (id !== reqRef.current) return
         setData(res)
@@ -46,7 +51,7 @@ export default function SessionFrequencyReport({ locationSlug }) {
         setError(err.message)
         setLoading(false)
       })
-  }, [locationSlug])
+  }, [startDate, endDate, locationSlug])
 
   const trainers = useMemo(() => {
     if (!data?.rows) return []
@@ -58,7 +63,7 @@ export default function SessionFrequencyReport({ locationSlug }) {
     const q = search.trim().toLowerCase()
     return data.rows.filter(r => {
       if (trainerFilter !== 'all' && r.serviceEmployee !== trainerFilter) return false
-      if (onlyActive && r.currentSessions === 0) return false
+      if (onlyActive && (r.currentSessions || 0) === 0) return false
       if (q) {
         const hay = `${r.memberName} ${r.serviceEmployee || ''} ${r.clubName}`.toLowerCase()
         if (!hay.includes(q)) return false
@@ -69,15 +74,15 @@ export default function SessionFrequencyReport({ locationSlug }) {
 
   const filteredSummary = useMemo(() => {
     const currentTotal = filtered.reduce((s, r) => s + r.currentSessions, 0)
-    const lastTotal = filtered.reduce((s, r) => s + r.lastMonthSessions, 0)
+    const priorTotal = filtered.reduce((s, r) => s + r.priorSessions, 0)
     const currentWeeks = data?.period?.current_weeks || 0
-    const lastWeeks = data?.period?.last_month_weeks || 0
+    const priorWeeks = data?.period?.prior_weeks || 0
     return {
       activeMembers: filtered.filter(r => r.currentSessions > 0).length,
       currentTotal,
-      lastTotal,
+      priorTotal,
       currentPerWeekAvg: currentWeeks > 0 ? currentTotal / currentWeeks : 0,
-      lastPerWeekAvg: lastWeeks > 0 ? lastTotal / lastWeeks : 0,
+      priorPerWeekAvg: priorWeeks > 0 ? priorTotal / priorWeeks : 0,
     }
   }, [filtered, data])
 
@@ -85,8 +90,8 @@ export default function SessionFrequencyReport({ locationSlug }) {
     if (!filtered.length) return
     const header = [
       'Club', 'Member', 'Service Employee',
-      'MTD Sessions', 'MTD / wk',
-      'Last Month Sessions', 'Last Month / wk',
+      'Current Sessions', 'Current / wk',
+      'Prior Sessions', 'Prior / wk',
     ]
     const rows = filtered.map(r => [
       r.clubName,
@@ -94,10 +99,10 @@ export default function SessionFrequencyReport({ locationSlug }) {
       r.serviceEmployee || '',
       r.currentSessions,
       r.currentPerWeek.toFixed(2),
-      r.lastMonthSessions,
-      r.lastMonthPerWeek.toFixed(2),
+      r.priorSessions,
+      r.priorPerWeek.toFixed(2),
     ])
-    exportCSV([header, ...rows], `session-frequency-${data?.period?.current_start || 'mtd'}`)
+    exportCSV([header, ...rows], `session-frequency-${data?.period?.current_start || 'range'}`)
   }
 
   if (loading) {
@@ -122,32 +127,37 @@ export default function SessionFrequencyReport({ locationSlug }) {
   return (
     <div className="space-y-5">
       {/* Period header bubble */}
-      <div className="bg-surface border border-border rounded-xl px-4 py-2.5 inline-flex items-center gap-2 text-sm">
-        <span className="font-bold text-text-primary">MTD:</span>
+      <div className="bg-surface border border-border rounded-xl px-4 py-2.5 inline-flex items-center gap-2 text-sm flex-wrap">
+        <span className="font-bold text-text-primary">Current:</span>
         <span className="text-text-muted">{fmtDateRange(period.current_start, period.current_end)}</span>
+        <span className="text-text-muted">({fmtPerWeek(period.current_weeks)} wk)</span>
         <span className="text-text-muted">·</span>
-        <span className="font-bold text-text-primary">Last Month:</span>
-        <span className="text-text-muted">{fmtDateRange(period.last_month_start, period.last_month_end)}</span>
+        <span className="font-bold text-text-primary">vs:</span>
+        <span className="text-text-muted">{fmtDateRange(period.prior_start, period.prior_end)}</span>
+        <span className="text-text-muted">({fmtPerWeek(period.prior_weeks)} wk)</span>
+        {period.comparison_mode === 'calendar-month' && (
+          <span className="ml-1 text-[10px] text-text-muted uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-bg border border-border">prior calendar month</span>
+        )}
       </div>
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <SummaryCard label="Active Members (MTD)" value={fmtNum(filteredSummary.activeMembers)} tone="green" />
+        <SummaryCard label="Active Members (Current)" value={fmtNum(filteredSummary.activeMembers)} tone="green" />
         <SummaryCard
-          label="Sessions MTD"
+          label="Current Sessions"
           value={fmtNum(filteredSummary.currentTotal)}
           sub={`${fmtPerWeek(filteredSummary.currentPerWeekAvg)} / wk avg`}
           tone="green"
         />
         <SummaryCard
-          label="Sessions Last Month"
-          value={fmtNum(filteredSummary.lastTotal)}
-          sub={`${fmtPerWeek(filteredSummary.lastPerWeekAvg)} / wk avg`}
+          label="Prior Sessions"
+          value={fmtNum(filteredSummary.priorTotal)}
+          sub={`${fmtPerWeek(filteredSummary.priorPerWeekAvg)} / wk avg`}
           tone="blue"
         />
         <SummaryCard
-          label="MTD vs Last Month / wk"
-          value={<TrendInline current={filteredSummary.currentPerWeekAvg} previous={filteredSummary.lastPerWeekAvg} />}
+          label="Current vs Prior / wk"
+          value={<TrendInline current={filteredSummary.currentPerWeekAvg} previous={filteredSummary.priorPerWeekAvg} />}
           tone="default"
         />
       </div>
@@ -156,13 +166,14 @@ export default function SessionFrequencyReport({ locationSlug }) {
       <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={() => setOnlyActive(v => !v)}
+          title="Hide members with zero sessions in the current period (still includes those who only trained in the prior period if off)."
           className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
             onlyActive
               ? 'bg-wcs-red text-white border-wcs-red'
               : 'bg-surface text-text-muted border-border hover:text-text-primary'
           }`}
         >
-          MTD-active only
+          Has current sessions
         </button>
 
         <select
@@ -209,10 +220,10 @@ export default function SessionFrequencyReport({ locationSlug }) {
                 <th className="text-left px-4 py-2 font-semibold">Member</th>
                 <th className="text-left px-4 py-2 font-semibold">Service Employee</th>
                 <th className="text-left px-4 py-2 font-semibold">Club</th>
-                <th className="text-right px-4 py-2 font-semibold">MTD</th>
-                <th className="text-right px-4 py-2 font-semibold">MTD / wk</th>
-                <th className="text-right px-4 py-2 font-semibold">Last Month</th>
-                <th className="text-right px-4 py-2 font-semibold">LM / wk</th>
+                <th className="text-right px-4 py-2 font-semibold">Current</th>
+                <th className="text-right px-4 py-2 font-semibold">Cur / wk</th>
+                <th className="text-right px-4 py-2 font-semibold">Prior</th>
+                <th className="text-right px-4 py-2 font-semibold">Prior / wk</th>
                 <th className="text-left px-4 py-2 font-semibold">Trend</th>
               </tr>
             </thead>
@@ -231,9 +242,9 @@ export default function SessionFrequencyReport({ locationSlug }) {
                     <td className="px-4 py-2 text-text-muted">{r.clubName}</td>
                     <td className="px-4 py-2 text-right font-semibold text-text-primary">{r.currentSessions}</td>
                     <td className="px-4 py-2 text-right text-text-muted">{fmtPerWeek(r.currentPerWeek)}</td>
-                    <td className="px-4 py-2 text-right text-text-primary">{r.lastMonthSessions}</td>
-                    <td className="px-4 py-2 text-right text-text-muted">{fmtPerWeek(r.lastMonthPerWeek)}</td>
-                    <td className="px-4 py-2"><TrendChip current={r.currentPerWeek} previous={r.lastMonthPerWeek} /></td>
+                    <td className="px-4 py-2 text-right text-text-primary">{r.priorSessions}</td>
+                    <td className="px-4 py-2 text-right text-text-muted">{fmtPerWeek(r.priorPerWeek)}</td>
+                    <td className="px-4 py-2"><TrendChip current={r.currentPerWeek} previous={r.priorPerWeek} /></td>
                   </tr>
                 ))
               )}
@@ -246,10 +257,10 @@ export default function SessionFrequencyReport({ locationSlug }) {
                   </td>
                   <td className="px-4 py-2 text-right text-text-primary">{fmtNum(filteredSummary.currentTotal)}</td>
                   <td className="px-4 py-2 text-right text-text-primary">{fmtPerWeek(filteredSummary.currentPerWeekAvg)}</td>
-                  <td className="px-4 py-2 text-right text-text-primary">{fmtNum(filteredSummary.lastTotal)}</td>
-                  <td className="px-4 py-2 text-right text-text-primary">{fmtPerWeek(filteredSummary.lastPerWeekAvg)}</td>
+                  <td className="px-4 py-2 text-right text-text-primary">{fmtNum(filteredSummary.priorTotal)}</td>
+                  <td className="px-4 py-2 text-right text-text-primary">{fmtPerWeek(filteredSummary.priorPerWeekAvg)}</td>
                   <td className="px-4 py-2">
-                    <TrendChip current={filteredSummary.currentPerWeekAvg} previous={filteredSummary.lastPerWeekAvg} />
+                    <TrendChip current={filteredSummary.currentPerWeekAvg} previous={filteredSummary.priorPerWeekAvg} />
                   </td>
                 </tr>
               </tfoot>
@@ -260,8 +271,9 @@ export default function SessionFrequencyReport({ locationSlug }) {
 
       <p className="text-xs text-text-muted">
         Counts include only <span className="font-semibold">Completed</span> calendar events tagged as PT-style training
-        (Swim, Stretch, and admin entries are excluded). Per-week averages divide the period totals by the number of
-        weeks elapsed: {fmtPerWeek(period.current_weeks)} wk for MTD, {fmtPerWeek(period.last_month_weeks)} wk for last month.
+        (Swim, Stretch, and admin entries are excluded). The comparison window is the prior calendar month when the
+        current range is exactly one calendar month; otherwise it's a same-length window ending the day before the
+        current range starts. Per-week averages divide each period's total by its week count.
       </p>
     </div>
   )
