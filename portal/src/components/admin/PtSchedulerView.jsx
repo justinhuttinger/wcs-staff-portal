@@ -79,10 +79,78 @@ function statusInfo(status, attended) {
   return { label: status || 'Unknown', badge: 'bg-gray-50 text-gray-700 border-gray-200', card: 'bg-gray-50 border-gray-300 text-gray-900' }
 }
 
-function SessionBalanceModal({ event, clubNumber, onClose }) {
+const ATTENDANCE_OPTIONS = [
+  { value: 'Attended',       label: 'Attended',     cls: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' },
+  { value: 'Did Not Attend', label: 'No-show',      cls: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100' },
+  { value: 'Pending',        label: 'Pending',      cls: 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100' },
+]
+
+function SessionBalanceModal({ event, clubNumber, onClose, onMutated }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [actionPending, setActionPending] = useState(null) // string label or null
+  const [actionError, setActionError] = useState(null)
+  const [actionSuccess, setActionSuccess] = useState(null)
+  const [currentAttended, setCurrentAttended] = useState(event.attended_status)
+
+  async function markAttendance(value) {
+    if (!event.member_id) return
+    setActionPending('attendance:' + value); setActionError(null); setActionSuccess(null)
+    try {
+      await api(`/abc-scheduler/events/${encodeURIComponent(event.event_id)}/attendance`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          club_number: clubNumber, member_id: event.member_id, attended_status: value,
+        }),
+      })
+      setCurrentAttended(value)
+      setActionSuccess(`Marked as ${value}.`)
+      if (onMutated) onMutated()
+    } catch (e) {
+      setActionError(e.message || 'Failed to update attendance')
+    } finally {
+      setActionPending(null)
+    }
+  }
+
+  async function cancelEvent() {
+    const ok = window.confirm(`Cancel "${event.event_name || 'this event'}"? This removes it from ABC for all members.`)
+    if (!ok) return
+    setActionPending('cancel'); setActionError(null); setActionSuccess(null)
+    try {
+      await api(`/abc-scheduler/events/${encodeURIComponent(event.event_id)}?club_number=${encodeURIComponent(clubNumber)}`, {
+        method: 'DELETE',
+      })
+      setActionSuccess('Event canceled.')
+      if (onMutated) onMutated()
+      setTimeout(onClose, 600)
+    } catch (e) {
+      setActionError(e.message || 'Failed to cancel event')
+    } finally {
+      setActionPending(null)
+    }
+  }
+
+  async function removeMember() {
+    if (!event.member_id) return
+    const name = [event.member_first_name, event.member_last_name].filter(Boolean).join(' ') || 'this member'
+    const ok = window.confirm(`Remove ${name} from this event? The event will remain for any other members.`)
+    if (!ok) return
+    setActionPending('remove'); setActionError(null); setActionSuccess(null)
+    try {
+      await api(`/abc-scheduler/events/${encodeURIComponent(event.event_id)}/members/${encodeURIComponent(event.member_id)}?club_number=${encodeURIComponent(clubNumber)}`, {
+        method: 'DELETE',
+      })
+      setActionSuccess('Member removed from event.')
+      if (onMutated) onMutated()
+      setTimeout(onClose, 600)
+    } catch (e) {
+      setActionError(e.message || 'Failed to remove member')
+    } finally {
+      setActionPending(null)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -172,7 +240,335 @@ function SessionBalanceModal({ event, clubNumber, onClose }) {
           ))}
         </div>
 
-        <p className="text-[10px] text-text-muted mt-3 italic">Phase 1: viewer only. Booking + attendance changes pending ABC API write access.</p>
+        {/* Attendance + cancel actions */}
+        <div className="border-t border-border pt-3 mt-3 space-y-3">
+          {(actionError || actionSuccess) && (
+            <div className={`rounded-lg px-3 py-2 text-xs ${actionError ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-green-50 border border-green-200 text-green-700'}`}>
+              {actionError || actionSuccess}
+            </div>
+          )}
+
+          {event.member_id && (
+            <div>
+              <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Attendance</p>
+              <div className="flex flex-wrap gap-1.5">
+                {ATTENDANCE_OPTIONS.map(opt => {
+                  const isCurrent = currentAttended === opt.value
+                  const isPending = actionPending === 'attendance:' + opt.value
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => markAttendance(opt.value)}
+                      disabled={!!actionPending || isCurrent}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-50 ${isCurrent ? 'bg-bg border-border text-text-muted' : opt.cls}`}
+                      title={isCurrent ? 'Already set' : ''}
+                    >
+                      {isPending ? '…' : (isCurrent ? `✓ ${opt.label}` : opt.label)}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Manage Event</p>
+            <div className="flex flex-wrap gap-1.5">
+              {event.member_id && (
+                <button
+                  onClick={removeMember}
+                  disabled={!!actionPending}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text-muted hover:text-text-primary hover:bg-bg disabled:opacity-50"
+                >
+                  {actionPending === 'remove' ? '…' : 'Remove this member'}
+                </button>
+              )}
+              <button
+                onClick={cancelEvent}
+                disabled={!!actionPending}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-200 text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50"
+              >
+                {actionPending === 'cancel' ? 'Canceling…' : 'Cancel event'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Book Event modal — POSTs a new event to /abc-scheduler/events. The ABC
+// payload shape is a best guess based on the GET response (eventTypeId +
+// eventTimestamp + duration + employeeId + members[]); backend passes the
+// body through unchanged so this is iterable without redeploys.
+// ---------------------------------------------------------------------------
+function BookEventModal({ club, defaultDate, onClose, onCreated }) {
+  const [eventTypes, setEventTypes] = useState([])
+  const [employees, setEmployees] = useState([])
+  const [memberQuery, setMemberQuery] = useState('')
+  const [memberResults, setMemberResults] = useState([])
+  const [selectedMember, setSelectedMember] = useState(null)
+  const [memberSearchPending, setMemberSearchPending] = useState(false)
+
+  const [eventTypeId, setEventTypeId] = useState('')
+  const [employeeId, setEmployeeId] = useState('')
+  const [date, setDate] = useState(() => toISODate(defaultDate || new Date()))
+  const [time, setTime] = useState(() => {
+    const now = new Date()
+    const hh = String(Math.max(DAY_START_HOUR, Math.min(DAY_END_HOUR - 1, now.getHours()))).padStart(2, '0')
+    const mm = now.getMinutes() < 30 ? '00' : '30'
+    return `${hh}:${mm}`
+  })
+  const [duration, setDuration] = useState(60)
+
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [success, setSuccess] = useState(null)
+  const [submitError, setSubmitError] = useState(null)
+  const [debugResponse, setDebugResponse] = useState(null)
+
+  // Load event types + employees on open
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true); setError(null)
+      try {
+        const [et, emp] = await Promise.all([
+          api(`/abc-scheduler/event-types?club_number=${encodeURIComponent(club.clubNumber)}`),
+          api(`/abc-scheduler/employees?club_number=${encodeURIComponent(club.clubNumber)}`),
+        ])
+        if (cancelled) return
+        setEventTypes(et.event_types || [])
+        setEmployees(emp.employees || [])
+        if ((et.event_types || []).length > 0) {
+          setEventTypeId(et.event_types[0].event_type_id)
+          if (et.event_types[0].default_duration_minutes) {
+            setDuration(et.event_types[0].default_duration_minutes)
+          }
+        }
+      } catch (e) {
+        if (!cancelled) setError(e.message || 'Failed to load picker data')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [club.clubNumber])
+
+  // Member search — debounced
+  useEffect(() => {
+    if (!memberQuery || memberQuery.trim().length < 2) {
+      setMemberResults([])
+      return
+    }
+    const q = memberQuery.trim()
+    setMemberSearchPending(true)
+    const t = setTimeout(async () => {
+      try {
+        const r = await api(`/abc-scheduler/members/search?club_number=${encodeURIComponent(club.clubNumber)}&q=${encodeURIComponent(q)}`)
+        setMemberResults(r.members || [])
+      } catch (_) {
+        setMemberResults([])
+      } finally {
+        setMemberSearchPending(false)
+      }
+    }, 280)
+    return () => clearTimeout(t)
+  }, [memberQuery, club.clubNumber])
+
+  const selectedType = eventTypes.find(t => t.event_type_id === eventTypeId)
+
+  async function submit() {
+    setSubmitError(null); setSuccess(null); setDebugResponse(null)
+    if (!eventTypeId) { setSubmitError('Pick an event type'); return }
+    if (!employeeId) { setSubmitError('Pick a trainer'); return }
+    if (!selectedMember) { setSubmitError('Pick a member'); return }
+    if (!date || !time) { setSubmitError('Pick a date and time'); return }
+
+    // Best-guess ABC body shape. The backend forwards verbatim so we can
+    // adjust without redeploying if ABC rejects.
+    const eventTimestamp = `${date}T${time}:00`
+    const body = {
+      club_number: club.clubNumber, // stripped by backend before forwarding
+      eventTypeId,
+      eventTimestamp,             // local naive ISO; ABC has historically returned eventTimestampLocal in this shape
+      duration: Number(duration),
+      employeeId,
+      members: [{ memberId: selectedMember.member_id }],
+    }
+
+    setSubmitting(true)
+    try {
+      const r = await api('/abc-scheduler/events', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      })
+      setSuccess('Event created.')
+      setDebugResponse(r)
+      if (onCreated) onCreated()
+    } catch (e) {
+      setSubmitError(e.message || 'Failed to create event')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-surface rounded-xl border border-border shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between sticky top-0 bg-surface z-10">
+          <div>
+            <h3 className="text-lg font-bold text-text-primary">Book event</h3>
+            <p className="text-xs text-text-muted">{club.name} (club #{club.clubNumber})</p>
+          </div>
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {loading && <div className="text-sm text-text-muted text-center py-6">Loading…</div>}
+          {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">{error}</div>}
+
+          {!loading && !error && (
+            <>
+              {/* Event type */}
+              <label className="block">
+                <span className="block text-xs font-medium text-text-muted mb-1">Event type</span>
+                <select
+                  value={eventTypeId}
+                  onChange={e => {
+                    setEventTypeId(e.target.value)
+                    const t = eventTypes.find(t => t.event_type_id === e.target.value)
+                    if (t?.default_duration_minutes) setDuration(t.default_duration_minutes)
+                  }}
+                  className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red"
+                >
+                  <option value="">— select —</option>
+                  {eventTypes.map(t => (
+                    <option key={t.event_type_id} value={t.event_type_id}>
+                      {t.event_name} {t.category === 'Class' ? '(Class)' : ''} · {t.observed_count}× last 180d
+                    </option>
+                  ))}
+                </select>
+                {selectedType && (
+                  <span className="block text-[10px] text-text-muted mt-1">
+                    Category: {selectedType.category} · Default duration: {selectedType.default_duration_minutes || '—'} min
+                  </span>
+                )}
+              </label>
+
+              {/* Member search */}
+              <label className="block">
+                <span className="block text-xs font-medium text-text-muted mb-1">Member</span>
+                {selectedMember ? (
+                  <div className="flex items-center justify-between bg-bg border border-border rounded-lg px-3 py-2">
+                    <div>
+                      <div className="text-sm font-semibold text-text-primary">{selectedMember.first_name} {selectedMember.last_name}</div>
+                      <div className="text-[10px] text-text-muted">#{selectedMember.member_id} · {selectedMember.email || ''}</div>
+                    </div>
+                    <button onClick={() => { setSelectedMember(null); setMemberQuery('') }} className="text-xs text-wcs-red hover:underline">Change</button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      value={memberQuery}
+                      onChange={e => setMemberQuery(e.target.value)}
+                      placeholder="Search by name, email, or barcode (min 2 chars)"
+                      className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red"
+                    />
+                    {memberSearchPending && <span className="text-[10px] text-text-muted mt-1 block">Searching…</span>}
+                    {memberResults.length > 0 && (
+                      <div className="mt-1 border border-border rounded-lg max-h-40 overflow-y-auto">
+                        {memberResults.map(m => (
+                          <button
+                            key={m.member_id}
+                            onClick={() => { setSelectedMember(m); setMemberQuery(''); setMemberResults([]) }}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-bg border-b border-border last:border-0"
+                          >
+                            <div className="font-medium text-text-primary">{m.first_name} {m.last_name}</div>
+                            <div className="text-[10px] text-text-muted">{m.email || ''} · {m.barcode || ''}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </label>
+
+              {/* Trainer */}
+              <label className="block">
+                <span className="block text-xs font-medium text-text-muted mb-1">Trainer</span>
+                <select
+                  value={employeeId}
+                  onChange={e => setEmployeeId(e.target.value)}
+                  className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red"
+                >
+                  <option value="">— select —</option>
+                  {employees.map(emp => (
+                    <option key={emp.employee_id} value={emp.employee_id}>{emp.display_name}</option>
+                  ))}
+                </select>
+              </label>
+
+              {/* Date / time / duration */}
+              <div className="grid grid-cols-3 gap-2">
+                <label className="block">
+                  <span className="block text-xs font-medium text-text-muted mb-1">Date</span>
+                  <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red" />
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-medium text-text-muted mb-1">Time</span>
+                  <input type="time" value={time} onChange={e => setTime(e.target.value)} step="900"
+                    className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red" />
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-medium text-text-muted mb-1">Duration</span>
+                  <select value={duration} onChange={e => setDuration(parseInt(e.target.value, 10))}
+                    className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red">
+                    <option value={15}>15 min</option>
+                    <option value={30}>30 min</option>
+                    <option value={45}>45 min</option>
+                    <option value={60}>60 min</option>
+                    <option value={75}>75 min</option>
+                    <option value={90}>90 min</option>
+                  </select>
+                </label>
+              </div>
+
+              {submitError && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">{submitError}</div>}
+              {success && <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg px-3 py-2 text-sm">{success}</div>}
+
+              {debugResponse && (
+                <details className="bg-bg border border-border rounded-lg px-3 py-2 text-xs">
+                  <summary className="cursor-pointer text-text-muted font-medium">ABC response</summary>
+                  <pre className="mt-2 bg-surface border border-border rounded p-2 overflow-x-auto text-[10px]">{JSON.stringify(debugResponse, null, 2)}</pre>
+                </details>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2 sticky bottom-0 bg-surface">
+          <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-border text-xs text-text-muted hover:text-text-primary">
+            {success ? 'Close' : 'Cancel'}
+          </button>
+          {!success && (
+            <button
+              onClick={submit}
+              disabled={submitting || loading}
+              className="px-4 py-1.5 rounded-lg bg-wcs-red text-white text-xs font-semibold disabled:opacity-60"
+            >
+              {submitting ? 'Booking…' : 'Book event'}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -217,9 +613,11 @@ export default function PtSchedulerView() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [selectedEvent, setSelectedEvent] = useState(null)
+  const [bookOpen, setBookOpen] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0) // bump after a mutation to refetch
   const scrollRef = useRef(null)
 
-  // Fetch week's events whenever club or week changes
+  // Fetch week's events whenever club, week, or reloadKey changes
   useEffect(() => {
     let cancelled = false
     async function load() {
@@ -240,7 +638,9 @@ export default function PtSchedulerView() {
     }
     load()
     return () => { cancelled = true }
-  }, [club, weekStart])
+  }, [club, weekStart, reloadKey])
+
+  function refetchEvents() { setReloadKey(k => k + 1) }
 
   // Auto-scroll the grid so 7 AM is visible on first render
   useEffect(() => {
@@ -307,7 +707,7 @@ export default function PtSchedulerView() {
   return (
     <div className="space-y-3">
       <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-2 text-xs text-yellow-800">
-        <span className="font-semibold">Experimental — read-only.</span> Booking, cancelation, and attendance changes pending ABC API write access.
+        <span className="font-semibold">Experimental — write access live.</span> Booking, attendance, and cancellation hit the real ABC. Test changes will affect production club data.
       </div>
 
       {/* Toolbar */}
@@ -330,6 +730,13 @@ export default function PtSchedulerView() {
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          {/* Book event */}
+          <button
+            onClick={() => setBookOpen(true)}
+            className="px-3 py-1.5 rounded-lg bg-wcs-red text-white text-xs font-semibold hover:bg-wcs-red-hover"
+          >
+            + Book event
+          </button>
           {/* Location */}
           <select value={club.slug} onChange={e => {
             const c = CLUB_NUMBERS.find(x => x.slug === e.target.value)
@@ -449,7 +856,21 @@ export default function PtSchedulerView() {
       </div>
 
       {selectedEvent && (
-        <SessionBalanceModal event={selectedEvent} clubNumber={club.clubNumber} onClose={() => setSelectedEvent(null)} />
+        <SessionBalanceModal
+          event={selectedEvent}
+          clubNumber={club.clubNumber}
+          onClose={() => setSelectedEvent(null)}
+          onMutated={refetchEvents}
+        />
+      )}
+
+      {bookOpen && (
+        <BookEventModal
+          club={club}
+          defaultDate={weekStart}
+          onClose={() => setBookOpen(false)}
+          onCreated={refetchEvents}
+        />
       )}
     </div>
   )
