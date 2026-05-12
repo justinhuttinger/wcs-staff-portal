@@ -147,6 +147,12 @@ function isPIF(s) {
 const planCache = new Map()
 const PLAN_CACHE_TTL = 60 * 60 * 1000 // 1h
 
+function toPosInt(v) {
+  if (v === undefined || v === null || v === '') return null
+  const n = parseInt(v, 10)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
 async function fetchPlanDetail(clubNumber, planId) {
   if (!planId) return null
   const key = `${clubNumber}:${planId}`
@@ -155,11 +161,20 @@ async function fetchPlanDetail(clubNumber, planId) {
   try {
     const data = await abcGet(`/${clubNumber}/clubs/recurringserviceplans/${planId}`)
     const d = data?.recurringServicePlanDetail || {}
-    const qRaw = d.billing?.serviceQuantity
-    const quantity = qRaw === undefined || qRaw === null || qRaw === '' ? null : parseInt(qRaw, 10)
+    // Probe every quantity-shaped field ABC has historically returned on the
+    // recurringServicePlanDetail (different tenants surface different ones).
+    const quantity =
+      toPosInt(d.billing?.serviceQuantity) ??
+      toPosInt(d.billing?.totalServiceQuantity) ??
+      toPosInt(d.billing?.quantity) ??
+      toPosInt(d.serviceQuantity) ??
+      toPosInt(d.quantity) ??
+      toPosInt(d.numberOfServices) ??
+      toPosInt(d.totalServices) ??
+      null
     const detail = {
       name: d.recurringServicePlanName || null,
-      quantity: Number.isFinite(quantity) ? quantity : null,
+      quantity,
     }
     planCache.set(key, { detail, ts: Date.now() })
     return detail
@@ -177,13 +192,32 @@ function normalizeRSName(name) {
   return name.replace(/\bSINGLE\b/gi, 'PT60')
 }
 
-// For PIF rows the package column shows only the pack count, e.g. "10 Pack".
-// Prefer the plan's purchase quantity, fall back to the recurring service's
-// totalPeriods.
+// Try every place ABC might encode the PIF session count: sale entry, plan
+// detail, then a numeric pack-count baked into the plan name itself.
+function pifSessionCount(s, planDetail) {
+  return (
+    toPosInt(s.quantity) ??
+    toPosInt(s.unitsPurchased) ??
+    toPosInt(s.numberOfServices) ??
+    toPosInt(s.numberOfSessions) ??
+    toPosInt(s.sessionsPurchased) ??
+    toPosInt(s.totalSessions) ??
+    toPosInt(s.totalPeriods) ??
+    planDetail?.quantity ??
+    parsePackCountFromName(planDetail?.name || s.serviceItem) ??
+    null
+  )
+}
+
+function parsePackCountFromName(name) {
+  if (!name) return null
+  const m = String(name).toUpperCase().match(/(\d+)\s*(?:PACK|SESSIONS?|SESS)\b/)
+  return m ? toPosInt(m[1]) : null
+}
+
 function pifPackageName(s, planDetail) {
-  const qty = planDetail?.quantity ?? (s.totalPeriods ? parseInt(s.totalPeriods, 10) : null)
-  if (Number.isFinite(qty) && qty > 0) return `${qty} Pack`
-  return 'Pack'
+  const qty = pifSessionCount(s, planDetail)
+  return qty ? `${qty} PACK` : 'PACK'
 }
 
 async function buildClub(club, startDate, endDate) {
