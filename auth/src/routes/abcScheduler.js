@@ -525,38 +525,53 @@ router.post('/events/:eventId/refresh-from-abc', async (req, res) => {
   const { eventId } = req.params
   const { club_number, near_date } = req.query
   if (!club_number) return res.status(400).json({ error: 'club_number is required' })
-  // ABC's GET /calendars/events doesn't accept a single-event filter; we have
-  // to scan a date range and pick out our eventId. `near_date` from the
-  // booking form narrows the search to ±1 day.
+  // ABC's GET /calendars/events doesn't accept a single-event filter; we
+  // scan a wider date range (±7 days) and pick out our eventId. Wider range
+  // accounts for timezone differences in how ABC interprets eventDateRange
+  // (probably club-local Pacific, while we work in UTC).
   const center = near_date ? new Date(near_date + 'T00:00:00Z') : new Date()
-  const start = new Date(center); start.setUTCDate(start.getUTCDate() - 1)
-  const end = new Date(center); end.setUTCDate(end.getUTCDate() + 1)
+  const start = new Date(center); start.setUTCDate(start.getUTCDate() - 7)
+  const end = new Date(center); end.setUTCDate(end.getUTCDate() + 7)
   const fmtDate = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`
 
+  // Try multiple status filters. ABC's calendarEvents.js uses 'completed' +
+  // 'canceled-charge' for sync but a brand-new booking is most likely
+  // "scheduled". Empty/no-status filter as last resort.
+  const statuses = ['scheduled', 'completed', 'incomplete', 'canceled-charge', '']
+  const attempts = []
   try {
     let found = null
-    // Try both common statuses
-    for (const status of ['completed', 'canceled-charge', 'scheduled', 'incomplete']) {
+    for (const status of statuses) {
+      const params = { eventDateRange: `${fmtDate(start)},${fmtDate(end)}`, size: 500 }
+      if (status) params.eventStatus = status
       const r = await axios.get(`${ABC_BASE_URL}/${club_number}/calendars/events`, {
         headers: abcHeaders(),
-        params: { eventDateRange: `${fmtDate(start)},${fmtDate(end)}`, eventStatus: status, size: 200 },
+        params,
         timeout: 30000,
         validateStatus: () => true,
       })
+      const eventCount = (r.data?.events || []).length
+      attempts.push({ status: status || '(none)', http: r.status, eventCount })
       if (r.status >= 200 && r.status < 300) {
         const hit = (r.data?.events || []).find(e => e.eventId === eventId)
         if (hit) { found = hit; break }
       }
     }
-    if (!found) return res.status(404).json({ error: 'Event not found in ABC date-range scan', eventId })
+    if (!found) {
+      return res.status(404).json({
+        error: 'Event not found in ABC date-range scan',
+        eventId,
+        searched: { start: fmtDate(start), end: fmtDate(end), attempts },
+      })
+    }
 
     const row = transformEvent(found, String(club_number))
     const { error: upErr } = await supabaseAdmin.from('abc_calendar_events').upsert(row, { onConflict: 'club_number,event_id' })
     if (upErr) throw new Error(upErr.message)
-    res.json({ ok: true, event: row })
+    res.json({ ok: true, event: row, attempts })
   } catch (err) {
     console.error('[abcScheduler] refresh-from-abc failed:', err.message)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: err.message, attempts })
   }
 })
 

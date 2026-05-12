@@ -494,21 +494,25 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
         body: JSON.stringify(body),
       })
       setSuccess('Event created.')
-      setDebugResponse({ sent: body, received: r })
 
       // Extract new eventId from the success response and pull it into our
       // local cache so the calendar view shows it without waiting for the
-      // next ghl-sync run. Best-effort; calendar refetch happens either way.
+      // next ghl-sync run. Surface whatever happened in the debug response
+      // so we can see why an event might not appear on the calendar.
       const newEventId = r?.result?.links?.[0]?.href?.split('/').filter(Boolean).pop()
+      let refresh = null
       if (newEventId) {
         try {
-          await api(`/abc-scheduler/events/${encodeURIComponent(newEventId)}/refresh-from-abc?club_number=${encodeURIComponent(club.clubNumber)}&near_date=${encodeURIComponent(date)}`, {
+          refresh = await api(`/abc-scheduler/events/${encodeURIComponent(newEventId)}/refresh-from-abc?club_number=${encodeURIComponent(club.clubNumber)}&near_date=${encodeURIComponent(date)}`, {
             method: 'POST',
           })
-        } catch (_) {
-          // Non-fatal — the user can still see it after next sync.
+        } catch (err) {
+          refresh = { error: err.message || 'refresh-from-abc threw' }
         }
+      } else {
+        refresh = { error: 'No eventId extracted from POST response' }
       }
+      setDebugResponse({ sent: body, received: r, refresh })
       if (onCreated) onCreated()
     } catch (e) {
       setSubmitError(e.message || 'Failed to create event')
@@ -819,6 +823,7 @@ export default function PtSchedulerView() {
   const [club, setClub] = useState(CLUB_NUMBERS[0])
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [events, setEvents] = useState([])
+  const [allEmployees, setAllEmployees] = useState([])
   const [trainerFilter, setTrainerFilter] = useState('all')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -852,25 +857,48 @@ export default function PtSchedulerView() {
 
   function refetchEvents() { setReloadKey(k => k + 1) }
 
+  // Fetch active employees for the club so the trainer filter shows ALL
+  // active staff (not just whoever happens to have an event this week).
+  useEffect(() => {
+    let cancelled = false
+    async function loadEmployees() {
+      try {
+        const r = await api(`/abc-scheduler/employees?club_number=${encodeURIComponent(club.clubNumber)}`)
+        if (!cancelled) setAllEmployees(r.employees || [])
+      } catch (_) {
+        if (!cancelled) setAllEmployees([])
+      }
+    }
+    loadEmployees()
+    return () => { cancelled = true }
+  }, [club])
+
   // Auto-scroll the grid so 7 AM is visible on first render
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 60
   }, [])
 
-  // Trainer list, derived from the week's events. Sorted alphabetically by last name.
+  // Trainer list — merge the full active-employees roster (so trainers
+  // without events this week still appear) with anyone seen in this week's
+  // events (which keeps the dropdown functional if /employees is empty/down).
   const trainers = useMemo(() => {
     const byId = new Map()
+    for (const emp of allEmployees) {
+      if (!emp.employee_id) continue
+      byId.set(emp.employee_id, {
+        id: emp.employee_id,
+        name: emp.display_name || [emp.first_name, emp.last_name].filter(Boolean).join(' ') || 'Unknown',
+      })
+    }
     for (const e of events) {
-      if (!e.employee_id) continue
-      if (!byId.has(e.employee_id)) {
-        byId.set(e.employee_id, {
-          id: e.employee_id,
-          name: [e.employee_first_name, e.employee_last_name].filter(Boolean).join(' ') || 'Unknown',
-        })
-      }
+      if (!e.employee_id || byId.has(e.employee_id)) continue
+      byId.set(e.employee_id, {
+        id: e.employee_id,
+        name: [e.employee_first_name, e.employee_last_name].filter(Boolean).join(' ') || 'Unknown',
+      })
     }
     return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name))
-  }, [events])
+  }, [allEmployees, events])
 
   // Day-grouped, decorated events for rendering. Filtered by trainer.
   const eventsByDay = useMemo(() => {
