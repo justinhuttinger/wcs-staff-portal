@@ -5,7 +5,7 @@ const { deltaSync } = require('./sync/deltaSync');
 const { abcSync, abcSyncForLocation, stopAbcSync } = require('./abc/abcSync');
 const { employeeSync } = require('./abc/employeeSync');
 const { enrichAll: enrichAttributionAll, enrichForLocation: enrichAttributionForLocation } = require('./sync/attributionEnrich');
-const { refreshCurrentHourCheckins, fetchCheckinsForRange, backfillClub } = require('./abc/checkins');
+const { refreshCurrentHourCheckins, fetchCheckinsForRange, backfillClub, pacificNowAsUtc } = require('./abc/checkins');
 const axios = require('axios');
 const LOCATIONS = require('./config/locations');
 const { startScheduler } = require('./scheduler');
@@ -213,7 +213,9 @@ app.post('/api/sync/checkins/backfill', requireSecret, async (req, res) => {
         .maybeSingle();
       fromDate = data?.hour_start ? new Date(data.hour_start) : new Date(Date.now() - 7 * 86400000);
     }
-    const toDate = req.query.to ? new Date(req.query.to + 'T23:59:59Z') : new Date();
+    // `to` defaults to "now in Pacific-disguised UTC" so the iteration in
+    // backfillClub doesn't try to fetch future Pacific hours.
+    const toDate = req.query.to ? new Date(req.query.to + 'T23:59:59Z') : pacificNowAsUtc();
 
     checkinsBackfillState = {
       running: true,
@@ -248,6 +250,35 @@ app.post('/api/sync/checkins/backfill', requireSecret, async (req, res) => {
 
 app.get('/api/sync/checkins/backfill/status', requireSecret, (req, res) => {
   res.json(checkinsBackfillState);
+});
+
+// POST /api/sync/checkins/cleanup?from=YYYY-MM-DD&to=YYYY-MM-DD
+// Deletes "polluted" rows (total_checkins=0) inside the window. These come
+// from earlier syncs that sent UTC timestamps to ABC (which ABC interpreted
+// as Pacific local in the future, returning "No records found"). Real
+// quiet hours can also produce total_checkins=0, but for gym data within
+// open hours that's rare — and the backfill below will re-populate any
+// genuine zeros with the same zero anyway.
+app.post('/api/sync/checkins/cleanup', requireSecret, async (req, res) => {
+  try {
+    if (!req.query.from || !req.query.to) {
+      return res.status(400).json({ error: 'from and to (YYYY-MM-DD) required' });
+    }
+    const fromIso = req.query.from + 'T00:00:00.000Z';
+    const toIso = req.query.to + 'T23:59:59.999Z';
+    const { data, error, count } = await supabase
+      .from('checkins_hourly')
+      .delete({ count: 'exact' })
+      .gte('hour_start', fromIso)
+      .lte('hour_start', toIso)
+      .eq('total_checkins', 0)
+      .select('club_number, hour_start');
+    if (error) throw new Error(error.message);
+    res.json({ status: 'ok', deleted: count ?? (data || []).length, window: { from: fromIso, to: toIso } });
+  } catch (err) {
+    console.error('[API] cleanup failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/sync/checkins/probe — hits ABC for the previous complete hour to

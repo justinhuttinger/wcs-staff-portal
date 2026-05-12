@@ -5,38 +5,57 @@ const ABC_BASE_URL = process.env.ABC_BASE_URL || 'https://api.abcfinancial.com/r
 const ABC_APP_ID = process.env.ABC_APP_ID;
 const ABC_APP_KEY = process.env.ABC_APP_KEY;
 
-// ABC's /members/checkins/summaries endpoint reads checkInTimestampRange as
-// **club local time** (Pacific for WCS), NOT UTC. Confirmed empirically on
-// 2026-05-12 — UTC-formatted timestamps return "No records found"; Pacific
-// clock digits return real data. fmtAbcTimestamp produces "YYYY-MM-DD HH:mm:ss"
-// using the Pacific calendar/clock digits of `d`, regardless of the server's
-// timezone.
+// === Pacific-disguised UTC convention ======================================
+// checkins_hourly.hour_start is stored as a UTC-tagged TIMESTAMPTZ whose
+// digits are the Pacific wall-clock value (per migrations/004). Likewise
+// ABC's /members/checkins/summaries reads `checkInTimestampRange` as
+// Pacific local time. So we maintain a SINGLE internal convention:
+//
+//   "Pacific-disguised UTC" = a Date whose UTC components (Y/M/D/H/M/S)
+//   equal the Pacific wall-clock value. E.g. new Date('2026-05-12T11:00:00Z')
+//   represents 11:00 AM Pacific.
+//
+// Boundaries:
+//   • Convert real UTC → Pacific-disguised exactly ONCE when capturing
+//     the current moment: pacificNowAsUtc().
+//   • Parse a 'YYYY-MM-DD' user-input as Pacific calendar day by appending
+//     'T00:00:00Z' — the resulting Date's UTC digits already match Pacific
+//     midnight, so no further conversion needed.
+// Internal callers (hourFloor, fmtAbcTimestamp, backfill loops, storage)
+// then operate on Pacific-disguised values with no further timezone math.
+
 function fmtAbcTimestamp(d) {
+  // d is already Pacific-disguised, so format the UTC digits directly.
+  const pad = (n) => String(n).padStart(2, '0');
+  return (
+    d.getUTCFullYear() + '-' +
+    pad(d.getUTCMonth() + 1) + '-' +
+    pad(d.getUTCDate()) + ' ' +
+    pad(d.getUTCHours()) + ':' +
+    pad(d.getUTCMinutes()) + ':' +
+    pad(d.getUTCSeconds())
+  );
+}
+
+// Floor to the start of the Pacific-disguised hour (zero minutes/seconds).
+function hourFloor(d) {
+  const out = new Date(d);
+  out.setUTCMinutes(0, 0, 0);
+  return out;
+}
+
+// Convert a real UTC moment into a Pacific-disguised Date. Use ONLY at the
+// boundary when capturing "now".
+function pacificNowAsUtc(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Los_Angeles',
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  }).formatToParts(d);
-  const get = (t) => parts.find((p) => p.type === t)?.value || '00';
-  let hour = get('hour');
-  if (hour === '24') hour = '00';
-  return `${get('year')}-${get('month')}-${get('day')} ${hour}:${get('minute')}:${get('second')}`;
-}
-
-// Build a UTC-tagged Date whose digits equal the Pacific date+hour at the
-// moment `date` represents. The convention from migrations/004 is that
-// checkins_hourly.hour_start is stored as a UTC timestamp whose digits are
-// the Pacific clock value (e.g. "2026-05-06T05:00:00Z" = 5am Pacific).
-function hourFloor(date) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Los_Angeles',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', hour12: false,
   }).formatToParts(date);
   const get = (t) => parts.find((p) => p.type === t)?.value;
   let hour = get('hour');
   if (hour === '24') hour = '00';
-  return new Date(`${get('year')}-${get('month')}-${get('day')}T${hour}:00:00.000Z`);
+  return new Date(`${get('year')}-${get('month')}-${get('day')}T${hour}:${get('minute')}:${get('second')}.000Z`);
 }
 
 /**
@@ -87,7 +106,10 @@ async function fetchCheckinsForRange(clubNumber, fromDate, toDate) {
  * instead of letting them swallow into console output.
  */
 async function refreshCurrentHourCheckins(clubs) {
-  const now = new Date();
+  // Capture the current moment as Pacific-disguised UTC, then floor to the
+  // hour. All downstream math (fmtAbcTimestamp, storage) operates on
+  // Pacific-disguised values; no further conversion is needed.
+  const now = pacificNowAsUtc();
   const hourStart = hourFloor(now);
   const results = [];
 
@@ -181,4 +203,7 @@ module.exports = {
   fetchCheckinsForRange,
   refreshCurrentHourCheckins,
   backfillClub,
+  pacificNowAsUtc,
+  fmtAbcTimestamp,
+  hourFloor,
 };
