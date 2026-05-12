@@ -143,12 +143,12 @@ export default function SessionFrequencyReport({ startDate, endDate, locationSlu
         )}
       </div>
 
-      {/* Who-is-on-this-list explainer */}
-      <p className="text-xs text-text-muted">
+      {/* Who-is-on-this-list explainer (wrapped so it stays legible in dark mode) */}
+      <div className="bg-surface border border-border rounded-xl px-4 py-2.5 text-xs text-text-primary">
         {onlyActive
           ? 'Showing members with at least one completed session in the current period. Turn off "Has current sessions" to also see members who only trained in the prior window (dropped off).'
           : 'Showing members with at least one completed session in EITHER the current OR prior window. Rows with "0" in the Current column trained only in the prior period.'}
-      </p>
+      </div>
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -279,14 +279,14 @@ export default function SessionFrequencyReport({ startDate, endDate, locationSlu
         </div>
       </div>
 
-      <p className="text-xs text-text-muted">
+      <div className="bg-surface border border-border rounded-xl px-4 py-2.5 text-xs text-text-primary">
         Counts include only <span className="font-semibold">Completed</span> calendar events tagged as PT-style training
         (Swim, Stretch, and admin entries are excluded). The comparison window is the prior calendar month when the
         current range is exactly one calendar month; otherwise it's a same-length window ending the day before the
         current range starts. <span className="font-semibold">Per-week math:</span> sessions ÷ (days in that period ÷ 7).
         Example: 12 sessions across the {period.current_days || '—'} days of the current period = 12 ÷ (
         {period.current_days || '—'} ÷ 7) ≈ {period.current_days ? fmtPerWeek(12 / (period.current_days / 7)) : '—'}/wk.
-      </p>
+      </div>
     </div>
   )
 }
