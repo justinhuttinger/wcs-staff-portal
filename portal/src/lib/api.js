@@ -361,6 +361,11 @@ export async function getDeactivatedPT(params = {}) {
   return api('/reports/deactivated-pt' + (qs ? '?' + qs : ''))
 }
 
+export async function getPTHealth(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/pt-health' + (qs ? '?' + qs : ''))
+}
+
 export async function getVIPReport(params = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/reports/vip' + (qs ? '?' + qs : ''))

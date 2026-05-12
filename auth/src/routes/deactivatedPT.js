@@ -241,6 +241,13 @@ function normalizeRSName(name) {
   return name.replace(/\bSINGLE\b/gi, 'PT60')
 }
 
+function parsePriceField(raw) {
+  if (raw == null || raw === '') return 0
+  const cleaned = String(raw).replace(/[$,]/g, '')
+  const n = parseFloat(cleaned)
+  return Number.isFinite(n) ? n : 0
+}
+
 // Look up the last completed-session timestamp per (club, member) for a batch
 // of members, all in one Supabase query. Returns Map<memberId, 'YYYY-MM-DD'>.
 async function fetchLastSessionDates(clubNumber, memberIds) {
@@ -333,6 +340,8 @@ async function buildClub(club, startDate, endDate) {
       serviceEmployee: serviceEmployee(s),
       saleDate: s.recurringServiceDates?.saleDate?.slice(0, 10) || '',
       cancelDate: deactivationDate(s),
+      // Monthly recurring price (per-billing invoice total).
+      value: parsePriceField(s.invoiceTotal),
       clubName: club.name,
       locationSlug: club.slug,
     })
@@ -390,6 +399,8 @@ async function buildClub(club, startDate, endDate) {
       serviceEmployee: latestPIFRow ? serviceEmployee(latestPIFRow) : '',
       saleDate: latestSummary.purchaseDate?.slice(0, 10) || '',
       cancelDate: lastSessionMap.get(v.memberId) || '',
+      // Total PIF purchase price (one-time).
+      value: parsePriceField(latestSummary.totalPrice),
       clubName: club.name,
       locationSlug: club.slug,
     })

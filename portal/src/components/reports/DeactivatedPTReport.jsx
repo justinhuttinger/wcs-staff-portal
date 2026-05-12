@@ -2,6 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { getDeactivatedPT } from '../../lib/api'
 import { exportCSV, exportPDF } from '../../lib/export'
 
+function fmtMoney(n) {
+  const v = Number(n || 0)
+  if (!v) return '—'
+  return '$' + v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
 function fmtDate(d) {
   if (!d) return '—'
   const dt = new Date(d + 'T00:00:00')
@@ -82,13 +88,14 @@ export default function DeactivatedPTReport({ startDate, endDate, locationSlug }
     if (!filtered.length) return
     const header = [
       'Cancel / Last Used', 'Type', 'Member', 'Package',
-      'Sale Date', 'Service Employee', 'Location',
+      'Value', 'Sale Date', 'Service Employee', 'Location',
     ]
     const rows = filtered.map(r => [
       r.cancelDate || '',
       r.type,
       r.memberName,
       r.package,
+      (r.value || 0).toFixed(2),
       r.saleDate || '',
       r.serviceEmployee || '',
       r.clubName,
@@ -201,6 +208,7 @@ export default function DeactivatedPTReport({ startDate, endDate, locationSlug }
                 <th className="text-left px-4 py-2 font-semibold">Type</th>
                 <th className="text-left px-4 py-2 font-semibold">Member</th>
                 <th className="text-left px-4 py-2 font-semibold">Package</th>
+                <th className="text-right px-4 py-2 font-semibold" title="Monthly price for Deactivated RS; total purchase price for PIF Burned">Value</th>
                 <th className="text-left px-4 py-2 font-semibold">Sale Date</th>
                 <th className="text-left px-4 py-2 font-semibold">Service Employee</th>
                 <th className="text-left px-4 py-2 font-semibold">Location</th>
@@ -209,7 +217,7 @@ export default function DeactivatedPTReport({ startDate, endDate, locationSlug }
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-text-muted text-sm">
+                  <td colSpan={8} className="px-4 py-8 text-center text-text-muted text-sm">
                     No deactivated PT in this date range.
                   </td>
                 </tr>
@@ -220,6 +228,7 @@ export default function DeactivatedPTReport({ startDate, endDate, locationSlug }
                     <td className="px-4 py-2"><TypePill kind={r.type} /></td>
                     <td className="px-4 py-2 font-medium text-text-primary">{r.memberName}</td>
                     <td className="px-4 py-2 text-text-muted">{r.package}</td>
+                    <td className="px-4 py-2 text-right font-semibold text-text-primary">{fmtMoney(r.value)}</td>
                     <td className="px-4 py-2 text-text-muted whitespace-nowrap">{fmtDate(r.saleDate)}</td>
                     <td className="px-4 py-2 text-text-muted">{r.serviceEmployee || '—'}</td>
                     <td className="px-4 py-2 text-text-muted">{r.clubName}</td>
@@ -230,10 +239,12 @@ export default function DeactivatedPTReport({ startDate, endDate, locationSlug }
             {filtered.length > 0 && (
               <tfoot className="border-t-2 border-border">
                 <tr className="bg-bg font-semibold">
-                  <td className="px-4 py-2 text-text-primary" colSpan={7}>
+                  <td className="px-4 py-2 text-text-primary" colSpan={4}>
                     {filteredSummary.deactivatedCount} Deactivated RS · {filteredSummary.burnedCount} PIF Burned ·
                     Total {filtered.length}
                   </td>
+                  <td className="px-4 py-2 text-right text-text-primary">{fmtMoney(filtered.reduce((s, r) => s + (r.value || 0), 0))}</td>
+                  <td colSpan={3} />
                 </tr>
               </tfoot>
             )}
