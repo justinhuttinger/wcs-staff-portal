@@ -251,9 +251,12 @@ async function computeDeactivatedPT(club, startDate, endDate) {
   }
 }
 
-// Day Ones — pulled from ghl_contacts_report (same source as the existing
-// PT report). Filters by `day_one_booked = 'Yes'` and a date range applied
-// to `day_one_booking_date` (epoch milliseconds in GHL custom fields).
+// Day Ones — mirror the existing /reports/pt logic exactly so the funnel
+// numbers reconcile cell-for-cell with the Day One dashboard:
+//   Set   = day_one_booked='Yes' AND day_one_booking_date in range
+//   Show  = Set ∩ day_one_status='Completed'
+//   Close = Show ∩ day_one_sale='Sale'   (the literal value is "Sale",
+//                                          NOT "Yes" — that was the bug)
 async function computeDayOnes(slug, startDate, endDate) {
   const startMs = new Date(startDate + 'T00:00:00').getTime()
   const endMs = new Date(endDate + 'T23:59:59').getTime()
@@ -276,19 +279,15 @@ async function computeDayOnes(slug, startDate, endDate) {
     from += 1000
   }
 
-  let completed = 0
-  let noShow = 0
-  let scheduled = 0
-  let sale = 0
+  let show = 0
+  let close = 0
   for (const r of rows) {
-    const st = String(r.day_one_status || '').toLowerCase()
-    if (st === 'completed') completed++
-    else if (st === 'no show') noShow++
-    else scheduled++
-    if (String(r.day_one_sale || '').toLowerCase() === 'yes') sale++
+    if (String(r.day_one_status || '').toLowerCase() !== 'completed') continue
+    show++
+    if (r.day_one_sale === 'Sale') close++
   }
 
-  return { booked: rows.length, completed, noShow, scheduled, sale }
+  return { set: rows.length, show, close }
 }
 
 // GET /reports/pt-health?start_date=&end_date=&location_slug=
@@ -331,11 +330,9 @@ router.get('/', async (req, res) => {
 
     // Totals across all returned clubs
     const totals = perClub.reduce((acc, c) => {
-      acc.dayOnes.booked += c.dayOnes.booked
-      acc.dayOnes.completed += c.dayOnes.completed
-      acc.dayOnes.noShow += c.dayOnes.noShow
-      acc.dayOnes.scheduled += c.dayOnes.scheduled
-      acc.dayOnes.sale += c.dayOnes.sale
+      acc.dayOnes.set += c.dayOnes.set
+      acc.dayOnes.show += c.dayOnes.show
+      acc.dayOnes.close += c.dayOnes.close
       acc.newPT.count += c.newPT.count
       acc.newPT.newClientCount += c.newPT.newClientCount
       acc.newPT.resignCount += c.newPT.resignCount
@@ -348,7 +345,7 @@ router.get('/', async (req, res) => {
       acc.deactivated.burnedPIFValue += c.deactivated.burnedPIFValue
       return acc
     }, {
-      dayOnes: { booked: 0, completed: 0, noShow: 0, scheduled: 0, sale: 0 },
+      dayOnes: { set: 0, show: 0, close: 0 },
       newPT: { count: 0, newClientCount: 0, resignCount: 0, revenue: 0 },
       deactivated: {
         count: 0, deactivatedRSCount: 0, burnedPIFCount: 0,

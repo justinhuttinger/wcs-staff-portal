@@ -20,6 +20,13 @@ function fmtSignedMoney(n) {
   return (v > 0 ? '+' : '') + fmtMoney(v)
 }
 
+function pct(numerator, denominator) {
+  const n = Number(numerator || 0)
+  const d = Number(denominator || 0)
+  if (!d) return '0%'
+  return `${Math.round((n / d) * 100)}%`
+}
+
 export default function PTHealthReport({ startDate, endDate, locationSlug }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -90,12 +97,11 @@ export default function PTHealthReport({ startDate, endDate, locationSlug }) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <DetailCard
           label="Day Ones"
-          value={t.dayOnes.booked}
+          value={t.dayOnes.set}
           rows={[
-            ['Completed', t.dayOnes.completed],
-            ['No Show', t.dayOnes.noShow],
-            ['Scheduled / Open', t.dayOnes.scheduled],
-            ['Resulted in Sale', t.dayOnes.sale],
+            ['Set', t.dayOnes.set],
+            [`Show (${pct(t.dayOnes.show, t.dayOnes.set)})`, t.dayOnes.show],
+            [`Close (${pct(t.dayOnes.close, t.dayOnes.show)} of show)`, t.dayOnes.close],
           ]}
           tone="blue"
         />
@@ -129,7 +135,9 @@ export default function PTHealthReport({ startDate, endDate, locationSlug }) {
             <thead className="bg-bg">
               <tr className="text-xs uppercase tracking-wide text-text-muted">
                 <th className="text-left px-4 py-2 font-semibold">Location</th>
-                <th className="text-right px-4 py-2 font-semibold">Day Ones</th>
+                <th className="text-right px-4 py-2 font-semibold">Set</th>
+                <th className="text-right px-4 py-2 font-semibold">Show</th>
+                <th className="text-right px-4 py-2 font-semibold">Close</th>
                 <th className="text-right px-4 py-2 font-semibold">New PT</th>
                 <th className="text-right px-4 py-2 font-semibold">New $</th>
                 <th className="text-right px-4 py-2 font-semibold">Deactivated</th>
@@ -141,13 +149,15 @@ export default function PTHealthReport({ startDate, endDate, locationSlug }) {
             <tbody>
               {data.byLocation.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-text-muted text-sm">No data in this date range.</td>
+                  <td colSpan={10} className="px-4 py-8 text-center text-text-muted text-sm">No data in this date range.</td>
                 </tr>
               ) : (
                 data.byLocation.map(c => (
                   <tr key={c.locationSlug} className="border-t border-border hover:bg-bg/60">
                     <td className="px-4 py-2 font-medium text-text-primary">{c.clubName}</td>
-                    <td className="px-4 py-2 text-right text-text-primary">{c.dayOnes.booked}</td>
+                    <td className="px-4 py-2 text-right text-text-primary">{c.dayOnes.set}</td>
+                    <td className="px-4 py-2 text-right text-text-muted">{c.dayOnes.show}</td>
+                    <td className="px-4 py-2 text-right text-text-muted">{c.dayOnes.close}</td>
                     <td className="px-4 py-2 text-right text-text-primary">{c.newPT.count}</td>
                     <td className="px-4 py-2 text-right text-text-muted">{fmtMoney(c.newPT.revenue)}</td>
                     <td className="px-4 py-2 text-right text-text-primary">{c.deactivated.count}</td>
@@ -166,7 +176,9 @@ export default function PTHealthReport({ startDate, endDate, locationSlug }) {
               <tfoot className="border-t-2 border-border">
                 <tr className="bg-bg font-semibold">
                   <td className="px-4 py-2 text-text-primary">Totals</td>
-                  <td className="px-4 py-2 text-right text-text-primary">{t.dayOnes.booked}</td>
+                  <td className="px-4 py-2 text-right text-text-primary">{t.dayOnes.set}</td>
+                  <td className="px-4 py-2 text-right text-text-primary">{t.dayOnes.show}</td>
+                  <td className="px-4 py-2 text-right text-text-primary">{t.dayOnes.close}</td>
                   <td className="px-4 py-2 text-right text-text-primary">{t.newPT.count}</td>
                   <td className="px-4 py-2 text-right text-text-primary">{fmtMoney(t.newPT.revenue)}</td>
                   <td className="px-4 py-2 text-right text-text-primary">{t.deactivated.count}</td>
@@ -185,9 +197,7 @@ export default function PTHealthReport({ startDate, endDate, locationSlug }) {
       </div>
 
       <div className="bg-surface border border-border rounded-xl px-4 py-2.5 text-xs text-text-primary">
-        Day Ones come from GHL (contacts with <code>day_one_booked = Yes</code> and a booking date in the range).
-        New PT and Deactivated PT use the same algorithms as the dedicated reports — counts, revenue, and lost value
-        should match cell-for-cell. Net change is simply (new − deactivated) for both counts and dollars.
+        <span className="font-semibold">Set</span> = Day One booked in the range. <span className="font-semibold">Show</span> = day_one_status is <em>Completed</em>. <span className="font-semibold">Close</span> = Show ∩ day_one_sale is <em>Sale</em>. Pulled from the same source-of-truth as the Day One dashboard, so the numbers reconcile cell-for-cell. New PT and Deactivated PT use the same algorithms as their dedicated reports; Net = (new − deactivated) for both counts and dollars.
       </div>
     </div>
   )
