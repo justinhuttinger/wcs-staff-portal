@@ -189,20 +189,49 @@ function serviceEmployee(s) {
   return `${f} ${l}`.trim()
 }
 
-// Pull whichever deactivation date ABC encodes on the row. Different tenants
-// surface different field names; first non-empty wins.
+// Names of date fields on a recurring service entry that signal "this service
+// is no longer active". `saleDate` and `nextBillingDate` represent the entry
+// at its sale time / billing schedule, so we explicitly avoid them.
+const TERMINATION_FIELD_NAMES = [
+  'cancellationDate', 'cancellationTimestamp',
+  'cancelDate', 'cancelTimestamp', 'cancelledDate',
+  'terminationDate', 'terminationTimestamp', 'terminatedDate',
+  'endDate', 'endTimestamp', 'enddate',
+  'deactivationDate', 'deactivationTimestamp', 'deactivatedDate',
+  'expirationDate', 'expirationTimestamp', 'expiresOn',
+  'statusDate', 'statusTimestamp', 'statusChangedDate', 'statusChangeDate',
+  'freezeDate', 'frozenDate', 'freezeStartDate',
+  'lastBillingDate',
+]
+
+// Pull whichever deactivation date ABC encodes on the row. The first
+// recognized field wins; fall back to top-level lastModifiedTimestamp (the
+// query is filtered by lastModifiedTimestampRange, so it's always present)
+// and finally to any `recurringServiceDates` value that smells like a date
+// but doesn't sit in the sale/nextBilling slot.
 function deactivationDate(s) {
   const dates = s.recurringServiceDates || {}
-  const candidates = [
-    dates.cancellationDate,
-    dates.terminationDate,
-    dates.endDate,
-    dates.deactivationDate,
-    dates.cancelDate,
-    s.lastModifiedTimestamp,
+  for (const field of TERMINATION_FIELD_NAMES) {
+    const v = dates[field] ?? s[field]
+    if (v) return String(v).slice(0, 10)
+  }
+  const topLevelCandidates = [
+    s.lastModifiedTimestamp, s.lastModifiedDate, s.lastModified,
+    s.statusModifiedTimestamp, s.statusModifiedDate,
+    s.modifiedTimestamp, s.modifiedDate, s.modifiedDateTime,
+    s.lastUpdated, s.lastUpdatedDate, s.lastUpdatedTimestamp,
+    s.dateModified, s.dateUpdated,
+    s.cancelDate, s.cancellationDate, s.terminationDate, s.endDate,
   ]
-  for (const c of candidates) {
-    if (c) return String(c).slice(0, 10)
+  for (const v of topLevelCandidates) {
+    if (v) return String(v).slice(0, 10)
+  }
+  // Last-resort sweep: any date-shaped value on recurringServiceDates that
+  // isn't the sale or next-billing slot.
+  const ignored = new Set(['saleDate', 'nextBillingDate', 'firstBillingDate', 'startDate', 'startdate', 'beginDate'])
+  for (const [k, v] of Object.entries(dates)) {
+    if (ignored.has(k)) continue
+    if (v && /^\d{4}-\d{2}-\d{2}/.test(String(v))) return String(v).slice(0, 10)
   }
   return ''
 }
@@ -349,17 +378,10 @@ async function buildClub(club, startDate, endDate) {
     const latestSummary = sorted[0]
     const footprint = memberFootprint.get(v.memberId)
     const latestPIFRow = footprint?.latestPIF
+    // Display the pack count exactly like the PT New Clients report does:
+    // {N} PACK using the purchased session count from purchasehistory.
     const totalBought = parseInt(latestSummary.purchased || '0', 10)
-    // Prefer the plan name from the recurring service row (which we'll then
-    // try to enrich via a plan-detail fetch). PIF entries also have a
-    // recurringServicePlanName field and a plan id.
-    let pkg = totalBought > 0 ? `${totalBought} PACK` : 'PACK'
-    if (latestPIFRow) {
-      const pid = latestPIFRow.recurringServicePlanId || latestPIFRow.servicePlanId
-      const richName = pid ? await fetchPlanName(club.clubNumber, pid) : null
-      const planName = richName || latestPIFRow.recurringServicePlanName
-      if (planName) pkg = normalizeRSName(planName)
-    }
+    const pkg = totalBought > 0 ? `${totalBought} PACK` : 'PACK'
     rows.push({
       type: 'PIF Burned',
       memberId: v.memberId,
@@ -435,6 +457,52 @@ router.get('/', async (req, res) => {
   } catch (err) {
     console.error('[Deactivated PT] Error:', err.message)
     res.status(err.status || 500).json({ error: err.message })
+  }
+})
+
+// GET /reports/deactivated-pt/debug-sample?location_slug=salem
+// Admin-only. Inspect a raw deactivated recurring service row so we can
+// confirm which ABC field carries the cancellation date in this tenant.
+router.get('/debug-sample', async (req, res) => {
+  try {
+    if (req.staff.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' })
+    }
+    if (!ABC_APP_ID || !ABC_APP_KEY) {
+      return res.status(500).json({ error: 'ABC API credentials not configured' })
+    }
+    const slug = (req.query.location_slug || 'salem').toLowerCase()
+    const club = CLUBS.find(c => c.slug === slug)
+    if (!club) return res.status(400).json({ error: `Unknown location: ${slug}` })
+
+    const today = new Date()
+    const start = new Date(today)
+    start.setDate(start.getDate() - 90)
+    const allSvcs = await fetchPTRecurringServices(
+      club.clubNumber,
+      fmtDate(start),
+      fmtDate(today),
+      'lastModifiedTimestampRange'
+    )
+    const deactivated = allSvcs.filter(s => {
+      if (isPIF(s)) return false
+      const st = String(s.recurringServiceStatus || '').toLowerCase()
+      return st && st !== 'active'
+    }).slice(0, 3)
+    res.json({
+      club: club.name,
+      count: deactivated.length,
+      samples: deactivated,
+      detected_dates: deactivated.map(s => ({
+        memberId: s.memberId,
+        status: s.recurringServiceStatus,
+        detected_cancel_date: deactivationDate(s),
+        recurringServiceDates: s.recurringServiceDates,
+        top_level_date_keys: Object.keys(s).filter(k => /date|time|modified|updated/i.test(k)),
+      })),
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
   }
 })
 
