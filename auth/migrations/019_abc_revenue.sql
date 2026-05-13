@@ -109,3 +109,6 @@ AS $$
   FROM filtered
   GROUP BY payment_date;
 $$;
+
+-- PostgREST auto-exposes these at /rpc/<name>.
+GRANT EXECUTE ON FUNCTION revenue_summary(date, date, text[]) TO authenticated, service_role;
