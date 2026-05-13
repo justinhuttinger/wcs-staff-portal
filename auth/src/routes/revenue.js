@@ -18,11 +18,19 @@ const upload = multer({
 
 function pickCsvFile(files) {
   if (!files || files.length === 0) return null
-  // Prefer fields named attachment1 / file / csv; else first text/csv-ish mimetype.
+  // Prefer files whose original filename ends in .csv — most reliable when the
+  // email also has inline signature images (which SendGrid delivers as
+  // additional attachments and would otherwise win the attachment1 slot).
+  const byExt = files.find(f => /\.csv$/i.test(f.originalname || ''))
+  if (byExt) return byExt
+  // Then by mimetype.
+  const byType = files.find(f => /csv|excel|spreadsheet/i.test(f.mimetype || ''))
+  if (byType) return byType
+  // Then by SendGrid field-name conventions.
   const named = files.find(f => ['attachment1', 'file', 'csv'].includes(f.fieldname))
   if (named) return named
-  const byType = files.find(f => /csv|excel|octet-stream|text\//.test(f.mimetype))
-  return byType || files[0]
+  // Last resort: first file.
+  return files[0]
 }
 
 // ---------------------------------------------------------------------------
