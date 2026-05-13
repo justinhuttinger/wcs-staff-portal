@@ -17,10 +17,35 @@ async function ingestParsedRevenue({ parsed, source, uploadedBy, filename, email
     period_start, period_end, reported_total, rows, skipped = {}, errors = [],
   } = parsed
 
+  const today = new Date().toISOString().slice(0, 10)
   if (!period_start || !period_end) {
+    try {
+      await supabaseAdmin.from('abc_revenue_imports').insert({
+        source, uploaded_by: uploadedBy || null,
+        period_start: today, period_end: today,
+        reported_total: null, computed_total: null, row_count: 0,
+        filename: filename || null, email_subject: emailSubject || null,
+        status: 'failed',
+        error_message: 'parse failed: missing period in CSV header',
+      })
+    } catch (e) {
+      console.error('[revenueIngest] failed to record parse failure:', e.message)
+    }
     return { ok: false, error: 'missing_period', import_id: null, skipped, errors }
   }
   if (errors.length > 0) {
+    try {
+      await supabaseAdmin.from('abc_revenue_imports').insert({
+        source, uploaded_by: uploadedBy || null,
+        period_start: today, period_end: today,
+        reported_total: null, computed_total: null, row_count: 0,
+        filename: filename || null, email_subject: emailSubject || null,
+        status: 'failed',
+        error_message: errors.join('; '),
+      })
+    } catch (e) {
+      console.error('[revenueIngest] failed to record parse failure:', e.message)
+    }
     return { ok: false, error: errors.join('; '), import_id: null, skipped, errors }
   }
 
