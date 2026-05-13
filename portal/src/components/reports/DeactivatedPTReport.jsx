@@ -356,6 +356,24 @@ function MemberDetailModal({ detail, onClose }) {
 }
 
 function ContactRow({ label, value, kind }) {
+  const [copied, setCopied] = useState(false)
+  const timerRef = useRef(null)
+
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+  }, [])
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      if (timerRef.current) clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => setCopied(false), 1500)
+    } catch (err) {
+      console.warn('Clipboard write failed:', err.message)
+    }
+  }
+
   if (!value) {
     return (
       <div className="flex items-baseline gap-2">
@@ -366,9 +384,37 @@ function ContactRow({ label, value, kind }) {
   }
   const href = kind === 'email' ? `mailto:${value}` : `tel:${value}`
   return (
-    <div className="flex items-baseline gap-2">
-      <span className="text-xs uppercase tracking-wide text-text-muted w-28">{label}</span>
-      <a href={href} className="text-text-primary font-medium hover:text-wcs-red break-all">{value}</a>
+    <div className="flex items-center gap-2">
+      <span className="text-xs uppercase tracking-wide text-text-muted w-28 shrink-0">{label}</span>
+      <a href={href} className="text-text-primary font-medium hover:text-wcs-red break-all flex-1">{value}</a>
+      <div className="relative shrink-0">
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="p-1.5 rounded-md text-text-muted hover:text-wcs-red hover:bg-bg focus:outline-none focus:ring-2 focus:ring-wcs-red transition-colors"
+          title={`Copy ${label.toLowerCase()}`}
+          aria-label={`Copy ${label.toLowerCase()}`}
+        >
+          {copied ? (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-green-600">
+              <path fillRule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clipRule="evenodd" />
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
+            </svg>
+          )}
+        </button>
+        {/* "Copied!" badge — fades + lifts when shown */}
+        <span
+          aria-live="polite"
+          className={`pointer-events-none absolute right-full top-1/2 -translate-y-1/2 mr-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wide bg-green-600 text-white whitespace-nowrap shadow-sm transition-all duration-200 ${
+            copied ? 'opacity-100 -translate-x-0' : 'opacity-0 translate-x-1'
+          }`}
+        >
+          Copied!
+        </span>
+      </div>
     </div>
   )
 }
