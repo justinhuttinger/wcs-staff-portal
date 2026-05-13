@@ -98,28 +98,46 @@ async function fetchPTSales(clubNumber, lookbackStart, windowEnd) {
   return all
 }
 
-// Pick "commission employee" from whichever ABC field the response carries.
-// ABC has historically used `paymentEmployee*` and `salesPersonFirstName/LastName`
-// interchangeably on sale entries; some tenants return both, some only one.
-function commissionEmployee(s) {
-  const tryNames = [
-    [s.paymentEmployeeFirstName, s.paymentEmployeeLastName],
-    [s.salesPersonFirstName, s.salesPersonLastName],
-    [s.salesPersonNameFirst, s.salesPersonNameLast],
-    [s.commissionEmployeeFirstName, s.commissionEmployeeLastName],
-  ]
-  for (const [first, last] of tryNames) {
-    const f = (first || '').trim()
-    const l = (last || '').trim()
-    if (f || l) return `${f} ${l}`.trim()
-  }
-  return ''
-}
-
 function serviceEmployee(s) {
   const f = (s.serviceEmployeeFirstName || '').trim()
   const l = (s.serviceEmployeeLastName || '').trim()
   return `${f} ${l}`.trim()
+}
+
+// Resolve the commission recipient(s) for a recurring service. ABC's
+// `/members/recurringservices` payload includes `commissionsEmployeeIds` — an
+// array of employee IDs — but no names. Names come from `/{club}/employees`,
+// fetched once per club and passed in as `empMap` (id -> "First Last").
+// Falls back to serviceEmployee() if the array is missing/unresolved so the
+// column still has something useful.
+function commissionEmployee(s, empMap) {
+  const ids = Array.isArray(s.commissionsEmployeeIds) ? s.commissionsEmployeeIds : []
+  if (ids.length && empMap) {
+    const names = ids.map(id => empMap.get(id)).filter(Boolean)
+    if (names.length) return names.join(', ')
+  }
+  return serviceEmployee(s)
+}
+
+// Pull /{club}/employees once per report run and build an id -> "First Last" map.
+// Returns an empty Map on failure so callers can still fall back to serviceEmployee.
+async function fetchEmployeeMap(clubNumber) {
+  try {
+    const data = await abcGet(`/${clubNumber}/employees`)
+    const map = new Map()
+    for (const emp of (data?.employees || [])) {
+      const id = emp.employeeId || emp.id
+      if (!id) continue
+      const first = (emp.personal?.firstName || '').trim()
+      const last = (emp.personal?.lastName || '').trim()
+      const name = `${first} ${last}`.trim()
+      if (name) map.set(id, name)
+    }
+    return map
+  } catch (e) {
+    console.warn(`[PT New Clients] /employees fetch failed for ${clubNumber}:`, e.message)
+    return new Map()
+  }
 }
 
 function memberName(s) {
@@ -273,7 +291,10 @@ async function buildClub(club, startDate, endDate) {
   lookbackStart.setDate(lookbackStart.getDate() - 90)
   const lookbackStartISO = fmtDate(lookbackStart)
 
-  const allSales = await fetchPTSales(club.clubNumber, lookbackStartISO, endDate)
+  const [allSales, employeeMap] = await Promise.all([
+    fetchPTSales(club.clubNumber, lookbackStartISO, endDate),
+    fetchEmployeeMap(club.clubNumber),
+  ])
 
   // Bucket sales by member so we can do the 90-day lookback per row in O(1)
   // after a single sort. Each entry: { saleDate: 'YYYY-MM-DD', raw }.
@@ -345,7 +366,7 @@ async function buildClub(club, startDate, endDate) {
         package: pkg,
         type,
         price: parsePrice(raw),
-        commissionEmployee: commissionEmployee(raw),
+        commissionEmployee: commissionEmployee(raw, employeeMap),
         serviceEmployee: serviceEmployee(raw),
         saleDate,
         classification: hasPrior ? 'Resign' : 'New Client',
