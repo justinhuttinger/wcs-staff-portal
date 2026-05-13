@@ -41,3 +41,29 @@ test('parseDate returns null for blank/invalid', () => {
   assert.equal(parseDate(null), null)
   assert.equal(parseDate('garbage'), null)
 })
+
+const { parseHeaderMeta } = require('../src/services/revenueCsvParser')
+
+test('parseHeaderMeta extracts period and total from Textbox16', () => {
+  const tb = 'Location: All Locations | Date: 05/01/2026 - 05/12/2026 | Total Revenue: $262,386.78'
+  assert.deepEqual(parseHeaderMeta(tb), {
+    period_start: '2026-05-01',
+    period_end: '2026-05-12',
+    reported_total: 262386.78,
+  })
+})
+
+test('parseHeaderMeta handles single-day period', () => {
+  const tb = 'Location: All Locations | Date: 05/12/2026 - 05/12/2026 | Total Revenue: $5,000.00'
+  assert.deepEqual(parseHeaderMeta(tb), {
+    period_start: '2026-05-12',
+    period_end: '2026-05-12',
+    reported_total: 5000,
+  })
+})
+
+test('parseHeaderMeta returns null on unrecognized string', () => {
+  assert.equal(parseHeaderMeta('Some other subject line'), null)
+  assert.equal(parseHeaderMeta(''), null)
+  assert.equal(parseHeaderMeta(null), null)
+})

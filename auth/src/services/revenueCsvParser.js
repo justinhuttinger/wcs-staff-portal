@@ -39,8 +39,22 @@ function parseDate(raw) {
   return `${m[3]}-${m[1]}-${m[2]}`
 }
 
+function parseHeaderMeta(textbox16) {
+  if (!textbox16) return null
+  const s = String(textbox16)
+  const dateMatch = s.match(/Date:\s*(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}\/\d{2}\/\d{4})/)
+  const totalMatch = s.match(/Total Revenue:\s*\$?([\d,]+\.\d{2})/)
+  if (!dateMatch || !totalMatch) return null
+  const period_start = parseDate(dateMatch[1])
+  const period_end = parseDate(dateMatch[2])
+  const reported_total = Number(totalMatch[1].replace(/,/g, ''))
+  if (!period_start || !period_end || Number.isNaN(reported_total)) return null
+  return { period_start, period_end, reported_total }
+}
+
 module.exports = {
   CLUB_MAP,
   parseMoney,
   parseDate,
+  parseHeaderMeta,
 }
