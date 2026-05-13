@@ -173,39 +173,121 @@ function getTilesForRole(role) {
       return REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health'].includes(t.key))
     case 'manager':
       return REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'operations', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'revenue'].includes(t.key))
-    default: // corporate, admin, director
+    default: // corporate, admin, director, marketing
       return REPORT_TILES
   }
 }
 
-export default function ReportsHome({ onNavigate, user }) {
-  const role = user?.staff?.role || 'team_member'
-  const visibleTiles = getTilesForRole(role)
+// Mirrors desktop ReportingView's REPORT_GROUPS. The third Marketing group is
+// mobile-only because desktop houses those reports on a separate Marketing
+// tile rather than under Reporting.
+const REPORT_GROUPS = [
+  {
+    key: 'health',
+    label: 'Club Health',
+    description: 'Health, activity & compliance',
+    icon: (
+      <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z" />
+      </svg>
+    ),
+    reports: ['club-health', 'membership', 'cancels', 'operations', 'checkins', 'payroll', 'revenue'],
+  },
+  {
+    key: 'training',
+    label: 'Training',
+    description: 'PT reports',
+    icon: (
+      <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z" />
+      </svg>
+    ),
+    reports: ['pt-health', 'pt', 'pt-roster', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt'],
+  },
+  {
+    key: 'marketing-group',
+    label: 'Marketing',
+    description: 'Ads & online presence',
+    icon: (
+      <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 1 1 0-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38c-.551.318-1.26.117-1.527-.461a20.845 20.845 0 0 1-1.44-4.282m3.102.069a18.03 18.03 0 0 1-.59-4.59c0-1.586.205-3.124.59-4.59m0 9.18a23.848 23.848 0 0 1 8.835 2.535M10.34 6.66a23.847 23.847 0 0 0 8.835-2.535m0 0A23.74 23.74 0 0 0 18.795 3m.38 1.125a23.91 23.91 0 0 1 1.014 5.395m-1.014 8.855c-.118.38-.245.754-.38 1.125m.38-1.125a23.91 23.91 0 0 0 1.014-5.395m0-3.46c.495.413.811 1.035.811 1.73 0 .695-.316 1.317-.811 1.73m0-3.46a24.347 24.347 0 0 1 0 3.46" />
+      </svg>
+    ),
+    reports: ['marketing', 'google-marketing'],
+  },
+]
 
-  if (visibleTiles.length === 0) {
+function getVisibleGroups(role) {
+  const visibleSet = new Set(getTilesForRole(role).map(t => t.key))
+  return REPORT_GROUPS
+    .map(g => ({ ...g, reports: g.reports.filter(k => visibleSet.has(k)) }))
+    .filter(g => g.reports.length > 0)
+}
+
+export default function ReportsHome({ onNavigate, user, activeGroup, onSelectGroup }) {
+  const role = user?.staff?.role || 'team_member'
+  const visibleGroups = getVisibleGroups(role)
+
+  if (visibleGroups.length === 0) {
     return (
       <div className="p-4">
-        <h2 className="text-lg font-bold text-text-primary mb-4">Reports</h2>
         <p className="text-sm text-text-muted text-center py-8">No reports available for your role.</p>
       </div>
     )
   }
 
+  // Group detail view
+  if (activeGroup) {
+    const group = visibleGroups.find(g => g.key === activeGroup)
+    if (!group) {
+      // Asked-for group is empty or unknown for this role — fall back to home.
+      return <ReportsHome onNavigate={onNavigate} user={user} onSelectGroup={onSelectGroup} />
+    }
+    const tilesById = Object.fromEntries(REPORT_TILES.map(t => [t.key, t]))
+    return (
+      <div className="p-4">
+        <div className="grid grid-cols-2 gap-3">
+          {group.reports.map(reportKey => {
+            const tile = tilesById[reportKey]
+            if (!tile) return null
+            return (
+              <button
+                key={tile.key}
+                onClick={() => onNavigate(tile.key)}
+                className="bg-surface rounded-2xl border border-border p-4 text-left active:scale-[0.97] transition-transform"
+              >
+                <div className="text-wcs-red mb-2">{tile.icon}</div>
+                <p className="text-sm font-semibold text-text-primary">{tile.label}</p>
+                <p className="text-xs text-text-muted mt-0.5">{tile.description}</p>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  // Top-level group tiles
   return (
     <div className="p-4">
       <div className="grid grid-cols-2 gap-3">
-        {visibleTiles.map(tile => (
+        {visibleGroups.map(group => (
           <button
-            key={tile.key}
-            onClick={() => onNavigate(tile.key)}
+            key={group.key}
+            onClick={() => onSelectGroup(group.key)}
             className="bg-surface rounded-2xl border border-border p-4 text-left active:scale-[0.97] transition-transform"
           >
-            <div className="text-wcs-red mb-2">{tile.icon}</div>
-            <p className="text-sm font-semibold text-text-primary">{tile.label}</p>
-            <p className="text-xs text-text-muted mt-0.5">{tile.description}</p>
+            <div className="text-wcs-red mb-2">{group.icon}</div>
+            <p className="text-sm font-semibold text-text-primary">{group.label}</p>
+            <p className="text-xs text-text-muted mt-0.5">{group.description}</p>
+            <p className="text-[10px] text-text-muted mt-2 leading-snug">
+              {group.reports.length} {group.reports.length === 1 ? 'report' : 'reports'}
+            </p>
           </button>
         ))}
       </div>
     </div>
   )
 }
+
+export { REPORT_GROUPS }
