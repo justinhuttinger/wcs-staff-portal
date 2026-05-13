@@ -196,6 +196,22 @@ export const onlineJoin = {
   invalidateCache: () => prospectsApi('/api/admin/online-join/cache/invalidate', { method: 'POST' }),
 }
 
+// ---- Paychex Training admin (prospects-documents) ------------------------
+export const paychexTraining = {
+  summary: () => prospectsApi('/api/admin/paychex-training/summary'),
+  records: (params = {}) => {
+    const filtered = Object.fromEntries(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+    )
+    const qs = new URLSearchParams(filtered).toString()
+    return prospectsApi('/api/admin/paychex-training/records' + (qs ? '?' + qs : ''))
+  },
+  reports: (limit = 25) => prospectsApi(`/api/admin/paychex-training/reports?limit=${limit}`),
+  courses: () => prospectsApi('/api/admin/paychex-training/courses'),
+  locations: () => prospectsApi('/api/admin/paychex-training/locations'),
+  refreshLocations: () => prospectsApi('/api/admin/paychex-training/refresh-locations', { method: 'POST' }),
+}
+
 export async function login(email, password) {
   const data = await api('/auth/login', {
     method: 'POST',
