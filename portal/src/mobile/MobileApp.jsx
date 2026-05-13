@@ -19,6 +19,13 @@ import MobileHR from './components/MobileHR'
 import MobileTickets from './components/MobileTickets'
 import MobilePTRoster from './components/reports/MobilePTRoster'
 import MobileCheckins from './components/reports/MobileCheckins'
+import MobilePTSessions from './components/reports/MobilePTSessions'
+import MobilePTNewClients from './components/reports/MobilePTNewClients'
+import MobileSessionFrequency from './components/reports/MobileSessionFrequency'
+import MobileDeactivatedPT from './components/reports/MobileDeactivatedPT'
+import MobilePTHealth from './components/reports/MobilePTHealth'
+import MobilePayroll from './components/reports/MobilePayroll'
+import MobileRevenue from './components/reports/MobileRevenue'
 
 // Icons for bottom tab bar (Heroicons outline)
 function HomeIcon({ active }) {
@@ -299,6 +306,111 @@ export default function MobileApp() {
               <MobileHeader title="Operational Compliance" onBack={() => navigate('reports')} />
             </div>
             <MobileOperations user={user} />
+          </div>
+        )
+      case 'reports/pt-sessions':
+        return (
+          <div className="pt-2">
+            <div className="px-4">
+              <MobileHeader title="Trainer Load" onBack={() => navigate('reports')} />
+            </div>
+            <MobileReportShell title="Trainer Load" user={user}>
+              {({ startDate, endDate, locationSlug }) => (
+                <div className="px-4 pb-4">
+                  <MobilePTSessions startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+                </div>
+              )}
+            </MobileReportShell>
+          </div>
+        )
+      case 'reports/pt-new-clients':
+        return (
+          <div className="pt-2">
+            <div className="px-4">
+              <MobileHeader title="New Clients" onBack={() => navigate('reports')} />
+            </div>
+            <MobileReportShell title="New Clients" user={user}>
+              {({ startDate, endDate, locationSlug }) => (
+                <div className="px-4 pb-4">
+                  <MobilePTNewClients startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+                </div>
+              )}
+            </MobileReportShell>
+          </div>
+        )
+      case 'reports/session-frequency':
+        return (
+          <div className="pt-2">
+            <div className="px-4">
+              <MobileHeader title="Session Frequency" onBack={() => navigate('reports')} />
+            </div>
+            <MobileReportShell title="Session Frequency" user={user} hideDateRange>
+              {({ locationSlug }) => (
+                <div className="px-4 pb-4">
+                  <MobileSessionFrequency locationSlug={locationSlug} />
+                </div>
+              )}
+            </MobileReportShell>
+          </div>
+        )
+      case 'reports/deactivated-pt':
+        return (
+          <div className="pt-2">
+            <div className="px-4">
+              <MobileHeader title="Deactivated PT" onBack={() => navigate('reports')} />
+            </div>
+            <MobileReportShell title="Deactivated PT" user={user}>
+              {({ startDate, endDate, locationSlug }) => (
+                <div className="px-4 pb-4">
+                  <MobileDeactivatedPT startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+                </div>
+              )}
+            </MobileReportShell>
+          </div>
+        )
+      case 'reports/pt-health':
+        return (
+          <div className="pt-2">
+            <div className="px-4">
+              <MobileHeader title="PT Health" onBack={() => navigate('reports')} />
+            </div>
+            <MobileReportShell title="PT Health" user={user}>
+              {({ startDate, endDate, locationSlug }) => (
+                <div className="px-4 pb-4">
+                  <MobilePTHealth startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+                </div>
+              )}
+            </MobileReportShell>
+          </div>
+        )
+      case 'reports/payroll':
+        return (
+          <div className="pt-2">
+            <div className="px-4">
+              <MobileHeader title="Payroll" onBack={() => navigate('reports')} />
+            </div>
+            <MobileReportShell title="Payroll" user={user} hideDateRange>
+              {({ locationSlug }) => (
+                <div className="px-4 pb-4">
+                  <MobilePayroll locationSlug={locationSlug} />
+                </div>
+              )}
+            </MobileReportShell>
+          </div>
+        )
+      case 'reports/revenue':
+        return (
+          <div className="pt-2">
+            <div className="px-4">
+              <MobileHeader title="Revenue" onBack={() => navigate('reports')} />
+            </div>
+            <MobileReportShell title="Revenue" user={user}>
+              {({ startDate, endDate, locationSlug }) => (
+                <div className="px-4 pb-4">
+                  <MobileRevenue startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+                </div>
+              )}
+            </MobileReportShell>
           </div>
         )
       case 'calendar':
