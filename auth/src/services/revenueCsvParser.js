@@ -107,8 +107,14 @@ function parseRevenueCsv(buffer) {
       return
     }
     const payment_amount = parseMoney(rec.PAYMENT_AMOUNT)
-    // We allow 0 amounts (zero-dollar membership rows exist in the data) but
-    // skip rows that have neither a date nor any amount AND blank profit center.
+    const profit_center = (rec.PROFIT_CENTER || '').trim()
+    // profit_center is NOT NULL in the DB and is the primary report grouping
+    // dimension — drop rows that don't have one. Also drop $0 rows that have
+    // no profit center (these are usually footer/subtotal artifacts).
+    if (!profit_center) {
+      skipped.bad_shape += 1
+      return
+    }
     if (payment_amount === 0 && !rec.PROFIT_CENTER) {
       skipped.missing_amount += 1
       return
@@ -125,7 +131,7 @@ function parseRevenueCsv(buffer) {
       member_last_name: (rec.LAST_NAME || '').trim() || null,
       billing_type: (rec.BILLING_TYPE || '').trim() || null,
       membership_type_code: (rec.MEMBERSHIP_TYPE_ABC_CODE || '').trim() || null,
-      profit_center: (rec.PROFIT_CENTER || '').trim(),
+      profit_center,
       catalog_item: (rec.CATALOG_ITEM || '').trim() || null,
       payment_code_desc: (rec.PAYMENT_CODE_DESCRIPTION || '').trim() || null,
       payment_type: (rec.PAYMENT_TYPE || '').trim() || null,
