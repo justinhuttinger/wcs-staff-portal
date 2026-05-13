@@ -7,9 +7,10 @@ function fmtMoney(n) {
 }
 
 export default function RevenueBackfillTile() {
-  const [file, setFile] = useState(null)
+  const [files, setFiles] = useState([])
   const [uploading, setUploading] = useState(false)
-  const [result, setResult] = useState(null)
+  const [progress, setProgress] = useState({ current: 0, total: 0, filename: '' })
+  const [results, setResults] = useState([])
   const [error, setError] = useState(null)
   const [imports, setImports] = useState([])
 
@@ -25,60 +26,96 @@ export default function RevenueBackfillTile() {
   useEffect(() => { refreshImports() }, [])
 
   async function handleUpload() {
-    if (!file) return
+    if (files.length === 0) return
     setUploading(true)
     setError(null)
-    setResult(null)
+    setResults([])
+    const collected = []
     try {
-      const r = await uploadRevenueCsv(file)
-      setResult(r)
-      setFile(null)
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i]
+        setProgress({ current: i + 1, total: files.length, filename: f.name })
+        try {
+          const r = await uploadRevenueCsv(f)
+          collected.push({ ok: true, filename: f.name, ...r })
+        } catch (e) {
+          collected.push({ ok: false, filename: f.name, error: e.message || 'upload failed' })
+        }
+        setResults([...collected])
+      }
+      setFiles([])
       await refreshImports()
-    } catch (e) {
-      setError(e.message || 'Upload failed')
     } finally {
       setUploading(false)
+      setProgress({ current: 0, total: 0, filename: '' })
     }
   }
-
-  const reconciled = result?.reconciled
-  const drift = result ? Math.abs((result.computed_total || 0) - (result.reported_total || 0)) : 0
 
   return (
     <div className="bg-surface rounded-xl border border-border p-5">
       <h3 className="text-base font-semibold text-text-primary mb-1">Revenue Backfill</h3>
       <p className="text-xs text-text-muted mb-4">
-        Upload an ABC "Revenue by Profit Center" CSV. Window is reset for the period in the file, then rows are re-inserted.
+        Upload one or more ABC "Revenue by Profit Center" CSVs. Each file's date window is reset before its rows are inserted, so re-uploads are safe and overlapping windows are won by the newest file.
       </p>
 
       <div className="border-2 border-dashed border-border rounded-lg p-6 text-center mb-3">
         <input
           type="file"
           accept=".csv,text/csv"
-          onChange={e => { setFile(e.target.files?.[0] || null); setResult(null); setError(null) }}
+          multiple
+          onChange={e => { setFiles(Array.from(e.target.files || [])); setResults([]); setError(null) }}
           className="block mx-auto text-sm"
         />
-        {file && <p className="text-xs text-text-muted mt-2">{file.name} ({(file.size / 1024 / 1024).toFixed(1)} MB)</p>}
+        {files.length > 0 && (
+          <ul className="text-xs text-text-muted mt-3 space-y-1 text-left max-w-md mx-auto">
+            {files.map((f, i) => (
+              <li key={i} className="flex justify-between gap-3">
+                <span className="truncate">{f.name}</span>
+                <span className="shrink-0">{(f.size / 1024 / 1024).toFixed(1)} MB</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <button
-        disabled={!file || uploading}
+        disabled={files.length === 0 || uploading}
         onClick={handleUpload}
         className="w-full bg-wcs-red disabled:bg-gray-300 text-white py-2 rounded font-medium"
       >
-        {uploading ? 'Uploading…' : 'Upload & Ingest'}
+        {uploading
+          ? `Uploading ${progress.current}/${progress.total}: ${progress.filename}…`
+          : files.length > 1
+            ? `Upload & Ingest ${files.length} files`
+            : 'Upload & Ingest'}
       </button>
 
       {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
 
-      {result && (
-        <div className={`mt-4 p-3 rounded ${reconciled ? 'bg-green-50 border border-green-300' : 'bg-yellow-50 border border-yellow-300'}`}>
-          <p className="text-sm font-semibold">
-            {reconciled ? 'Matches reported total' : `Drift ${fmtMoney(drift)}`}
-          </p>
-          <p className="text-xs text-text-muted mt-1">
-            Period: {result.period_start} → {result.period_end} · Rows: {result.row_count} · Computed: {fmtMoney(result.computed_total)} · Reported: {fmtMoney(result.reported_total)}
-          </p>
+      {results.length > 0 && (
+        <div className="mt-4 space-y-2">
+          {results.map((r, i) => {
+            if (!r.ok) {
+              return (
+                <div key={i} className="p-3 rounded bg-red-50 border border-red-300">
+                  <p className="text-sm font-semibold text-red-700">Failed: {r.filename}</p>
+                  <p className="text-xs text-red-700/80 mt-1">{r.error}</p>
+                </div>
+              )
+            }
+            const drift = Math.abs((r.computed_total || 0) - (r.reported_total || 0))
+            const reconciled = r.reconciled
+            return (
+              <div key={i} className={`p-3 rounded ${reconciled ? 'bg-green-50 border border-green-300' : 'bg-yellow-50 border border-yellow-300'}`}>
+                <p className="text-sm font-semibold">
+                  {r.filename} — {reconciled ? 'Matches reported total' : `Drift ${fmtMoney(drift)}`}
+                </p>
+                <p className="text-xs text-text-muted mt-1">
+                  Period: {r.period_start} → {r.period_end} · Rows: {r.row_count} · Computed: {fmtMoney(r.computed_total)} · Reported: {fmtMoney(r.reported_total)}
+                </p>
+              </div>
+            )
+          })}
         </div>
       )}
 
