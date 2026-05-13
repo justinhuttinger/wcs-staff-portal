@@ -81,11 +81,13 @@ function isFullCalendarMonth(startIso, endIso) {
 
 // Compute the comparison window for a given [start, end] range.
 //
-//   • If the range is exactly a full calendar month (e.g. Apr 1 – Apr 30),
-//     the comparison is the previous full calendar month (Mar 1 – Mar 31).
-//     This is the "last month vs the month before" mode.
-//   • Otherwise we use a same-length window immediately abutting the start
-//     date. Apr 1 – Apr 15 → Mar 17 – Mar 31.
+//   • Full calendar month (Apr 1 – Apr 30) → previous full calendar month
+//     (Mar 1 – Mar 31). "last month vs the month before" mode.
+//   • Month-to-date (May 1 – May 13, with May 13 before the last day of May)
+//     → prior month, day 1 through the same day-of-month, capped at the prior
+//     month's last day (handles Mar 31 → Feb 28). "month-to-date" mode.
+//   • Otherwise → same-length window immediately abutting the start date.
+//     Apr 5 – Apr 19 → Mar 21 – Apr 4.
 function computeComparisonRange(startIso, endIso) {
   if (isFullCalendarMonth(startIso, endIso)) {
     const s = parseISODate(startIso)
@@ -95,8 +97,21 @@ function computeComparisonRange(startIso, endIso) {
     const compEnd = new Date(Date.UTC(prevMonth.getUTCFullYear(), prevMonth.getUTCMonth(), lastDay))
     return { start: fmtISO(compStart), end: fmtISO(compEnd), days: lastDay, mode: 'calendar-month' }
   }
-  const days = daysInclusive(startIso, endIso)
   const s = parseISODate(startIso)
+  const e = parseISODate(endIso)
+  if (
+    s.getUTCDate() === 1 &&
+    e.getUTCFullYear() === s.getUTCFullYear() &&
+    e.getUTCMonth() === s.getUTCMonth()
+  ) {
+    const prevMonth = new Date(Date.UTC(s.getUTCFullYear(), s.getUTCMonth() - 1, 1))
+    const prevMonthLastDay = new Date(Date.UTC(prevMonth.getUTCFullYear(), prevMonth.getUTCMonth() + 1, 0)).getUTCDate()
+    const dayCap = Math.min(e.getUTCDate(), prevMonthLastDay)
+    const compStart = new Date(Date.UTC(prevMonth.getUTCFullYear(), prevMonth.getUTCMonth(), 1))
+    const compEnd = new Date(Date.UTC(prevMonth.getUTCFullYear(), prevMonth.getUTCMonth(), dayCap))
+    return { start: fmtISO(compStart), end: fmtISO(compEnd), days: dayCap, mode: 'month-to-date' }
+  }
+  const days = daysInclusive(startIso, endIso)
   const compEnd = new Date(Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), s.getUTCDate() - 1))
   const compStart = new Date(Date.UTC(compEnd.getUTCFullYear(), compEnd.getUTCMonth(), compEnd.getUTCDate() - days + 1))
   return { start: fmtISO(compStart), end: fmtISO(compEnd), days, mode: 'same-length' }
