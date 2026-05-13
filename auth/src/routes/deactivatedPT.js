@@ -471,6 +471,42 @@ router.get('/', async (req, res) => {
   }
 })
 
+// GET /reports/deactivated-pt/member/:memberId?location_slug=salem
+// Returns live contact info from ABC for the member-detail popup on the
+// Deactivated PT report. Sensitive enough that we re-check role (lead+).
+router.get('/member/:memberId', async (req, res) => {
+  try {
+    if (!ABC_APP_ID || !ABC_APP_KEY) {
+      return res.status(500).json({ error: 'ABC API credentials not configured' })
+    }
+    const { memberId } = req.params
+    const slug = (req.query.location_slug || '').toLowerCase()
+    if (!memberId) return res.status(400).json({ error: 'memberId is required' })
+    const club = CLUBS.find(c => c.slug === slug)
+    if (!club) return res.status(400).json({ error: `Unknown or missing location_slug: ${slug}` })
+
+    const data = await abcGet(`/${club.clubNumber}/members/${encodeURIComponent(memberId)}`)
+    // ABC returns the same shape as the list endpoint — `members` array with
+    // one entry holding `personal` and `agreement` blocks.
+    const m = (data?.members || [])[0]
+    if (!m) return res.status(404).json({ error: 'Member not found in ABC' })
+    const p = m.personal || {}
+    res.json({
+      memberId: m.memberId || memberId,
+      clubName: club.name,
+      firstName: p.firstName || '',
+      lastName: p.lastName || '',
+      name: `${(p.firstName || '').trim()} ${(p.lastName || '').trim()}`.trim() || 'Unknown',
+      email: p.email || '',
+      primaryPhone: p.primaryPhone || '',
+      mobilePhone: p.mobilePhone || '',
+    })
+  } catch (err) {
+    console.error('[Deactivated PT] /member lookup failed:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // GET /reports/deactivated-pt/debug-sample?location_slug=salem
 // Admin-only. Inspect a raw deactivated recurring service row so we can
 // confirm which ABC field carries the cancellation date in this tenant.

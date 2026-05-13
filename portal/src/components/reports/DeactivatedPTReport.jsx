@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { getDeactivatedPT } from '../../lib/api'
+import { getDeactivatedPT, getDeactivatedPTMember } from '../../lib/api'
 import { exportCSV, exportPDF } from '../../lib/export'
 
 function fmtMoney(n) {
@@ -28,8 +28,29 @@ export default function DeactivatedPTReport({ startDate, endDate, locationSlug }
   const [typeFilter, setTypeFilter] = useState('all')
   const [trainerFilter, setTrainerFilter] = useState('all')
   const [search, setSearch] = useState('')
+  const [memberDetail, setMemberDetail] = useState(null) // { row, loading, data, error }
 
   const reqRef = useRef(0)
+  const memberReqRef = useRef(0)
+
+  function openMemberDetail(row) {
+    const id = ++memberReqRef.current
+    setMemberDetail({ row, loading: true, data: null, error: null })
+    getDeactivatedPTMember({ memberId: row.memberId, locationSlug: row.locationSlug })
+      .then(data => {
+        if (id !== memberReqRef.current) return
+        setMemberDetail({ row, loading: false, data, error: null })
+      })
+      .catch(err => {
+        if (id !== memberReqRef.current) return
+        setMemberDetail({ row, loading: false, data: null, error: err.message })
+      })
+  }
+
+  function closeMemberDetail() {
+    memberReqRef.current++ // cancel any in-flight
+    setMemberDetail(null)
+  }
 
   useEffect(() => {
     if (!startDate || !endDate) return
@@ -198,6 +219,11 @@ export default function DeactivatedPTReport({ startDate, endDate, locationSlug }
         </div>
       )}
 
+      {/* Member contact modal */}
+      {memberDetail && (
+        <MemberDetailModal detail={memberDetail} onClose={closeMemberDetail} />
+      )}
+
       {/* Table */}
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
@@ -226,7 +252,16 @@ export default function DeactivatedPTReport({ startDate, endDate, locationSlug }
                   <tr key={`${r.memberId}-${r.type}-${r.saleDate}-${i}`} className="border-t border-border hover:bg-bg/60">
                     <td className="px-4 py-2 text-text-primary whitespace-nowrap">{fmtDate(r.cancelDate)}</td>
                     <td className="px-4 py-2"><TypePill kind={r.type} /></td>
-                    <td className="px-4 py-2 font-medium text-text-primary">{r.memberName}</td>
+                    <td className="px-4 py-2 font-medium text-text-primary">
+                      <button
+                        type="button"
+                        onClick={() => openMemberDetail(r)}
+                        className="text-left hover:text-wcs-red hover:underline focus:outline-none focus:text-wcs-red"
+                        title="View contact info from ABC"
+                      >
+                        {r.memberName}
+                      </button>
+                    </td>
                     <td className="px-4 py-2 text-text-muted">{r.package}</td>
                     <td className="px-4 py-2 text-right font-semibold text-text-primary">{fmtMoney(r.value)}</td>
                     <td className="px-4 py-2 text-text-muted whitespace-nowrap">{fmtDate(r.saleDate)}</td>
@@ -265,6 +300,75 @@ function SummaryCard({ label, value, tone }) {
     <div className={`rounded-xl border p-4 ${toneCls}`}>
       <p className="text-xs font-medium text-text-muted uppercase tracking-wide">{label}</p>
       <p className="text-2xl font-bold text-text-primary mt-1">{value}</p>
+    </div>
+  )
+}
+
+function MemberDetailModal({ detail, onClose }) {
+  const { row, loading, data, error } = detail
+  const name = data?.name || row.memberName
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-surface border border-border rounded-2xl shadow-xl max-w-md w-full p-5"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-text-muted">Member · {row.clubName}</p>
+            <h3 className="text-lg font-bold text-text-primary mt-0.5">{name}</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-text-muted hover:text-text-primary text-xl leading-none px-1"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        {loading && (
+          <div className="flex items-center gap-2 py-4 text-sm text-text-muted">
+            <div className="w-4 h-4 border-2 border-wcs-red/30 border-t-wcs-red rounded-full animate-spin" />
+            Loading from ABC…
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-wcs-red rounded-lg px-3 py-2 text-sm">
+            {error}
+          </div>
+        )}
+
+        {data && !loading && (
+          <div className="space-y-2.5 text-sm">
+            <ContactRow label="Email" value={data.email} kind="email" />
+            <ContactRow label="Primary Phone" value={data.primaryPhone} kind="phone" />
+            <ContactRow label="Mobile Phone" value={data.mobilePhone} kind="phone" />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ContactRow({ label, value, kind }) {
+  if (!value) {
+    return (
+      <div className="flex items-baseline gap-2">
+        <span className="text-xs uppercase tracking-wide text-text-muted w-28">{label}</span>
+        <span className="text-text-muted">—</span>
+      </div>
+    )
+  }
+  const href = kind === 'email' ? `mailto:${value}` : `tel:${value}`
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="text-xs uppercase tracking-wide text-text-muted w-28">{label}</span>
+      <a href={href} className="text-text-primary font-medium hover:text-wcs-red break-all">{value}</a>
     </div>
   )
 }
