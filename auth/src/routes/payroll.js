@@ -7,6 +7,59 @@ const router = Router()
 router.use(authenticate)
 router.use(requireRole('manager'))
 
+const ABC_BASE_URL = process.env.ABC_BASE_URL || 'https://api.abcfinancial.com/rest'
+const ABC_APP_ID = process.env.ABC_APP_ID
+const ABC_APP_KEY = process.env.ABC_APP_KEY
+
+// Pull /{club}/employees once and build an id -> "First Last" map. Used to
+// resolve `commissionsEmployeeIds` from each row's raw ABC payload at read
+// time, so the report stays correct even when the synced employee_name on
+// payroll_recurring_commissions is stale. Same approach as ptNewClients.js.
+async function fetchEmployeeMap(clubNumber) {
+  if (!ABC_APP_ID || !ABC_APP_KEY) return new Map()
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30000)
+  try {
+    const res = await fetch(`${ABC_BASE_URL}/${clubNumber}/employees`, {
+      headers: { app_id: ABC_APP_ID, app_key: ABC_APP_KEY, Accept: 'application/json' },
+      signal: controller.signal,
+    })
+    if (!res.ok) throw new Error(`ABC API HTTP ${res.status}`)
+    const data = await res.json()
+    const map = new Map()
+    for (const emp of (data?.employees || [])) {
+      const id = emp.employeeId || emp.id
+      if (!id) continue
+      const first = (emp.personal?.firstName || '').trim()
+      const last = (emp.personal?.lastName || '').trim()
+      const name = `${first} ${last}`.trim()
+      if (name) map.set(id, name)
+    }
+    return map
+  } catch (err) {
+    console.warn(`[Payroll] /employees fetch failed for ${clubNumber}:`, err.message)
+    return new Map()
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+// Resolve commission recipient(s) for a recurring service row. Reads
+// `commissionsEmployeeIds` off the raw ABC payload stored on the row (the
+// payroll table keeps the full response in `raw`). Returns the first ID as
+// `id` (for grouping) and joins all resolved names as `name`. Falls back to
+// the row's already-synced employee_id/name if the array is missing or no
+// ID resolves.
+function resolveCommissionEmployee(row, empMap) {
+  const ids = Array.isArray(row?.raw?.commissionsEmployeeIds) ? row.raw.commissionsEmployeeIds : []
+  if (ids.length) {
+    const names = ids.map(id => empMap?.get(id)).filter(Boolean)
+    if (names.length) return { id: ids[0], name: names.join(', ') }
+    return { id: ids[0], name: row.employee_name || null }
+  }
+  return { id: row.employee_id || null, name: row.employee_name || null }
+}
+
 const SLUG_CLUB_MAP = {
   salem: '30935',
   keizer: '31599',
@@ -174,24 +227,36 @@ async function buildPayrollData(req) {
   }
 
   // ---- Recurring service commissions (ABC API-loaded) ----
+  // `raw` carries the full ABC payload — we re-derive employee_id/name from
+  // `raw.commissionsEmployeeIds` at read time so this report stays correct
+  // even if the synced employee_name column is stale.
   let recQ = supabaseAdmin
     .from('payroll_recurring_commissions')
-    .select('recurring_service_id, club_number, sale_date, member_name, employee_id, employee_name, service_item, recurring_type_desc, invoice_total, total_periods, total_contract_value, commission')
+    .select('recurring_service_id, club_number, sale_date, member_name, employee_id, employee_name, service_item, recurring_type_desc, invoice_total, total_periods, total_contract_value, commission, raw')
     .eq('period', period.period)
   if (clubs) recQ = recQ.in('club_number', clubs)
   const recRows = await fetchAll(recQ)
 
+  // Fetch /{club}/employees in parallel for every club represented in the rows.
+  const recClubs = [...new Set(recRows.map(r => r.club_number).filter(Boolean))]
+  const employeeMaps = new Map() // club_number -> Map<employeeId, name>
+  await Promise.all(recClubs.map(async (cn) => {
+    employeeMaps.set(cn, await fetchEmployeeMap(cn))
+  }))
+
   const recurringByEmployee = new Map() // key: club|employeeId|name
   let totalRecurringCommission = 0
   for (const r of recRows) {
-    const key = `${r.club_number}|${r.employee_id || ''}|${r.employee_name || 'Unknown'}`
+    const empMap = employeeMaps.get(r.club_number)
+    const { id: commId, name: commName } = resolveCommissionEmployee(r, empMap)
+    const key = `${r.club_number}|${commId || ''}|${commName || 'Unknown'}`
     let row = recurringByEmployee.get(key)
     if (!row) {
       row = {
         club_number: r.club_number,
         location_slug: CLUB_SLUG_MAP[r.club_number] || r.club_number,
-        employee_id: r.employee_id || null,
-        employee_name: r.employee_name || 'Unknown',
+        employee_id: commId || null,
+        employee_name: commName || 'Unknown',
         services_count: 0,
         total_commission: 0,
         total_contract_value: 0,
