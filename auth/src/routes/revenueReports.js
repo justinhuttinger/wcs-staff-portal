@@ -3,6 +3,16 @@ const authenticate = require('../middleware/auth')
 const { requireRole, canSeeAllLocations } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 
+const LOCATION_LABELS = {
+  salem: 'Salem',
+  keizer: 'Keizer',
+  eugene: 'Eugene',
+  springfield: 'Springfield',
+  clackamas: 'Clackamas',
+  medford: 'Medford',
+  milwaukie: 'Milwaukie',
+}
+
 const router = Router()
 
 // Resolve the location_slug filter the caller is allowed to use.
@@ -57,7 +67,7 @@ async function fetchSummary(startDate, endDate, locationFilter) {
   for (const r of data || []) {
     const amount = Number(r.total_amount) || 0
     if (r.bucket === 'total') out.total = amount
-    else if (r.bucket === 'by_club') out.by_club.push({ slug: r.key1, total: amount })
+    else if (r.bucket === 'by_club') out.by_club.push({ slug: r.key1, label: LOCATION_LABELS[r.key1] || r.key1, total: amount })
     else if (r.bucket === 'by_profit_center') out.by_profit_center.push({ name: r.key1, total: amount })
     else if (r.bucket === 'by_day') out.by_day.push({ date: r.key1, total: amount })
   }

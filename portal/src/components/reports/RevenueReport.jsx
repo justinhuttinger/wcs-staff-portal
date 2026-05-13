@@ -148,7 +148,7 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label="Total Revenue" value={fmtMoney(data.total)} sub={<DeltaChip current={data.total} prior={data.compare?.total} />} />
         <StatCard label="Top Profit Center" value={topPc?.name || '—'} sub={topPc ? `${fmtMoney(topPc.total)} · ${fmtPct(topPc.pct_of_total)}` : null} />
-        <StatCard label="Top Club" value={topClub?.slug ? topClub.slug.charAt(0).toUpperCase() + topClub.slug.slice(1) : '—'} sub={topClub ? fmtMoney(topClub.total) : null} />
+        <StatCard label="Top Club" value={topClub?.label || '—'} sub={topClub ? fmtMoney(topClub.total) : null} />
         <StatCard label="Days in Range" value={data.by_day.length} sub={`${startDate} → ${endDate}`} />
       </div>
 
@@ -162,7 +162,7 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
               const pct = data.total > 0 ? c.total / data.total : 0
               return (
                 <div key={c.slug} className="flex items-center gap-3">
-                  <div className="w-24 text-xs font-medium capitalize">{c.slug}</div>
+                  <div className="w-24 text-xs font-medium">{c.label}</div>
                   <div className="flex-1 bg-bg rounded h-5 overflow-hidden">
                     <div className="h-full bg-wcs-red" style={{ width: `${(pct * 100).toFixed(1)}%` }} />
                   </div>
