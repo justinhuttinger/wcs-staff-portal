@@ -20,12 +20,29 @@ function fmtDateRange(start, end) {
   return `${fmt(s)} – ${fmt(e)}`
 }
 
-export default function SessionFrequencyReport({ startDate, endDate, locationSlug }) {
+// Always compare month-to-date (1st of this month through today) against the
+// same MTD window in the prior month. Date pickers in ReportingView are
+// hidden for this report so users can't accidentally pick something else.
+function mtdRange() {
+  const now = new Date()
+  const pad = n => String(n).padStart(2, '0')
+  const y = now.getFullYear()
+  const m = now.getMonth() + 1
+  const d = now.getDate()
+  return {
+    start: `${y}-${pad(m)}-01`,
+    end: `${y}-${pad(m)}-${pad(d)}`,
+  }
+}
+
+export default function SessionFrequencyReport({ locationSlug }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [trainerFilter, setTrainerFilter] = useState('all')
   const [search, setSearch] = useState('')
+
+  const { start: startDate, end: endDate } = useMemo(mtdRange, [locationSlug])
 
   const reqRef = useRef(0)
 
@@ -126,18 +143,16 @@ export default function SessionFrequencyReport({ startDate, endDate, locationSlu
 
   return (
     <div className="space-y-5">
-      {/* Period header bubble */}
+      {/* Period header bubble — fixed to month-to-date */}
       <div className="bg-surface border border-border rounded-xl px-4 py-2.5 inline-flex items-center gap-2 text-sm flex-wrap">
-        <span className="font-bold text-text-primary">Current:</span>
+        <span className="font-bold text-text-primary">Month-to-date:</span>
         <span className="text-text-muted">{fmtDateRange(period.current_start, period.current_end)}</span>
         <span className="text-text-muted">({fmtPerWeek(period.current_weeks)} wk)</span>
         <span className="text-text-muted">·</span>
-        <span className="font-bold text-text-primary">vs:</span>
+        <span className="font-bold text-text-primary">vs prior month:</span>
         <span className="text-text-muted">{fmtDateRange(period.prior_start, period.prior_end)}</span>
         <span className="text-text-muted">({fmtPerWeek(period.prior_weeks)} wk)</span>
-        {period.comparison_mode === 'calendar-month' && (
-          <span className="ml-1 text-[10px] text-text-muted uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-bg border border-border">prior calendar month</span>
-        )}
+        <span className="ml-1 text-[10px] text-text-muted uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-bg border border-border">MTD</span>
       </div>
 
       {/* Explainer */}

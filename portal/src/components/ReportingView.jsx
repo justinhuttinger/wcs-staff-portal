@@ -277,7 +277,7 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
         )}
 
         {/* Date Controls — hidden for reports with fixed or self-managed date ranges */}
-        {activeReport !== 'pt-roster' && activeReport !== 'operations' && activeReport !== 'payroll' && <div className="flex flex-wrap items-center gap-3 justify-end">
+        {activeReport !== 'pt-roster' && activeReport !== 'operations' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && <div className="flex flex-wrap items-center gap-3 justify-end">
           <div className="flex flex-wrap gap-1.5">
             {QUICK_RANGES.map(qr => (
               <button
@@ -360,7 +360,7 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
             <PTNewClientsReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
           )}
           {activeReport === 'session-frequency' && (
-            <SessionFrequencyReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+            <SessionFrequencyReport locationSlug={locationSlug} />
           )}
           {activeReport === 'deactivated-pt' && (
             <DeactivatedPTReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
