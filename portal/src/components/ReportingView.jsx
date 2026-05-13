@@ -12,6 +12,7 @@ import SessionFrequencyReport from './reports/SessionFrequencyReport'
 import DeactivatedPTReport from './reports/DeactivatedPTReport'
 import PTHealthReport from './reports/PTHealthReport'
 import PayrollReport from './reports/PayrollReport'
+import RevenueReport from './reports/RevenueReport'
 
 // SVG path data for each reporting tile (outline style, matches main page tiles via ToolButton)
 const REPORT_ICONS = {
@@ -28,6 +29,7 @@ const REPORT_ICONS = {
   'deactivated-pt': 'M18.364 18.364A9 9 0 0 0 5.636 5.636m12.728 12.728A9 9 0 0 1 5.636 5.636m12.728 12.728L5.636 5.636',
   'pt-health': 'M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z',
   payroll: 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z',
+  revenue: 'M2.25 18 9 11.25l4.306 4.307a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941',
 }
 
 const ALL_REPORT_TILES = [
@@ -43,6 +45,7 @@ const ALL_REPORT_TILES = [
   { key: 'deactivated-pt', label: 'Deactivated PT', desc: 'Cancels + Burned PIFs' },
   { key: 'pt-health', label: 'PT Health', desc: 'Overview Dashboard' },
   { key: 'payroll', label: 'Payroll', desc: 'Monthly Commissions' },
+  { key: 'revenue', label: 'Revenue', desc: 'Dollars & Profit Centers' },
   { key: 'operations', label: 'Operational Compliance', desc: 'Checklists' },
 ]
 
@@ -55,7 +58,7 @@ const REPORT_GROUPS = [
     label: 'Club Health',
     desc: 'Health, Activity & Compliance',
     iconPath: REPORT_ICONS['club-health'],
-    reports: ['club-health', 'membership', 'cancels', 'operations', 'checkins', 'payroll'],
+    reports: ['club-health', 'membership', 'cancels', 'operations', 'checkins', 'payroll', 'revenue'],
   },
   {
     key: 'training',
@@ -73,7 +76,7 @@ function getReportTilesForRole(role) {
     case 'lead':
       return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health'].includes(t.key))
     case 'manager':
-      return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'operations'].includes(t.key))
+      return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'operations', 'revenue'].includes(t.key))
     default: // corporate, admin
       return ALL_REPORT_TILES
   }
@@ -373,6 +376,9 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           )}
           {activeReport === 'operations' && (
             <OperationsReport locationSlug={locationSlug} />
+          )}
+          {activeReport === 'revenue' && (
+            <RevenueReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
           )}
         </>
       )}

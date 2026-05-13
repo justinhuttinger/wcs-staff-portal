@@ -8,3 +8,6 @@ dist/
 # was renamed to kiosk-state.ps1; the old path stays ignored so a
 # stale on-disk zombie doesn't show as untracked.
 scripts/wcs-kiosk.ps1
+
+# Revenue reporting CSV fixtures contain real member data — never commit
+auth/tests/fixtures/*.csv

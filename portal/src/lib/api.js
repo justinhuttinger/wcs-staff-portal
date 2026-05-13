@@ -93,7 +93,11 @@ async function attemptRefresh() {
 }
 
 export async function api(path, options = {}) {
-  const headers = { 'Content-Type': 'application/json', ...options.headers }
+  const isFormDataBody = typeof FormData !== 'undefined' && options.body instanceof FormData
+  const headers = { ...options.headers }
+  if (!isFormDataBody) {
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json'
+  }
   if (authToken) {
     headers['Authorization'] = 'Bearer ' + authToken
   }
@@ -600,6 +604,34 @@ export async function getGoogleAnalyticsKeyEvents(params = {}) {
 // Operandio
 export async function getOperandioLatest() {
   return api('/operandio/latest')
+}
+
+// Revenue
+export async function getRevenueSummary(params = {}) {
+  const qs = new URLSearchParams()
+  if (params.start_date) qs.set('start_date', params.start_date)
+  if (params.end_date) qs.set('end_date', params.end_date)
+  if (params.location_slug) qs.set('location_slug', params.location_slug)
+  return api(`/reports/revenue/summary?${qs.toString()}`)
+}
+
+export async function getRevenueProfitCenterTrend(params = {}) {
+  const qs = new URLSearchParams()
+  if (params.start_date) qs.set('start_date', params.start_date)
+  if (params.end_date) qs.set('end_date', params.end_date)
+  if (params.location_slug) qs.set('location_slug', params.location_slug)
+  if (params.profit_center) qs.set('profit_center', params.profit_center)
+  return api(`/reports/revenue/profit-center-trend?${qs.toString()}`)
+}
+
+export async function getRevenueImports(limit = 20) {
+  return api(`/reports/revenue/imports?limit=${limit}`)
+}
+
+export async function uploadRevenueCsv(file) {
+  const fd = new FormData()
+  fd.append('file', file)
+  return api('/revenue/upload', { method: 'POST', body: fd })
 }
 
 // Drive Folders
