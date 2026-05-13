@@ -26,6 +26,7 @@ const REPORT_ACCESS = {
   checkins:     ['lead', 'manager', 'marketing', 'corporate', 'admin'],
   'pt-sessions': ['lead', 'manager', 'marketing', 'corporate', 'admin'],
   payroll:      ['manager', 'corporate', 'admin'],
+  revenue:      ['manager', 'corporate', 'admin'],
   marketing:    ['marketing', 'corporate', 'admin'],
 }
 
