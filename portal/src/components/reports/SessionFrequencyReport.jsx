@@ -26,10 +26,6 @@ export default function SessionFrequencyReport({ startDate, endDate, locationSlu
   const [error, setError] = useState(null)
   const [trainerFilter, setTrainerFilter] = useState('all')
   const [search, setSearch] = useState('')
-  // Default ON: most users want to see who's actively training in the
-  // selected period. Toggle off to also see members who only trained in the
-  // prior window (i.e. dropped off).
-  const [onlyActive, setOnlyActive] = useState(true)
 
   const reqRef = useRef(0)
 
@@ -61,19 +57,20 @@ export default function SessionFrequencyReport({ startDate, endDate, locationSlu
     return [...new Set(data.rows.map(r => r.serviceEmployee).filter(Boolean))].sort()
   }, [data])
 
+  // Always include members with sessions in EITHER window so drop-offs stay
+  // visible (e.g. trained last month, none this month).
   const filtered = useMemo(() => {
     if (!data?.rows) return []
     const q = search.trim().toLowerCase()
     return data.rows.filter(r => {
       if (trainerFilter !== 'all' && r.serviceEmployee !== trainerFilter) return false
-      if (onlyActive && (r.currentSessions || 0) === 0) return false
       if (q) {
         const hay = `${r.memberName} ${r.serviceEmployee || ''} ${r.clubName}`.toLowerCase()
         if (!hay.includes(q)) return false
       }
       return true
     })
-  }, [data, trainerFilter, search, onlyActive])
+  }, [data, trainerFilter, search])
 
   const filteredSummary = useMemo(() => {
     const currentTotal = filtered.reduce((s, r) => s + r.currentSessions, 0)
@@ -143,11 +140,11 @@ export default function SessionFrequencyReport({ startDate, endDate, locationSlu
         )}
       </div>
 
-      {/* Who-is-on-this-list explainer (wrapped so it stays legible in dark mode) */}
+      {/* Explainer */}
       <div className="bg-surface border border-border rounded-xl px-4 py-2.5 text-xs text-text-primary">
-        {onlyActive
-          ? 'Showing members with at least one completed session in the current period. Turn off "Has current sessions" to also see members who only trained in the prior window (dropped off).'
-          : 'Showing members with at least one completed session in EITHER the current OR prior window. Rows with "0" in the Current column trained only in the prior period.'}
+        Showing members with at least one completed session in EITHER the current
+        or prior window. Members with <span className="font-semibold">0 in the Current column</span> trained
+        only in the prior period — that's your drop-off list.
       </div>
 
       {/* Summary cards */}
@@ -156,17 +153,17 @@ export default function SessionFrequencyReport({ startDate, endDate, locationSlu
         <SummaryCard
           label="Current Sessions"
           value={fmtNum(filteredSummary.currentTotal)}
-          sub={`${fmtPerWeek(filteredSummary.currentPerWeekAvg)} / wk avg`}
+          sub={`${fmtPerWeek(filteredSummary.currentPerWeekAvg)} sessions per week average`}
           tone="green"
         />
         <SummaryCard
           label="Prior Sessions"
           value={fmtNum(filteredSummary.priorTotal)}
-          sub={`${fmtPerWeek(filteredSummary.priorPerWeekAvg)} / wk avg`}
+          sub={`${fmtPerWeek(filteredSummary.priorPerWeekAvg)} sessions per week average`}
           tone="blue"
         />
         <SummaryCard
-          label="Current vs Prior / wk"
+          label="Current vs Prior sessions per week"
           value={<TrendInline current={filteredSummary.currentPerWeekAvg} previous={filteredSummary.priorPerWeekAvg} />}
           tone="default"
         />
@@ -174,18 +171,6 @@ export default function SessionFrequencyReport({ startDate, endDate, locationSlu
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          onClick={() => setOnlyActive(v => !v)}
-          title="Hide members with zero sessions in the current period (still includes those who only trained in the prior period if off)."
-          className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-            onlyActive
-              ? 'bg-wcs-red text-white border-wcs-red'
-              : 'bg-surface text-text-muted border-border hover:text-text-primary'
-          }`}
-        >
-          Has current sessions
-        </button>
-
         <select
           value={trainerFilter}
           onChange={e => setTrainerFilter(e.target.value)}
@@ -221,20 +206,48 @@ export default function SessionFrequencyReport({ startDate, endDate, locationSlu
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table — Current and Prior are grouped column-pairs with color tinting
+          so the eye picks them apart at a glance. */}
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-bg">
-              <tr className="text-xs uppercase tracking-wide text-text-muted">
-                <th className="text-left px-4 py-2 font-semibold">Member</th>
-                <th className="text-left px-4 py-2 font-semibold">Service Employee</th>
-                <th className="text-left px-4 py-2 font-semibold">Club</th>
-                <th className="text-right px-4 py-2 font-semibold">Current</th>
-                <th className="text-right px-4 py-2 font-semibold" title="sessions ÷ (days in current period ÷ 7)">Cur / wk</th>
-                <th className="text-right px-4 py-2 font-semibold">Prior</th>
-                <th className="text-right px-4 py-2 font-semibold" title="sessions ÷ (days in prior period ÷ 7)">Prior / wk</th>
-                <th className="text-left px-4 py-2 font-semibold">Trend</th>
+          <table className="w-full text-sm border-separate border-spacing-0">
+            <thead>
+              {/* Top header row — three identity columns span both rows, then
+                  two grouped period headers, then Trend spans both rows. */}
+              <tr className="text-xs uppercase tracking-wide text-text-muted bg-bg">
+                <th rowSpan={2} className="text-left px-4 py-2 font-semibold align-bottom border-b border-border">Member</th>
+                <th rowSpan={2} className="text-left px-4 py-2 font-semibold align-bottom border-b border-border">Service Employee</th>
+                <th rowSpan={2} className="text-left px-4 py-2 font-semibold align-bottom border-b border-border">Club</th>
+                <th
+                  colSpan={2}
+                  className="text-center px-4 py-2 font-bold text-green-800 bg-green-100 border-l-2 border-green-300 border-b border-border"
+                >
+                  Current Period
+                </th>
+                <th
+                  colSpan={2}
+                  className="text-center px-4 py-2 font-bold text-blue-800 bg-blue-100 border-l-2 border-blue-300 border-r-2 border-blue-300 border-b border-border"
+                >
+                  Prior Period
+                </th>
+                <th rowSpan={2} className="text-left px-4 py-2 font-semibold align-bottom border-b border-border">Trend</th>
+              </tr>
+              {/* Sub-headers — Sessions / Sessions Per Week under each period. */}
+              <tr className="text-[10px] uppercase tracking-wide text-text-muted bg-bg">
+                <th className="text-right px-4 py-1.5 font-semibold bg-green-50 border-l-2 border-green-300 border-b border-border">Sessions</th>
+                <th
+                  className="text-right px-4 py-1.5 font-semibold bg-green-50 border-b border-border"
+                  title="sessions ÷ (days in current period ÷ 7)"
+                >
+                  Sessions Per Week
+                </th>
+                <th className="text-right px-4 py-1.5 font-semibold bg-blue-50 border-l-2 border-blue-300 border-b border-border">Sessions</th>
+                <th
+                  className="text-right px-4 py-1.5 font-semibold bg-blue-50 border-r-2 border-blue-300 border-b border-border"
+                  title="sessions ÷ (days in prior period ÷ 7)"
+                >
+                  Sessions Per Week
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -245,31 +258,37 @@ export default function SessionFrequencyReport({ startDate, endDate, locationSlu
                   </td>
                 </tr>
               ) : (
-                filtered.map((r, i) => (
-                  <tr key={`${r.clubNumber}-${r.memberId}-${i}`} className="border-t border-border hover:bg-bg/60">
-                    <td className="px-4 py-2 font-medium text-text-primary">{r.memberName}</td>
-                    <td className="px-4 py-2 text-text-muted">{r.serviceEmployee || '—'}</td>
-                    <td className="px-4 py-2 text-text-muted">{r.clubName}</td>
-                    <td className="px-4 py-2 text-right font-semibold text-text-primary">{r.currentSessions}</td>
-                    <td className="px-4 py-2 text-right text-text-muted">{fmtPerWeek(r.currentPerWeek)}</td>
-                    <td className="px-4 py-2 text-right text-text-primary">{r.priorSessions}</td>
-                    <td className="px-4 py-2 text-right text-text-muted">{fmtPerWeek(r.priorPerWeek)}</td>
-                    <td className="px-4 py-2"><TrendChip current={r.currentPerWeek} previous={r.priorPerWeek} /></td>
-                  </tr>
-                ))
+                filtered.map((r, i) => {
+                  const droppedOff = (r.currentSessions || 0) === 0 && (r.priorSessions || 0) > 0
+                  return (
+                    <tr
+                      key={`${r.clubNumber}-${r.memberId}-${i}`}
+                      className={`border-t border-border hover:bg-bg/60 ${droppedOff ? 'opacity-70' : ''}`}
+                    >
+                      <td className="px-4 py-2 font-medium text-text-primary">{r.memberName}</td>
+                      <td className="px-4 py-2 text-text-muted">{r.serviceEmployee || '—'}</td>
+                      <td className="px-4 py-2 text-text-muted">{r.clubName}</td>
+                      <td className="px-4 py-2 text-right font-bold text-green-900 bg-green-50/40 border-l-2 border-green-200">{r.currentSessions}</td>
+                      <td className="px-4 py-2 text-right text-green-900/70 bg-green-50/40">{fmtPerWeek(r.currentPerWeek)}</td>
+                      <td className="px-4 py-2 text-right font-bold text-blue-900 bg-blue-50/40 border-l-2 border-blue-200">{r.priorSessions}</td>
+                      <td className="px-4 py-2 text-right text-blue-900/70 bg-blue-50/40 border-r-2 border-blue-200">{fmtPerWeek(r.priorPerWeek)}</td>
+                      <td className="px-4 py-2"><TrendChip current={r.currentPerWeek} previous={r.priorPerWeek} /></td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
             {filtered.length > 0 && (
               <tfoot className="border-t-2 border-border">
-                <tr className="bg-bg font-semibold">
-                  <td className="px-4 py-2 text-text-primary" colSpan={3}>
+                <tr className="font-semibold">
+                  <td className="px-4 py-2 text-text-primary bg-bg" colSpan={3}>
                     Totals — {filtered.length} {filtered.length === 1 ? 'member' : 'members'}
                   </td>
-                  <td className="px-4 py-2 text-right text-text-primary">{fmtNum(filteredSummary.currentTotal)}</td>
-                  <td className="px-4 py-2 text-right text-text-primary">{fmtPerWeek(filteredSummary.currentPerWeekAvg)}</td>
-                  <td className="px-4 py-2 text-right text-text-primary">{fmtNum(filteredSummary.priorTotal)}</td>
-                  <td className="px-4 py-2 text-right text-text-primary">{fmtPerWeek(filteredSummary.priorPerWeekAvg)}</td>
-                  <td className="px-4 py-2">
+                  <td className="px-4 py-2 text-right text-green-900 bg-green-100 border-l-2 border-green-300">{fmtNum(filteredSummary.currentTotal)}</td>
+                  <td className="px-4 py-2 text-right text-green-900 bg-green-100">{fmtPerWeek(filteredSummary.currentPerWeekAvg)}</td>
+                  <td className="px-4 py-2 text-right text-blue-900 bg-blue-100 border-l-2 border-blue-300">{fmtNum(filteredSummary.priorTotal)}</td>
+                  <td className="px-4 py-2 text-right text-blue-900 bg-blue-100 border-r-2 border-blue-300">{fmtPerWeek(filteredSummary.priorPerWeekAvg)}</td>
+                  <td className="px-4 py-2 bg-bg">
                     <TrendChip current={filteredSummary.currentPerWeekAvg} previous={filteredSummary.priorPerWeekAvg} />
                   </td>
                 </tr>
