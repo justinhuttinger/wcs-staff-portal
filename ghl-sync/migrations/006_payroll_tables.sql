@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS payroll_recurring_commissions (
   sale_date                DATE,
   member_id                TEXT,
   member_name              TEXT,
-  employee_id              TEXT,                  -- service employee (best-guess sales person)
+  employee_id              TEXT,                  -- commission recipient: commissionsEmployeeIds[0] from ABC (falls back to serviceEmployeeId)
   employee_name            TEXT,
   service_item             TEXT,                  -- e.g. "PT 60MIN"
   recurring_type_desc      TEXT,                  -- "Paid in Full" / "Recurring" / etc

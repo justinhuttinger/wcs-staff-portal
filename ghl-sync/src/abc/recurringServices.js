@@ -56,14 +56,68 @@ async function fetchRecurringServicesForRange(clubNumber, fromDate, toDate, page
   return res.data?.recurringServices || [];
 }
 
-function transformRecurringService(svc, clubNumber) {
+// Pull /{club}/employees once and build an id -> "First Last" map. Used to
+// resolve `commissionsEmployeeIds` on recurring service rows. Returns an empty
+// Map on failure so callers can still fall back to serviceEmployee* fields.
+async function fetchEmployeeMap(clubNumber) {
+  if (!ABC_APP_ID || !ABC_APP_KEY) {
+    throw new Error('ABC_APP_ID and ABC_APP_KEY must be set');
+  }
+  try {
+    const url = `${ABC_BASE_URL}/${clubNumber}/employees`;
+    const res = await axios.get(url, {
+      headers: { app_id: ABC_APP_ID, app_key: ABC_APP_KEY, Accept: 'application/json' },
+      timeout: 30000,
+    });
+    const map = new Map();
+    for (const emp of (res.data?.employees || [])) {
+      const id = emp.employeeId || emp.id;
+      if (!id) continue;
+      const first = (emp.personal?.firstName || '').trim();
+      const last = (emp.personal?.lastName || '').trim();
+      const name = `${first} ${last}`.trim();
+      if (name) map.set(id, name);
+    }
+    return map;
+  } catch (err) {
+    console.warn(`[Payroll] /employees fetch failed for ${clubNumber}: ${err.message}`);
+    return new Map();
+  }
+}
+
+// Pick the commission recipient(s) for a recurring service. Source of truth is
+// `commissionsEmployeeIds` (array) resolved via the per-club employee map.
+// Returns { id, name } where `id` is the first ID (for table grouping) and
+// `name` joins all resolved names. Falls back to serviceEmployee* fields if
+// the array is missing/unresolved.
+function resolveCommissionEmployee(svc, empMap) {
+  const ids = Array.isArray(svc.commissionsEmployeeIds) ? svc.commissionsEmployeeIds : [];
+  if (ids.length) {
+    const names = ids.map((id) => empMap?.get(id)).filter(Boolean);
+    if (names.length) {
+      return { id: ids[0], name: names.join(', ') };
+    }
+    // IDs present but none resolved — still record the first ID so future
+    // backfills can fix it once /employees is reachable.
+    return {
+      id: ids[0],
+      name: `${(svc.serviceEmployeeFirstName || '').trim()} ${(svc.serviceEmployeeLastName || '').trim()}`.trim() || null,
+    };
+  }
+  return {
+    id: svc.serviceEmployeeId || null,
+    name: `${(svc.serviceEmployeeFirstName || '').trim()} ${(svc.serviceEmployeeLastName || '').trim()}`.trim() || null,
+  };
+}
+
+function transformRecurringService(svc, clubNumber, empMap) {
   const saleDate = svc.recurringServiceDates?.saleDate || null;
   const period = periodForDate(saleDate);
   const totalValue = totalContractValue(svc);
   const commission = Math.round(totalValue * COMMISSION_RATE * 100) / 100;
 
   const memberName = `${(svc.memberFirstName || '').trim()} ${(svc.memberLastName || '').trim()}`.trim() || null;
-  const employeeName = `${(svc.serviceEmployeeFirstName || '').trim()} ${(svc.serviceEmployeeLastName || '').trim()}`.trim() || null;
+  const { id: employeeId, name: employeeName } = resolveCommissionEmployee(svc, empMap);
 
   return {
     recurring_service_id: svc.recurringServiceId,
@@ -72,8 +126,8 @@ function transformRecurringService(svc, clubNumber) {
     sale_date: saleDate,
     member_id: svc.memberId || null,
     member_name: memberName,
-    employee_id: svc.serviceEmployeeId || null,
-    employee_name: employeeName,
+    employee_id: employeeId,
+    employee_name: employeeName || null,
     service_item: svc.serviceItem || null,
     recurring_type_desc: svc.recurringTypeDesc || null,
     invoice_total: parseFloat(svc.invoiceTotal || '0') || 0,
@@ -92,6 +146,8 @@ function transformRecurringService(svc, clubNumber) {
  * Returns the number of rows upserted.
  */
 async function syncRecurringCommissionsForClub(clubNumber, fromDate, toDate, sleepMs = 100) {
+  const empMap = await fetchEmployeeMap(clubNumber);
+  console.log(`[Payroll] ${clubNumber} employee map: ${empMap.size} active employees`);
   let total = 0;
   let page = 1;
   while (true) {
@@ -100,7 +156,7 @@ async function syncRecurringCommissionsForClub(clubNumber, fromDate, toDate, sle
 
     const rows = services
       .filter((s) => s.recurringServiceId)
-      .map((s) => transformRecurringService(s, clubNumber))
+      .map((s) => transformRecurringService(s, clubNumber, empMap))
       .filter((r) => r.period); // skip rows missing a sale_date / period
 
     if (rows.length > 0) {
@@ -123,8 +179,10 @@ async function syncRecurringCommissionsForClub(clubNumber, fromDate, toDate, sle
 
 module.exports = {
   fetchRecurringServicesForRange,
+  fetchEmployeeMap,
   syncRecurringCommissionsForClub,
   transformRecurringService,
+  resolveCommissionEmployee,
   totalContractValue,
   periodForDate,
   COMMISSION_RATE,
