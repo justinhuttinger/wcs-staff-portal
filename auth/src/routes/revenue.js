@@ -46,8 +46,11 @@ router.post('/webhook', upload.any(), async (req, res) => {
     emailSubject: req.body?.subject || null,
   })
   if (!result.ok) {
+    // Return 200 so SendGrid doesn't retry an unprocessable payload for 24h.
+    // The failure is already recorded in abc_revenue_imports (status='failed')
+    // — visible in the Admin Backfill UI's Recent Imports table.
     console.error('[revenue/webhook] ingest failed', result)
-    return res.status(500).json({ error: result.error, import_id: result.import_id })
+    return res.status(200).json({ ignored: true, error: result.error, import_id: result.import_id })
   }
   console.log(`[revenue/webhook] stored ${result.row_count} rows for ${result.period_start}..${result.period_end}`)
   res.json(result)
