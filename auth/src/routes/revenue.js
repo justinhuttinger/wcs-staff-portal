@@ -10,10 +10,13 @@ const router = Router()
 const WEBHOOK_SECRET = process.env.REVENUE_WEBHOOK_SECRET
 
 // SendGrid Inbound Parse can send multipart with several files; admin upload sends a single file.
-// 200 MB cap: a yearly backfill (~300k rows ~ 100MB) fits; a 5-year file would exceed and must be chunked.
+// 50 MB cap on Starter-plan memory (512 MB total). The parser is non-streaming,
+// so a CSV's peak working set is ~5x the buffer (Buffer + UTF-16 string + parsed
+// records). 50 MB stays under ~250 MB peak which is safe on Starter. Backfill
+// CSVs must be chunked by quarter or month — full-year files OOM.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 200 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 },
 })
 
 function pickCsvFile(files) {

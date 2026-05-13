@@ -5,6 +5,12 @@ const cors = require('cors')
 const cookieParser = require('cookie-parser')
 const app = express()
 
+// Render terminates TLS at its proxy and forwards X-Forwarded-For. Trust one
+// hop so express-rate-limit and req.ip read the real client address instead
+// of the proxy's loopback. Without this, express-rate-limit logs validation
+// errors on every request.
+app.set('trust proxy', 1)
+
 // CORS: whitelist known origins
 const ALLOWED_ORIGINS = [
   process.env.PORTAL_URL || 'https://portal.wcstrength.com',
