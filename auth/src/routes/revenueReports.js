@@ -44,6 +44,8 @@ async function resolveLocationFilter(req) {
   return allowedSlugs
 }
 
+const iso = d => d.toISOString().slice(0, 10)
+
 function priorEquivalentPeriod(start, end) {
   const s = new Date(start + 'T00:00:00Z')
   const e = new Date(end + 'T00:00:00Z')
@@ -52,8 +54,23 @@ function priorEquivalentPeriod(start, end) {
   prevEnd.setUTCDate(prevEnd.getUTCDate() - 1)
   const prevStart = new Date(prevEnd)
   prevStart.setUTCDate(prevStart.getUTCDate() - (lengthDays - 1))
-  const iso = d => d.toISOString().slice(0, 10)
   return { start: iso(prevStart), end: iso(prevEnd) }
+}
+
+function shiftByMonths(start, end, months) {
+  const s = new Date(start + 'T00:00:00Z')
+  const e = new Date(end + 'T00:00:00Z')
+  s.setUTCMonth(s.getUTCMonth() - months)
+  e.setUTCMonth(e.getUTCMonth() - months)
+  return { start: iso(s), end: iso(e) }
+}
+
+function shiftByYears(start, end, years) {
+  const s = new Date(start + 'T00:00:00Z')
+  const e = new Date(end + 'T00:00:00Z')
+  s.setUTCFullYear(s.getUTCFullYear() - years)
+  e.setUTCFullYear(e.getUTCFullYear() - years)
+  return { start: iso(s), end: iso(e) }
 }
 
 async function fetchSummary(startDate, endDate, locationFilter) {
@@ -63,18 +80,22 @@ async function fetchSummary(startDate, endDate, locationFilter) {
     p_location_filter: locationFilter,
   })
   if (error) throw new Error(`revenue_summary RPC failed: ${error.message}`)
-  const out = { total: 0, by_club: [], by_profit_center: [], by_day: [] }
+  const out = { total: 0, by_club: [], by_profit_center: [], by_day: [], by_membership_type: [] }
   for (const r of data || []) {
     const amount = Number(r.total_amount) || 0
     if (r.bucket === 'total') out.total = amount
     else if (r.bucket === 'by_club') out.by_club.push({ slug: r.key1, label: LOCATION_LABELS[r.key1] || r.key1, total: amount })
     else if (r.bucket === 'by_profit_center') out.by_profit_center.push({ name: r.key1, total: amount })
     else if (r.bucket === 'by_day') out.by_day.push({ date: r.key1, total: amount })
+    else if (r.bucket === 'by_membership_type') out.by_membership_type.push({ code: r.key1, total: amount })
   }
   out.by_club.sort((a, b) => b.total - a.total)
-  out.by_profit_center.sort((a, b) => b.total - a.total)
+  out.by_profit_center.sort((a, b) => a.name.localeCompare(b.name))
   const pcTotal = out.by_profit_center.reduce((s, p) => s + p.total, 0) || 1
   out.by_profit_center.forEach(p => { p.pct_of_total = p.total / pcTotal })
+  out.by_membership_type.sort((a, b) => b.total - a.total)
+  const mtTotal = out.by_membership_type.reduce((s, m) => s + m.total, 0) || 1
+  out.by_membership_type.forEach(m => { m.pct_of_total = m.total / mtTotal })
   out.by_day.sort((a, b) => a.date.localeCompare(b.date))
   return out
 }
@@ -87,15 +108,21 @@ router.get('/summary', authenticate, requireRole('manager'), async (req, res) =>
     const { start_date, end_date } = req.query
     if (!start_date || !end_date) return res.status(400).json({ error: 'start_date and end_date required' })
     const locationFilter = await resolveLocationFilter(req)
-    const compare = priorEquivalentPeriod(start_date, end_date)
-    const [current, prior] = await Promise.all([
+    const priorPeriod = priorEquivalentPeriod(start_date, end_date)
+    const lastMonthPeriod = shiftByMonths(start_date, end_date, 1)
+    const lastYearPeriod = shiftByYears(start_date, end_date, 1)
+    const [current, prior, lastMonth, lastYear] = await Promise.all([
       fetchSummary(start_date, end_date, locationFilter),
-      fetchSummary(compare.start, compare.end, locationFilter),
+      fetchSummary(priorPeriod.start, priorPeriod.end, locationFilter),
+      fetchSummary(lastMonthPeriod.start, lastMonthPeriod.end, locationFilter),
+      fetchSummary(lastYearPeriod.start, lastYearPeriod.end, locationFilter),
     ])
     res.json({
       period: { start: start_date, end: end_date },
       ...current,
-      compare: { period: compare, ...prior },
+      compare: { period: priorPeriod, ...prior },
+      compare_last_month: { period: lastMonthPeriod, ...lastMonth },
+      compare_last_year: { period: lastYearPeriod, ...lastYear },
     })
   } catch (err) {
     console.error('[revenue/summary]', err.message)

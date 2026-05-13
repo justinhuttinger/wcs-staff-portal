@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react'
 import { getRevenueSummary, getRevenueProfitCenterTrend } from '../../lib/api'
 import { exportCSV } from '../../lib/export'
 
-const TOP_N_STACKS = 6
 const STACK_COLORS = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#d69e2e', '#319795', '#a0aec0']
 
 function fmtMoney(n) {
@@ -13,13 +12,9 @@ function fmtPct(n) {
   return `${(n * 100).toFixed(1)}%`
 }
 
-function buildStackPoints(byDay, byProfitCenter, startDate, endDate) {
-  // Top N profit centers go in their own stacks; the rest collapse to "Other".
-  const top = byProfitCenter.slice(0, TOP_N_STACKS).map(p => p.name)
+function buildPoints(byDay, startDate, endDate) {
   const start = new Date(startDate + 'T00:00:00Z')
   const end = new Date(endDate + 'T00:00:00Z')
-  // For v1 the API returns one total per day — to stack we'd need a richer
-  // by_day_pc shape. Until then the chart shows total per day as a single area.
   const dateMap = {}
   byDay.forEach(d => { dateMap[d.date] = d.total })
   const points = []
@@ -29,7 +24,7 @@ function buildStackPoints(byDay, byProfitCenter, startDate, endDate) {
     points.push({ date: iso, total: dateMap[iso] || 0 })
     cur.setUTCDate(cur.getUTCDate() + 1)
   }
-  return { top, points }
+  return points
 }
 
 function TrendChart({ points, label }) {
@@ -89,6 +84,26 @@ function DeltaChip({ current, prior }) {
   )
 }
 
+function ComparisonCard({ label, current, comparison }) {
+  if (!comparison) return <StatCard label={label} value="—" sub="no data" />
+  const delta = current - (comparison.total || 0)
+  const positive = delta >= 0
+  return (
+    <div className="bg-surface rounded-xl border border-border p-4">
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">{label}</p>
+      <p className={`text-2xl font-bold mt-1 ${positive ? 'text-green-600' : 'text-red-600'}`}>
+        {positive ? '+' : '−'}{fmtMoney(Math.abs(delta))}
+      </p>
+      <p className="text-xs text-text-muted mt-1">
+        {comparison.period?.start} → {comparison.period?.end}
+      </p>
+      <p className="text-xs text-text-muted">
+        was {fmtMoney(comparison.total)} · <DeltaChip current={current} prior={comparison.total} />
+      </p>
+    </div>
+  )
+}
+
 export default function RevenueReport({ startDate, endDate, locationSlug }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
@@ -127,7 +142,6 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
       ['Profit Center', 'Total', 'Pct of Total'],
       ...data.by_profit_center.map(p => [p.name, p.total.toFixed(2), (p.pct_of_total * 100).toFixed(2) + '%']),
     ]
-    // exportCSV appends .csv automatically — do not include extension in filename
     exportCSV(rows, `revenue-${startDate}_to_${endDate}`)
   }
 
@@ -135,9 +149,7 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
   if (error) return <div className="text-red-600">Error: {error}</div>
   if (!data) return null
 
-  const topPc = data.by_profit_center[0]
-  const topClub = data.by_club[0]
-  const { points } = buildStackPoints(data.by_day, data.by_profit_center, startDate, endDate)
+  const points = buildPoints(data.by_day, startDate, endDate)
   const trendPoints = activeProfitCenter && pcSeries
     ? pcSeries.map(s => ({ date: s.date, total: s.total }))
     : points
@@ -145,11 +157,22 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Total Revenue" value={fmtMoney(data.total)} sub={<DeltaChip current={data.total} prior={data.compare?.total} />} />
-        <StatCard label="Top Profit Center" value={topPc?.name || '—'} sub={topPc ? `${fmtMoney(topPc.total)} · ${fmtPct(topPc.pct_of_total)}` : null} />
-        <StatCard label="Top Club" value={topClub?.label || '—'} sub={topClub ? fmtMoney(topClub.total) : null} />
-        <StatCard label="Days in Range" value={data.by_day.length} sub={`${startDate} → ${endDate}`} />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <StatCard
+          label="Total Revenue"
+          value={fmtMoney(data.total)}
+          sub={<>{startDate} → {endDate}</>}
+        />
+        <ComparisonCard
+          label="vs Last Month"
+          current={data.total}
+          comparison={data.compare_last_month}
+        />
+        <ComparisonCard
+          label="vs Last Year"
+          current={data.total}
+          comparison={data.compare_last_year}
+        />
       </div>
 
       <TrendChart points={trendPoints} label={chartLabel} />
@@ -205,6 +228,30 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
           </tbody>
         </table>
       </div>
+
+      {data.by_membership_type && data.by_membership_type.length > 0 && (
+        <div className="bg-surface rounded-xl border border-border p-4">
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Revenue by Membership Type</p>
+          <table className="w-full text-sm">
+            <thead className="text-xs uppercase tracking-wide text-text-muted">
+              <tr><th className="text-left py-2">Type</th><th className="text-right">Total</th><th className="text-right">% of Total</th><th className="text-right">Δ vs Prior</th></tr>
+            </thead>
+            <tbody>
+              {data.by_membership_type.map(m => {
+                const priorMt = data.compare?.by_membership_type?.find(x => x.code === m.code)
+                return (
+                  <tr key={m.code} className="border-t border-border">
+                    <td className="py-2 font-mono">{m.code}</td>
+                    <td className="text-right font-semibold">{fmtMoney(m.total)}</td>
+                    <td className="text-right text-text-muted">{fmtPct(m.pct_of_total)}</td>
+                    <td className="text-right"><DeltaChip current={m.total} prior={priorMt?.total} /></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
