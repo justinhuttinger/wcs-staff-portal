@@ -173,16 +173,6 @@ const REPORT_TILES = [
       </svg>
     ),
   },
-  {
-    key: 'daily-snapshot',
-    label: 'Daily Snapshot',
-    description: 'Single-day view',
-    icon: (
-      <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5M12 12.75h.008v.008H12v-.008z" />
-      </svg>
-    ),
-  },
 ]
 
 // Justin asked for Website Submissions to be visible to corp+admin only —
@@ -190,11 +180,7 @@ const REPORT_TILES = [
 // through to the default branch otherwise.
 const CORP_ADMIN_ONLY_KEYS = new Set(['website-submissions'])
 
-// Tiles that only render inside the Experimental group — admin only.
-const EXPERIMENTAL_KEYS = new Set(['daily-snapshot'])
-
 function getTilesForRole(role) {
-  const hideExperimental = (tiles) => tiles.filter(t => !EXPERIMENTAL_KEYS.has(t.key))
   switch (role) {
     case 'team_member':
       return []
@@ -203,11 +189,8 @@ function getTilesForRole(role) {
     case 'manager':
       return REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'operations', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'revenue'].includes(t.key))
     case 'marketing':
-      return hideExperimental(REPORT_TILES.filter(t => !CORP_ADMIN_ONLY_KEYS.has(t.key)))
-    case 'corporate':
-    case 'director':
-      return hideExperimental(REPORT_TILES)
-    default: // admin
+      return REPORT_TILES.filter(t => !CORP_ADMIN_ONLY_KEYS.has(t.key))
+    default: // corporate, admin, director
       return REPORT_TILES
   }
 }
@@ -248,17 +231,6 @@ const REPORT_GROUPS = [
       </svg>
     ),
     reports: ['marketing', 'google-marketing', 'website-submissions'],
-  },
-  {
-    key: 'experimental-group',
-    label: 'Experimental',
-    description: 'In-progress / not ready for production',
-    icon: (
-      <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 0-6.23-.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
-      </svg>
-    ),
-    reports: ['daily-snapshot'],
   },
 ]
 
