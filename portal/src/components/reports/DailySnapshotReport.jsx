@@ -54,24 +54,89 @@ function Stat({ label, value }) {
   )
 }
 
-function NamesList({ names }) {
+function StatusPill({ status }) {
+  if (!status) return null
+  return (
+    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+      status === 'showed' ? 'bg-green-50 text-green-700' :
+      status === 'noshow' || status === 'no_show' ? 'bg-red-50 text-red-700' :
+      status === 'cancelled' ? 'bg-gray-100 text-text-muted' :
+      'bg-bg text-text-secondary'
+    }`}>{status}</span>
+  )
+}
+
+function NamesList({ names, showTrainer, showCompletion }) {
   if (!names || names.length === 0) return <p className="text-xs text-text-muted">No appointments.</p>
   return (
     <ul className="divide-y divide-border max-h-72 overflow-y-auto">
       {names.map((evt, i) => (
-        <li key={i} className="py-2 flex items-center justify-between gap-2">
+        <li key={evt.id || i} className="py-2 flex items-center justify-between gap-2">
           <div className="min-w-0 flex-1">
             <p className="text-sm text-text-primary truncate">{evt.name}</p>
-            {evt.location && <p className="text-[10px] text-text-muted truncate">{evt.location}{evt.time ? ` · ${fmtTime(evt.time)}` : ''}</p>}
+            <p className="text-[10px] text-text-muted truncate">
+              {evt.location}
+              {evt.time ? ` · ${fmtTime(evt.time)}` : ''}
+              {showTrainer && evt.trainer ? ` · ${evt.trainer}` : ''}
+            </p>
+            {showCompletion && (
+              <div className="flex items-center gap-1 mt-0.5">
+                {evt.marked_complete ? (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-green-50 text-green-700">✓ marked complete</span>
+                ) : (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-amber-50 text-amber-700">not marked</span>
+                )}
+                {evt.sale_result && (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                    /sold|sale/i.test(evt.sale_result) ? 'bg-green-100 text-green-800' :
+                    /no.?sale|nosale/i.test(evt.sale_result) ? 'bg-red-50 text-red-700' :
+                    'bg-bg text-text-secondary'
+                  }`}>{evt.sale_result}</span>
+                )}
+              </div>
+            )}
           </div>
-          {evt.status && (
-            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-              evt.status === 'showed' ? 'bg-green-50 text-green-700' :
-              evt.status === 'noshow' || evt.status === 'no_show' ? 'bg-red-50 text-red-700' :
-              evt.status === 'cancelled' ? 'bg-gray-100 text-text-muted' :
-              'bg-bg text-text-secondary'
-            }`}>{evt.status}</span>
-          )}
+          <StatusPill status={evt.status} />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function MembersList({ members }) {
+  if (!members || members.length === 0) return <p className="text-xs text-text-muted">No new members signed.</p>
+  return (
+    <ul className="divide-y divide-border max-h-80 overflow-y-auto">
+      {members.map((m, i) => {
+        const full = [m.first_name, m.last_name].filter(Boolean).join(' ') || '(no name)'
+        return (
+          <li key={m.member_id || i} className="py-2 flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-text-primary truncate">{full}</p>
+              <p className="text-[10px] text-text-muted truncate">
+                {m.location}
+                {m.membership_type ? ` · ${m.membership_type}` : ''}
+                {m.sales_person ? ` · sold by ${m.sales_person}` : ''}
+              </p>
+            </div>
+            {m.booked_day_one && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-blue-50 text-blue-700">Day One ✓</span>
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+function SalespeopleList({ rows }) {
+  if (!rows || rows.length === 0) return <p className="text-xs text-text-muted">No new sales recorded.</p>
+  return (
+    <ul className="divide-y divide-border max-h-72 overflow-y-auto">
+      {rows.map((r, i) => (
+        <li key={i} className="py-2 flex items-center justify-between">
+          <span className="text-sm text-text-primary truncate">{r.name}</span>
+          <span className="text-sm font-semibold text-text-primary tabular-nums">{r.count}</span>
         </li>
       ))}
     </ul>
@@ -179,13 +244,16 @@ export default function DailySnapshotReport({ locationSlug }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <Card title="Day One">
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-3 gap-3 mb-3">
             <Stat label={mode === 'past' ? 'Booked' : 'Scheduled'} value={loading ? '—' : (data?.day_one?.scheduled ?? 0)} />
             {mode === 'past' && (
-              <Stat label="No-show / cancel" value={loading ? '—' : (data?.day_one?.no_show ?? 0)} />
+              <>
+                <Stat label="Marked complete" value={loading ? '—' : (data?.day_one?.completed ?? 0)} />
+                <Stat label="No-show / cancel" value={loading ? '—' : (data?.day_one?.no_show ?? 0)} />
+              </>
             )}
           </div>
-          <NamesList names={data?.day_one?.names} />
+          <NamesList names={data?.day_one?.names} showTrainer showCompletion={mode === 'past'} />
         </Card>
 
         <Card title="Tours">
@@ -200,9 +268,16 @@ export default function DailySnapshotReport({ locationSlug }) {
 
         {mode === 'past' ? (
           <>
-            <Card title="Membership Sales">
-              <Stat label="New members signed" value={loading ? '—' : (data?.membership_sales?.count ?? 0)} />
-              <p className="text-[10px] text-text-muted mt-2">Members whose first ABC payment landed on {date}.</p>
+            <Card title="Membership Sales" className="md:col-span-2">
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <Stat label="New members signed" value={loading ? '—' : (data?.membership_sales?.count ?? 0)} />
+              </div>
+              <p className="text-[10px] text-text-muted mb-3">Members whose <span className="font-medium">sign_date</span> in ABC is {date}.</p>
+              <MembersList members={data?.membership_sales?.members} />
+            </Card>
+
+            <Card title="Top Salespeople">
+              <SalespeopleList rows={data?.membership_sales?.top_salespeople} />
             </Card>
 
             <Card title="PT New Sales">

@@ -23,13 +23,14 @@ router.use(requireRole('manager'))
 const CAL_VERSION = '2021-04-15'
 const PT_PROFIT_CENTERS = ['PERSONAL TRAINING', 'TRAINING']
 
-// In-process cache of (locationId -> day-one calendar ids/groupId, tours
-// calendar id). TTL 1h — same convention as dayOneTracker.
-const calCache = {}
+// In-process cache: calendars per location (1h) and GHL users per location
+// (10m). Trainer-name resolution lives in the users cache.
+const cache = {}
 const CAL_TTL = 60 * 60 * 1000
+const USERS_TTL = 10 * 60 * 1000
 
 async function getDayOneCalendars(loc) {
-  const cached = calCache[`d1:${loc.id}`]
+  const cached = cache[`d1:${loc.id}`]
   if (cached && Date.now() - cached.ts < CAL_TTL) return cached.value
   const data = await ghlFetch('/calendars/', loc.apiKey, {
     params: { locationId: loc.id },
@@ -44,12 +45,12 @@ async function getDayOneCalendars(loc) {
     calendarIds: dayOnes.map(c => c.id),
     groupId: dayOnes[0]?.groupId || null,
   }
-  calCache[`d1:${loc.id}`] = { value, ts: Date.now() }
+  cache[`d1:${loc.id}`] = { value, ts: Date.now() }
   return value
 }
 
 async function getTourCalendars(loc) {
-  const cached = calCache[`tour:${loc.id}`]
+  const cached = cache[`tour:${loc.id}`]
   if (cached && Date.now() - cached.ts < CAL_TTL) return cached.value
   const data = await ghlFetch('/calendars/', loc.apiKey, {
     params: { locationId: loc.id },
@@ -61,18 +62,33 @@ async function getTourCalendars(loc) {
     calendarIds: tours.map(c => c.id),
     groupId: tours[0]?.groupId || null,
   }
-  calCache[`tour:${loc.id}`] = { value, ts: Date.now() }
+  cache[`tour:${loc.id}`] = { value, ts: Date.now() }
   return value
 }
 
-// Pacific-local midnight + +1 day, returned as epoch ms for GHL `startTime` /
-// `endTime` params (which expect millis). For the SQL `payment_date` filter
-// we use the bare YYYY-MM-DD string since `payment_date` is a `date` column.
+// Returns Map(userId -> { name, email }) for a location, cached 10 minutes.
+async function getUserMap(loc) {
+  const cached = cache[`users:${loc.id}`]
+  if (cached && Date.now() - cached.ts < USERS_TTL) return cached.value
+  const map = new Map()
+  try {
+    const data = await ghlFetch('/users/', loc.apiKey, {
+      params: { locationId: loc.id },
+    })
+    for (const u of (data.users || [])) {
+      const name = u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email || ''
+      map.set(u.id, { name, email: (u.email || '').toLowerCase() })
+    }
+  } catch (err) {
+    console.warn(`[daily-snapshot ${loc.slug}] users fetch failed:`, err.message)
+  }
+  cache[`users:${loc.id}`] = { value: map, ts: Date.now() }
+  return map
+}
+
 function ptDayBoundsMs(dateStr) {
-  // Local 00:00 PT — handle both PST (-08:00) and PDT (-07:00) by relying on
-  // the Date parser. JS does not natively know PT, so we approximate using
-  // a fixed -08:00 base for PST/PDT span and accept up to 1h jitter at DST
-  // boundaries (acceptable for "what happened today" reporting).
+  // Local 00:00 PT — using a fixed -08:00 base. Accepts up to 1h jitter at
+  // DST boundaries (acceptable for "what happened today" reporting).
   const start = new Date(`${dateStr}T00:00:00-08:00`).getTime()
   const end = start + 24 * 60 * 60 * 1000
   return { start, end }
@@ -101,10 +117,6 @@ function parseDateParam(value) {
   return value
 }
 
-// Returns array of allowed location objects for this caller, honoring their
-// role's location scoping. `requestedSlug` of null/'all' means "every allowed
-// location". For corporate/marketing/admin that's every configured location;
-// for manager/lead it's only their staff_locations.
 async function resolveLocations(req, requestedSlug) {
   const role = resolveRole(req.staff?.role)
   const wantsAll = !requestedSlug || requestedSlug === 'all'
@@ -116,7 +128,6 @@ async function resolveLocations(req, requestedSlug) {
     return match ? [match] : []
   }
 
-  // Manager / lead: scope to their assigned locations.
   const allowedIds = req.staff?.location_ids || []
   if (allowedIds.length === 0) return []
   const { data: rows } = await supabaseAdmin
@@ -162,67 +173,127 @@ async function fetchEventsForCalendars(loc, calInfo, startMs, endMs) {
   return events
 }
 
-// Map a GHL appointment to a slim row for the UI. The `result` field is best-
-// effort: GHL sets `appointmentStatus` to 'confirmed' / 'showed' / 'noshow' /
-// 'cancelled' etc. We only surface this for past dates; future dates show
-// 'scheduled'.
-function slimEvent(evt, locationName, mode) {
+// Trim a GHL event to the slim row the UI consumes. `userMap` resolves
+// `assignedUserId` → trainer name. `localStatusByApptId` (built once per
+// request) carries `status` + `sale_result` from the local `appointments`
+// table for past day-one events.
+function slimEvent(evt, locationName, mode, userMap, localStatusByApptId) {
   const status = (evt.appointmentStatus || '').toLowerCase()
+  const trainer = (evt.assignedUserId && userMap?.get(evt.assignedUserId)?.name) || null
+
+  const local = localStatusByApptId?.get(evt.id) || null
+  const localStatus = local?.status || null     // 'pending' | 'completed'
+  const saleResult = local?.sale_result || null // present when the day-one form was submitted
+  const markedComplete = localStatus === 'completed'
+
+  // Best-effort "no-show" signal for the panel summary count.
   let result = null
   if (mode === 'past') {
     if (status === 'noshow' || status === 'no_show' || status === 'cancelled') result = 'no_sale'
-    else if (status === 'showed' || status === 'confirmed') result = null // unknown sale outcome from calendar alone
   }
+
   return {
+    id: evt.id,
     name: evt.title || evt.contactName || 'Appointment',
     location: locationName,
     time: evt.startTime || null,
     status: status || null,
+    trainer,
+    marked_complete: markedComplete,
+    sale_result: saleResult,
     result,
   }
 }
 
 // ---- Panel computations ---------------------------------------------------
 
+async function fetchLocalAppointmentStatusMap(ghlIds) {
+  if (!ghlIds.length) return new Map()
+  const { data, error } = await supabaseAdmin
+    .from('appointments')
+    .select('ghl_appointment_id, status, sale_result, completed_at')
+    .in('ghl_appointment_id', ghlIds)
+  if (error) {
+    console.warn('[daily-snapshot] appointment-status lookup failed:', error.message)
+    return new Map()
+  }
+  const m = new Map()
+  for (const row of data || []) {
+    if (row.ghl_appointment_id) m.set(row.ghl_appointment_id, row)
+  }
+  return m
+}
+
 async function computeSchedulePanels(locations, dateStr, mode) {
   const { start, end } = ptDayBoundsMs(dateStr)
-  const dayOne = []
-  const tours = []
-  await Promise.all(locations.flatMap(loc => [
-    (async () => {
-      try {
-        const calInfo = await getDayOneCalendars(loc)
-        const events = await fetchEventsForCalendars(loc, calInfo, start, end)
-        for (const evt of events) dayOne.push(slimEvent(evt, loc.name, mode))
-      } catch (err) {
-        console.warn(`[daily-snapshot ${loc.slug}] day-one fetch failed:`, err.message)
-      }
-    })(),
-    (async () => {
-      try {
-        const calInfo = await getTourCalendars(loc)
-        const events = await fetchEventsForCalendars(loc, calInfo, start, end)
-        for (const evt of events) tours.push(slimEvent(evt, loc.name, mode))
-      } catch (err) {
-        console.warn(`[daily-snapshot ${loc.slug}] tours fetch failed:`, err.message)
-      }
-    })(),
-  ]))
+  const collected = locations.map(() => ({ dayOne: [], tours: [], userMap: null }))
+
+  // Per-location fan-out: calendars + user map fetched in parallel.
+  await Promise.all(locations.map(async (loc, i) => {
+    const bucket = collected[i]
+    bucket.userMap = await getUserMap(loc).catch(err => {
+      console.warn(`[daily-snapshot ${loc.slug}] users:`, err.message)
+      return new Map()
+    })
+    await Promise.all([
+      (async () => {
+        try {
+          const calInfo = await getDayOneCalendars(loc)
+          const events = await fetchEventsForCalendars(loc, calInfo, start, end)
+          bucket.dayOne = events
+        } catch (err) {
+          console.warn(`[daily-snapshot ${loc.slug}] day-one fetch failed:`, err.message)
+        }
+      })(),
+      (async () => {
+        try {
+          const calInfo = await getTourCalendars(loc)
+          const events = await fetchEventsForCalendars(loc, calInfo, start, end)
+          bucket.tours = events
+        } catch (err) {
+          console.warn(`[daily-snapshot ${loc.slug}] tours fetch failed:`, err.message)
+        }
+      })(),
+    ])
+  }))
+
+  // For past day-ones, cross-reference the local appointments table for
+  // completion status + sale_result.
+  const allDayOneEvents = collected.flatMap(b => b.dayOne)
+  const allTourEvents = collected.flatMap(b => b.tours)
+  let localStatusMap = new Map()
+  if (mode === 'past' || mode === 'today') {
+    const ids = allDayOneEvents.map(e => e.id).filter(Boolean)
+    localStatusMap = await fetchLocalAppointmentStatusMap(ids)
+  }
+
+  const dayOneSlim = []
+  const tourSlim = []
+  collected.forEach((bucket, i) => {
+    const loc = locations[i]
+    for (const evt of bucket.dayOne) {
+      dayOneSlim.push(slimEvent(evt, loc.name, mode, bucket.userMap, localStatusMap))
+    }
+    for (const evt of bucket.tours) {
+      tourSlim.push(slimEvent(evt, loc.name, mode, bucket.userMap, null))
+    }
+  })
+
+  const sortByTime = (a, b) => (a.time || '').localeCompare(b.time || '')
+  dayOneSlim.sort(sortByTime)
+  tourSlim.sort(sortByTime)
 
   return {
     day_one: {
-      scheduled: dayOne.length,
-      no_show: dayOne.filter(e => e.result === 'no_sale').length,
-      names: dayOne
-        .sort((a, b) => (a.time || '').localeCompare(b.time || ''))
-        .slice(0, 100),
+      scheduled: dayOneSlim.length,
+      no_show: dayOneSlim.filter(e => e.result === 'no_sale').length,
+      completed: dayOneSlim.filter(e => e.marked_complete).length,
+      names: dayOneSlim.slice(0, 200),
     },
     tours: {
-      scheduled: tours.length,
-      no_show: tours.filter(e => e.result === 'no_sale').length,
-      names: tours
-        .sort((a, b) => (a.time || '').localeCompare(b.time || ''))
-        .slice(0, 100),
+      scheduled: tourSlim.length,
+      no_show: tourSlim.filter(e => e.result === 'no_sale').length,
+      names: tourSlim.slice(0, 200),
     },
   }
 }
@@ -250,36 +321,67 @@ async function computeRevenuePanel(locationSlugs, dateStr) {
   return { by_profit_center, total: Math.round(total * 100) / 100 }
 }
 
-async function computeMembershipSalesPanel(locationSlugs, dateStr) {
-  // A "new membership sale" = a member whose FIRST-ever payment_date in
-  // abc_revenue_transactions is exactly `dateStr`. We count distinct
-  // member_number rows that satisfy that.
-  let firstPayments = supabaseAdmin
-    .from('abc_revenue_transactions')
-    .select('member_number, payment_date')
-    .not('member_number', 'is', null)
-    .lte('payment_date', dateStr)
-  if (locationSlugs) firstPayments = firstPayments.in('location_slug', locationSlugs)
-
-  // Pull all rows up to the date for the relevant locations and bucket in
-  // JS — Supabase JS doesn't expose a clean MIN-per-group syntax. For the
-  // single-day grain this is acceptable; if it grows hot we can move to an
-  // RPC.
-  const { data, error } = await firstPayments.limit(100000)
+// Returns { count, members: [...], top_salespeople: [...] } for the given
+// date. "Member sign-up" = `abc_members.sign_date = dateStr` (not the first
+// payment_date, which lags the actual signing).
+async function computeMembershipSalesPanel(locations, dateStr, dayOneEventsForXref) {
+  const clubNumbers = locations.map(l => l.clubCode)
+  let query = supabaseAdmin
+    .from('abc_members')
+    .select('member_id, first_name, last_name, email, club_number, membership_type, sales_person_name, sign_date')
+    .eq('sign_date', dateStr)
+  if (clubNumbers.length > 0 && clubNumbers.length < LOCATIONS.length) {
+    query = query.in('club_number', clubNumbers)
+  }
+  const { data, error } = await query.limit(2000)
   if (error) throw error
 
-  const firstByMember = new Map()
-  for (const row of data || []) {
-    const m = row.member_number
-    if (!m) continue
-    const cur = firstByMember.get(m)
-    if (!cur || row.payment_date < cur) firstByMember.set(m, row.payment_date)
+  // Build a name index from same-day day-one events to flag "booked a Day One".
+  const dayOneNames = new Set()
+  for (const evt of dayOneEventsForXref || []) {
+    const n = (evt.name || '').trim().toLowerCase()
+    if (n) dayOneNames.add(n)
   }
-  let count = 0
-  for (const [, first] of firstByMember) {
-    if (first === dateStr) count++
+  function looksLikeDayOne(first, last) {
+    if (!first && !last) return false
+    const candidates = [
+      `${first || ''} ${last || ''}`.trim().toLowerCase(),
+      `${last || ''}, ${first || ''}`.toLowerCase(),
+      (first || '').toLowerCase(),
+    ].filter(Boolean)
+    for (const c of candidates) {
+      if (dayOneNames.has(c)) return true
+      for (const evt of dayOneNames) {
+        if (evt.includes(c)) return true
+      }
+    }
+    return false
   }
-  return { count }
+
+  const clubToLocation = new Map(LOCATIONS.map(l => [l.clubCode, l.name]))
+
+  const members = (data || []).map(row => ({
+    member_id: row.member_id,
+    first_name: row.first_name,
+    last_name: row.last_name,
+    email: row.email,
+    location: clubToLocation.get(row.club_number) || row.club_number,
+    membership_type: row.membership_type,
+    sales_person: row.sales_person_name || null,
+    booked_day_one: looksLikeDayOne(row.first_name, row.last_name),
+  }))
+  members.sort((a, b) => (a.last_name || '').localeCompare(b.last_name || ''))
+
+  const bySalesperson = new Map()
+  for (const m of members) {
+    const key = m.sales_person || '(unassigned)'
+    bySalesperson.set(key, (bySalesperson.get(key) || 0) + 1)
+  }
+  const top_salespeople = Array.from(bySalesperson.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+
+  return { count: members.length, members, top_salespeople }
 }
 
 async function computePtNewSalesPanel(locationSlugs, dateStr) {
@@ -303,7 +405,6 @@ router.get('/', async (req, res) => {
     const dateStr = parseDateParam(req.query.date)
     if (!dateStr) return res.status(400).json({ error: 'invalid date (expected YYYY-MM-DD)' })
 
-    // Reject silly far-future / far-past requests.
     const dayMs = 24 * 60 * 60 * 1000
     const reqMs = new Date(dateStr + 'T00:00:00Z').getTime()
     const nowMs = Date.now()
@@ -318,8 +419,7 @@ router.get('/', async (req, res) => {
 
     const panel_errors = {}
 
-    // Always-on panels: day_one + tours via GHL.
-    let schedule = { day_one: { scheduled: 0, no_show: 0, names: [] }, tours: { scheduled: 0, no_show: 0, names: [] } }
+    let schedule = { day_one: { scheduled: 0, no_show: 0, completed: 0, names: [] }, tours: { scheduled: 0, no_show: 0, names: [] } }
     try {
       schedule = await computeSchedulePanels(locations, dateStr, mode)
     } catch (err) {
@@ -327,7 +427,6 @@ router.get('/', async (req, res) => {
       panel_errors.schedule = err.message
     }
 
-    // Past-only panels: revenue, membership sales, PT new sales.
     let revenue = null
     let membership_sales = null
     let pt_new_sales = null
@@ -339,7 +438,7 @@ router.get('/', async (req, res) => {
         panel_errors.revenue = err.message
       }
       try {
-        membership_sales = await computeMembershipSalesPanel(locationSlugs, dateStr)
+        membership_sales = await computeMembershipSalesPanel(locations, dateStr, schedule.day_one.names)
       } catch (err) {
         console.error('[daily-snapshot] membership_sales error:', err.message)
         panel_errors.membership_sales = err.message
