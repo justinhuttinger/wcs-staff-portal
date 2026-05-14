@@ -65,13 +65,16 @@ const ALL_REPORT_TILES = [
 // Group tiles surface fewer items at the top level. Each group holds an
 // ordered list of report keys; reports outside any group still render as
 // top-level tiles (none today, but easy to add).
+// Keys that only render inside the Experimental group — admins only, opt-in.
+const EXPERIMENTAL_KEYS = new Set(['daily-snapshot'])
+
 const REPORT_GROUPS = [
   {
     key: 'health',
     label: 'Club Health',
     desc: 'Health, Activity & Compliance',
     iconPath: REPORT_ICONS['club-health'],
-    reports: ['club-health', 'daily-snapshot', 'membership', 'cancels', 'operations', 'checkins', 'payroll', 'revenue'],
+    reports: ['club-health', 'membership', 'cancels', 'operations', 'checkins', 'payroll', 'revenue'],
   },
   {
     key: 'training',
@@ -87,22 +90,34 @@ const REPORT_GROUPS = [
     iconPath: REPORT_ICONS['marketing'],
     reports: ['meta-ads', 'google-marketing', 'website-submissions'],
   },
+  {
+    key: 'experimental',
+    label: 'Experimental',
+    desc: 'In-progress / not ready for production',
+    iconPath: REPORT_ICONS['daily-snapshot'],
+    reports: ['daily-snapshot'],
+  },
 ]
 
 function getReportTilesForRole(role) {
+  // Non-admins never see Experimental tiles.
+  const hideExperimental = (tiles) => tiles.filter(t => !EXPERIMENTAL_KEYS.has(t.key))
+
   switch (role) {
     case 'team_member':
       return []
     case 'lead':
       return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health'].includes(t.key))
     case 'manager':
-      return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'daily-snapshot', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'operations', 'revenue'].includes(t.key))
+      return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'operations', 'revenue'].includes(t.key))
     case 'marketing':
-      // Marketing sees marketing tiles + read-only access to the broader
-      // reports allowed by REPORT_ACCESS, but NOT website-submissions
-      // (corp+admin only per the existing gate).
-      return ALL_REPORT_TILES.filter(t => t.key !== 'website-submissions')
-    default: // corporate, admin, director
+      // Marketing: marketing tiles + broader reports per REPORT_ACCESS, minus
+      // website-submissions (corp+admin only) and minus experimental.
+      return hideExperimental(ALL_REPORT_TILES.filter(t => t.key !== 'website-submissions'))
+    case 'corporate':
+    case 'director':
+      return hideExperimental(ALL_REPORT_TILES)
+    default: // admin
       return ALL_REPORT_TILES
   }
 }
