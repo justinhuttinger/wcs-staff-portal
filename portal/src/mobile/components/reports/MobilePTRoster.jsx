@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { getPTRoster } from '../../../lib/api'
 import MobileLoading from '../MobileLoading'
+import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
 
 function fmtMoney(val) {
   const n = parseFloat(val)
@@ -14,32 +15,28 @@ function capitalize(str) {
 }
 
 export default function MobilePTRoster({ locationSlug }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [typeFilter, setTypeFilter] = useState('all')
   const [expandedTrainer, setExpandedTrainer] = useState(null)
-  const requestRef = useRef(0)
 
+  // Reset filter/accordion state when the location changes.
   useEffect(() => {
-    const id = ++requestRef.current
-    setData(null)
-    setLoading(true)
-    setError(null)
     setTypeFilter('all')
     setExpandedTrainer(null)
-    getPTRoster({ location_slug: locationSlug || 'all' }).then(res => {
-      if (id === requestRef.current) { setData(res); setLoading(false) }
-    }).catch(err => {
-      if (id === requestRef.current) { setError(err.message); setLoading(false) }
-    })
   }, [locationSlug])
+
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => getPTRoster(
+      { location_slug: locationSlug || 'all' },
+      { cache: true, signal }
+    ),
+    [locationSlug]
+  )
 
   if (loading) return <MobileLoading variant="appointments" count={4} />
 
   if (error) return (
     <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
-      <p className="text-sm text-red-600">{error}</p>
+      <p className="text-sm text-red-600">{error.message || String(error)}</p>
     </div>
   )
 

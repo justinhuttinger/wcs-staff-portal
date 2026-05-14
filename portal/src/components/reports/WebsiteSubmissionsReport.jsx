@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getWebsiteSubmissions, getWebsiteSubmissionFilterOptions } from '../../lib/api'
+import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 
 function toDateInput(d) {
   return d.toISOString().slice(0, 10)
@@ -94,48 +95,32 @@ export default function WebsiteSubmissionsReport({ onBack }) {
   const [{ start, end }, setRange] = useState(defaultRange())
   const [formName, setFormName] = useState('')
   const [location, setLocation] = useState('')
-  const [rows, setRows] = useState([])
-  const [total, setTotal] = useState(0)
-  const [summary, setSummary] = useState({ total: 0, seven_day_trial: 0, pt_interest: 0, swim_interest: 0 })
   const [filterOptions, setFilterOptions] = useState({ form_names: [], locations: [] })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
 
   const showSwimTile = !location || POOL_LOCATIONS.has(location)
 
   useEffect(() => {
-    getWebsiteSubmissionFilterOptions()
+    getWebsiteSubmissionFilterOptions({ cache: true })
       .then(setFilterOptions)
       .catch(() => setFilterOptions({ form_names: [], locations: [] }))
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      setError(null)
-      try {
-        const res = await getWebsiteSubmissions({
-          form_name: formName || undefined,
-          location: location || undefined,
-          start: isoDayStart(start),
-          end: isoDayEndExclusive(end),
-        })
-        if (cancelled) return
-        setRows(res.rows || [])
-        setTotal(res.total || 0)
-        setSummary(res.summary || { total: 0, seven_day_trial: 0, pt_interest: 0, swim_interest: 0 })
-      } catch (err) {
-        if (cancelled) return
-        setError(err?.message || 'Failed to load submissions')
-        setRows([])
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => { cancelled = true }
-  }, [start, end, formName, location])
+  const { data, loading, error: rawError } = useCancellableFetch(
+    (signal) => getWebsiteSubmissions(
+      {
+        form_name: formName || undefined,
+        location: location || undefined,
+        start: isoDayStart(start),
+        end: isoDayEndExclusive(end),
+      },
+      { cache: true, signal }
+    ),
+    [start, end, formName, location]
+  )
+  const rows = data?.rows || []
+  const total = data?.total || 0
+  const summary = data?.summary || { total: 0, seven_day_trial: 0, pt_interest: 0, swim_interest: 0 }
+  const error = rawError ? (rawError.message || String(rawError)) : null
 
   const truncated = rows.length < total
   const headerLabel = useMemo(() => {

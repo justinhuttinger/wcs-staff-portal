@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useMemo } from 'react'
 import { getOperandioRange } from '../../../lib/api'
 import { LOCATION_NAMES } from '../../../config/locations'
 import MobileLoading from '../MobileLoading'
+import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
 
 const SEGMENT_COLORS = {
   on_time: '#18CE99',
@@ -187,35 +188,23 @@ export default function MobileOperations({ user }) {
   const [activeQuick, setActiveQuick] = useState('last_7')
   const [startDate, setStartDate] = useState(initialRange.start)
   const [endDate, setEndDate] = useState(initialRange.end)
-  const [data, setData] = useState(null)
-  const [prevData, setPrevData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const reqRef = useRef(0)
 
-  useEffect(() => {
-    const id = ++reqRef.current
-    setLoading(true)
-    setError('')
-
-    const len = rangeLengthDays(startDate, endDate)
-    const prevEnd = dateMinus(startDate, 1)
-    const prevStart = dateMinus(prevEnd, len - 1)
-
-    Promise.all([
-      getOperandioRange({ start_date: startDate, end_date: endDate }),
-      getOperandioRange({ start_date: prevStart, end_date: prevEnd }),
-    ]).then(([cur, prev]) => {
-      if (id !== reqRef.current) return
-      setData(cur)
-      setPrevData(prev)
-      setLoading(false)
-    }).catch(err => {
-      if (id !== reqRef.current) return
-      setError(err.message)
-      setLoading(false)
-    })
-  }, [startDate, endDate])
+  const { data: bundle, loading, error: rawError } = useCancellableFetch(
+    async (signal) => {
+      const len = rangeLengthDays(startDate, endDate)
+      const prevEnd = dateMinus(startDate, 1)
+      const prevStart = dateMinus(prevEnd, len - 1)
+      const [cur, prev] = await Promise.all([
+        getOperandioRange({ start_date: startDate, end_date: endDate },     { cache: true, signal }),
+        getOperandioRange({ start_date: prevStart, end_date: prevEnd },     { cache: true, signal }),
+      ])
+      return { current: cur, previous: prev }
+    },
+    [startDate, endDate]
+  )
+  const data = bundle?.current ?? null
+  const prevData = bundle?.previous ?? null
+  const error = rawError ? (rawError.message || String(rawError)) : ''
 
   function applyQuick(key) {
     setActiveQuick(key)

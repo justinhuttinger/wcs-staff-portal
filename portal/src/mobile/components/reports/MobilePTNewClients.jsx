@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { getPTNewClients } from '../../../lib/api'
 import MobileLoading from '../MobileLoading'
+import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
 
 function fmtMoney(n) {
   const v = Number(n || 0)
@@ -21,36 +22,17 @@ const CLASSIFICATIONS = [
 ]
 
 export default function MobilePTNewClients({ startDate, endDate, locationSlug }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [classFilter, setClassFilter] = useState('all')
   const [trainerFilter, setTrainerFilter] = useState('all')
   const [search, setSearch] = useState('')
 
-  const reqRef = useRef(0)
-
-  useEffect(() => {
-    const id = ++reqRef.current
-    setData(null)
-    setLoading(true)
-    setError(null)
-    getPTNewClients({
-      start_date: startDate,
-      end_date: endDate,
-      location_slug: locationSlug || 'all',
-    })
-      .then(res => {
-        if (id !== reqRef.current) return
-        setData(res)
-        setLoading(false)
-      })
-      .catch(err => {
-        if (id !== reqRef.current) return
-        setError(err.message)
-        setLoading(false)
-      })
-  }, [startDate, endDate, locationSlug])
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => getPTNewClients(
+      { start_date: startDate, end_date: endDate, location_slug: locationSlug || 'all' },
+      { cache: true, signal }
+    ),
+    [startDate, endDate, locationSlug]
+  )
 
   const trainers = useMemo(() => {
     if (!data?.rows) return []
@@ -90,7 +72,7 @@ export default function MobilePTNewClients({ startDate, endDate, locationSlug })
   if (error) return (
     <div className="p-4">
       <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
-        <p className="text-sm text-red-600">{error}</p>
+        <p className="text-sm text-red-600">{error.message || String(error)}</p>
       </div>
     </div>
   )

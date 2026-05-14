@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 import { getRevenueSummary } from '../../../lib/api'
 import MobileLoading from '../MobileLoading'
+import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
 
 const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 
@@ -101,28 +102,20 @@ function BreakdownList({ title, items, idKey, labelKey, total, compare }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function MobileRevenue({ startDate, endDate, locationSlug }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    let cancelled = false
-    setData(null)
-    setLoading(true)
-    setError(null)
-    getRevenueSummary({ start_date: startDate, end_date: endDate, location_slug: locationSlug })
-      .then(res => { if (!cancelled) setData(res) })
-      .catch(err => { if (!cancelled) setError(err.message || 'Failed to load revenue summary') })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [startDate, endDate, locationSlug])
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => getRevenueSummary(
+      { start_date: startDate, end_date: endDate, location_slug: locationSlug },
+      { cache: true, signal }
+    ),
+    [startDate, endDate, locationSlug]
+  )
 
   if (loading) return <MobileLoading variant="report" />
 
   if (error) return (
     <div className="p-4">
       <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
-        <p className="text-sm text-red-600">{error}</p>
+        <p className="text-sm text-red-600">{error.message || String(error)}</p>
       </div>
     </div>
   )

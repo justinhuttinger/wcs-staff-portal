@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
   getMetaAdsOverview,
   getMetaAdsCampaigns,
@@ -6,6 +6,7 @@ import {
   getMetaAds,
 } from '../../../lib/api'
 import MobileLoading from '../MobileLoading'
+import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
 
 /* ── helpers ────────────────────────────────────────── */
 
@@ -127,11 +128,10 @@ function AdsetCard({ adset, dateRange }) {
     setExpanded(true)
     setLoading(true)
     try {
-      const res = await getMetaAds({
-        adset_id: adset.adset_id,
-        start_date: dateRange.start,
-        end_date: dateRange.end,
-      })
+      const res = await getMetaAds(
+        { adset_id: adset.adset_id, start_date: dateRange.start, end_date: dateRange.end },
+        { cache: true }
+      )
       setAds(res.ads || [])
       setLoaded(true)
     } catch { setAds([]) }
@@ -194,11 +194,10 @@ function CampaignCard({ campaign, dateRange }) {
     setExpanded(true)
     setLoading(true)
     try {
-      const res = await getMetaAdsets({
-        campaign_id: campaign.campaign_id,
-        start_date: dateRange.start,
-        end_date: dateRange.end,
-      })
+      const res = await getMetaAdsets(
+        { campaign_id: campaign.campaign_id, start_date: dateRange.start, end_date: dateRange.end },
+        { cache: true }
+      )
       setAdsets(res.adsets || [])
       setLoaded(true)
     } catch { setAdsets([]) }
@@ -298,48 +297,28 @@ export default function MobileMarketing() {
   const [type, setType] = useState('All')
   const [activeOnly, setActiveOnly] = useState(true)
 
-  // data
-  const [overview, setOverview] = useState(null)
-  const [campaigns, setCampaigns] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [notConnected, setNotConnected] = useState(false)
-
-  // fetch data when dateRange or activeOnly changes
-  useEffect(() => {
-    if (!dateRange || !dateRange.start || !dateRange.end) return
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      setError(null)
-      setNotConnected(false)
-      try {
-        const params = {
-          start_date: dateRange.start,
-          end_date: dateRange.end,
-          ...(activeOnly ? { status: 'ACTIVE' } : {}),
-        }
-        const [ov, camp] = await Promise.all([
-          getMetaAdsOverview(params),
-          getMetaAdsCampaigns(params),
-        ])
-        if (cancelled) return
-        setOverview(ov)
-        setCampaigns(camp.campaigns || [])
-      } catch (err) {
-        if (cancelled) return
-        const msg = (err?.message || err?.toString() || '').toLowerCase()
-        if (msg.includes('not connected') || msg.includes('no meta') || msg.includes('no account') || msg.includes('401') || msg.includes('403')) {
-          setNotConnected(true)
-        } else {
-          setError(err?.message || 'Failed to load Meta Ads data')
-        }
+  // data — combined fetch (overview + campaigns) via useCancellableFetch.
+  const { data: bundle, loading, error: rawError } = useCancellableFetch(
+    async (signal) => {
+      if (!dateRange?.start || !dateRange?.end) return null
+      const params = {
+        start_date: dateRange.start,
+        end_date: dateRange.end,
+        ...(activeOnly ? { status: 'ACTIVE' } : {}),
       }
-      if (!cancelled) setLoading(false)
-    }
-    load()
-    return () => { cancelled = true }
-  }, [dateRange?.start, dateRange?.end, activeOnly])
+      const [ov, camp] = await Promise.all([
+        getMetaAdsOverview(params, { cache: true, signal }),
+        getMetaAdsCampaigns(params, { cache: true, signal }),
+      ])
+      return { overview: ov, campaigns: camp.campaigns || [] }
+    },
+    [dateRange?.start, dateRange?.end, activeOnly]
+  )
+  const overview = bundle?.overview ?? null
+  const campaigns = bundle?.campaigns ?? []
+  const errMsg = rawError ? (rawError.message || String(rawError)) : null
+  const notConnected = errMsg ? /not connected|no meta|no account|401|403/i.test(errMsg) : false
+  const error = (rawError && !notConnected) ? errMsg : null
 
   // filtered campaigns
   const isFiltered = location !== 'All' || type !== 'All'

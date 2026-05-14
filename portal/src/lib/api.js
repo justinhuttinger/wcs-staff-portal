@@ -589,29 +589,29 @@ export async function getLeaderboard(params = {}) {
 }
 
 // Meta Ads
-export async function getMetaAdsOverview(params = {}) {
+export async function getMetaAdsOverview(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/meta-ads/overview' + (qs ? '?' + qs : ''))
+  return api('/meta-ads/overview' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getMetaAdsCampaigns(params = {}) {
+export async function getMetaAdsCampaigns(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/meta-ads/campaigns' + (qs ? '?' + qs : ''))
+  return api('/meta-ads/campaigns' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getMetaAdsDaily(params = {}) {
+export async function getMetaAdsDaily(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/meta-ads/daily' + (qs ? '?' + qs : ''))
+  return api('/meta-ads/daily' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getMetaAdsets(params = {}) {
+export async function getMetaAdsets(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/meta-ads/adsets' + (qs ? '?' + qs : ''))
+  return api('/meta-ads/adsets' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getMetaAds(params = {}) {
+export async function getMetaAds(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/meta-ads/ads' + (qs ? '?' + qs : ''))
+  return api('/meta-ads/ads' + (qs ? '?' + qs : ''), options)
 }
 
 // FB ROAS — own-calculated from GHL 'sale' tag × $990 LTV ÷ Meta spend
@@ -629,9 +629,9 @@ export async function getGoogleBusinessLocations() {
   return api('/google-business/locations')
 }
 
-export async function getGoogleBusinessPerformance(params = {}) {
+export async function getGoogleBusinessPerformance(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/google-business/performance' + (qs ? '?' + qs : ''))
+  return api('/google-business/performance' + (qs ? '?' + qs : ''), options)
 }
 
 // Google Analytics 4
@@ -639,33 +639,33 @@ export async function getGoogleAnalyticsStatus() {
   return api('/google-analytics/status')
 }
 
-function gaQuery(path, params = {}) {
+function gaQuery(path, params = {}, options = {}) {
   const cleaned = {}
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null && v !== '') cleaned[k] = v
   }
   const qs = new URLSearchParams(cleaned).toString()
-  return api(path + (qs ? '?' + qs : ''))
+  return api(path + (qs ? '?' + qs : ''), options)
 }
 
-export async function getGoogleAnalyticsOverview(params = {}) {
-  return gaQuery('/google-analytics/overview', params)
+export async function getGoogleAnalyticsOverview(params = {}, options = {}) {
+  return gaQuery('/google-analytics/overview', params, options)
 }
 
-export async function getGoogleAnalyticsSources(params = {}) {
-  return gaQuery('/google-analytics/sources', params)
+export async function getGoogleAnalyticsSources(params = {}, options = {}) {
+  return gaQuery('/google-analytics/sources', params, options)
 }
 
-export async function getGoogleAnalyticsPages(params = {}) {
-  return gaQuery('/google-analytics/pages', params)
+export async function getGoogleAnalyticsPages(params = {}, options = {}) {
+  return gaQuery('/google-analytics/pages', params, options)
 }
 
-export async function getGoogleAnalyticsDevicesGeo(params = {}) {
-  return gaQuery('/google-analytics/devices-geo', params)
+export async function getGoogleAnalyticsDevicesGeo(params = {}, options = {}) {
+  return gaQuery('/google-analytics/devices-geo', params, options)
 }
 
-export async function getGoogleAnalyticsKeyEvents(params = {}) {
-  return gaQuery('/google-analytics/key-events', params)
+export async function getGoogleAnalyticsKeyEvents(params = {}, options = {}) {
+  return gaQuery('/google-analytics/key-events', params, options)
 }
 
 // Operandio
@@ -744,13 +744,13 @@ export async function deleteDriveFolder(id) {
   return api('/drive-folders/' + id, { method: 'DELETE' })
 }
 
-export async function getOperandioRange(params = {}) {
+export async function getOperandioRange(params = {}, options = {}) {
   const cleaned = {}
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null && v !== '') cleaned[k] = v
   }
   const qs = new URLSearchParams(cleaned).toString()
-  return api('/operandio/range' + (qs ? '?' + qs : ''))
+  return api('/operandio/range' + (qs ? '?' + qs : ''), options)
 }
 
 // Webhook Logs
@@ -944,7 +944,7 @@ export async function getCustomFields(location) {
 }
 
 // Website Submissions (Marketing)
-export async function getWebsiteSubmissions(filters = {}) {
+export async function getWebsiteSubmissions(filters = {}, options = {}) {
   const params = new URLSearchParams()
   if (filters.form_name) params.set('form_name', filters.form_name)
   if (filters.location) params.set('location', filters.location)
@@ -952,11 +952,11 @@ export async function getWebsiteSubmissions(filters = {}) {
   if (filters.end) params.set('end', filters.end)
   if (filters.limit) params.set('limit', String(filters.limit))
   const qs = params.toString()
-  return api('/reports/website-submissions' + (qs ? '?' + qs : ''))
+  return api('/reports/website-submissions' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getWebsiteSubmissionFilterOptions() {
-  return api('/reports/website-submissions/filter-options')
+export async function getWebsiteSubmissionFilterOptions(options = {}) {
+  return api('/reports/website-submissions/filter-options', options)
 }
 
 // Daily Snapshot

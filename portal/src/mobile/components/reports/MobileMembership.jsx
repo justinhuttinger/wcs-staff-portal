@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useMemo } from 'react'
 import { getMembershipReport } from '../../../lib/api'
 import MobileLoading from '../MobileLoading'
+import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
 
 const SORT_OPTIONS = [
   { key: 'az', label: 'A-Z' },
@@ -61,27 +62,19 @@ function MiniLineChart({ points }) {
 }
 
 export default function MobileMembership({ startDate, endDate, locationSlug }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [sortKey, setSortKey] = useState('az')
   const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    let cancelled = false
-    setData(null)
-    setLoading(true)
-    setError(null)
-    const params = {}
-    if (startDate) params.start_date = startDate
-    if (endDate) params.end_date = endDate
-    if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
-    getMembershipReport(params)
-      .then(res => { if (!cancelled) setData(res) })
-      .catch(err => { if (!cancelled) setError(err.message || 'Failed to load report') })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [startDate, endDate, locationSlug])
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => {
+      const params = {}
+      if (startDate) params.start_date = startDate
+      if (endDate) params.end_date = endDate
+      if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
+      return getMembershipReport(params, { cache: true, signal })
+    },
+    [startDate, endDate, locationSlug]
+  )
 
   const chartPoints = useMemo(() => buildChartData(data?.by_date, startDate, endDate), [data?.by_date, startDate, endDate])
 
@@ -130,7 +123,7 @@ export default function MobileMembership({ startDate, endDate, locationSlug }) {
   if (error) return (
     <div className="p-4">
       <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
-        <p className="text-sm text-red-600">{error}</p>
+        <p className="text-sm text-red-600">{error.message || String(error)}</p>
       </div>
     </div>
   )

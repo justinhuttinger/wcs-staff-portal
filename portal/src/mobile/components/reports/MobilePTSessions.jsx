@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { getPTSessionsReport, getPTSessionsTrainer } from '../../../lib/api'
 import MobileLoading from '../MobileLoading'
+import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
 
 const SORT_OPTIONS = [
   { key: 'top', label: 'Top Sessions' },
@@ -131,35 +132,27 @@ function DrillSessions({ sessions }) {
 }
 
 export default function MobilePTSessions({ startDate, endDate, locationSlug }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [sortKey, setSortKey] = useState('top')
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState(null)
   const [drill, setDrill] = useState({})
 
+  // Reset drill state when filters change.
   useEffect(() => {
-    let cancelled = false
-    setData(null)
-    setLoading(true)
-    setError(null)
     setDrill({})
     setExpanded(null)
-
-    const params = {
-      start_date: startDate,
-      end_date: endDate,
-      location_slug: locationSlug,
-    }
-
-    getPTSessionsReport(params)
-      .then(res => { if (!cancelled) setData(res) })
-      .catch(err => { if (!cancelled) setError(err.message || 'Failed to load report') })
-      .finally(() => { if (!cancelled) setLoading(false) })
-
-    return () => { cancelled = true }
   }, [startDate, endDate, locationSlug])
+
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => {
+      if (!startDate || !endDate || !locationSlug) return Promise.resolve(null)
+      return getPTSessionsReport(
+        { start_date: startDate, end_date: endDate, location_slug: locationSlug },
+        { cache: true, signal }
+      )
+    },
+    [startDate, endDate, locationSlug]
+  )
 
   async function toggleExpanded(employeeId) {
     if (expanded === employeeId) {
@@ -171,11 +164,11 @@ export default function MobilePTSessions({ startDate, endDate, locationSlug }) {
 
     setDrill(c => ({ ...c, [employeeId]: { loading: true, sessions: null } }))
     try {
-      const res = await getPTSessionsTrainer(employeeId, {
-        start_date: startDate,
-        end_date: endDate,
-        location_slug: locationSlug,
-      })
+      const res = await getPTSessionsTrainer(
+        employeeId,
+        { start_date: startDate, end_date: endDate, location_slug: locationSlug },
+        { cache: true }
+      )
       setDrill(c => ({ ...c, [employeeId]: { loading: false, sessions: res.sessions } }))
     } catch (e) {
       setDrill(c => ({ ...c, [employeeId]: { loading: false, sessions: [], error: e?.message } }))
@@ -201,7 +194,7 @@ export default function MobilePTSessions({ startDate, endDate, locationSlug }) {
   if (error) return (
     <div className="p-4">
       <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
-        <p className="text-sm text-red-600">{error}</p>
+        <p className="text-sm text-red-600">{error.message || String(error)}</p>
       </div>
     </div>
   )
