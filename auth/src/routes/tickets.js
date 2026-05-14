@@ -49,9 +49,25 @@ const LISTS = [
     id: '901113045232',
     name: 'New Help Center Docs',
     statusToTrack: 'to do',
-    customFieldName: null,
+    customFieldName: 'Item Name',
     formUrl: 'https://forms.clickup.com/9011189579/f/8chqnub-2791/LO3VQ5PP9HAYNNIRLV',
     description: 'Add New Training Material',
+  },
+  {
+    id: '901113572045',
+    name: 'Feature Requests',
+    statusToTrack: 'to do',
+    customFieldName: 'First Name',
+    formUrl: '',
+    description: 'Suggest portal features or improvements',
+  },
+  {
+    id: '901113572043',
+    name: 'Technical Support',
+    statusToTrack: 'to do',
+    customFieldName: 'First Name',
+    formUrl: '',
+    description: 'Report a bug or issue with WCS systems',
   },
 ]
 
