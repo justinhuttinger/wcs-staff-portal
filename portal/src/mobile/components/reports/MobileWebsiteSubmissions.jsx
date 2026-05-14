@@ -90,15 +90,31 @@ function Card({ row }) {
   )
 }
 
+const POOL_LOCATIONS = new Set(['Springfield', 'Clackamas'])
+
+function StatTile({ label, value, loading }) {
+  return (
+    <div className="shrink-0 w-[130px] bg-surface rounded-xl border border-border p-3">
+      <p className="text-[10px] text-text-muted uppercase tracking-wide">{label}</p>
+      <p className="text-lg font-bold text-text-primary mt-0.5">
+        {loading ? <span className="text-text-muted">—</span> : Number(value || 0).toLocaleString()}
+      </p>
+    </div>
+  )
+}
+
 export default function MobileWebsiteSubmissions() {
   const [{ start, end }, setRange] = useState(defaultRange())
   const [formName, setFormName] = useState('')
   const [location, setLocation] = useState('')
   const [rows, setRows] = useState([])
   const [total, setTotal] = useState(0)
+  const [summary, setSummary] = useState({ total: 0, seven_day_trial: 0, pt_interest: 0, swim_interest: 0 })
   const [filterOptions, setFilterOptions] = useState({ form_names: [], locations: [] })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  const showSwimTile = !location || POOL_LOCATIONS.has(location)
 
   useEffect(() => {
     getWebsiteSubmissionFilterOptions()
@@ -121,6 +137,7 @@ export default function MobileWebsiteSubmissions() {
         if (cancelled) return
         setRows(res.rows || [])
         setTotal(res.total || 0)
+        setSummary(res.summary || { total: 0, seven_day_trial: 0, pt_interest: 0, swim_interest: 0 })
       } catch (err) {
         if (cancelled) return
         setError(err?.message || 'Failed to load submissions')
@@ -143,6 +160,16 @@ export default function MobileWebsiteSubmissions() {
     <div className="pb-6">
       <div className="mx-4 mt-4 mb-3 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4 space-y-2">
         <h2 className="text-lg font-bold text-text-primary">Website Submissions</h2>
+
+        {/* Summary tiles — adjust with time + location filter; form filter ignored */}
+        <div className="flex gap-2.5 overflow-x-auto no-scrollbar -mx-1 px-1 pt-1">
+          <StatTile label="Total" value={summary.total} loading={loading} />
+          <StatTile label="7-Day Trial" value={summary.seven_day_trial} loading={loading} />
+          <StatTile label="PT Interest" value={summary.pt_interest} loading={loading} />
+          {showSwimTile && (
+            <StatTile label="Swim Interest" value={summary.swim_interest} loading={loading} />
+          )}
+        </div>
 
         <div>
           <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Form</p>
