@@ -75,15 +75,33 @@ function Row({ row }) {
   )
 }
 
+// Locations with a pool — swim-interest tile only shows for these (plus All).
+const POOL_LOCATIONS = new Set(['Springfield', 'Clackamas'])
+
+function StatTile({ label, value, sub, loading }) {
+  return (
+    <div className="bg-surface rounded-xl border border-border p-4">
+      <p className="text-[10px] text-text-muted uppercase tracking-wide">{label}</p>
+      <p className="text-3xl font-bold text-text-primary mt-1">
+        {loading ? <span className="text-text-muted">—</span> : value.toLocaleString()}
+      </p>
+      {sub && <p className="text-[11px] text-text-muted mt-1">{sub}</p>}
+    </div>
+  )
+}
+
 export default function WebsiteSubmissionsReport({ onBack }) {
   const [{ start, end }, setRange] = useState(defaultRange())
   const [formName, setFormName] = useState('')
   const [location, setLocation] = useState('')
   const [rows, setRows] = useState([])
   const [total, setTotal] = useState(0)
+  const [summary, setSummary] = useState({ total: 0, seven_day_trial: 0, pt_interest: 0, swim_interest: 0 })
   const [filterOptions, setFilterOptions] = useState({ form_names: [], locations: [] })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+
+  const showSwimTile = !location || POOL_LOCATIONS.has(location)
 
   useEffect(() => {
     getWebsiteSubmissionFilterOptions()
@@ -106,6 +124,7 @@ export default function WebsiteSubmissionsReport({ onBack }) {
         if (cancelled) return
         setRows(res.rows || [])
         setTotal(res.total || 0)
+        setSummary(res.summary || { total: 0, seven_day_trial: 0, pt_interest: 0, swim_interest: 0 })
       } catch (err) {
         if (cancelled) return
         setError(err?.message || 'Failed to load submissions')
@@ -143,6 +162,15 @@ export default function WebsiteSubmissionsReport({ onBack }) {
           <h2 className="text-xl font-bold text-text-primary">Website Submissions</h2>
           <p className="text-xs text-text-muted">Form submissions received from the WCS website</p>
         </div>
+      </div>
+
+      <div className={`grid gap-3 mb-4 ${showSwimTile ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-1 md:grid-cols-3'}`}>
+        <StatTile label="Total Submissions" value={summary.total} sub="all forms in this range" loading={loading} />
+        <StatTile label="7-Day Trial" value={summary.seven_day_trial} sub="trial sign-ups" loading={loading} />
+        <StatTile label="PT Interest" value={summary.pt_interest} sub="training inquiries" loading={loading} />
+        {showSwimTile && (
+          <StatTile label="Swim Interest" value={summary.swim_interest} sub="swim inquiries" loading={loading} />
+        )}
       </div>
 
       <div className="bg-surface rounded-xl border border-border p-4 mb-4 grid grid-cols-1 md:grid-cols-4 gap-3">
