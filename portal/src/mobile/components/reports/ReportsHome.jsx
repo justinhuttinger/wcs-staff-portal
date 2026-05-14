@@ -190,17 +190,24 @@ const REPORT_TILES = [
 // through to the default branch otherwise.
 const CORP_ADMIN_ONLY_KEYS = new Set(['website-submissions'])
 
+// Tiles that only render inside the Experimental group — admin only.
+const EXPERIMENTAL_KEYS = new Set(['daily-snapshot'])
+
 function getTilesForRole(role) {
+  const hideExperimental = (tiles) => tiles.filter(t => !EXPERIMENTAL_KEYS.has(t.key))
   switch (role) {
     case 'team_member':
       return []
     case 'lead':
       return REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health'].includes(t.key))
     case 'manager':
-      return REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'daily-snapshot', 'pt-roster', 'checkins', 'operations', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'revenue'].includes(t.key))
+      return REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'operations', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'revenue'].includes(t.key))
     case 'marketing':
-      return REPORT_TILES.filter(t => !CORP_ADMIN_ONLY_KEYS.has(t.key))
-    default: // corporate, admin, director
+      return hideExperimental(REPORT_TILES.filter(t => !CORP_ADMIN_ONLY_KEYS.has(t.key)))
+    case 'corporate':
+    case 'director':
+      return hideExperimental(REPORT_TILES)
+    default: // admin
       return REPORT_TILES
   }
 }
@@ -218,7 +225,7 @@ const REPORT_GROUPS = [
         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z" />
       </svg>
     ),
-    reports: ['club-health', 'daily-snapshot', 'membership', 'cancels', 'operations', 'checkins', 'payroll', 'revenue'],
+    reports: ['club-health', 'membership', 'cancels', 'operations', 'checkins', 'payroll', 'revenue'],
   },
   {
     key: 'training',
@@ -241,6 +248,17 @@ const REPORT_GROUPS = [
       </svg>
     ),
     reports: ['marketing', 'google-marketing', 'website-submissions'],
+  },
+  {
+    key: 'experimental-group',
+    label: 'Experimental',
+    description: 'In-progress / not ready for production',
+    icon: (
+      <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 0-6.23-.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+      </svg>
+    ),
+    reports: ['daily-snapshot'],
   },
 ]
 
