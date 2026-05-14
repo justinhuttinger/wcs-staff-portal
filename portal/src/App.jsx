@@ -13,6 +13,7 @@ import HRView from './components/HRView'
 import HelpCenterView from './components/HelpCenterView'
 import TicketsView from './components/TicketsView'
 import DriveView from './components/DriveView'
+import GlobalProgressBar from './components/GlobalProgressBar'
 import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout } from './lib/api'
 import { logEvent } from './lib/audit'
 
@@ -285,6 +286,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-bg flex flex-col relative">
+      <GlobalProgressBar />
       {/* Location background image — persists on all views */}
       {bgImage && (
         <>

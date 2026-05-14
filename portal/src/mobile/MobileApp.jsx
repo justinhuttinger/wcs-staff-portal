@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { getMe, getToken, clearToken, onAuthExpired, logout } from '../lib/api'
+import GlobalProgressBar from '../components/GlobalProgressBar'
 import LoginScreen from './components/LoginScreen'
 import MobileHeader from './components/MobileHeader'
 import HomeScreen from './components/HomeScreen'
@@ -486,6 +487,7 @@ export default function MobileApp() {
 
   return (
     <div className="h-screen bg-bg text-text-primary relative flex flex-col overflow-hidden">
+      <GlobalProgressBar />
       {/* Location background image */}
       {bgImage && (
         <>

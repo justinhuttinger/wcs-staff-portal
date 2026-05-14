@@ -1,3 +1,5 @@
+import * as apiCache from './apiCache'
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 // Second backend service — prospects-documents (Render). Hosts the Online
 // Join admin + public API. Same Supabase JWT works as the auth header.
@@ -5,6 +7,37 @@ const PROSPECTS_API_URL = import.meta.env.VITE_PROSPECTS_API_URL || 'https://pro
 
 let authToken = null
 let refreshToken = null
+
+// In-flight request counter for the global progress bar. Subscribers receive
+// the current count after every change.
+let pendingCount = 0
+const pendingListeners = new Set()
+
+function notifyPending() {
+  for (const fn of pendingListeners) {
+    try { fn(pendingCount) } catch {}
+  }
+}
+
+export function onPendingChange(fn) {
+  pendingListeners.add(fn)
+  // Fire once so a fresh subscriber sees the current state.
+  try { fn(pendingCount) } catch {}
+  return () => pendingListeners.delete(fn)
+}
+
+export function getPendingCount() {
+  return pendingCount
+}
+
+function incrementPending() {
+  pendingCount++
+  notifyPending()
+}
+function decrementPending() {
+  pendingCount = Math.max(0, pendingCount - 1)
+  notifyPending()
+}
 
 // Restore tokens from localStorage (for new tabs like Reporting)
 try {
@@ -44,6 +77,9 @@ export function clearToken() {
     localStorage.removeItem('wcs_token')
     localStorage.removeItem('wcs_refresh_token')
   } catch {}
+  // Drop any cached responses from the previous session so the next user
+  // doesn't see leftover data.
+  apiCache.clear()
 }
 
 // Listeners for auth expiry (refresh failed) so the UI can redirect to login
@@ -93,6 +129,36 @@ async function attemptRefresh() {
 }
 
 export async function api(path, options = {}) {
+  // Cache opt-in. When `cache: true` and the endpoint is configured in
+  // apiCache.TTL_BY_PATH, we serve any existing entry immediately
+  // (stale-while-revalidate). If it's still fresh, skip the network entirely.
+  // If it's stale, we kick off the network refresh below and replace on
+  // resolve — but for v1 we keep this synchronous-from-the-caller's-view:
+  // we await the fresh result and let the cached value be used by the
+  // optional progressive-render path in useCancellableFetch.
+  // Mutating requests (POST/PUT/PATCH/DELETE) never cache.
+  const method = (options.method || 'GET').toUpperCase()
+  const wantsCache = options.cache === true && method === 'GET' && apiCache.isCacheable(path)
+  if (wantsCache) {
+    const hit = apiCache.get(path)
+    if (hit && hit.fresh) return hit.value
+  }
+
+  const doFetch = () => fetchWithAuthAndRetry(path, options)
+  incrementPending()
+  try {
+    const result = await doFetch()
+    if (wantsCache) apiCache.set(path, result)
+    return result
+  } finally {
+    decrementPending()
+  }
+}
+
+// Internal: the actual network logic (auth header, refresh-on-401, JSON
+// parse). Extracted so api() can wrap it with caching + progress counting
+// without duplicating the auth flow.
+async function fetchWithAuthAndRetry(path, options) {
   const isFormDataBody = typeof FormData !== 'undefined' && options.body instanceof FormData
   const headers = { ...options.headers }
   if (!isFormDataBody) {
@@ -102,8 +168,9 @@ export async function api(path, options = {}) {
     headers['Authorization'] = 'Bearer ' + authToken
   }
 
-  // Support AbortController signal for cancellable requests
-  const fetchOptions = { ...options, headers }
+  // Drop our custom options before passing to fetch.
+  const { cache: _cache, ...restOptions } = options
+  const fetchOptions = { ...restOptions, headers }
   if (options.signal) fetchOptions.signal = options.signal
 
   const res = await fetch(API_URL + path, fetchOptions)
@@ -376,9 +443,9 @@ export async function getSessionFrequency(params = {}) {
   return api('/reports/session-frequency' + (qs ? '?' + qs : ''))
 }
 
-export async function getDeactivatedPT(params = {}) {
+export async function getDeactivatedPT(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/reports/deactivated-pt' + (qs ? '?' + qs : ''))
+  return api('/reports/deactivated-pt' + (qs ? '?' + qs : ''), options)
 }
 
 export async function getDeactivatedPTMember({ memberId, locationSlug }) {
