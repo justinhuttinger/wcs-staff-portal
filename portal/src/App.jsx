@@ -351,7 +351,7 @@ export default function App() {
       ) : showTrainerAvail ? (
         <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={isAdmin} />
       ) : showMetaAds ? (
-        <MarketingView onBack={() => setShowMetaAds(false)} />
+        <MarketingView onBack={() => setShowMetaAds(false)} user={user} />
       ) : showTickets ? (
         <TicketsView onBack={() => setShowTickets(false)} />
       ) : showDrive ? (
