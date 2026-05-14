@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { getDeactivatedPT, getDeactivatedPTMember } from '../../lib/api'
 import { exportCSV, exportPDF } from '../../lib/export'
+import { useCancellableFetch } from '../../hooks/useCancellableFetch'
+import DesktopLoading from '../DesktopLoading'
 
 function fmtMoney(n) {
   const v = Number(n || 0)
@@ -22,15 +24,11 @@ const TYPES = [
 ]
 
 export default function DeactivatedPTReport({ startDate, endDate, locationSlug }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [typeFilter, setTypeFilter] = useState('all')
   const [trainerFilter, setTrainerFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [memberDetail, setMemberDetail] = useState(null) // { row, loading, data, error }
 
-  const reqRef = useRef(0)
   const memberReqRef = useRef(0)
 
   function openMemberDetail(row) {
@@ -52,28 +50,23 @@ export default function DeactivatedPTReport({ startDate, endDate, locationSlug }
     setMemberDetail(null)
   }
 
-  useEffect(() => {
-    if (!startDate || !endDate) return
-    const id = ++reqRef.current
-    setData(null)
-    setLoading(true)
-    setError(null)
-    getDeactivatedPT({
-      start_date: startDate,
-      end_date: endDate,
-      location_slug: locationSlug || 'all',
-    })
-      .then(res => {
-        if (id !== reqRef.current) return
-        setData(res)
-        setLoading(false)
-      })
-      .catch(err => {
-        if (id !== reqRef.current) return
-        setError(err.message)
-        setLoading(false)
-      })
-  }, [startDate, endDate, locationSlug])
+  // Phase 1 perf foundation: cancellable fetch + opt-in client cache. The
+  // first hit is still slow (live ABC fetch), but subsequent visits within
+  // the TTL window (5min for this report) hit cache and render instantly.
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => {
+      if (!startDate || !endDate) return Promise.resolve(null)
+      return getDeactivatedPT(
+        {
+          start_date: startDate,
+          end_date: endDate,
+          location_slug: locationSlug || 'all',
+        },
+        { cache: true, signal }
+      )
+    },
+    [startDate, endDate, locationSlug]
+  )
 
   const trainers = useMemo(() => {
     if (!data?.rows) return []
@@ -126,17 +119,16 @@ export default function DeactivatedPTReport({ startDate, endDate, locationSlug }
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 gap-3">
-        <div className="w-6 h-6 border-2 border-wcs-red/30 border-t-wcs-red rounded-full animate-spin" />
-        <p className="loading-card">Loading deactivated PT from ABC Financial...</p>
-        <p className="text-text-muted text-xs">This may take a minute for all locations</p>
+      <div className="space-y-3">
+        <p className="text-xs text-text-muted italic">Loading deactivated PT from ABC Financial — this may take a minute for all locations…</p>
+        <DesktopLoading variant="report" />
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 text-wcs-red rounded-xl px-4 py-3 text-sm">{error}</div>
+      <div className="bg-red-50 border border-red-200 text-wcs-red rounded-xl px-4 py-3 text-sm">{error.message || String(error)}</div>
     )
   }
   if (!data) return null
