@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { getRevenueSummary, getRevenueProfitCenterTrend } from '../../lib/api'
 import { exportCSV } from '../../lib/export'
+import { useCancellableFetch } from '../../hooks/useCancellableFetch'
+import DesktopLoading from '../DesktopLoading'
 
 const STACK_COLORS = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#d69e2e', '#319795', '#a0aec0']
 
@@ -105,21 +107,21 @@ function ComparisonCard({ label, current, comparison }) {
 }
 
 export default function RevenueReport({ startDate, endDate, locationSlug }) {
-  const [data, setData] = useState(null)
-  const [error, setError] = useState(null)
-  const [loading, setLoading] = useState(true)
   const [activeProfitCenter, setActiveProfitCenter] = useState(null)
   const [pcSeries, setPcSeries] = useState(null)
 
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => getRevenueSummary(
+      { start_date: startDate, end_date: endDate, location_slug: locationSlug },
+      { cache: true, signal }
+    ),
+    [startDate, endDate, locationSlug]
+  )
+
+  // Reset profit-center drill-down whenever the top-level params change.
   useEffect(() => {
-    setLoading(true)
-    setError(null)
     setActiveProfitCenter(null)
     setPcSeries(null)
-    getRevenueSummary({ start_date: startDate, end_date: endDate, location_slug: locationSlug })
-      .then(d => setData(d))
-      .catch(e => setError(e.message || 'Failed to load revenue summary'))
-      .finally(() => setLoading(false))
   }, [startDate, endDate, locationSlug])
 
   function selectProfitCenter(pc) {
@@ -129,9 +131,10 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
       return
     }
     setActiveProfitCenter(pc)
-    getRevenueProfitCenterTrend({
-      start_date: startDate, end_date: endDate, location_slug: locationSlug, profit_center: pc,
-    })
+    getRevenueProfitCenterTrend(
+      { start_date: startDate, end_date: endDate, location_slug: locationSlug, profit_center: pc },
+      { cache: true }
+    )
       .then(d => setPcSeries(d.series))
       .catch(() => setPcSeries([]))
   }
@@ -145,8 +148,8 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
     exportCSV(rows, `revenue-${startDate}_to_${endDate}`)
   }
 
-  if (loading) return <div className="text-text-muted">Loading revenue…</div>
-  if (error) return <div className="text-red-600">Error: {error}</div>
+  if (loading) return <DesktopLoading variant="report" />
+  if (error) return <div className="text-red-600">Error: {error.message || String(error)}</div>
   if (!data) return null
 
   const points = buildPoints(data.by_day, startDate, endDate)

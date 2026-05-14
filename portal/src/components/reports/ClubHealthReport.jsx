@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { getClubHealthReport } from '../../lib/api'
 import MembershipTypeTable from './MembershipTypeTable'
+import { useCancellableFetch } from '../../hooks/useCancellableFetch'
+import DesktopLoading from '../DesktopLoading'
 
 const PIE_COLORS = ['#e53e3e', '#38a169', '#3182ce', '#d69e2e', '#805ad5', '#dd6b20', '#319795']
 
@@ -205,30 +207,19 @@ function SectionHeader({ title }) {
 }
 
 export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => {
+      const params = {}
+      if (startDate) params.start_date = startDate
+      if (endDate) params.end_date = endDate
+      if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
+      return getClubHealthReport(params, { cache: true, signal })
+    },
+    [startDate, endDate, locationSlug]
+  )
 
-  const requestRef = useRef(0)
-
-  useEffect(() => {
-    const id = ++requestRef.current
-    setData(null)
-    setLoading(true)
-    setError('')
-    const params = {}
-    if (startDate) params.start_date = startDate
-    if (endDate) params.end_date = endDate
-    if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
-    getClubHealthReport(params).then(res => {
-      if (id === requestRef.current) { setData(res); setLoading(false) }
-    }).catch(err => {
-      if (id === requestRef.current) { setError(err.message); setLoading(false) }
-    })
-  }, [startDate, endDate, locationSlug])
-
-  if (loading) return <p className="loading-card mx-auto block my-6">Loading club health data...</p>
-  if (error) return <p className="text-wcs-red text-sm py-4">{error}</p>
+  if (loading) return <DesktopLoading variant="report" />
+  if (error) return <p className="text-wcs-red text-sm py-4">{error.message || String(error)}</p>
   if (!data) return null
 
   const totalMemberships = data.total_memberships || 0

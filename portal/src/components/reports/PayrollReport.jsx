@@ -6,6 +6,7 @@ import {
   startGoogleSheetsAuth,
   disconnectGoogleSheets,
 } from '../../lib/api'
+import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
@@ -320,27 +321,15 @@ export default function PayrollReport({ locationSlug }) {
   const monthOptions = useMemo(buildMonthOptions, [])
   const [period, setPeriod] = useState(defaultMonth())
   const [activeTab, setActiveTab] = useState('sales')
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [reloadToken, setReloadToken] = useState(0)
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    const params = { period }
-    if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
-    getPayrollReport(params)
-      .then((d) => { if (!cancelled) setData(d) })
-      .catch((e) => { if (!cancelled) setError(e.message || 'Failed to load') })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [period, locationSlug, reloadToken])
-
-  function refetch() {
-    setReloadToken((t) => t + 1)
-  }
+  const { data, loading, error, refetch } = useCancellableFetch(
+    (signal) => {
+      const params = { period }
+      if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
+      return getPayrollReport(params, { cache: true, signal })
+    },
+    [period, locationSlug]
+  )
 
   const [exportingSheet, setExportingSheet] = useState(false)
   const [exportError, setExportError] = useState(null)
@@ -541,7 +530,7 @@ export default function PayrollReport({ locationSlug }) {
           ))}
         </select>
         {loading && <span className="text-xs text-text-muted">Loading…</span>}
-        {error && <span className="text-xs text-red-500">{error}</span>}
+        {error && <span className="text-xs text-red-500">{error.message || String(error)}</span>}
         {exportError && <span className="text-xs text-red-500">{exportError}</span>}
         <div className="ml-auto flex items-center gap-2">
           {googleStatus.loaded && googleStatus.connected && (

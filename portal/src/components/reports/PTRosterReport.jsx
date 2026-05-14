@@ -1,6 +1,8 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { getPTRoster } from '../../lib/api'
 import { exportCSV, exportPDF } from '../../lib/export'
+import { useCancellableFetch } from '../../hooks/useCancellableFetch'
+import DesktopLoading from '../DesktopLoading'
 
 function fmtMoney(val) {
   const n = parseFloat(val)
@@ -20,31 +22,15 @@ const TYPES = [
 ]
 
 export default function PTRosterReport({ locationSlug }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [typeFilter, setTypeFilter] = useState('all')
   const [trainerFilter, setTrainerFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [expandedTrainers, setExpandedTrainers] = useState(new Set())
 
-  const requestRef = useRef(0)
-
-  useEffect(() => {
-    const id = ++requestRef.current
-    setData(null)
-    setLoading(true)
-    setError(null)
-    setTypeFilter('all')
-    setTrainerFilter('all')
-    setSearch('')
-    setExpandedTrainers(new Set())
-    getPTRoster({ location_slug: locationSlug || 'all' }).then(res => {
-      if (id === requestRef.current) { setData(res); setLoading(false) }
-    }).catch(err => {
-      if (id === requestRef.current) { setError(err.message); setLoading(false) }
-    })
-  }, [locationSlug])
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => getPTRoster({ location_slug: locationSlug || 'all' }, { cache: true, signal }),
+    [locationSlug]
+  )
 
   // Apply filters
   const filtered = useMemo(() => {
@@ -155,10 +141,9 @@ export default function PTRosterReport({ locationSlug }) {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 gap-3">
-        <div className="w-6 h-6 border-2 border-wcs-red/30 border-t-wcs-red rounded-full animate-spin" />
-        <p className="loading-card">Loading PT roster from ABC Financial...</p>
-        <p className="text-text-muted text-xs">This may take a minute for all locations</p>
+      <div className="space-y-3">
+        <p className="text-xs text-text-muted italic">Loading PT roster from ABC Financial — this may take a minute for all locations…</p>
+        <DesktopLoading variant="report" />
       </div>
     )
   }
@@ -166,7 +151,7 @@ export default function PTRosterReport({ locationSlug }) {
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 text-wcs-red rounded-xl px-4 py-3 text-sm">
-        {error}
+        {error.message || String(error)}
       </div>
     )
   }

@@ -1,5 +1,7 @@
-import { Fragment, useState, useEffect, useRef, useMemo } from 'react'
+import { Fragment, useState, useMemo } from 'react'
 import { getCheckinsReport } from '../../lib/api'
+import { useCancellableFetch } from '../../hooks/useCancellableFetch'
+import DesktopLoading from '../DesktopLoading'
 
 const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const HOURS = Array.from({ length: 24 }, (_, h) => h)
@@ -275,27 +277,19 @@ function LocationTable({ rows }) {
 }
 
 export default function CheckinsReport({ startDate, endDate, locationSlug }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const requestRef = useRef(0)
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => {
+      const params = {}
+      if (startDate) params.start_date = startDate
+      if (endDate) params.end_date = endDate
+      if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
+      return getCheckinsReport(params, { cache: true, signal })
+    },
+    [startDate, endDate, locationSlug]
+  )
 
-  useEffect(() => {
-    const id = ++requestRef.current
-    setData(null)
-    setLoading(true)
-    setError('')
-    const params = {}
-    if (startDate) params.start_date = startDate
-    if (endDate) params.end_date = endDate
-    if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
-    getCheckinsReport(params)
-      .then(res => { if (id === requestRef.current) { setData(res); setLoading(false) } })
-      .catch(err => { if (id === requestRef.current) { setError(err.message); setLoading(false) } })
-  }, [startDate, endDate, locationSlug])
-
-  if (loading) return <p className="loading-card mx-auto block my-6">Loading check-in data...</p>
-  if (error) return <p className="text-wcs-red text-sm py-4">{error}</p>
+  if (loading) return <DesktopLoading variant="report" />
+  if (error) return <p className="text-wcs-red text-sm py-4">{error.message || String(error)}</p>
   if (!data) return null
 
   const s = data.summary || {}
