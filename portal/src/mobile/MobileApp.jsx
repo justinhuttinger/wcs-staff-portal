@@ -11,6 +11,7 @@ import MobileCancels from './components/reports/MobileCancels'
 import MobilePTReport from './components/reports/MobilePTReport'
 import MobileMarketing from './components/reports/MobileMarketing'
 import MobileWebsiteSubmissions from './components/reports/MobileWebsiteSubmissions'
+import MobileDailySnapshot from './components/reports/MobileDailySnapshot'
 import MobileGoogleMarketing from './components/reports/MobileGoogleMarketing'
 import MobileOperations from './components/reports/MobileOperations'
 import MobileCalendar from './components/MobileCalendar'
@@ -338,6 +339,15 @@ export default function MobileApp() {
               <MobileHeader title="Website Submissions" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileWebsiteSubmissions />
+          </div>
+        )
+      case 'reports/daily-snapshot':
+        return (
+          <div className="pt-2">
+            <div className="px-4">
+              <MobileHeader title="Daily Snapshot" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+            </div>
+            <MobileDailySnapshot />
           </div>
         )
       case 'reports/operations':

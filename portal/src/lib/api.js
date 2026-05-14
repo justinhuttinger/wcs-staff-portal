@@ -891,3 +891,12 @@ export async function getWebsiteSubmissions(filters = {}) {
 export async function getWebsiteSubmissionFilterOptions() {
   return api('/reports/website-submissions/filter-options')
 }
+
+// Daily Snapshot
+export async function getDailySnapshot({ date, location } = {}) {
+  const params = new URLSearchParams()
+  if (date) params.set('date', date)
+  if (location) params.set('location', location)
+  const qs = params.toString()
+  return api('/reports/daily-snapshot' + (qs ? '?' + qs : ''))
+}

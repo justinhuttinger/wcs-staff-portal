@@ -7,7 +7,6 @@ import CalendarView from './components/CalendarView'
 import ReportingView from './components/ReportingView'
 import DayOneTrackerView from './components/DayOneTrackerView'
 import TrainerAvailabilityView from './components/TrainerAvailabilityView'
-import MarketingView from './components/MarketingView'
 import LeaderboardView from './components/LeaderboardView'
 import CommunicationNotesView from './components/CommunicationNotesView'
 import HRView from './components/HRView'
@@ -44,7 +43,6 @@ export default function App() {
   const [showCalendar, setShowCalendar] = useState(false)
   const [showReporting, setShowReporting] = useState(false)
   const [showTrainerAvail, setShowTrainerAvail] = useState(false)
-  const [showMetaAds, setShowMetaAds] = useState(false)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [showCommunicationNotes, setShowCommunicationNotes] = useState(false)
   const [showHR, setShowHR] = useState(false)
@@ -66,7 +64,6 @@ export default function App() {
   useEffect(() => { if (showCalendar) logEvent('view.calendar') }, [showCalendar])
   useEffect(() => { if (showReporting) logEvent('view.reporting') }, [showReporting])
   useEffect(() => { if (showTrainerAvail) logEvent('view.trainer_availability') }, [showTrainerAvail])
-  useEffect(() => { if (showMetaAds) logEvent('view.marketing') }, [showMetaAds])
   useEffect(() => { if (showLeaderboard) logEvent('view.leaderboard') }, [showLeaderboard])
   useEffect(() => { if (showCommunicationNotes) logEvent('view.communication_notes') }, [showCommunicationNotes])
   useEffect(() => { if (showHR) logEvent('view.hr') }, [showHR])
@@ -112,7 +109,6 @@ export default function App() {
         setShowAdmin(false)
         setShowCalendar(false)
         setShowTrainerAvail(false)
-        setShowMetaAds(false)
         setShowReporting(false)
         setShowLeaderboard(false)
         setShowCommunicationNotes(false)
@@ -127,7 +123,6 @@ export default function App() {
         // Reset all views first
         setShowAdmin(false)
         setShowTrainerAvail(false)
-        setShowMetaAds(false)
         setShowReporting(false)
         setShowLeaderboard(false)
         setShowCommunicationNotes(false)
@@ -158,8 +153,7 @@ export default function App() {
       setShowAdmin(false)
       setShowCalendar(false)
       setShowTrainerAvail(false)
-      setShowMetaAds(false)
-      setShowReporting(false)
+        setShowReporting(false)
       setShowLeaderboard(false)
       setShowCommunicationNotes(false)
       setShowHR(false)
@@ -201,7 +195,6 @@ export default function App() {
     setShowCalendar(false)
     setShowTrainerAvail(false)
     setShowReporting(false)
-    setShowMetaAds(false)
     setShowLeaderboard(false)
     setShowCommunicationNotes(false)
     setShowHR(false)
@@ -274,14 +267,13 @@ export default function App() {
     )
   }
 
-  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showMetaAds && !showTickets && !showHelpCenter && !showDrive && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTickets && !showHelpCenter && !showDrive && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting
 
   function handleBackToPortal() {
     setShowAdmin(false)
     setShowCalendar(false)
     setShowTrainerAvail(false)
     setShowReporting(false)
-    setShowMetaAds(false)
     setShowLeaderboard(false)
     setShowCommunicationNotes(false)
     setShowHR(false)
@@ -350,8 +342,6 @@ export default function App() {
         <CalendarView user={user} onBack={() => setShowCalendar(false)} location={location} isAdmin={isAdmin} />
       ) : showTrainerAvail ? (
         <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={isAdmin} />
-      ) : showMetaAds ? (
-        <MarketingView onBack={() => setShowMetaAds(false)} user={user} />
       ) : showTickets ? (
         <TicketsView onBack={() => setShowTickets(false)} />
       ) : showDrive ? (
@@ -368,7 +358,7 @@ export default function App() {
         <ReportingView user={user} onBack={() => { window.location.hash = ''; setShowReporting(false) }} location={location} isAdmin={isAdmin} />
       ) : (
         <main className="flex-1 flex items-start pt-1 pb-12">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onMetaAds={() => setShowMetaAds(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDrive(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDrive(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} />
         </main>
       )}
       </div>
