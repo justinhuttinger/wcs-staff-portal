@@ -22,9 +22,10 @@ const TTL_BY_PATH = {
   // Reports — broad TTLs that match how often the underlying data changes.
   '/reports/club-health':                                       60_000,
   '/reports/checkins':                                     2 * 60_000,
-  '/reports/revenue':                                           60_000,
+  '/reports/revenue':                                           60_000, // covers /summary, /profit-center-trend via prefix match
   '/reports/membership':                                        60_000,
   '/reports/cancels':                                           60_000,
+  '/reports/pt':                                                60_000, // /reports/pt (Day One)
   '/reports/pt-roster':                                    2 * 60_000,
   '/reports/payroll':                                      5 * 60_000,
   '/reports/pt-sessions':                                  2 * 60_000,
@@ -32,6 +33,8 @@ const TTL_BY_PATH = {
   '/reports/pt-health':                                    5 * 60_000,
   '/reports/deactivated-pt':                               5 * 60_000,
   '/reports/session-frequency':                            5 * 60_000,
+  '/reports/vip':                                          2 * 60_000,
+  '/reports/salesperson-stats':                            2 * 60_000,
 
   // Filter-option lookups change rarely; long TTL is fine.
   '/reports/website-submissions/filter-options':           5 * 60_000,

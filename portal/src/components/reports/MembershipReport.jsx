@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState } from 'react'
 import { getMembershipReport } from '../../lib/api'
 import { exportCSV, exportPDF } from '../../lib/export'
+import { useCancellableFetch } from '../../hooks/useCancellableFetch'
+import DesktopLoading from '../DesktopLoading'
 
 const LINE_COLORS = { memberships: '#e53e3e', vips: '#805ad5', day_ones: '#38a169' }
 
@@ -140,33 +142,23 @@ function LineChart({ points }) {
 }
 
 export default function MembershipReport({ startDate, endDate, locationSlug }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
   const [sortBy, setSortBy] = useState('alpha')
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState(null)
 
-  const requestRef = useRef(0)
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => {
+      const params = {}
+      if (startDate) params.start_date = startDate
+      if (endDate) params.end_date = endDate
+      if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
+      return getMembershipReport(params, { cache: true, signal })
+    },
+    [startDate, endDate, locationSlug]
+  )
 
-  useEffect(() => {
-    const id = ++requestRef.current
-    setData(null)
-    setLoading(true)
-    setError('')
-    const params = {}
-    if (startDate) params.start_date = startDate
-    if (endDate) params.end_date = endDate
-    if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
-    getMembershipReport(params).then(res => {
-      if (id === requestRef.current) { setData(res); setLoading(false) }
-    }).catch(err => {
-      if (id === requestRef.current) { setError(err.message); setLoading(false) }
-    })
-  }, [startDate, endDate, locationSlug])
-
-  if (loading) return <p className="loading-card mx-auto block my-6">Loading membership data...</p>
-  if (error) return <p className="text-wcs-red text-sm py-4">{error}</p>
+  if (loading) return <DesktopLoading variant="report" />
+  if (error) return <p className="text-wcs-red text-sm py-4">{error.message || String(error)}</p>
   if (!data) return null
 
   const totalMemberships = data.total_memberships || 0

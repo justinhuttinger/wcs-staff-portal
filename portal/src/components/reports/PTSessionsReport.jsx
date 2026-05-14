@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { getPTSessionsReport, getPTSessionsTrainer } from '../../lib/api'
+import { useCancellableFetch } from '../../hooks/useCancellableFetch'
+import DesktopLoading from '../DesktopLoading'
 
 const ALL_STATUSES = ['Completed', 'Canceled-Charge']
 
@@ -99,9 +101,6 @@ function downloadBlob(content, filename, type) {
 export default function PTSessionsReport({ startDate, endDate, locationSlug }) {
   const [statuses, setStatuses] = useState(ALL_STATUSES)
   const [eventGroup, setEventGroup] = useState('all')
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
   const [sortKey, setSortKey] = useState('total')
   const [sortDir, setSortDir] = useState('desc')
   const [expanded, setExpanded] = useState(null)
@@ -123,35 +122,30 @@ export default function PTSessionsReport({ startDate, endDate, locationSlug }) {
     return () => document.removeEventListener('mousedown', onDoc)
   }, [exportMenuOpen])
 
-  // Re-fetch on filter changes
+  const statusKey = statuses.join(',')
+
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => {
+      if (!startDate || !endDate || !locationSlug) return Promise.resolve(null)
+      return getPTSessionsReport(
+        {
+          start_date: startDate,
+          end_date: endDate,
+          location_slug: locationSlug,
+          status: statusKey,
+          event_group: eventGroup,
+        },
+        { cache: true, signal }
+      )
+    },
+    [startDate, endDate, locationSlug, statusKey, eventGroup]
+  )
+
+  // Reset drill-down state whenever the top-level filters change.
   useEffect(() => {
-    if (!startDate || !endDate || !locationSlug) return
-    let alive = true
-    setLoading(true)
-    setError('')
-    setData(null)
     setDrill({})
     setExpanded(null)
-    getPTSessionsReport({
-      start_date: startDate,
-      end_date: endDate,
-      location_slug: locationSlug,
-      status: statuses.join(','),
-      event_group: eventGroup,
-    })
-      .then((d) => {
-        if (alive) setData(d)
-      })
-      .catch((e) => {
-        if (alive) setError(e?.message || 'Failed to load')
-      })
-      .finally(() => {
-        if (alive) setLoading(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [startDate, endDate, locationSlug, statuses.join(','), eventGroup])
+  }, [startDate, endDate, locationSlug, statusKey, eventGroup])
 
   const sortedTrainers = useMemo(() => {
     if (!data) return []
@@ -328,8 +322,8 @@ export default function PTSessionsReport({ startDate, endDate, locationSlug }) {
     }
   }
 
-  if (loading) return <CenterCard>Loading…</CenterCard>
-  if (error) return <CenterCard><span className="text-red-500">Error: {error}</span></CenterCard>
+  if (loading) return <DesktopLoading variant="report" />
+  if (error) return <CenterCard><span className="text-red-500">Error: {error.message || String(error)}</span></CenterCard>
   if (!data || data.trainers.length === 0) {
     return (
       <div className="space-y-4">

@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { getPTNewClients } from '../../lib/api'
 import { exportCSV, exportPDF } from '../../lib/export'
+import { useCancellableFetch } from '../../hooks/useCancellableFetch'
+import DesktopLoading from '../DesktopLoading'
 
 function fmtMoney(n) {
   const v = Number(n || 0)
@@ -21,37 +23,18 @@ const CLASSIFICATIONS = [
 ]
 
 export default function PTNewClientsReport({ startDate, endDate, locationSlug }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [classFilter, setClassFilter] = useState('all')
   const [trainerFilter, setTrainerFilter] = useState('all')
   const [commissionFilter, setCommissionFilter] = useState('all')
   const [search, setSearch] = useState('')
 
-  const reqRef = useRef(0)
-
-  useEffect(() => {
-    const id = ++reqRef.current
-    setData(null)
-    setLoading(true)
-    setError(null)
-    getPTNewClients({
-      start_date: startDate,
-      end_date: endDate,
-      location_slug: locationSlug || 'all',
-    })
-      .then(res => {
-        if (id !== reqRef.current) return
-        setData(res)
-        setLoading(false)
-      })
-      .catch(err => {
-        if (id !== reqRef.current) return
-        setError(err.message)
-        setLoading(false)
-      })
-  }, [startDate, endDate, locationSlug])
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => getPTNewClients(
+      { start_date: startDate, end_date: endDate, location_slug: locationSlug || 'all' },
+      { cache: true, signal }
+    ),
+    [startDate, endDate, locationSlug]
+  )
 
   const trainers = useMemo(() => {
     if (!data?.rows) return []
@@ -111,10 +94,9 @@ export default function PTNewClientsReport({ startDate, endDate, locationSlug })
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 gap-3">
-        <div className="w-6 h-6 border-2 border-wcs-red/30 border-t-wcs-red rounded-full animate-spin" />
-        <p className="loading-card">Loading new PT clients from ABC Financial...</p>
-        <p className="text-text-muted text-xs">This may take up to a minute for all locations</p>
+      <div className="space-y-3">
+        <p className="text-xs text-text-muted italic">Loading new PT clients from ABC Financial — this may take up to a minute for all locations…</p>
+        <DesktopLoading variant="report" />
       </div>
     )
   }
@@ -122,7 +104,7 @@ export default function PTNewClientsReport({ startDate, endDate, locationSlug })
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 text-wcs-red rounded-xl px-4 py-3 text-sm">
-        {error}
+        {error.message || String(error)}
       </div>
     )
   }

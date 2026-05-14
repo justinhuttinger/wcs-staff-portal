@@ -418,29 +418,29 @@ export async function getTours(params = {}) {
 }
 
 // Reports
-export async function getMembershipReport(params = {}) {
+export async function getMembershipReport(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/reports/membership' + (qs ? '?' + qs : ''))
+  return api('/reports/membership' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getPTReport(params = {}) {
+export async function getPTReport(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/reports/pt' + (qs ? '?' + qs : ''))
+  return api('/reports/pt' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getPTRoster(params = {}) {
+export async function getPTRoster(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/reports/pt-roster' + (qs ? '?' + qs : ''))
+  return api('/reports/pt-roster' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getPTNewClients(params = {}) {
+export async function getPTNewClients(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/reports/pt-new-clients' + (qs ? '?' + qs : ''))
+  return api('/reports/pt-new-clients' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getSessionFrequency(params = {}) {
+export async function getSessionFrequency(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/reports/session-frequency' + (qs ? '?' + qs : ''))
+  return api('/reports/session-frequency' + (qs ? '?' + qs : ''), options)
 }
 
 export async function getDeactivatedPT(params = {}, options = {}) {
@@ -448,54 +448,54 @@ export async function getDeactivatedPT(params = {}, options = {}) {
   return api('/reports/deactivated-pt' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getDeactivatedPTMember({ memberId, locationSlug }) {
+export async function getDeactivatedPTMember({ memberId, locationSlug }, options = {}) {
   const qs = new URLSearchParams({ location_slug: locationSlug }).toString()
-  return api(`/reports/deactivated-pt/member/${encodeURIComponent(memberId)}?${qs}`)
+  return api(`/reports/deactivated-pt/member/${encodeURIComponent(memberId)}?${qs}`, options)
 }
 
-export async function getPTHealth(params = {}) {
+export async function getPTHealth(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/reports/pt-health' + (qs ? '?' + qs : ''))
+  return api('/reports/pt-health' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getVIPReport(params = {}) {
+export async function getVIPReport(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/reports/vip' + (qs ? '?' + qs : ''))
+  return api('/reports/vip' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getSalespersonStats(params = {}) {
+export async function getSalespersonStats(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/reports/salesperson-stats' + (qs ? '?' + qs : ''))
+  return api('/reports/salesperson-stats' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getClubHealthReport(params = {}) {
+export async function getClubHealthReport(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/reports/club-health' + (qs ? '?' + qs : ''))
+  return api('/reports/club-health' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getCancelsReport(params = {}) {
+export async function getCancelsReport(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/reports/cancels' + (qs ? '?' + qs : ''))
+  return api('/reports/cancels' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getCheckinsReport(params = {}) {
+export async function getCheckinsReport(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/reports/checkins' + (qs ? '?' + qs : ''))
+  return api('/reports/checkins' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getPTSessionsReport(params = {}) {
+export async function getPTSessionsReport(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/reports/pt-sessions' + (qs ? '?' + qs : ''))
+  return api('/reports/pt-sessions' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getPTSessionsTrainer(employeeId, params = {}) {
+export async function getPTSessionsTrainer(employeeId, params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api(`/reports/pt-sessions/trainer/${encodeURIComponent(employeeId)}` + (qs ? '?' + qs : ''))
+  return api(`/reports/pt-sessions/trainer/${encodeURIComponent(employeeId)}` + (qs ? '?' + qs : ''), options)
 }
 
-export async function getPayrollReport(params = {}) {
+export async function getPayrollReport(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
-  return api('/reports/payroll' + (qs ? '?' + qs : ''))
+  return api('/reports/payroll' + (qs ? '?' + qs : ''), options)
 }
 
 export async function exportPayrollToSheet(params = {}) {
@@ -674,21 +674,21 @@ export async function getOperandioLatest() {
 }
 
 // Revenue
-export async function getRevenueSummary(params = {}) {
+export async function getRevenueSummary(params = {}, options = {}) {
   const qs = new URLSearchParams()
   if (params.start_date) qs.set('start_date', params.start_date)
   if (params.end_date) qs.set('end_date', params.end_date)
   if (params.location_slug) qs.set('location_slug', params.location_slug)
-  return api(`/reports/revenue/summary?${qs.toString()}`)
+  return api(`/reports/revenue/summary?${qs.toString()}`, options)
 }
 
-export async function getRevenueProfitCenterTrend(params = {}) {
+export async function getRevenueProfitCenterTrend(params = {}, options = {}) {
   const qs = new URLSearchParams()
   if (params.start_date) qs.set('start_date', params.start_date)
   if (params.end_date) qs.set('end_date', params.end_date)
   if (params.location_slug) qs.set('location_slug', params.location_slug)
   if (params.profit_center) qs.set('profit_center', params.profit_center)
-  return api(`/reports/revenue/profit-center-trend?${qs.toString()}`)
+  return api(`/reports/revenue/profit-center-trend?${qs.toString()}`, options)
 }
 
 export async function getRevenueImports(limit = 20) {

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
 import { getPTHealth } from '../../lib/api'
+import { useCancellableFetch } from '../../hooks/useCancellableFetch'
+import DesktopLoading from '../DesktopLoading'
 
 function fmtMoney(n) {
   const v = Number(n || 0)
@@ -28,46 +29,28 @@ function pct(numerator, denominator) {
 }
 
 export default function PTHealthReport({ startDate, endDate, locationSlug }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const reqRef = useRef(0)
-
-  useEffect(() => {
-    if (!startDate || !endDate) return
-    const id = ++reqRef.current
-    setData(null)
-    setLoading(true)
-    setError(null)
-    getPTHealth({
-      start_date: startDate,
-      end_date: endDate,
-      location_slug: locationSlug || 'all',
-    })
-      .then(res => {
-        if (id !== reqRef.current) return
-        setData(res)
-        setLoading(false)
-      })
-      .catch(err => {
-        if (id !== reqRef.current) return
-        setError(err.message)
-        setLoading(false)
-      })
-  }, [startDate, endDate, locationSlug])
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => {
+      if (!startDate || !endDate) return Promise.resolve(null)
+      return getPTHealth(
+        { start_date: startDate, end_date: endDate, location_slug: locationSlug || 'all' },
+        { cache: true, signal }
+      )
+    },
+    [startDate, endDate, locationSlug]
+  )
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 gap-3">
-        <div className="w-6 h-6 border-2 border-wcs-red/30 border-t-wcs-red rounded-full animate-spin" />
-        <p className="loading-card">Crunching PT health from ABC + GHL...</p>
-        <p className="text-text-muted text-xs">This may take a minute for all locations</p>
+      <div className="space-y-3">
+        <p className="text-xs text-text-muted italic">Crunching PT health from ABC + GHL — this may take a minute for all locations…</p>
+        <DesktopLoading variant="report" />
       </div>
     )
   }
 
   if (error) {
-    return <div className="bg-red-50 border border-red-200 text-wcs-red rounded-xl px-4 py-3 text-sm">{error}</div>
+    return <div className="bg-red-50 border border-red-200 text-wcs-red rounded-xl px-4 py-3 text-sm">{error.message || String(error)}</div>
   }
   if (!data) return null
 
