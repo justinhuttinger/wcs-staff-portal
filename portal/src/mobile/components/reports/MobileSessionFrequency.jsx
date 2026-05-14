@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { getSessionFrequency } from '../../../lib/api'
 import MobileLoading from '../MobileLoading'
+import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -111,9 +112,6 @@ function TrainerCard({ row }) {
 // NOTE: This report manages its OWN date range (always MTD vs prior-month MTD).
 // startDate/endDate from the shell are intentionally ignored.
 export default function MobileSessionFrequency({ locationSlug }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [trainerFilter, setTrainerFilter] = useState('all')
   const [search, setSearch] = useState('')
 
@@ -121,30 +119,13 @@ export default function MobileSessionFrequency({ locationSlug }) {
   // once per mount since the location drives the fetch).
   const { start: startDate, end: endDate } = useMemo(mtdRange, [locationSlug])
 
-  const reqRef = useRef(0)
-
-  useEffect(() => {
-    const id = ++reqRef.current
-    setData(null)
-    setLoading(true)
-    setError(null)
-
-    getSessionFrequency({
-      start_date: startDate,
-      end_date: endDate,
-      location_slug: locationSlug || 'all',
-    })
-      .then(res => {
-        if (id !== reqRef.current) return
-        setData(res)
-        setLoading(false)
-      })
-      .catch(err => {
-        if (id !== reqRef.current) return
-        setError(err.message || 'Failed to load session data')
-        setLoading(false)
-      })
-  }, [startDate, endDate, locationSlug])
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => getSessionFrequency(
+      { start_date: startDate, end_date: endDate, location_slug: locationSlug || 'all' },
+      { cache: true, signal }
+    ),
+    [startDate, endDate, locationSlug]
+  )
 
   // Unique trainer names from the full result set
   const trainers = useMemo(() => {
@@ -189,7 +170,7 @@ export default function MobileSessionFrequency({ locationSlug }) {
     return (
       <div className="p-4">
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
-          <p className="text-sm text-red-600">{error}</p>
+          <p className="text-sm text-red-600">{error.message || String(error)}</p>
         </div>
       </div>
     )

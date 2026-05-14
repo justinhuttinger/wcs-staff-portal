@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import { getCancelsReport } from '../../../lib/api'
 import MobileLoading from '../MobileLoading'
 import MembershipTypeTable from './MembershipTypeTable'
+import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
 
 const STATUS_COLORS = {
   'Cancelled': '#e53e3e',
@@ -99,28 +100,21 @@ function StatusBreakdown({ counts }) {
 }
 
 export default function MobileCancels({ startDate, endDate, locationSlug }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    let cancelled = false
-    setData(null); setLoading(true); setError(null)
-    const params = {}
-    if (startDate) params.start_date = startDate
-    if (endDate) params.end_date = endDate
-    if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
-    getCancelsReport(params)
-      .then(res => { if (!cancelled) setData(res) })
-      .catch(err => { if (!cancelled) setError(err.message || 'Failed to load report') })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [startDate, endDate, locationSlug])
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => {
+      const params = {}
+      if (startDate) params.start_date = startDate
+      if (endDate) params.end_date = endDate
+      if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
+      return getCancelsReport(params, { cache: true, signal })
+    },
+    [startDate, endDate, locationSlug]
+  )
 
   if (loading) return <MobileLoading variant="report" className="px-0 py-0" />
   if (error) return (
     <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
-      <p className="text-sm text-red-600">{error}</p>
+      <p className="text-sm text-red-600">{error.message || String(error)}</p>
     </div>
   )
   if (!data) return null

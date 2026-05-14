@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { getPTHealth } from '../../../lib/api'
 import MobileLoading from '../MobileLoading'
+import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
 
 // ── Formatters (mirrors PTHealthReport.jsx) ──────────────────────────────────
 
@@ -178,39 +179,22 @@ function LocationRow({ c }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function MobilePTHealth({ startDate, endDate, locationSlug }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const reqRef = useRef(0)
-
-  useEffect(() => {
-    if (!startDate || !endDate) return
-    const id = ++reqRef.current
-    setData(null)
-    setLoading(true)
-    setError(null)
-    getPTHealth({
-      start_date: startDate,
-      end_date: endDate,
-      location_slug: locationSlug || 'all',
-    })
-      .then(res => {
-        if (id !== reqRef.current) return
-        setData(res)
-        setLoading(false)
-      })
-      .catch(err => {
-        if (id !== reqRef.current) return
-        setError(err.message)
-        setLoading(false)
-      })
-  }, [startDate, endDate, locationSlug])
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => {
+      if (!startDate || !endDate) return Promise.resolve(null)
+      return getPTHealth(
+        { start_date: startDate, end_date: endDate, location_slug: locationSlug || 'all' },
+        { cache: true, signal }
+      )
+    },
+    [startDate, endDate, locationSlug]
+  )
 
   if (loading) return <MobileLoading variant="report" className="px-0 py-0" />
 
   if (error) return (
     <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
-      <p className="text-sm text-red-600">{error}</p>
+      <p className="text-sm text-red-600">{error.message || String(error)}</p>
     </div>
   )
 

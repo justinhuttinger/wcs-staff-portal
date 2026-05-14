@@ -38,6 +38,25 @@ const TTL_BY_PATH = {
 
   // Filter-option lookups change rarely; long TTL is fine.
   '/reports/website-submissions/filter-options':           5 * 60_000,
+  '/reports/website-submissions':                              60_000,
+
+  // Meta Ads — short TTL since campaign/adset numbers churn during the day.
+  '/meta-ads/overview':                                    2 * 60_000,
+  '/meta-ads/campaigns':                                   2 * 60_000,
+  '/meta-ads/adsets':                                      2 * 60_000,
+  '/meta-ads/ads':                                         2 * 60_000,
+  '/meta-ads/daily':                                       2 * 60_000,
+
+  // Google Business + Analytics — long-ish since GBP/GA4 only refresh daily.
+  '/google-business/performance':                          5 * 60_000,
+  '/google-analytics/overview':                            5 * 60_000,
+  '/google-analytics/sources':                             5 * 60_000,
+  '/google-analytics/pages':                               5 * 60_000,
+  '/google-analytics/devices-geo':                         5 * 60_000,
+  '/google-analytics/key-events':                          5 * 60_000,
+
+  // Operandio operational scorecards — daily granularity, refresh hourly upstream.
+  '/operandio/range':                                      5 * 60_000,
 }
 
 // Return the TTL for a request path, or 0 if the endpoint isn't cacheable.

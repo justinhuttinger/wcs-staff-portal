@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getDeactivatedPT, getDeactivatedPTMember } from '../../../lib/api'
 import MobileLoading from '../MobileLoading'
+import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
 
 function fmtMoney(n) {
   const v = Number(n || 0)
@@ -22,21 +23,20 @@ const TYPES = [
 ]
 
 export default function MobileDeactivatedPT({ startDate, endDate, locationSlug }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [typeFilter, setTypeFilter] = useState('all')
   const [trainerFilter, setTrainerFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [memberDetail, setMemberDetail] = useState(null)
 
-  const reqRef = useRef(0)
   const memberReqRef = useRef(0)
 
   function openMemberDetail(row) {
     const id = ++memberReqRef.current
     setMemberDetail({ row, loading: true, data: null, error: null })
-    getDeactivatedPTMember({ memberId: row.memberId, locationSlug: row.locationSlug })
+    getDeactivatedPTMember(
+      { memberId: row.memberId, locationSlug: row.locationSlug },
+      { cache: true }
+    )
       .then(res => {
         if (id !== memberReqRef.current) return
         setMemberDetail({ row, loading: false, data: res, error: null })
@@ -52,28 +52,16 @@ export default function MobileDeactivatedPT({ startDate, endDate, locationSlug }
     setMemberDetail(null)
   }
 
-  useEffect(() => {
-    if (!startDate || !endDate) return
-    const id = ++reqRef.current
-    setData(null)
-    setLoading(true)
-    setError(null)
-    getDeactivatedPT({
-      start_date: startDate,
-      end_date: endDate,
-      location_slug: locationSlug || 'all',
-    })
-      .then(res => {
-        if (id !== reqRef.current) return
-        setData(res)
-        setLoading(false)
-      })
-      .catch(err => {
-        if (id !== reqRef.current) return
-        setError(err.message)
-        setLoading(false)
-      })
-  }, [startDate, endDate, locationSlug])
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => {
+      if (!startDate || !endDate) return Promise.resolve(null)
+      return getDeactivatedPT(
+        { start_date: startDate, end_date: endDate, location_slug: locationSlug || 'all' },
+        { cache: true, signal }
+      )
+    },
+    [startDate, endDate, locationSlug]
+  )
 
   const trainers = useMemo(() => {
     if (!data?.rows) return []
@@ -111,7 +99,7 @@ export default function MobileDeactivatedPT({ startDate, endDate, locationSlug }
   if (error) return (
     <div className="p-4">
       <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
-        <p className="text-sm text-red-600">{error}</p>
+        <p className="text-sm text-red-600">{error.message || String(error)}</p>
       </div>
     </div>
   )

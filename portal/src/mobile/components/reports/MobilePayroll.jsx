@@ -1,6 +1,7 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { getPayrollReport } from '../../../lib/api'
 import MobileLoading from '../MobileLoading'
+import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -286,27 +287,15 @@ export default function MobilePayroll({ locationSlug }) {
   const monthOptions = useMemo(buildMonthOptions, [])
   const [period, setPeriod] = useState(defaultMonth())
   const [activeTab, setActiveTab] = useState('sales')
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [reloadToken, setReloadToken] = useState(0)
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    const params = { period }
-    if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
-    getPayrollReport(params)
-      .then((d) => { if (!cancelled) setData(d) })
-      .catch((e) => { if (!cancelled) setError(e.message || 'Failed to load') })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [period, locationSlug, reloadToken])
-
-  function refetch() {
-    setReloadToken((t) => t + 1)
-  }
+  const { data, loading, error, refetch } = useCancellableFetch(
+    (signal) => {
+      const params = { period }
+      if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
+      return getPayrollReport(params, { cache: true, signal })
+    },
+    [period, locationSlug]
+  )
 
   const summary = data?.summary || {}
 
@@ -316,7 +305,7 @@ export default function MobilePayroll({ locationSlug }) {
     return (
       <div className="p-4">
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
-          <p className="text-sm text-red-600">{error}</p>
+          <p className="text-sm text-red-600">{error.message || String(error)}</p>
         </div>
       </div>
     )

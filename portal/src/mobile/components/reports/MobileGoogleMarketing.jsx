@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   getGoogleBusinessStatus,
   getGoogleBusinessPerformance,
@@ -11,6 +11,7 @@ import {
 } from '../../../lib/api'
 import { LOCATION_OPTIONS as LOCATIONS } from '../../../config/locations'
 import MobileLoading from '../MobileLoading'
+import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
@@ -143,33 +144,18 @@ function PieChartSmall({ data, colorMap }) {
 }
 
 function GbpSection({ startDate, endDate }) {
-  const [metrics, setMetrics] = useState([])
-  const [apiError, setApiError] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const reqRef = useRef(0)
-
-  useEffect(() => {
-    const id = ++reqRef.current
-    setLoading(true)
-    setError(null)
-    setApiError(null)
-    getGoogleBusinessPerformance({ start_date: startDate, end_date: endDate })
-      .then(res => {
-        if (id !== reqRef.current) return
-        setMetrics(res.metrics || [])
-        setApiError(res.error || null)
-        setLoading(false)
-      })
-      .catch(err => {
-        if (id !== reqRef.current) return
-        setError(err.message)
-        setLoading(false)
-      })
-  }, [startDate, endDate])
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => getGoogleBusinessPerformance(
+      { start_date: startDate, end_date: endDate },
+      { cache: true, signal }
+    ),
+    [startDate, endDate]
+  )
+  const metrics = data?.metrics || []
+  const apiError = data?.error || null
 
   if (loading) return <MobileLoading variant="stats" count={4} className="px-0 py-0" />
-  if (error) return <p className="px-4 text-wcs-red text-sm py-3">{error}</p>
+  if (error) return <p className="px-4 text-wcs-red text-sm py-3">{error.message || String(error)}</p>
   if (!metrics.length) {
     return (
       <div className="mx-4 bg-surface border border-border rounded-2xl p-5 text-center">
@@ -223,38 +209,34 @@ function GbpSection({ startDate, endDate }) {
 }
 
 function GaSection({ startDate, endDate, locationSlug, compare, ga4Status }) {
-  const [overview, setOverview] = useState(null)
-  const [sources, setSources] = useState(null)
-  const [pages, setPages] = useState(null)
-  const [devicesGeo, setDevicesGeo] = useState(null)
-  const [keyEvents, setKeyEvents] = useState(null)
-  const [errors, setErrors] = useState({})
-  const reqRef = useRef(0)
+  const ready = !!(ga4Status?.has_property_id && ga4Status?.authorized)
 
-  useEffect(() => {
-    if (!ga4Status?.has_property_id || !ga4Status?.authorized) return
-    const id = ++reqRef.current
-    setOverview(null); setSources(null); setPages(null); setDevicesGeo(null); setKeyEvents(null)
-    setErrors({})
-
-    const params = { start_date: startDate, end_date: endDate, location_slug: locationSlug }
-    const overviewParams = { ...params, compare: compare ? 'true' : 'false' }
-
-    function safe(key, p) {
-      return p.catch(err => { setErrors(e => ({ ...e, [key]: err.message })); return null })
-    }
-
-    Promise.all([
-      safe('overview', getGoogleAnalyticsOverview(overviewParams)),
-      safe('sources', getGoogleAnalyticsSources(params)),
-      safe('pages', getGoogleAnalyticsPages(params)),
-      safe('devicesGeo', getGoogleAnalyticsDevicesGeo(params)),
-      safe('keyEvents', getGoogleAnalyticsKeyEvents(params)),
-    ]).then(([o, s, p, dg, ke]) => {
-      if (id !== reqRef.current) return
-      setOverview(o); setSources(s); setPages(p); setDevicesGeo(dg); setKeyEvents(ke)
-    })
-  }, [startDate, endDate, locationSlug, compare, ga4Status?.authorized, ga4Status?.has_property_id])
+  const { data: gaData } = useCancellableFetch(
+    async (signal) => {
+      if (!ready) return null
+      const params = { start_date: startDate, end_date: endDate, location_slug: locationSlug }
+      const overviewParams = { ...params, compare: compare ? 'true' : 'false' }
+      const errors = {}
+      function safe(key, p) {
+        return p.catch(err => { errors[key] = err.message; return null })
+      }
+      const [o, s, p, dg, ke] = await Promise.all([
+        safe('overview',   getGoogleAnalyticsOverview(overviewParams, { cache: true, signal })),
+        safe('sources',    getGoogleAnalyticsSources(params,         { cache: true, signal })),
+        safe('pages',      getGoogleAnalyticsPages(params,           { cache: true, signal })),
+        safe('devicesGeo', getGoogleAnalyticsDevicesGeo(params,      { cache: true, signal })),
+        safe('keyEvents',  getGoogleAnalyticsKeyEvents(params,       { cache: true, signal })),
+      ])
+      return { overview: o, sources: s, pages: p, devicesGeo: dg, keyEvents: ke, errors }
+    },
+    [startDate, endDate, locationSlug, compare, ready]
+  )
+  const overview = gaData?.overview ?? null
+  const sources = gaData?.sources ?? null
+  const pages = gaData?.pages ?? null
+  const devicesGeo = gaData?.devicesGeo ?? null
+  const keyEvents = gaData?.keyEvents ?? null
+  const errors = gaData?.errors ?? {}
 
   if (!ga4Status?.has_property_id) {
     return (
