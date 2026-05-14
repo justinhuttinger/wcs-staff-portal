@@ -1,6 +1,8 @@
+const express = require('express')
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const { syncCancelReasonToGhl } = require('../services/click2saveGhlSync')
+const { parseWebsiteFormBody } = require('../services/websiteFormParser')
 
 const router = Router()
 
@@ -160,5 +162,64 @@ router.post('/click2save', verifyClick2SaveSecret, async (req, res) => {
     res.status(500).json({ error: 'internal error' })
   }
 })
+
+// POST /webhooks/website-form — public website forms POST here directly.
+// HTML <form> can't set custom headers, so the shared secret travels as a
+// query-string param. Content-Type is application/x-www-form-urlencoded
+// (default for HTML forms), which is why this route mounts its own
+// urlencoded body parser instead of using the app-wide express.json().
+router.post(
+  '/website-form',
+  express.urlencoded({ extended: true, limit: '64kb' }),
+  async (req, res) => {
+    const secret = process.env.WEBSITE_FORM_WEBHOOK_SECRET
+    if (!secret) {
+      console.error('[website-form] WEBSITE_FORM_WEBHOOK_SECRET not configured')
+      return res.status(503).json({ error: 'webhook not configured' })
+    }
+    if (req.query.secret !== secret) {
+      return res.status(401).json({ error: 'invalid secret' })
+    }
+
+    const body = req.body
+    if (!body || typeof body !== 'object' || Object.keys(body).length === 0) {
+      return res.status(400).json({ error: 'empty body' })
+    }
+
+    const parsed = parseWebsiteFormBody(body)
+    if (!parsed) {
+      return res.status(400).json({ error: 'unparseable body' })
+    }
+
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('website_submissions')
+        .insert({
+          form_id: parsed.form_id,
+          form_name: parsed.form_name,
+          location: parsed.location,
+          first_name: parsed.first_name,
+          last_name: parsed.last_name,
+          email: parsed.email,
+          phone: parsed.phone,
+          message: parsed.message,
+          opt_in: parsed.opt_in,
+          raw: parsed.raw,
+        })
+        .select('id')
+        .single()
+
+      if (error) {
+        console.error('[website-form] persist failed form_id=' + (parsed.form_id || '(none)') + ':', error.message)
+        return res.status(500).json({ error: 'persist failed' })
+      }
+
+      res.json({ success: true, id: data.id })
+    } catch (err) {
+      console.error('[website-form] error form_id=' + (parsed.form_id || '(none)') + ':', err.message)
+      res.status(500).json({ error: 'internal error' })
+    }
+  }
+)
 
 module.exports = router
