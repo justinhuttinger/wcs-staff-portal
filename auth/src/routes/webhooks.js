@@ -1,5 +1,6 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
+const { syncCancelReasonToGhl } = require('../services/click2saveGhlSync')
 
 const router = Router()
 
@@ -148,6 +149,10 @@ router.post('/click2save', verifyClick2SaveSecret, async (req, res) => {
       console.error('click2save webhook persist error:', error.message)
       return res.status(500).json({ error: 'failed to persist event' })
     }
+
+    // Fire-and-forget downstream side effect: upsert GHL "Cancel Reason"
+    // custom field on the contact for CANCEL events. Never blocks the 200.
+    syncCancelReasonToGhl(event)
 
     res.json({ success: true, requestId: event.requestId })
   } catch (err) {
