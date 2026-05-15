@@ -287,56 +287,64 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           )}
         </div>
 
-        {/* Location Selector */}
-        {hasMultipleReportLocations ? (
-          <div className="mb-4">
-            <LocationMultiSelect
-              value={locationSlug}
-              onChange={setLocationSlug}
-              options={(isAdmin
-                ? LOCATIONS.filter(l => l.slug !== 'all')
-                : reportLocations.map(l => ({ slug: l.name.toLowerCase(), label: l.name }))
+        {/* Filter row: location selector on the left, date controls on the right.
+            Date controls hidden for reports with fixed or self-managed date ranges. */}
+        {(() => {
+          const showDateControls = activeReport !== 'pt-roster' && activeReport !== 'operations' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing' && activeReport !== 'website-submissions'
+          const showLocation = hasMultipleReportLocations
+          if (!showLocation && !showDateControls) return null
+          return (
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              {showLocation ? (
+                <LocationMultiSelect
+                  value={locationSlug}
+                  onChange={setLocationSlug}
+                  options={(isAdmin
+                    ? LOCATIONS.filter(l => l.slug !== 'all')
+                    : reportLocations.map(l => ({ slug: l.name.toLowerCase(), label: l.name }))
+                  )}
+                />
+              ) : (
+                <p className="text-xs text-text-muted uppercase tracking-wide font-semibold">{location}</p>
               )}
-            />
-          </div>
-        ) : (
-          <p className="text-xs text-text-muted mb-4 uppercase tracking-wide font-semibold">{location}</p>
-        )}
-
-        {/* Date Controls — hidden for reports with fixed or self-managed date ranges */}
-        {activeReport !== 'pt-roster' && activeReport !== 'operations' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing' && activeReport !== 'website-submissions' && <div className="flex flex-wrap items-center gap-3 justify-end">
-          <div className="flex flex-wrap gap-1.5">
-            {QUICK_RANGES.map(qr => (
-              <button
-                key={qr.key}
-                onClick={() => applyQuickRange(qr.key)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                  activeQuick === qr.key
-                    ? 'bg-text-primary text-white border-text-primary'
-                    : 'bg-bg text-text-muted border-border hover:text-text-primary'
-                }`}
-              >
-                {qr.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-text-muted">From</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={e => handleDateChange('start', e.target.value)}
-              className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
-            />
-            <label className="text-xs text-text-muted">To</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={e => handleDateChange('end', e.target.value)}
-              className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
-            />
-          </div>
-        </div>}
+              {showDateControls && (
+                <div className="flex flex-wrap items-center gap-3 ml-auto">
+                  <div className="flex flex-wrap gap-1.5">
+                    {QUICK_RANGES.map(qr => (
+                      <button
+                        key={qr.key}
+                        onClick={() => applyQuickRange(qr.key)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                          activeQuick === qr.key
+                            ? 'bg-text-primary text-white border-text-primary'
+                            : 'bg-bg text-text-muted border-border hover:text-text-primary'
+                        }`}
+                      >
+                        {qr.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-text-muted">From</label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={e => handleDateChange('start', e.target.value)}
+                      className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
+                    />
+                    <label className="text-xs text-text-muted">To</label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={e => handleDateChange('end', e.target.value)}
+                      className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {/* Content — Tile Grid (root or group) or Active Report */}
