@@ -2,6 +2,11 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, canSeeAllLocations } = require('../middleware/role')
+const { wrapSWR } = require('../services/memoryCache')
+
+// Phase 2 perf: cache the per-(range, location, status, group) payload across users.
+const PT_SESSIONS_FRESH_MS = 2 * 60 * 1000
+const PT_SESSIONS_STALE_MS = 15 * 60 * 1000
 
 const router = Router()
 router.use(authenticate)
@@ -177,87 +182,101 @@ router.get('/', async (req, res) => {
       return res.status(400).json({ error: `Unknown event_group: ${eventGroup}. Valid: all, pt, swim, stretch.` })
     }
     const groupFilter = EVENT_GROUPS[eventGroup] || null
+    // Run authorization BEFORE the cache lookup — throws 403 for unauthorized
+    // callers, so they never reach a cached payload.
     const clubs = await authorizeAndResolveClubs(req, location_slug)
 
-    const startUtcIso = pacificDayBoundsToUtc(start_date, false)
-    const endUtcIso = pacificDayBoundsToUtc(end_date, true)
+    const slugKey = !location_slug || location_slug === 'all' ? 'all' : location_slug
+    const statusKey = [...statuses].sort().join(',')
+    const cacheKey = `reports:pt-sessions:${start_date}:${end_date}:${slugKey}:${eventGroup}:${statusKey}`
+    const payload = await wrapSWR(
+      cacheKey,
+      PT_SESSIONS_FRESH_MS,
+      PT_SESSIONS_STALE_MS,
+      async () => {
+        const startUtcIso = pacificDayBoundsToUtc(start_date, false)
+        const endUtcIso = pacificDayBoundsToUtc(end_date, true)
 
-    let q = supabaseAdmin
-      .from('abc_calendar_events')
-      .select('employee_id, employee_first_name, employee_last_name, event_name, status')
-      .gte('event_timestamp', startUtcIso)
-      .lte('event_timestamp', endUtcIso)
-      .in('status', statuses)
-    if (clubs) q = q.in('club_number', clubs)
+        let q = supabaseAdmin
+          .from('abc_calendar_events')
+          .select('employee_id, employee_first_name, employee_last_name, event_name, status')
+          .gte('event_timestamp', startUtcIso)
+          .lte('event_timestamp', endUtcIso)
+          .in('status', statuses)
+        if (clubs) q = q.in('club_number', clubs)
 
-    const rows = []
-    let from = 0
-    while (true) {
-      const { data, error } = await q.range(from, from + 999)
-      if (error) throw new Error(error.message)
-      if (!data || data.length === 0) break
-      rows.push(...data)
-      if (data.length < 1000) break
-      from += 1000
-    }
-
-    const trainers = new Map()
-    let totalCompleted = 0
-    let totalCanceled = 0
-    const eventTypeTotals = new Map()
-
-    for (const row of rows) {
-      const normalizedType = normalizeEventType(row.event_name)
-      if (!passesEventGroup(groupFilter, normalizedType)) continue
-
-      const tid = row.employee_id || 'unassigned'
-      const tname = `${row.employee_first_name || ''} ${row.employee_last_name || ''}`.trim() || 'Unbooked'
-      const ev = normalizedType
-      const st = row.status
-
-      let t = trainers.get(tid)
-      if (!t) {
-        t = {
-          employee_id: tid,
-          employee_name: tname,
-          total: 0,
-          completed: 0,
-          canceled_charge: 0,
-          by_event_type: {},
+        const rows = []
+        let from = 0
+        while (true) {
+          const { data, error } = await q.range(from, from + 999)
+          if (error) throw new Error(error.message)
+          if (!data || data.length === 0) break
+          rows.push(...data)
+          if (data.length < 1000) break
+          from += 1000
         }
-        trainers.set(tid, t)
+
+        const trainers = new Map()
+        let totalCompleted = 0
+        let totalCanceled = 0
+        const eventTypeTotals = new Map()
+
+        for (const row of rows) {
+          const normalizedType = normalizeEventType(row.event_name)
+          if (!passesEventGroup(groupFilter, normalizedType)) continue
+
+          const tid = row.employee_id || 'unassigned'
+          const tname = `${row.employee_first_name || ''} ${row.employee_last_name || ''}`.trim() || 'Unbooked'
+          const ev = normalizedType
+          const st = row.status
+
+          let t = trainers.get(tid)
+          if (!t) {
+            t = {
+              employee_id: tid,
+              employee_name: tname,
+              total: 0,
+              completed: 0,
+              canceled_charge: 0,
+              by_event_type: {},
+            }
+            trainers.set(tid, t)
+          }
+          t.total += 1
+          if (st === 'Completed') {
+            t.completed += 1
+            totalCompleted += 1
+          } else if (st === 'Canceled-Charge') {
+            t.canceled_charge += 1
+            totalCanceled += 1
+          }
+
+          const cell = t.by_event_type[ev] || { completed: 0, canceled_charge: 0 }
+          if (st === 'Completed') cell.completed += 1
+          else if (st === 'Canceled-Charge') cell.canceled_charge += 1
+          t.by_event_type[ev] = cell
+
+          eventTypeTotals.set(ev, (eventTypeTotals.get(ev) || 0) + 1)
+        }
+
+        const trainersArr = [...trainers.values()].sort((a, b) => b.total - a.total)
+        const eventTypes = orderEventTypes([...eventTypeTotals.keys()])
+
+        const total = totalCompleted + totalCanceled
+        return {
+          summary: {
+            total_sessions: total,
+            completed: totalCompleted,
+            canceled_charge: totalCanceled,
+            attendance_rate: total > 0 ? totalCompleted / total : 0,
+          },
+          trainers: trainersArr,
+          event_types: eventTypes,
+        }
       }
-      t.total += 1
-      if (st === 'Completed') {
-        t.completed += 1
-        totalCompleted += 1
-      } else if (st === 'Canceled-Charge') {
-        t.canceled_charge += 1
-        totalCanceled += 1
-      }
+    )
 
-      const cell = t.by_event_type[ev] || { completed: 0, canceled_charge: 0 }
-      if (st === 'Completed') cell.completed += 1
-      else if (st === 'Canceled-Charge') cell.canceled_charge += 1
-      t.by_event_type[ev] = cell
-
-      eventTypeTotals.set(ev, (eventTypeTotals.get(ev) || 0) + 1)
-    }
-
-    const trainersArr = [...trainers.values()].sort((a, b) => b.total - a.total)
-    const eventTypes = orderEventTypes([...eventTypeTotals.keys()])
-
-    const total = totalCompleted + totalCanceled
-    res.json({
-      summary: {
-        total_sessions: total,
-        completed: totalCompleted,
-        canceled_charge: totalCanceled,
-        attendance_rate: total > 0 ? totalCompleted / total : 0,
-      },
-      trainers: trainersArr,
-      event_types: eventTypes,
-    })
+    res.json(payload)
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message })
   }

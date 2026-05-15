@@ -1,6 +1,11 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { wrapSWR } = require('../services/memoryCache')
+
+// Phase 2 perf: cache the per-location roster payload across users.
+const PT_ROSTER_FRESH_MS = 2 * 60 * 1000
+const PT_ROSTER_STALE_MS = 15 * 60 * 1000
 
 const ABC_BASE_URL = process.env.ABC_BASE_URL || 'https://api.abcfinancial.com/rest'
 const ABC_APP_ID = process.env.ABC_APP_ID
@@ -311,45 +316,57 @@ router.get('/', async (req, res) => {
 
     const { location_slug } = req.query
     let targetClubs = CLUBS
+    let slugKey = 'all'
 
     if (location_slug && location_slug !== 'all') {
       const club = CLUBS.find(c => c.slug === location_slug.toLowerCase())
       if (!club) return res.status(400).json({ error: `Unknown location: ${location_slug}` })
       targetClubs = [club]
+      slugKey = club.slug
     }
 
-    // Fetch all locations in parallel
-    const results = await Promise.allSettled(
-      targetClubs.map(club => buildClients(club.clubNumber, club.name))
+    const cacheKey = `reports:pt-roster:${slugKey}`
+    const payload = await wrapSWR(
+      cacheKey,
+      PT_ROSTER_FRESH_MS,
+      PT_ROSTER_STALE_MS,
+      async () => {
+        // Fetch all locations in parallel
+        const results = await Promise.allSettled(
+          targetClubs.map(club => buildClients(club.clubNumber, club.name))
+        )
+
+        const allClients = []
+        const errors = []
+        results.forEach((r, i) => {
+          if (r.status === 'fulfilled') {
+            allClients.push(...r.value)
+          } else {
+            errors.push({ club: targetClubs[i].name, error: r.reason?.message || 'Unknown error' })
+          }
+        })
+
+        // Summary stats
+        const recurring = allClients.filter(c => c.clientType === 'recurring')
+        const pif = allClients.filter(c => c.clientType === 'pif')
+        const monthlyRevenue = recurring.reduce((s, c) => s + (c.monthlyRevenue || 0), 0)
+        const pifRevenue = pif.reduce((s, c) => s + (c.service?.purchasePrice || 0), 0)
+
+        return {
+          clients: allClients,
+          summary: {
+            totalClients: allClients.length,
+            recurring: recurring.length,
+            pif: pif.length,
+            monthlyRevenue,
+            pifRevenue,
+          },
+          errors: errors.length ? errors : undefined,
+        }
+      }
     )
 
-    const allClients = []
-    const errors = []
-    results.forEach((r, i) => {
-      if (r.status === 'fulfilled') {
-        allClients.push(...r.value)
-      } else {
-        errors.push({ club: targetClubs[i].name, error: r.reason?.message || 'Unknown error' })
-      }
-    })
-
-    // Summary stats
-    const recurring = allClients.filter(c => c.clientType === 'recurring')
-    const pif = allClients.filter(c => c.clientType === 'pif')
-    const monthlyRevenue = recurring.reduce((s, c) => s + (c.monthlyRevenue || 0), 0)
-    const pifRevenue = pif.reduce((s, c) => s + (c.service?.purchasePrice || 0), 0)
-
-    res.json({
-      clients: allClients,
-      summary: {
-        totalClients: allClients.length,
-        recurring: recurring.length,
-        pif: pif.length,
-        monthlyRevenue,
-        pifRevenue,
-      },
-      errors: errors.length ? errors : undefined,
-    })
+    res.json(payload)
   } catch (err) {
     console.error('[PT Roster] Error:', err.message)
     res.status(500).json({ error: err.message })
