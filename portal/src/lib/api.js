@@ -357,6 +357,30 @@ export async function downloadStaffTemplate() {
   URL.revokeObjectURL(url)
 }
 
+// Admin - ABC Employee Roster export. Returns one .xlsx with a tab per
+// location for managers to mark who is still employed and who isn't.
+export async function downloadEmployeeRoster({ activeOnly = false, clubs = null } = {}) {
+  const headers = {}
+  if (authToken) headers['Authorization'] = 'Bearer ' + authToken
+  const params = new URLSearchParams()
+  if (activeOnly) params.set('active-only', '1')
+  if (clubs && clubs.length) params.set('clubs', clubs.join(','))
+  const qs = params.toString()
+  const url = `${API_URL}/admin/exports/abc-employee-roster.xlsx${qs ? '?' + qs : ''}`
+  const res = await fetch(url, { headers })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(text || `Failed to download employee roster (HTTP ${res.status})`)
+  }
+  const blob = await res.blob()
+  const blobUrl = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = blobUrl
+  a.download = 'abc-employee-roster.xlsx'
+  a.click()
+  URL.revokeObjectURL(blobUrl)
+}
+
 export async function importStaff(file) {
   const headers = { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
   if (authToken) headers['Authorization'] = 'Bearer ' + authToken
