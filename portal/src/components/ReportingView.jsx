@@ -16,6 +16,8 @@ import RevenueReport from './reports/RevenueReport'
 import MetaAdsView from './MetaAdsView'
 import GoogleMarketingView from './GoogleMarketingView'
 import WebsiteSubmissionsReport from './reports/WebsiteSubmissionsReport'
+import ReportInfoButton from './ReportInfoButton'
+import { getReportInfo } from '../lib/reportInfo'
 
 // SVG path data for each reporting tile (outline style, matches main page tiles via ToolButton)
 const REPORT_ICONS = {
@@ -275,9 +277,14 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
             {backLabel}
           </button>
         )}
-        <h2 className="text-xl font-bold text-text-primary mb-4">
-          {activeReportTile?.label || currentGroup?.label || 'Reporting'}
-        </h2>
+        <div className="flex items-center gap-2 mb-4">
+          <h2 className="text-xl font-bold text-text-primary">
+            {activeReportTile?.label || currentGroup?.label || 'Reporting'}
+          </h2>
+          {activeReport && (
+            <ReportInfoButton info={getReportInfo(activeReport)} />
+          )}
+        </div>
 
         {/* Location Selector */}
         {hasMultipleReportLocations ? (
