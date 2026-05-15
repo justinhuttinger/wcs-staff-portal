@@ -2,6 +2,7 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, canSeeAllLocations } = require('../middleware/role')
+const { parseLocationSlugParam, intersectWithAllowed } = require('../utils/locationSlug')
 
 // PT Session Frequency report — per-member completed-session counts for the
 // current month-to-date AND the prior calendar month, with per-week averages
@@ -129,9 +130,15 @@ function isPTEvent(name) {
 }
 
 async function authorizeAndResolveClubs(req, location_slug) {
+  const parsed = parseLocationSlugParam(location_slug)
+  if (parsed.invalid) {
+    const err = new Error(`Unknown location_slug: ${parsed.invalid}`)
+    err.status = 400
+    throw err
+  }
   const allLocations = canSeeAllLocations(req.staff.role)
   if (!allLocations) {
-    if (!location_slug || location_slug === 'all') {
+    if (parsed.all) {
       const err = new Error('Specify a location_slug; you do not have access to all locations.')
       err.status = 403
       throw err
@@ -145,19 +152,15 @@ async function authorizeAndResolveClubs(req, location_slug) {
         .in('id', allowedIds)
       allowedSlugs = (allowedLocs || []).map(l => locSlugFromName(l.name))
     }
-    if (!allowedSlugs.includes(location_slug)) {
-      const err = new Error('Not authorized to view this location')
+    const narrowed = intersectWithAllowed(parsed, allowedSlugs)
+    if (narrowed.invalid) {
+      const err = new Error(`Not authorized to view this location: ${narrowed.invalid}`)
       err.status = 403
       throw err
     }
   }
-  if (location_slug && location_slug !== 'all' && !SLUG_CLUB_MAP[location_slug]) {
-    const err = new Error(`Unknown location_slug: ${location_slug}`)
-    err.status = 400
-    throw err
-  }
-  if (!location_slug || location_slug === 'all') return null
-  return [SLUG_CLUB_MAP[location_slug]]
+  if (parsed.all) return null
+  return parsed.slugs.map(s => SLUG_CLUB_MAP[s])
 }
 
 // GET /reports/session-frequency?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD

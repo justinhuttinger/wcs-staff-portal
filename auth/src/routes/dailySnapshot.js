@@ -15,6 +15,7 @@ const { requireRole, resolveRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { LOCATIONS, getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
+const { parseLocationSlugParam, intersectWithAllowed } = require('../utils/locationSlug')
 
 const router = Router()
 router.use(authenticate)
@@ -119,13 +120,18 @@ function parseDateParam(value) {
 
 async function resolveLocations(req, requestedSlug) {
   const role = resolveRole(req.staff?.role)
-  const wantsAll = !requestedSlug || requestedSlug === 'all'
+  const parsed = parseLocationSlugParam(requestedSlug)
+  if (parsed.invalid) {
+    const err = new Error(`Unknown location: ${parsed.invalid}`)
+    err.status = 400
+    throw err
+  }
   const canSeeAll = role === 'corporate' || role === 'admin' || role === 'marketing'
 
   if (canSeeAll) {
-    if (wantsAll) return LOCATIONS
-    const match = LOCATIONS.find(l => l.slug === requestedSlug)
-    return match ? [match] : []
+    if (parsed.all) return LOCATIONS
+    const set = new Set(parsed.slugs)
+    return LOCATIONS.filter(l => set.has(l.slug))
   }
 
   const allowedIds = req.staff?.location_ids || []
@@ -136,8 +142,10 @@ async function resolveLocations(req, requestedSlug) {
     .in('id', allowedIds)
   const allowedSlugs = (rows || []).map(r => r.name.toLowerCase())
   const allowedLocs = LOCATIONS.filter(l => allowedSlugs.includes(l.slug))
-  if (wantsAll) return allowedLocs
-  return allowedLocs.filter(l => l.slug === requestedSlug)
+  if (parsed.all) return allowedLocs
+  const narrowed = intersectWithAllowed(parsed, allowedSlugs, { silentNarrow: true })
+  const wanted = new Set(narrowed.slugs)
+  return allowedLocs.filter(l => wanted.has(l.slug))
 }
 
 // ---- GHL helpers ----------------------------------------------------------
@@ -414,7 +422,12 @@ router.get('/', async (req, res) => {
 
     const mode = classifyMode(dateStr)
     const requestedSlug = (req.query.location || '').toLowerCase().trim() || null
-    const locations = await resolveLocations(req, requestedSlug)
+    let locations
+    try {
+      locations = await resolveLocations(req, requestedSlug)
+    } catch (err) {
+      return res.status(err.status || 500).json({ error: err.message })
+    }
     const locationSlugs = locations.length === LOCATIONS.length ? null : locations.map(l => l.slug)
 
     const panel_errors = {}
@@ -454,7 +467,7 @@ router.get('/', async (req, res) => {
     res.json({
       date: dateStr,
       mode,
-      location_slug: requestedSlug === 'all' ? null : requestedSlug,
+      location_slug: !requestedSlug || requestedSlug === 'all' ? null : requestedSlug,
       day_one: schedule.day_one,
       tours: schedule.tours,
       membership_sales,

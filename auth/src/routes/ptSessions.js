@@ -3,6 +3,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, canSeeAllLocations } = require('../middleware/role')
 const { wrapSWR } = require('../services/memoryCache')
+const { parseLocationSlugParam, locationCacheKey, intersectWithAllowed } = require('../utils/locationSlug')
 
 // Phase 2 perf: cache the per-(range, location, status, group) payload across users.
 const PT_SESSIONS_FRESH_MS = 2 * 60 * 1000
@@ -132,13 +133,20 @@ function parseStatuses(raw) {
   return String(raw).split(',').map((s) => s.trim()).filter(Boolean)
 }
 
-// Resolve which clubNumbers the request is allowed to scan.
-// Returns: array of clubNumbers, or null meaning "no club filter (all)".
+// Resolve which clubNumbers the request is allowed to scan, supporting
+// comma-separated multi-slug values (e.g. 'salem,eugene').
+// Returns: array of clubNumbers, or null meaning "no club filter (all 7)".
 async function authorizeAndResolveClubs(req, location_slug) {
-  const allLocations = canSeeAllLocations(req.staff.role)
+  const parsed = parseLocationSlugParam(location_slug)
+  if (parsed.invalid) {
+    const err = new Error(`Unknown location_slug: ${parsed.invalid}`)
+    err.status = 400
+    throw err
+  }
 
+  const allLocations = canSeeAllLocations(req.staff.role)
   if (!allLocations) {
-    if (!location_slug || location_slug === 'all') {
+    if (parsed.all) {
       const err = new Error('Specify a location_slug; you do not have access to all locations.')
       err.status = 403
       throw err
@@ -152,21 +160,16 @@ async function authorizeAndResolveClubs(req, location_slug) {
         .in('id', allowedIds)
       allowedSlugs = (allowedLocs || []).map((l) => locSlugFromName(l.name))
     }
-    if (!allowedSlugs.includes(location_slug)) {
-      const err = new Error('Not authorized to view this location')
+    const narrowed = intersectWithAllowed(parsed, allowedSlugs)
+    if (narrowed.invalid) {
+      const err = new Error(`Not authorized to view this location: ${narrowed.invalid}`)
       err.status = 403
       throw err
     }
   }
 
-  if (location_slug && location_slug !== 'all' && !SLUG_CLUB_MAP[location_slug]) {
-    const err = new Error(`Unknown location_slug: ${location_slug}`)
-    err.status = 400
-    throw err
-  }
-
-  if (!location_slug || location_slug === 'all') return null
-  return [SLUG_CLUB_MAP[location_slug]]
+  if (parsed.all) return null
+  return parsed.slugs.map(s => SLUG_CLUB_MAP[s])
 }
 
 // Extracted so the cache warmer can invoke the same cached path the route does.
@@ -186,9 +189,15 @@ async function buildPtSessionsPayload({ start_date, end_date, location_slug, sta
     throw err
   }
   const groupFilter = EVENT_GROUPS[eventGroup] || null
-  const clubs = !location_slug || location_slug === 'all' ? null : [SLUG_CLUB_MAP[location_slug]]
+  const parsedLocs = parseLocationSlugParam(location_slug)
+  if (parsedLocs.invalid) {
+    const err = new Error(`Unknown location_slug: ${parsedLocs.invalid}`)
+    err.status = 400
+    throw err
+  }
+  const clubs = parsedLocs.all ? null : parsedLocs.slugs.map(s => SLUG_CLUB_MAP[s])
 
-  const slugKey = !location_slug || location_slug === 'all' ? 'all' : location_slug
+  const slugKey = locationCacheKey(parsedLocs)
   const statusKey = [...statuses].sort().join(',')
   const cacheKey = `reports:pt-sessions:${start_date}:${end_date}:${slugKey}:${eventGroup}:${statusKey}`
   return wrapSWR(
