@@ -2,6 +2,7 @@ const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole, canSeeAllLocations } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
+const { buildMtdMonthWindows } = require('../services/revenueMtdWindows')
 
 const LOCATION_LABELS = {
   salem: 'Salem',
@@ -164,6 +165,77 @@ router.get('/profit-center-trend', authenticate, requireRole('manager'), async (
     res.json({ series })
   } catch (err) {
     console.error('[revenue/profit-center-trend]', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /reports/revenue/profit-center-mtd-trend
+// Returns 12 months of MTD totals for a single profit center, with each month's
+// cutoff matching the day-of-month of the supplied `end_date`. So if end_date
+// is 2026-05-15, every monthly bucket is "days 1–15 of that month" (capped to
+// each month's last day where shorter).
+// ---------------------------------------------------------------------------
+router.get('/profit-center-mtd-trend', authenticate, requireRole('manager'), async (req, res) => {
+  try {
+    const { profit_center, end_date } = req.query
+    if (!profit_center || !end_date) {
+      return res.status(400).json({ error: 'profit_center and end_date required' })
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(end_date)) {
+      return res.status(400).json({ error: 'end_date must be YYYY-MM-DD' })
+    }
+
+    const locationFilter = await resolveLocationFilter(req)
+    const months = buildMtdMonthWindows(end_date, 12)
+
+    if (locationFilter && locationFilter.length === 0) {
+      return res.json({ series: months.map(m => ({ ...m, mtd_total: 0 })) })
+    }
+
+    // Fetch every transaction in the union window (oldest month's start through
+    // current end_date) then bucket per-month in JS, dropping rows beyond each
+    // month's same-day-of-month cutoff.
+    const overallStart = months[0].period_start
+    const overallEnd = months[months.length - 1].period_end
+
+    let q = supabaseAdmin
+      .from('abc_revenue_transactions')
+      .select('payment_date, payment_amount')
+      .eq('profit_center', profit_center)
+      .gte('payment_date', overallStart)
+      .lte('payment_date', overallEnd)
+    if (locationFilter && locationFilter.length > 0) {
+      q = q.in('location_slug', locationFilter)
+    }
+
+    const rows = []
+    let from = 0
+    while (true) {
+      const { data, error } = await q.range(from, from + 999)
+      if (error) throw error
+      if (!data || data.length === 0) break
+      rows.push(...data)
+      if (data.length < 1000) break
+      from += 1000
+    }
+
+    const totalsByMonth = {}
+    for (const m of months) totalsByMonth[m.month] = 0
+
+    for (const r of rows) {
+      const monthKey = String(r.payment_date).slice(0, 7) // 'YYYY-MM'
+      const window = months.find(m => m.month === monthKey)
+      if (!window) continue
+      // Drop anything past this month's cutoff day-of-month.
+      if (String(r.payment_date) > window.period_end) continue
+      totalsByMonth[monthKey] += Number(r.payment_amount) || 0
+    }
+
+    const series = months.map(m => ({ ...m, mtd_total: totalsByMonth[m.month] }))
+    res.json({ series })
+  } catch (err) {
+    console.error('[revenue/profit-center-mtd-trend]', err.message)
     res.status(500).json({ error: err.message })
   }
 })

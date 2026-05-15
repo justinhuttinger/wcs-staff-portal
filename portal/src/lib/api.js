@@ -715,6 +715,17 @@ export async function getRevenueProfitCenterTrend(params = {}, options = {}) {
   return api(`/reports/revenue/profit-center-trend?${qs.toString()}`, options)
 }
 
+// 12-month MTD comparison for one profit center. Each monthly bucket uses the
+// same day-of-month as end_date as its cutoff (capped to the last day of the
+// month for shorter months).
+export async function getRevenueProfitCenterMtdTrend(params = {}, options = {}) {
+  const qs = new URLSearchParams()
+  if (params.end_date) qs.set('end_date', params.end_date)
+  if (params.location_slug) qs.set('location_slug', params.location_slug)
+  if (params.profit_center) qs.set('profit_center', params.profit_center)
+  return api(`/reports/revenue/profit-center-mtd-trend?${qs.toString()}`, options)
+}
+
 export async function getRevenueImports(limit = 20) {
   return api(`/reports/revenue/imports?limit=${limit}`)
 }
