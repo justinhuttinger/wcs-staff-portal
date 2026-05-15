@@ -2,6 +2,11 @@ const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
+const { wrapSWR } = require('../services/memoryCache')
+
+// Phase 2 perf: cache the heavy ABC+GHL aggregation payload across users.
+const PT_HEALTH_FRESH_MS = 5 * 60 * 1000
+const PT_HEALTH_STALE_MS = 30 * 60 * 1000
 
 // PT Health — overview dashboard combining Day Ones (GHL), New PT (ABC sales),
 // and Deactivated PT (ABC churn) into one set of summary numbers + per-location
@@ -335,61 +340,73 @@ router.get('/', async (req, res) => {
     }
 
     let targetClubs = CLUBS
+    let slugKey = 'all'
     if (location_slug && location_slug !== 'all') {
       const club = CLUBS.find(c => c.slug === location_slug.toLowerCase())
       if (!club) return res.status(400).json({ error: `Unknown location: ${location_slug}` })
       targetClubs = [club]
+      slugKey = club.slug
     }
 
-    const perClub = await Promise.all(targetClubs.map(async club => {
-      const [newPT, deact, dayOnes] = await Promise.all([
-        computeNewPT(club, start_date, end_date),
-        computeDeactivatedPT(club, start_date, end_date),
-        computeDayOnes(club.slug, start_date, end_date),
-      ])
-      return {
-        clubName: club.name,
-        locationSlug: club.slug,
-        dayOnes,
-        newPT,
-        deactivated: deact,
-        netClients: newPT.count - deact.count,
-        netRevenue: newPT.revenue - deact.value,
+    const cacheKey = `reports:pt-health:${start_date}:${end_date}:${slugKey}`
+    const payload = await wrapSWR(
+      cacheKey,
+      PT_HEALTH_FRESH_MS,
+      PT_HEALTH_STALE_MS,
+      async () => {
+        const perClub = await Promise.all(targetClubs.map(async club => {
+          const [newPT, deact, dayOnes] = await Promise.all([
+            computeNewPT(club, start_date, end_date),
+            computeDeactivatedPT(club, start_date, end_date),
+            computeDayOnes(club.slug, start_date, end_date),
+          ])
+          return {
+            clubName: club.name,
+            locationSlug: club.slug,
+            dayOnes,
+            newPT,
+            deactivated: deact,
+            netClients: newPT.count - deact.count,
+            netRevenue: newPT.revenue - deact.value,
+          }
+        }))
+
+        // Totals across all returned clubs
+        const totals = perClub.reduce((acc, c) => {
+          acc.dayOnes.set += c.dayOnes.set
+          acc.dayOnes.show += c.dayOnes.show
+          acc.dayOnes.close += c.dayOnes.close
+          acc.newPT.count += c.newPT.count
+          acc.newPT.newClientCount += c.newPT.newClientCount
+          acc.newPT.resignCount += c.newPT.resignCount
+          acc.newPT.revenue += c.newPT.revenue
+          acc.deactivated.count += c.deactivated.count
+          acc.deactivated.deactivatedRSCount += c.deactivated.deactivatedRSCount
+          acc.deactivated.burnedPIFCount += c.deactivated.burnedPIFCount
+          acc.deactivated.value += c.deactivated.value
+          acc.deactivated.deactivatedRSValue += c.deactivated.deactivatedRSValue
+          acc.deactivated.burnedPIFValue += c.deactivated.burnedPIFValue
+          return acc
+        }, {
+          dayOnes: { set: 0, show: 0, close: 0 },
+          newPT: { count: 0, newClientCount: 0, resignCount: 0, revenue: 0 },
+          deactivated: {
+            count: 0, deactivatedRSCount: 0, burnedPIFCount: 0,
+            value: 0, deactivatedRSValue: 0, burnedPIFValue: 0,
+          },
+        })
+        totals.netClients = totals.newPT.count - totals.deactivated.count
+        totals.netRevenue = totals.newPT.revenue - totals.deactivated.value
+
+        return {
+          period: { start: start_date, end: end_date },
+          totals,
+          byLocation: perClub,
+        }
       }
-    }))
+    )
 
-    // Totals across all returned clubs
-    const totals = perClub.reduce((acc, c) => {
-      acc.dayOnes.set += c.dayOnes.set
-      acc.dayOnes.show += c.dayOnes.show
-      acc.dayOnes.close += c.dayOnes.close
-      acc.newPT.count += c.newPT.count
-      acc.newPT.newClientCount += c.newPT.newClientCount
-      acc.newPT.resignCount += c.newPT.resignCount
-      acc.newPT.revenue += c.newPT.revenue
-      acc.deactivated.count += c.deactivated.count
-      acc.deactivated.deactivatedRSCount += c.deactivated.deactivatedRSCount
-      acc.deactivated.burnedPIFCount += c.deactivated.burnedPIFCount
-      acc.deactivated.value += c.deactivated.value
-      acc.deactivated.deactivatedRSValue += c.deactivated.deactivatedRSValue
-      acc.deactivated.burnedPIFValue += c.deactivated.burnedPIFValue
-      return acc
-    }, {
-      dayOnes: { set: 0, show: 0, close: 0 },
-      newPT: { count: 0, newClientCount: 0, resignCount: 0, revenue: 0 },
-      deactivated: {
-        count: 0, deactivatedRSCount: 0, burnedPIFCount: 0,
-        value: 0, deactivatedRSValue: 0, burnedPIFValue: 0,
-      },
-    })
-    totals.netClients = totals.newPT.count - totals.deactivated.count
-    totals.netRevenue = totals.newPT.revenue - totals.deactivated.value
-
-    res.json({
-      period: { start: start_date, end: end_date },
-      totals,
-      byLocation: perClub,
-    })
+    res.json(payload)
   } catch (err) {
     console.error('[PT Health] Error:', err.message)
     res.status(err.status || 500).json({ error: err.message })

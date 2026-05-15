@@ -2,6 +2,11 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, canSeeAllLocations } = require('../middleware/role')
+const { wrapSWR } = require('../services/memoryCache')
+
+// Phase 2 perf: cache the per-(range, location) check-ins aggregation payload.
+const CHECKINS_FRESH_MS = 2 * 60 * 1000
+const CHECKINS_STALE_MS = 15 * 60 * 1000
 
 const router = Router()
 router.use(authenticate)
@@ -99,6 +104,15 @@ router.get('/', async (req, res) => {
       return res.status(400).json({ error: `Unknown location_slug: ${location_slug}` })
     }
 
+    // Cache the fetch + aggregation across users. Auth gates above already
+    // rejected unauthorized callers, so the cache only serves authorized scopes.
+    const slugKey = !location_slug || location_slug === 'all' ? 'all' : location_slug
+    const cacheKey = `reports:checkins:${start_date}:${end_date}:${slugKey}`
+    const payload = await wrapSWR(
+      cacheKey,
+      CHECKINS_FRESH_MS,
+      CHECKINS_STALE_MS,
+      async () => {
     // ---------------------------------------------------------------------
     // Fetch
     // ---------------------------------------------------------------------
@@ -219,26 +233,30 @@ router.get('/', async (req, res) => {
             .sort((a, b) => b.total - a.total)
         : []
 
-    res.json({
-      summary: {
-        total_checkins: totalCheckins,
-        member_hours: totalMemberHours,
-        avg_per_open_day: avgPerOpenDay,
-        avg_members_per_active_hour: avgMembersPerActiveHour,
-        visits_per_member_hour: visitsPerMemberHour,
-        peak_day: peakDay,
-        peak_hour: peakHour,
-        days_with_data: distinctDates.size,
-      },
-      by_date: daySeries,
-      by_dow: dowTotals,
-      heatmap: heatmapAvg,
-      heatmap_totals: heatmap,
-      popular_hours: popularHours,
-      unpopular_hours: unpopularHours,
-      by_location: locationBreakdown,
-      range: { start_date, end_date },
-    })
+        return {
+          summary: {
+            total_checkins: totalCheckins,
+            member_hours: totalMemberHours,
+            avg_per_open_day: avgPerOpenDay,
+            avg_members_per_active_hour: avgMembersPerActiveHour,
+            visits_per_member_hour: visitsPerMemberHour,
+            peak_day: peakDay,
+            peak_hour: peakHour,
+            days_with_data: distinctDates.size,
+          },
+          by_date: daySeries,
+          by_dow: dowTotals,
+          heatmap: heatmapAvg,
+          heatmap_totals: heatmap,
+          popular_hours: popularHours,
+          unpopular_hours: unpopularHours,
+          by_location: locationBreakdown,
+          range: { start_date, end_date },
+        }
+      }
+    )
+
+    res.json(payload)
   } catch (err) {
     console.error('[checkins-report] error:', err)
     res.status(500).json({ error: err.message })

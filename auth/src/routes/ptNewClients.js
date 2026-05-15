@@ -1,6 +1,11 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { wrapSWR } = require('../services/memoryCache')
+
+// Phase 2 perf: cache the heavy ABC-aggregation payload across users.
+const PT_NEW_CLIENTS_FRESH_MS = 5 * 60 * 1000
+const PT_NEW_CLIENTS_STALE_MS = 30 * 60 * 1000
 
 // PT "New Clients" report — recurring PT services SOLD in the requested window,
 // classified as either "New Client" (member purchased no PT in the prior 90 days)
@@ -413,45 +418,57 @@ router.get('/', async (req, res) => {
     }
 
     let targetClubs = CLUBS
+    let slugKey = 'all'
     if (location_slug && location_slug !== 'all') {
       const club = CLUBS.find(c => c.slug === location_slug.toLowerCase())
       if (!club) return res.status(400).json({ error: `Unknown location: ${location_slug}` })
       targetClubs = [club]
+      slugKey = club.slug
     }
 
-    const results = await Promise.allSettled(
-      targetClubs.map(c => buildClub(c, start_date, end_date))
-    )
+    const cacheKey = `reports:pt-new-clients:${start_date}:${end_date}:${slugKey}`
+    const payload = await wrapSWR(
+      cacheKey,
+      PT_NEW_CLIENTS_FRESH_MS,
+      PT_NEW_CLIENTS_STALE_MS,
+      async () => {
+        const results = await Promise.allSettled(
+          targetClubs.map(c => buildClub(c, start_date, end_date))
+        )
 
-    const rows = []
-    const errors = []
-    results.forEach((r, i) => {
-      if (r.status === 'fulfilled') rows.push(...r.value)
-      else errors.push({ club: targetClubs[i].name, error: r.reason?.message || 'Unknown error' })
-    })
+        const rows = []
+        const errors = []
+        results.forEach((r, i) => {
+          if (r.status === 'fulfilled') rows.push(...r.value)
+          else errors.push({ club: targetClubs[i].name, error: r.reason?.message || 'Unknown error' })
+        })
 
-    rows.sort((a, b) => b.saleDate.localeCompare(a.saleDate) || a.memberName.localeCompare(b.memberName))
+        rows.sort((a, b) => b.saleDate.localeCompare(a.saleDate) || a.memberName.localeCompare(b.memberName))
 
-    const summary = rows.reduce(
-      (acc, r) => {
-        if (r.classification === 'New Client') {
-          acc.newClientCount++
-          acc.newClientRevenue += r.price
-        } else {
-          acc.resignCount++
-          acc.resignRevenue += r.price
+        const summary = rows.reduce(
+          (acc, r) => {
+            if (r.classification === 'New Client') {
+              acc.newClientCount++
+              acc.newClientRevenue += r.price
+            } else {
+              acc.resignCount++
+              acc.resignRevenue += r.price
+            }
+            acc.totalRevenue += r.price
+            return acc
+          },
+          { newClientCount: 0, resignCount: 0, newClientRevenue: 0, resignRevenue: 0, totalRevenue: 0 }
+        )
+
+        return {
+          rows,
+          summary,
+          errors: errors.length ? errors : undefined,
         }
-        acc.totalRevenue += r.price
-        return acc
-      },
-      { newClientCount: 0, resignCount: 0, newClientRevenue: 0, resignRevenue: 0, totalRevenue: 0 }
+      }
     )
 
-    res.json({
-      rows,
-      summary,
-      errors: errors.length ? errors : undefined,
-    })
+    res.json(payload)
   } catch (err) {
     console.error('[PT New Clients] Error:', err.message)
     res.status(500).json({ error: err.message })
