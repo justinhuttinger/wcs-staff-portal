@@ -2,6 +2,14 @@ const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
+const { wrapSWR } = require('../services/memoryCache')
+
+// Phase 2 perf: cache the heavy ABC-aggregation payload across users. Auth +
+// role checks still run per request via the router-level middleware below; the
+// cache key intentionally excludes caller identity since the response is the
+// same for any authorized caller asking for the same (date range, location).
+const DEACTIVATED_PT_FRESH_MS = 5 * 60 * 1000
+const DEACTIVATED_PT_STALE_MS = 30 * 60 * 1000
 
 // 'Deactivated PT' — surfaces two flavors of PT churn that overlap in the
 // front-desk mental model:
@@ -428,43 +436,55 @@ router.get('/', async (req, res) => {
     }
 
     let targetClubs = CLUBS
+    let slugKey = 'all'
     if (location_slug && location_slug !== 'all') {
       const club = CLUBS.find(c => c.slug === location_slug.toLowerCase())
       if (!club) return res.status(400).json({ error: `Unknown location: ${location_slug}` })
       targetClubs = [club]
+      slugKey = club.slug
     }
 
-    const results = await Promise.allSettled(
-      targetClubs.map(c => buildClub(c, start_date, end_date))
+    const cacheKey = `reports:deactivated-pt:${start_date}:${end_date}:${slugKey}`
+    const payload = await wrapSWR(
+      cacheKey,
+      DEACTIVATED_PT_FRESH_MS,
+      DEACTIVATED_PT_STALE_MS,
+      async () => {
+        const results = await Promise.allSettled(
+          targetClubs.map(c => buildClub(c, start_date, end_date))
+        )
+
+        const rows = []
+        const errors = []
+        results.forEach((r, i) => {
+          if (r.status === 'fulfilled') rows.push(...r.value)
+          else errors.push({ club: targetClubs[i].name, error: r.reason?.message || 'Unknown error' })
+        })
+
+        rows.sort((a, b) =>
+          (b.cancelDate || '').localeCompare(a.cancelDate || '') ||
+          (a.memberName || '').localeCompare(b.memberName || '')
+        )
+
+        const summary = rows.reduce(
+          (acc, r) => {
+            if (r.type === 'Deactivated RS') acc.deactivatedCount++
+            else acc.burnedCount++
+            return acc
+          },
+          { deactivatedCount: 0, burnedCount: 0 }
+        )
+        summary.total = rows.length
+
+        return {
+          rows,
+          summary,
+          errors: errors.length ? errors : undefined,
+        }
+      }
     )
 
-    const rows = []
-    const errors = []
-    results.forEach((r, i) => {
-      if (r.status === 'fulfilled') rows.push(...r.value)
-      else errors.push({ club: targetClubs[i].name, error: r.reason?.message || 'Unknown error' })
-    })
-
-    rows.sort((a, b) =>
-      (b.cancelDate || '').localeCompare(a.cancelDate || '') ||
-      (a.memberName || '').localeCompare(b.memberName || '')
-    )
-
-    const summary = rows.reduce(
-      (acc, r) => {
-        if (r.type === 'Deactivated RS') acc.deactivatedCount++
-        else acc.burnedCount++
-        return acc
-      },
-      { deactivatedCount: 0, burnedCount: 0 }
-    )
-    summary.total = rows.length
-
-    res.json({
-      rows,
-      summary,
-      errors: errors.length ? errors : undefined,
-    })
+    res.json(payload)
   } catch (err) {
     console.error('[Deactivated PT] Error:', err.message)
     res.status(err.status || 500).json({ error: err.message })
