@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { getRevenueSummary, getRevenueProfitCenterTrend } from '../../lib/api'
+import { getRevenueSummary, getRevenueProfitCenterMtdTrend } from '../../lib/api'
 import { exportCSV } from '../../lib/export'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
@@ -86,6 +86,94 @@ function DeltaChip({ current, prior }) {
   )
 }
 
+// Small inline chart used inside the profit-center expansion row. Months
+// (oldest-left, newest-right) along the x-axis, MTD totals on the y. Highlights
+// the most recent month and the previous month with circles + labels so the
+// reader can see "vs last MTD" at a glance.
+function MtdTrendChart({ series }) {
+  if (!series || series.length === 0) {
+    return <p className="text-xs text-text-muted">No transactions in the trailing 12 months.</p>
+  }
+  const w = 560
+  const h = 140
+  const padL = 50
+  const padR = 16
+  const padT = 12
+  const padB = 28
+  const chartW = w - padL - padR
+  const chartH = h - padT - padB
+  const max = Math.max(1, ...series.map(s => s.mtd_total))
+  const toX = i => padL + (series.length > 1 ? (i / (series.length - 1)) * chartW : chartW / 2)
+  const toY = v => padT + chartH - (v / max) * chartH
+  const linePath = series.map((s, i) => `${i === 0 ? 'M' : 'L'}${toX(i).toFixed(1)},${toY(s.mtd_total).toFixed(1)}`).join(' ')
+  const areaPath = `${linePath} L${toX(series.length - 1).toFixed(1)},${(padT + chartH).toFixed(1)} L${toX(0).toFixed(1)},${(padT + chartH).toFixed(1)} Z`
+  const last = series[series.length - 1]
+  const prev = series[series.length - 2]
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ maxHeight: '170px' }}>
+      <path d={areaPath} fill={STACK_COLORS[0]} opacity="0.15" />
+      <path d={linePath} fill="none" stroke={STACK_COLORS[0]} strokeWidth="1.5" />
+      {prev && (
+        <circle cx={toX(series.length - 2)} cy={toY(prev.mtd_total)} r="3.5" fill="#fff" stroke={STACK_COLORS[0]} strokeWidth="1.5" />
+      )}
+      <circle cx={toX(series.length - 1)} cy={toY(last.mtd_total)} r="4.5" fill={STACK_COLORS[0]} />
+      {series.map((s, i) => (
+        <title key={i}>{`${s.month}: ${fmtMoney(s.mtd_total)} (through ${s.period_end})`}</title>
+      ))}
+      <text x={padL - 4} y={padT + 8} textAnchor="end" className="fill-gray-400" style={{ fontSize: '9px' }}>{fmtMoney(max)}</text>
+      <text x={padL - 4} y={padT + chartH + 3} textAnchor="end" className="fill-gray-400" style={{ fontSize: '9px' }}>$0</text>
+      <text x={padL} y={h - 6} className="fill-gray-400" style={{ fontSize: '9px' }}>{series[0].month}</text>
+      <text x={padL + chartW} y={h - 6} textAnchor="end" className="fill-gray-400" style={{ fontSize: '9px' }}>{last.month}</text>
+    </svg>
+  )
+}
+
+function ProfitCenterExpansion({ name, series, loading }) {
+  if (loading) {
+    return (
+      <div className="px-4 py-6 text-xs text-text-muted">Loading {name} trend…</div>
+    )
+  }
+  if (!series) return null
+
+  const last = series[series.length - 1]
+  const prev = series[series.length - 2]
+  const recent3 = series.slice(-4, -1) // 3 months before the current one
+  const avg3 = recent3.length ? recent3.reduce((s, m) => s + m.mtd_total, 0) / recent3.length : 0
+
+  return (
+    <div className="bg-bg/60 px-4 py-4 border-t border-border">
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-4">
+        <div className="space-y-2">
+          <div>
+            <p className="text-[10px] uppercase tracking-wide text-text-muted">This MTD</p>
+            <p className="text-lg font-bold text-text-primary">{fmtMoney(last?.mtd_total || 0)}</p>
+            <p className="text-[10px] text-text-muted">{last?.period_start} → {last?.period_end}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wide text-text-muted">vs Last Month MTD</p>
+            <p className="text-sm font-semibold text-text-primary">
+              <DeltaChip current={last?.mtd_total || 0} prior={prev?.mtd_total || 0} />
+            </p>
+            <p className="text-[10px] text-text-muted">last month was {fmtMoney(prev?.mtd_total || 0)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wide text-text-muted">vs 3-Mo Avg MTD</p>
+            <p className="text-sm font-semibold text-text-primary">
+              <DeltaChip current={last?.mtd_total || 0} prior={avg3} />
+            </p>
+            <p className="text-[10px] text-text-muted">avg was {fmtMoney(avg3)}</p>
+          </div>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-text-muted mb-1">12-Month MTD Trend</p>
+          <MtdTrendChart series={series} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ComparisonCard({ label, current, comparison }) {
   if (!comparison) return <StatCard label={label} value="—" sub="no data" />
   const delta = current - (comparison.total || 0)
@@ -109,6 +197,7 @@ function ComparisonCard({ label, current, comparison }) {
 export default function RevenueReport({ startDate, endDate, locationSlug }) {
   const [activeProfitCenter, setActiveProfitCenter] = useState(null)
   const [pcSeries, setPcSeries] = useState(null)
+  const [pcLoading, setPcLoading] = useState(false)
 
   const { data, loading, error } = useCancellableFetch(
     (signal) => getRevenueSummary(
@@ -118,25 +207,31 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
     [startDate, endDate, locationSlug]
   )
 
-  // Reset profit-center drill-down whenever the top-level params change.
+  // Reset profit-center drill-down whenever the top-level params change —
+  // the 12-month MTD chart anchors on end_date, so changing dates invalidates
+  // the currently-open expansion.
   useEffect(() => {
     setActiveProfitCenter(null)
     setPcSeries(null)
+    setPcLoading(false)
   }, [startDate, endDate, locationSlug])
 
   function selectProfitCenter(pc) {
     if (activeProfitCenter === pc) {
       setActiveProfitCenter(null)
       setPcSeries(null)
+      setPcLoading(false)
       return
     }
     setActiveProfitCenter(pc)
-    getRevenueProfitCenterTrend(
-      { start_date: startDate, end_date: endDate, location_slug: locationSlug, profit_center: pc },
+    setPcSeries(null)
+    setPcLoading(true)
+    getRevenueProfitCenterMtdTrend(
+      { end_date: endDate, location_slug: locationSlug, profit_center: pc },
       { cache: true }
     )
-      .then(d => setPcSeries(d.series))
-      .catch(() => setPcSeries([]))
+      .then(d => { setPcSeries(d.series); setPcLoading(false) })
+      .catch(() => { setPcSeries([]); setPcLoading(false) })
   }
 
   function handleExportCsv() {
@@ -153,10 +248,6 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
   if (!data) return null
 
   const points = buildPoints(data.by_day, startDate, endDate)
-  const trendPoints = activeProfitCenter && pcSeries
-    ? pcSeries.map(s => ({ date: s.date, total: s.total }))
-    : points
-  const chartLabel = activeProfitCenter ? `${activeProfitCenter} — Daily` : 'Daily Revenue Trend'
 
   return (
     <div className="space-y-6">
@@ -178,7 +269,7 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
         />
       </div>
 
-      <TrendChart points={trendPoints} label={chartLabel} />
+      <TrendChart points={points} label="Daily Revenue Trend" />
 
       {data.by_club.length > 1 && (
         <div className="bg-surface rounded-xl border border-border p-4">
@@ -202,30 +293,53 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
 
       <div className="bg-surface rounded-xl border border-border p-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Profit Center Breakdown</p>
+          <div>
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Profit Center Breakdown</p>
+            <p className="text-[10px] text-text-muted mt-0.5">Click a row to see its 12-month MTD trend.</p>
+          </div>
           <button onClick={handleExportCsv} className="text-xs px-2 py-1 rounded border border-border hover:bg-bg">
             Export CSV
           </button>
         </div>
         <table className="w-full text-sm">
           <thead className="text-xs uppercase tracking-wide text-text-muted">
-            <tr><th className="text-left py-2">Profit Center</th><th className="text-right">Total</th><th className="text-right">% of Total</th><th className="text-right">Δ vs Prior</th></tr>
+            <tr>
+              <th className="text-left py-2 w-6"></th>
+              <th className="text-left py-2">Profit Center</th>
+              <th className="text-right">Total</th>
+              <th className="text-right">% of Total</th>
+              <th className="text-right">Δ vs Prior</th>
+            </tr>
           </thead>
           <tbody>
             {data.by_profit_center.map(p => {
               const priorPc = data.compare?.by_profit_center?.find(x => x.name === p.name)
               const isActive = p.name === activeProfitCenter
               return (
-                <tr
-                  key={p.name}
-                  onClick={() => selectProfitCenter(p.name)}
-                  className={`cursor-pointer border-t border-border ${isActive ? 'bg-wcs-red/5' : 'hover:bg-bg'}`}
-                >
-                  <td className="py-2">{p.name}</td>
-                  <td className="text-right font-semibold">{fmtMoney(p.total)}</td>
-                  <td className="text-right text-text-muted">{fmtPct(p.pct_of_total)}</td>
-                  <td className="text-right"><DeltaChip current={p.total} prior={priorPc?.total} /></td>
-                </tr>
+                <React.Fragment key={p.name}>
+                  <tr
+                    onClick={() => selectProfitCenter(p.name)}
+                    className={`cursor-pointer border-t border-border ${isActive ? 'bg-wcs-red/5' : 'hover:bg-bg'}`}
+                  >
+                    <td className="py-2 text-text-muted">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                        className={`w-3 h-3 transition-transform ${isActive ? 'rotate-90' : ''}`}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                      </svg>
+                    </td>
+                    <td className="py-2">{p.name}</td>
+                    <td className="text-right font-semibold">{fmtMoney(p.total)}</td>
+                    <td className="text-right text-text-muted">{fmtPct(p.pct_of_total)}</td>
+                    <td className="text-right"><DeltaChip current={p.total} prior={priorPc?.total} /></td>
+                  </tr>
+                  {isActive && (
+                    <tr>
+                      <td colSpan={5} className="p-0">
+                        <ProfitCenterExpansion name={p.name} series={pcSeries} loading={pcLoading} />
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               )
             })}
           </tbody>
