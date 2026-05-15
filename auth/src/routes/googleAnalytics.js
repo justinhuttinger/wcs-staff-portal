@@ -3,6 +3,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { getAccessToken, getStoredTokens } = require('./googleBusiness')
+const { parseLocationSlugParam, locationCacheKey } = require('../utils/locationSlug')
 
 const router = Router()
 
@@ -56,17 +57,40 @@ function previousRange(start, end) {
 }
 
 function buildLocationFilter(locationSlug) {
-  if (!locationSlug || locationSlug === 'all') return null
-  return {
-    filter: {
-      fieldName: 'pagePath',
-      stringFilter: {
-        matchType: 'BEGINS_WITH',
-        value: '/' + locationSlug,
-        caseSensitive: false,
+  const parsed = parseLocationSlugParam(locationSlug)
+  if (parsed.invalid || parsed.all) return null
+  if (parsed.slugs.length === 1) {
+    return {
+      filter: {
+        fieldName: 'pagePath',
+        stringFilter: {
+          matchType: 'BEGINS_WITH',
+          value: '/' + parsed.slugs[0],
+          caseSensitive: false,
+        },
       },
+    }
+  }
+  return {
+    orGroup: {
+      expressions: parsed.slugs.map(slug => ({
+        filter: {
+          fieldName: 'pagePath',
+          stringFilter: {
+            matchType: 'BEGINS_WITH',
+            value: '/' + slug,
+            caseSensitive: false,
+          },
+        },
+      })),
     },
   }
+}
+
+function locationCacheKeyForGA(locationSlug) {
+  const parsed = parseLocationSlugParam(locationSlug)
+  if (parsed.invalid) return 'all'
+  return locationCacheKey(parsed)
 }
 
 async function runReport(propertyId, body) {
@@ -205,7 +229,7 @@ router.get('/overview', authenticate, requireRole('corporate'), async (req, res)
     const locationSlug = req.query.location_slug || 'all'
     const compare = req.query.compare === 'true' || req.query.compare === '1'
 
-    const cacheKey = `overview:${propertyId}:${startDate}:${endDate}:${locationSlug}:${compare}`
+    const cacheKey = `overview:${propertyId}:${startDate}:${endDate}:${locationCacheKeyForGA(locationSlug)}:${compare}`
     const cached = getCached(cacheKey)
     if (cached) return res.json(cached)
 
@@ -235,7 +259,7 @@ router.get('/sources', authenticate, requireRole('corporate'), async (req, res) 
     const endDate = req.query.end_date || todayISO()
     const locationSlug = req.query.location_slug || 'all'
 
-    const cacheKey = `sources:${propertyId}:${startDate}:${endDate}:${locationSlug}`
+    const cacheKey = `sources:${propertyId}:${startDate}:${endDate}:${locationCacheKeyForGA(locationSlug)}`
     const cached = getCached(cacheKey)
     if (cached) return res.json(cached)
 
@@ -294,7 +318,7 @@ router.get('/pages', authenticate, requireRole('corporate'), async (req, res) =>
     const endDate = req.query.end_date || todayISO()
     const locationSlug = req.query.location_slug || 'all'
 
-    const cacheKey = `pages:${propertyId}:${startDate}:${endDate}:${locationSlug}`
+    const cacheKey = `pages:${propertyId}:${startDate}:${endDate}:${locationCacheKeyForGA(locationSlug)}`
     const cached = getCached(cacheKey)
     if (cached) return res.json(cached)
 
@@ -340,7 +364,7 @@ router.get('/devices-geo', authenticate, requireRole('corporate'), async (req, r
     const endDate = req.query.end_date || todayISO()
     const locationSlug = req.query.location_slug || 'all'
 
-    const cacheKey = `devicesgeo:${propertyId}:${startDate}:${endDate}:${locationSlug}`
+    const cacheKey = `devicesgeo:${propertyId}:${startDate}:${endDate}:${locationCacheKeyForGA(locationSlug)}`
     const cached = getCached(cacheKey)
     if (cached) return res.json(cached)
 
@@ -398,7 +422,7 @@ router.get('/key-events', authenticate, requireRole('corporate'), async (req, re
     const endDate = req.query.end_date || todayISO()
     const locationSlug = req.query.location_slug || 'all'
 
-    const cacheKey = `keyevents:${propertyId}:${startDate}:${endDate}:${locationSlug}`
+    const cacheKey = `keyevents:${propertyId}:${startDate}:${endDate}:${locationCacheKeyForGA(locationSlug)}`
     const cached = getCached(cacheKey)
     if (cached) return res.json(cached)
 

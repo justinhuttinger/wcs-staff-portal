@@ -111,6 +111,7 @@ function findGroupForReport(reportKey) {
 }
 
 import { LOCATION_OPTIONS as LOCATIONS } from '../config/locations'
+import LocationMultiSelect from './LocationMultiSelect'
 
 const QUICK_RANGES = [
   { key: 'this_month', label: 'This Month' },
@@ -288,20 +289,15 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
 
         {/* Location Selector */}
         {hasMultipleReportLocations ? (
-          <div className="flex flex-wrap gap-2 mb-4">
-            {(isAdmin ? LOCATIONS : [{ slug: 'all', label: 'All Locations' }, ...reportLocations.map(l => ({ slug: l.name.toLowerCase(), label: l.name }))]).map(loc => (
-              <button
-                key={loc.slug}
-                onClick={() => setLocationSlug(loc.slug)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                  locationSlug === loc.slug
-                    ? 'bg-wcs-red text-white border-wcs-red'
-                    : 'bg-bg text-text-muted border-border hover:text-text-primary hover:border-text-muted'
-                }`}
-              >
-                {loc.label}
-              </button>
-            ))}
+          <div className="mb-4">
+            <LocationMultiSelect
+              value={locationSlug}
+              onChange={setLocationSlug}
+              options={(isAdmin
+                ? LOCATIONS.filter(l => l.slug !== 'all')
+                : reportLocations.map(l => ({ slug: l.name.toLowerCase(), label: l.name }))
+              )}
+            />
           </div>
         ) : (
           <p className="text-xs text-text-muted mb-4 uppercase tracking-wide font-semibold">{location}</p>

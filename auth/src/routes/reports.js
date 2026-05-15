@@ -4,6 +4,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { countVipsByTeamMember: _countVipsByTeamMember } = require('../utils/vipsByTeamMember')
+const { parseLocationSlugParam } = require('../utils/locationSlug')
 
 const router = Router()
 router.use(authenticate)
@@ -11,13 +12,21 @@ router.use(requireRole('lead'))
 
 // ---------------------------------------------------------------------------
 // Helper: resolve location filter from query params
-// Returns { column, value } or null (no filter = all locations)
+// Returns { column, values: [...] } or null (no filter = all locations).
+// Accepts location_slug as a single slug, comma-separated multi-slug, or 'all'.
 // ---------------------------------------------------------------------------
 async function resolveLocationFilter(query) {
   const { location_id, location_slug } = query
 
-  if (location_slug && location_slug !== 'all') {
-    return { column: 'location_slug', value: location_slug }
+  const parsed = parseLocationSlugParam(location_slug)
+  if (parsed.invalid) {
+    const err = new Error(`Unknown location_slug: ${parsed.invalid}`)
+    err.status = 400
+    throw err
+  }
+
+  if (!parsed.all) {
+    return { column: 'location_slug', values: parsed.slugs }
   }
 
   if (location_id) {
@@ -27,7 +36,7 @@ async function resolveLocationFilter(query) {
       .eq('id', location_id)
       .single()
     if (data?.ghl_location_id) {
-      return { column: 'location_id', value: data.ghl_location_id }
+      return { column: 'location_id', values: [data.ghl_location_id] }
     }
   }
 
@@ -68,8 +77,9 @@ function dateToMs(dateStr, endOfDay = false) {
 // Helper: apply location filter to a Supabase query
 // ---------------------------------------------------------------------------
 function applyLocationFilter(q, locationFilter) {
-  if (!locationFilter) return q
-  return q.eq(locationFilter.column, locationFilter.value)
+  if (!locationFilter || !locationFilter.values || locationFilter.values.length === 0) return q
+  // Use .in() so single-slug and multi-slug both work via the same path.
+  return q.in(locationFilter.column, locationFilter.values)
 }
 
 // ---------------------------------------------------------------------------
@@ -137,13 +147,12 @@ router.get('/membership', async (req, res) => {
     if (start_date) abcQuery = abcQuery.gte('sign_date', start_date)
     if (end_date) abcQuery = abcQuery.lte('sign_date', end_date)
 
-    // Filter by location via club_number
-    let clubNumber = null
-    if (locationFilter) {
-      const slug = locationFilter.column === 'location_slug' ? locationFilter.value : null
-      if (slug && SLUG_CLUB_MAP[slug]) {
-        clubNumber = SLUG_CLUB_MAP[slug]
-        abcQuery = abcQuery.eq('club_number', clubNumber)
+    // Filter by location via club_number (supports multi-slug)
+    let clubNumbers = []
+    if (locationFilter && locationFilter.column === 'location_slug') {
+      clubNumbers = locationFilter.values.map(s => SLUG_CLUB_MAP[s]).filter(Boolean)
+      if (clubNumbers.length > 0) {
+        abcQuery = abcQuery.in('club_number', clubNumbers)
       }
     }
 
@@ -207,22 +216,24 @@ router.get('/membership', async (req, res) => {
     const { total: totalVips, byPerson: vipsByPerson } = await countVipsByTeamMember({ startISO, endISO, locationFilter })
 
     // --- 5. Trial conversion from opportunities ---
-    let oppLocationId = null
+    // Resolve location filter into GHL location IDs (supports multi-slug).
+    let oppLocationIds = []
     if (locationFilter) {
       if (locationFilter.column === 'location_id') {
-        oppLocationId = locationFilter.value
+        oppLocationIds = locationFilter.values
       } else if (locationFilter.column === 'location_slug') {
-        const { data: loc } = await supabaseAdmin
-          .from('ghl_locations').select('id')
-          .ilike('name', '%' + locationFilter.value + '%').limit(1).maybeSingle()
-        if (loc) oppLocationId = loc.id
+        // Build an OR-ilike pattern set so one query covers all slugs.
+        const orClauses = locationFilter.values.map(s => `name.ilike.%${s}%`).join(',')
+        const { data: locs } = await supabaseAdmin
+          .from('ghl_locations').select('id').or(orClauses)
+        oppLocationIds = (locs || []).map(l => l.id)
       }
     }
 
     let oppQuery = supabaseAdmin
       .from('ghl_opportunities_v2')
       .select('id, status, stage_id, pipeline_id, ghl_pipeline_stages(name)')
-    if (oppLocationId) oppQuery = oppQuery.eq('location_id', oppLocationId)
+    if (oppLocationIds.length > 0) oppQuery = oppQuery.in('location_id', oppLocationIds)
     if (start_date) oppQuery = oppQuery.gte('created_at_ghl', startISO)
     if (end_date) oppQuery = oppQuery.lte('created_at_ghl', endISO)
 
@@ -470,11 +481,10 @@ router.get('/club-health', async (req, res) => {
     const startISO = start_date ? start_date + 'T00:00:00.000Z' : null
     const endISO   = end_date ? end_date + 'T23:59:59.999Z' : null
 
-    // --- Memberships from ABC (source of truth) ---
-    let clubNumber = null
-    if (locationFilter) {
-      const slug = locationFilter.column === 'location_slug' ? locationFilter.value : null
-      if (slug && SLUG_CLUB_MAP[slug]) clubNumber = SLUG_CLUB_MAP[slug]
+    // --- Memberships from ABC (source of truth, supports multi-slug) ---
+    let clubNumbers2 = []
+    if (locationFilter && locationFilter.column === 'location_slug') {
+      clubNumbers2 = locationFilter.values.map(s => SLUG_CLUB_MAP[s]).filter(Boolean)
     }
 
     let abcQuery = supabaseAdmin
@@ -484,7 +494,7 @@ router.get('/club-health', async (req, res) => {
       .not('sign_date', 'is', null)
     if (start_date) abcQuery = abcQuery.gte('sign_date', start_date)
     if (end_date) abcQuery = abcQuery.lte('sign_date', end_date)
-    if (clubNumber) abcQuery = abcQuery.eq('club_number', clubNumber)
+    if (clubNumbers2.length > 0) abcQuery = abcQuery.in('club_number', clubNumbers2)
 
     const abcMembers = []
     let abcFrom = 0
@@ -658,7 +668,7 @@ router.get('/club-health', async (req, res) => {
       .from('abc_members')
       .select('agreement_number, membership_type')
       .eq('is_active', true)
-    if (clubNumber) activeQuery = activeQuery.eq('club_number', clubNumber)
+    if (clubNumbers2.length > 0) activeQuery = activeQuery.in('club_number', clubNumbers2)
 
     const activeMembers = []
     let activeFrom = 0
@@ -704,7 +714,7 @@ router.get('/club-health', async (req, res) => {
         .in('member_status', ['Cancelled', 'Expired', 'Return For Collection'])
         .gte('member_status_date', start_date)
         .lte('member_status_date', end_date)
-      if (clubNumber) cancelsQuery = cancelsQuery.eq('club_number', clubNumber)
+      if (clubNumbers2.length > 0) cancelsQuery = cancelsQuery.in('club_number', clubNumbers2)
 
       const cancelRows = []
       let cFrom = 0
@@ -756,22 +766,21 @@ router.get('/cancels', async (req, res) => {
 
   try {
     const locationFilter = await resolveLocationFilter(req.query)
-    let clubNumber = null
-    if (locationFilter) {
-      const slug = locationFilter.column === 'location_slug' ? locationFilter.value : null
-      if (slug && SLUG_CLUB_MAP[slug]) clubNumber = SLUG_CLUB_MAP[slug]
+    let clubNumbersC = []
+    if (locationFilter && locationFilter.column === 'location_slug') {
+      clubNumbersC = locationFilter.values.map(s => SLUG_CLUB_MAP[s]).filter(Boolean)
     }
 
     const skipTypes = await getSkipList()
 
-    // 1. Cancels with member_status_date in range
+    // 1. Cancels with member_status_date in range (supports multi-slug)
     let cancelsQuery = supabaseAdmin
       .from('abc_members')
       .select('first_name, last_name, email, membership_type, agreement_number, member_status, member_status_date, sales_person_name, sign_date, since_date')
       .in('member_status', ['Cancelled', 'Expired', 'Return For Collection'])
     if (start_date) cancelsQuery = cancelsQuery.gte('member_status_date', start_date)
     if (end_date) cancelsQuery = cancelsQuery.lte('member_status_date', end_date)
-    if (clubNumber) cancelsQuery = cancelsQuery.eq('club_number', clubNumber)
+    if (clubNumbersC.length > 0) cancelsQuery = cancelsQuery.in('club_number', clubNumbersC)
 
     const cancelRows = []
     let cFrom = 0
@@ -830,7 +839,7 @@ router.get('/cancels', async (req, res) => {
       .select('first_name, last_name, email, membership_type, agreement_number, member_status_date, sales_person_name')
       .eq('member_status', 'Pending Cancel')
       .eq('is_active', true)
-    if (clubNumber) pendingQuery = pendingQuery.eq('club_number', clubNumber)
+    if (clubNumbersC.length > 0) pendingQuery = pendingQuery.in('club_number', clubNumbersC)
 
     const pendingRows = []
     let pFrom = 0
@@ -865,7 +874,7 @@ router.get('/cancels', async (req, res) => {
         .eq('request_type', 'CANCEL')
       if (c2sStart) reasonsQuery = reasonsQuery.gte('occurred_at', c2sStart)
       if (c2sEnd) reasonsQuery = reasonsQuery.lte('occurred_at', c2sEnd)
-      if (clubNumber) reasonsQuery = reasonsQuery.eq('club_code', clubNumber)
+      if (clubNumbersC.length > 0) reasonsQuery = reasonsQuery.in('club_code', clubNumbersC)
       const { data: reasonRows, error: reasonsErr } = await reasonsQuery
       if (reasonsErr) throw reasonsErr
       const reasonCounts = {}
@@ -884,7 +893,7 @@ router.get('/cancels', async (req, res) => {
         .eq('request_type', 'OFFER')
       if (c2sStart) savesQuery = savesQuery.gte('occurred_at', c2sStart)
       if (c2sEnd) savesQuery = savesQuery.lte('occurred_at', c2sEnd)
-      if (clubNumber) savesQuery = savesQuery.eq('club_code', clubNumber)
+      if (clubNumbersC.length > 0) savesQuery = savesQuery.in('club_code', clubNumbersC)
       const { count: saveCount, error: savesErr } = await savesQuery
       if (savesErr) throw savesErr
       c2sSaveCount = saveCount || 0
@@ -896,7 +905,7 @@ router.get('/cancels', async (req, res) => {
         .select('offer_subtype')
       if (c2sStart) offersQuery = offersQuery.gte('received_at', c2sStart)
       if (c2sEnd) offersQuery = offersQuery.lte('received_at', c2sEnd)
-      if (clubNumber) offersQuery = offersQuery.eq('club_code', clubNumber)
+      if (clubNumbersC.length > 0) offersQuery = offersQuery.in('club_code', clubNumbersC)
       const { data: offerRows, error: offersErr } = await offersQuery
       if (offersErr) throw offersErr
       const offerCounts = {}

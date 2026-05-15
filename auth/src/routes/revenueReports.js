@@ -3,6 +3,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole, canSeeAllLocations } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { buildMtdMonthWindows } = require('../services/revenueMtdWindows')
+const { parseLocationSlugParam, intersectWithAllowed } = require('../utils/locationSlug')
 
 const LOCATION_LABELS = {
   salem: 'Salem',
@@ -16,18 +17,22 @@ const LOCATION_LABELS = {
 
 const router = Router()
 
-// Resolve the location_slug filter the caller is allowed to use.
-// - Returns null if caller may see all clubs (corporate/admin/marketing) AND
-//   either passed no slug or slug='all'.
-// - Returns ['<slug>'] for a single-club view.
-// - Returns the caller's allowed slug set if they tried to overreach (silent narrow).
+// Resolve the location_slug filter the caller is allowed to use. Accepts
+// single-slug, comma-separated multi-slug, or 'all'.
+// - Returns null if caller may see all clubs AND requested all/empty.
+// - Returns an array of one-or-more slug strings otherwise.
+// - Silent-narrows overreaching managers down to their allowed set.
 async function resolveLocationFilter(req) {
-  const requestedRaw = (req.query.location_slug || '').trim()
-  const requested = requestedRaw === '' || requestedRaw === 'all' ? null : requestedRaw
   const role = req.staff?.role
+  const parsed = parseLocationSlugParam(req.query.location_slug)
+  if (parsed.invalid) {
+    const err = new Error(`Unknown location_slug: ${parsed.invalid}`)
+    err.status = 400
+    throw err
+  }
 
   if (canSeeAllLocations(role)) {
-    return requested ? [requested] : null
+    return parsed.all ? null : parsed.slugs
   }
 
   // Manager / lead: lock to their allowed locations.
@@ -40,9 +45,8 @@ async function resolveLocationFilter(req) {
   const allowedSlugs = (allowedLocs || []).map(l =>
     l.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
   )
-  if (requested && allowedSlugs.includes(requested)) return [requested]
-  // Silent narrow: caller asked for something they can't have, OR no slug → give all their slugs.
-  return allowedSlugs
+  const narrowed = intersectWithAllowed(parsed, allowedSlugs, { silentNarrow: true })
+  return narrowed.slugs
 }
 
 const iso = d => d.toISOString().slice(0, 10)

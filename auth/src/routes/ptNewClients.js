@@ -2,6 +2,7 @@ const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { wrapSWR } = require('../services/memoryCache')
+const { parseLocationSlugParam, locationCacheKey } = require('../utils/locationSlug')
 
 // Phase 2 perf: cache the heavy ABC-aggregation payload across users.
 const PT_NEW_CLIENTS_FRESH_MS = 5 * 60 * 1000
@@ -422,18 +423,14 @@ async function buildPtNewClientsPayload({ start_date, end_date, location_slug })
     throw err
   }
 
-  let targetClubs = CLUBS
-  let slugKey = 'all'
-  if (location_slug && location_slug !== 'all') {
-    const club = CLUBS.find(c => c.slug === location_slug.toLowerCase())
-    if (!club) {
-      const err = new Error(`Unknown location: ${location_slug}`)
-      err.status = 400
-      throw err
-    }
-    targetClubs = [club]
-    slugKey = club.slug
+  const parsedLocs = parseLocationSlugParam(location_slug)
+  if (parsedLocs.invalid) {
+    const err = new Error(`Unknown location: ${parsedLocs.invalid}`)
+    err.status = 400
+    throw err
   }
+  const targetClubs = parsedLocs.all ? CLUBS : CLUBS.filter(c => parsedLocs.slugs.includes(c.slug))
+  const slugKey = locationCacheKey(parsedLocs)
 
   const cacheKey = `reports:pt-new-clients:${start_date}:${end_date}:${slugKey}`
   return wrapSWR(

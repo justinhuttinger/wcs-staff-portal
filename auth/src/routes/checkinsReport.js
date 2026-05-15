@@ -3,6 +3,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, canSeeAllLocations } = require('../middleware/role')
 const { wrapSWR } = require('../services/memoryCache')
+const { parseLocationSlugParam, locationCacheKey } = require('../utils/locationSlug')
 
 // Phase 2 perf: cache the per-(range, location) check-ins aggregation payload.
 const CHECKINS_FRESH_MS = 2 * 60 * 1000
@@ -72,13 +73,14 @@ async function buildCheckinsPayload({ start_date, end_date, location_slug }) {
     err.status = 400
     throw err
   }
-  if (location_slug && location_slug !== 'all' && !SLUG_CLUB_MAP[location_slug]) {
-    const err = new Error(`Unknown location_slug: ${location_slug}`)
+  const parsedLocs = parseLocationSlugParam(location_slug)
+  if (parsedLocs.invalid) {
+    const err = new Error(`Unknown location_slug: ${parsedLocs.invalid}`)
     err.status = 400
     throw err
   }
 
-  const slugKey = !location_slug || location_slug === 'all' ? 'all' : location_slug
+  const slugKey = locationCacheKey(parsedLocs)
   const cacheKey = `reports:checkins:${start_date}:${end_date}:${slugKey}`
   return wrapSWR(
     cacheKey,
@@ -97,8 +99,9 @@ async function buildCheckinsPayload({ start_date, end_date, location_slug }) {
       .gte('hour_start', startUtcIso)
       .lte('hour_start', endUtcIso)
 
-    if (location_slug && location_slug !== 'all') {
-      q = q.eq('club_number', SLUG_CLUB_MAP[location_slug])
+    if (!parsedLocs.all) {
+      const clubNumbers = parsedLocs.slugs.map(s => SLUG_CLUB_MAP[s])
+      q = q.in('club_number', clubNumbers)
     }
 
     const rows = []
@@ -198,8 +201,9 @@ async function buildCheckinsPayload({ start_date, end_date, location_slug }) {
       ? +(totalCheckins / totalMemberHours).toFixed(2)
       : 0
 
+    // Show the per-location breakdown only when multiple clubs are in scope.
     const locationBreakdown =
-      !location_slug || location_slug === 'all'
+      parsedLocs.all || parsedLocs.slugs.length > 1
         ? [...byLocation.entries()]
             .map(([slug, total]) => ({ slug, total }))
             .sort((a, b) => b.total - a.total)
@@ -232,14 +236,18 @@ async function buildCheckinsPayload({ start_date, end_date, location_slug }) {
 router.get('/', async (req, res) => {
   try {
     const { location_slug } = req.query
-    // Authorize location access BEFORE consulting the cache.
+    // Authorize location access BEFORE consulting the cache. Supports multi-slug.
     //   - canSeeAllLocations roles (marketing/corporate/admin/director) may
-    //     pass any slug or 'all'
-    //   - everyone else MUST request a single location they're assigned to
+    //     pass any slug list or 'all'
+    //   - everyone else must only request locations they're assigned to
     //     (intersected with can_view_reports !== false)
+    const parsed = parseLocationSlugParam(location_slug)
+    if (parsed.invalid) {
+      return res.status(400).json({ error: `Unknown location_slug: ${parsed.invalid}` })
+    }
     const allLocations = canSeeAllLocations(req.staff.role)
     if (!allLocations) {
-      if (!location_slug || location_slug === 'all') {
+      if (parsed.all) {
         return res.status(403).json({
           error: 'Specify a location_slug; you do not have access to all locations.',
         })
@@ -253,8 +261,9 @@ router.get('/', async (req, res) => {
           .in('id', allowedIds)
         allowedSlugs = (allowedLocs || []).map(l => locSlugFromName(l.name))
       }
-      if (!allowedSlugs.includes(location_slug)) {
-        return res.status(403).json({ error: 'Not authorized to view this location' })
+      const denied = parsed.slugs.find(s => !allowedSlugs.includes(s))
+      if (denied) {
+        return res.status(403).json({ error: `Not authorized to view this location: ${denied}` })
       }
     }
 

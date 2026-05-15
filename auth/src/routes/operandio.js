@@ -139,7 +139,9 @@ router.get('/range', authenticate, requireRole('manager'), async (req, res) => {
       .order('period_start', { ascending: true })
 
     if (location_slug && location_slug !== 'all') {
-      q = q.eq('location_slug', location_slug)
+      const slugs = String(location_slug).split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+      if (slugs.length === 1) q = q.eq('location_slug', slugs[0])
+      else if (slugs.length > 1) q = q.in('location_slug', slugs)
     }
 
     const { data, error } = await q

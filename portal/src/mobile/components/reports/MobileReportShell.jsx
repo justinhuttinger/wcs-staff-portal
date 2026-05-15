@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react'
+import LocationMultiSelect from '../../../components/LocationMultiSelect'
 
 const LOCATIONS = [
   { slug: 'all', label: 'All' },
@@ -82,23 +83,13 @@ export default function MobileReportShell({ title, children, user, hideDateRange
       <div className="mx-4 mt-3 mb-2 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4 space-y-2">
         <h2 className="text-lg font-bold text-text-primary">{title}</h2>
 
-      {/* Location pills */}
-      <div className="overflow-x-auto scrollbar-hide">
-        <div className="flex gap-2 min-w-max">
-          {availableLocations.map(loc => (
-            <button
-              key={loc.slug}
-              onClick={() => setLocationSlug(loc.slug)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                locationSlug === loc.slug
-                  ? 'bg-wcs-red text-white'
-                  : 'bg-surface border border-border text-text-secondary'
-              }`}
-            >
-              {loc.label}
-            </button>
-          ))}
-        </div>
+      {/* Location selector */}
+      <div>
+        <LocationMultiSelect
+          value={locationSlug}
+          onChange={setLocationSlug}
+          options={availableLocations.filter(l => l.slug !== 'all')}
+        />
       </div>
 
       {/* Quick range pills */}
