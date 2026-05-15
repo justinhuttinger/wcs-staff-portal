@@ -3,6 +3,7 @@ const express = require('express');
 const { fullSync, fullSyncForLocation, stopGhlSync } = require('./sync/fullSync');
 const { deltaSync } = require('./sync/deltaSync');
 const { abcSync, abcSyncForLocation, stopAbcSync } = require('./abc/abcSync');
+const { syncRecurringServices, syncRecurringServicesForClub } = require('./abc/recurringServicesSync');
 const { employeeSync } = require('./abc/employeeSync');
 const { enrichAll: enrichAttributionAll, enrichForLocation: enrichAttributionForLocation } = require('./sync/attributionEnrich');
 const { refreshCurrentHourCheckins, fetchCheckinsForRange, backfillClub, pacificNowAsUtc } = require('./abc/checkins');
@@ -397,6 +398,51 @@ app.post('/api/sync/employees', requireSecret, (req, res) => {
     .then(results => console.log('[API] Employee sync results:', JSON.stringify(results)))
     .catch(err => console.error('[API] Employee sync failed:', err.message))
     .finally(() => { syncRunning = false; });
+});
+
+// POST /api/sync/abc/recurring-services — sync PT recurring services into
+// abc_recurring_services for ALL locations. Optional body: { sinceDays: N,
+// startDate, endDate } to scope the range. Runs in background.
+//
+// This is Phase 3 step 1: populating the table only. No /reports/* consumer
+// reads from it yet (they still hit ABC live).
+let rsSyncRunning = false;
+app.post('/api/sync/abc/recurring-services', requireSecret, (req, res) => {
+  if (rsSyncRunning) {
+    return res.status(409).json({ error: 'recurring-services sync already in progress' });
+  }
+  const opts = {
+    sinceDays: req.body?.sinceDays,
+    startDate: req.body?.startDate,
+    endDate: req.body?.endDate,
+  };
+  rsSyncRunning = true;
+  res.json({ status: 'started', message: 'recurring-services sync running for all locations' });
+  syncRecurringServices(LOCATIONS, opts)
+    .then(results => console.log('[RS Sync] all locations done:', JSON.stringify(results)))
+    .catch(err => console.error('[RS Sync] failed:', err.message))
+    .finally(() => { rsSyncRunning = false; });
+});
+
+// POST /api/sync/abc/recurring-services/:locationSlug — same but one club.
+app.post('/api/sync/abc/recurring-services/:locationSlug', requireSecret, (req, res) => {
+  if (rsSyncRunning) {
+    return res.status(409).json({ error: 'recurring-services sync already in progress' });
+  }
+  const slug = req.params.locationSlug.toLowerCase();
+  const loc = LOCATIONS.find(l => l.slug === slug && l.clubNumber);
+  if (!loc) return res.status(404).json({ error: `Unknown location: ${slug}` });
+  const opts = {
+    sinceDays: req.body?.sinceDays,
+    startDate: req.body?.startDate,
+    endDate: req.body?.endDate,
+  };
+  rsSyncRunning = true;
+  res.json({ status: 'started', message: `recurring-services sync running for ${loc.name}` });
+  syncRecurringServicesForClub(loc.clubNumber, opts)
+    .then(r => console.log(`[RS Sync] ${loc.name} done:`, JSON.stringify(r)))
+    .catch(err => console.error(`[RS Sync] ${loc.name} failed:`, err.message))
+    .finally(() => { rsSyncRunning = false; });
 });
 
 // POST /api/sync/abc/stop — abort a running ABC sync
