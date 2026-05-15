@@ -10,6 +10,9 @@ const {
   isPIF,
   dateChunks,
   toDateString,
+  isRsSyncRunning,
+  syncRecurringServices,
+  syncRecurringServicesForClub,
 } = require('../src/abc/recurringServicesSync')
 
 test('isPT recognizes common PT shapes and rejects Consult', () => {
@@ -182,4 +185,20 @@ test('transformService strips dollar signs and commas from invoice_total', () =>
     const row = transformService({ recurringServiceId: 'x', invoiceTotal: c.in }, '30935')
     assert.equal(row.invoice_total, c.out, `invoiceTotal=${JSON.stringify(c.in)} → ${c.out}`)
   }
+})
+
+test('isRsSyncRunning starts false', () => {
+  assert.equal(isRsSyncRunning(), false)
+})
+
+test('syncRecurringServices with no qualifying locations returns []', async () => {
+  // Sanity check that the wrapper releases the lock cleanly even when there's
+  // nothing to sync. The actual concurrent-call lock behavior is exercised
+  // in the live deploy when the scheduler fires while a manual trigger is
+  // already running — it logs "Already running — skipping this cycle" and
+  // returns null. Unit-testing that path here would require either ABC creds
+  // or a mock injection point; not worth it for this PR.
+  const result = await syncRecurringServices([{ name: 'NoClub', slug: 'noclub' }], { sinceDays: 1 })
+  assert.deepEqual(result, [])
+  assert.equal(isRsSyncRunning(), false, 'lock must be released after the call')
 })

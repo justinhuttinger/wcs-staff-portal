@@ -195,7 +195,8 @@ async function upsertBatch(rows) {
 }
 
 /**
- * Sync PT recurring services for a single club.
+ * Sync PT recurring services for a single club. INTERNAL — does NOT take the
+ * running lock. Call syncRecurringServicesForClub for the public, locked entry.
  *
  * @param {string} clubNumber
  * @param {object} [opts]
@@ -204,7 +205,7 @@ async function upsertBatch(rows) {
  * @param {number} [opts.sinceDays]  shorthand: only look at the last N days
  *                                   (overrides startDate/endDate)
  */
-async function syncRecurringServicesForClub(clubNumber, opts = {}) {
+async function _syncForClubInternal(clubNumber, opts = {}) {
   const today = new Date();
   let startISO;
   let endISO;
@@ -242,24 +243,57 @@ async function syncRecurringServicesForClub(clubNumber, opts = {}) {
   return { club_number: clubNumber, fetched: merged.length, upserted };
 }
 
+// Module-level running flag — shared between the HTTP trigger (in index.js)
+// and the scheduler so concurrent triggers can't double-run. Both entry
+// points should consult isRsSyncRunning() before invoking sync*.
+let rsSyncRunning = false;
+function isRsSyncRunning() { return rsSyncRunning; }
+
 async function syncRecurringServices(locations, opts = {}) {
-  const results = [];
-  for (const loc of locations) {
-    if (!loc.clubNumber) continue;
-    try {
-      const r = await syncRecurringServicesForClub(loc.clubNumber, opts);
-      results.push({ ...r, club_name: loc.name });
-    } catch (err) {
-      console.error(`[RS Sync] club ${loc.clubNumber} (${loc.name}) failed:`, err.message);
-      results.push({ club_number: loc.clubNumber, club_name: loc.name, error: err.message });
-    }
+  if (rsSyncRunning) {
+    console.log('[RS Sync] Already running — skipping this cycle');
+    return null;
   }
-  return results;
+  rsSyncRunning = true;
+  try {
+    const results = [];
+    for (const loc of locations) {
+      if (!loc.clubNumber) continue;
+      try {
+        const r = await _syncForClubInternal(loc.clubNumber, opts);
+        results.push({ ...r, club_name: loc.name });
+      } catch (err) {
+        console.error(`[RS Sync] club ${loc.clubNumber} (${loc.name}) failed:`, err.message);
+        results.push({ club_number: loc.clubNumber, club_name: loc.name, error: err.message });
+      }
+    }
+    return results;
+  } finally {
+    rsSyncRunning = false;
+  }
+}
+
+// Public wrapper: takes the running lock around the single-club sync. Used
+// by the per-location HTTP endpoint. The locations-walking version above
+// calls _syncForClubInternal directly so it can hold the lock for the whole
+// multi-club pass.
+async function syncRecurringServicesForClub(clubNumber, opts = {}) {
+  if (rsSyncRunning) {
+    console.log('[RS Sync] Already running — skipping this cycle');
+    return null;
+  }
+  rsSyncRunning = true;
+  try {
+    return await _syncForClubInternal(clubNumber, opts);
+  } finally {
+    rsSyncRunning = false;
+  }
 }
 
 module.exports = {
   syncRecurringServices,
   syncRecurringServicesForClub,
+  isRsSyncRunning,
   // Exported for testing
   transformService,
   detectCancelDate,
