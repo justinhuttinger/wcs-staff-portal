@@ -3,6 +3,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { wrapSWR } = require('../services/memoryCache')
+const abcRsReader = require('../services/abcRecurringServicesReader')
 
 // Phase 2 perf: cache the heavy ABC-aggregation payload across users. Auth +
 // role checks still run per request via the router-level middleware below; the
@@ -10,6 +11,12 @@ const { wrapSWR } = require('../services/memoryCache')
 // same for any authorized caller asking for the same (date range, location).
 const DEACTIVATED_PT_FRESH_MS = 5 * 60 * 1000
 const DEACTIVATED_PT_STALE_MS = 30 * 60 * 1000
+
+// Phase 3: when enabled, read PT recurring services from the synced Supabase
+// table instead of looping ABC's API in 180-day chunks per club. Keeps the
+// per-member /services/purchasehistory call live (not yet synced) so PIF-burned
+// verification still works. Flip this back to OFF if synced data ever drifts.
+const USE_SUPABASE_RS = process.env.DEACTIVATED_PT_USE_SUPABASE === '1'
 
 // 'Deactivated PT' — surfaces two flavors of PT churn that overlap in the
 // front-desk mental model:
@@ -287,13 +294,18 @@ async function fetchLastSessionDates(clubNumber, memberIds) {
 
 async function buildClub(club, startDate, endDate) {
   // Pull anything that *changed* in the window — covers both deactivations
-  // and PIF session-redemption activity.
-  const allSvcs = await fetchPTRecurringServices(
-    club.clubNumber,
-    startDate,
-    endDate,
-    'lastModifiedTimestampRange'
-  )
+  // and PIF session-redemption activity. Phase 3: read from the synced
+  // Supabase table when DEACTIVATED_PT_USE_SUPABASE=1, otherwise fall back
+  // to live ABC (180-day chunks × N pages × N clubs — the original 30-90s
+  // path).
+  const allSvcs = USE_SUPABASE_RS
+    ? await abcRsReader.fetchPTRSModifiedInRange(club.clubNumber, startDate, endDate)
+    : await fetchPTRecurringServices(
+        club.clubNumber,
+        startDate,
+        endDate,
+        'lastModifiedTimestampRange'
+      )
 
   // Bucket each member's window-modified footprint. Used for: identifying
   // PIF-burn candidates (anyPIF). Active-RS check is done separately against
@@ -368,8 +380,12 @@ async function buildClub(club, startDate, endDate) {
     const batch = pifCandidates.slice(i, i + 5)
     await Promise.all(batch.map(async memberId => {
       const [history, allMemberRS] = await Promise.all([
+        // purchasehistory hits a different ABC endpoint that isn't synced yet
+        // — keep it live regardless of the Supabase flag.
         fetchPTPurchaseHistory(club.clubNumber, memberId),
-        fetchMemberAllRS(club.clubNumber, memberId),
+        USE_SUPABASE_RS
+          ? abcRsReader.fetchAllRSForMember(club.clubNumber, memberId)
+          : fetchMemberAllRS(club.clubNumber, memberId),
       ])
       if (!history.length) return
       const hasSessionsLeft = history.some(h => parseInt(h.available || '0', 10) > 0)
