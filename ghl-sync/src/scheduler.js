@@ -2,8 +2,6 @@ const cron = require('node-cron');
 const { fullSync } = require('./sync/fullSync');
 const { deltaSync } = require('./sync/deltaSync');
 const { abcSync } = require('./abc/abcSync');
-const { syncRecurringServices } = require('./abc/recurringServicesSync');
-const LOCATIONS = require('./config/locations');
 const { alertSyncFailed } = require('./alerts');
 
 function startScheduler() {
@@ -13,15 +11,6 @@ function startScheduler() {
   const fullSyncHourUTC = (parseInt(fullSyncHour) + 8) % 24;
 
   const abcIntervalMinutes = process.env.ABC_SYNC_INTERVAL_MINUTES || 30;
-
-  // Recurring-services delta sync. Defaults: every 30 min, sinceDays=2.
-  // The 2-day window keeps each cycle small (~14 ABC calls total across 7
-  // clubs × 2 endpoint variants × 1 chunk × 1 page) while still catching
-  // any service that's been modified in the last few hours after backfill.
-  // Disable entirely with RS_SYNC_ENABLED=0.
-  const rsIntervalMinutes = parseInt(process.env.RS_SYNC_INTERVAL_MINUTES, 10) || 30;
-  const rsSinceDays = parseInt(process.env.RS_SYNC_SINCE_DAYS, 10) || 2;
-  const rsSyncEnabled = process.env.RS_SYNC_ENABLED !== '0';
 
   // Delta sync every N minutes
   cron.schedule(`*/${intervalMinutes} * * * *`, async () => {
@@ -50,26 +39,8 @@ function startScheduler() {
     }
   });
 
-  if (rsSyncEnabled) {
-    // Recurring-services sync. The sync module has its own running-lock, so
-    // if a long backfill or the HTTP trigger is in flight, this cycle just
-    // logs "skipping" and returns null — no overlap risk.
-    cron.schedule(`*/${rsIntervalMinutes} * * * *`, async () => {
-      console.log(`[Scheduler] Starting recurring-services sync (sinceDays=${rsSinceDays})...`);
-      try {
-        const result = await syncRecurringServices(LOCATIONS, { sinceDays: rsSinceDays });
-        if (result === null) {
-          console.log('[Scheduler] Recurring-services sync skipped (already running)');
-        }
-      } catch (err) {
-        console.error('[Scheduler] Recurring-services sync failed:', err.message);
-      }
-    });
-  }
-
   console.log(`[Scheduler] Delta sync every ${intervalMinutes}m, full sync daily at ${fullSyncHour}:00 PST (${fullSyncHourUTC}:00 UTC)`);
   console.log(`[Scheduler] ABC sync every ${abcIntervalMinutes}m (DRY_RUN=${process.env.DRY_RUN || 'true'})`);
-  console.log(`[Scheduler] Recurring-services sync ${rsSyncEnabled ? `every ${rsIntervalMinutes}m, sinceDays=${rsSinceDays}` : 'DISABLED (RS_SYNC_ENABLED=0)'}`);
 }
 
 module.exports = { startScheduler };
