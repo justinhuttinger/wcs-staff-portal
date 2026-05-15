@@ -169,31 +169,33 @@ async function authorizeAndResolveClubs(req, location_slug) {
   return [SLUG_CLUB_MAP[location_slug]]
 }
 
-// GET /reports/pt-sessions
-router.get('/', async (req, res) => {
-  try {
-    const { start_date, end_date, location_slug } = req.query
-    if (!start_date || !end_date) {
-      return res.status(400).json({ error: 'start_date and end_date are required (YYYY-MM-DD)' })
-    }
-    const statuses = parseStatuses(req.query.status)
-    const eventGroup = String(req.query.event_group || 'all').toLowerCase()
-    if (eventGroup !== 'all' && !EVENT_GROUPS[eventGroup]) {
-      return res.status(400).json({ error: `Unknown event_group: ${eventGroup}. Valid: all, pt, swim, stretch.` })
-    }
-    const groupFilter = EVENT_GROUPS[eventGroup] || null
-    // Run authorization BEFORE the cache lookup — throws 403 for unauthorized
-    // callers, so they never reach a cached payload.
-    const clubs = await authorizeAndResolveClubs(req, location_slug)
+// Extracted so the cache warmer can invoke the same cached path the route does.
+// This function does NOT enforce authorization — callers are responsible for
+// gating access (the route handler runs authorizeAndResolveClubs first).
+async function buildPtSessionsPayload({ start_date, end_date, location_slug, status, event_group }) {
+  if (!start_date || !end_date) {
+    const err = new Error('start_date and end_date are required (YYYY-MM-DD)')
+    err.status = 400
+    throw err
+  }
+  const statuses = parseStatuses(status)
+  const eventGroup = String(event_group || 'all').toLowerCase()
+  if (eventGroup !== 'all' && !EVENT_GROUPS[eventGroup]) {
+    const err = new Error(`Unknown event_group: ${eventGroup}. Valid: all, pt, swim, stretch.`)
+    err.status = 400
+    throw err
+  }
+  const groupFilter = EVENT_GROUPS[eventGroup] || null
+  const clubs = !location_slug || location_slug === 'all' ? null : [SLUG_CLUB_MAP[location_slug]]
 
-    const slugKey = !location_slug || location_slug === 'all' ? 'all' : location_slug
-    const statusKey = [...statuses].sort().join(',')
-    const cacheKey = `reports:pt-sessions:${start_date}:${end_date}:${slugKey}:${eventGroup}:${statusKey}`
-    const payload = await wrapSWR(
-      cacheKey,
-      PT_SESSIONS_FRESH_MS,
-      PT_SESSIONS_STALE_MS,
-      async () => {
+  const slugKey = !location_slug || location_slug === 'all' ? 'all' : location_slug
+  const statusKey = [...statuses].sort().join(',')
+  const cacheKey = `reports:pt-sessions:${start_date}:${end_date}:${slugKey}:${eventGroup}:${statusKey}`
+  return wrapSWR(
+    cacheKey,
+    PT_SESSIONS_FRESH_MS,
+    PT_SESSIONS_STALE_MS,
+    async () => {
         const startUtcIso = pacificDayBoundsToUtc(start_date, false)
         const endUtcIso = pacificDayBoundsToUtc(end_date, true)
 
@@ -275,7 +277,22 @@ router.get('/', async (req, res) => {
         }
       }
     )
+}
 
+// GET /reports/pt-sessions
+router.get('/', async (req, res) => {
+  try {
+    const { location_slug } = req.query
+    // Run authorization BEFORE the cache lookup — throws 403 for unauthorized
+    // callers, so they never reach a cached payload.
+    await authorizeAndResolveClubs(req, location_slug)
+    const payload = await buildPtSessionsPayload({
+      start_date: req.query.start_date,
+      end_date: req.query.end_date,
+      location_slug,
+      status: req.query.status,
+      event_group: req.query.event_group,
+    })
     res.json(payload)
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message })
@@ -339,3 +356,4 @@ router.get('/trainer/:employee_id', async (req, res) => {
 })
 
 module.exports = router
+module.exports.warmCache = buildPtSessionsPayload

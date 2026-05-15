@@ -307,30 +307,34 @@ router.get('/debug-sample', async (req, res) => {
   }
 })
 
-// GET /reports/pt-roster?location_slug=salem (or "all")
-router.get('/', async (req, res) => {
-  try {
-    if (!ABC_APP_ID || !ABC_APP_KEY) {
-      return res.status(500).json({ error: 'ABC API credentials not configured' })
+// Extracted so the cache warmer can invoke the same code path the route does.
+async function buildPtRosterPayload({ location_slug }) {
+  if (!ABC_APP_ID || !ABC_APP_KEY) {
+    const err = new Error('ABC API credentials not configured')
+    err.status = 500
+    throw err
+  }
+
+  let targetClubs = CLUBS
+  let slugKey = 'all'
+
+  if (location_slug && location_slug !== 'all') {
+    const club = CLUBS.find(c => c.slug === location_slug.toLowerCase())
+    if (!club) {
+      const err = new Error(`Unknown location: ${location_slug}`)
+      err.status = 400
+      throw err
     }
+    targetClubs = [club]
+    slugKey = club.slug
+  }
 
-    const { location_slug } = req.query
-    let targetClubs = CLUBS
-    let slugKey = 'all'
-
-    if (location_slug && location_slug !== 'all') {
-      const club = CLUBS.find(c => c.slug === location_slug.toLowerCase())
-      if (!club) return res.status(400).json({ error: `Unknown location: ${location_slug}` })
-      targetClubs = [club]
-      slugKey = club.slug
-    }
-
-    const cacheKey = `reports:pt-roster:${slugKey}`
-    const payload = await wrapSWR(
-      cacheKey,
-      PT_ROSTER_FRESH_MS,
-      PT_ROSTER_STALE_MS,
-      async () => {
+  const cacheKey = `reports:pt-roster:${slugKey}`
+  return wrapSWR(
+    cacheKey,
+    PT_ROSTER_FRESH_MS,
+    PT_ROSTER_STALE_MS,
+    async () => {
         // Fetch all locations in parallel
         const results = await Promise.allSettled(
           targetClubs.map(club => buildClients(club.clubNumber, club.name))
@@ -365,12 +369,18 @@ router.get('/', async (req, res) => {
         }
       }
     )
+}
 
+// GET /reports/pt-roster?location_slug=salem (or "all")
+router.get('/', async (req, res) => {
+  try {
+    const payload = await buildPtRosterPayload(req.query)
     res.json(payload)
   } catch (err) {
     console.error('[PT Roster] Error:', err.message)
-    res.status(500).json({ error: err.message })
+    res.status(err.status || 500).json({ error: err.message })
   }
 })
 
 module.exports = router
+module.exports.warmCache = buildPtRosterPayload
