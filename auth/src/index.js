@@ -84,6 +84,7 @@ app.use('/abc-sync', require('./routes/abcSync'))
 app.use('/custom-fields', require('./routes/customFields'))
 app.use('/admin/shared-credentials', require('./routes/sharedCredentials'))
 app.use('/admin/cache', require('./routes/cacheAdmin'))
+app.use('/admin/exports', require('./routes/exports'))
 app.use('/audit-log', require('./routes/auditLog'))
 
 // Global error handler — catch unhandled errors, don't leak stack traces
