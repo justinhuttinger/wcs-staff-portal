@@ -63,56 +63,28 @@ function locSlugFromName(name) {
   return (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 }
 
-router.get('/', async (req, res) => {
-  try {
-    const { start_date, end_date, location_slug } = req.query
+// Extracted so the cache warmer can invoke the same cached path the route does.
+// This function does NOT enforce authorization — callers are responsible for
+// gating access (the route handler runs the role/location checks first).
+async function buildCheckinsPayload({ start_date, end_date, location_slug }) {
+  if (!start_date || !end_date) {
+    const err = new Error('start_date and end_date are required (YYYY-MM-DD)')
+    err.status = 400
+    throw err
+  }
+  if (location_slug && location_slug !== 'all' && !SLUG_CLUB_MAP[location_slug]) {
+    const err = new Error(`Unknown location_slug: ${location_slug}`)
+    err.status = 400
+    throw err
+  }
 
-    if (!start_date || !end_date) {
-      return res.status(400).json({ error: 'start_date and end_date are required (YYYY-MM-DD)' })
-    }
-
-    // ---------------------------------------------------------------------
-    // Authorize location access
-    //   - canSeeAllLocations roles (marketing/corporate/admin/director) may
-    //     pass any slug or 'all'
-    //   - everyone else MUST request a single location they're assigned to
-    //     (intersected with can_view_reports !== false)
-    // ---------------------------------------------------------------------
-    const allLocations = canSeeAllLocations(req.staff.role)
-
-    if (!allLocations) {
-      if (!location_slug || location_slug === 'all') {
-        return res.status(403).json({
-          error: 'Specify a location_slug; you do not have access to all locations.',
-        })
-      }
-      const allowedIds = req.staff.report_location_ids || []
-      let allowedSlugs = []
-      if (allowedIds.length > 0) {
-        const { data: allowedLocs } = await supabaseAdmin
-          .from('locations')
-          .select('name')
-          .in('id', allowedIds)
-        allowedSlugs = (allowedLocs || []).map(l => locSlugFromName(l.name))
-      }
-      if (!allowedSlugs.includes(location_slug)) {
-        return res.status(403).json({ error: 'Not authorized to view this location' })
-      }
-    }
-
-    if (location_slug && location_slug !== 'all' && !SLUG_CLUB_MAP[location_slug]) {
-      return res.status(400).json({ error: `Unknown location_slug: ${location_slug}` })
-    }
-
-    // Cache the fetch + aggregation across users. Auth gates above already
-    // rejected unauthorized callers, so the cache only serves authorized scopes.
-    const slugKey = !location_slug || location_slug === 'all' ? 'all' : location_slug
-    const cacheKey = `reports:checkins:${start_date}:${end_date}:${slugKey}`
-    const payload = await wrapSWR(
-      cacheKey,
-      CHECKINS_FRESH_MS,
-      CHECKINS_STALE_MS,
-      async () => {
+  const slugKey = !location_slug || location_slug === 'all' ? 'all' : location_slug
+  const cacheKey = `reports:checkins:${start_date}:${end_date}:${slugKey}`
+  return wrapSWR(
+    cacheKey,
+    CHECKINS_FRESH_MS,
+    CHECKINS_STALE_MS,
+    async () => {
     // ---------------------------------------------------------------------
     // Fetch
     // ---------------------------------------------------------------------
@@ -255,12 +227,44 @@ router.get('/', async (req, res) => {
         }
       }
     )
+}
 
+router.get('/', async (req, res) => {
+  try {
+    const { location_slug } = req.query
+    // Authorize location access BEFORE consulting the cache.
+    //   - canSeeAllLocations roles (marketing/corporate/admin/director) may
+    //     pass any slug or 'all'
+    //   - everyone else MUST request a single location they're assigned to
+    //     (intersected with can_view_reports !== false)
+    const allLocations = canSeeAllLocations(req.staff.role)
+    if (!allLocations) {
+      if (!location_slug || location_slug === 'all') {
+        return res.status(403).json({
+          error: 'Specify a location_slug; you do not have access to all locations.',
+        })
+      }
+      const allowedIds = req.staff.report_location_ids || []
+      let allowedSlugs = []
+      if (allowedIds.length > 0) {
+        const { data: allowedLocs } = await supabaseAdmin
+          .from('locations')
+          .select('name')
+          .in('id', allowedIds)
+        allowedSlugs = (allowedLocs || []).map(l => locSlugFromName(l.name))
+      }
+      if (!allowedSlugs.includes(location_slug)) {
+        return res.status(403).json({ error: 'Not authorized to view this location' })
+      }
+    }
+
+    const payload = await buildCheckinsPayload(req.query)
     res.json(payload)
   } catch (err) {
     console.error('[checkins-report] error:', err)
-    res.status(500).json({ error: err.message })
+    res.status(err.status || 500).json({ error: err.message })
   }
 })
 
 module.exports = router
+module.exports.warmCache = buildCheckinsPayload

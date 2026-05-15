@@ -10,6 +10,24 @@
 const store = new Map() // key -> { value, freshUntil, expiresAt }
 const inflight = new Map() // key -> Promise (singleflight for cold miss + bg refresh)
 
+// Lightweight counters for ops visibility. Reset on process restart.
+const stats = {
+  freshHits: 0,
+  staleServes: 0,
+  misses: 0,
+  bgRefreshes: 0,
+  bgRefreshErrors: 0,
+  singleflightDedupes: 0,
+}
+
+function getStats() {
+  return { ...stats, size: store.size, inflight: inflight.size }
+}
+
+function resetStats() {
+  for (const k of Object.keys(stats)) stats[k] = 0
+}
+
 function get(key) {
   const hit = store.get(key)
   if (!hit) return undefined
@@ -57,15 +75,21 @@ async function wrapSWR(key, freshMs, staleMs, producer) {
   const hit = store.get(key)
 
   if (hit && now < hit.expiresAt) {
-    if (now < hit.freshUntil) return hit.value
+    if (now < hit.freshUntil) {
+      stats.freshHits++
+      return hit.value
+    }
     // Stale window: serve cached, kick off bg refresh (singleflight per key).
+    stats.staleServes++
     if (!inflight.has(key)) {
       const p = (async () => {
         try {
           const value = await producer()
           const t = Date.now()
           store.set(key, { value, freshUntil: t + freshMs, expiresAt: t + freshMs + staleMs })
+          stats.bgRefreshes++
         } catch (err) {
+          stats.bgRefreshErrors++
           console.warn(`[memoryCache] background refresh failed for ${key}:`, err.message || err)
         } finally {
           inflight.delete(key)
@@ -78,8 +102,12 @@ async function wrapSWR(key, freshMs, staleMs, producer) {
 
   // Cold miss (no entry, or fully expired). Singleflight the producer so
   // concurrent callers share one upstream call.
-  if (inflight.has(key)) return inflight.get(key)
+  if (inflight.has(key)) {
+    stats.singleflightDedupes++
+    return inflight.get(key)
+  }
 
+  stats.misses++
   const p = (async () => {
     try {
       const value = await producer()
@@ -94,4 +122,4 @@ async function wrapSWR(key, freshMs, staleMs, producer) {
   return p
 }
 
-module.exports = { get, set, del, wrap, wrapSWR }
+module.exports = { get, set, del, wrap, wrapSWR, getStats, resetStats }
