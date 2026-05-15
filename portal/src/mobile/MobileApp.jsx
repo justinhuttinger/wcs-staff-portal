@@ -28,6 +28,7 @@ import MobileDeactivatedPT from './components/reports/MobileDeactivatedPT'
 import MobilePTHealth from './components/reports/MobilePTHealth'
 import MobilePayroll from './components/reports/MobilePayroll'
 import MobileRevenue from './components/reports/MobileRevenue'
+import { getReportInfo } from '../lib/reportInfo'
 
 // Icons for bottom tab bar (Heroicons outline)
 function HomeIcon({ active }) {
@@ -228,7 +229,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="Club Health" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="Club Health" info={getReportInfo('club-health')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileReportShell title="Club Health" user={user}>
               {({ startDate, endDate, locationSlug }) => (
@@ -243,7 +244,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="Membership" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="Membership" info={getReportInfo('membership')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileReportShell title="Membership" user={user}>
               {({ startDate, endDate, locationSlug }) => (
@@ -258,7 +259,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="Cancels" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="Cancels" info={getReportInfo('cancels')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileReportShell title="Cancels" user={user}>
               {({ startDate, endDate, locationSlug }) => (
@@ -273,7 +274,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="PT / Day One" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="PT / Day One" info={getReportInfo('pt')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileReportShell title="PT / Day One" user={user}>
               {({ startDate, endDate, locationSlug }) => (
@@ -288,7 +289,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="PT Roster" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="PT Roster" info={getReportInfo('pt-roster')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileReportShell title="PT Roster" user={user} hideDateRange>
               {({ locationSlug }) => (
@@ -303,7 +304,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="Check-ins" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="Check-ins" info={getReportInfo('checkins')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileReportShell title="Check-ins" user={user}>
               {({ startDate, endDate, locationSlug }) => (
@@ -318,7 +319,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="Meta Ads" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="Meta Ads" info={getReportInfo('meta-ads')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileMarketing />
           </div>
@@ -327,7 +328,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="Google Marketing" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="Google Marketing" info={getReportInfo('google-marketing')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileGoogleMarketing />
           </div>
@@ -336,7 +337,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="Website Submissions" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="Website Submissions" info={getReportInfo('website-submissions')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileWebsiteSubmissions />
           </div>
@@ -345,7 +346,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="Operational Compliance" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="Operational Compliance" info={getReportInfo('operations')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileOperations user={user} />
           </div>
@@ -354,7 +355,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="Trainer Load" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="Trainer Load" info={getReportInfo('pt-sessions')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileReportShell title="Trainer Load" user={user}>
               {({ startDate, endDate, locationSlug }) => (
@@ -369,7 +370,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="New Clients" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="New Clients" info={getReportInfo('pt-new-clients')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileReportShell title="New Clients" user={user}>
               {({ startDate, endDate, locationSlug }) => (
@@ -384,7 +385,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="Session Frequency" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="Session Frequency" info={getReportInfo('session-frequency')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileReportShell title="Session Frequency" user={user} hideDateRange>
               {({ locationSlug }) => (
@@ -399,7 +400,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="Deactivated PT" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="Deactivated PT" info={getReportInfo('deactivated-pt')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileReportShell title="Deactivated PT" user={user}>
               {({ startDate, endDate, locationSlug }) => (
@@ -414,7 +415,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="PT Health" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="PT Health" info={getReportInfo('pt-health')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileReportShell title="PT Health" user={user}>
               {({ startDate, endDate, locationSlug }) => (
@@ -429,7 +430,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="Payroll" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="Payroll" info={getReportInfo('payroll')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileReportShell title="Payroll" user={user} hideDateRange>
               {({ locationSlug }) => (
@@ -444,7 +445,7 @@ export default function MobileApp() {
         return (
           <div className="pt-2">
             <div className="px-4">
-              <MobileHeader title="Revenue" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+              <MobileHeader title="Revenue" info={getReportInfo('revenue')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
             </div>
             <MobileReportShell title="Revenue" user={user}>
               {({ startDate, endDate, locationSlug }) => (

@@ -1,6 +1,7 @@
 import React from 'react'
+import ReportInfoButton from '../../components/ReportInfoButton'
 
-export default function MobileHeader({ title, subtitle, onBack, rightAction }) {
+export default function MobileHeader({ title, subtitle, onBack, rightAction, info }) {
   return (
     <div className="bg-surface border border-border shadow-sm px-4 py-3 flex items-center gap-3 rounded-2xl">
       {/* Back button */}
@@ -17,8 +18,9 @@ export default function MobileHeader({ title, subtitle, onBack, rightAction }) {
       )}
 
       {/* Title area */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 flex items-center gap-2">
         <h1 className="text-lg font-semibold text-text-primary truncate">{title}</h1>
+        {info && <ReportInfoButton info={info} />}
         {subtitle && (
           <p className="text-sm text-text-muted truncate">{subtitle}</p>
         )}
