@@ -102,7 +102,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onMetaAds, onLeaderboard, onHR, onHelpCenter, onTickets, onDrive, onCommunicationNotes, onReporting, userRole, userName }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTickets, onDrive, onCommunicationNotes, onReporting, userRole, userName }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [showOrdering, setShowOrdering] = useState(false)
@@ -255,9 +255,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
 
   if (!tilesLoaded) return null
 
-  // Marketing role: tightly scoped to Reporting + Marketing + Insights, all
-  // locations. Skip the normal Apps/Tools rendering entirely so nothing else
-  // can leak through.
+  // Marketing role: tightly scoped to Reporting + Insights, all locations.
+  // Marketing reports live inside Reporting now, so no standalone tile.
   if (userRole === 'marketing') {
     return (
       <div className="w-full max-w-4xl mx-auto px-8 pt-4">
@@ -271,14 +270,6 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
               iconPath={TILE_ICONS.reporting}
               label="Reporting"
               desc="All Locations"
-            />
-          )}
-          {onMetaAds && (
-            <SvgTileButton
-              onClick={onMetaAds}
-              iconPath={TILE_ICONS.marketing}
-              label="Marketing"
-              desc="Ad Reports"
             />
           )}
           <ToolButton label="Insights" description="ABC" url="https://app.fitnessbi.com/signin" />
@@ -570,23 +561,24 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {/* (Day One Tracking merged into Calendar) */}
           {/* 6. Trainer Availability */}
           {onTrainerAvail && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}
-          {/* 7-9. Reporting, Marketing, Tickets + remaining custom tiles */}
+          {/* 7-9. Reporting, Tickets + remaining custom tiles
+              (Marketing now lives inside Reporting — no standalone tile) */}
           {toolCustomTiles.filter((tile) => {
             const tileLabel = (tile.label || '').toLowerCase()
             // Skip Cancel — already rendered above
             if (['cancel', 'cancel tool'].includes(tileLabel)) return false
             // Hide Reporting tile for team_member (and legacy aliases)
             if (tileLabel === 'reporting' && roleIdx === ROLE_LEVELS.team_member) return false
-            // Marketing tile only for corporate and admin
-            if (tileLabel === 'marketing' && roleIdx < ROLE_LEVELS.corporate) return false
+            // Marketing moved into Reporting — hide the standalone tile everywhere
+            if (tileLabel === 'marketing') return false
             // Tickets: now a built-in tile — skip custom tile version
             if (tileLabel === 'tickets') return false
             // Indeed, Operandio, VistaPrint: manager+ only
             if (['indeed', 'operandio', 'vistaprint', 'vista'].includes(tileLabel) && roleIdx < ROLE_LEVELS.manager) return false
             return true
           }).sort((a, b) => {
-            // Order: reporting, marketing, tickets, then everything else
-            const order = { reporting: 0, marketing: 1, tickets: 2 }
+            // Order: reporting, tickets, then everything else
+            const order = { reporting: 0, tickets: 1 }
             const aOrder = order[(a.label || '').toLowerCase()] ?? 99
             const bOrder = order[(b.label || '').toLowerCase()] ?? 99
             return aOrder - bOrder
@@ -598,9 +590,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
               const tileLabel = (tile.label || '').toLowerCase()
               const handleClick = (tileLabel === 'reporting' && onReporting)
                 ? onReporting
-                : (tileLabel === 'marketing' && onMetaAds)
-                  ? onMetaAds
-                  : () => setActiveGroup(tile)
+                : () => setActiveGroup(tile)
 
               const iconKey = (tile.label || '').toLowerCase()
               const iconPath = TILE_ICONS[iconKey] || TILE_ICONS.reporting
