@@ -417,39 +417,50 @@ async function buildClub(club, startDate, endDate) {
   return rows
 }
 
-// GET /reports/deactivated-pt?start_date=&end_date=&location_slug=
-router.get('/', async (req, res) => {
-  try {
-    if (!ABC_APP_ID || !ABC_APP_KEY) {
-      return res.status(500).json({ error: 'ABC API credentials not configured' })
-    }
+// Extracted so the cache warmer can invoke the same code path the route does.
+// Throws (err.status) for bad-request conditions; the route handler maps
+// these to res.status(err.status).
+async function buildDeactivatedPTPayload({ start_date, end_date, location_slug }) {
+  if (!ABC_APP_ID || !ABC_APP_KEY) {
+    const err = new Error('ABC API credentials not configured')
+    err.status = 500
+    throw err
+  }
+  if (!start_date || !end_date) {
+    const err = new Error('start_date and end_date are required (YYYY-MM-DD)')
+    err.status = 400
+    throw err
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start_date) || !/^\d{4}-\d{2}-\d{2}$/.test(end_date)) {
+    const err = new Error('Dates must be YYYY-MM-DD')
+    err.status = 400
+    throw err
+  }
+  if (start_date > end_date) {
+    const err = new Error('start_date must be on or before end_date')
+    err.status = 400
+    throw err
+  }
 
-    const { start_date, end_date, location_slug } = req.query
-    if (!start_date || !end_date) {
-      return res.status(400).json({ error: 'start_date and end_date are required (YYYY-MM-DD)' })
+  let targetClubs = CLUBS
+  let slugKey = 'all'
+  if (location_slug && location_slug !== 'all') {
+    const club = CLUBS.find(c => c.slug === location_slug.toLowerCase())
+    if (!club) {
+      const err = new Error(`Unknown location: ${location_slug}`)
+      err.status = 400
+      throw err
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(start_date) || !/^\d{4}-\d{2}-\d{2}$/.test(end_date)) {
-      return res.status(400).json({ error: 'Dates must be YYYY-MM-DD' })
-    }
-    if (start_date > end_date) {
-      return res.status(400).json({ error: 'start_date must be on or before end_date' })
-    }
+    targetClubs = [club]
+    slugKey = club.slug
+  }
 
-    let targetClubs = CLUBS
-    let slugKey = 'all'
-    if (location_slug && location_slug !== 'all') {
-      const club = CLUBS.find(c => c.slug === location_slug.toLowerCase())
-      if (!club) return res.status(400).json({ error: `Unknown location: ${location_slug}` })
-      targetClubs = [club]
-      slugKey = club.slug
-    }
-
-    const cacheKey = `reports:deactivated-pt:${start_date}:${end_date}:${slugKey}`
-    const payload = await wrapSWR(
-      cacheKey,
-      DEACTIVATED_PT_FRESH_MS,
-      DEACTIVATED_PT_STALE_MS,
-      async () => {
+  const cacheKey = `reports:deactivated-pt:${start_date}:${end_date}:${slugKey}`
+  return wrapSWR(
+    cacheKey,
+    DEACTIVATED_PT_FRESH_MS,
+    DEACTIVATED_PT_STALE_MS,
+    async () => {
         const results = await Promise.allSettled(
           targetClubs.map(c => buildClub(c, start_date, end_date))
         )
@@ -483,7 +494,12 @@ router.get('/', async (req, res) => {
         }
       }
     )
+}
 
+// GET /reports/deactivated-pt?start_date=&end_date=&location_slug=
+router.get('/', async (req, res) => {
+  try {
+    const payload = await buildDeactivatedPTPayload(req.query)
     res.json(payload)
   } catch (err) {
     console.error('[Deactivated PT] Error:', err.message)
@@ -574,3 +590,4 @@ router.get('/debug-sample', async (req, res) => {
 })
 
 module.exports = router
+module.exports.warmCache = buildDeactivatedPTPayload

@@ -325,35 +325,43 @@ async function computeDayOnes(slug, startDate, endDate) {
   return { set: rows.length, show, close }
 }
 
-// GET /reports/pt-health?start_date=&end_date=&location_slug=
-router.get('/', async (req, res) => {
-  try {
-    if (!ABC_APP_ID || !ABC_APP_KEY) {
-      return res.status(500).json({ error: 'ABC API credentials not configured' })
-    }
-    const { start_date, end_date, location_slug } = req.query
-    if (!start_date || !end_date) {
-      return res.status(400).json({ error: 'start_date and end_date are required (YYYY-MM-DD)' })
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(start_date) || !/^\d{4}-\d{2}-\d{2}$/.test(end_date)) {
-      return res.status(400).json({ error: 'Dates must be YYYY-MM-DD' })
-    }
+// Extracted so the cache warmer can invoke the same code path the route does.
+async function buildPtHealthPayload({ start_date, end_date, location_slug }) {
+  if (!ABC_APP_ID || !ABC_APP_KEY) {
+    const err = new Error('ABC API credentials not configured')
+    err.status = 500
+    throw err
+  }
+  if (!start_date || !end_date) {
+    const err = new Error('start_date and end_date are required (YYYY-MM-DD)')
+    err.status = 400
+    throw err
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start_date) || !/^\d{4}-\d{2}-\d{2}$/.test(end_date)) {
+    const err = new Error('Dates must be YYYY-MM-DD')
+    err.status = 400
+    throw err
+  }
 
-    let targetClubs = CLUBS
-    let slugKey = 'all'
-    if (location_slug && location_slug !== 'all') {
-      const club = CLUBS.find(c => c.slug === location_slug.toLowerCase())
-      if (!club) return res.status(400).json({ error: `Unknown location: ${location_slug}` })
-      targetClubs = [club]
-      slugKey = club.slug
+  let targetClubs = CLUBS
+  let slugKey = 'all'
+  if (location_slug && location_slug !== 'all') {
+    const club = CLUBS.find(c => c.slug === location_slug.toLowerCase())
+    if (!club) {
+      const err = new Error(`Unknown location: ${location_slug}`)
+      err.status = 400
+      throw err
     }
+    targetClubs = [club]
+    slugKey = club.slug
+  }
 
-    const cacheKey = `reports:pt-health:${start_date}:${end_date}:${slugKey}`
-    const payload = await wrapSWR(
-      cacheKey,
-      PT_HEALTH_FRESH_MS,
-      PT_HEALTH_STALE_MS,
-      async () => {
+  const cacheKey = `reports:pt-health:${start_date}:${end_date}:${slugKey}`
+  return wrapSWR(
+    cacheKey,
+    PT_HEALTH_FRESH_MS,
+    PT_HEALTH_STALE_MS,
+    async () => {
         const perClub = await Promise.all(targetClubs.map(async club => {
           const [newPT, deact, dayOnes] = await Promise.all([
             computeNewPT(club, start_date, end_date),
@@ -405,7 +413,12 @@ router.get('/', async (req, res) => {
         }
       }
     )
+}
 
+// GET /reports/pt-health?start_date=&end_date=&location_slug=
+router.get('/', async (req, res) => {
+  try {
+    const payload = await buildPtHealthPayload(req.query)
     res.json(payload)
   } catch (err) {
     console.error('[PT Health] Error:', err.message)
@@ -464,3 +477,4 @@ router.get('/debug-day-one', async (req, res) => {
 })
 
 module.exports = router
+module.exports.warmCache = buildPtHealthPayload
