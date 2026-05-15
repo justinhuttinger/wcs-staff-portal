@@ -83,6 +83,7 @@ app.use('/tickets', require('./routes/tickets'))
 app.use('/abc-sync', require('./routes/abcSync'))
 app.use('/custom-fields', require('./routes/customFields'))
 app.use('/admin/shared-credentials', require('./routes/sharedCredentials'))
+app.use('/admin/cache', require('./routes/cacheAdmin'))
 app.use('/audit-log', require('./routes/auditLog'))
 
 // Global error handler — catch unhandled errors, don't leak stack traces
@@ -98,4 +99,16 @@ process.on('unhandledRejection', (reason) => {
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
   console.log(`WCS Auth API listening on port ${PORT}`)
+  // Register the slow-report warmCache functions and kick off the warmer.
+  // The warmer has a 30s startup grace and skips outside Pacific 6am–10pm.
+  // Disable in tests / when explicitly opted out via env.
+  if (process.env.CACHE_WARMER_DISABLED !== '1') {
+    try {
+      const cacheWarmer = require('./services/cacheWarmer')
+      cacheWarmer.registerDefaultRoutes()
+      cacheWarmer.start()
+    } catch (err) {
+      console.error('[cacheWarmer] failed to start:', err.message)
+    }
+  }
 })
