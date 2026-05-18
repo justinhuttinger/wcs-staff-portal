@@ -176,7 +176,7 @@ export default function MobileMembership({ startDate, endDate, locationSlug }) {
       <div className="space-y-2">
         {sortedSalespeople.map(sp => (
           <div key={sp.name || sp.id} className="bg-surface rounded-2xl border border-border p-4">
-            <p className="text-sm font-semibold text-text-primary mb-2">{sp.name || 'Unknown'}</p>
+            <p className="text-sm font-semibold text-text-primary mb-2">{sp.name === 'Unassigned' ? 'Online' : (sp.name || 'Unknown')}</p>
             <div className="flex flex-wrap gap-2">
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-wcs-red border border-red-200">
                 Sales: {sp.total_sales}
