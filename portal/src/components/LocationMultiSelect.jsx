@@ -5,9 +5,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 //   - 'salem'                → one location
 //   - 'salem,eugene'         → multiple, comma-separated in canonical option order
 //
+// Selections are STAGED inside the panel — checkbox toggles, Select all, and
+// Clear modify a local pending set. The commit fires only when the user clicks
+// "View Report" at the bottom of the panel. Closing the panel without applying
+// reverts the pending set to the committed value.
+//
 // Props:
-//   value     — current selection string
-//   onChange  — called with the next selection string
+//   value     — current committed selection string
+//   onChange  — called with the next selection string when "View Report" is clicked
 //   options   — [{ slug, label }] in canonical display order. Do NOT include an
 //               "all" entry; we handle that at the top of the panel.
 //   className — optional extra classes on the trigger button
@@ -23,24 +28,37 @@ export default function LocationMultiSelect({ value, onChange, options, classNam
     return m
   }, [options])
 
-  const selectedSet = useMemo(() => {
+  const committedSet = useMemo(() => {
     if (!value || value === 'all') return new Set(allSlugs)
     const want = new Set(String(value).split(',').map(s => s.trim().toLowerCase()).filter(Boolean))
     // Filter against allowed options to avoid stale slugs lingering.
     return new Set(allSlugs.filter(s => want.has(s)))
   }, [value, allSlugs])
 
-  const allSelected = selectedSet.size === allSlugs.length
+  const [pendingSet, setPendingSet] = useState(committedSet)
+
+  // When the panel opens, sync pending ← committed so staging always starts
+  // from the current applied selection.
+  useEffect(() => {
+    if (open) setPendingSet(new Set(committedSet))
+  }, [open, committedSet])
+
+  // Also sync if committed changes while the panel is closed (e.g. parent reset).
+  useEffect(() => {
+    if (!open) setPendingSet(new Set(committedSet))
+  }, [committedSet, open])
+
+  const allSelected = committedSet.size === allSlugs.length
   const triggerText = useMemo(() => {
     if (allSelected) return 'All Locations'
-    if (selectedSet.size === 0) return 'No Locations'
-    if (selectedSet.size === 1) {
-      const slug = [...selectedSet][0]
+    if (committedSet.size === 0) return 'No Locations'
+    if (committedSet.size === 1) {
+      const slug = [...committedSet][0]
       return labelBySlug.get(slug) || slug
     }
-    const ordered = allSlugs.filter(s => selectedSet.has(s)).map(s => labelBySlug.get(s) || s)
-    return `${selectedSet.size} locations: ${ordered.join(', ')}`
-  }, [allSelected, selectedSet, allSlugs, labelBySlug])
+    const ordered = allSlugs.filter(s => committedSet.has(s)).map(s => labelBySlug.get(s) || s)
+    return `${committedSet.size} locations: ${ordered.join(', ')}`
+  }, [allSelected, committedSet, allSlugs, labelBySlug])
 
   useEffect(() => {
     if (!open) return
@@ -60,30 +78,32 @@ export default function LocationMultiSelect({ value, onChange, options, classNam
     }
   }, [open])
 
-  function emit(nextSet) {
-    if (nextSet.size === 0 || nextSet.size === allSlugs.length) {
-      onChange('all')
-      return
-    }
-    const ordered = allSlugs.filter(s => nextSet.has(s))
-    onChange(ordered.join(','))
-  }
-
   function toggle(slug) {
-    const next = new Set(selectedSet)
-    if (next.has(slug)) next.delete(slug)
-    else next.add(slug)
-    emit(next)
+    setPendingSet(prev => {
+      const next = new Set(prev)
+      if (next.has(slug)) next.delete(slug)
+      else next.add(slug)
+      return next
+    })
   }
 
   function selectAll() {
-    onChange('all')
+    setPendingSet(new Set(allSlugs))
   }
 
   function clearAll() {
-    // No "zero locations" — Clear All resets to All Locations.
-    onChange('all')
+    setPendingSet(new Set())
   }
+
+  function applyAndClose() {
+    if (pendingSet.size === 0) return
+    if (pendingSet.size === allSlugs.length) onChange('all')
+    else onChange(allSlugs.filter(s => pendingSet.has(s)).join(','))
+    setOpen(false)
+  }
+
+  const pendingCount = pendingSet.size
+  const canApply = pendingCount > 0
 
   return (
     <div className="relative inline-block">
@@ -131,7 +151,7 @@ export default function LocationMultiSelect({ value, onChange, options, classNam
           </div>
           <ul className="max-h-72 overflow-auto">
             {options.map(opt => {
-              const checked = selectedSet.has(opt.slug)
+              const checked = pendingSet.has(opt.slug)
               return (
                 <li key={opt.slug}>
                   <label className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-bg">
@@ -147,6 +167,23 @@ export default function LocationMultiSelect({ value, onChange, options, classNam
               )
             })}
           </ul>
+          <div className="mt-2 pt-2 border-t border-border flex items-center justify-between gap-2">
+            <span className="text-[11px] text-text-muted">
+              {pendingCount === 0 ? 'No locations selected' : `${pendingCount} selected`}
+            </span>
+            <button
+              type="button"
+              onClick={applyAndClose}
+              disabled={!canApply}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                canApply
+                  ? 'bg-wcs-red text-white hover:bg-wcs-red/90'
+                  : 'bg-bg text-text-muted cursor-not-allowed border border-border'
+              }`}
+            >
+              View Report
+            </button>
+          </div>
         </div>
       )}
     </div>

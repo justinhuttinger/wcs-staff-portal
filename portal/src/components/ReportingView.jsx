@@ -179,9 +179,16 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
     .map(g => ({ ...g, reports: g.reports.filter(k => VISIBLE_REPORT_KEYS.has(k)) }))
     .filter(g => g.reports.length > 0)
 
+  const defaultReportKey = visibleGroups[0]?.reports[0] || null
   const initial = parseHash()
-  const [activeGroup, setActiveGroup] = useState(initial.group)
-  const [activeReport, setActiveReport] = useState(initial.report)
+  // If hash points at a group only, jump to its first report. If hash has no
+  // report at all, fall back to the very first report the user can see.
+  const initialReport = initial.report
+    || (initial.group && visibleGroups.find(g => g.key === initial.group)?.reports[0])
+    || defaultReportKey
+  const initialGroup = initialReport ? findGroupForReport(initialReport)?.key || null : null
+  const [activeGroup, setActiveGroup] = useState(initialGroup)
+  const [activeReport, setActiveReport] = useState(initialReport)
   const [startDate, setStartDate] = useState(getMonthStart())
   const [endDate, setEndDate] = useState(getToday())
 
@@ -193,20 +200,29 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
   const [activeQuick, setActiveQuick] = useState('this_month')
 
   useEffect(() => {
+    // Make sure the URL hash matches the resolved initial report so refreshes
+    // land in the same place.
+    if (initialReport && parseHash().report !== initialReport) {
+      window.location.hash = '#reporting/' + initialReport
+    }
     function onHashChange() {
       const next = parseHash()
+      // If hash drifts to a group-only or empty path, redirect to first report.
+      if (!next.report) {
+        const fallback = next.group
+          ? visibleGroups.find(g => g.key === next.group)?.reports[0] || defaultReportKey
+          : defaultReportKey
+        if (fallback) {
+          window.location.hash = '#reporting/' + fallback
+          return
+        }
+      }
       setActiveGroup(next.group)
       setActiveReport(next.report)
     }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
-
-  function navigateToGroup(groupKey) {
-    window.location.hash = groupKey ? '#reporting/' + groupKey : '#reporting'
-    setActiveGroup(groupKey || null)
-    setActiveReport(null)
-  }
 
   function navigateToReport(reportKey) {
     if (!reportKey) {
@@ -237,84 +253,107 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
   const currentGroup = activeGroup ? visibleGroups.find(g => g.key === activeGroup) : null
   const activeReportTile = activeReport ? REPORT_TILES.find(t => t.key === activeReport) : null
 
-  function handleBack() {
-    if (activeReport) {
-      // Drop the report; stay inside the group if we were inside one.
-      navigateToReport(null)
-    } else if (activeGroup) {
-      // Step out of the group view to the root tile grid.
-      navigateToGroup(null)
-    } else if (onBack) {
-      onBack()
-    }
-  }
-
-  // Tiles shown in the current view: groups at root, that group's reports inside a group.
-  const tilesAtRoot = visibleGroups.map(g => ({ key: g.key, label: g.label, desc: g.desc, iconPath: g.iconPath, isGroup: true }))
-  const tilesInGroup = currentGroup
-    ? currentGroup.reports
-        .map(k => ALL_REPORT_TILES.find(t => t.key === k))
-        .filter(Boolean)
-        .map(t => ({ key: t.key, label: t.label, desc: t.desc, iconPath: REPORT_ICONS[t.key], isGroup: false }))
-    : []
-  const tilesToShow = activeReport ? [] : (currentGroup ? tilesInGroup : tilesAtRoot)
-
-  const backLabel = activeReport
-    ? (currentGroup ? `Back to ${currentGroup.label}` : 'Back to Reports')
-    : (currentGroup ? 'Back to Reports' : '')
-
   return (
-    <div className="w-full px-8 py-6 max-w-6xl mx-auto">
-      {/* Header card */}
-      <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
-        {(activeReport || activeGroup) && (
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-            {backLabel}
-          </button>
-        )}
-        <div className="flex items-center gap-2 mb-4">
-          <h2 className="text-xl font-bold text-text-primary">
-            {activeReportTile?.label || currentGroup?.label || 'Reporting'}
-          </h2>
-          {activeReport && (
-            <ReportInfoButton info={getReportInfo(activeReport)} />
+    <div className="w-full px-6 py-6 max-w-7xl mx-auto flex gap-6">
+      {/* Left sidebar — grouped report nav */}
+      <aside className="w-56 flex-shrink-0 hidden md:block">
+        <div className="bg-surface rounded-xl border border-border p-2 sticky top-6">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="w-full flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-wide text-text-muted hover:text-text-primary font-semibold transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+              Back to Portal
+            </button>
           )}
+          <button
+            type="button"
+            onClick={() => defaultReportKey && navigateToReport(defaultReportKey)}
+            className="w-full text-left px-3 pt-1 pb-3 text-lg font-bold text-text-primary hover:text-wcs-red transition-colors"
+          >
+            Reports
+          </button>
+          {visibleGroups.map(group => (
+            <div key={group.key} className="mt-3 first:mt-0">
+              <div className="px-3 pt-1 pb-1.5 text-sm font-bold text-text-primary">
+                {group.label}
+              </div>
+              <ul className="space-y-0.5">
+                {group.reports.map(reportKey => {
+                  const tile = ALL_REPORT_TILES.find(t => t.key === reportKey)
+                  if (!tile) return null
+                  const active = activeReport === reportKey
+                  return (
+                    <li key={reportKey}>
+                      <button
+                        type="button"
+                        onClick={() => navigateToReport(reportKey)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          active
+                            ? 'bg-wcs-red/10 text-wcs-red'
+                            : 'text-text-primary hover:bg-bg'
+                        }`}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4 flex-shrink-0">
+                          <path strokeLinecap="round" strokeLinejoin="round" d={REPORT_ICONS[reportKey]} />
+                        </svg>
+                        <span className="truncate text-left">{tile.label}</span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          ))}
         </div>
+      </aside>
 
-        {/* Filter row: location selector on the left, date controls on the right.
-            Date controls hidden for reports with fixed or self-managed date ranges. */}
+      {/* Main content pane */}
+      <div className="flex-1 min-w-0">
+      {/* Header card */}
+      <div className="relative z-20 bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
         {(() => {
           const showDateControls = activeReport !== 'pt-roster' && activeReport !== 'operations' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing' && activeReport !== 'website-submissions'
           const showLocation = hasMultipleReportLocations
-          if (!showLocation && !showDateControls) return null
           return (
-            <div className="flex flex-wrap items-center gap-3 mb-4">
-              {showLocation ? (
-                <LocationMultiSelect
-                  value={locationSlug}
-                  onChange={setLocationSlug}
-                  options={(isAdmin
-                    ? LOCATIONS.filter(l => l.slug !== 'all')
-                    : reportLocations.map(l => ({ slug: l.name.toLowerCase(), label: l.name }))
+            <>
+              {/* Title row: report title + location selector on the same line */}
+              <div className="flex items-center gap-3 mb-4">
+                <h2 className="text-xl font-bold text-text-primary">
+                  {activeReportTile?.label || currentGroup?.label || 'Reporting'}
+                </h2>
+                {activeReport && (
+                  <ReportInfoButton info={getReportInfo(activeReport)} />
+                )}
+                <div className="ml-auto flex-shrink-0">
+                  {showLocation ? (
+                    <LocationMultiSelect
+                      value={locationSlug}
+                      onChange={setLocationSlug}
+                      options={(isAdmin
+                        ? LOCATIONS.filter(l => l.slug !== 'all')
+                        : reportLocations.map(l => ({ slug: l.name.toLowerCase(), label: l.name }))
+                      )}
+                    />
+                  ) : (
+                    <p className="text-xs text-text-muted uppercase tracking-wide font-semibold">{location}</p>
                   )}
-                />
-              ) : (
-                <p className="text-xs text-text-muted uppercase tracking-wide font-semibold">{location}</p>
-              )}
+                </div>
+              </div>
+
+              {/* Date controls row (hidden for reports with fixed/self-managed dates) */}
               {showDateControls && (
-                <div className="flex flex-wrap items-center gap-3 ml-auto">
-                  <div className="flex flex-wrap gap-1.5">
+                <div className="flex items-center gap-3 mb-4 flex-wrap">
+                  <div className="flex gap-1.5">
                     {QUICK_RANGES.map(qr => (
                       <button
                         key={qr.key}
                         onClick={() => applyQuickRange(qr.key)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap ${
                           activeQuick === qr.key
                             ? 'bg-text-primary text-white border-text-primary'
                             : 'bg-bg text-text-muted border-border hover:text-text-primary'
@@ -324,7 +363,7 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
                       </button>
                     ))}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 ml-auto">
                     <label className="text-xs text-text-muted">From</label>
                     <input
                       type="date"
@@ -342,35 +381,19 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
                   </div>
                 </div>
               )}
-            </div>
+            </>
           )
         })()}
       </div>
 
-      {/* Content — Tile Grid (root or group) or Active Report */}
-      {!activeReport ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
-          {tilesToShow.map(tile => (
-            <button
-              key={tile.key}
-              onClick={() => tile.isGroup ? navigateToGroup(tile.key) : navigateToReport(tile.key)}
-              className="group flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
-            >
-              <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg text-wcs-red group-hover:bg-wcs-red/10 transition-all duration-200">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7">
-                  <path strokeLinecap="round" strokeLinejoin="round" d={tile.iconPath} />
-                </svg>
-              </div>
-              <div className="text-center">
-                <span className="block text-base font-semibold text-text-primary">{tile.label}</span>
-                <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">{tile.desc}</span>
-              </div>
-            </button>
-          ))}
-        </div>
-      ) : (
-        <>
-          {activeReport === 'club-health' && (
+      {/* Active report content (sidebar is the nav) */}
+      <>
+        {!activeReport && (
+          <div className="bg-surface rounded-xl border border-border p-8 text-center text-text-muted">
+            No reports available for your role.
+          </div>
+        )}
+        {activeReport === 'club-health' && (
             <ClubHealthReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
           )}
           {activeReport === 'membership' && (
@@ -422,7 +445,7 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
             <WebsiteSubmissionsReport />
           )}
         </>
-      )}
+      </div>
     </div>
   )
 }

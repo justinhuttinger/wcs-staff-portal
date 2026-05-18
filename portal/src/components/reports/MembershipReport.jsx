@@ -199,10 +199,12 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
 
   const chartPoints = buildChartData(data.by_date || [], startDate, endDate)
 
+  const displayName = name => (name === 'Unassigned' ? 'Online' : name)
+
   function handleExportCSV() {
     const csvRows = [
       ['Salesperson', 'Total Sales', 'VIPs', 'Day One', 'Same Day Sale'],
-      ...rows.map(([name, s]) => [name, s.total_sales || 0, s.vips || 0, s.day_one_booked || 0, s.same_day_sale || 0]),
+      ...rows.map(([name, s]) => [displayName(name), s.total_sales || 0, s.vips || 0, s.day_one_booked || 0, s.same_day_sale || 0]),
       ['Total', totalSales, totalRowVips, totalDayOne, totalSameDay],
     ]
     exportCSV(csvRows, `membership-report-${startDate}-${endDate}`)
@@ -290,7 +292,7 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`w-3 h-3 text-text-muted transition-transform flex-shrink-0 ${expanded === name ? 'rotate-90' : ''}`}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                     </svg>
-                    {name}
+                    {displayName(name)}
                   </td>
                   <td className="px-4 py-3 text-center text-wcs-red font-semibold">{stats.total_sales || 0}</td>
                   <td className="px-4 py-3 text-center text-text-primary">{stats.vips || 0}</td>
