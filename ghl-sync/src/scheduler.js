@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const { fullSync } = require('./sync/fullSync');
 const { deltaSync } = require('./sync/deltaSync');
+const { crossLocCleanup } = require('./sync/crossLocCleanup');
 const { abcSync } = require('./abc/abcSync');
 const { alertSyncFailed } = require('./alerts');
 
@@ -12,13 +13,26 @@ function startScheduler() {
 
   const abcIntervalMinutes = process.env.ABC_SYNC_INTERVAL_MINUTES || 30;
 
-  // Delta sync every N minutes
+  // Delta sync every N minutes. Cross-location lead cleanup piggybacks
+  // on the delta cycle — it needs the freshly synced contact data to
+  // detect new drift (people who just got the `sale` tag at a sister
+  // club). Failures on either step are logged but never bring the cron
+  // down.
   cron.schedule(`*/${intervalMinutes} * * * *`, async () => {
     console.log('[Scheduler] Starting delta sync...');
+    let deltaOk = false;
     try {
       await deltaSync();
+      deltaOk = true;
     } catch (err) {
       console.error('[Scheduler] Delta sync failed:', err.message);
+    }
+    if (deltaOk) {
+      try {
+        await crossLocCleanup();
+      } catch (err) {
+        console.error('[Scheduler] Cross-loc cleanup failed:', err.message);
+      }
     }
   });
 
