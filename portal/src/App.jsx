@@ -16,6 +16,7 @@ import DriveView from './components/DriveView'
 import GlobalProgressBar from './components/GlobalProgressBar'
 import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout } from './lib/api'
 import { logEvent } from './lib/audit'
+import { useForceRefresh } from './lib/useForceRefresh'
 
 const LOCATION_BACKGROUNDS = {
   salem: '/bg-salem.jpg',
@@ -58,6 +59,10 @@ export default function App() {
   useEffect(() => {
     document.title = 'WCS Staff Portal'
   }, [])
+
+  // Admin can push a hard reload to every open tab via Admin Panel.
+  // Polls /config/portal-version every 60s.
+  useForceRefresh()
 
   // Audit: fire a view event whenever a major view becomes active. Each one
   // is fire-and-forget through lib/audit.

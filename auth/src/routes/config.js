@@ -353,4 +353,41 @@ router.put('/launcher-version', requireRole('admin'), async (req, res) => {
   }
 })
 
+// --- Portal force-refresh broadcast ---
+// Bumps a timestamp in app_config that every open portal tab polls. When the
+// stored timestamp is newer than the tab's own load time, the portal hard
+// reloads. Effective lag is the portal's poll interval (currently 60s).
+
+router.get('/portal-version', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('app_config')
+      .select('value, updated_at')
+      .eq('key', 'portal_force_refresh_at')
+      .maybeSingle()
+    if (error) throw error
+    res.json({ refresh_at: data?.value || null, updated_at: data?.updated_at || null })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /config/portal-force-refresh — admin only. Sets the key to "now" so
+// every polling tab reloads on its next tick. Body intentionally empty.
+router.post('/portal-force-refresh', requireRole('admin'), async (req, res) => {
+  try {
+    const ts = new Date().toISOString()
+    const { error } = await supabaseAdmin
+      .from('app_config')
+      .upsert(
+        { key: 'portal_force_refresh_at', value: ts, updated_at: ts },
+        { onConflict: 'key' },
+      )
+    if (error) throw error
+    res.json({ refresh_at: ts })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 module.exports = router
