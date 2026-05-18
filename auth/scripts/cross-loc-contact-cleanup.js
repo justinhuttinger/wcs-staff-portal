@@ -43,13 +43,25 @@ const TRIGGERED_BY = args['triggered-by'] || 'backlog_cleanup_script'
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
+// Page through the candidate view. PostgREST caps a single response at
+// max-rows (1000 by default), so without paging the first backlog run
+// silently stops at 1000 even when more candidates exist. We saw exactly
+// that on 2026-05-18: 1,030 candidates → 1000 deleted → 30 leftover.
 async function fetchCandidates() {
-  let q = supabaseAdmin.from('v_cross_location_deletion_candidates').select('*')
-  if (LOCATION_FILTER) q = q.eq('lead_location_slug', LOCATION_FILTER)
-  if (LIMIT) q = q.limit(LIMIT)
-  const { data, error } = await q
-  if (error) throw new Error(`Failed to load candidates: ${error.message}`)
-  return data || []
+  const PAGE_SIZE = 500
+  const out = []
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    let q = supabaseAdmin.from('v_cross_location_deletion_candidates').select('*')
+    if (LOCATION_FILTER) q = q.eq('lead_location_slug', LOCATION_FILTER)
+    q = q.range(offset, offset + PAGE_SIZE - 1)
+    const { data, error } = await q
+    if (error) throw new Error(`Failed to load candidates: ${error.message}`)
+    if (!data || data.length === 0) break
+    out.push(...data)
+    if (LIMIT && out.length >= LIMIT) return out.slice(0, LIMIT)
+    if (data.length < PAGE_SIZE) break
+  }
+  return out
 }
 
 // Pulls the live row from ghl_contacts_v2 so the archive captures everything
