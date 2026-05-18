@@ -1,9 +1,38 @@
 const supabase = require('../db/supabase');
-const { post, put, sleep } = require('../ghl/client');
+const { get, post, put, sleep } = require('../ghl/client');
 const { ABC_GHL_FIELD_MAP, ABC_TAGS } = require('../config/abc-field-map');
 const { getSkipList } = require('../config/membership-skip-list');
 
 const DRY_RUN = (process.env.DRY_RUN || 'true') === 'true';
+
+// Sanity floor: if the cached GHL contact list for a location holds fewer rows
+// than this, the create branch is disabled for the run. Prevents mass-duplicate
+// creates when ghl_contacts_v2 is stale/empty (root cause of the 2026-05-17/18
+// duplicate storm — see abc_sync_run_log runs 473aac20 and a3de6687 which were
+// 100% no_match).
+const MIN_CACHED_CONTACTS_FOR_CREATES = parseInt(
+  process.env.ABC_RECONCILE_MIN_CONTACTS || '500',
+  10,
+);
+
+async function ghlContactExists(locationId, email, phone, apiKey) {
+  const trimmedEmail = (email || '').trim();
+  const trimmedPhone = (phone || '').trim();
+  if (!trimmedEmail && !trimmedPhone) return null;
+  try {
+    const body = { locationId };
+    if (trimmedEmail) body.email = trimmedEmail;
+    if (trimmedPhone) body.phone = trimmedPhone;
+    const res = await post('/contacts/search/duplicate', body, apiKey);
+    return res?.contact || null;
+  } catch (err) {
+    // 404 = no duplicate (treat as null). Anything else: log and let caller
+    // fall through to the create attempt, which will surface the real error.
+    if (err.response?.status === 404) return null;
+    console.warn(`[Reconcile] duplicate-check failed for ${trimmedEmail || trimmedPhone}: ${err.response?.data?.message || err.message}`);
+    return null;
+  }
+}
 
 /**
  * Reconcile ABC members against GHL contacts for one location.
@@ -75,6 +104,15 @@ async function reconcileLocation(location, runId) {
     from += PAGE_SIZE;
   }
   console.log(`[Reconcile] ${locationName}: ${locContacts.length} GHL contacts`);
+
+  // Safety bail: when the cached contact list is suspiciously small, refuse to
+  // create new contacts this run. The match indexes built below would be empty
+  // or near-empty, causing the create branch to fire for hundreds of real GHL
+  // contacts that simply weren't in the cache yet.
+  const createsDisabled = locContacts.length < MIN_CACHED_CONTACTS_FOR_CREATES;
+  if (createsDisabled) {
+    console.warn(`[Reconcile] ${locationName}: only ${locContacts.length} cached contacts (< ${MIN_CACHED_CONTACTS_FOR_CREATES}) — creates DISABLED for this run`);
+  }
 
   // 3. Build lookup indexes for GHL contacts
   const byMemberId = new Map();  // abc_member_id custom field → contact
@@ -249,11 +287,57 @@ async function reconcileLocation(location, runId) {
         continue;
       }
 
-      // Create new GHL contact for this active unmatched member
+      // Bail out early when this run can't be trusted to create contacts.
       const abcName = `${abc.first_name || ''} ${abc.last_name || ''}`.trim();
+      if (createsDisabled) {
+        unmatched++;
+        logEntries.push({
+          run_id: runId, club_number: clubNumber, club_name: locationName, dry_run: DRY_RUN,
+          ghl_contact_id: null, ghl_contact_name: null, ghl_contact_email: null,
+          abc_member_id: abc.member_id, action: 'no_match',
+          detail: { abc_name: abcName, abc_email: abc.email, reason: 'creates_disabled_low_cache', cached_contacts: locContacts.length },
+          applied: false, error: null,
+        });
+        continue;
+      }
+
+      // Ask GHL whether a contact with this email/phone already exists. The
+      // Supabase cache (`ghl_contacts_v2`) is eventually consistent, so on its
+      // own it cannot prevent duplicate creates. GHL's own duplicate-check
+      // endpoint is authoritative.
       const phone = abc.primary_phone || abc.mobile_phone || null;
       const signDate = abc.sign_date || abc.since_date;
       const trimmedEmail = (abc.email || '').trim();
+      const ghlDuplicate = await ghlContactExists(locationId, trimmedEmail, phone, apiKey);
+      if (ghlDuplicate?.id) {
+        // Treat the GHL-side duplicate as a match. Log it so we can see when
+        // the Supabase cache lagged behind GHL, and skip the create.
+        matched++;
+        logEntries.push({
+          run_id: runId, club_number: clubNumber, club_name: locationName, dry_run: DRY_RUN,
+          ghl_contact_id: ghlDuplicate.id, ghl_contact_name: abcName, ghl_contact_email: abc.email,
+          abc_member_id: abc.member_id, action: 'no_match',
+          detail: { reason: 'cache_miss_existing_in_ghl', match_method: 'ghl_duplicate_check', existing_contact_id: ghlDuplicate.id },
+          applied: true, error: null,
+        });
+        // Best-effort: append the 'sale' tag on the existing contact if it's
+        // active, mirroring the matched-update flow below. Keep this minimal —
+        // the next reconcile cycle (with a warm cache) will fully reconcile
+        // tags and custom fields.
+        if (abc.is_active) {
+          try {
+            const ex = await get(`/contacts/${ghlDuplicate.id}`, {}, apiKey);
+            const existingTags = ex?.contact?.tags || [];
+            if (!existingTags.includes(ABC_TAGS.active)) {
+              await put(`/contacts/${ghlDuplicate.id}`, { tags: [...existingTags, ABC_TAGS.active] }, apiKey);
+            }
+            await sleep(650);
+          } catch (err) {
+            console.warn(`[Reconcile] could not tag existing GHL contact ${ghlDuplicate.id}: ${err.response?.data?.message || err.message}`);
+          }
+        }
+        continue;
+      }
 
       // Build custom fields for the new contact
       const newCustomFields = {};
@@ -298,9 +382,23 @@ async function reconcileLocation(location, runId) {
         } catch (err) {
           const lastEntry = logEntries[logEntries.length - 1];
           const errDetail = err.response?.data?.message || err.response?.data || err.message;
-          lastEntry.error = typeof errDetail === 'string' ? errDetail : JSON.stringify(errDetail);
-          errors++;
-          console.error(`[Reconcile] Failed to create contact ${abcName}:`, lastEntry.error);
+          const errMsg = typeof errDetail === 'string' ? errDetail : JSON.stringify(errDetail);
+          // Race condition: duplicate-check passed, but GHL still rejected as
+          // duplicate. Demote create_contact → no_match and pull the existing
+          // contact id off the error payload so the next reconcile cycle can
+          // match it directly.
+          const dupId = err.response?.data?.meta?.contactId;
+          if (errMsg.toLowerCase().includes('duplicat') && dupId) {
+            lastEntry.action = 'no_match';
+            lastEntry.ghl_contact_id = dupId;
+            lastEntry.detail = { ...(lastEntry.detail || {}), reason: 'create_race_duplicate', existing_contact_id: dupId };
+            lastEntry.applied = true;
+            console.warn(`[Reconcile] race-condition duplicate for ${abcName}, existing contact: ${dupId}`);
+          } else {
+            lastEntry.error = errMsg;
+            errors++;
+            console.error(`[Reconcile] Failed to create contact ${abcName}:`, lastEntry.error);
+          }
         }
       } else {
         unmatched++;
