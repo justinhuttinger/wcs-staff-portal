@@ -1,10 +1,5 @@
 import { useState } from 'react'
-import LocationMultiSelect from '../LocationMultiSelect'
-import { LOCATION_OPTIONS } from '../../config/locations'
 import { downloadTrends12moReport } from '../../lib/api'
-
-// Strip the 'all' synthetic option — LocationMultiSelect handles "all" itself.
-const LOCATION_CHOICES = LOCATION_OPTIONS.filter(o => o.slug !== 'all')
 
 // Build a list of recent month options for the end-month picker.
 // Default = current month; users can pick up to 23 months back.
@@ -29,7 +24,6 @@ function buildMonthOptions() {
 const MONTH_OPTIONS = buildMonthOptions()
 
 export default function Trends12moExportTab() {
-  const [locationSlug, setLocationSlug] = useState('all')
   const [endMonth, setEndMonth] = useState(MONTH_OPTIONS[0].key)
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState(null)
@@ -40,7 +34,7 @@ export default function Trends12moExportTab() {
     setError(null)
     setSuccess(false)
     try {
-      await downloadTrends12moReport({ locationSlug, endMonth })
+      await downloadTrends12moReport({ locationSlug: 'all', endMonth })
       setSuccess(true)
     } catch (err) {
       setError(err.message)
@@ -67,40 +61,29 @@ export default function Trends12moExportTab() {
         </h3>
         <p className="text-xs text-text-muted mb-5 leading-relaxed">
           Pulls 12 months of ABC member, agreement, revenue, and demographic
-          data into one Excel workbook with embedded charts. The Demographics
-          sheet reconstructs the active roster at each month-end (anyone who
-          had signed by then and either is still active or cancelled later).
+          data across <strong>all 7 locations</strong> into one Excel workbook.
+          Every sheet shows the all-locations rollup <em>and</em> a per-location
+          breakdown (table + chart). The Demographics sheet reconstructs the
+          active roster at each month-end so historical totals work.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-          <div>
-            <label className="block text-xs font-medium text-text-primary mb-1.5">
-              Locations
-            </label>
-            <LocationMultiSelect
-              value={locationSlug}
-              onChange={setLocationSlug}
-              options={LOCATION_CHOICES}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-text-primary mb-1.5">
-              End month
-            </label>
-            <select
-              value={endMonth}
-              onChange={(e) => setEndMonth(e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-bg border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-wcs-red/40"
-            >
-              {MONTH_OPTIONS.map(o => (
-                <option key={o.key} value={o.key}>{o.label}</option>
-              ))}
-            </select>
-          </div>
+        <div className="mb-5 max-w-xs">
+          <label className="block text-xs font-medium text-text-primary mb-1.5">
+            End month
+          </label>
+          <select
+            value={endMonth}
+            onChange={(e) => setEndMonth(e.target.value)}
+            className="w-full px-3 py-2 text-sm bg-bg border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-wcs-red/40"
+          >
+            {MONTH_OPTIONS.map(o => (
+              <option key={o.key} value={o.key}>{o.label}</option>
+            ))}
+          </select>
         </div>
 
         <p className="text-xs text-text-muted mb-4">
-          Range: <strong>{rangeStart}</strong> → <strong>{rangeEnd}</strong>
+          Range: <strong>{rangeStart}</strong> → <strong>{rangeEnd}</strong> • All locations
         </p>
 
         <button
@@ -116,8 +99,8 @@ export default function Trends12moExportTab() {
 
         {downloading && (
           <p className="mt-3 text-xs text-text-muted">
-            Building 12 monthly snapshots + 15 charts. This usually takes
-            10-30 seconds.
+            Building 12 monthly snapshots + ~25 charts across all locations.
+            This usually takes 15-40 seconds.
           </p>
         )}
         {error && (
@@ -133,12 +116,12 @@ export default function Trends12moExportTab() {
       <div className="bg-surface border border-border rounded-xl p-6">
         <h3 className="text-sm font-semibold text-text-primary mb-2">What's in the workbook</h3>
         <ul className="text-xs text-text-muted leading-relaxed space-y-1 list-disc list-inside">
-          <li><strong>Summary</strong> — 12-month KPI tiles + line charts</li>
-          <li><strong>Members</strong> — month × (added, dropped, net, active EOM) + bar chart</li>
+          <li><strong>Summary</strong> — KPI tiles + line charts (members + revenue overall; net change per location; revenue per location)</li>
+          <li><strong>Members</strong> — all-locations table + bar chart; per-location pivots & line charts for added, dropped, and active (EOM)</li>
           <li><strong>Agreements</strong> — same shape, by agreement number</li>
-          <li><strong>Revenue</strong> — pivot by profit center + stacked bar</li>
-          <li><strong>Demographics</strong> — age, gender, membership type by month + stacked bars</li>
-          <li><strong>Active Roster (Today)</strong> — three pies + per-club table</li>
+          <li><strong>Revenue</strong> — profit-center pivot + stacked bar; per-location pivot + line chart + stacked composition</li>
+          <li><strong>Demographics</strong> — age/gender/membership type by month; active members EOM by location; net change by location</li>
+          <li><strong>Active Roster (Today)</strong> — three pies + per-club table + comparison bar chart</li>
         </ul>
         <p className="mt-4 text-[11px] text-text-muted leading-relaxed">
           <strong>Caveat:</strong> demographic fields (gender, membership type,

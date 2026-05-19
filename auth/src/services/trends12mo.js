@@ -15,15 +15,20 @@ const { supabaseAdmin } = require('./supabase')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { SLUG_CLUB_MAP } = require('../utils/locationSlug')
 
-const CLUB_NAMES = {
-  '30935': 'Salem',
-  '31599': 'Keizer',
-  '7655':  'Eugene',
-  '31598': 'Springfield',
-  '31600': 'Clackamas',
-  '31601': 'Milwaukie',
-  '32073': 'Medford',
-}
+// Canonical ordering. Used for every per-location section so column order
+// is stable across sheets. (Mirrors LOCATION_NAMES in portal/src/config/locations.js.)
+const CLUBS = [
+  { slug: 'salem',       club_number: '30935', name: 'Salem' },
+  { slug: 'keizer',      club_number: '31599', name: 'Keizer' },
+  { slug: 'eugene',      club_number: '7655',  name: 'Eugene' },
+  { slug: 'springfield', club_number: '31598', name: 'Springfield' },
+  { slug: 'clackamas',   club_number: '31600', name: 'Clackamas' },
+  { slug: 'milwaukie',   club_number: '31601', name: 'Milwaukie' },
+  { slug: 'medford',     club_number: '32073', name: 'Medford' },
+]
+const CLUB_NAMES = Object.fromEntries(CLUBS.map(c => [c.club_number, c.name]))
+const CLUB_BY_NUMBER = Object.fromEntries(CLUBS.map(c => [c.club_number, c]))
+const CLUB_BY_SLUG = Object.fromEntries(CLUBS.map(c => [c.slug, c]))
 
 // ---------------------------------------------------------------------------
 // Build the list of YYYY-MM-01 dates for the trailing 12 months ending at
@@ -152,46 +157,76 @@ async function gatherTrends12mo({ clubNumbers, locationSlugs, endMonth }) {
     }
   }
 
-  // ---- Member flows (added/dropped per month) ----
+  // ---- Member flows (added/dropped per month, per club) ----
+  // flowsByMonth[monthKey].total holds the all-clubs sum.
+  // flowsByMonth[monthKey].by_club[club_number] holds the per-club row.
+  const blankFlow = () => ({
+    added_members: 0, added_agreements: 0,
+    dropped_members: 0, dropped_agreements: 0,
+  })
   const flowsByMonth = {}
   for (const row of flowsRows) {
     const monthKey = (row.month || '').slice(0, 7) // 'YYYY-MM-DD' → 'YYYY-MM'
     if (!flowsByMonth[monthKey]) {
-      flowsByMonth[monthKey] = {
-        added_members: 0, added_agreements: 0,
-        dropped_members: 0, dropped_agreements: 0,
-      }
+      flowsByMonth[monthKey] = { total: blankFlow(), by_club: {} }
     }
+    const club = row.club_number || 'Unknown'
+    if (!flowsByMonth[monthKey].by_club[club]) {
+      flowsByMonth[monthKey].by_club[club] = blankFlow()
+    }
+    const memberCount = Number(row.member_count) || 0
+    const agreementCount = Number(row.agreement_count) || 0
     if (row.bucket === 'added') {
-      flowsByMonth[monthKey].added_members = Number(row.member_count) || 0
-      flowsByMonth[monthKey].added_agreements = Number(row.agreement_count) || 0
+      flowsByMonth[monthKey].total.added_members += memberCount
+      flowsByMonth[monthKey].total.added_agreements += agreementCount
+      flowsByMonth[monthKey].by_club[club].added_members = memberCount
+      flowsByMonth[monthKey].by_club[club].added_agreements = agreementCount
     } else if (row.bucket === 'dropped') {
-      flowsByMonth[monthKey].dropped_members = Number(row.member_count) || 0
-      flowsByMonth[monthKey].dropped_agreements = Number(row.agreement_count) || 0
+      flowsByMonth[monthKey].total.dropped_members += memberCount
+      flowsByMonth[monthKey].total.dropped_agreements += agreementCount
+      flowsByMonth[monthKey].by_club[club].dropped_members = memberCount
+      flowsByMonth[monthKey].by_club[club].dropped_agreements = agreementCount
     }
   }
-  // Pair flows with the month's end-of-month active total so we can show a
-  // running active line.
+  // All-clubs flow array (one row per month, paired with EOM active totals).
   const memberFlows = months.map(m => {
-    const f = flowsByMonth[m.key] || {
-      added_members: 0, added_agreements: 0,
-      dropped_members: 0, dropped_agreements: 0,
-    }
+    const t = (flowsByMonth[m.key]?.total) || blankFlow()
     const demo = demographics.find(d => d.month === m.key)
     return {
       month: m.key,
-      added_members: f.added_members,
-      dropped_members: f.dropped_members,
-      net_members: f.added_members - f.dropped_members,
-      added_agreements: f.added_agreements,
-      dropped_agreements: f.dropped_agreements,
-      net_agreements: f.added_agreements - f.dropped_agreements,
+      added_members: t.added_members,
+      dropped_members: t.dropped_members,
+      net_members: t.added_members - t.dropped_members,
+      added_agreements: t.added_agreements,
+      dropped_agreements: t.dropped_agreements,
+      net_agreements: t.added_agreements - t.dropped_agreements,
       active_members_eom: demo ? demo.total.members : 0,
       active_agreements_eom: demo ? demo.total.agreements : 0,
     }
   })
 
-  // ---- Revenue by month ----
+  // Per-club flow series (one entry per club, each with a monthly array).
+  const perClubFlows = CLUBS.map(c => {
+    const monthly = months.map(m => {
+      const f = flowsByMonth[m.key]?.by_club?.[c.club_number] || blankFlow()
+      const demo = demographics.find(d => d.month === m.key)
+      const activeFromDemo = demo?.by_club?.[c.club_number]
+      return {
+        month: m.key,
+        added_members: f.added_members,
+        dropped_members: f.dropped_members,
+        net_members: f.added_members - f.dropped_members,
+        added_agreements: f.added_agreements,
+        dropped_agreements: f.dropped_agreements,
+        net_agreements: f.added_agreements - f.dropped_agreements,
+        active_members_eom: activeFromDemo?.members || 0,
+        active_agreements_eom: activeFromDemo?.agreements || 0,
+      }
+    })
+    return { ...c, monthly }
+  })
+
+  // ---- Revenue by month (totals + per profit center + per club) ----
   const revenueByMonth = {}
   for (const row of revenueRows) {
     const monthKey = (row.month || '').slice(0, 7)
@@ -204,6 +239,7 @@ async function gatherTrends12mo({ clubNumbers, locationSlugs, endMonth }) {
     } else if (row.bucket === 'by_profit_center') {
       revenueByMonth[monthKey].by_profit_center[row.key1 || 'Unknown'] = amt
     } else if (row.bucket === 'by_club') {
+      // revenue's by_club bucket is keyed by location_slug, not club_number
       revenueByMonth[monthKey].by_club[row.key1 || 'Unknown'] = amt
     }
   }
@@ -213,6 +249,15 @@ async function gatherTrends12mo({ clubNumbers, locationSlugs, endMonth }) {
     by_profit_center: revenueByMonth[m.key]?.by_profit_center || {},
     by_club: revenueByMonth[m.key]?.by_club || {},
   }))
+
+  // Per-club revenue series.
+  const perClubRevenue = CLUBS.map(c => {
+    const monthly = months.map(m => ({
+      month: m.key,
+      total: revenueByMonth[m.key]?.by_club?.[c.slug] || 0,
+    }))
+    return { ...c, monthly }
+  })
 
   // Translate club_number-keyed demographics into human names for display.
   // (We keep the original keys too in the raw output.)
@@ -235,9 +280,12 @@ async function gatherTrends12mo({ clubNumbers, locationSlugs, endMonth }) {
       club_numbers: clubNumbers,
       location_slugs: locationSlugs,
       skip_types: skipTypes,
+      clubs: CLUBS,
     },
     member_flows: memberFlows,
+    per_club_flows: perClubFlows,
     revenue,
+    per_club_revenue: perClubRevenue,
     demographics,
     active_today: activeToday || { date: todayIso, total: { members: 0, agreements: 0 } },
   }

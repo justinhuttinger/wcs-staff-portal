@@ -166,6 +166,68 @@ async function addImageBelow(workbook, sheet, png, anchorCellRow, colSpan, rowSp
   })
 }
 
+// Convert an image height in pixels to an approximate row count. Excel rows
+// are ~20px each by default; pad a couple to leave breathing room.
+function chartRowSpan(heightPx) {
+  return Math.ceil(heightPx / 20) + 2
+}
+
+// Render a multi-line chart with one series per club. Returns the PNG buffer.
+async function renderPerClubLine(renderer, { perClub, metricKey, monthLabels, title, yLabel }) {
+  return renderer.renderToBuffer(lineConfig({
+    labels: monthLabels,
+    datasets: perClub.map((c, i) => ({
+      label: c.name,
+      data: c.monthly.map(row => row[metricKey] || 0),
+      color: PALETTE[i % PALETTE.length],
+    })),
+    title,
+    yLabel,
+  }))
+}
+
+// Render a stacked bar chart with one series per club (positive contributions).
+async function renderPerClubStacked(renderer, { perClub, metricKey, monthLabels, title, yLabel }) {
+  return renderer.renderToBuffer(barConfig({
+    labels: monthLabels,
+    datasets: perClub.map((c, i) => ({
+      label: c.name,
+      data: c.monthly.map(row => row[metricKey] || 0),
+      color: PALETTE[i % PALETTE.length],
+    })),
+    title,
+    yLabel,
+    stacked: true,
+  }))
+}
+
+// Build a pivot table on `sheet` starting at row `startRow` with header
+// row [Month, ...club names], then one row per month with metricKey value.
+// Returns the row index immediately AFTER the last data row.
+function writePerClubPivot(sheet, startRow, { perClub, metricKey, months, monthLabels, currency = false }) {
+  setHeader(sheet.getRow(startRow), ['Month', ...perClub.map(c => c.name), 'Total'])
+  let cursor = startRow + 1
+  for (let i = 0; i < months.length; i++) {
+    const vals = perClub.map(c => c.monthly[i][metricKey] || 0)
+    const total = vals.reduce((s, v) => s + v, 0)
+    sheet.getRow(cursor).values = [monthLabels[i], ...vals, total]
+    cursor += 1
+  }
+  if (currency) {
+    for (let c = 2; c <= 2 + perClub.length; c++) {
+      sheet.getColumn(c).numFmt = '"$"#,##0.00'
+    }
+  }
+  return cursor
+}
+
+// Section header used to introduce each per-location block.
+function writeSectionHeader(sheet, row, text) {
+  sheet.getCell(`A${row}`).value = text
+  sheet.getCell(`A${row}`).font = { bold: true, size: 13, color: { argb: 'FF2F3540' } }
+  return row + 1
+}
+
 // ---------------------------------------------------------------------------
 // Main entrypoint.
 // ---------------------------------------------------------------------------
@@ -244,6 +306,26 @@ async function buildTrendsWorkbook(data) {
   }))
   await addImageBelow(workbook, summary, revLine, 34, CHART_W, CHART_H)
 
+  // Chart 3: per-location net members (one line per club)
+  const summaryPerLocNet = await renderPerClubLine(wide, {
+    perClub: data.per_club_flows,
+    metricKey: 'net_members',
+    monthLabels,
+    title: 'Net member change by location',
+    yLabel: 'Net members',
+  })
+  await addImageBelow(workbook, summary, summaryPerLocNet, 54, CHART_W, CHART_H)
+
+  // Chart 4: per-location revenue (one line per club)
+  const summaryPerLocRev = await renderPerClubLine(wide, {
+    perClub: data.per_club_revenue,
+    metricKey: 'total',
+    monthLabels,
+    title: 'Revenue by location',
+    yLabel: 'USD',
+  })
+  await addImageBelow(workbook, summary, summaryPerLocRev, 74, CHART_W, CHART_H)
+
   // ===== Members sheet =====
   const ms = workbook.addWorksheet('Members')
   setHeader(ms.getRow(1), ['Month', 'Added', 'Dropped', 'Net', 'Active (EOM)'])
@@ -263,6 +345,43 @@ async function buildTrendsWorkbook(data) {
   }))
   await addImageBelow(workbook, ms, memberBar, data.member_flows.length + 3, CHART_W, CHART_H)
 
+  // Per-location pivots + multi-line charts
+  let msCursor = data.member_flows.length + 3 + chartRowSpan(CHART_H)
+  msCursor = writeSectionHeader(ms, msCursor, 'Members added — by location')
+  msCursor = writePerClubPivot(ms, msCursor, {
+    perClub: data.per_club_flows, metricKey: 'added_members', months, monthLabels,
+  })
+  msCursor += 1
+  const msAddedByLoc = await renderPerClubLine(wide, {
+    perClub: data.per_club_flows, metricKey: 'added_members', monthLabels,
+    title: 'Members added — by location', yLabel: 'Members',
+  })
+  await addImageBelow(workbook, ms, msAddedByLoc, msCursor, CHART_W, CHART_H)
+  msCursor += chartRowSpan(CHART_H)
+
+  msCursor = writeSectionHeader(ms, msCursor, 'Members dropped — by location')
+  msCursor = writePerClubPivot(ms, msCursor, {
+    perClub: data.per_club_flows, metricKey: 'dropped_members', months, monthLabels,
+  })
+  msCursor += 1
+  const msDroppedByLoc = await renderPerClubLine(wide, {
+    perClub: data.per_club_flows, metricKey: 'dropped_members', monthLabels,
+    title: 'Members dropped — by location', yLabel: 'Members',
+  })
+  await addImageBelow(workbook, ms, msDroppedByLoc, msCursor, CHART_W, CHART_H)
+  msCursor += chartRowSpan(CHART_H)
+
+  msCursor = writeSectionHeader(ms, msCursor, 'Active members (end of month) — by location')
+  msCursor = writePerClubPivot(ms, msCursor, {
+    perClub: data.per_club_flows, metricKey: 'active_members_eom', months, monthLabels,
+  })
+  msCursor += 1
+  const msActiveByLoc = await renderPerClubLine(wide, {
+    perClub: data.per_club_flows, metricKey: 'active_members_eom', monthLabels,
+    title: 'Active members (EOM) — by location', yLabel: 'Members',
+  })
+  await addImageBelow(workbook, ms, msActiveByLoc, msCursor, CHART_W, CHART_H)
+
   // ===== Agreements sheet =====
   const ag = workbook.addWorksheet('Agreements')
   setHeader(ag.getRow(1), ['Month', 'Added', 'Dropped', 'Net', 'Active (EOM)'])
@@ -281,6 +400,43 @@ async function buildTrendsWorkbook(data) {
     yLabel: 'Agreements',
   }))
   await addImageBelow(workbook, ag, agreementBar, data.member_flows.length + 3, CHART_W, CHART_H)
+
+  // Per-location pivots + multi-line charts
+  let agCursor = data.member_flows.length + 3 + chartRowSpan(CHART_H)
+  agCursor = writeSectionHeader(ag, agCursor, 'Agreements added — by location')
+  agCursor = writePerClubPivot(ag, agCursor, {
+    perClub: data.per_club_flows, metricKey: 'added_agreements', months, monthLabels,
+  })
+  agCursor += 1
+  const agAddedByLoc = await renderPerClubLine(wide, {
+    perClub: data.per_club_flows, metricKey: 'added_agreements', monthLabels,
+    title: 'Agreements added — by location', yLabel: 'Agreements',
+  })
+  await addImageBelow(workbook, ag, agAddedByLoc, agCursor, CHART_W, CHART_H)
+  agCursor += chartRowSpan(CHART_H)
+
+  agCursor = writeSectionHeader(ag, agCursor, 'Agreements dropped — by location')
+  agCursor = writePerClubPivot(ag, agCursor, {
+    perClub: data.per_club_flows, metricKey: 'dropped_agreements', months, monthLabels,
+  })
+  agCursor += 1
+  const agDroppedByLoc = await renderPerClubLine(wide, {
+    perClub: data.per_club_flows, metricKey: 'dropped_agreements', monthLabels,
+    title: 'Agreements dropped — by location', yLabel: 'Agreements',
+  })
+  await addImageBelow(workbook, ag, agDroppedByLoc, agCursor, CHART_W, CHART_H)
+  agCursor += chartRowSpan(CHART_H)
+
+  agCursor = writeSectionHeader(ag, agCursor, 'Active agreements (end of month) — by location')
+  agCursor = writePerClubPivot(ag, agCursor, {
+    perClub: data.per_club_flows, metricKey: 'active_agreements_eom', months, monthLabels,
+  })
+  agCursor += 1
+  const agActiveByLoc = await renderPerClubLine(wide, {
+    perClub: data.per_club_flows, metricKey: 'active_agreements_eom', monthLabels,
+    title: 'Active agreements (EOM) — by location', yLabel: 'Agreements',
+  })
+  await addImageBelow(workbook, ag, agActiveByLoc, agCursor, CHART_W, CHART_H)
 
   // ===== Revenue sheet =====
   const rev = workbook.addWorksheet('Revenue')
@@ -323,6 +479,26 @@ async function buildTrendsWorkbook(data) {
     stacked: true,
   }))
   await addImageBelow(workbook, rev, revStack, lastRow + 2, CHART_W, CHART_H)
+
+  // Per-location pivot + line chart + stacked bar
+  let revCursor = lastRow + 2 + chartRowSpan(CHART_H)
+  revCursor = writeSectionHeader(rev, revCursor, 'Revenue — by location')
+  revCursor = writePerClubPivot(rev, revCursor, {
+    perClub: data.per_club_revenue, metricKey: 'total', months, monthLabels, currency: true,
+  })
+  revCursor += 1
+  const revPerLocLine = await renderPerClubLine(wide, {
+    perClub: data.per_club_revenue, metricKey: 'total', monthLabels,
+    title: 'Revenue trend by location', yLabel: 'USD',
+  })
+  await addImageBelow(workbook, rev, revPerLocLine, revCursor, CHART_W, CHART_H)
+  revCursor += chartRowSpan(CHART_H)
+
+  const revPerLocStack = await renderPerClubStacked(wide, {
+    perClub: data.per_club_revenue, metricKey: 'total', monthLabels,
+    title: 'Revenue composition by location (stacked)', yLabel: 'USD',
+  })
+  await addImageBelow(workbook, rev, revPerLocStack, revCursor, CHART_W, CHART_H)
 
   // ===== Demographics sheet =====
   const dem = workbook.addWorksheet('Demographics')
@@ -448,6 +624,33 @@ async function buildTrendsWorkbook(data) {
     yLabel: 'Count',
   }))
   await addImageBelow(workbook, dem, activeLine, cursor, CHART_W, CHART_H)
+  cursor += chartRowSpan(CHART_H)
+
+  // Per-location active member trend (single chart — full age/gender/type
+  // breakdown per club would be 4D and overwhelming; the EOM total per club
+  // is the most useful comparison)
+  cursor = writeSectionHeader(dem, cursor, 'Active members (end of month) — by location')
+  cursor = writePerClubPivot(dem, cursor, {
+    perClub: data.per_club_flows, metricKey: 'active_members_eom', months, monthLabels,
+  })
+  cursor += 1
+  const demPerLocLine = await renderPerClubLine(wide, {
+    perClub: data.per_club_flows, metricKey: 'active_members_eom', monthLabels,
+    title: 'Active members (EOM) — by location', yLabel: 'Members',
+  })
+  await addImageBelow(workbook, dem, demPerLocLine, cursor, CHART_W, CHART_H)
+  cursor += chartRowSpan(CHART_H)
+
+  cursor = writeSectionHeader(dem, cursor, 'Net change (added − dropped) — by location')
+  cursor = writePerClubPivot(dem, cursor, {
+    perClub: data.per_club_flows, metricKey: 'net_members', months, monthLabels,
+  })
+  cursor += 1
+  const demNetByLoc = await renderPerClubLine(wide, {
+    perClub: data.per_club_flows, metricKey: 'net_members', monthLabels,
+    title: 'Net member change — by location', yLabel: 'Net members',
+  })
+  await addImageBelow(workbook, dem, demNetByLoc, cursor, CHART_W, CHART_H)
 
   autoWidth(dem, { 0: 12 })
 
@@ -494,6 +697,26 @@ async function buildTrendsWorkbook(data) {
     at.getRow(cr).values = [club, v.members, v.agreements]
     cr += 1
   }
+  cr += 1
+  cr = writeSectionHeader(at, cr, 'Comparison across locations — today')
+  const clubBars = await wide.renderToBuffer(barConfig({
+    labels: data.meta.clubs.map(c => c.name),
+    datasets: [
+      {
+        label: 'Active members',
+        data: data.meta.clubs.map(c => data.active_today.by_club?.[c.club_number]?.members || 0),
+        color: WCS_RED,
+      },
+      {
+        label: 'Active agreements',
+        data: data.meta.clubs.map(c => data.active_today.by_club?.[c.club_number]?.agreements || 0),
+        color: NEUTRAL_DARK,
+      },
+    ],
+    title: 'Active members & agreements per club (today)',
+    yLabel: 'Count',
+  }))
+  await addImageBelow(workbook, at, clubBars, cr, CHART_W, CHART_H)
   autoWidth(at, { 0: 14 })
 
   // ===== Raw Data sheet =====
