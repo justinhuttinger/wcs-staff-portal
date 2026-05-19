@@ -110,13 +110,24 @@ function barConfig({ labels, datasets, title, yLabel, stacked = false }) {
 }
 
 function pieConfig({ labels, data, title }) {
+  // Filter zero-value slices and bake percentages directly into the legend
+  // labels (e.g. "Salem  18%"). More reliable than chartjs-plugin-datalabels,
+  // which crashes on small/empty arc elements.
+  const pairs = labels.map((l, i) => ({ label: l, value: Number(data[i]) || 0 }))
+                       .filter(p => p.value > 0)
+  const total = pairs.reduce((s, p) => s + p.value, 0)
+  const labeled = pairs.map(p => {
+    const pct = total > 0 ? Math.round((p.value / total) * 100) : 0
+    const num = p.value.toLocaleString()
+    return `${p.label}  ${pct}% (${num})`
+  })
   return {
     type: 'doughnut',
     data: {
-      labels,
+      labels: labeled,
       datasets: [{
-        data,
-        backgroundColor: labels.map((_, i) => PALETTE[i % PALETTE.length]),
+        data: pairs.map(p => p.value),
+        backgroundColor: labeled.map((_, i) => PALETTE[i % PALETTE.length]),
         borderWidth: 1,
         borderColor: '#ffffff',
       }],
@@ -126,9 +137,9 @@ function pieConfig({ labels, data, title }) {
       animation: false,
       plugins: {
         title: { display: !!title, text: title, font: { size: 14, weight: 'bold' } },
-        legend: { position: 'right', labels: { font: { size: 11 } } },
+        legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 14 } },
       },
-      cutout: '50%',
+      cutout: '45%',
     },
   }
 }
@@ -165,6 +176,7 @@ async function addImageBelow(workbook, sheet, png, anchorCellRow, colSpan, rowSp
     ext: { width: colSpan, height: rowSpan },
   })
 }
+
 
 // Convert an image height in pixels to an approximate row count. Excel rows
 // are ~20px each by default; pad a couple to leave breathing room.
@@ -381,6 +393,18 @@ async function buildTrendsWorkbook(data) {
     title: 'Active members (EOM) — by location', yLabel: 'Members',
   })
   await addImageBelow(workbook, ms, msActiveByLoc, msCursor, CHART_W, CHART_H)
+  msCursor += chartRowSpan(CHART_H)
+
+  msCursor = writeSectionHeader(ms, msCursor, 'Net change (added − dropped) — by location')
+  msCursor = writePerClubPivot(ms, msCursor, {
+    perClub: data.per_club_flows, metricKey: 'net_members', months, monthLabels,
+  })
+  msCursor += 1
+  const msNetByLoc = await renderPerClubLine(wide, {
+    perClub: data.per_club_flows, metricKey: 'net_members', monthLabels,
+    title: 'Net member change — by location', yLabel: 'Net members',
+  })
+  await addImageBelow(workbook, ms, msNetByLoc, msCursor, CHART_W, CHART_H)
 
   // ===== Agreements sheet =====
   const ag = workbook.addWorksheet('Agreements')
@@ -437,6 +461,18 @@ async function buildTrendsWorkbook(data) {
     title: 'Active agreements (EOM) — by location', yLabel: 'Agreements',
   })
   await addImageBelow(workbook, ag, agActiveByLoc, agCursor, CHART_W, CHART_H)
+  agCursor += chartRowSpan(CHART_H)
+
+  agCursor = writeSectionHeader(ag, agCursor, 'Net change (added − dropped) — by location')
+  agCursor = writePerClubPivot(ag, agCursor, {
+    perClub: data.per_club_flows, metricKey: 'net_agreements', months, monthLabels,
+  })
+  agCursor += 1
+  const agNetByLoc = await renderPerClubLine(wide, {
+    perClub: data.per_club_flows, metricKey: 'net_agreements', monthLabels,
+    title: 'Net agreement change — by location', yLabel: 'Net agreements',
+  })
+  await addImageBelow(workbook, ag, agNetByLoc, agCursor, CHART_W, CHART_H)
 
   // ===== Revenue sheet =====
   const rev = workbook.addWorksheet('Revenue')
@@ -562,19 +598,38 @@ async function buildTrendsWorkbook(data) {
   }
   cursor += 1
 
+  const genderDatasets = genderKeysAll.map((k, i) => ({
+    label: k,
+    data: data.demographics.map(d => d.by_gender[k]?.members || 0),
+    color: PALETTE[i % PALETTE.length],
+  }))
   const genderChart = await wide.renderToBuffer(barConfig({
     labels: monthLabels,
-    datasets: genderKeysAll.map((k, i) => ({
-      label: k,
-      data: data.demographics.map(d => d.by_gender[k]?.members || 0),
-      color: PALETTE[i % PALETTE.length],
-    })),
-    title: 'Gender distribution by month',
+    datasets: genderDatasets,
+    title: 'Gender distribution by month (counts)',
     yLabel: 'Members',
     stacked: true,
   }))
   await addImageBelow(workbook, dem, genderChart, cursor, CHART_W, CHART_H)
-  cursor += 20
+  cursor += chartRowSpan(CHART_H)
+
+  // Percentage view — separate table so user can read the gender ratio per
+  // month easily without scanning a stacked-bar visually.
+  cursor = writeSectionHeader(dem, cursor, 'Gender distribution by month (percentages)')
+  setHeader(dem.getRow(cursor), ['Month', ...genderKeysAll])
+  cursor += 1
+  for (let i = 0; i < data.demographics.length; i++) {
+    const d = data.demographics[i]
+    const total = genderKeysAll.reduce((s, k) => s + (d.by_gender[k]?.members || 0), 0)
+    const pctRow = [monthLabels[i]]
+    for (const k of genderKeysAll) {
+      const v = d.by_gender[k]?.members || 0
+      pctRow.push(total > 0 ? `${((v / total) * 100).toFixed(1)}%` : '—')
+    }
+    dem.getRow(cursor).values = pctRow
+    cursor += 1
+  }
+  cursor += 1
 
   // --- Membership type pivot ---
   dem.getCell(`A${cursor}`).value = 'Active members by membership type (top 10, end of month) — note: type reflects CURRENT value, not as-of date'
@@ -651,6 +706,46 @@ async function buildTrendsWorkbook(data) {
     title: 'Net member change — by location', yLabel: 'Net members',
   })
   await addImageBelow(workbook, dem, demNetByLoc, cursor, CHART_W, CHART_H)
+  cursor += chartRowSpan(CHART_H)
+
+  // ----- Average age trend -----
+  cursor = writeSectionHeader(dem, cursor, 'Average age of active members (end of month)')
+  setHeader(dem.getRow(cursor), ['Month', 'Avg age (all locations)', ...data.meta.clubs.map(c => c.name)])
+  cursor += 1
+  for (let i = 0; i < data.demographics.length; i++) {
+    const d = data.demographics[i]
+    dem.getRow(cursor).values = [
+      monthLabels[i],
+      d.avg_age,
+      ...data.meta.clubs.map(c => d.avg_age_by_club?.[c.club_number] ?? null),
+    ]
+    cursor += 1
+  }
+  cursor += 1
+  const avgAgeAll = await wide.renderToBuffer(lineConfig({
+    labels: monthLabels,
+    datasets: [{
+      label: 'Avg age (all locations)',
+      data: data.demographics.map(d => d.avg_age ?? null),
+      color: WCS_RED,
+    }],
+    title: 'Average age of active members — all locations',
+    yLabel: 'Years',
+  }))
+  await addImageBelow(workbook, dem, avgAgeAll, cursor, CHART_W, CHART_H)
+  cursor += chartRowSpan(CHART_H)
+
+  const avgAgeByClub = await wide.renderToBuffer(lineConfig({
+    labels: monthLabels,
+    datasets: data.meta.clubs.map((c, i) => ({
+      label: c.name,
+      data: data.demographics.map(d => d.avg_age_by_club?.[c.club_number] ?? null),
+      color: PALETTE[i % PALETTE.length],
+    })),
+    title: 'Average age of active members — by location',
+    yLabel: 'Years',
+  }))
+  await addImageBelow(workbook, dem, avgAgeByClub, cursor, CHART_W, CHART_H)
 
   autoWidth(dem, { 0: 12 })
 

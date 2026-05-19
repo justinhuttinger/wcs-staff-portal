@@ -121,6 +121,27 @@ async function gatherTrends12mo({ clubNumbers, locationSlugs, endMonth }) {
     })
   )
 
+  // Avg-age RPC for each snapshot date (grand total + per club).
+  const avgAgePromises = snapshotDates.map(s =>
+    supabaseAdmin.rpc('members_avg_age_on', {
+      p_date: s.date,
+      p_club_numbers: clubNumbers && clubNumbers.length ? clubNumbers : null,
+      p_skip_types: skipTypes.length ? skipTypes : null,
+    }).then(({ data, error }) => {
+      if (error) throw new Error(`members_avg_age_on(${s.date}) failed: ${error.message}`)
+      const total = (data || []).find(r => r.club_number === null)
+      const byClub = {}
+      for (const r of data || []) {
+        if (r.club_number !== null) byClub[r.club_number] = Number(r.avg_age) || null
+      }
+      return {
+        key: s.key,
+        total: total ? Number(total.avg_age) || null : null,
+        by_club: byClub,
+      }
+    })
+  )
+
   const flowsPromise = supabaseAdmin.rpc('trends_12mo_member_flows', {
     p_start_month: startMonth,
     p_end_month: endMonthFirstDay,
@@ -140,20 +161,35 @@ async function gatherTrends12mo({ clubNumbers, locationSlugs, endMonth }) {
     return data || []
   })
 
-  const [snapshotResults, flowsRows, revenueRows] = await Promise.all([
+  const [snapshotResults, avgAgeResults, flowsRows, revenueRows] = await Promise.all([
     Promise.all(rollupPromises),
+    Promise.all(avgAgePromises),
     flowsPromise,
     revenuePromise,
   ])
+
+  const avgAgeByKey = Object.fromEntries(avgAgeResults.map(r => [r.key, r]))
 
   // ---- Demographics by month + active today ----
   const demographics = []
   let activeToday = null
   for (const r of snapshotResults) {
+    const ageInfo = avgAgeByKey[r.key] || { total: null, by_club: {} }
     if (r.key === 'today') {
-      activeToday = { date: r.date, ...r.snapshot }
+      activeToday = {
+        date: r.date,
+        ...r.snapshot,
+        avg_age: ageInfo.total,
+        avg_age_by_club: ageInfo.by_club,
+      }
     } else {
-      demographics.push({ month: r.key, as_of: r.date, ...r.snapshot })
+      demographics.push({
+        month: r.key,
+        as_of: r.date,
+        ...r.snapshot,
+        avg_age: ageInfo.total,
+        avg_age_by_club: ageInfo.by_club,
+      })
     }
   }
 

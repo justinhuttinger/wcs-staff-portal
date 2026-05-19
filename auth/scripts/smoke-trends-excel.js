@@ -112,10 +112,19 @@ function fakeData() {
       }
       byClubLabeled[c.name] = byClub[c.club_number]
     }
+    // Fake avg-age per month and per club (drift slightly month-to-month).
+    const avgAgeBase = 36 + Math.sin(i / 2) * 0.5
+    const avgAgeByClub = {}
+    for (const c of CLUBS) {
+      avgAgeByClub[c.club_number] = +(avgAgeBase + (Math.random() - 0.5) * 4).toFixed(2)
+    }
+
     demographics.push({
       month: key,
       as_of: asOf,
       total: { members: totalActive, agreements: totalActiveAg },
+      avg_age: +avgAgeBase.toFixed(2),
+      avg_age_by_club: avgAgeByClub,
       by_age: {
         '<18': { members: 40, agreements: 38 },
         '18-24': { members: 320, agreements: 310 },
@@ -167,6 +176,8 @@ function fakeData() {
       by_membership_type: last.by_membership_type,
       by_club: last.by_club,
       by_club_labeled: last.by_club_labeled,
+      avg_age: last.avg_age,
+      avg_age_by_club: last.avg_age_by_club,
     },
   }
 }
