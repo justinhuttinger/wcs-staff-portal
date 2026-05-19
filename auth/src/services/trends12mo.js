@@ -131,13 +131,19 @@ async function gatherTrends12mo({ clubNumbers, locationSlugs, endMonth }) {
       if (error) throw new Error(`members_avg_age_on(${s.date}) failed: ${error.message}`)
       const total = (data || []).find(r => r.club_number === null)
       const byClub = {}
+      const stddevByClub = {}
       for (const r of data || []) {
-        if (r.club_number !== null) byClub[r.club_number] = Number(r.avg_age) || null
+        if (r.club_number !== null) {
+          byClub[r.club_number] = Number(r.avg_age) || null
+          stddevByClub[r.club_number] = Number(r.stddev_age) || null
+        }
       }
       return {
         key: s.key,
         total: total ? Number(total.avg_age) || null : null,
+        stddev_total: total ? Number(total.stddev_age) || null : null,
         by_club: byClub,
+        stddev_by_club: stddevByClub,
       }
     })
   )
@@ -174,13 +180,15 @@ async function gatherTrends12mo({ clubNumbers, locationSlugs, endMonth }) {
   const demographics = []
   let activeToday = null
   for (const r of snapshotResults) {
-    const ageInfo = avgAgeByKey[r.key] || { total: null, by_club: {} }
+    const ageInfo = avgAgeByKey[r.key] || { total: null, stddev_total: null, by_club: {}, stddev_by_club: {} }
     if (r.key === 'today') {
       activeToday = {
         date: r.date,
         ...r.snapshot,
         avg_age: ageInfo.total,
+        stddev_age: ageInfo.stddev_total,
         avg_age_by_club: ageInfo.by_club,
+        stddev_age_by_club: ageInfo.stddev_by_club,
       }
     } else {
       demographics.push({
@@ -188,7 +196,9 @@ async function gatherTrends12mo({ clubNumbers, locationSlugs, endMonth }) {
         as_of: r.date,
         ...r.snapshot,
         avg_age: ageInfo.total,
+        stddev_age: ageInfo.stddev_total,
         avg_age_by_club: ageInfo.by_club,
+        stddev_age_by_club: ageInfo.stddev_by_club,
       })
     }
   }
