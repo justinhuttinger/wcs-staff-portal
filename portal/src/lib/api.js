@@ -381,6 +381,34 @@ export async function downloadEmployeeRoster({ activeOnly = false, clubs = null 
   URL.revokeObjectURL(blobUrl)
 }
 
+// 12-Month Trends Excel export. `locationSlug` is 'all' or comma-separated
+// slugs (matches LocationMultiSelect value shape). `endMonth` is YYYY-MM or
+// null (server defaults to current month).
+export async function downloadTrends12moReport({ locationSlug = 'all', endMonth = null } = {}) {
+  const headers = {}
+  if (authToken) headers['Authorization'] = 'Bearer ' + authToken
+  const params = new URLSearchParams()
+  if (locationSlug && locationSlug !== 'all') params.set('location_slug', locationSlug)
+  if (endMonth) params.set('end_month', endMonth)
+  const qs = params.toString()
+  const url = `${API_URL}/admin/exports/trends-12mo.xlsx${qs ? '?' + qs : ''}`
+  const res = await fetch(url, { headers })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    let msg = text
+    try { msg = JSON.parse(text).error || text } catch { /* leave text */ }
+    throw new Error(msg || `Failed to generate trends report (HTTP ${res.status})`)
+  }
+  const blob = await res.blob()
+  const blobUrl = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = blobUrl
+  const monthLabel = endMonth || new Date().toISOString().slice(0, 7)
+  a.download = `WCS-Trends-12mo-${monthLabel}.xlsx`
+  a.click()
+  URL.revokeObjectURL(blobUrl)
+}
+
 export async function importStaff(file) {
   const headers = { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
   if (authToken) headers['Authorization'] = 'Bearer ' + authToken
