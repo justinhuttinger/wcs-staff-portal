@@ -1,5 +1,6 @@
 const { BrowserView, session } = require('electron')
 const path = require('path')
+const { attachContextMenu } = require('./context-menu')
 
 class TabManager {
   constructor(parentWindow, tabBarHeight) {
@@ -46,6 +47,8 @@ class TabManager {
     // Set Chrome user agent so sites like GHL don't block Electron
     const chromeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
     view.webContents.setUserAgent(chromeUA)
+
+    attachContextMenu(view.webContents)
 
     view.webContents.loadURL(url)
 
