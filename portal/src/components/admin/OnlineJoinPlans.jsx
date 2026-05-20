@@ -45,6 +45,20 @@ function pickField(obj, candidates) {
   return ''
 }
 
+// planValidation is documented as an "element" by ABC — the hash value can
+// appear as a string directly or nested under known sub-fields.
+function extractValidationHash(detail) {
+  const direct = pickField(detail, ['planValidationHash', 'validationHash', 'plan_validation_hash', 'hash'])
+  if (direct) return direct
+  const pv = detail?.planValidation
+  if (pv == null) return ''
+  if (typeof pv === 'string' || typeof pv === 'number') return String(pv)
+  if (typeof pv === 'object') {
+    return pickField(pv, ['hash', 'value', 'planValidationHash', 'validationHash']) || ''
+  }
+  return ''
+}
+
 function PullFromAbcModal({ clubNumber, locationLabel, onPick, onClose }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -97,7 +111,7 @@ function PullFromAbcModal({ clubNumber, locationLabel, onPick, onClose }) {
 
     const mapped = {
       payment_plan_id: pickField(detail, ['paymentPlanId', 'planId', 'id', 'plan_id']) || id || '',
-      plan_validation_hash: pickField(detail, ['planValidationHash', 'validationHash', 'plan_validation_hash', 'hash']) || '',
+      plan_validation_hash: extractValidationHash(detail),
       plan_label: pickField(detail, ['name', 'planName', 'description', 'planDescription']) || name || '',
       campaign_id: pickField(detail, ['campaignId', 'campaign_id']) || '',
       sales_person_id: pickField(detail, ['salesPersonId', 'sales_person_id']) || '',
@@ -234,7 +248,7 @@ function PlanEditor({ plan, locations, ageRules, onClose, onSaved }) {
         monthly_amount: parseFloat(draft.monthly_amount),
         display_order: parseInt(draft.display_order) || 0,
         payment_plan_id: draft.payment_plan_id,
-        plan_validation_hash: draft.plan_validation_hash,
+        plan_validation_hash: draft.plan_validation_hash || null,
         campaign_id: draft.campaign_id || null,
         sales_person_id: draft.sales_person_id || null,
         age_rule_id: draft.age_rule_id || null,
@@ -326,7 +340,7 @@ function PlanEditor({ plan, locations, ageRules, onClose, onSaved }) {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Payment Plan ID" value={draft.payment_plan_id} onChange={v => update('payment_plan_id', v)} required mono hint="ABC's paymentPlanId." />
-              <Field label="Plan Validation Hash" value={draft.plan_validation_hash} onChange={v => update('plan_validation_hash', v)} required mono hint="ABC's planValidationHash." />
+              <Field label="Plan Validation Hash (optional)" value={draft.plan_validation_hash} onChange={v => update('plan_validation_hash', v)} mono hint="Fallback only — /start fetches this fresh from ABC at signup time (it can rotate daily)." />
               <Field label="Campaign ID (optional)" value={draft.campaign_id} onChange={v => update('campaign_id', v)} mono />
               <Field label="Salesperson ID (optional)" value={draft.sales_person_id} onChange={v => update('sales_person_id', v)} mono />
             </div>
