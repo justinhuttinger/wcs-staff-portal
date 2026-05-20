@@ -10,6 +10,7 @@ const EMPTY_PLAN = {
   badge: '',
   today_amount: '',
   monthly_amount: '',
+  enrollment_fee: '',
   display_order: 0,
   payment_plan_id: '',
   plan_validation_hash: '',
@@ -260,6 +261,7 @@ function PlanEditor({ plan, locations, ageRules, onClose, onSaved }) {
         badge: draft.badge || null,
         today_amount: parseFloat(draft.today_amount),
         monthly_amount: parseFloat(draft.monthly_amount),
+        enrollment_fee: numOrNull(draft.enrollment_fee),
         display_order: parseInt(draft.display_order) || 0,
         payment_plan_id: draft.payment_plan_id,
         plan_validation_hash: draft.plan_validation_hash || null,
@@ -408,8 +410,9 @@ function PlanEditor({ plan, locations, ageRules, onClose, onSaved }) {
             <div className="grid grid-cols-2 gap-3">
               <Field label="Plan label" value={draft.plan_label} onChange={v => update('plan_label', v)} required placeholder="Standard Membership" />
               <Field label="Badge (optional)" value={draft.badge} onChange={v => update('badge', v)} placeholder="Most Popular" />
-              <Field label="Today amount ($)" type="number" value={draft.today_amount} onChange={v => update('today_amount', v)} required placeholder="99.00" />
-              <Field label="Monthly amount ($)" type="number" value={draft.monthly_amount} onChange={v => update('monthly_amount', v)} required placeholder="49.00" />
+              <Field label="Enrollment fee ($) (optional)" type="number" value={draft.enrollment_fee} onChange={v => update('enrollment_fee', v)} placeholder="39.99" hint="One-time fee shown as its own line on the plan card." />
+              <Field label="Total due today ($)" type="number" value={draft.today_amount} onChange={v => update('today_amount', v)} required placeholder="39.99" hint="What's actually charged today — usually enrollment + first month, or just enrollment if month 1 is free." />
+              <Field label="Monthly dues ($)" type="number" value={draft.monthly_amount} onChange={v => update('monthly_amount', v)} required placeholder="60.00" hint="Recurring monthly amount." />
               <Field label="Display order" type="number" value={draft.display_order} onChange={v => update('display_order', v)} />
             </div>
             <div className="mt-3">
