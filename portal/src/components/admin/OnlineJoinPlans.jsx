@@ -15,6 +15,14 @@ const EMPTY_PLAN = {
   plan_validation_hash: '',
   campaign_id: '',
   sales_person_id: '',
+  // ACH variant — ABC requires a separate paymentPlanId for ACH/EFT. The
+  // amounts typically differ from CC by ~$5/mo (no convenience-fee profit
+  // center on the ACH variant). All three are optional; when set the
+  // widget uses them at signup time for ACH members. NULL falls back to
+  // the CC values.
+  payment_plan_id_ach: '',
+  today_amount_ach: '',
+  monthly_amount_ach: '',
   age_rule_id: null,
   active: true,
 }
@@ -227,6 +235,8 @@ function PlanEditor({ plan, locations, ageRules, onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [showAbcPicker, setShowAbcPicker] = useState(false)
+  // 'cc' or 'ach' — tells applyAbcPick which set of fields to populate.
+  const [abcPickerTarget, setAbcPickerTarget] = useState('cc')
 
   function update(key, value) {
     setDraft(d => ({ ...d, [key]: value }))
@@ -237,6 +247,10 @@ function PlanEditor({ plan, locations, ageRules, onClose, onSaved }) {
   async function save() {
     setSaving(true); setError(null)
     try {
+      // Numbers — empty string means "no override, use NULL". Server-side
+      // resolveEffectivePlan falls back to the CC value when an ACH amount
+      // is NULL, but if Justin typed a number we honor it exactly.
+      const numOrNull = v => (v === '' || v == null) ? null : parseFloat(v)
       const body = {
         wcs_location_id: draft.wcs_location_id,
         plan_key: draft.plan_key,
@@ -251,6 +265,10 @@ function PlanEditor({ plan, locations, ageRules, onClose, onSaved }) {
         plan_validation_hash: draft.plan_validation_hash || null,
         campaign_id: draft.campaign_id || null,
         sales_person_id: draft.sales_person_id || null,
+        // ACH variant. All three may be NULL — server falls back to CC.
+        payment_plan_id_ach: draft.payment_plan_id_ach || null,
+        today_amount_ach: numOrNull(draft.today_amount_ach),
+        monthly_amount_ach: numOrNull(draft.monthly_amount_ach),
         age_rule_id: draft.age_rule_id || null,
         active: !!draft.active,
       }
@@ -271,6 +289,19 @@ function PlanEditor({ plan, locations, ageRules, onClose, onSaved }) {
 
   function applyAbcPick(pick) {
     setShowAbcPicker(false)
+    // Routing the pick into the CC or ACH slots based on which "Pull from
+    // ABC" button the user pressed. Common metadata (plan_label, campaign,
+    // salesperson) only writes when picking CC; otherwise ACH-side picks
+    // would clobber those.
+    if (abcPickerTarget === 'ach') {
+      setDraft(d => ({
+        ...d,
+        payment_plan_id_ach: pick.payment_plan_id || d.payment_plan_id_ach,
+        today_amount_ach: d.today_amount_ach || pick.today_amount,
+        monthly_amount_ach: d.monthly_amount_ach || pick.monthly_amount,
+      }))
+      return
+    }
     setDraft(d => ({
       ...d,
       payment_plan_id: pick.payment_plan_id || d.payment_plan_id,
@@ -328,9 +359,9 @@ function PlanEditor({ plan, locations, ageRules, onClose, onSaved }) {
 
           <section>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">ABC integration</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">ABC integration — Credit Card variant</p>
               <button
-                onClick={() => setShowAbcPicker(true)}
+                onClick={() => { setAbcPickerTarget('cc'); setShowAbcPicker(true) }}
                 disabled={!selectedLocation?.abc_club_number}
                 className="px-2.5 py-1 rounded-md bg-wcs-red text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 title={selectedLocation?.abc_club_number ? '' : 'Pick a location first'}
@@ -339,10 +370,36 @@ function PlanEditor({ plan, locations, ageRules, onClose, onSaved }) {
               </button>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Payment Plan ID" value={draft.payment_plan_id} onChange={v => update('payment_plan_id', v)} required mono hint="ABC's paymentPlanId." />
+              <Field label="Payment Plan ID" value={draft.payment_plan_id} onChange={v => update('payment_plan_id', v)} required mono hint="ABC's paymentPlanId — the Credit Card variant." />
               <Field label="Plan Validation Hash (optional)" value={draft.plan_validation_hash} onChange={v => update('plan_validation_hash', v)} mono hint="Fallback only — /start fetches this fresh from ABC at signup time (it can rotate daily)." />
               <Field label="Campaign ID (optional)" value={draft.campaign_id} onChange={v => update('campaign_id', v)} mono />
               <Field label="Salesperson ID (optional)" value={draft.sales_person_id} onChange={v => update('sales_person_id', v)} mono />
+            </div>
+          </section>
+
+          <section>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">ABC integration — ACH variant</p>
+                <p className="text-[10px] text-text-muted mt-0.5">
+                  ABC requires a separate paymentPlanId for ACH/EFT. Typically the monthly is ~$5 less than the CC variant
+                  (no convenience-fee profit center). What you enter here is what the widget uses for ACH members — leave a
+                  field blank to fall back to the CC value above.
+                </p>
+              </div>
+              <button
+                onClick={() => { setAbcPickerTarget('ach'); setShowAbcPicker(true) }}
+                disabled={!selectedLocation?.abc_club_number}
+                className="px-2.5 py-1 rounded-md bg-wcs-red text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                title={selectedLocation?.abc_club_number ? '' : 'Pick a location first'}
+              >
+                Pull from ABC ↓
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="ACH Payment Plan ID (optional)" value={draft.payment_plan_id_ach} onChange={v => update('payment_plan_id_ach', v)} mono hint="ABC's paymentPlanId for ACH/EFT." />
+              <Field label="ACH today amount ($) (optional)" type="number" value={draft.today_amount_ach} onChange={v => update('today_amount_ach', v)} placeholder="leave blank = use CC value" />
+              <Field label="ACH monthly amount ($) (optional)" type="number" value={draft.monthly_amount_ach} onChange={v => update('monthly_amount_ach', v)} placeholder="leave blank = use CC value" />
             </div>
           </section>
 
