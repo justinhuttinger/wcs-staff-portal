@@ -120,4 +120,11 @@ app.listen(PORT, () => {
       console.error('[cacheWarmer] failed to start:', err.message)
     }
   }
+
+  // Marketing Mastermind processor — no-op if MASTERMIND_ENABLED != 'true'
+  try {
+    require('./mastermind').start()
+  } catch (err) {
+    console.error('[mastermind] failed to start:', err.message)
+  }
 })
