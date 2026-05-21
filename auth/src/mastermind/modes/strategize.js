@@ -20,12 +20,14 @@ module.exports = async function strategize({ task, comments }) {
 async function strategizeGeneral({ task, comments, lane }) {
   const system = `You are the WCS Marketing Mastermind. Produce sharp strategic memos: positioning, channel mix, opportunity cost, alternatives. You are willing to recommend NOT doing the thing if that's the right call.
 
+HARD RULE: never use em-dashes ("—") or en-dashes ("–") anywhere in the output. They are an AI tell. Use commas, periods, parentheses, colons, or restructure the sentence. Plain hyphens (-) inside compound words are fine.
+
 Output:
-1. **The ask, as I understand it** — 1–2 sentences.
-2. **My take** — should we, shouldn't we, or "yes but" — and why.
+1. **The ask, as I understand it**: 1-2 sentences.
+2. **My take**: should we, shouldn't we, or "yes but": and why.
 3. **Risks / what would have to be true.**
-4. **Alternatives** — 2–3 different angles worth considering.
-5. **Recommendation** — concrete next step.
+4. **Alternatives**: 2-3 different angles worth considering.
+5. **Recommendation**: concrete next step.
 
 Tight. No padding.`
 
@@ -45,7 +47,7 @@ Give me your strategic take.`
   })
 
   return {
-    commentText: `**Strategic take — Mastermind (${r.model})**\n\n${r.text.trim()}`,
+    commentText: `**Strategic take: Mastermind (${r.model})**\n\n${r.text.trim()}`,
     lane,
     usage: { model: r.model, inputTokens: r.inputTokens, outputTokens: r.outputTokens },
   }
@@ -58,11 +60,13 @@ async function strategizeLab({ task, lane }) {
 
   const system = `You are the WCS Marketing Mastermind. The user asked for ${labKind} ideas. Generate exactly ${DEFAULT_CONCEPTS_PER_REQUEST} distinct concepts.
 
+HARD RULE: never use em-dashes ("—") or en-dashes ("–") anywhere in the output, including inside the JSON fields. They are an AI tell. Use commas, periods, parentheses, colons, or restructure. Plain hyphens (-) inside compound words are fine.
+
 Each concept must be substantively different (not three flavors of the same idea). After your intro, return EXACTLY ONE JSON code block at the end:
 
 \`\`\`json
 {
-  "intro": "1–2 sentence read of the brief + market context",
+  "intro": "1-2 sentence read of the brief + market context",
   "concepts": [
     {
       "name": "short punchy concept name (≤60 chars)",
@@ -76,12 +80,12 @@ Each concept must be substantively different (not three flavors of the same idea
 }
 \`\`\`
 
-\`score\` is your 1–5 confidence rating. Be honest — not all 5s.`
+\`score\` is your 1-5 confidence rating. Be honest: not all 5s.`
 
   const user = `Lane: ${lane}
 Parent task: ${task?.name}
 Brief from user:
-${task?.markdown_description || task?.description || '(none — infer from title)'}
+${task?.markdown_description || task?.description || '(none: infer from title)'}
 
 Generate ${DEFAULT_CONCEPTS_PER_REQUEST} concepts now.`
 
@@ -123,7 +127,7 @@ Generate ${DEFAULT_CONCEPTS_PER_REQUEST} concepts now.`
   }
 
   return {
-    commentText: `**${createdCount} concepts generated — Mastermind (${r.model})**\n\n${parsed.intro || ''}\n\nReview the subtasks below. Mark the one you want with status \`Approved\` and set \`Mastermind = Brief Me\` on it to promote to a full campaign.`,
+    commentText: `**${createdCount} concepts generated: Mastermind (${r.model})**\n\n${parsed.intro || ''}\n\nReview the subtasks below. Mark the one you want with status \`Approved\` and set \`Mastermind = Brief Me\` on it to promote to a full campaign.`,
     statusAfter: 'ideas posted',
     lane,
     usage: { model: r.model, inputTokens: r.inputTokens, outputTokens: r.outputTokens },

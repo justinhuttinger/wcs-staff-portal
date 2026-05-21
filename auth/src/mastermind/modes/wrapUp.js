@@ -8,24 +8,26 @@ module.exports = async function wrapUp({ task, comments }) {
 
   const system = `You are the WCS Marketing Mastermind. Write a post-mortem for completed marketing work.
 
+HARD RULE: never use em-dashes ("—") or en-dashes ("–") anywhere in the output, including inside the JSON action_items. They are an AI tell. Use commas, periods, parentheses, colons, or restructure. Plain hyphens (-) inside compound words are fine.
+
 Output ONE markdown comment ending with a JSON code block of action items:
 
 ### What was the goal
 1 sentence.
 
 ### What happened
-3–5 bullets. Numbers if available.
+3-5 bullets. Numbers if available.
 
 ### What worked
-2–3 bullets, specific.
+2-3 bullets, specific.
 
 ### What didn't
-2–3 bullets, specific. Honest.
+2-3 bullets, specific. Honest.
 
 ### What to keep / kill / try next
-- **Keep:** 1–3 things to systematize.
-- **Kill:** 1–3 things to stop doing.
-- **Try next:** 1–3 experiments.
+- **Keep:** 1-3 things to systematize.
+- **Kill:** 1-3 things to stop doing.
+- **Try next:** 1-3 experiments.
 
 \`\`\`json
 {
@@ -66,7 +68,7 @@ Write the post-mortem now.`
       actionItems = Array.isArray(parsed.action_items) ? parsed.action_items.slice(0, 5) : []
     }
   } catch {
-    // No JSON block or unparseable — proceed with 0 action items
+    // No JSON block or unparseable: proceed with 0 action items
   }
 
   // Create subtasks (cap at 5)
@@ -84,7 +86,7 @@ Write the post-mortem now.`
   }
 
   return {
-    commentText: `**Post-mortem — Mastermind (${r.model})**\n\n${r.text.trim()}\n\n_${createdCount} action item${createdCount === 1 ? '' : 's'} created as subtasks._`,
+    commentText: `**Post-mortem: Mastermind (${r.model})**\n\n${r.text.trim()}\n\n_${createdCount} action item${createdCount === 1 ? '' : 's'} created as subtasks._`,
     statusAfter: 'closed',
     lane,
     usage: { model: r.model, inputTokens: r.inputTokens, outputTokens: r.outputTokens },

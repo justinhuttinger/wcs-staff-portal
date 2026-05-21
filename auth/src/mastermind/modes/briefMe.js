@@ -20,13 +20,15 @@ module.exports = async function briefMe({ task, comments }) {
 
   const system = `You are the WCS Marketing Mastermind. Read a raw request and produce a tight, structured brief. Tactical, not theoretical.
 
+HARD RULE: never use em-dashes ("—") or en-dashes ("–") anywhere in the output. They are an AI tell. Use commas, periods, parentheses, colons, or restructure the sentence. Plain hyphens (-) inside compound words are fine.
+
 Output format (markdown, no preamble):
 
 ### Scope
-1–2 sentences. What is this deliverable? What is it NOT?
+1 or 2 sentences. What is this deliverable? What is it NOT?
 
 ### Audience
-Who specifically — segment, location, life stage, awareness level.
+Who specifically: segment, location, life stage, awareness level.
 
 ### Channels
 Bulleted list. Which channels carry this and why.
@@ -35,7 +37,7 @@ Bulleted list. Which channels carry this and why.
 The single sharpest angle. One sentence.
 
 ### Key messages
-3–5 bullets. Things the audience must take away.
+3 to 5 bullets. Things the audience must take away.
 
 ### CTA
 One clear action.
@@ -53,7 +55,7 @@ Concrete artifacts (e.g., "1 cold-traffic Meta ad set + 3 variants", "5-email nu
 Task title: ${taskTitle}
 
 Raw description:
-${description || '(none — infer from title)'}
+${description || '(none, infer from title)'}
 
 Recent comments:
 ${(comments || []).slice(-5).map(c => `${c.user?.username || '?'}: ${c.comment_text}`).join('\n') || '(none)'}
@@ -68,7 +70,7 @@ Write the brief now.`
   })
 
   return {
-    commentText: `**Brief — Mastermind (${result.model})**\n\n${result.text.trim()}`,
+    commentText: `**Brief: Mastermind (${result.model})**\n\n${result.text.trim()}`,
     statusAfter: 'building',
     lane,
     usage: {
@@ -111,6 +113,8 @@ async function promoteConcept({ task }) {
   // 3. Ask Claude to expand the concept into a full campaign plan
   const system = `You are the WCS Marketing Mastermind. An approved campaign concept needs to be expanded into a full campaign plan. Be concrete and execution-ready.
 
+HARD RULE: never use em-dashes ("—") or en-dashes ("–") anywhere in the output, including inside the JSON fields. They are an AI tell. Use commas, periods, parentheses, colons, or restructure. Plain hyphens (-) inside compound words are fine.
+
 Output BOTH (1) a human-readable plan in markdown AND (2) a JSON block at the end with structured deliverables.
 
 Markdown plan format:
@@ -122,13 +126,13 @@ Markdown plan format:
 **Window:** ~6 weeks (or whatever the concept implies)
 
 ### Strategic plan
-3–5 paragraphs. Audience, positioning, channel mix rationale, sequencing.
+3-5 paragraphs. Audience, positioning, channel mix rationale, sequencing.
 
 ### Success metrics
-3–5 measurable KPIs.
+3-5 measurable KPIs.
 
 ### Risks / what to watch
-2–3 honest risks.
+2-3 honest risks.
 
 End your message with ONE JSON code block:
 
@@ -144,7 +148,7 @@ End your message with ONE JSON code block:
 
 Deliverables should map to channels Justin actually runs. Use these exact channel names so the task gets mirrored into the right channel list:
 - "Meta Ads"
-- "Social" (Instagram / TikTok / Facebook organic — single channel name "Social")
+- "Social" (Instagram / TikTok / Facebook organic: single channel name "Social")
 - "SEO" (blog posts, location pages)
 - "Email" (broadcasts, nurture sequences, SMS)
 - "App Blast" (in-app push notifications to members)
@@ -252,7 +256,7 @@ Generate the full campaign plan now.`
   if (wsId) {
     try {
       const doc = await cu.createDoc(wsId, parentTask.id, {
-        name: `Plan — ${parsed.campaign_name}`,
+        name: `Plan: ${parsed.campaign_name}`,
         content: planText,
       })
       docUrl = doc?.url || ''
@@ -266,7 +270,7 @@ Generate the full campaign plan now.`
   try {
     await cu.updateTaskStatus(task.id, 'promoted')
   } catch {
-    // ignore — status names vary by ClickUp plan/config
+    // ignore: status names vary by ClickUp plan/config
   }
 
   const linkLine = docUrl ? `📄 Full plan doc: ${docUrl}\n\n` : ''
@@ -275,7 +279,7 @@ Generate the full campaign plan now.`
     : ''
 
   return {
-    commentText: `**Concept promoted to active campaign — Mastermind (${result.model})**\n\n${linkLine}Created list **${listName}** with the parent campaign task and ${createdCount} deliverable subtask${createdCount === 1 ? '' : 's'}.\n\n${mirrorLine}Go to the new list and set \`Mastermind = Draft\` on each deliverable to produce the actual copy.`,
+    commentText: `**Concept promoted to active campaign: Mastermind (${result.model})**\n\n${linkLine}Created list **${listName}** with the parent campaign task and ${createdCount} deliverable subtask${createdCount === 1 ? '' : 's'}.\n\n${mirrorLine}Go to the new list and set \`Mastermind = Draft\` on each deliverable to produce the actual copy.`,
     statusAfter: 'promoted',
     lane: 'campaign_lab',
     usage: {

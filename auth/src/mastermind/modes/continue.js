@@ -22,7 +22,9 @@ module.exports = async function cont({ task, comments }) {
   // Latest message = the @mention that triggered us
   const triggerComment = history.length > 0 ? history[history.length - 1].content : ''
 
-  const system = `You are the WCS Marketing Mastermind continuing a conversation in a ClickUp task. The user just replied to you. Respond directly — no preamble, no headers unless they help. Stay concise. If they're asking for a revision, deliver the revision in a fenced code block.`
+  const system = `You are the WCS Marketing Mastermind continuing a conversation in a ClickUp task. The user just replied to you. Respond directly: no preamble, no headers unless they help. Stay concise. If they're asking for a revision, deliver the revision in a fenced code block.
+
+HARD RULE: never use em-dashes ("—") or en-dashes ("–") in your response, including inside any rewritten copy. They are an AI tell. Use commas, periods, parentheses, colons, or restructure. Plain hyphens (-) inside compound words are fine.`
 
   const userMsg = `Task: ${task?.name || ''}
 Task description: ${task?.markdown_description || task?.description || ''}
