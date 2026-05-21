@@ -1,6 +1,7 @@
 const { Router } = require('express')
 const crypto = require('crypto')
 const { supabaseAdmin } = require('../services/supabase')
+const cu = require('../mastermind/clickup')
 
 const router = Router()
 
@@ -9,14 +10,13 @@ const CLICKUP_WEBHOOK_SECRET = process.env.CLICKUP_WEBHOOK_SECRET || ''
 
 const MASTERMIND_FIELD_NAME = 'Mastermind'
 
+// v2: two user-triggerable modes plus a Thinking state (set by us, never user)
 const MODE_MAP = {
-  'brief me': 'brief_me',
   'strategize': 'strategize',
-  'analyze': 'analyze',
-  'draft': 'draft',
-  'review': 'review',
-  'wrap up': 'wrap_up',
+  'build': 'build',
 }
+// Values we set ourselves on the field; recognize and skip without logging noise
+const STATE_VALUES = new Set(['thinking'])
 
 function verifySignature(rawBody, signature, secret) {
   if (!secret) return false
@@ -81,9 +81,8 @@ async function handleEvent(event) {
   if (evt === 'taskUpdated') {
     const histories = Array.isArray(event.history_items) ? event.history_items : []
     let enqueuedAny = false
+    let sawStateValue = false
     for (const h of histories) {
-      // ClickUp uses several shapes for custom-field history entries. Check
-      // a few candidate paths to find the field name.
       const fieldName =
         h?.custom_field?.name ||
         h?.field?.name ||
@@ -91,13 +90,25 @@ async function handleEvent(event) {
         ''
       if (fieldName !== MASTERMIND_FIELD_NAME) continue
 
-      // ClickUp dropdown custom-field changes send the option's UUID in `after`,
-      // not the human-readable label. The full options list is embedded in
-      // h.custom_field.type_config.options — look up by id to get the name.
       const afterValue = h?.after ?? h?.data?.after ?? h?.value
       const customFieldDef = h?.custom_field || h?.data?.custom_field
-      const mode = resolveMode(afterValue, customFieldDef)
+      const labelLower = resolveLabel(afterValue, customFieldDef)?.toLowerCase().trim()
+
+      // Self-update (we set the field to "Thinking" or cleared it to blank).
+      // Recognize and skip without logging noise.
+      if (!labelLower || STATE_VALUES.has(labelLower)) {
+        sawStateValue = true
+        continue
+      }
+
+      const mode = MODE_MAP[labelLower]
       if (!mode) continue
+
+      // Immediate UX: flip the dropdown to "Thinking" right now so the user
+      // sees visual feedback before the processor picks it up. Fire-and-forget.
+      if (customFieldDef?.id) {
+        setFieldToThinking(taskId, customFieldDef).catch(() => { /* swallow */ })
+      }
 
       await enqueue({
         task_id: taskId,
@@ -108,7 +119,7 @@ async function handleEvent(event) {
       })
       enqueuedAny = true
     }
-    if (!enqueuedAny) {
+    if (!enqueuedAny && !sawStateValue) {
       try {
         await supabaseAdmin.from('mastermind_errors').insert({
           error_kind: 'no_match',
@@ -156,24 +167,38 @@ async function handleEvent(event) {
   }
 }
 
-function resolveMode(rawValue, customFieldDef) {
+function resolveLabel(rawValue, customFieldDef) {
   if (!rawValue) return null
   let label
   if (typeof rawValue === 'string') {
-    // ClickUp dropdown custom-field webhooks send the OPTION UUID, not the
-    // display label. Resolve via the embedded type_config.options list.
     const options = customFieldDef?.type_config?.options
     if (Array.isArray(options)) {
       const opt = options.find(o => o?.id === rawValue)
       if (opt) label = opt.name || opt.value
     }
-    if (!label) label = rawValue  // fall back to using value directly
+    if (!label) label = rawValue
   }
   else if (rawValue.label) label = rawValue.label
   else if (Array.isArray(rawValue) && rawValue[0]?.label) label = rawValue[0].label
   else if (rawValue.value && typeof rawValue.value === 'string') label = rawValue.value
   else return null
-  return MODE_MAP[String(label).toLowerCase().trim()] || null
+  return String(label)
+}
+
+function resolveMode(rawValue, customFieldDef) {
+  const label = resolveLabel(rawValue, customFieldDef)
+  if (!label) return null
+  return MODE_MAP[label.toLowerCase().trim()] || null
+}
+
+// Flip the Mastermind field to "Thinking" so the user sees immediate feedback
+// after they trigger a mode. Uses the customFieldDef from the webhook (no
+// extra fetch needed).
+async function setFieldToThinking(taskId, customFieldDef) {
+  const options = customFieldDef?.type_config?.options || []
+  const thinking = options.find(o => String(o?.name || '').toLowerCase().trim() === 'thinking')
+  if (!thinking?.id) return
+  await cu.setCustomField(taskId, customFieldDef.id, thinking.id)
 }
 
 const DEBOUNCE_MS = 30_000

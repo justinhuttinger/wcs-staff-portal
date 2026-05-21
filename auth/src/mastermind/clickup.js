@@ -83,6 +83,37 @@ async function setCustomField(taskId, fieldId, value) {
   })
 }
 
+// Set a custom field by NAME by inspecting the task's custom_fields array.
+// Returns true if field was found and set, false otherwise.
+async function setFieldByName(task, name, value) {
+  const fields = task?.custom_fields || []
+  const f = fields.find(x => x?.name === name)
+  if (!f?.id) return false
+  // For dropdown fields, find the option ID matching value (case-insensitive)
+  if (f.type === 'drop_down' && f.type_config?.options) {
+    const target = String(value || '').toLowerCase().trim()
+    const opt = f.type_config.options.find(o => String(o?.name || '').toLowerCase().trim() === target)
+    if (opt) {
+      await setCustomField(task.id, f.id, opt.id)
+      return true
+    }
+    return false
+  }
+  await setCustomField(task.id, f.id, value)
+  return true
+}
+
+async function updateTaskDescription(taskId, description) {
+  return cuFetch(`/task/${taskId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ description }),
+  })
+}
+
+async function moveTaskToList(taskId, listId) {
+  return cuFetch(`/list/${listId}/task/${taskId}`, { method: 'POST' })
+}
+
 async function createSubtask(parentTaskId, listId, { name, description }) {
   return cuFetch(`/list/${listId}/task`, {
     method: 'POST',
@@ -139,8 +170,11 @@ module.exports = {
   getTaskComments,
   postComment,
   updateTaskStatus,
+  updateTaskDescription,
+  moveTaskToList,
   clearCustomField,
   setCustomField,
+  setFieldByName,
   createSubtask,
   createTask,
   addTaskToList,

@@ -99,19 +99,18 @@ function die(msg) { console.error('FATAL:', msg); process.exit(1) }
 // Default 5-stage statuses used by Channels lists
 const CHANNEL_STATUSES = makeStatuses(['Idea', 'Drafting', 'Scheduled', 'Live', 'Done'])
 
-// Universal custom fields applied to every list (Mastermind dropdown + pause flag)
+// Universal custom fields applied to every list (Mastermind dropdown + pause flag).
+// v2: two user-triggerable values plus a Thinking state the processor sets
+// itself while working. Don't pick Thinking manually.
 const UNIVERSAL_FIELDS = [
   {
     name: 'Mastermind',
     type: 'drop_down',
     type_config: {
       options: [
-        { name: 'Brief Me', color: '#3397DD', orderindex: 0 },
-        { name: 'Strategize', color: '#9B59B6', orderindex: 1 },
-        { name: 'Analyze', color: '#2ECC71', orderindex: 2 },
-        { name: 'Draft', color: '#F1C40F', orderindex: 3 },
-        { name: 'Review', color: '#E67E22', orderindex: 4 },
-        { name: 'Wrap Up', color: '#95A5A6', orderindex: 5 },
+        { name: 'Strategize', color: '#9B59B6', orderindex: 0 },
+        { name: 'Build', color: '#2ECC71', orderindex: 1 },
+        { name: 'Thinking', color: '#F1C40F', orderindex: 2 },
       ],
     },
   },

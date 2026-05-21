@@ -60,11 +60,31 @@ async function dispatchOne(row) {
     result.commentText = `⚠️ Per-task cost cap exceeded ($${cost.toFixed(2)} > $${PER_TASK_COST_CAP_USD}). Proceeding once; tune \`MASTERMIND_TASK_CAP_USD\` env if expected.\n\n` + result.commentText
   }
 
-  // Post outputs
+  // Post outputs. v2 contract: handlers return data primarily as field updates
+  // + description updates. The commentText is now a short ack/iteration log,
+  // not the deliverable itself.
   let commentId = null
   let docId = null
   try {
-    // Create Doc first if requested (so we can link it from the comment)
+    // 1. Apply custom-field updates (key data — Subject Line, Caption, etc.)
+    if (result.fieldUpdates && typeof result.fieldUpdates === 'object') {
+      for (const [name, value] of Object.entries(result.fieldUpdates)) {
+        if (value == null || value === '') continue
+        try {
+          await cu.setFieldByName(task, name, value)
+        } catch (e) {
+          console.warn(`[mastermind] setFieldByName(${name}) failed: ${e.message}`)
+        }
+      }
+    }
+
+    // 2. Update task description if handler returned descriptionUpdate (long-form copy)
+    if (typeof result.descriptionUpdate === 'string' && result.descriptionUpdate.length > 0) {
+      try { await cu.updateTaskDescription(row.task_id, result.descriptionUpdate) }
+      catch (e) { console.warn(`[mastermind] updateTaskDescription failed: ${e.message}`) }
+    }
+
+    // 3. Optional Doc creation (rare in v2 — most output goes to description)
     if (result.docName && result.docContent && CLICKUP_WORKSPACE_ID) {
       try {
         const doc = await cu.createDoc(CLICKUP_WORKSPACE_ID, row.task_id, {
@@ -72,24 +92,22 @@ async function dispatchOne(row) {
           content: result.docContent,
         })
         docId = doc?.id || null
-        if (docId) {
-          const url = doc?.url || `(doc id: ${docId})`
-          result.commentText = `${result.commentText}\n\n📄 Full doc: ${url}`
-        }
       } catch (e) {
-        result.commentText = `${result.commentText}\n\n⚠️ Could not create ClickUp Doc: ${e.message}: full content below:\n\n${result.docContent}`
+        console.warn(`[mastermind] createDoc failed: ${e.message}`)
       }
     }
 
-    commentId = await cu.postComment(row.task_id, result.commentText)
+    // 4. Post the ack/log comment (short — actual deliverable lives in fields)
+    if (result.commentText) {
+      commentId = await cu.postComment(row.task_id, result.commentText)
+    }
 
     if (result.statusAfter) {
       try { await cu.updateTaskStatus(row.task_id, result.statusAfter) }
       catch (e) { /* status name may not match list: best effort, swallow */ }
     }
 
-    // Reset the Mastermind field. Prefer the field ID present on the task
-    // itself (most reliable across lists); fall back to env var.
+    // 5. Reset the Mastermind field back to blank
     const dynamicFieldId = findFieldId(task, 'Mastermind') || MASTERMIND_FIELD_ID
     if (dynamicFieldId) {
       try { await cu.clearCustomField(row.task_id, dynamicFieldId) }
