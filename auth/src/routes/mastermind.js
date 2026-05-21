@@ -91,9 +91,12 @@ async function handleEvent(event) {
         ''
       if (fieldName !== MASTERMIND_FIELD_NAME) continue
 
-      // "after" can also live in different places depending on payload version
+      // ClickUp dropdown custom-field changes send the option's UUID in `after`,
+      // not the human-readable label. The full options list is embedded in
+      // h.custom_field.type_config.options — look up by id to get the name.
       const afterValue = h?.after ?? h?.data?.after ?? h?.value
-      const mode = resolveMode(afterValue)
+      const customFieldDef = h?.custom_field || h?.data?.custom_field
+      const mode = resolveMode(afterValue, customFieldDef)
       if (!mode) continue
 
       await enqueue({
@@ -109,7 +112,7 @@ async function handleEvent(event) {
       try {
         await supabaseAdmin.from('mastermind_errors').insert({
           error_kind: 'no_match',
-          message: `taskUpdated for ${taskId} had ${histories.length} history_items but none were a Mastermind field change`,
+          message: `taskUpdated for ${taskId} had ${histories.length} history_items but no Mastermind field change resolved to a known mode`,
           payload: event,
         })
       } catch { /* ignore */ }
@@ -131,15 +134,24 @@ async function handleEvent(event) {
   }
 }
 
-function resolveMode(rawValue) {
+function resolveMode(rawValue, customFieldDef) {
   if (!rawValue) return null
   let label
-  if (typeof rawValue === 'string') label = rawValue
+  if (typeof rawValue === 'string') {
+    // ClickUp dropdown custom-field webhooks send the OPTION UUID, not the
+    // display label. Resolve via the embedded type_config.options list.
+    const options = customFieldDef?.type_config?.options
+    if (Array.isArray(options)) {
+      const opt = options.find(o => o?.id === rawValue)
+      if (opt) label = opt.name || opt.value
+    }
+    if (!label) label = rawValue  // fall back to using value directly
+  }
   else if (rawValue.label) label = rawValue.label
   else if (Array.isArray(rawValue) && rawValue[0]?.label) label = rawValue[0].label
   else if (rawValue.value && typeof rawValue.value === 'string') label = rawValue.value
   else return null
-  return MODE_MAP[label.toLowerCase().trim()] || null
+  return MODE_MAP[String(label).toLowerCase().trim()] || null
 }
 
 const DEBOUNCE_MS = 30_000
