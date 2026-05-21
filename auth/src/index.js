@@ -28,7 +28,14 @@ app.use(cors({
 
 // Raw body parser for staff import MUST be registered before express.json()
 app.use('/admin/staff/import', express.raw({ type: '*/*', limit: '10mb' }))
-app.use(express.json())
+app.use(express.json({
+  verify: (req, _res, buf) => {
+    // ClickUp signs the raw body. Capture it for the mastermind webhook so HMAC verifies.
+    if (req.path === '/webhooks/mastermind') {
+      req.rawBody = buf.toString('utf8')
+    }
+  },
+}))
 app.use(cookieParser())
 
 // Health check
@@ -41,6 +48,7 @@ app.use('/admin', require('./routes/admin'))
 app.use('/config', require('./routes/config'))
 app.use('/webhooks', require('./routes/webhooks'))
 app.use('/webhooks', require('./routes/metaCapi'))
+app.use('/webhooks', require('./routes/mastermind'))
 app.use('/appointments', require('./routes/appointments'))
 app.use('/tours', require('./routes/tours'))
 app.use('/oidc', require('./routes/oidc'))
@@ -85,6 +93,7 @@ app.use('/custom-fields', require('./routes/customFields'))
 app.use('/admin/shared-credentials', require('./routes/sharedCredentials'))
 app.use('/admin/cache', require('./routes/cacheAdmin'))
 app.use('/admin/exports', require('./routes/exports'))
+app.use('/admin/mastermind', require('./routes/mastermindStats'))
 app.use('/audit-log', require('./routes/auditLog'))
 
 // Global error handler — catch unhandled errors, don't leak stack traces
@@ -111,5 +120,12 @@ app.listen(PORT, () => {
     } catch (err) {
       console.error('[cacheWarmer] failed to start:', err.message)
     }
+  }
+
+  // Marketing Mastermind processor — no-op if MASTERMIND_ENABLED != 'true'
+  try {
+    require('./mastermind').start()
+  } catch (err) {
+    console.error('[mastermind] failed to start:', err.message)
   }
 })
