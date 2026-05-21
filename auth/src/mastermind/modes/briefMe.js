@@ -142,7 +142,16 @@ End your message with ONE JSON code block:
 }
 \`\`\`
 
-Deliverables should map to channels Justin actually runs: Meta Ads, Organic Social, SEO & Blogs, Email & SMS, App Blasts, Flyers & Print, Promotions & In-Gym. Don't include channels not in the concept's channel mix. Cap at 8 deliverables.`
+Deliverables should map to channels Justin actually runs. Use these exact channel names so the task gets mirrored into the right channel list:
+- "Meta Ads"
+- "Social" (Instagram / TikTok / Facebook organic — single channel name "Social")
+- "SEO" (blog posts, location pages)
+- "Email" (broadcasts, nurture sequences, SMS)
+- "App Blast" (in-app push notifications to members)
+- "Flyer" (printed in-gym signage)
+- "Promo" (in-gym promotions, member offers)
+
+Don't include channels not in the concept's channel mix. Cap at 8 deliverables.`
 
   const user = `Approved concept:
 
@@ -209,17 +218,31 @@ Generate the full campaign plan now.`
     description: `_Promoted from Campaign Lab concept [${task.id}]_\n\n${planText}`,
   })
 
-  // 7. Create deliverable subtasks
+  // 7. Create deliverable subtasks; each also mirrored into its channel list
+  //    via ClickUp's "Tasks in Multiple Lists" (requires Business+ ClickApp).
   let createdCount = 0
+  let mirroredCount = 0
   for (const d of parsed.deliverables) {
+    let subtask
     try {
-      await cu.createSubtask(parentTask.id, newList.id, {
+      subtask = await cu.createSubtask(parentTask.id, newList.id, {
         name: `${d.channel ? `[${d.channel}] ` : ''}${d.title || 'Deliverable'}`,
         description: d.description || '',
       })
       createdCount++
     } catch (e) {
       console.error('[mastermind] promotion: subtask create failed:', e.message)
+      continue
+    }
+
+    const channelListId = channelListIdFor(d.channel)
+    if (channelListId && subtask?.id) {
+      try {
+        await cu.addTaskToList(channelListId, subtask.id)
+        mirroredCount++
+      } catch (e) {
+        console.error(`[mastermind] promotion: mirror to ${d.channel} list failed:`, e.message)
+      }
     }
   }
 
@@ -247,9 +270,12 @@ Generate the full campaign plan now.`
   }
 
   const linkLine = docUrl ? `📄 Full plan doc: ${docUrl}\n\n` : ''
+  const mirrorLine = mirroredCount > 0
+    ? `${mirroredCount} of ${createdCount} also mirrored into their channel lists (Meta Ads / Social / SEO / Email / App Blasts / Flyers / Promotions).\n\n`
+    : ''
 
   return {
-    commentText: `**Concept promoted to active campaign — Mastermind (${result.model})**\n\n${linkLine}Created list **${listName}** with the parent campaign task and ${createdCount} deliverable subtask${createdCount === 1 ? '' : 's'}.\n\nGo to the new list and set \`Mastermind = Draft\` on each deliverable to produce the actual copy.`,
+    commentText: `**Concept promoted to active campaign — Mastermind (${result.model})**\n\n${linkLine}Created list **${listName}** with the parent campaign task and ${createdCount} deliverable subtask${createdCount === 1 ? '' : 's'}.\n\n${mirrorLine}Go to the new list and set \`Mastermind = Draft\` on each deliverable to produce the actual copy.`,
     statusAfter: 'promoted',
     lane: 'campaign_lab',
     usage: {
@@ -258,4 +284,19 @@ Generate the full campaign plan now.`
       outputTokens: result.outputTokens,
     },
   }
+}
+
+// Map a deliverable's `channel` string to the env var holding the target list ID.
+// Used to mirror the deliverable into its channel list via Tasks in Multiple Lists.
+function channelListIdFor(channel) {
+  if (!channel) return null
+  const c = String(channel).toLowerCase()
+  if (/meta|fb|facebook ad/.test(c)) return process.env.CLICKUP_LIST_META_ADS || null
+  if (/social|instagram|tiktok|content cal/.test(c)) return process.env.CLICKUP_LIST_CONTENT_CALENDAR || null
+  if (/seo|blog/.test(c)) return process.env.CLICKUP_LIST_SEO || null
+  if (/email|sms|broadcast/.test(c)) return process.env.CLICKUP_LIST_EMAIL || null
+  if (/app blast|push|app/.test(c)) return process.env.CLICKUP_LIST_APPBLASTS || null
+  if (/flyer|print/.test(c)) return process.env.CLICKUP_LIST_FLYERS || null
+  if (/promo|in-gym|in gym/.test(c)) return process.env.CLICKUP_LIST_PROMOTIONS || null
+  return null
 }

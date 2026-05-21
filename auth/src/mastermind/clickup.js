@@ -106,6 +106,12 @@ async function createList(folderId, { name, statuses, content }) {
   })
 }
 
+// Tasks in Multiple Lists: adds an existing task to an additional list.
+// Requires the "Tasks in Multiple Lists" ClickApp enabled (Business+ plan).
+async function addTaskToList(listId, taskId) {
+  return cuFetch(`/list/${listId}/task/${taskId}`, { method: 'POST' })
+}
+
 async function createDoc(workspaceId, parentTaskId, { name, content }) {
   if (!workspaceId) throw new Error('CLICKUP_WORKSPACE_ID required for createDoc')
   // Docs API v3
@@ -137,6 +143,7 @@ module.exports = {
   setCustomField,
   createSubtask,
   createTask,
+  addTaskToList,
   createList,
   createDoc,
 }

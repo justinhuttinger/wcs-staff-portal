@@ -6,10 +6,10 @@ const DEFAULT_CONCEPTS_PER_REQUEST = 3
 
 // Strategize: two flavors.
 // - General: write a strategic memo.
-// - Lab (Campaign Lab / Post Lab / Broadcast Lab): generate N concept subtasks.
+// - Lab (Campaign Lab / Post Lab / Content Lab): generate N concept subtasks.
 module.exports = async function strategize({ task, comments }) {
   const lane = inferLane(task)
-  const isLab = lane === 'campaign_lab' || lane === 'post_lab' || lane === 'broadcast_lab'
+  const isLab = lane === 'campaign_lab' || lane === 'post_lab' || lane === 'content_lab'
 
   if (isLab) {
     return strategizeLab({ task, lane })
@@ -54,7 +54,7 @@ Give me your strategic take.`
 async function strategizeLab({ task, lane }) {
   const labKind = lane === 'campaign_lab' ? 'campaign'
     : lane === 'post_lab' ? 'social post'
-    : 'email broadcast'
+    : 'content piece (email broadcast, SMS, app blast, SEO post, or blog)'
 
   const system = `You are the WCS Marketing Mastermind. The user asked for ${labKind} ideas. Generate exactly ${DEFAULT_CONCEPTS_PER_REQUEST} distinct concepts.
 
