@@ -1,4 +1,5 @@
 const { complete } = require('../anthropic')
+const cu = require('../clickup')
 const { inferLane } = require('../lane')
 
 // Brief Me: produce a tight structured brief.
@@ -78,13 +79,183 @@ Write the brief now.`
   }
 }
 
+// Promote an Approved concept subtask into a full Active Campaign.
+// Creates: new list under Campaigns folder, parent campaign task with the
+// full plan, deliverable subtasks per channel, and a ClickUp Doc holding
+// the full plan.
 async function promoteConcept({ task }) {
-  // Stub: promotion requires ClickUp Campaigns space + folder IDs from provisioning.
-  // Section 15 of the implementation plan documents the provisioning script and
-  // env vars (CLICKUP_SPACE_MARKETING, CLICKUP_FOLDER_CAMPAIGNS) needed.
+  const campaignsFolderId = process.env.CLICKUP_FOLDER_CAMPAIGNS
+  if (!campaignsFolderId) {
+    return {
+      commentText: `**Promotion needs \`CLICKUP_FOLDER_CAMPAIGNS\` env var.**\n\nThe Campaigns folder ID wasn't captured during provisioning. Run \`auth/scripts/provision-mastermind-space.js\` (which outputs all needed env vars) or grab the Campaigns folder ID manually from ClickUp and add it to the Render auth-service env.`,
+      lane: 'campaign_lab',
+      usage: { model: 'none', inputTokens: 0, outputTokens: 0 },
+    }
+  }
+
+  // 1. Read the concept description (set by strategize Lab mode)
+  const conceptDesc = task?.markdown_description || task?.description || task?.text_content || ''
+  const conceptName = task?.name || 'Untitled Concept'
+
+  // 2. Pull original brief from parent Lab task (if linked)
+  let originalBrief = ''
+  if (task?.parent) {
+    try {
+      const parentLab = await cu.getTask(task.parent)
+      originalBrief = parentLab?.markdown_description || parentLab?.description || parentLab?.text_content || ''
+    } catch {
+      // If we can't fetch parent, proceed with just concept description
+    }
+  }
+
+  // 3. Ask Claude to expand the concept into a full campaign plan
+  const system = `You are the WCS Marketing Mastermind. An approved campaign concept needs to be expanded into a full campaign plan. Be concrete and execution-ready.
+
+Output BOTH (1) a human-readable plan in markdown AND (2) a JSON block at the end with structured deliverables.
+
+Markdown plan format:
+
+### Campaign: <name>
+
+**Campaign Type:** Acquisition | Retention | Upsell | Operational
+
+**Window:** ~6 weeks (or whatever the concept implies)
+
+### Strategic plan
+3–5 paragraphs. Audience, positioning, channel mix rationale, sequencing.
+
+### Success metrics
+3–5 measurable KPIs.
+
+### Risks / what to watch
+2–3 honest risks.
+
+End your message with ONE JSON code block:
+
+\`\`\`json
+{
+  "campaign_name": "...",
+  "campaign_type": "Acquisition | Retention | Upsell | Operational",
+  "deliverables": [
+    { "channel": "Meta Ads", "title": "Cold-traffic ad set + 3 variants", "description": "What it is, target audience, hook" }
+  ]
+}
+\`\`\`
+
+Deliverables should map to channels Justin actually runs: Meta Ads, Organic Social, SEO & Blogs, Email & SMS, App Blasts, Flyers & Print, Promotions & In-Gym. Don't include channels not in the concept's channel mix. Cap at 8 deliverables.`
+
+  const user = `Approved concept:
+
+**Title:** ${conceptName}
+
+${conceptDesc}
+
+Original brief (from Campaign Lab parent task):
+${originalBrief || '(none)'}
+
+Generate the full campaign plan now.`
+
+  const result = await complete({
+    mode: 'brief_me',
+    system,
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 4000,
+  })
+
+  const planText = result.text.trim()
+
+  // 4. Parse the JSON block for deliverables
+  let parsed = { campaign_name: conceptName, campaign_type: 'Acquisition', deliverables: [] }
+  try {
+    const match = planText.match(/```json\s*([\s\S]+?)```/)
+    if (match) {
+      const j = JSON.parse(match[1])
+      parsed = {
+        campaign_name: (j.campaign_name || conceptName).slice(0, 200),
+        campaign_type: j.campaign_type || 'Acquisition',
+        deliverables: Array.isArray(j.deliverables) ? j.deliverables.slice(0, 8) : [],
+      }
+    }
+  } catch (e) {
+    // Fall through with defaults; user can manually add deliverables
+  }
+
+  const listName = `🟢 ${parsed.campaign_name}`
+
+  // 5. Create new list under the Campaigns folder
+  let newList
+  try {
+    newList = await cu.createList(campaignsFolderId, {
+      name: listName,
+      statuses: [
+        { status: 'Briefing', color: '#87909e', orderindex: 0, type: 'open' },
+        { status: 'Building', color: '#f9d900', orderindex: 1, type: 'custom' },
+        { status: 'Live', color: '#02bcd4', orderindex: 2, type: 'custom' },
+        { status: 'Review', color: '#bf55ec', orderindex: 3, type: 'custom' },
+        { status: 'Closed', color: '#000000', orderindex: 4, type: 'closed' },
+      ],
+    })
+  } catch (e) {
+    return {
+      commentText: `**Could not create campaign list:** ${e.message}\n\nLeaving concept as-is in Campaign Lab. Try again after checking the Campaigns folder still exists.`,
+      lane: 'campaign_lab',
+      usage: { model: result.model, inputTokens: result.inputTokens, outputTokens: result.outputTokens },
+    }
+  }
+
+  // 6. Create the parent campaign task
+  const parentTask = await cu.createTask(newList.id, {
+    name: parsed.campaign_name,
+    description: `_Promoted from Campaign Lab concept [${task.id}]_\n\n${planText}`,
+  })
+
+  // 7. Create deliverable subtasks
+  let createdCount = 0
+  for (const d of parsed.deliverables) {
+    try {
+      await cu.createSubtask(parentTask.id, newList.id, {
+        name: `${d.channel ? `[${d.channel}] ` : ''}${d.title || 'Deliverable'}`,
+        description: d.description || '',
+      })
+      createdCount++
+    } catch (e) {
+      console.error('[mastermind] promotion: subtask create failed:', e.message)
+    }
+  }
+
+  // 8. Try to create a ClickUp Doc with the full plan
+  let docUrl = ''
+  const wsId = process.env.CLICKUP_WORKSPACE_ID
+  if (wsId) {
+    try {
+      const doc = await cu.createDoc(wsId, parentTask.id, {
+        name: `Plan — ${parsed.campaign_name}`,
+        content: planText,
+      })
+      docUrl = doc?.url || ''
+    } catch (e) {
+      console.error('[mastermind] promotion: doc create failed:', e.message)
+    }
+  }
+
+  // 9. Best-effort: mark the concept itself as Promoted (status name depends on
+  // the Campaign Lab status set; provisioning script names it "Promoted")
+  try {
+    await cu.updateTaskStatus(task.id, 'promoted')
+  } catch {
+    // ignore — status names vary by ClickUp plan/config
+  }
+
+  const linkLine = docUrl ? `📄 Full plan doc: ${docUrl}\n\n` : ''
+
   return {
-    commentText: `**Promotion not yet implemented.**\n\nThis concept is approved and ready for full campaign build-out, but the promotion automation needs ClickUp space/folder IDs to know where to create the new "🟢 [Active]" folder. Set the following env vars and re-run:\n\n- \`CLICKUP_SPACE_MARKETING\` (the "WCS Marketing" space ID)\n- \`CLICKUP_FOLDER_CAMPAIGNS\` (the "Campaigns" folder ID)\n\nOnce those are set, this branch in \`briefMe.js\` becomes the real promotion.\n\nFor now, manually create the campaign folder and use \`Brief Me\` again from inside that folder.`,
+    commentText: `**Concept promoted to active campaign — Mastermind (${result.model})**\n\n${linkLine}Created list **${listName}** with the parent campaign task and ${createdCount} deliverable subtask${createdCount === 1 ? '' : 's'}.\n\nGo to the new list and set \`Mastermind = Draft\` on each deliverable to produce the actual copy.`,
+    statusAfter: 'promoted',
     lane: 'campaign_lab',
-    usage: { model: 'none', inputTokens: 0, outputTokens: 0 },
+    usage: {
+      model: result.model,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+    },
   }
 }

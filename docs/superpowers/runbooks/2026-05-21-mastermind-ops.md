@@ -19,7 +19,9 @@ Related docs:
 | `CLICKUP_API_KEY` | Yes | — | Already in use by `tickets.js`. Same key works. |
 | `CLICKUP_WEBHOOK_SECRET` | Yes | — | The shared secret you set when registering the ClickUp webhook. Used to verify the `X-Signature` HMAC. |
 | `CLICKUP_WORKSPACE_ID` | Required for Docs output | — | Workspace ID containing the Marketing space. Needed for the ClickUp Docs v3 API. |
-| `CLICKUP_MASTERMIND_FIELD_ID` | Required for field-reset and rhythm-set | — | UUID of the `Mastermind` custom field on the Marketing space. Set so the processor can clear it after work and rhythms can set it on auto-created tasks. |
+| `CLICKUP_MASTERMIND_FIELD_ID` | Optional (now auto-detected) | — | Fallback Mastermind field UUID. Processor now looks the field up dynamically on each task; this env var only kicks in if the dynamic lookup fails. |
+| `CLICKUP_FOLDER_CAMPAIGNS` | Required for Campaign Lab promotion | — | Folder ID of the "Campaigns" folder. When an approved concept gets `Mastermind = Brief Me`, the processor creates a new campaign list inside this folder. |
+| `CLICKUP_SPACE_MARKETING` | Optional (informational) | — | Space ID of "WCS Marketing". Not used by code; kept for reference and future provisioning re-runs. |
 | `CLICKUP_LIST_PERFORMANCE` | Required for performance rhythms | — | List ID for the "Performance" lane. Drives weekly Meta review, weekly digest, monthly report, quarterly strategy. |
 | `CLICKUP_LIST_FLYERS` | Required for flyer audit rhythm | — | List ID for "Channels → Flyers & Print". |
 | `CLICKUP_LIST_EMAIL` | Required for email queue rhythm | — | List ID for "Channels → Email & SMS". |
@@ -52,33 +54,49 @@ Verify deploy is healthy. Boot log should include:
 [mastermind] disabled (MASTERMIND_ENABLED != "true")
 ```
 
-### Step 2 — Build the ClickUp space
+### Step 2 — Build the ClickUp space (automated, ~3 min)
 
-Provisioning script (Section 15 in the plan) is **not implemented**. Build by hand:
+Use the provisioning script. It creates the entire space — folders, lists, statuses, custom fields, location dropdowns — and outputs the env vars you need.
 
-1. Create a new ClickUp space called **WCS Marketing**.
-2. Create five folders (lanes): `Inbox & Ideas`, `Strategy`, `Campaigns`, `Channels`, `Performance`.
-3. Inside each folder, create the lists per the spec (Section: ClickUp space structure):
-   - **Inbox & Ideas:** one list "Inbox"
-   - **Strategy:** one list "Strategy & Planning" + the actual reference Docs you want long-lived
-   - **Campaigns:** one list "🧪 Campaign Lab"; folders for each active campaign created on demand
-   - **Channels:** seven lists — Meta Ads, Organic Social (sub-folder with Post Lab / Content Calendar / Published Archive), SEO & Blogs, Email & SMS (with Broadcast Lab sub-list), App Blasts, Flyers & Print, Promotions & In-Gym
-   - **Performance:** one list "Performance"
-4. Create custom fields **at the space level** so they appear in every list:
-   - `Mastermind` — Dropdown — options: `Brief Me`, `Strategize`, `Analyze`, `Draft`, `Review`, `Wrap Up`. Note the field's UUID.
-   - `Mastermind Paused` — Checkbox/Boolean.
-   - `Campaign Type` — Dropdown — options: `Acquisition`, `Retention`, `Upsell`, `Operational`.
-   - `Channel` — Dropdown — options: `Meta`, `Social`, `Email`, `SEO`, `Promo`, `Multi`.
-   - `Location` — Dropdown (or labels) — options: each gym + `All`.
-   - `Publish Date` — Date.
-   - `Linked Campaign` — Task Relation.
-5. Per-list status sets per the spec (e.g., Campaign Lab uses `Brainstorming → Ideas Posted → Concept Picked → Promoted → Archived`).
-6. Save default views per the spec: Calendar + Board + Gantt on Channels lists; Board on Labs.
+**Get your workspace (team) ID:**
+Open ClickUp in a browser. The URL has the form `https://app.clickup.com/<TEAM_ID>/...`. That number is your `CLICKUP_TEAM_ID`.
 
-Capture these IDs as you go (will go into env vars next step):
-- The custom field UUID for `Mastermind` → `CLICKUP_MASTERMIND_FIELD_ID`
-- The list ID for each rhythm's target list (Performance, Flyers, Email, Strategy)
-- The workspace ID → `CLICKUP_WORKSPACE_ID`
+**Run it (in the `wcs-staff-portal/auth` directory):**
+```bash
+cd auth
+CLICKUP_API_KEY=<your existing pk_... key> \
+CLICKUP_TEAM_ID=<workspace ID from URL> \
+  node scripts/provision-mastermind-space.js
+```
+
+You can preview first with `DRY_RUN=true` prepended — no API calls, just shows what would be created.
+
+The script:
+- Verifies no existing space named "WCS Marketing" (refuses if there is — archive it first)
+- Creates the space with the right feature flags (custom fields + tags enabled, time tracking off)
+- Creates the 5 lane folders
+- Creates 14 lists across the lanes with their per-list statuses
+- Creates universal custom fields (`Mastermind` dropdown + `Mastermind Paused`) on every list
+- Creates list-specific extras (Channel, Location, Publish Date, Format, Quantity, etc.)
+
+Total ClickUp API calls: ~120 with a 250ms gap between each (well under rate limits). Takes about 30–60 seconds.
+
+**Output:** the script prints, and also writes to `auth/scripts/mastermind-env-additions.txt`, the exact env-var block to paste into Render:
+
+```
+CLICKUP_WORKSPACE_ID=...
+CLICKUP_SPACE_MARKETING=...
+CLICKUP_FOLDER_CAMPAIGNS=...
+CLICKUP_MASTERMIND_FIELD_ID=...
+CLICKUP_LIST_PERFORMANCE=...
+CLICKUP_LIST_FLYERS=...
+CLICKUP_LIST_EMAIL=...
+CLICKUP_LIST_STRATEGY=...
+```
+
+**If the script fails partway:** archive the partial "WCS Marketing" space in ClickUp, then re-run. The script refuses to run if a space by that name already exists, so partial state has to be cleared first.
+
+**Optional follow-up (manual):** the script does not save default views (Calendar / Gantt / Board variants) on each list — ClickUp's view API is finicky. After running, open each Channels list and add a Calendar view filtered by `Publish Date`, a Board view grouped by status, and a Gantt view where useful (Meta Ads, Promotions, Flyers).
 
 ### Step 3 — Register webhooks in ClickUp
 
@@ -201,9 +219,9 @@ Or — to leave it enabled but stop accepting new work without losing inflight: 
 
 ---
 
-## Known limitations at MVP
+## Known limitations
 
-- **Campaign Lab "Approved → promotion to Active Campaign folder"** is a stub. After provisioning gives us the Campaigns folder ID, `auth/src/mastermind/modes/briefMe.js`'s `promoteConcept` needs the real implementation (plan Section 10.7).
-- **`Analyze` mode** only has Meta ROAS adapter wired. Other reports (GA4, GBP, Flyer Audit, Email Queue) return a "paste data, I'll write the report" stub until adapters are added.
-- **Comment storm cap** (>5 mentions/hour on the same task) is not yet enforced. If a task gets spammed, Mastermind processes every mention.
+- **`Analyze` mode** only has the Meta ROAS adapter wired. Other reports (GA4, GBP, Flyer Audit, Email Queue) return a "paste data, I'll write the report" stub until adapters are added in a follow-up PR.
+- **Comment storm cap** (>5 mentions/hour on the same task) is not enforced. If a task gets spammed, Mastermind processes every mention.
 - **ClickUp Docs API v3 is recent** — payload shape may evolve. If doc creation starts failing, check the Docs v3 API docs and update `auth/src/mastermind/clickup.js` `createDoc()`.
+- **Default views** (Calendar / Gantt / Board variations) aren't created by the provisioning script — set them manually after running it.

@@ -92,7 +92,19 @@ async function runRhythm(r, listId) {
     console.error(`[mastermind] rhythm '${r.name}' created no task`)
     return
   }
-  const fieldId = process.env.CLICKUP_MASTERMIND_FIELD_ID
+
+  // Resolve the Mastermind field ID. Prefer the field instance on this list
+  // (more reliable than env var since each list has its own field instance).
+  let fieldId = null
+  try {
+    const fullTask = await cu.getTask(taskId)
+    const fields = fullTask?.custom_fields || []
+    fieldId = fields.find(f => f?.name === 'Mastermind')?.id || null
+  } catch (e) {
+    console.warn(`[mastermind] rhythm '${r.name}' could not fetch task for field lookup: ${e.message}`)
+  }
+  if (!fieldId) fieldId = process.env.CLICKUP_MASTERMIND_FIELD_ID
+
   if (fieldId) {
     try {
       await cu.setCustomField(taskId, fieldId, r.modeLabel)
@@ -100,7 +112,7 @@ async function runRhythm(r, listId) {
       console.error(`[mastermind] rhythm '${r.name}' field set failed:`, e.message)
     }
   } else {
-    console.warn(`[mastermind] rhythm '${r.name}' created task ${taskId} but CLICKUP_MASTERMIND_FIELD_ID is unset — field not auto-set`)
+    console.warn(`[mastermind] rhythm '${r.name}' created task ${taskId} but no Mastermind field found on the list and CLICKUP_MASTERMIND_FIELD_ID is unset — field not auto-set`)
   }
   console.log(`[mastermind] rhythm '${r.name}' created task ${taskId}`)
 }
