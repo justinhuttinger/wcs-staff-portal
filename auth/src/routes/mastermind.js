@@ -64,15 +64,36 @@ router.post('/mastermind', async (req, res) => {
 async function handleEvent(event) {
   const evt = event?.event
   const taskId = event?.task_id
+
+  // Diagnostic: every event we receive lands in mastermind_errors with a
+  // 'diag' kind so we can verify reachability + see payload shape from
+  // ClickUp. Cheap, bounded by webhook volume, easy to query.
+  try {
+    await supabaseAdmin.from('mastermind_errors').insert({
+      error_kind: 'diag',
+      message: `received ${evt || 'unknown event'} task=${taskId || 'none'}`,
+      payload: event,
+    })
+  } catch { /* don't fail handling on diag insert */ }
+
   if (!taskId) return
 
   if (evt === 'taskUpdated') {
     const histories = Array.isArray(event.history_items) ? event.history_items : []
+    let enqueuedAny = false
     for (const h of histories) {
-      const fieldName = h?.custom_field?.name || ''
+      // ClickUp uses several shapes for custom-field history entries. Check
+      // a few candidate paths to find the field name.
+      const fieldName =
+        h?.custom_field?.name ||
+        h?.field?.name ||
+        h?.data?.custom_field?.name ||
+        ''
       if (fieldName !== MASTERMIND_FIELD_NAME) continue
 
-      const mode = resolveMode(h?.after)
+      // "after" can also live in different places depending on payload version
+      const afterValue = h?.after ?? h?.data?.after ?? h?.value
+      const mode = resolveMode(afterValue)
       if (!mode) continue
 
       await enqueue({
@@ -82,6 +103,16 @@ async function handleEvent(event) {
         requested_by: h?.user?.id ? String(h.user.id) : null,
         payload: event,
       })
+      enqueuedAny = true
+    }
+    if (!enqueuedAny) {
+      try {
+        await supabaseAdmin.from('mastermind_errors').insert({
+          error_kind: 'no_match',
+          message: `taskUpdated for ${taskId} had ${histories.length} history_items but none were a Mastermind field change`,
+          payload: event,
+        })
+      } catch { /* ignore */ }
     }
     return
   }
