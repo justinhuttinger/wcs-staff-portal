@@ -77,7 +77,7 @@ async function dispatchOne(row) {
           result.commentText = `${result.commentText}\n\n📄 Full doc: ${url}`
         }
       } catch (e) {
-        result.commentText = `${result.commentText}\n\n⚠️ Could not create ClickUp Doc: ${e.message} — full content below:\n\n${result.docContent}`
+        result.commentText = `${result.commentText}\n\n⚠️ Could not create ClickUp Doc: ${e.message}: full content below:\n\n${result.docContent}`
       }
     }
 
@@ -85,7 +85,7 @@ async function dispatchOne(row) {
 
     if (result.statusAfter) {
       try { await cu.updateTaskStatus(row.task_id, result.statusAfter) }
-      catch (e) { /* status name may not match list — best effort, swallow */ }
+      catch (e) { /* status name may not match list: best effort, swallow */ }
     }
 
     // Reset the Mastermind field. Prefer the field ID present on the task
@@ -93,7 +93,7 @@ async function dispatchOne(row) {
     const dynamicFieldId = findFieldId(task, 'Mastermind') || MASTERMIND_FIELD_ID
     if (dynamicFieldId) {
       try { await cu.clearCustomField(row.task_id, dynamicFieldId) }
-      catch { /* swallow — field reset is polish, not critical */ }
+      catch { /* swallow: field reset is polish, not critical */ }
     }
   } catch (e) {
     await queue.markFailed(row.id, `output post failed: ${e.message}`)

@@ -20,7 +20,7 @@ module.exports = async function review({ task, comments }) {
 
   if (!draftText.trim()) {
     return {
-      commentText: `**Review — nothing to review.**\n\nNo draft found in the task description or recent comments. Paste the draft into a comment and re-trigger \`Mastermind = Review\`.`,
+      commentText: `**Review: nothing to review.**\n\nNo draft found in the task description or recent comments. Paste the draft into a comment and re-trigger \`Mastermind = Review\`.`,
       lane,
       usage: { model: 'none', inputTokens: 0, outputTokens: 0 },
     }
@@ -28,10 +28,12 @@ module.exports = async function review({ task, comments }) {
 
   const system = `You are the WCS Marketing Mastermind. Critique the draft like a senior creative director who respects the writer.
 
-Output:
-**Overall:** 1–2 sentences. Is it ready? Close? Way off?
+HARD RULE: never use em-dashes ("—") or en-dashes ("–") in your critique OR in any suggested rewrites. They are an AI tell. Use commas, periods, parentheses, colons, or restructure. Plain hyphens (-) inside compound words are fine. If the original draft contains em-dashes, flag that as an issue and propose rewrites without them.
 
-**Strengths:** 2–3 bullets. Be specific — quote the line.
+Output:
+**Overall:** 1-2 sentences. Is it ready? Close? Way off?
+
+**Strengths:** 2-3 bullets. Be specific: quote the line.
 
 **Issues:** Numbered list. For each, quote the offending line and propose a rewrite.
 
@@ -40,7 +42,7 @@ Output:
 the revised version
 \`\`\`
 
-**Risk flags:** anything that could cause legal / brand / member backlash. Often "None" — say so.
+**Risk flags:** anything that could cause legal / brand / member backlash. Often "None": say so.
 
 Be honest. Sycophancy doesn't help.`
 
@@ -54,7 +56,7 @@ Be honest. Sycophancy doesn't help.`
   })
 
   return {
-    commentText: `**Review — Mastermind (${r.model})**\n\n${r.text.trim()}`,
+    commentText: `**Review: Mastermind (${r.model})**\n\n${r.text.trim()}`,
     lane,
     usage: { model: r.model, inputTokens: r.inputTokens, outputTokens: r.outputTokens },
   }

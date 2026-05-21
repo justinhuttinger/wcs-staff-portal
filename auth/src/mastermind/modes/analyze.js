@@ -34,10 +34,12 @@ module.exports = async function analyze({ task, comments }) {
 async function analyzeGeneric({ task, comments, lane }) {
   const system = `You are the WCS Marketing Mastermind. Write a concise data-light analysis based only on what the task says. If the request would need data you don't have, say so explicitly and recommend what data the user should attach.
 
+HARD RULE: never use em-dashes ("—") or en-dashes ("–") in the output. They are an AI tell. Use commas, periods, parentheses, colons, or restructure. Plain hyphens (-) inside compound words are fine.
+
 Output:
-1. **What I read** — 1 sentence on what the task is asking.
-2. **What I can say from context** — honest analysis from what's provided.
-3. **What I'd need to go deeper** — specific data sources.`
+1. **What I read**: 1 sentence on what the task is asking.
+2. **What I can say from context**: honest analysis from what's provided.
+3. **What I'd need to go deeper**: specific data sources.`
 
   const user = `Task: ${task?.name}
 Lane: ${lane}
@@ -48,7 +50,7 @@ Analyze now.`
 
   const r = await complete({ mode: 'analyze', system, messages: [{ role: 'user', content: user }], maxTokens: 2000 })
   return {
-    commentText: `**Analysis — Mastermind (${r.model})**\n\n${r.text.trim()}`,
+    commentText: `**Analysis: Mastermind (${r.model})**\n\n${r.text.trim()}`,
     statusAfter: 'analyzing',
     lane,
     usage: { model: r.model, inputTokens: r.inputTokens, outputTokens: r.outputTokens },
@@ -67,7 +69,7 @@ async function analyzeMetaRoas({ task, lane }) {
       data = await fbRoas.fetchRoasData({ days: 7 })
     } else {
       return {
-        commentText: `**Analyze — Meta ROAS adapter not yet wired.**\n\nThe \`auth/src/routes/fbRoas.js\` module currently exports only an Express router, not a callable helper. To enable automated Meta ROAS analysis:\n\n1. Refactor \`fbRoas.js\` to expose a \`getRoasData({ days })\` function alongside the router\n2. Update this handler (\`auth/src/mastermind/modes/analyze.js\`) to call it\n\nFor MVP, this analysis must be manual.`,
+        commentText: `**Analyze: Meta ROAS adapter not yet wired.**\n\nThe \`auth/src/routes/fbRoas.js\` module currently exports only an Express router, not a callable helper. To enable automated Meta ROAS analysis:\n\n1. Refactor \`fbRoas.js\` to expose a \`getRoasData({ days })\` function alongside the router\n2. Update this handler (\`auth/src/mastermind/modes/analyze.js\`) to call it\n\nFor MVP, this analysis must be manual.`,
         statusAfter: 'analyzing',
         lane,
         usage: { model: 'none', inputTokens: 0, outputTokens: 0 },
@@ -75,7 +77,7 @@ async function analyzeMetaRoas({ task, lane }) {
     }
   } catch (e) {
     return {
-      commentText: `**Analyze failed — could not load fbRoas helper:** ${e.message}`,
+      commentText: `**Analyze failed: could not load fbRoas helper:** ${e.message}`,
       statusAfter: 'analyzing',
       lane,
       usage: { model: 'none', inputTokens: 0, outputTokens: 0 },
@@ -84,11 +86,13 @@ async function analyzeMetaRoas({ task, lane }) {
 
   const system = `You are the WCS Marketing Mastermind. Read Meta ad performance data and write a concise weekly review.
 
+HARD RULE: never use em-dashes ("—") or en-dashes ("–") in the output. They are an AI tell. Use commas, periods, parentheses, colons, or restructure. Plain hyphens (-) inside compound words are fine.
+
 Output:
-1. **Headline read** — 1–2 sentences. What matters most this week?
-2. **What's working** — 3 bullets max with numbers.
-3. **What's bleeding** — 3 bullets max with numbers.
-4. **Recommended actions** — 2–4 concrete budget shifts or experiments.
+1. **Headline read**: 1-2 sentences. What matters most this week?
+2. **What's working**: 3 bullets max with numbers.
+3. **What's bleeding**: 3 bullets max with numbers.
+4. **Recommended actions**: 2-4 concrete budget shifts or experiments.
 
 Be specific. Numbers beat adjectives. No hedging.`
 
@@ -104,7 +108,7 @@ Be specific. Numbers beat adjectives. No hedging.`
   })
 
   return {
-    commentText: `**Weekly Meta ROAS Review — Mastermind (${r.model})**\n\n${r.text.trim()}`,
+    commentText: `**Weekly Meta ROAS Review: Mastermind (${r.model})**\n\n${r.text.trim()}`,
     statusAfter: 'drafted',
     lane,
     usage: { model: r.model, inputTokens: r.inputTokens, outputTokens: r.outputTokens },
@@ -112,7 +116,7 @@ Be specific. Numbers beat adjectives. No hedging.`
 }
 
 function stubMsg(label, neededData) {
-  return `**Analyze — ${label} adapter not yet wired.**\n\nThis recurring task is expected to pull ${neededData}. Adapter implementation is part of the post-MVP work. For now, attach the relevant data to this task as a comment and re-trigger \`Mastermind = Analyze\` — I'll write the report from whatever data you paste in.`
+  return `**Analyze: ${label} adapter not yet wired.**\n\nThis recurring task is expected to pull ${neededData}. Adapter implementation is part of the post-MVP work. For now, attach the relevant data to this task as a comment and re-trigger \`Mastermind = Analyze\`: I'll write the report from whatever data you paste in.`
 }
 
 async function analyzeMonthlyStub({ lane }) {
