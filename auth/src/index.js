@@ -28,7 +28,14 @@ app.use(cors({
 
 // Raw body parser for staff import MUST be registered before express.json()
 app.use('/admin/staff/import', express.raw({ type: '*/*', limit: '10mb' }))
-app.use(express.json())
+app.use(express.json({
+  verify: (req, _res, buf) => {
+    // ClickUp signs the raw body. Capture it for the mastermind webhook so HMAC verifies.
+    if (req.path === '/webhooks/mastermind') {
+      req.rawBody = buf.toString('utf8')
+    }
+  },
+}))
 app.use(cookieParser())
 
 // Health check
@@ -41,6 +48,7 @@ app.use('/admin', require('./routes/admin'))
 app.use('/config', require('./routes/config'))
 app.use('/webhooks', require('./routes/webhooks'))
 app.use('/webhooks', require('./routes/metaCapi'))
+app.use('/webhooks', require('./routes/mastermind'))
 app.use('/appointments', require('./routes/appointments'))
 app.use('/tours', require('./routes/tours'))
 app.use('/oidc', require('./routes/oidc'))
