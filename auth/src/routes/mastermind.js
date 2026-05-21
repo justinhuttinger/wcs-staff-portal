@@ -121,14 +121,36 @@ async function handleEvent(event) {
   }
 
   if (evt === 'taskCommentPosted') {
-    const text = event?.comment?.comment_text || event?.comment_text || ''
-    if (!/@mastermind\b/i.test(text)) return
+    // ClickUp puts the comment text inside history_items[].comment.text_content,
+    // NOT at the top-level payload.comment.comment_text. Walk history_items to
+    // find a 'comment' entry and pull text from either text_content (plain)
+    // or the rich-text op array.
+    const histories = Array.isArray(event.history_items) ? event.history_items : []
+    let commentText = ''
+    let commentUserId = null
+    for (const h of histories) {
+      const c = h?.comment
+      if (!c) continue
+      if (typeof c.text_content === 'string' && c.text_content.length > 0) {
+        commentText = c.text_content
+      } else if (Array.isArray(c.comment)) {
+        commentText = c.comment.map(op => op?.text || '').join('')
+      }
+      if (h?.user?.id) commentUserId = String(h.user.id)
+      if (commentText) break
+    }
+    // Last-resort fallback to the older payload shape
+    if (!commentText) {
+      commentText = event?.comment?.comment_text || event?.comment_text || ''
+    }
+
+    if (!/@mastermind\b/i.test(commentText)) return
 
     await enqueue({
       task_id: taskId,
       list_id: event.list_id || '',
       mode: 'continue',
-      requested_by: event?.comment?.user?.id ? String(event.comment.user.id) : null,
+      requested_by: commentUserId,
       payload: event,
     })
   }
