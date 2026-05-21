@@ -97,6 +97,15 @@ async function createTask(listId, { name, description }) {
   })
 }
 
+async function createList(folderId, { name, statuses, content }) {
+  const body = { name, content: content || '' }
+  if (Array.isArray(statuses) && statuses.length > 0) body.statuses = statuses
+  return cuFetch(`/folder/${folderId}/list`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
 async function createDoc(workspaceId, parentTaskId, { name, content }) {
   if (!workspaceId) throw new Error('CLICKUP_WORKSPACE_ID required for createDoc')
   // Docs API v3
@@ -128,5 +137,6 @@ module.exports = {
   setCustomField,
   createSubtask,
   createTask,
+  createList,
   createDoc,
 }

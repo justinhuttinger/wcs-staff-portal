@@ -88,8 +88,11 @@ async function dispatchOne(row) {
       catch (e) { /* status name may not match list — best effort, swallow */ }
     }
 
-    if (MASTERMIND_FIELD_ID) {
-      try { await cu.clearCustomField(row.task_id, MASTERMIND_FIELD_ID) }
+    // Reset the Mastermind field. Prefer the field ID present on the task
+    // itself (most reliable across lists); fall back to env var.
+    const dynamicFieldId = findFieldId(task, 'Mastermind') || MASTERMIND_FIELD_ID
+    if (dynamicFieldId) {
+      try { await cu.clearCustomField(row.task_id, dynamicFieldId) }
       catch { /* swallow — field reset is polish, not critical */ }
     }
   } catch (e) {
@@ -113,6 +116,12 @@ function isPaused(task) {
   const f = fields.find(x => x?.name === 'Mastermind Paused')
   if (!f) return false
   return Boolean(f.value)
+}
+
+function findFieldId(task, name) {
+  const fields = task?.custom_fields || []
+  const f = fields.find(x => x?.name === name)
+  return f?.id || null
 }
 
 async function tick() {
