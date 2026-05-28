@@ -1,0 +1,115 @@
+// ghl-sync/test/referralRewards.test.js
+const test = require('node:test');
+const assert = require('node:assert');
+const {
+  pickNextDuesInvoice,
+  isEligibleCandidate,
+  buildAdjustmentBody,
+} = require('../src/abc/referralRewards');
+
+// Sample payload mirrors the real ABC /agreements/invoices response.
+const SAMPLE_INVOICES = [
+  { dueDate: '2026-05-31', profitCenterAbcCode: 'DUES', invoiceAmount: 54.99, amountDue: 54.99 },
+  { dueDate: '2026-06-29', profitCenterAbcCode: 'ANNUALFEE', invoiceAmount: 39.99, amountDue: 39.99 },
+  { dueDate: '2026-06-30', profitCenterAbcCode: 'DUES', invoiceAmount: 54.99, amountDue: 54.99 },
+];
+
+test('pickNextDuesInvoice returns earliest future DUES invoice', () => {
+  const inv = pickNextDuesInvoice(SAMPLE_INVOICES, '2026-05-28');
+  assert.strictEqual(inv.dueDate, '2026-05-31');
+  assert.strictEqual(inv.profitCenterAbcCode, 'DUES');
+});
+
+test('pickNextDuesInvoice skips ANNUALFEE', () => {
+  const onlyAnnual = [{ dueDate: '2026-06-29', profitCenterAbcCode: 'ANNUALFEE', invoiceAmount: 39.99 }];
+  assert.strictEqual(pickNextDuesInvoice(onlyAnnual, '2026-05-28'), null);
+});
+
+test('pickNextDuesInvoice ignores invoices whose dueDate is before today', () => {
+  const inv = pickNextDuesInvoice(SAMPLE_INVOICES, '2026-06-01');
+  assert.strictEqual(inv.dueDate, '2026-06-30');
+});
+
+test('pickNextDuesInvoice returns null on empty list', () => {
+  assert.strictEqual(pickNextDuesInvoice([], '2026-05-28'), null);
+});
+
+test('isEligibleCandidate true for active, recent, referred member with no prior row', () => {
+  const r = isEligibleCandidate({
+    abcMember: { member_id: 'NEW1', is_active: true, sign_date: '2026-05-28' },
+    referredByValue: 'REF1',
+    existingRow: null,
+    programStartDate: '2026-05-28',
+  });
+  assert.strictEqual(r.eligible, true);
+});
+
+test('isEligibleCandidate false when referredBy empty', () => {
+  const r = isEligibleCandidate({
+    abcMember: { member_id: 'NEW1', is_active: true, sign_date: '2026-05-28' },
+    referredByValue: '',
+    existingRow: null,
+    programStartDate: '2026-05-28',
+  });
+  assert.strictEqual(r.eligible, false);
+});
+
+test('isEligibleCandidate false when signed before program start', () => {
+  const r = isEligibleCandidate({
+    abcMember: { member_id: 'NEW1', is_active: true, sign_date: '2026-05-01' },
+    referredByValue: 'REF1',
+    existingRow: null,
+    programStartDate: '2026-05-28',
+  });
+  assert.strictEqual(r.eligible, false);
+});
+
+test('isEligibleCandidate false on self-referral', () => {
+  const r = isEligibleCandidate({
+    abcMember: { member_id: 'REF1', is_active: true, sign_date: '2026-05-28' },
+    referredByValue: 'REF1',
+    existingRow: null,
+    programStartDate: '2026-05-28',
+  });
+  assert.strictEqual(r.eligible, false);
+});
+
+test('isEligibleCandidate false when already zeroed (terminal)', () => {
+  const r = isEligibleCandidate({
+    abcMember: { member_id: 'NEW1', is_active: true, sign_date: '2026-05-28' },
+    referredByValue: 'REF1',
+    existingRow: { dues_status: 'zeroed' },
+    programStartDate: '2026-05-28',
+  });
+  assert.strictEqual(r.eligible, false);
+});
+
+test('isEligibleCandidate false when no_dues_invoice (terminal)', () => {
+  const r = isEligibleCandidate({
+    abcMember: { member_id: 'NEW1', is_active: true, sign_date: '2026-05-28' },
+    referredByValue: 'REF1',
+    existingRow: { dues_status: 'no_dues_invoice' },
+    programStartDate: '2026-05-28',
+  });
+  assert.strictEqual(r.eligible, false);
+});
+
+test('isEligibleCandidate true when prior row errored (retry)', () => {
+  const r = isEligibleCandidate({
+    abcMember: { member_id: 'NEW1', is_active: true, sign_date: '2026-05-28' },
+    referredByValue: 'REF1',
+    existingRow: { dues_status: 'error' },
+    programStartDate: '2026-05-28',
+  });
+  assert.strictEqual(r.eligible, true);
+});
+
+test('buildAdjustmentBody zeroes the given invoice', () => {
+  const body = buildAdjustmentBody('2026-05-31');
+  assert.deepStrictEqual(body, {
+    startDate: '2026-05-31',
+    profitCenterAbcCode: 'DUES',
+    invoiceAmount: '0.00',
+    numberOfInvoices: '1',
+  });
+});
