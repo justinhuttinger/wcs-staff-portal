@@ -581,6 +581,16 @@ export async function isSyncRunning() {
   } catch { return false }
 }
 
+// Referral Rewards
+export async function getReferralRewards({ needsReview = false } = {}) {
+  const q = needsReview ? '?needs_review=true' : ''
+  return api(`/referral-rewards${q}`)
+}
+
+export async function resolveReferralReward(id) {
+  return api(`/referral-rewards/${id}/resolve`, { method: 'POST' })
+}
+
 // Day One Tracker
 export async function getDayOneTrackerAppointments(params = {}) {
   const qs = new URLSearchParams(params).toString()
