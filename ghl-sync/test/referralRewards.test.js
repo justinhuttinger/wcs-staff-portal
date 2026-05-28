@@ -113,3 +113,33 @@ test('buildAdjustmentBody zeroes the given invoice', () => {
     numberOfInvoices: '1',
   });
 });
+
+test('isEligibleCandidate true when signed exactly on program start date (inclusive boundary)', () => {
+  const r = isEligibleCandidate({
+    abcMember: { member_id: 'NEW1', is_active: true, sign_date: '2026-05-28' },
+    referredByValue: 'REF1',
+    existingRow: null,
+    programStartDate: '2026-05-28',
+  });
+  assert.strictEqual(r.eligible, true);
+  assert.strictEqual(r.reason, 'ok');
+});
+
+test('isEligibleCandidate uses since_date when sign_date is absent', () => {
+  // sign_date missing → falls back to since_date for the program-start check
+  const eligible = isEligibleCandidate({
+    abcMember: { member_id: 'NEW1', is_active: true, sign_date: null, since_date: '2026-05-28' },
+    referredByValue: 'REF1',
+    existingRow: null,
+    programStartDate: '2026-05-28',
+  });
+  assert.strictEqual(eligible.eligible, true);
+
+  const tooEarly = isEligibleCandidate({
+    abcMember: { member_id: 'NEW1', is_active: true, sign_date: null, since_date: '2026-05-01' },
+    referredByValue: 'REF1',
+    existingRow: null,
+    programStartDate: '2026-05-28',
+  });
+  assert.strictEqual(tooEarly.eligible, false);
+});
