@@ -143,3 +143,91 @@ test('isEligibleCandidate uses since_date when sign_date is absent', () => {
   });
   assert.strictEqual(tooEarly.eligible, false);
 });
+
+const { processReferralReward } = require('../src/abc/referralRewards');
+
+function makeDeps(overrides = {}) {
+  const calls = { adjust: [], tagged: [], recorded: [] };
+  const deps = {
+    today: '2026-05-28',
+    fetchMemberInvoices: async () => overrides.invoices ?? [
+      { dueDate: '2026-05-31', profitCenterAbcCode: 'DUES', invoiceAmount: 54.99 },
+    ],
+    adjustInvoice: async (club, id, body) => {
+      calls.adjust.push({ club, id, body });
+      return overrides.adjustResult ?? { ok: true, status: 200, data: {} };
+    },
+    tagReferrer: async (contactId, friendName) => {
+      if (overrides.tagThrows) throw new Error('ghl down');
+      calls.tagged.push({ contactId, friendName });
+    },
+    recordReward: async (row) => { calls.recorded.push(row); },
+  };
+  return { deps, calls };
+}
+
+const BASE = {
+  location: { clubNumber: '30935', id: 'LOC1', name: 'Salem' },
+  runId: 'run1',
+  abcMember: { member_id: 'NEW1', first_name: 'Sam', last_name: 'Jones', sign_date: '2026-05-28', is_active: true },
+  referrerAbcId: 'REF1',
+  referrerContact: { id: 'GHLREF1' },
+  dryRun: false,
+};
+
+test('processReferralReward: happy path zeroes then tags', async () => {
+  const { deps, calls } = makeDeps();
+  const row = await processReferralReward({ ...BASE, ...deps });
+  assert.strictEqual(calls.adjust.length, 1);
+  assert.deepStrictEqual(calls.adjust[0].body, {
+    startDate: '2026-05-31', profitCenterAbcCode: 'DUES', invoiceAmount: '0.00', numberOfInvoices: '1',
+  });
+  assert.strictEqual(calls.tagged.length, 1);
+  assert.strictEqual(calls.tagged[0].friendName, 'Sam');
+  assert.strictEqual(row.dues_status, 'zeroed');
+  assert.strictEqual(row.sms_status, 'tagged');
+  assert.strictEqual(row.needs_review, false);
+});
+
+test('processReferralReward: no DUES invoice -> flag, never tags', async () => {
+  const { deps, calls } = makeDeps({ invoices: [{ dueDate: '2026-06-29', profitCenterAbcCode: 'ANNUALFEE' }] });
+  const row = await processReferralReward({ ...BASE, ...deps });
+  assert.strictEqual(calls.adjust.length, 0);
+  assert.strictEqual(calls.tagged.length, 0);
+  assert.strictEqual(row.dues_status, 'no_dues_invoice');
+  assert.strictEqual(row.needs_review, true);
+});
+
+test('processReferralReward: ABC adjust fails -> no tag, status error', async () => {
+  const { deps, calls } = makeDeps({ adjustResult: { ok: false, status: 200, data: { status: { message: 'fail' } } } });
+  const row = await processReferralReward({ ...BASE, ...deps });
+  assert.strictEqual(calls.tagged.length, 0);
+  assert.strictEqual(row.dues_status, 'error');
+});
+
+test('processReferralReward: no referrer contact -> zeroed but flagged, no tag', async () => {
+  const { deps, calls } = makeDeps();
+  const row = await processReferralReward({ ...BASE, referrerContact: null, ...deps });
+  assert.strictEqual(calls.adjust.length, 1);
+  assert.strictEqual(calls.tagged.length, 0);
+  assert.strictEqual(row.dues_status, 'zeroed');
+  assert.strictEqual(row.sms_status, 'no_referrer_contact');
+  assert.strictEqual(row.needs_review, true);
+});
+
+test('processReferralReward: zeroed but tag write fails -> flagged sms error', async () => {
+  const { deps } = makeDeps({ tagThrows: true });
+  const row = await processReferralReward({ ...BASE, ...deps });
+  assert.strictEqual(row.dues_status, 'zeroed');
+  assert.strictEqual(row.sms_status, 'error');
+  assert.strictEqual(row.needs_review, true);
+});
+
+test('processReferralReward: dryRun zeroes nothing, records nothing', async () => {
+  const { deps, calls } = makeDeps();
+  const row = await processReferralReward({ ...BASE, dryRun: true, ...deps });
+  assert.strictEqual(calls.adjust.length, 0);
+  assert.strictEqual(calls.tagged.length, 0);
+  assert.strictEqual(calls.recorded.length, 0);
+  assert.strictEqual(row.dry_run, true);
+});

@@ -43,4 +43,99 @@ function buildAdjustmentBody(dueDate) {
   };
 }
 
-module.exports = { pickNextDuesInvoice, isEligibleCandidate, buildAdjustmentBody };
+/**
+ * Process one referral reward end-to-end. Side effects happen only through the
+ * injected dep functions, which makes it unit-testable.
+ *
+ * opts: { location, runId, abcMember, referrerAbcId, referrerContact, dryRun,
+ *         today, fetchMemberInvoices, adjustInvoice, tagReferrer, recordReward }
+ * Returns the referral_rewards row object that was (or would be) recorded.
+ */
+async function processReferralReward(opts) {
+  const {
+    location, runId, abcMember, referrerAbcId, referrerContact, dryRun,
+    today, fetchMemberInvoices, adjustInvoice, tagReferrer, recordReward,
+  } = opts;
+
+  const friendName = (abcMember.first_name || '').trim();
+  const row = {
+    run_id: runId,
+    club_number: location.clubNumber,
+    location_id: location.id,
+    new_member_id: abcMember.member_id,
+    new_member_name: `${abcMember.first_name || ''} ${abcMember.last_name || ''}`.trim() || null,
+    referrer_abc_id: referrerAbcId,
+    referrer_ghl_contact_id: referrerContact?.id || null,
+    dues_invoice_due_date: null,
+    dues_status: 'error',
+    sms_status: 'skipped',
+    needs_review: false,
+    dry_run: !!dryRun,
+    error: null,
+  };
+
+  if (dryRun) {
+    console.log(`[Referral] DRY_RUN would reward referrer ${referrerAbcId} for new member ${abcMember.member_id}`);
+    return row;
+  }
+
+  // 1. Find the next DUES invoice for the referrer.
+  let invoices;
+  try {
+    invoices = await fetchMemberInvoices(location.clubNumber, referrerAbcId);
+  } catch (err) {
+    row.dues_status = 'error';
+    row.error = `fetch invoices failed: ${err.message}`;
+    await recordReward(row);
+    return row;
+  }
+
+  const invoice = pickNextDuesInvoice(invoices, today);
+  if (!invoice) {
+    row.dues_status = 'no_dues_invoice';
+    row.sms_status = 'skipped';
+    row.needs_review = true;
+    await recordReward(row);
+    return row;
+  }
+  row.dues_invoice_due_date = invoice.dueDate;
+
+  // 2. Zero it. Must succeed before we touch the SMS-triggering tag.
+  let result;
+  try {
+    result = await adjustInvoice(location.clubNumber, referrerAbcId, buildAdjustmentBody(invoice.dueDate));
+  } catch (err) {
+    row.dues_status = 'error';
+    row.error = `invoice adjustment failed: ${err.message}`;
+    await recordReward(row);
+    return row;
+  }
+  if (!result.ok) {
+    row.dues_status = 'error';
+    row.error = `invoice adjustment not ok: ${JSON.stringify(result.data?.status || result.status)}`;
+    await recordReward(row);
+    return row;
+  }
+  row.dues_status = 'zeroed';
+
+  // 3. Dues confirmed zeroed. Only now do we trigger the SMS via the tag.
+  if (!referrerContact?.id) {
+    row.sms_status = 'no_referrer_contact';
+    row.needs_review = true;
+    await recordReward(row);
+    return row;
+  }
+  try {
+    await tagReferrer(referrerContact.id, friendName);
+    row.sms_status = 'tagged';
+  } catch (err) {
+    row.sms_status = 'error';
+    row.needs_review = true;
+    row.error = `tag write failed (dues already zeroed): ${err.message}`;
+  }
+
+  await recordReward(row);
+  return row;
+}
+
+module.exports = { pickNextDuesInvoice, isEligibleCandidate, buildAdjustmentBody, processReferralReward };
