@@ -444,7 +444,6 @@ async function reconcileLocation(location, runId) {
         referralCandidates.push({
           abcMember: abc,
           referredByValue: String(referredByValue).trim(),
-          newMemberContact: ghlContact,
         });
       }
     }
@@ -611,6 +610,7 @@ async function reconcileLocation(location, runId) {
   // 4.5 Referral rewards — process collected candidates.
   if (referral.ENABLED && referredByFieldId && referralCandidates.length > 0) {
     const today = new Date().toISOString().slice(0, 10);
+    let processedReferrals = 0;
 
     // Load existing referral_rewards rows for idempotency.
     const newMemberIds = referralCandidates.map((c) => c.abcMember.member_id);
@@ -652,6 +652,7 @@ async function reconcileLocation(location, runId) {
         programStartDate: referral.PROGRAM_START_DATE,
       });
       if (!eligible) continue;
+      processedReferrals++;
 
       const referrerContact = byMemberId.get(cand.referredByValue) || null;
       try {
@@ -673,7 +674,7 @@ async function reconcileLocation(location, runId) {
       }
       await sleep(650);
     }
-    console.log(`[Reconcile] ${locationName}: processed ${referralCandidates.length} referral candidate(s)`);
+    console.log(`[Reconcile] ${locationName}: ${referralCandidates.length} referral candidate(s), ${processedReferrals} eligible + processed`);
   }
 
   // 5. Write log entries to Supabase in batches
