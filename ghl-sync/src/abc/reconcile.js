@@ -2,6 +2,9 @@ const supabase = require('../db/supabase');
 const { get, post, put, sleep } = require('../ghl/client');
 const { ABC_GHL_FIELD_MAP, ABC_TAGS } = require('../config/abc-field-map');
 const { getSkipList } = require('../config/membership-skip-list');
+const referral = require('../config/referral');
+const { isEligibleCandidate, processReferralReward } = require('./referralRewards');
+const { fetchMemberInvoices, adjustInvoice } = require('./client');
 
 const DRY_RUN = (process.env.DRY_RUN || 'true') === 'true';
 
@@ -175,6 +178,25 @@ async function reconcileLocation(location, runId) {
       fieldKeyToId[fd.field_key] = fd.id;
     }
   }
+
+  // Referral field ids (looked up the same way as the mapped ABC fields).
+  let referredByFieldId = null;
+  let friendNameFieldId = null;
+  if (referral.ENABLED) {
+    const { data: refDefs } = await supabase
+      .from('ghl_custom_field_defs')
+      .select('id, field_key')
+      .eq('location_id', locationId)
+      .in('field_key', [referral.REFERRED_BY_FIELD_KEY, referral.FRIEND_NAME_FIELD_KEY]);
+    for (const fd of (refDefs || [])) {
+      if (fd.field_key === referral.REFERRED_BY_FIELD_KEY) referredByFieldId = fd.id;
+      if (fd.field_key === referral.FRIEND_NAME_FIELD_KEY) friendNameFieldId = fd.id;
+    }
+    if (!referredByFieldId) {
+      console.warn(`[Reconcile] ${locationName}: ${referral.REFERRED_BY_FIELD_KEY} field def not found — referral rewards skipped this location`);
+    }
+  }
+  const referralCandidates = [];
 
   // 4. Match and reconcile
   const logEntries = [];
@@ -414,6 +436,19 @@ async function reconcileLocation(location, runId) {
     const contactName = `${ghlContact.first_name || ''} ${ghlContact.last_name || ''}`.trim();
     const isActive = abc.is_active === true;
 
+    // --- Referral reward candidate detection ---
+    // Read-only here: only collect candidates. They are processed after the loop.
+    if (referral.ENABLED && referredByFieldId && isActive) {
+      const referredByValue = (ghlContact.custom_fields || {})[referredByFieldId];
+      if (referredByValue && String(referredByValue).trim()) {
+        referralCandidates.push({
+          abcMember: abc,
+          referredByValue: String(referredByValue).trim(),
+          newMemberContact: ghlContact,
+        });
+      }
+    }
+
     // --- Tag logic ---
     const currentTags = ghlContact.tags || [];
     const addTag = isActive ? ABC_TAGS.active : ABC_TAGS.inactive;
@@ -571,6 +606,74 @@ async function reconcileLocation(location, runId) {
         }
       }
     }
+  }
+
+  // 4.5 Referral rewards — process collected candidates.
+  if (referral.ENABLED && referredByFieldId && referralCandidates.length > 0) {
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Load existing referral_rewards rows for idempotency.
+    const newMemberIds = referralCandidates.map((c) => c.abcMember.member_id);
+    const { data: existingRows } = await supabase
+      .from('referral_rewards')
+      .select('new_member_id, dues_status')
+      .in('new_member_id', newMemberIds);
+    const existingByMember = new Map((existingRows || []).map((r) => [r.new_member_id, r]));
+
+    // tagReferrer writes the friend's name AND the trigger tag in a single GHL
+    // PUT, so the SMS-triggering tag can never exist without the credit.
+    const tagReferrer = async (contactId, friendName) => {
+      const current = await get(`/contacts/${contactId}`, {}, apiKey);
+      const existingTags = current?.contact?.tags || [];
+      const tags = existingTags.includes(referral.REWARD_TAG)
+        ? existingTags
+        : [...existingTags, referral.REWARD_TAG];
+      const updateBody = { tags };
+      if (friendNameFieldId) {
+        updateBody.customFields = [{ id: friendNameFieldId, value: friendName }];
+      }
+      await put(`/contacts/${contactId}`, updateBody, apiKey);
+      await sleep(650);
+    };
+
+    const recordReward = async (row) => {
+      const { error: upErr } = await supabase
+        .from('referral_rewards')
+        .upsert(row, { onConflict: 'new_member_id' });
+      if (upErr) console.error(`[Referral] failed to record reward for ${row.new_member_id}: ${upErr.message}`);
+    };
+
+    for (const cand of referralCandidates) {
+      const existingRow = existingByMember.get(cand.abcMember.member_id) || null;
+      const { eligible } = isEligibleCandidate({
+        abcMember: cand.abcMember,
+        referredByValue: cand.referredByValue,
+        existingRow,
+        programStartDate: referral.PROGRAM_START_DATE,
+      });
+      if (!eligible) continue;
+
+      const referrerContact = byMemberId.get(cand.referredByValue) || null;
+      try {
+        await processReferralReward({
+          location, runId,
+          abcMember: cand.abcMember,
+          referrerAbcId: cand.referredByValue,
+          referrerContact,
+          dryRun: DRY_RUN,
+          today,
+          fetchMemberInvoices,
+          adjustInvoice,
+          tagReferrer,
+          recordReward,
+        });
+      } catch (err) {
+        console.error(`[Referral] unexpected error for new member ${cand.abcMember.member_id}: ${err.message}`);
+        errors++;
+      }
+      await sleep(650);
+    }
+    console.log(`[Reconcile] ${locationName}: processed ${referralCandidates.length} referral candidate(s)`);
   }
 
   // 5. Write log entries to Supabase in batches
