@@ -54,7 +54,7 @@ export default function ReferralRewardsAdmin() {
           Needs Review {needsReview.length > 0 && `(${needsReview.length})`}
         </p>
         {needsReview.length === 0 ? (
-          <p className="text-sm text-text-muted">Nothing needs manual handling. 🎉</p>
+          <p className="text-sm text-text-muted">Nothing needs manual handling.</p>
         ) : (
           <div className="space-y-2">
             {needsReview.map(r => (
