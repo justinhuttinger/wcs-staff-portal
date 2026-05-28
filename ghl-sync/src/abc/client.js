@@ -135,4 +135,48 @@ function transformABCMember(raw, clubNumber) {
   };
 }
 
-module.exports = { fetchAllABCMembers, transformABCMember };
+/**
+ * Fetch a member's upcoming agreement invoices.
+ * GET /{club}/members/{memberId}/agreements/invoices
+ * @returns {Promise<Array>} invoices array (possibly empty)
+ */
+async function fetchMemberInvoices(clubNumber, memberId) {
+  if (!ABC_APP_ID || !ABC_APP_KEY) {
+    throw new Error('ABC_APP_ID and ABC_APP_KEY must be set');
+  }
+  const url = `${ABC_BASE_URL}/${clubNumber}/members/${memberId}/agreements/invoices`;
+  const res = await axios.get(url, {
+    headers: { app_id: ABC_APP_ID, app_key: ABC_APP_KEY, Accept: 'application/json' },
+    timeout: 60000,
+  });
+  return res.data?.invoices || [];
+}
+
+/**
+ * Adjust (e.g. zero) a member's invoice.
+ * POST /{club}/members/{memberId}/agreements/invoiceadjustment
+ * ABC sometimes returns HTTP 200 with a non-success status body, so treat
+ * success as: HTTP 2xx AND status.message === 'success' (when a status block
+ * is present).
+ * @returns {Promise<{ok: boolean, status: number, data: object}>}
+ */
+async function adjustInvoice(clubNumber, memberId, body) {
+  if (!ABC_APP_ID || !ABC_APP_KEY) {
+    throw new Error('ABC_APP_ID and ABC_APP_KEY must be set');
+  }
+  const url = `${ABC_BASE_URL}/${clubNumber}/members/${memberId}/agreements/invoiceadjustment`;
+  const res = await axios.post(url, body, {
+    headers: {
+      app_id: ABC_APP_ID,
+      app_key: ABC_APP_KEY,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    timeout: 60000,
+  });
+  const statusMsg = res.data?.status?.message;
+  const ok = res.status >= 200 && res.status < 300 && (statusMsg === undefined || statusMsg === 'success');
+  return { ok, status: res.status, data: res.data };
+}
+
+module.exports = { fetchAllABCMembers, transformABCMember, fetchMemberInvoices, adjustInvoice };
