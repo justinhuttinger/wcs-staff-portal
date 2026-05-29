@@ -30,8 +30,9 @@ async function fieldIdFor(loc, fieldKey) {
 }
 
 function locForClub(clubNumber) {
-  const loc = LOCATIONS.find((l) => l.clubNumber === String(clubNumber));
-  if (!loc) throw new Error(`No configured location for club ${clubNumber}`);
+  // Accept either an ABC club number or a GHL location id.
+  const loc = LOCATIONS.find((l) => l.clubNumber === String(clubNumber) || l.id === clubNumber);
+  if (!loc) throw new Error(`No configured location for ${clubNumber}`);
   return loc;
 }
 
@@ -101,7 +102,7 @@ function cfValue(contact, fieldId) {
 // Run the EXACT production path (processReferralReward) for one referred member,
 // on demand. Real writes: zeroes the referrer's dues, tags the referrer, and
 // records a referral_rewards row (so it shows in the admin portal).
-async function cycle(club, newMemberContactId) {
+async function cycle(club, newMemberContactId, referrerContactOverride) {
   const loc = locForClub(club);
   const referredByFieldId = await fieldIdFor(loc, referral.REFERRED_BY_FIELD_KEY);
   const friendNameFieldId = await fieldIdFor(loc, referral.FRIEND_NAME_FIELD_KEY);
@@ -120,10 +121,13 @@ async function cycle(club, newMemberContactId) {
 
   console.log(`New member: ${friendFirst} (${newMemberContactId}) referred by ABC #${referrerAbcId}`);
 
-  // 2. Resolve the referrer's GHL contact from the ghl_contacts_v2 cache,
-  //    exactly like reconcile's byMemberId index.
+  // 2. Resolve the referrer's GHL contact. An explicit override (passed for
+  //    testing) wins; otherwise resolve from the ghl_contacts_v2 cache exactly
+  //    like reconcile's byMemberId index.
   let referrerContact = null;
-  if (abcMemberIdFieldId) {
+  if (referrerContactOverride) {
+    referrerContact = { id: referrerContactOverride };
+  } else if (abcMemberIdFieldId) {
     const { data: matches } = await supabase
       .from('ghl_contacts_v2')
       .select('id')
@@ -150,7 +154,7 @@ async function cycle(club, newMemberContactId) {
 
   // 4. Run the real production orchestrator.
   const row = await processReferralReward({
-    location: { clubNumber: club, id: loc.id, name: loc.name },
+    location: { clubNumber: loc.clubNumber, id: loc.id, name: loc.name },
     runId: crypto.randomUUID(),
     abcMember: { member_id: newMemberAbcId, first_name: friendFirst, last_name: newContact.lastName || '', is_active: true },
     referrerAbcId,
@@ -167,7 +171,7 @@ async function cycle(club, newMemberContactId) {
   console.log(JSON.stringify(row, null, 2));
   if (row.dues_status === 'zeroed') {
     console.log(`\nNOTE: referrer ABC #${referrerAbcId} invoice ${row.dues_invoice_due_date} was zeroed. Restore with:`);
-    console.log(`  node scripts/test-referral.js restore ${club} ${referrerAbcId} ${row.dues_invoice_due_date} <originalAmount>`);
+    console.log(`  node scripts/test-referral.js restore ${loc.clubNumber} ${referrerAbcId} ${row.dues_invoice_due_date} <originalAmount>`);
   }
 }
 
@@ -179,7 +183,7 @@ async function main() {
     else if (cmd === 'zero') await zero(club, args[1]);
     else if (cmd === 'restore') await restore(club, args[1], args[2], args[3]);
     else if (cmd === 'tag') await tag(club, args[1], args[2]);
-    else if (cmd === 'cycle') await cycle(club, args[1]);
+    else if (cmd === 'cycle') await cycle(club, args[1], args[2]);
     else {
       console.log('Usage:');
       console.log('  node scripts/test-referral.js inspect <club> <abcMemberId>');
