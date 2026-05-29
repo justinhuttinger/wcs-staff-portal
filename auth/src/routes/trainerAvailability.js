@@ -4,6 +4,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole, resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
 const { getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
+const { CONFIG_SCALAR_KEYS, buildPriorityUpdateBody } = require('./trainerAvailabilityHelpers')
 
 const router = Router()
 router.use(authenticate)
@@ -233,11 +234,12 @@ router.put('/priority', async (req, res) => {
       return res.status(500).json({ error: 'team member set mismatch — aborted' })
     }
 
-    // 5. PUT — send only teamMembers so other calendar fields use GHL's partial-update merge
+    // 5. PUT — teamMembers (priority changed) + the booking-config scalars re-sent from the
+    //    fresh read, so GHL doesn't reset slotDuration (and friends) to its 30-min default.
     await ghlFetch(`/calendars/${calendarId}`, location.apiKey, {
       method: 'PUT',
       version: CAL_VERSION,
-      body: { teamMembers: updated },
+      body: buildPriorityUpdateBody(cal, userId, priority),
     })
 
     // 6. Verify: re-read the calendar, confirm the team set, and confirm every schedule hash is identical
@@ -265,6 +267,21 @@ router.put('/priority', async (req, res) => {
       return res.status(500).json({
         error: 'Availability changed unexpectedly — investigate',
         driftedUsers,
+      })
+    }
+
+    // Verify the booking-config scalars survived the write (slotDuration must stay 60, etc.)
+    const configDrift = []
+    for (const k of CONFIG_SCALAR_KEYS) {
+      if (cal[k] !== undefined && verifyCal[k] !== cal[k]) {
+        configDrift.push({ field: k, before: cal[k], after: verifyCal[k] })
+      }
+    }
+    if (configDrift.length > 0) {
+      console.error('[TrainerAvail] calendar config drifted after PUT:', configDrift)
+      return res.status(500).json({
+        error: 'Calendar settings changed unexpectedly — investigate',
+        configDrift,
       })
     }
 
