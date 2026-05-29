@@ -57,7 +57,7 @@ async function processReferralReward(opts) {
     today, fetchMemberInvoices, adjustInvoice, tagReferrer, recordReward,
   } = opts;
 
-  const friendName = (abcMember.first_name || '').trim();
+  const friendName = `${abcMember.first_name || ''} ${abcMember.last_name || ''}`.trim();
   const row = {
     run_id: runId,
     club_number: location.clubNumber,

@@ -183,7 +183,7 @@ test('processReferralReward: happy path zeroes then tags', async () => {
     startDate: '2026-05-31', profitCenterAbcCode: 'DUES', invoiceAmount: '0.00', numberOfInvoices: '1',
   });
   assert.strictEqual(calls.tagged.length, 1);
-  assert.strictEqual(calls.tagged[0].friendName, 'Sam');
+  assert.strictEqual(calls.tagged[0].friendName, 'Sam Jones');
   assert.strictEqual(row.dues_status, 'zeroed');
   assert.strictEqual(row.sms_status, 'tagged');
   assert.strictEqual(row.needs_review, false);
