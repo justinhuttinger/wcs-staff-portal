@@ -41,13 +41,17 @@ export default function ReferralRewardsAdmin() {
     }
   }
 
-  if (loading) return <p className="text-sm text-text-muted px-2 py-4">Loading referral rewards…</p>
+  if (loading) return (
+    <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5">
+      <p className="text-sm text-text-muted">Loading referral rewards…</p>
+    </div>
+  )
 
   const needsReview = rows.filter(r => r.needs_review)
   const recent = rows
 
   return (
-    <div className="space-y-6">
+    <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 space-y-6">
       {/* Needs review */}
       <div>
         <p className="text-xs text-orange-600 uppercase font-semibold mb-2">
