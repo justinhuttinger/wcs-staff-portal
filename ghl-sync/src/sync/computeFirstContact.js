@@ -3,37 +3,49 @@ const { fetchFirstHumanContact } = require('../ghl/conversations');
 const { sleep } = require('../ghl/client');
 
 const RETRY_WINDOW_DAYS = 30;
-// GHL pipeline that holds new leads (leads enter at the "New Lead" stage).
-// Overridable in case the pipeline is named differently than 'Membership' in
-// GHL — verify against ghl_opportunities_v2.pipeline_name.
-const MEMBERSHIP_PIPELINE_NAME = process.env.SPEED_TO_LEAD_PIPELINE || 'Membership';
+// Lead pipelines are matched by name pattern because (a) ghl_opportunities_v2
+// .pipeline_name is not populated (always null) and (b) the pipeline is named
+// "Membership Pipeline" at 6 clubs but "Standard Member Pipeline" at one — both
+// contain "member". ILIKE '%member%' captures both and excludes Pre-Sale /
+// Personal Training / Swim / VIP. Overridable via env.
+const PIPELINE_PATTERN = process.env.SPEED_TO_LEAD_PIPELINE_PATTERN || '%member%';
 const PER_RUN_CAP = parseInt(process.env.SPEED_TO_LEAD_CAP || '300', 10);
 // Throttle between per-contact conversation fetches to respect GHL rate limits.
 const CONTACT_DELAY_MS = parseInt(process.env.SPEED_TO_LEAD_DELAY_MS || '250', 10);
 // Don't re-check the same unresolved lead more often than this (cuts churn).
 const RECHECK_COOLDOWN_MS = parseInt(process.env.SPEED_TO_LEAD_RECHECK_MS || '3600000', 10); // 1h
 
+// Resolve the set of "membership lead" pipeline IDs (across all locations) by
+// name pattern. Returns string[] of ghl_pipelines.id.
+async function resolveMembershipPipelineIds() {
+  const { data, error } = await supabase
+    .from('ghl_pipelines')
+    .select('id, name')
+    .ilike('name', PIPELINE_PATTERN);
+  if (error) throw error;
+  return (data || []).map(p => p.id);
+}
+
 // Membership-pipeline opportunities for a location that still need a first-contact
 // check: no ghl_first_contact row yet, OR an unresolved row not checked recently.
-async function selectCandidates(locationId) {
+async function selectCandidates(locationId, pipelineIds) {
+  if (!pipelineIds || pipelineIds.length === 0) {
+    console.warn(`[Speed to Lead] No pipelines matched '${PIPELINE_PATTERN}'. Verify SPEED_TO_LEAD_PIPELINE_PATTERN against ghl_pipelines.name.`);
+    return [];
+  }
   const cutoff = new Date(Date.now() - RETRY_WINDOW_DAYS * 86400000).toISOString();
   const { data: opps, error } = await supabase
     .from('ghl_opportunities_v2')
     .select('id, contact_id, created_at_ghl, location_id')
     .eq('location_id', locationId)
-    .eq('pipeline_name', MEMBERSHIP_PIPELINE_NAME)
+    .in('pipeline_id', pipelineIds)
     .not('contact_id', 'is', null)
     .gte('created_at_ghl', cutoff)
     .order('created_at_ghl', { ascending: false })
     .limit(PER_RUN_CAP * 3);
   if (error) throw error;
   const ids = (opps || []).map(o => o.id);
-  if (ids.length === 0) {
-    // No recent leads in this pipeline. For an active club this likely means the
-    // pipeline name does not match GHL — surface it rather than failing silently.
-    console.warn(`[Speed to Lead] No '${MEMBERSHIP_PIPELINE_NAME}' pipeline opportunities (last ${RETRY_WINDOW_DAYS}d) for location ${locationId}. Verify SPEED_TO_LEAD_PIPELINE matches ghl_opportunities_v2.pipeline_name.`);
-    return [];
-  }
+  if (ids.length === 0) return [];
   const { data: rows } = await supabase
     .from('ghl_first_contact')
     .select('opportunity_id, resolved, checked_at')
@@ -49,8 +61,10 @@ async function selectCandidates(locationId) {
   return (opps || []).filter(o => !skip.has(o.id)).slice(0, PER_RUN_CAP);
 }
 
-async function computeFirstContact(location) {
-  const candidates = await selectCandidates(location.id);
+async function computeFirstContact(location, pipelineIds) {
+  // Resolve pipeline IDs once if not passed in (lets deltaSync resolve once for all locations).
+  const ids = pipelineIds || await resolveMembershipPipelineIds();
+  const candidates = await selectCandidates(location.id, ids);
   let resolvedCount = 0;
   const errors = [];
   for (const opp of candidates) {
@@ -78,4 +92,4 @@ async function computeFirstContact(location) {
   return { checked: candidates.length, resolved: resolvedCount, errors };
 }
 
-module.exports = { computeFirstContact, selectCandidates };
+module.exports = { computeFirstContact, selectCandidates, resolveMembershipPipelineIds };
