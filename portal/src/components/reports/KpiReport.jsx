@@ -1,7 +1,19 @@
 import { useState, useEffect, useRef } from 'react'
 import { getMembershipReport, getAppSettings } from '../../lib/api'
 import { pct, gapInfo, monthRangesBetween } from '../../lib/kpiMath'
+import { LOCATION_NAMES } from '../../config/locations'
 import DesktopLoading from '../DesktopLoading'
+
+const ALL_CLUB_SLUGS = LOCATION_NAMES.map(n => n.toLowerCase())
+const CLUB_LABEL = Object.fromEntries(LOCATION_NAMES.map(n => [n.toLowerCase(), n]))
+
+// Resolve the location selector value ('all' | 'salem' | 'salem,eugene') into
+// the concrete list of club slugs it represents, in canonical order.
+function selectedClubSlugs(locationSlug) {
+  if (!locationSlug || locationSlug === 'all') return ALL_CLUB_SLUGS
+  const want = String(locationSlug).split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+  return ALL_CLUB_SLUGS.filter(s => want.includes(s))
+}
 
 // Single-series trend with an optional dashed goal line. Hand-rolled inline SVG
 // to match the existing report chart pattern (no charting dependency). Each
@@ -62,6 +74,145 @@ function KpiTrendChart({ points, goal }) {
   )
 }
 
+// Reads a goal for a def at a specific club slug from the flat app_config map.
+function goalForSlug(def, goals, slug) {
+  const raw = goals[`${def.goalKey}_${slug}`]
+  if (raw == null || raw === '') return null
+  const n = Number(raw)
+  return Number.isNaN(n) ? null : n
+}
+
+// Per-club goal status, shown when more than one club is selected so each
+// club's standing is visible without switching the location filter.
+function PerClubGoalTable({ def, clubs, perClub, goals }) {
+  return (
+    <div className="bg-surface rounded-xl border border-border p-4 mt-3 overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-[11px] uppercase tracking-wide text-text-muted">
+            <th className="text-left font-semibold py-1">Club</th>
+            <th className="text-right font-semibold py-1">Actual</th>
+            <th className="text-right font-semibold py-1">Goal</th>
+            <th className="text-right font-semibold py-1">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {clubs.map(slug => {
+            const a = perClub ? def.derive(perClub[slug]) : null
+            const g = goalForSlug(def, goals, slug)
+            const hit = a != null && g != null && a >= g
+            return (
+              <tr key={slug} className="border-t border-border">
+                <td className="py-1.5 text-text-primary">{CLUB_LABEL[slug] || slug}</td>
+                <td className="py-1.5 text-right text-text-primary">{a == null ? 'n/a' : `${a}%`}</td>
+                <td className="py-1.5 text-right text-text-muted">{g == null ? '—' : `${g}%`}</td>
+                <td className="py-1.5 text-right">
+                  {g == null ? (
+                    <span className="text-text-muted text-xs">No goal</span>
+                  ) : a == null ? (
+                    <span className="text-text-muted text-xs">n/a</span>
+                  ) : hit ? (
+                    <span className="text-green-600 font-semibold text-xs">Hit</span>
+                  ) : (
+                    <span className="text-red-500 font-semibold text-xs">Missed</span>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function fmtDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Parse a 'YYYY-MM-DD' string as a LOCAL date (avoids the UTC shift that
+// `new Date(str)` applies to date-only strings).
+function parseLocalDate(s) {
+  const [y, m, d] = s.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+// Default comparison window: the trailing 6 calendar months ending today.
+function defaultCompRange() {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth() - 5, 1)
+  return { start: fmtDate(start), end: fmtDate(now) }
+}
+
+// Compact, tucked-away control for the trend comparison range. Shows a small
+// pill with the current range; clicking opens a popover with From/To inputs.
+function ComparisonPill({ comp, setComp }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    function onClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [open])
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border border-border bg-bg text-text-muted hover:text-text-primary transition-colors"
+        title="Change the trend comparison range"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+        </svg>
+        Trend: {comp.start} to {comp.end}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-8 z-30 w-64 bg-surface border border-border rounded-xl shadow-lg p-3 space-y-2">
+          <p className="text-[11px] uppercase tracking-wide font-semibold text-text-muted">Comparison Range</p>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-text-muted w-9">From</label>
+            <input
+              type="date"
+              value={comp.start}
+              onChange={e => setComp(c => ({ ...c, start: e.target.value }))}
+              className="flex-1 px-2 py-1 rounded-lg border border-border bg-bg text-text-primary text-xs focus:outline-none focus:border-wcs-red"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-text-muted w-9">To</label>
+            <input
+              type="date"
+              value={comp.end}
+              onChange={e => setComp(c => ({ ...c, end: e.target.value }))}
+              className="flex-1 px-2 py-1 rounded-lg border border-border bg-bg text-text-primary text-xs focus:outline-none focus:border-wcs-red"
+            />
+          </div>
+          <div className="flex justify-between pt-1">
+            <button
+              type="button"
+              onClick={() => setComp(defaultCompRange())}
+              className="text-[11px] text-text-muted hover:text-text-primary font-semibold"
+            >
+              Last 6 months
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="text-[11px] text-wcs-red hover:text-wcs-red/80 font-semibold"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Each KPI: how to read its current % from a /reports/membership response, and
 // the app_config key prefix for its goal. Adding a future KPI = one entry here.
 export const KPI_DEFS = [
@@ -85,53 +236,27 @@ export const KPI_DEFS = [
   },
 ]
 
-// Reads a goal for a def at the active location from the flat app_config map.
-// Returns null for the all-locations view (goals are per-club only).
-function goalFor(def, goals, locationSlug) {
-  if (locationSlug === 'all') return null
-  const raw = goals[`${def.goalKey}_${locationSlug}`]
-  if (raw == null || raw === '') return null
-  const n = Number(raw)
-  return Number.isNaN(n) ? null : n
-}
-
-// Parse a 'YYYY-MM-DD' string as a LOCAL date (avoids the UTC shift that
-// `new Date(str)` applies to date-only strings).
-function parseLocalDate(s) {
-  const [y, m, d] = s.split('-').map(Number)
-  return new Date(y, m - 1, d)
-}
-
-function fmtDate(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-// Default comparison window: the trailing 12 calendar months ending today.
-function defaultCompRange() {
-  const now = new Date()
-  const start = new Date(now.getFullYear(), now.getMonth() - 11, 1)
-  return { start: fmtDate(start), end: fmtDate(now) }
-}
-
 export default function KpiReport({ startDate, endDate, locationSlug }) {
   const [data, setData] = useState(null)
   const [goals, setGoals] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [openKey, setOpenKey] = useState(null)
-  // Shared comparison range for the trend graphs (defaults to last 12 months).
+  // Shared comparison range for the trend graphs (defaults to last 6 months).
   const [comp, setComp] = useState(defaultCompRange)
   // trendByKey: { [defKey]: [{ key, label, value }] } for the open location+range.
   const [trendByKey, setTrendByKey] = useState(null)
   const [trendLoading, setTrendLoading] = useState(false)
-  // Signature (location + comparison range) the cached trend was fetched for.
+  // perClub: { [slug]: membershipReport } for the current period (multi-club view).
+  const [perClub, setPerClub] = useState(null)
   const trendSigRef = useRef(null)
   const fetchToken = useRef(0)
 
-  // The trend dataset depends only on location + comparison range, so key the
-  // cache by that signature — switching which tile is open never refetches.
+  const clubs = selectedClubSlugs(locationSlug)
+  const isMulti = clubs.length > 1
   const compSig = `${locationSlug}|${comp.start}|${comp.end}`
 
+  // Combined current-period data (aggregate across the selection) + goals.
   useEffect(() => {
     let cancelled = false
     fetchToken.current += 1
@@ -139,6 +264,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
     setError(null)
     setOpenKey(null)
     setTrendByKey(null)
+    trendSigRef.current = null
     setTrendLoading(false)
     Promise.all([
       getMembershipReport({ start_date: startDate, end_date: endDate, location_slug: locationSlug }),
@@ -154,11 +280,31 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
     return () => { cancelled = true }
   }, [startDate, endDate, locationSlug])
 
-  // Lazily fetch the monthly trend whenever a tile is open and the cached data
-  // is for a different location/range. One /reports/membership call per month,
-  // run in parallel; per-month failures degrade to a gap (null), not a zero.
+  // Per-club current-period data — only when more than one club is selected.
+  // Fetched eagerly so the collapsed tiles can show an "on goal" count.
   useEffect(() => {
-    if (!openKey) return
+    if (!isMulti) { setPerClub(null); return }
+    let cancelled = false
+    setPerClub(null) // clear stale rows when switching between multi-club selections
+    Promise.all(
+      clubs.map(slug =>
+        getMembershipReport({ start_date: startDate, end_date: endDate, location_slug: slug })
+          .then(rep => ({ slug, rep }))
+          .catch(() => ({ slug, rep: null }))
+      )
+    ).then(results => {
+      if (cancelled) return
+      const map = {}
+      for (const r of results) map[r.slug] = r.rep
+      setPerClub(map)
+    })
+    return () => { cancelled = true }
+  }, [isMulti, locationSlug, startDate, endDate])
+
+  // Lazily fetch the monthly trend when a tile is open in single-club mode.
+  // One /reports/membership call per month; per-month failures become gaps.
+  useEffect(() => {
+    if (isMulti || !openKey) return
     if (trendSigRef.current === compSig) return
     const token = ++fetchToken.current
     const ranges = monthRangesBetween(parseLocalDate(comp.start), parseLocalDate(comp.end))
@@ -190,7 +336,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
     }).finally(() => {
       if (token === fetchToken.current) setTrendLoading(false)
     })
-  }, [openKey, compSig, comp.start, comp.end, locationSlug])
+  }, [isMulti, openKey, compSig, comp.start, comp.end, locationSlug])
 
   function toggle(key) {
     setOpenKey(prev => (prev === key ? null : key))
@@ -205,68 +351,73 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
     )
   }
 
-  const isAll = locationSlug === 'all'
   const trendReady = trendSigRef.current === compSig && trendByKey
 
   return (
     <div className="space-y-3">
-      {/* Shared comparison range — drives the monthly trend on every KPI graph. */}
-      <div className="bg-surface rounded-xl border border-border p-4 flex items-center gap-3 flex-wrap">
-        <div>
-          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Comparison Range</p>
-          <p className="text-[11px] text-text-muted mt-0.5">Sets the months shown when you expand a KPI trend.</p>
+      {/* Compact comparison-range pill — only meaningful in single-club trend mode. */}
+      {!isMulti && (
+        <div className="flex justify-end">
+          <ComparisonPill comp={comp} setComp={setComp} />
         </div>
-        <div className="flex items-center gap-2 ml-auto">
-          <label className="text-xs text-text-muted">From</label>
-          <input
-            type="date"
-            value={comp.start}
-            onChange={e => setComp(c => ({ ...c, start: e.target.value }))}
-            className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
-          />
-          <label className="text-xs text-text-muted">To</label>
-          <input
-            type="date"
-            value={comp.end}
-            onChange={e => setComp(c => ({ ...c, end: e.target.value }))}
-            className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
-          />
-        </div>
-      </div>
+      )}
 
       {KPI_DEFS.map(def => {
         const value = def.derive(data)
-        const goal = goalFor(def, goals, locationSlug)
-        const gap = gapInfo(value, goal)
+        const singleGoal = !isMulti ? goalForSlug(def, goals, clubs[0]) : null
+        const gap = !isMulti ? gapInfo(value, singleGoal) : null
         const open = openKey === def.key
+
+        // Multi-club: count how many selected clubs (with a goal) are on target.
+        let onGoal = 0, withGoal = 0
+        if (isMulti && perClub) {
+          for (const slug of clubs) {
+            const g = goalForSlug(def, goals, slug)
+            if (g == null) continue
+            withGoal++
+            const a = def.derive(perClub[slug])
+            if (a != null && a >= g) onGoal++
+          }
+        }
         const points = trendReady ? trendByKey[def.key] : null
+
         return (
           <div key={def.key} className="bg-surface rounded-xl border border-border p-5">
             <button
               type="button"
               onClick={() => toggle(def.key)}
               aria-expanded={open}
-              aria-controls={`kpi-trend-${def.key}`}
+              aria-controls={`kpi-detail-${def.key}`}
               className="w-full flex items-center gap-4 text-left"
             >
               <div className="min-w-0">
                 <p className="text-sm font-bold text-text-primary">{def.label}</p>
-                <p className="text-xs text-text-muted mt-0.5">{isAll ? 'All locations' : 'Current period'}</p>
+                <p className="text-xs text-text-muted mt-0.5">{isMulti ? `${clubs.length} clubs` : 'Current period'}</p>
               </div>
               <div className="ml-auto flex items-center gap-6 flex-shrink-0">
                 <div className="text-right">
                   <p className="text-2xl font-bold text-text-primary leading-none">
                     {value == null ? 'n/a' : `${value}%`}
                   </p>
-                  <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">Actual</p>
+                  <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">{isMulti ? 'Combined' : 'Actual'}</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-2xl font-bold text-text-muted leading-none">{goal == null ? '—' : `${goal}%`}</p>
-                  <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">Goal</p>
-                </div>
+                {!isMulti && (
+                  <div className="text-right">
+                    <p className="text-2xl font-bold text-text-muted leading-none">{singleGoal == null ? '—' : `${singleGoal}%`}</p>
+                    <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">Goal</p>
+                  </div>
+                )}
                 <div className="w-40 text-right">
-                  {isAll ? (
-                    <span className="text-xs text-text-muted">Goal: set per club</span>
+                  {isMulti ? (
+                    !perClub ? (
+                      <span className="text-xs text-text-muted">Loading clubs…</span>
+                    ) : withGoal === 0 ? (
+                      <span className="text-xs text-text-muted">No goals set</span>
+                    ) : (
+                      <span className={`text-xs font-semibold ${onGoal === withGoal ? 'text-green-600' : 'text-red-500'}`}>
+                        {onGoal}/{withGoal} clubs on goal
+                      </span>
+                    )
                   ) : gap ? (
                     <span className={`text-xs font-semibold ${gap.tone === 'above' ? 'text-green-600' : 'text-red-500'}`}>
                       {gap.text}
@@ -283,11 +434,21 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
             </button>
 
             {open && (
-              <div id={`kpi-trend-${def.key}`}>
-                {trendLoading && !points && (
-                  <p className="text-xs text-text-muted mt-3">Loading trend…</p>
+              <div id={`kpi-detail-${def.key}`}>
+                {isMulti ? (
+                  !perClub ? (
+                    <p className="text-xs text-text-muted mt-3">Loading clubs…</p>
+                  ) : (
+                    <PerClubGoalTable def={def} clubs={clubs} perClub={perClub} goals={goals} />
+                  )
+                ) : (
+                  <>
+                    {trendLoading && !points && (
+                      <p className="text-xs text-text-muted mt-3">Loading trend…</p>
+                    )}
+                    {points && <KpiTrendChart points={points} goal={singleGoal} />}
+                  </>
                 )}
-                {points && <KpiTrendChart points={points} goal={goal} />}
               </div>
             )}
           </div>
