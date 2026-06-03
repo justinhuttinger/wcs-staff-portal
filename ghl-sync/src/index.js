@@ -30,22 +30,6 @@ function requireSecret(req, res, next) {
 // Track running syncs to prevent overlap
 let syncRunning = false;
 
-// TEMP DIAGNOSTIC — reports only lengths + a match boolean, never any secret
-// value. Used to debug "Invalid sync secret" (distinguishes missing header,
-// wrong length, and whitespace mismatch). Remove after diagnosing.
-app.get('/api/sync/secret-check', (req, res) => {
-  const received = req.headers['x-sync-secret'];
-  res.json({
-    server_has_secret: !!SYNC_SECRET,
-    server_secret_len: SYNC_SECRET ? SYNC_SECRET.length : 0,
-    header_present: received != null,
-    header_len: received ? String(received).length : 0,
-    header_trimmed_len: received ? String(received).trim().length : 0,
-    exact_match: received === SYNC_SECRET,
-    trimmed_match: received != null && String(received).trim() === String(SYNC_SECRET || '').trim(),
-  });
-});
-
 // GET /health
 app.get('/health', async (req, res) => {
   const { data: lastDelta } = await supabase
