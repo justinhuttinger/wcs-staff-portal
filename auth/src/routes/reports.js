@@ -981,7 +981,7 @@ router.get('/speed-to-lead', async (req, res) => {
 
     let q = supabaseAdmin
       .from('ghl_first_contact')
-      .select('opportunity_created_at, first_human_contact_at, location_id')
+      .select('opportunity_id, opportunity_created_at, first_human_contact_at, location_id')
 
     if (locationIds.length > 0) q = q.in('location_id', locationIds)
     if (startISO) q = q.gte('opportunity_created_at', startISO)
@@ -992,48 +992,77 @@ router.get('/speed-to-lead', async (req, res) => {
 
     const rows = data || []
 
+    // Resolve the set of "New Lead" stage ids (the entry stage, position 0).
+    const { data: stageRows } = await supabaseAdmin
+      .from('ghl_pipeline_stages').select('id').ilike('name', 'New Lead')
+    const newLeadStageIds = new Set((stageRows || []).map(s => s.id))
+
+    // Fetch the opportunities' current stage + timestamps so we can keep only
+    // genuine New-Lead entrants (currently at New Lead, OR moved since creation —
+    // since New Lead is the first stage, anything that progressed started there).
+    // Opps created directly at a later stage (never moved) are excluded.
+    const oppIds = rows.map(r => r.opportunity_id)
+    const oppById = new Map()
+    for (let i = 0; i < oppIds.length; i += 500) {
+      const chunk = oppIds.slice(i, i + 500)
+      const { data: opps } = await supabaseAdmin
+        .from('ghl_opportunities_v2')
+        .select('id, stage_id, created_at_ghl, last_stage_change_at, updated_at_ghl')
+        .in('id', chunk)
+      for (const o of (opps || [])) oppById.set(o.id, o)
+    }
+
+    const MOVED_EPSILON_MS = 2000 // tolerance so created==lastChange isn't "moved"
+    function isNewLead(opp) {
+      if (!opp) return false
+      if (newLeadStageIds.has(opp.stage_id)) return true
+      // Prefer last_stage_change_at; fall back to updated_at_ghl until a full opp
+      // sync populates the precise column.
+      const movedRef = opp.last_stage_change_at || opp.updated_at_ghl
+      if (movedRef && opp.created_at_ghl) {
+        return (new Date(movedRef).getTime() - new Date(opp.created_at_ghl).getTime()) > MOVED_EPSILON_MS
+      }
+      return false
+    }
+
     let contactedCount = 0
     let uncontactedCount = 0
+    let excludedNotNewLead = 0
     const minutes = []
 
     for (const row of rows) {
-      if (row.first_human_contact_at == null) {
-        uncontactedCount++
-      } else {
-        contactedCount++
-        const created = new Date(row.opportunity_created_at).getTime()
-        const contacted = new Date(row.first_human_contact_at).getTime()
-        const mins = (contacted - created) / 60000
-        minutes.push(Math.max(0, mins))
-      }
+      const opp = oppById.get(row.opportunity_id)
+      if (!isNewLead(opp)) { excludedNotNewLead++; continue }
+      if (row.first_human_contact_at == null) { uncontactedCount++; continue }
+      const created = new Date(row.opportunity_created_at).getTime()
+      const contacted = new Date(row.first_human_contact_at).getTime()
+      const mins = (contacted - created) / 60000
+      if (mins < 0) { excludedNotNewLead++; continue } // contact before creation — not a fresh lead
+      contactedCount++
+      minutes.push(mins)
     }
 
     let medianMinutes = null
     let meanMinutes = null
-
     if (minutes.length > 0) {
-      // Mean
       const sum = minutes.reduce((acc, v) => acc + v, 0)
       meanMinutes = Math.round(sum / minutes.length)
-
-      // Median: sort, then pick middle or average two middles
       const sorted = [...minutes].sort((a, b) => a - b)
       const mid = Math.floor(sorted.length / 2)
-      if (sorted.length % 2 === 1) {
-        medianMinutes = Math.round(sorted[mid])
-      } else {
-        medianMinutes = Math.round((sorted[mid - 1] + sorted[mid]) / 2)
-      }
+      medianMinutes = sorted.length % 2 === 1
+        ? Math.round(sorted[mid])
+        : Math.round((sorted[mid - 1] + sorted[mid]) / 2)
     }
 
     res.json({
-      // Counts reflect opportunities the compute step has already processed
-      // (rows in ghl_first_contact), not every Membership opp in range — a brand
-      // new lead has no row until the next sync cycle. median_minutes is the headline.
+      // Only genuine New-Lead entrants are counted; opps created directly at a
+      // later stage are excluded (excluded_not_new_lead). Counts reflect opps the
+      // compute step has processed (rows in ghl_first_contact). median is headline.
       median_minutes: medianMinutes,
       mean_minutes: meanMinutes,
       contacted_count: contactedCount,
       uncontacted_count: uncontactedCount,
+      excluded_not_new_lead: excludedNotNewLead,
       total_opportunities: rows.length,
     })
   } catch (err) {

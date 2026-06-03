@@ -49,6 +49,7 @@ function transformOpportunity(raw, locationId) {
     lost_reason: raw.lostReasonId || null,
     created_at_ghl: raw.createdAt || null,
     updated_at_ghl: raw.updatedAt || null,
+    last_stage_change_at: raw.lastStageChangeAt || null,
     closed_at: raw.closedAt || raw.closedDate || null,
     synced_at: new Date().toISOString(),
   };

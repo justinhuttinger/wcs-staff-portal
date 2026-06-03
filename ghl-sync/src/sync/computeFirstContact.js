@@ -113,29 +113,46 @@ async function backfillFirstContact(windowDays = 180, progress = {}) {
 
   for (const location of LOCATIONS) {
     try {
-      const { data: opps, error } = await supabase
-        .from('ghl_opportunities_v2')
-        .select('id, contact_id, created_at_ghl')
-        .eq('location_id', location.id)
-        .in('pipeline_id', pipelineIds)
-        .not('contact_id', 'is', null)
-        .gte('created_at_ghl', cutoff)
-        .order('created_at_ghl', { ascending: false })
-        .limit(20000);
-      if (error) { progress.errors.push({ location: location.name, error: error.message }); progress.locationsDone++; continue; }
+      // Page through ALL candidates: PostgREST caps a single select at ~1000
+      // rows regardless of .limit(), so .range() pagination is required or older
+      // leads beyond the first 1000 are silently dropped.
+      const PAGE = 1000;
+      let opps = [];
+      let pageErr = null;
+      for (let from = 0; ; from += PAGE) {
+        const { data: page, error } = await supabase
+          .from('ghl_opportunities_v2')
+          .select('id, contact_id, created_at_ghl')
+          .eq('location_id', location.id)
+          .in('pipeline_id', pipelineIds)
+          .not('contact_id', 'is', null)
+          .gte('created_at_ghl', cutoff)
+          .order('created_at_ghl', { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (error) { pageErr = error; break; }
+        opps = opps.concat(page || []);
+        if (!page || page.length < PAGE) break;
+      }
+      if (pageErr) { progress.errors.push({ location: location.name, error: pageErr.message }); progress.locationsDone++; continue; }
 
-      // Build the set of already-resolved opportunity ids (chunk the IN list).
+      // Skip opps already resolved OR checked recently, so a re-run only does the
+      // genuinely-missing leads instead of re-fetching already-checked ones.
+      const RECENT_MS = 12 * 3600000; // 12h
+      const now = Date.now();
       const ids = (opps || []).map(o => o.id);
-      const resolvedSet = new Set();
+      const skip = new Set();
       for (let i = 0; i < ids.length; i += 1000) {
         const chunk = ids.slice(i, i + 1000);
         const { data: rows } = await supabase
           .from('ghl_first_contact')
-          .select('opportunity_id, resolved')
+          .select('opportunity_id, resolved, checked_at')
           .in('opportunity_id', chunk);
-        for (const r of (rows || [])) if (r.resolved) resolvedSet.add(r.opportunity_id);
+        for (const r of (rows || [])) {
+          if (r.resolved) { skip.add(r.opportunity_id); continue; }
+          if (r.checked_at && (now - new Date(r.checked_at).getTime()) < RECENT_MS) skip.add(r.opportunity_id);
+        }
       }
-      const todo = (opps || []).filter(o => !resolvedSet.has(o.id));
+      const todo = (opps || []).filter(o => !skip.has(o.id));
 
       for (const opp of todo) {
         try {
