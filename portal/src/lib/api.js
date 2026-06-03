@@ -475,6 +475,11 @@ export async function getMembershipReport(params = {}, options = {}) {
   return api('/reports/membership' + (qs ? '?' + qs : ''), options)
 }
 
+export async function getSpeedToLead(params = {}, options = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/speed-to-lead' + (qs ? '?' + qs : ''), options)
+}
+
 export async function getPTReport(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/reports/pt' + (qs ? '?' + qs : ''), options)
