@@ -340,7 +340,8 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
                   <ReportInfoButton info={getReportInfo(activeReport)} />
                 )}
                 <div className="ml-auto flex-shrink-0">
-                  {showLocation ? (
+                  {/* KPIs uses location pills below the date range instead of this dropdown. */}
+                  {activeReport === 'kpis' ? null : showLocation ? (
                     <LocationMultiSelect
                       value={locationSlug}
                       onChange={setLocationSlug}
@@ -389,6 +390,33 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
                       className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
                     />
                   </div>
+                </div>
+              )}
+
+              {/* KPIs report: single-select location pills under the date range for
+                  quick club-to-club navigation (this report is mostly viewed per club). */}
+              {activeReport === 'kpis' && showLocation && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {[{ slug: 'all', label: 'All' }, ...(isAdmin
+                    ? LOCATIONS.filter(l => l.slug !== 'all')
+                    : reportLocations.map(l => ({ slug: l.name.toLowerCase(), label: l.name }))
+                  )].map(opt => {
+                    const active = locationSlug === opt.slug
+                    return (
+                      <button
+                        key={opt.slug}
+                        type="button"
+                        onClick={() => setLocationSlug(opt.slug)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${
+                          active
+                            ? 'bg-wcs-red text-white border-wcs-red'
+                            : 'bg-bg text-text-muted border-border hover:text-text-primary'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    )
+                  })}
                 </div>
               )}
             </>
