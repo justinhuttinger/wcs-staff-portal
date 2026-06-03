@@ -64,7 +64,7 @@ export const KPI_DEFS = [
     key: 'trial',
     label: 'Trial Conversion',
     goalKey: 'kpi_goal_trial',
-    derive: d => (d?.trial_conversion?.rate ?? null),
+    derive: d => (d?.trial_conversion?.trial_started ? d.trial_conversion.rate : null),
   },
   {
     key: 'dayone',
@@ -108,6 +108,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
     setError(null)
     setOpenKey(null)
     setTrendByKey(null)
+    setTrendLoading(false)
     Promise.all([
       getMembershipReport({ start_date: startDate, end_date: endDate, location_slug: locationSlug }),
       getAppSettings('kpi_goal_'),
