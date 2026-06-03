@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getMembershipReport, getAppSettings } from '../../lib/api'
 import { pct, gapInfo, trendDirection, monthRanges } from '../../lib/kpiMath'
 import DesktopLoading from '../DesktopLoading'
@@ -41,7 +41,7 @@ function KpiTrendChart({ points, goal }) {
         )}
         <path d={path.trim()} fill="none" stroke="#38a169" strokeWidth="2" />
         {points.map((p, i) => p.value != null && (
-          <circle key={i} cx={toX(i)} cy={toY(p.value)} r="2.5" fill="#38a169" />
+          <circle key={p.label} cx={toX(i)} cy={toY(p.value)} r="2.5" fill="#38a169" />
         ))}
         {points.map((p, i) => (
           <text key={`l${i}`} x={toX(i)} y={h - 8} textAnchor="middle" className="fill-gray-400" style={{ fontSize: '8px' }}>{p.label}</text>
@@ -99,9 +99,11 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
   // trendByKey: { [defKey]: [{ label, value }] } for the open location.
   const [trendByKey, setTrendByKey] = useState(null)
   const [trendLoading, setTrendLoading] = useState(false)
+  const fetchToken = useRef(0)
 
   useEffect(() => {
     let cancelled = false
+    fetchToken.current += 1
     setLoading(true)
     setError(null)
     setOpenKey(null)
@@ -125,6 +127,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
   function ensureTrend() {
     if (trendByKey || trendLoading) return
     setTrendLoading(true)
+    const token = fetchToken.current
     const ranges = monthRanges(new Date(), 6)
     Promise.all(
       ranges.map(r =>
@@ -133,6 +136,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
           .catch(() => ({ ok: false, rep: null }))
       )
     ).then(results => {
+      if (token !== fetchToken.current) return
       const byKey = {}
       for (const def of KPI_DEFS) {
         byKey[def.key] = ranges.map((r, i) => ({
@@ -141,7 +145,9 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
         }))
       }
       setTrendByKey(byKey)
-    }).finally(() => setTrendLoading(false))
+    }).finally(() => {
+      if (token === fetchToken.current) setTrendLoading(false)
+    })
   }
 
   function toggle(key) {
@@ -174,6 +180,8 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
             <button
               type="button"
               onClick={() => toggle(def.key)}
+              aria-expanded={open}
+              aria-controls={`kpi-trend-${def.key}`}
               className="w-full flex items-center gap-4 text-left"
             >
               <div className="min-w-0">
@@ -210,7 +218,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
             </button>
 
             {open && (
-              <div>
+              <div id={`kpi-trend-${def.key}`}>
                 {trendLoading && !points && (
                   <p className="text-xs text-text-muted mt-3">Loading trend…</p>
                 )}
