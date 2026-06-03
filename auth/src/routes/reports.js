@@ -950,4 +950,92 @@ router.get('/cancels', async (req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// GET /reports/speed-to-lead
+// Query params: start_date, end_date, location_slug
+// Reports median + mean minutes from opportunity creation to first human contact.
+// ---------------------------------------------------------------------------
+router.get('/speed-to-lead', async (req, res) => {
+  const { start_date, end_date } = req.query
+
+  try {
+    const locationFilter = await resolveLocationFilter(req.query)
+
+    // ISO bounds for the TIMESTAMPTZ column opportunity_created_at
+    const startISO = start_date ? start_date + 'T00:00:00.000Z' : null
+    const endISO   = end_date ? end_date + 'T23:59:59.999Z' : null
+
+    // Resolve location filter to GHL location IDs (ghl_first_contact only has location_id).
+    // Mirrors the same slug→id resolution used in /membership for ghl_opportunities_v2.
+    let locationIds = []
+    if (locationFilter) {
+      if (locationFilter.column === 'location_id') {
+        locationIds = locationFilter.values
+      } else if (locationFilter.column === 'location_slug') {
+        const orClauses = locationFilter.values.map(s => `name.ilike.%${s}%`).join(',')
+        const { data: locs } = await supabaseAdmin
+          .from('ghl_locations').select('id').or(orClauses)
+        locationIds = (locs || []).map(l => l.id)
+      }
+    }
+
+    let q = supabaseAdmin
+      .from('ghl_first_contact')
+      .select('opportunity_created_at, first_human_contact_at, location_id')
+
+    if (locationIds.length > 0) q = q.in('location_id', locationIds)
+    if (startISO) q = q.gte('opportunity_created_at', startISO)
+    if (endISO)   q = q.lte('opportunity_created_at', endISO)
+
+    const { data, error } = await q
+    if (error) return res.status(500).json({ error: 'Failed to fetch speed-to-lead data', detail: error.message })
+
+    const rows = data || []
+
+    let contactedCount = 0
+    let uncontactedCount = 0
+    const minutes = []
+
+    for (const row of rows) {
+      if (row.first_human_contact_at == null) {
+        uncontactedCount++
+      } else {
+        contactedCount++
+        const created = new Date(row.opportunity_created_at).getTime()
+        const contacted = new Date(row.first_human_contact_at).getTime()
+        const mins = (contacted - created) / 60000
+        minutes.push(Math.max(0, mins))
+      }
+    }
+
+    let medianMinutes = null
+    let meanMinutes = null
+
+    if (minutes.length > 0) {
+      // Mean
+      const sum = minutes.reduce((acc, v) => acc + v, 0)
+      meanMinutes = Math.round(sum / minutes.length)
+
+      // Median: sort, then pick middle or average two middles
+      const sorted = [...minutes].sort((a, b) => a - b)
+      const mid = Math.floor(sorted.length / 2)
+      if (sorted.length % 2 === 1) {
+        medianMinutes = Math.round(sorted[mid])
+      } else {
+        medianMinutes = Math.round((sorted[mid - 1] + sorted[mid]) / 2)
+      }
+    }
+
+    res.json({
+      median_minutes: medianMinutes,
+      mean_minutes: meanMinutes,
+      contacted_count: contactedCount,
+      uncontacted_count: uncontactedCount,
+      total_opportunities: rows.length,
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 module.exports = router
