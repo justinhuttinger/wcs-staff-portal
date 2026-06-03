@@ -8,17 +8,23 @@ export function pct(num, den) {
   return Math.round((Number(num) || 0) / den * 100)
 }
 
-// Compares an actual percentage to a goal. Returns null if either is missing.
-// diff is actual - goal. tone is 'above' when actual >= goal, else 'below'.
-export function gapInfo(actual, goal) {
+// Compares an actual value to a goal. Returns null if either is missing.
+// opts.lowerIsBetter (default false) flips which side is "good".
+// opts.unit (default '%') is appended to the gap text.
+export function gapInfo(actual, goal, opts = {}) {
+  const { lowerIsBetter = false, unit = '%' } = opts
   if (actual == null || goal == null || goal === '' || Number.isNaN(Number(goal))) {
     return null
   }
   const g = Number(goal)
   const diff = actual - g
   if (diff === 0) return { diff: 0, tone: 'above', text: 'Goal met' }
-  if (diff > 0) return { diff, tone: 'above', text: `+${diff}% above goal` }
-  return { diff, tone: 'below', text: `${diff}% below goal` }
+  if (!lowerIsBetter) {
+    if (diff > 0) return { diff, tone: 'above', text: `+${diff}${unit} above goal` }
+    return { diff, tone: 'below', text: `${diff}${unit} below goal` }
+  }
+  if (diff < 0) return { diff, tone: 'above', text: `${Math.abs(diff)}${unit} under goal` }
+  return { diff, tone: 'below', text: `${diff}${unit} over goal` }
 }
 
 // Looks at the last two non-null points and reports whether the metric is
@@ -89,4 +95,27 @@ export function monthRangesBetween(start, end) {
     if (m > 11) { m = 0; y++ }
   }
   return out
+}
+
+// Median of a numeric array. Returns null for empty input.
+export function median(nums) {
+  const xs = (nums || []).filter(n => n != null).slice().sort((a, b) => a - b)
+  if (xs.length === 0) return null
+  const mid = Math.floor(xs.length / 2)
+  return xs.length % 2 ? xs[mid] : (xs[mid - 1] + xs[mid]) / 2
+}
+
+// Arithmetic mean of a numeric array (rounded). Returns null for empty input.
+export function mean(nums) {
+  const xs = (nums || []).filter(n => n != null)
+  if (xs.length === 0) return null
+  return Math.round(xs.reduce((a, b) => a + b, 0) / xs.length)
+}
+
+// Compact duration label for minute counts. null -> 'n/a'.
+export function formatMinutes(min) {
+  if (min == null) return 'n/a'
+  const m = Math.round(min)
+  if (m < 60) return `${m}m`
+  return `${Math.floor(m / 60)}h ${m % 60}m`
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { pct, gapInfo, trendDirection, monthRanges, monthRangesBetween } from './kpiMath.js'
+import { pct, gapInfo, trendDirection, monthRanges, monthRangesBetween, median, mean, formatMinutes } from './kpiMath.js'
 
 test('pct returns rounded percentage', () => {
   assert.equal(pct(50, 200), 25)
@@ -74,4 +74,35 @@ test('monthRangesBetween single month and reversed range', () => {
   assert.equal(one[0].key, '2026-02')
   assert.equal(one[0].end, '2026-02-28')
   assert.deepEqual(monthRangesBetween(new Date(2026, 5, 1), new Date(2026, 4, 1)), [])
+})
+
+test('median handles odd, even, empty', () => {
+  assert.equal(median([5]), 5)
+  assert.equal(median([3, 1, 2]), 2)
+  assert.equal(median([4, 1, 3, 2]), 2.5)
+  assert.equal(median([]), null)
+})
+
+test('mean handles values and empty', () => {
+  assert.equal(mean([2, 4, 6]), 4)
+  assert.equal(mean([]), null)
+})
+
+test('formatMinutes renders compact durations', () => {
+  assert.equal(formatMinutes(null), 'n/a')
+  assert.equal(formatMinutes(0), '0m')
+  assert.equal(formatMinutes(8), '8m')
+  assert.equal(formatMinutes(63), '1h 3m')
+  assert.equal(formatMinutes(120), '2h 0m')
+})
+
+test('gapInfo lowerIsBetter: under goal is good, over is bad', () => {
+  assert.deepEqual(gapInfo(5, 10, { lowerIsBetter: true, unit: 'm' }), { diff: -5, tone: 'above', text: '5m under goal' })
+  assert.deepEqual(gapInfo(15, 10, { lowerIsBetter: true, unit: 'm' }), { diff: 5, tone: 'below', text: '5m over goal' })
+  assert.deepEqual(gapInfo(10, 10, { lowerIsBetter: true, unit: 'm' }), { diff: 0, tone: 'above', text: 'Goal met' })
+})
+
+test('gapInfo default (percent, higher better) unchanged', () => {
+  assert.deepEqual(gapInfo(70, 65), { diff: 5, tone: 'above', text: '+5% above goal' })
+  assert.deepEqual(gapInfo(58, 65), { diff: -7, tone: 'below', text: '-7% below goal' })
 })
