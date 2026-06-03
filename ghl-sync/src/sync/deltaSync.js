@@ -8,6 +8,7 @@ const { writeSyncLog } = require('./syncLog');
 const { isGhlSyncAborted } = require('./fullSync');
 const { refreshCurrentHourCheckins } = require('../abc/checkins');
 const { syncCalendarEventsForClub } = require('../abc/calendarEvents');
+const { computeFirstContact } = require('./computeFirstContact');
 
 async function getLastDeltaSync() {
   const { data } = await supabase
@@ -77,6 +78,17 @@ async function deltaSync() {
     } catch (err) {
       console.error(`[Delta] ${location.name} opportunities failed:`, err.message);
       await writeSyncLog({ syncType: 'delta', entity: 'opportunities', locationId: location.id, recordsFetched: 0, recordsUpserted: 0, errors: [{ error: err.message }], startedAt: opStart });
+    }
+
+    // Speed to Lead: first human contact for Membership-pipeline opps.
+    let fcStart = new Date().toISOString();
+    try {
+      const fc = await computeFirstContact(location);
+      console.log(`[Delta] ${location.name}: first-contact checked ${fc.checked}, resolved ${fc.resolved}`);
+      await writeSyncLog({ syncType: 'delta', entity: 'first_contact', locationId: location.id, recordsFetched: fc.checked, recordsUpserted: fc.resolved, errors: fc.errors, startedAt: fcStart });
+    } catch (err) {
+      console.error(`[Delta] ${location.name} first-contact failed:`, err.message);
+      await writeSyncLog({ syncType: 'delta', entity: 'first_contact', locationId: location.id, recordsFetched: 0, recordsUpserted: 0, errors: [{ error: err.message }], startedAt: fcStart });
     }
 
     // Calendar events delta — last 7 days through end-of-tomorrow.

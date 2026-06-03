@@ -5,8 +5,9 @@ import { LOCATION_NAMES } from '../../config/locations'
 // Must match the goalKey values in KpiReport.jsx KPI_DEFS.
 const GOAL_FIELDS = [
   { prefix: 'kpi_goal_trial', label: 'Trial Conversion Goal %' },
-  { prefix: 'kpi_goal_dayone', label: 'Day One Booking Goal %' },
-  { prefix: 'kpi_goal_vip', label: 'VIP Booking Goal %' },
+  { prefix: 'kpi_goal_dayone', label: 'Day One Attachment Goal %' },
+  { prefix: 'kpi_goal_vip', label: 'VIP Collection Goal %' },
+  { prefix: 'kpi_goal_speed', label: 'Speed to Lead Goal (min)' },
 ]
 
 export default function KpiGoalsAdmin() {
@@ -69,7 +70,7 @@ export default function KpiGoalsAdmin() {
           return (
             <div key={slug} className="bg-surface border border-border rounded-xl p-4">
               <h4 className="text-sm font-bold text-text-primary mb-3">{loc}</h4>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {GOAL_FIELDS.map(field => {
                   const key = `${field.prefix}_${slug}`
                   return (
