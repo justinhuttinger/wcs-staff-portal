@@ -16,6 +16,7 @@ import RevenueReport from './reports/RevenueReport'
 import MetaAdsView from './MetaAdsView'
 import GoogleMarketingView from './GoogleMarketingView'
 import WebsiteSubmissionsReport from './reports/WebsiteSubmissionsReport'
+import KpiReport from './reports/KpiReport'
 import ReportInfoButton from './ReportInfoButton'
 import { getReportInfo } from '../lib/reportInfo'
 
@@ -39,6 +40,7 @@ const REPORT_ICONS = {
   'meta-ads': 'M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6',
   'google-marketing': 'm21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z',
   'website-submissions': 'M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75',
+  kpis: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z',
 }
 
 const ALL_REPORT_TILES = [
@@ -59,6 +61,7 @@ const ALL_REPORT_TILES = [
   { key: 'meta-ads', label: 'Meta Ads', desc: 'Facebook & Instagram' },
   { key: 'google-marketing', label: 'Google', desc: 'Business + Analytics' },
   { key: 'website-submissions', label: 'Website Submissions', desc: 'Form Leads' },
+  { key: 'kpis', label: 'KPIs', desc: 'Goals vs. Actuals' },
 ]
 
 // Group tiles surface fewer items at the top level. Each group holds an
@@ -86,6 +89,13 @@ const REPORT_GROUPS = [
     iconPath: REPORT_ICONS['marketing'],
     reports: ['meta-ads', 'google-marketing', 'website-submissions'],
   },
+  {
+    key: 'experimental',
+    label: 'Experimental',
+    desc: 'In Development',
+    iconPath: 'M10.5 1.5H8.25A2.25 2.25 0 0 0 6 3.75v16.5a2.25 2.25 0 0 0 2.25 2.25h7.5A2.25 2.25 0 0 0 18 20.25V3.75a2.25 2.25 0 0 0-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3',
+    reports: ['kpis'],
+  },
 ]
 
 function getReportTilesForRole(role) {
@@ -98,8 +108,8 @@ function getReportTilesForRole(role) {
       return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'operations', 'revenue'].includes(t.key))
     case 'marketing':
       // Marketing: marketing tiles + broader reports per REPORT_ACCESS, minus
-      // website-submissions (corp+admin only).
-      return ALL_REPORT_TILES.filter(t => t.key !== 'website-submissions')
+      // website-submissions and kpis (corp+admin only).
+      return ALL_REPORT_TILES.filter(t => t.key !== 'website-submissions' && t.key !== 'kpis')
     default: // corporate, admin, director
       return ALL_REPORT_TILES
   }
@@ -443,6 +453,9 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           )}
           {activeReport === 'website-submissions' && (
             <WebsiteSubmissionsReport />
+          )}
+          {activeReport === 'kpis' && (
+            <KpiReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
           )}
         </>
       </div>
