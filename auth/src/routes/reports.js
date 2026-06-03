@@ -981,7 +981,7 @@ router.get('/speed-to-lead', async (req, res) => {
 
     let q = supabaseAdmin
       .from('ghl_first_contact')
-      .select('opportunity_id, opportunity_created_at, first_human_contact_at, location_id')
+      .select('opportunity_id, contact_id, opportunity_created_at, first_human_contact_at, location_id')
 
     if (locationIds.length > 0) q = q.in('location_id', locationIds)
     if (startISO) q = q.gte('opportunity_created_at', startISO)
@@ -1012,6 +1012,16 @@ router.get('/speed-to-lead', async (req, res) => {
       for (const o of (opps || [])) oppById.set(o.id, o)
     }
 
+    // DND contacts are excluded entirely (can't be contacted — neither for nor
+    // against the metric). Fetch dnd flag per contact.
+    const contactIds = [...new Set(rows.map(r => r.contact_id).filter(Boolean))]
+    const dndById = new Map()
+    for (let i = 0; i < contactIds.length; i += 500) {
+      const { data: cs } = await supabaseAdmin
+        .from('ghl_contacts_v2').select('id, dnd').in('id', contactIds.slice(i, i + 500))
+      for (const c of (cs || [])) dndById.set(c.id, c.dnd)
+    }
+
     const MOVED_EPSILON_MS = 2000 // tolerance so created==lastChange isn't "moved"
     function isNewLead(opp) {
       if (!opp) return false
@@ -1028,9 +1038,11 @@ router.get('/speed-to-lead', async (req, res) => {
     let contactedCount = 0
     let uncontactedCount = 0
     let excludedNotNewLead = 0
+    let excludedDnd = 0
     const minutes = []
 
     for (const row of rows) {
+      if (dndById.get(row.contact_id) === true) { excludedDnd++; continue }
       const opp = oppById.get(row.opportunity_id)
       if (!isNewLead(opp)) { excludedNotNewLead++; continue }
       if (row.first_human_contact_at == null) { uncontactedCount++; continue }
@@ -1063,6 +1075,7 @@ router.get('/speed-to-lead', async (req, res) => {
       contacted_count: contactedCount,
       uncontacted_count: uncontactedCount,
       excluded_not_new_lead: excludedNotNewLead,
+      excluded_dnd: excludedDnd,
       total_opportunities: rows.length,
     })
   } catch (err) {
@@ -1128,7 +1141,7 @@ router.get('/speed-to-lead/audit', async (req, res) => {
     for (let i = 0; i < contactIds.length; i += 500) {
       const { data: cs } = await supabaseAdmin
         .from('ghl_contacts_v2')
-        .select('id, full_name, first_name, last_name')
+        .select('id, full_name, first_name, last_name, dnd')
         .in('id', contactIds.slice(i, i + 500))
       for (const c of (cs || [])) contactById.set(c.id, c)
     }
@@ -1153,7 +1166,9 @@ router.get('/speed-to-lead/audit', async (req, res) => {
       const c = contactById.get(r.contact_id)
       const name = (c && (c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim())) || '(unknown)'
       let included = false, reason, speed_minutes = null
-      if (!isNewLead(opp)) {
+      if (c && c.dnd === true) {
+        reason = 'dnd'
+      } else if (!isNewLead(opp)) {
         reason = 'not_new_lead'
       } else if (r.first_human_contact_at == null) {
         reason = 'no_human_contact'
