@@ -342,6 +342,33 @@ const REPORT_INFO = {
     ],
   },
 
+  kpis: {
+    title: 'KPIs',
+    sections: [
+      {
+        heading: 'What this is',
+        body:
+          'An experimental scoreboard that compares three club metrics against goals you set per club in the admin panel: trial conversion, day one booking rate, and VIP booking rate.',
+      },
+      {
+        heading: 'How the percentages work',
+        body: [
+          'Trial Conversion is won trials divided by trials started, the same number shown on the Membership report.',
+          'Day One Booking and VIP Booking are each divided by new members signed in the selected range.',
+        ],
+      },
+      {
+        heading: 'Trends',
+        body:
+          'Click any KPI to expand its last six months against the goal line. Months with no data show as gaps, not zeros.',
+      },
+    ],
+    notes: [
+      'All-locations view shows actuals only; goals are set per club.',
+      'History only goes back as far as synced data exists.',
+    ],
+  },
+
   'website-submissions': {
     title: 'Website Submissions',
     sections: [
