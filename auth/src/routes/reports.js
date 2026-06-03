@@ -1027,6 +1027,9 @@ router.get('/speed-to-lead', async (req, res) => {
     }
 
     res.json({
+      // Counts reflect opportunities the compute step has already processed
+      // (rows in ghl_first_contact), not every Membership opp in range — a brand
+      // new lead has no row until the next sync cycle. median_minutes is the headline.
       median_minutes: medianMinutes,
       mean_minutes: meanMinutes,
       contacted_count: contactedCount,
