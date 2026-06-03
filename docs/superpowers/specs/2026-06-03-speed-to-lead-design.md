@@ -45,6 +45,9 @@ other three reuse `/reports/membership`).
 
 ## Definitions
 
+- **Lead** = an opportunity in the **Membership pipeline** that enters at the
+  **"New Lead"** stage. Opportunities are created at this stage, so
+  `created_at_ghl` is the moment the lead arrives.
 - **Lead created** = `ghl_opportunities_v2.created_at_ghl` (opportunity creation).
 - **First human contact** = the earliest GHL message for the opportunity's contact
   where `direction === 'outbound'` AND `source === 'app'` AND `messageType` in
@@ -55,6 +58,9 @@ other three reuse `/reports/membership`).
   creation (rare; e.g. contact existed first), clamp to 0 — see edge cases.
 - **KPI value (period)** = the **median** of per-opportunity speeds for
   opportunities created in the selected range that have a first human contact.
+  The endpoint also returns the **mean** for reference; median is the headline
+  (right-skewed distribution — outlier late contacts shouldn't distort the
+  typical experience).
 
 ## Goals / Non-Goals
 
@@ -102,9 +108,12 @@ CREATE INDEX IF NOT EXISTS idx_first_contact_oppcreated ON ghl_first_contact(opp
     (sequential per contact, small concurrency cap across contacts).
 
 ### Compute step `ghl-sync/src/sync/computeFirstContact.js`
-- Select candidate opportunities to (re)check: those in the **Trial pipeline**
-  with `contact_id NOT NULL` and either no `ghl_first_contact` row, or a row with
-  `resolved = false` AND `opportunity_created_at >= now() - 30 days`.
+- Resolve the **Membership pipeline** id per location from `ghl_pipelines`
+  (match by name) and the **"New Lead"** stage id from `ghl_pipeline_stages`.
+- Select candidate opportunities to (re)check: those in the **Membership
+  pipeline** (leads enter at the "New Lead" stage) with `contact_id NOT NULL`
+  and either no `ghl_first_contact` row, or a row with `resolved = false` AND
+  `opportunity_created_at >= now() - 30 days`.
   (Once `resolved=true`, never re-checked — first contact never changes.)
 - For each candidate, call `fetchFirstHumanContact`; upsert a row:
   - found → `first_human_contact_at`, `first_contact_kind`, `resolved=true`.
@@ -117,7 +126,7 @@ CREATE INDEX IF NOT EXISTS idx_first_contact_oppcreated ON ghl_first_contact(opp
   initial backfill.
 
 ### Backfill
-- A one-off invocation (or repeated delta cycles) walks existing Trial-pipeline
+- A one-off invocation (or repeated delta cycles) walks existing Membership-pipeline
   opportunities within a chosen historical window to populate `ghl_first_contact`.
   Document the manual trigger; respect the per-cycle cap.
 
@@ -133,14 +142,15 @@ CREATE INDEX IF NOT EXISTS idx_first_contact_oppcreated ON ghl_first_contact(opp
   ```json
   {
     "median_minutes": 12,
+    "mean_minutes": 47,            // returned for reference; median is the headline
     "contacted_count": 84,
     "uncontacted_count": 9,        // opps in range with no human contact yet
     "total_opportunities": 93
   }
   ```
-- Median computed in JS over the result set (consistent with how other routes
-  aggregate in JS), or via a Postgres `percentile_cont` RPC if the row count is
-  large — decide in the plan; JS is fine for expected volumes.
+- Median (and mean) computed in JS over the result set (consistent with how other
+  routes aggregate in JS), or via a Postgres `percentile_cont` RPC if the row
+  count is large — decide in the plan; JS is fine for expected volumes.
 - Location filtering supports per-club calls (multi-club view fans out like the
   other KPIs) and 'all'.
 
@@ -227,4 +237,5 @@ first-class:
 - Per-rep speed leaderboard.
 - Include inbound-reply or answered-call nuance.
 - Postgres `percentile_cont` RPC if volumes grow.
-- Widen beyond the Trial pipeline if desired.
+- Widen beyond the Membership pipeline if desired.
+- Surface the returned `mean_minutes` as a secondary stat on the tile.
