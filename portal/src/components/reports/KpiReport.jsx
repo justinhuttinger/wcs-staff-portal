@@ -148,8 +148,17 @@ function defaultCompRange() {
 // pill with the current range; clicking opens a popover with From/To inputs.
 function ComparisonPill({ comp, setComp }) {
   const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    function onClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [open])
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
@@ -255,6 +264,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
     setError(null)
     setOpenKey(null)
     setTrendByKey(null)
+    trendSigRef.current = null
     setTrendLoading(false)
     Promise.all([
       getMembershipReport({ start_date: startDate, end_date: endDate, location_slug: locationSlug }),
@@ -275,6 +285,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
   useEffect(() => {
     if (!isMulti) { setPerClub(null); return }
     let cancelled = false
+    setPerClub(null) // clear stale rows when switching between multi-club selections
     Promise.all(
       clubs.map(slug =>
         getMembershipReport({ start_date: startDate, end_date: endDate, location_slug: slug })
