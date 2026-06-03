@@ -1070,4 +1070,114 @@ router.get('/speed-to-lead', async (req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// GET /reports/speed-to-lead/audit
+// Per-lead breakdown behind the Speed to Lead median — INCLUDING skipped rows
+// (with a reason) so the data can be vetted. Query: start_date, end_date,
+// location_slug, limit (default 1000).
+// ---------------------------------------------------------------------------
+router.get('/speed-to-lead/audit', async (req, res) => {
+  const { start_date, end_date } = req.query
+  const limit = Math.min(parseInt(req.query.limit || '1000', 10) || 1000, 5000)
+  try {
+    const locationFilter = await resolveLocationFilter(req.query)
+    const startISO = start_date ? start_date + 'T00:00:00.000Z' : null
+    const endISO = end_date ? end_date + 'T23:59:59.999Z' : null
+
+    let locationIds = []
+    if (locationFilter) {
+      if (locationFilter.column === 'location_id') {
+        locationIds = locationFilter.values
+      } else if (locationFilter.column === 'location_slug') {
+        const orClauses = locationFilter.values.map(s => `name.ilike.%${s}%`).join(',')
+        const { data: locs } = await supabaseAdmin.from('ghl_locations').select('id').or(orClauses)
+        locationIds = (locs || []).map(l => l.id)
+      }
+    }
+
+    let q = supabaseAdmin
+      .from('ghl_first_contact')
+      .select('opportunity_id, contact_id, location_id, opportunity_created_at, first_human_contact_at, first_contact_kind')
+      .order('opportunity_created_at', { ascending: false })
+      .limit(limit)
+    if (locationIds.length > 0) q = q.in('location_id', locationIds)
+    if (startISO) q = q.gte('opportunity_created_at', startISO)
+    if (endISO) q = q.lte('opportunity_created_at', endISO)
+
+    const { data, error } = await q
+    if (error) return res.status(500).json({ error: 'Failed to fetch audit', detail: error.message })
+    const rows = data || []
+
+    // New Lead stage ids
+    const { data: stageRows } = await supabaseAdmin
+      .from('ghl_pipeline_stages').select('id').ilike('name', 'New Lead')
+    const newLeadStageIds = new Set((stageRows || []).map(s => s.id))
+
+    // Batch-fetch opps, contacts, locations for the rows.
+    const oppIds = [...new Set(rows.map(r => r.opportunity_id))]
+    const contactIds = [...new Set(rows.map(r => r.contact_id).filter(Boolean))]
+    const locIds = [...new Set(rows.map(r => r.location_id).filter(Boolean))]
+    const oppById = new Map(), contactById = new Map(), clubById = new Map()
+    for (let i = 0; i < oppIds.length; i += 500) {
+      const { data: opps } = await supabaseAdmin
+        .from('ghl_opportunities_v2')
+        .select('id, stage_id, created_at_ghl, last_stage_change_at, updated_at_ghl')
+        .in('id', oppIds.slice(i, i + 500))
+      for (const o of (opps || [])) oppById.set(o.id, o)
+    }
+    for (let i = 0; i < contactIds.length; i += 500) {
+      const { data: cs } = await supabaseAdmin
+        .from('ghl_contacts_v2')
+        .select('id, full_name, first_name, last_name')
+        .in('id', contactIds.slice(i, i + 500))
+      for (const c of (cs || [])) contactById.set(c.id, c)
+    }
+    if (locIds.length) {
+      const { data: locs } = await supabaseAdmin.from('ghl_locations').select('id, name').in('id', locIds)
+      for (const l of (locs || [])) clubById.set(l.id, l.name)
+    }
+
+    const MOVED_EPSILON_MS = 2000
+    function isNewLead(opp) {
+      if (!opp) return false
+      if (newLeadStageIds.has(opp.stage_id)) return true
+      const movedRef = opp.last_stage_change_at || opp.updated_at_ghl
+      if (movedRef && opp.created_at_ghl) {
+        return (new Date(movedRef).getTime() - new Date(opp.created_at_ghl).getTime()) > MOVED_EPSILON_MS
+      }
+      return false
+    }
+
+    const out = rows.map(r => {
+      const opp = oppById.get(r.opportunity_id)
+      const c = contactById.get(r.contact_id)
+      const name = (c && (c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim())) || '(unknown)'
+      let included = false, reason, speed_minutes = null
+      if (!isNewLead(opp)) {
+        reason = 'not_new_lead'
+      } else if (r.first_human_contact_at == null) {
+        reason = 'no_human_contact'
+      } else {
+        const mins = (new Date(r.first_human_contact_at) - new Date(r.opportunity_created_at)) / 60000
+        if (mins < 0) { reason = 'contact_before_create' }
+        else { included = true; reason = 'counted'; speed_minutes = Math.round(mins) }
+      }
+      return {
+        contact_name: name,
+        club: clubById.get(r.location_id) || r.location_id,
+        opportunity_created_at: r.opportunity_created_at,
+        first_human_contact_at: r.first_human_contact_at,
+        first_contact_kind: r.first_contact_kind,
+        speed_minutes,
+        included,
+        reason,
+      }
+    })
+
+    res.json({ rows: out, returned: out.length, truncated: rows.length >= limit })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 module.exports = router
