@@ -480,6 +480,11 @@ export async function getSpeedToLead(params = {}, options = {}) {
   return api('/reports/speed-to-lead' + (qs ? '?' + qs : ''), options)
 }
 
+export async function getSpeedToLeadAudit(params = {}, options = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/speed-to-lead/audit' + (qs ? '?' + qs : ''), options)
+}
+
 export async function getPTReport(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/reports/pt' + (qs ? '?' + qs : ''), options)
