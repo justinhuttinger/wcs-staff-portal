@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { pct, gapInfo, trendDirection, monthRanges } from './kpiMath.js'
+import { pct, gapInfo, trendDirection, monthRanges, monthRangesBetween } from './kpiMath.js'
 
 test('pct returns rounded percentage', () => {
   assert.equal(pct(50, 200), 25)
@@ -50,4 +50,28 @@ test('monthRanges returns count buckets ending in the reference month, local dat
   assert.equal(ranges[5].end, '2026-06-30')
   assert.equal(ranges[5].label, 'Jun')
   assert.equal(ranges[5].key, '2026-06')
+})
+
+test('monthRangesBetween spans inclusive calendar months, local dates', () => {
+  const ranges = monthRangesBetween(new Date(2025, 6, 10), new Date(2026, 5, 20)) // Jul 2025..Jun 2026
+  assert.equal(ranges.length, 12)
+  assert.equal(ranges[0].key, '2025-07')
+  assert.equal(ranges[0].start, '2025-07-01')
+  assert.equal(ranges[0].end, '2025-07-31')
+  assert.equal(ranges[11].key, '2026-06')
+  assert.equal(ranges[11].start, '2026-06-01')
+  assert.equal(ranges[11].end, '2026-06-30')
+})
+
+test('monthRangesBetween labels January with year when span crosses years', () => {
+  const ranges = monthRangesBetween(new Date(2025, 11, 1), new Date(2026, 1, 1)) // Dec 2025..Feb 2026
+  assert.deepEqual(ranges.map(r => r.label), ['Dec', "Jan '26", 'Feb'])
+})
+
+test('monthRangesBetween single month and reversed range', () => {
+  const one = monthRangesBetween(new Date(2026, 1, 15), new Date(2026, 1, 28)) // Feb 2026
+  assert.equal(one.length, 1)
+  assert.equal(one[0].key, '2026-02')
+  assert.equal(one[0].end, '2026-02-28')
+  assert.deepEqual(monthRangesBetween(new Date(2026, 5, 1), new Date(2026, 4, 1)), [])
 })

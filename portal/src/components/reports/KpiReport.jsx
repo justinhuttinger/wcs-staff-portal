@@ -1,16 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
 import { getMembershipReport, getAppSettings } from '../../lib/api'
-import { pct, gapInfo, trendDirection, monthRanges } from '../../lib/kpiMath'
+import { pct, gapInfo, monthRangesBetween } from '../../lib/kpiMath'
 import DesktopLoading from '../DesktopLoading'
 
 // Single-series trend with an optional dashed goal line. Hand-rolled inline SVG
-// to match the existing report chart pattern (no charting dependency).
+// to match the existing report chart pattern (no charting dependency). Each
+// plotted point is labeled with its value so the exact score is readable.
 function KpiTrendChart({ points, goal }) {
   if (!points || points.length === 0) return null
   const values = points.map(p => p.value).filter(v => v != null)
   const candidates = values.concat(goal != null ? [goal] : [])
   const maxVal = Math.max(...candidates, 1)
-  const w = 600, h = 160, padL = 30, padR = 10, padT = 10, padB = 25
+  const w = 600, h = 168, padL = 30, padR = 10, padT = 22, padB = 25
   const chartW = w - padL - padR
   const chartH = h - padT - padB
   const toX = i => padL + (points.length > 1 ? (i / (points.length - 1)) * chartW : chartW / 2)
@@ -28,8 +29,8 @@ function KpiTrendChart({ points, goal }) {
 
   return (
     <div className="bg-surface rounded-xl border border-border p-4 mt-3">
-      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Last 6 Months</p>
-      <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ maxHeight: '180px' }}>
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Monthly Trend</p>
+      <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ maxHeight: '190px' }}>
         {yLabels.map(v => (
           <g key={v}>
             <line x1={padL} x2={w - padR} y1={toY(v)} y2={toY(v)} stroke="#e2e8f0" strokeWidth="0.5" />
@@ -41,10 +42,14 @@ function KpiTrendChart({ points, goal }) {
         )}
         <path d={path.trim()} fill="none" stroke="#38a169" strokeWidth="2" />
         {points.map((p, i) => p.value != null && (
-          <circle key={p.label} cx={toX(i)} cy={toY(p.value)} r="2.5" fill="#38a169" />
+          <circle key={`c${p.key}`} cx={toX(i)} cy={toY(p.value)} r="2.5" fill="#38a169" />
+        ))}
+        {/* Value label above each point so the exact score is readable. */}
+        {points.map((p, i) => p.value != null && (
+          <text key={`v${p.key}`} x={toX(i)} y={toY(p.value) - 6} textAnchor="middle" className="fill-gray-600 font-semibold" style={{ fontSize: '8px' }}>{p.value}%</text>
         ))}
         {points.map((p, i) => (
-          <text key={`l${i}`} x={toX(i)} y={h - 8} textAnchor="middle" className="fill-gray-400" style={{ fontSize: '8px' }}>{p.label}</text>
+          <text key={`l${p.key}`} x={toX(i)} y={h - 8} textAnchor="middle" className="fill-gray-400" style={{ fontSize: '8px' }}>{p.label}</text>
         ))}
       </svg>
       {goal != null && (
@@ -90,16 +95,42 @@ function goalFor(def, goals, locationSlug) {
   return Number.isNaN(n) ? null : n
 }
 
+// Parse a 'YYYY-MM-DD' string as a LOCAL date (avoids the UTC shift that
+// `new Date(str)` applies to date-only strings).
+function parseLocalDate(s) {
+  const [y, m, d] = s.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+function fmtDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Default comparison window: the trailing 12 calendar months ending today.
+function defaultCompRange() {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+  return { start: fmtDate(start), end: fmtDate(now) }
+}
+
 export default function KpiReport({ startDate, endDate, locationSlug }) {
   const [data, setData] = useState(null)
   const [goals, setGoals] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [openKey, setOpenKey] = useState(null)
-  // trendByKey: { [defKey]: [{ label, value }] } for the open location.
+  // Shared comparison range for the trend graphs (defaults to last 12 months).
+  const [comp, setComp] = useState(defaultCompRange)
+  // trendByKey: { [defKey]: [{ key, label, value }] } for the open location+range.
   const [trendByKey, setTrendByKey] = useState(null)
   const [trendLoading, setTrendLoading] = useState(false)
+  // Signature (location + comparison range) the cached trend was fetched for.
+  const trendSigRef = useRef(null)
   const fetchToken = useRef(0)
+
+  // The trend dataset depends only on location + comparison range, so key the
+  // cache by that signature — switching which tile is open never refetches.
+  const compSig = `${locationSlug}|${comp.start}|${comp.end}`
 
   useEffect(() => {
     let cancelled = false
@@ -123,13 +154,21 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
     return () => { cancelled = true }
   }, [startDate, endDate, locationSlug])
 
-  // Lazily fetch the 6-month trend the first time any tile is expanded for the
-  // current location. One /reports/membership call per month, run in parallel.
-  function ensureTrend() {
-    if (trendByKey || trendLoading) return
+  // Lazily fetch the monthly trend whenever a tile is open and the cached data
+  // is for a different location/range. One /reports/membership call per month,
+  // run in parallel; per-month failures degrade to a gap (null), not a zero.
+  useEffect(() => {
+    if (!openKey) return
+    if (trendSigRef.current === compSig) return
+    const token = ++fetchToken.current
+    const ranges = monthRangesBetween(parseLocalDate(comp.start), parseLocalDate(comp.end))
+    if (ranges.length === 0) {
+      trendSigRef.current = compSig
+      setTrendByKey({})
+      setTrendLoading(false)
+      return
+    }
     setTrendLoading(true)
-    const token = fetchToken.current
-    const ranges = monthRanges(new Date(), 6)
     Promise.all(
       ranges.map(r =>
         getMembershipReport({ start_date: r.start, end_date: r.end, location_slug: locationSlug })
@@ -141,19 +180,20 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
       const byKey = {}
       for (const def of KPI_DEFS) {
         byKey[def.key] = ranges.map((r, i) => ({
+          key: r.key,
           label: r.label,
           value: results[i].ok ? def.derive(results[i].rep) : null,
         }))
       }
+      trendSigRef.current = compSig
       setTrendByKey(byKey)
     }).finally(() => {
       if (token === fetchToken.current) setTrendLoading(false)
     })
-  }
+  }, [openKey, compSig, comp.start, comp.end, locationSlug])
 
   function toggle(key) {
     setOpenKey(prev => (prev === key ? null : key))
-    ensureTrend()
   }
 
   if (loading) return <DesktopLoading />
@@ -166,16 +206,40 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
   }
 
   const isAll = locationSlug === 'all'
+  const trendReady = trendSigRef.current === compSig && trendByKey
 
   return (
     <div className="space-y-3">
+      {/* Shared comparison range — drives the monthly trend on every KPI graph. */}
+      <div className="bg-surface rounded-xl border border-border p-4 flex items-center gap-3 flex-wrap">
+        <div>
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Comparison Range</p>
+          <p className="text-[11px] text-text-muted mt-0.5">Sets the months shown when you expand a KPI trend.</p>
+        </div>
+        <div className="flex items-center gap-2 ml-auto">
+          <label className="text-xs text-text-muted">From</label>
+          <input
+            type="date"
+            value={comp.start}
+            onChange={e => setComp(c => ({ ...c, start: e.target.value }))}
+            className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
+          />
+          <label className="text-xs text-text-muted">To</label>
+          <input
+            type="date"
+            value={comp.end}
+            onChange={e => setComp(c => ({ ...c, end: e.target.value }))}
+            className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red"
+          />
+        </div>
+      </div>
+
       {KPI_DEFS.map(def => {
         const value = def.derive(data)
         const goal = goalFor(def, goals, locationSlug)
         const gap = gapInfo(value, goal)
         const open = openKey === def.key
-        const points = trendByKey?.[def.key] || null
-        const dir = points ? trendDirection(points, goal) : null
+        const points = trendReady ? trendByKey[def.key] : null
         return (
           <div key={def.key} className="bg-surface rounded-xl border border-border p-5">
             <button
@@ -223,16 +287,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                 {trendLoading && !points && (
                   <p className="text-xs text-text-muted mt-3">Loading trend…</p>
                 )}
-                {points && (
-                  <>
-                    {dir && (
-                      <p className={`text-xs font-medium mt-3 ${dir === 'toward' ? 'text-green-600' : dir === 'away' ? 'text-red-500' : 'text-text-muted'}`}>
-                        {dir === 'toward' ? 'Trending toward goal' : dir === 'away' ? 'Trending away from goal' : 'Holding steady'}
-                      </p>
-                    )}
-                    <KpiTrendChart points={points} goal={goal} />
-                  </>
-                )}
+                {points && <KpiTrendChart points={points} goal={goal} />}
               </div>
             )}
           </div>
