@@ -60,3 +60,33 @@ export function monthRanges(refDate, count) {
   }
   return out
 }
+
+// Builds one bucket per calendar month overlapping [start, end], inclusive of
+// both endpoints' months. start/end are LOCAL Date objects. Returns [] when
+// start's month is after end's month. Each bucket: { key, label, start, end }.
+// When the span crosses a calendar year, January labels include the year so
+// months stay distinguishable on the axis.
+export function monthRangesBetween(start, end) {
+  const out = []
+  const startsAfter =
+    start.getFullYear() > end.getFullYear() ||
+    (start.getFullYear() === end.getFullYear() && start.getMonth() > end.getMonth())
+  if (startsAfter) return out
+  const multiYear = start.getFullYear() !== end.getFullYear()
+  let y = start.getFullYear()
+  let m = start.getMonth()
+  while (y < end.getFullYear() || (y === end.getFullYear() && m <= end.getMonth())) {
+    const s = new Date(y, m, 1)
+    const e = new Date(y, m + 1, 0)
+    const short = s.toLocaleString('en-US', { month: 'short' })
+    out.push({
+      key: `${y}-${String(m + 1).padStart(2, '0')}`,
+      label: multiYear && m === 0 ? `${short} '${String(y).slice(-2)}` : short,
+      start: fmtLocal(s),
+      end: fmtLocal(e),
+    })
+    m++
+    if (m > 11) { m = 0; y++ }
+  }
+  return out
+}
