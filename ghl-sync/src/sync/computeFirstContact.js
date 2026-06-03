@@ -1,4 +1,5 @@
 const supabase = require('../db/supabase');
+const LOCATIONS = require('../config/locations');
 const { fetchFirstHumanContact } = require('../ghl/conversations');
 const { sleep } = require('../ghl/client');
 
@@ -92,4 +93,79 @@ async function computeFirstContact(location, pipelineIds) {
   return { checked: candidates.length, resolved: resolvedCount, errors };
 }
 
-module.exports = { computeFirstContact, selectCandidates, resolveMembershipPipelineIds };
+// One-time historical backfill across ALL locations over a wider window (e.g.
+// 180 days) so the monthly trend has data. Processes every membership-pipeline
+// opportunity in the window that lacks a RESOLVED first-contact row, throttled.
+// `progress` (optional) is mutated in place so an HTTP endpoint can report
+// { checked, resolved, errors, locationsDone } while it runs in the background.
+async function backfillFirstContact(windowDays = 180, progress = {}) {
+  progress.checked = progress.checked || 0;
+  progress.resolved = progress.resolved || 0;
+  progress.errors = progress.errors || [];
+  progress.locationsDone = progress.locationsDone || 0;
+
+  const pipelineIds = await resolveMembershipPipelineIds();
+  if (pipelineIds.length === 0) {
+    progress.errors.push({ error: `No pipelines matched '${PIPELINE_PATTERN}'` });
+    return progress;
+  }
+  const cutoff = new Date(Date.now() - windowDays * 86400000).toISOString();
+
+  for (const location of LOCATIONS) {
+    try {
+      const { data: opps, error } = await supabase
+        .from('ghl_opportunities_v2')
+        .select('id, contact_id, created_at_ghl')
+        .eq('location_id', location.id)
+        .in('pipeline_id', pipelineIds)
+        .not('contact_id', 'is', null)
+        .gte('created_at_ghl', cutoff)
+        .order('created_at_ghl', { ascending: false })
+        .limit(20000);
+      if (error) { progress.errors.push({ location: location.name, error: error.message }); progress.locationsDone++; continue; }
+
+      // Build the set of already-resolved opportunity ids (chunk the IN list).
+      const ids = (opps || []).map(o => o.id);
+      const resolvedSet = new Set();
+      for (let i = 0; i < ids.length; i += 1000) {
+        const chunk = ids.slice(i, i + 1000);
+        const { data: rows } = await supabase
+          .from('ghl_first_contact')
+          .select('opportunity_id, resolved')
+          .in('opportunity_id', chunk);
+        for (const r of (rows || [])) if (r.resolved) resolvedSet.add(r.opportunity_id);
+      }
+      const todo = (opps || []).filter(o => !resolvedSet.has(o.id));
+
+      for (const opp of todo) {
+        try {
+          const found = await fetchFirstHumanContact(location.id, location.apiKey, opp.contact_id);
+          const row = {
+            opportunity_id: opp.id,
+            contact_id: opp.contact_id,
+            location_id: location.id,
+            opportunity_created_at: opp.created_at_ghl,
+            first_human_contact_at: found ? found.at : null,
+            first_contact_kind: found ? found.kind : null,
+            checked_at: new Date().toISOString(),
+            resolved: !!found,
+          };
+          const { error: upErr } = await supabase.from('ghl_first_contact').upsert(row, { onConflict: 'opportunity_id' });
+          if (upErr) { progress.errors.push({ id: opp.id, error: upErr.message }); continue; }
+          progress.checked++;
+          if (found) progress.resolved++;
+        } catch (err) {
+          progress.errors.push({ id: opp.id, error: err.message });
+        }
+        await sleep(CONTACT_DELAY_MS);
+      }
+    } catch (err) {
+      progress.errors.push({ location: location.name, error: err.message });
+    }
+    progress.locationsDone++;
+    console.log(`[Speed to Lead backfill] ${location.name} done — checked ${progress.checked}, resolved ${progress.resolved}`);
+  }
+  return progress;
+}
+
+module.exports = { computeFirstContact, selectCandidates, resolveMembershipPipelineIds, backfillFirstContact };
