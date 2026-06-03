@@ -224,13 +224,13 @@ export const KPI_DEFS = [
   },
   {
     key: 'dayone',
-    label: 'Day One Booking',
+    label: 'Day One Attachment',
     goalKey: 'kpi_goal_dayone',
     derive: d => pct(d?.total_day_one_booked || 0, d?.total_memberships || 0),
   },
   {
     key: 'vip',
-    label: 'VIP Booking',
+    label: 'VIP Collection Percentage',
     goalKey: 'kpi_goal_vip',
     derive: d => pct(d?.total_vips || 0, d?.total_memberships || 0),
   },
@@ -391,7 +391,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
               className="w-full flex items-center gap-4 text-left"
             >
               <div className="min-w-0">
-                <p className="text-sm font-bold text-text-primary">{def.label}</p>
+                <p className="text-lg font-bold text-text-primary">{def.label}</p>
                 <p className="text-xs text-text-muted mt-0.5">{isMulti ? `${clubs.length} clubs` : 'Current period'}</p>
               </div>
               <div className="ml-auto flex items-center gap-6 flex-shrink-0">

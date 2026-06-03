@@ -348,13 +348,13 @@ const REPORT_INFO = {
       {
         heading: 'What this is',
         body:
-          'An experimental scoreboard that compares three club metrics against goals you set per club in the admin panel: trial conversion, day one booking rate, and VIP booking rate.',
+          'An experimental scoreboard that compares three club metrics against goals you set per club in the admin panel: trial conversion, day one attachment, and VIP collection percentage.',
       },
       {
         heading: 'How the percentages work',
         body: [
           'Trial Conversion is won trials divided by trials started, the same number shown on the Membership report.',
-          'Day One Booking and VIP Booking are each divided by new members signed in the selected range.',
+          'Day One Attachment and VIP Collection Percentage are each divided by new members signed in the selected range.',
         ],
       },
       {
