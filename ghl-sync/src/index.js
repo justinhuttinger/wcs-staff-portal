@@ -6,6 +6,7 @@ const { abcSync, abcSyncForLocation, stopAbcSync } = require('./abc/abcSync');
 const { employeeSync } = require('./abc/employeeSync');
 const { enrichAll: enrichAttributionAll, enrichForLocation: enrichAttributionForLocation } = require('./sync/attributionEnrich');
 const { refreshCurrentHourCheckins, fetchCheckinsForRange, backfillClub, pacificNowAsUtc } = require('./abc/checkins');
+const { backfillFirstContact } = require('./sync/computeFirstContact');
 const axios = require('axios');
 const LOCATIONS = require('./config/locations');
 const { startScheduler } = require('./scheduler');
@@ -250,6 +251,33 @@ app.post('/api/sync/checkins/backfill', requireSecret, async (req, res) => {
 
 app.get('/api/sync/checkins/backfill/status', requireSecret, (req, res) => {
   res.json(checkinsBackfillState);
+});
+
+// --- Speed to Lead: one-time historical backfill of ghl_first_contact -------
+let firstContactBackfillState = { running: false, startedAt: null, windowDays: null, checked: 0, resolved: 0, locationsDone: 0, errors: [], finishedAt: null };
+
+// POST /api/sync/first-contact/backfill?days=180 — compute first human contact
+// for every membership-pipeline opportunity in the window that lacks a resolved
+// row. Runs in background; poll GET .../status. Idempotent (skips resolved rows).
+app.post('/api/sync/first-contact/backfill', requireSecret, (req, res) => {
+  if (firstContactBackfillState.running) {
+    return res.status(409).json({ error: 'Backfill already in progress', state: firstContactBackfillState });
+  }
+  const days = parseInt(req.query.days || '180', 10);
+  firstContactBackfillState = { running: true, startedAt: new Date().toISOString(), windowDays: days, checked: 0, resolved: 0, locationsDone: 0, errors: [], finishedAt: null };
+  res.json({ status: 'started', state: firstContactBackfillState });
+
+  backfillFirstContact(days, firstContactBackfillState)
+    .catch(err => { firstContactBackfillState.errors.push({ error: err.message }); })
+    .finally(() => {
+      firstContactBackfillState.running = false;
+      firstContactBackfillState.finishedAt = new Date().toISOString();
+      console.log('[API] Speed to Lead backfill complete');
+    });
+});
+
+app.get('/api/sync/first-contact/backfill/status', requireSecret, (req, res) => {
+  res.json(firstContactBackfillState);
 });
 
 // POST /api/sync/checkins/cleanup?from=YYYY-MM-DD&to=YYYY-MM-DD
