@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { getMembershipReport, getAppSettings } from '../../lib/api'
-import { pct, gapInfo, monthRangesBetween } from '../../lib/kpiMath'
+import { getMembershipReport, getAppSettings, getSpeedToLead } from '../../lib/api'
+import { pct, gapInfo, monthRangesBetween, median, formatMinutes } from '../../lib/kpiMath'
 import { LOCATION_NAMES } from '../../config/locations'
 import DesktopLoading from '../DesktopLoading'
 
@@ -18,7 +18,7 @@ function selectedClubSlugs(locationSlug) {
 // Single-series trend with an optional dashed goal line. Hand-rolled inline SVG
 // to match the existing report chart pattern (no charting dependency). Each
 // plotted point is labeled with its value so the exact score is readable.
-function KpiTrendChart({ points, goal }) {
+function KpiTrendChart({ points, goal, format }) {
   if (!points || points.length === 0) return null
   const values = points.map(p => p.value).filter(v => v != null)
   const candidates = values.concat(goal != null ? [goal] : [])
@@ -58,7 +58,9 @@ function KpiTrendChart({ points, goal }) {
         ))}
         {/* Value label above each point so the exact score is readable. */}
         {points.map((p, i) => p.value != null && (
-          <text key={`v${p.key}`} x={toX(i)} y={toY(p.value) - 6} textAnchor="middle" className="fill-gray-600 font-semibold" style={{ fontSize: '8px' }}>{p.value}%</text>
+          <text key={`v${p.key}`} x={toX(i)} y={toY(p.value) - 6} textAnchor="middle" className="fill-gray-600 font-semibold" style={{ fontSize: '8px' }}>
+            {format === 'minutes' ? formatMinutes(p.value) : `${p.value}%`}
+          </text>
         ))}
         {points.map((p, i) => (
           <text key={`l${p.key}`} x={toX(i)} y={h - 8} textAnchor="middle" className="fill-gray-400" style={{ fontSize: '8px' }}>{p.label}</text>
@@ -67,7 +69,7 @@ function KpiTrendChart({ points, goal }) {
       {goal != null && (
         <div className="flex items-center gap-1.5 mt-2 text-xs text-text-muted">
           <span className="inline-block w-4 h-0 border-t border-dashed" style={{ borderColor: '#e53e3e' }} />
-          Goal {goal}%
+          Goal {format === 'minutes' ? formatMinutes(goal) : `${goal}%`}
         </div>
       )}
     </div>
@@ -98,14 +100,14 @@ function PerClubGoalTable({ def, clubs, perClub, goals }) {
         </thead>
         <tbody>
           {clubs.map(slug => {
-            const a = perClub ? def.derive(perClub[slug]) : null
+            const a = perClub ? def.derive(perClub[slug]?.[def.source]) : null
             const g = goalForSlug(def, goals, slug)
-            const hit = a != null && g != null && a >= g
+            const hit = onTarget(def, a, g)
             return (
               <tr key={slug} className="border-t border-border">
                 <td className="py-1.5 text-text-primary">{CLUB_LABEL[slug] || slug}</td>
-                <td className="py-1.5 text-right text-text-primary">{a == null ? 'n/a' : `${a}%`}</td>
-                <td className="py-1.5 text-right text-text-muted">{g == null ? '—' : `${g}%`}</td>
+                <td className="py-1.5 text-right text-text-primary">{formatValue(def, a)}</td>
+                <td className="py-1.5 text-right text-text-muted">{g == null ? '—' : formatValue(def, g)}</td>
                 <td className="py-1.5 text-right">
                   {g == null ? (
                     <span className="text-text-muted text-xs">No goal</span>
@@ -213,31 +215,43 @@ function ComparisonPill({ comp, setComp }) {
   )
 }
 
-// Each KPI: how to read its current % from a /reports/membership response, and
+// Each KPI: how to read its current value from its source response, and
 // the app_config key prefix for its goal. Adding a future KPI = one entry here.
+// source: which fetcher to use (keys of SOURCE_FETCHERS).
+// format: 'minutes' for duration KPIs; default is percentage.
+// lowerIsBetter: true for duration KPIs (lower response time = better).
 export const KPI_DEFS = [
-  {
-    key: 'trial',
-    label: 'Trial Conversion',
-    goalKey: 'kpi_goal_trial',
-    derive: d => (d?.trial_conversion?.trial_started ? d.trial_conversion.rate : null),
-  },
-  {
-    key: 'dayone',
-    label: 'Day One Attachment',
-    goalKey: 'kpi_goal_dayone',
-    derive: d => pct(d?.total_day_one_booked || 0, d?.total_memberships || 0),
-  },
-  {
-    key: 'vip',
-    label: 'VIP Collection Percentage',
-    goalKey: 'kpi_goal_vip',
-    derive: d => pct(d?.total_vips || 0, d?.total_memberships || 0),
-  },
+  { key: 'trial', label: 'Trial Conversion', goalKey: 'kpi_goal_trial', source: 'membership',
+    derive: d => (d?.trial_conversion?.trial_started ? d.trial_conversion.rate : null) },
+  { key: 'dayone', label: 'Day One Attachment', goalKey: 'kpi_goal_dayone', source: 'membership',
+    derive: d => pct(d?.total_day_one_booked || 0, d?.total_memberships || 0) },
+  { key: 'vip', label: 'VIP Collection Percentage', goalKey: 'kpi_goal_vip', source: 'membership',
+    derive: d => pct(d?.total_vips || 0, d?.total_memberships || 0) },
+  { key: 'speed', label: 'Speed to Lead', goalKey: 'kpi_goal_speed', source: 'speed',
+    format: 'minutes', lowerIsBetter: true,
+    derive: d => (d?.contacted_count ? d.median_minutes : null) },
 ]
 
+const SOURCE_FETCHERS = {
+  membership: (params, opts) => getMembershipReport(params, opts),
+  speed: (params, opts) => getSpeedToLead(params, opts),
+}
+const DISTINCT_SOURCES = [...new Set(KPI_DEFS.map(d => d.source))]
+
+function formatValue(def, v) {
+  if (v == null) return 'n/a'
+  return def.format === 'minutes' ? formatMinutes(v) : `${v}%`
+}
+function gapFor(def, value, goal) {
+  return gapInfo(value, goal, { lowerIsBetter: !!def.lowerIsBetter, unit: def.format === 'minutes' ? 'm' : '%' })
+}
+function onTarget(def, value, goal) {
+  if (value == null || goal == null) return false
+  return def.lowerIsBetter ? value <= goal : value >= goal
+}
+
 export default function KpiReport({ startDate, endDate, locationSlug }) {
-  const [data, setData] = useState(null)
+  const [dataBySource, setDataBySource] = useState(null)
   const [goals, setGoals] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -247,7 +261,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
   // trendByKey: { [defKey]: [{ key, label, value }] } for the open location+range.
   const [trendByKey, setTrendByKey] = useState(null)
   const [trendLoading, setTrendLoading] = useState(false)
-  // perClub: { [slug]: membershipReport } for the current period (multi-club view).
+  // perClub: { [slug]: { [source]: response } } for the current period (multi-club view).
   const [perClub, setPerClub] = useState(null)
   const trendSigRef = useRef(null)
   const fetchToken = useRef(0)
@@ -267,14 +281,16 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
     trendSigRef.current = null
     setTrendLoading(false)
     Promise.all([
-      getMembershipReport({ start_date: startDate, end_date: endDate, location_slug: locationSlug }),
+      Promise.all(DISTINCT_SOURCES.map(s =>
+        SOURCE_FETCHERS[s]({ start_date: startDate, end_date: endDate, location_slug: locationSlug })
+          .then(r => [s, r]).catch(() => [s, null])
+      )),
       getAppSettings('kpi_goal_'),
-    ])
-      .then(([report, goalMap]) => {
-        if (cancelled) return
-        setData(report)
-        setGoals(goalMap || {})
-      })
+    ]).then(([pairs, goalMap]) => {
+      if (cancelled) return
+      setDataBySource(Object.fromEntries(pairs))
+      setGoals(goalMap || {})
+    })
       .catch(err => { if (!cancelled) setError(err.message || 'Failed to load KPIs') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -286,23 +302,18 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
     if (!isMulti) { setPerClub(null); return }
     let cancelled = false
     setPerClub(null) // clear stale rows when switching between multi-club selections
-    Promise.all(
-      clubs.map(slug =>
-        getMembershipReport({ start_date: startDate, end_date: endDate, location_slug: slug })
-          .then(rep => ({ slug, rep }))
-          .catch(() => ({ slug, rep: null }))
-      )
-    ).then(results => {
-      if (cancelled) return
-      const map = {}
-      for (const r of results) map[r.slug] = r.rep
-      setPerClub(map)
-    })
+    Promise.all(clubs.map(async slug => {
+      const pairs = await Promise.all(DISTINCT_SOURCES.map(s =>
+        SOURCE_FETCHERS[s]({ start_date: startDate, end_date: endDate, location_slug: slug })
+          .then(r => [s, r]).catch(() => [s, null])
+      ))
+      return [slug, Object.fromEntries(pairs)]
+    })).then(results => { if (!cancelled) setPerClub(Object.fromEntries(results)) })
     return () => { cancelled = true }
   }, [isMulti, locationSlug, startDate, endDate])
 
   // Lazily fetch the monthly trend when a tile is open in single-club mode.
-  // One /reports/membership call per month; per-month failures become gaps.
+  // One call per source per month; per-month failures become gaps.
   useEffect(() => {
     if (isMulti || !openKey) return
     if (trendSigRef.current === compSig) return
@@ -315,27 +326,28 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
       return
     }
     setTrendLoading(true)
-    Promise.all(
-      ranges.map(r =>
-        getMembershipReport({ start_date: r.start, end_date: r.end, location_slug: locationSlug })
-          .then(rep => ({ ok: true, rep }))
-          .catch(() => ({ ok: false, rep: null }))
-      )
-    ).then(results => {
-      if (token !== fetchToken.current) return
-      const byKey = {}
-      for (const def of KPI_DEFS) {
-        byKey[def.key] = ranges.map((r, i) => ({
-          key: r.key,
-          label: r.label,
-          value: results[i].ok ? def.derive(results[i].rep) : null,
+    ;(async () => {
+      try {
+        const perMonth = await Promise.all(ranges.map(async r => {
+          const pairs = await Promise.all(DISTINCT_SOURCES.map(s =>
+            SOURCE_FETCHERS[s]({ start_date: r.start, end_date: r.end, location_slug: locationSlug })
+              .then(x => [s, x]).catch(() => [s, null])
+          ))
+          return { range: r, bySource: Object.fromEntries(pairs) }
         }))
+        if (token !== fetchToken.current) return
+        const byKey = {}
+        for (const def of KPI_DEFS) {
+          byKey[def.key] = perMonth.map(({ range, bySource }) => ({
+            key: range.key, label: range.label, value: def.derive(bySource[def.source]),
+          }))
+        }
+        trendSigRef.current = compSig
+        setTrendByKey(byKey)
+      } finally {
+        if (token === fetchToken.current) setTrendLoading(false)
       }
-      trendSigRef.current = compSig
-      setTrendByKey(byKey)
-    }).finally(() => {
-      if (token === fetchToken.current) setTrendLoading(false)
-    })
+    })()
   }, [isMulti, openKey, compSig, comp.start, comp.end, locationSlug])
 
   function toggle(key) {
@@ -363,9 +375,9 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
       )}
 
       {KPI_DEFS.map(def => {
-        const value = def.derive(data)
+        const value = def.derive(dataBySource?.[def.source])
         const singleGoal = !isMulti ? goalForSlug(def, goals, clubs[0]) : null
-        const gap = !isMulti ? gapInfo(value, singleGoal) : null
+        const gap = !isMulti ? gapFor(def, value, singleGoal) : null
         const open = openKey === def.key
 
         // Multi-club: count how many selected clubs (with a goal) are on target.
@@ -375,8 +387,8 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
             const g = goalForSlug(def, goals, slug)
             if (g == null) continue
             withGoal++
-            const a = def.derive(perClub[slug])
-            if (a != null && a >= g) onGoal++
+            const a = def.derive(perClub[slug]?.[def.source])
+            if (onTarget(def, a, g)) onGoal++
           }
         }
         const points = trendReady ? trendByKey[def.key] : null
@@ -397,13 +409,13 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
               <div className="ml-auto flex items-center gap-6 flex-shrink-0">
                 <div className="text-right">
                   <p className="text-2xl font-bold text-text-primary leading-none">
-                    {value == null ? 'n/a' : `${value}%`}
+                    {formatValue(def, value)}
                   </p>
                   <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">{isMulti ? 'Combined' : 'Actual'}</p>
                 </div>
                 {!isMulti && (
                   <div className="text-right">
-                    <p className="text-2xl font-bold text-text-muted leading-none">{singleGoal == null ? '—' : `${singleGoal}%`}</p>
+                    <p className="text-2xl font-bold text-text-muted leading-none">{singleGoal == null ? '—' : formatValue(def, singleGoal)}</p>
                     <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">Goal</p>
                   </div>
                 )}
@@ -446,7 +458,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                     {trendLoading && !points && (
                       <p className="text-xs text-text-muted mt-3">Loading trend…</p>
                     )}
-                    {points && <KpiTrendChart points={points} goal={singleGoal} />}
+                    {points && <KpiTrendChart points={points} goal={singleGoal} format={def.format} />}
                   </>
                 )}
               </div>
