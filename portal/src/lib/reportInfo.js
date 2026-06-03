@@ -348,7 +348,7 @@ const REPORT_INFO = {
       {
         heading: 'What this is',
         body:
-          'An experimental scoreboard that compares three club metrics against goals you set per club in the admin panel: trial conversion, day one attachment, and VIP collection percentage.',
+          'An experimental scoreboard that compares club metrics against goals you set per club in the admin panel: trial conversion, day one attachment, VIP collection percentage, and speed to lead.',
       },
       {
         heading: 'How the percentages work',
@@ -356,6 +356,11 @@ const REPORT_INFO = {
           'Trial Conversion is won trials divided by trials started, the same number shown on the Membership report.',
           'Day One Attachment and VIP Collection Percentage are each divided by new members signed in the selected range.',
         ],
+      },
+      {
+        heading: 'Speed to Lead',
+        body:
+          'Median minutes from when a Membership-pipeline lead is created to the first human outbound contact (a manually-sent text or a call). Automated texts are ignored, so this reflects real staff response time. Lower is better; the goal is a maximum number of minutes.',
       },
       {
         heading: 'Trends',
