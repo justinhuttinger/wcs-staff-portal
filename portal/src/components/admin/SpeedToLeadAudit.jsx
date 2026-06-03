@@ -17,6 +17,7 @@ const REASON_LABEL = {
   no_human_contact: 'No human contact yet',
   not_new_lead: 'Not a new lead',
   contact_before_create: 'Contacted before lead created',
+  dnd: 'DND (excluded)',
 }
 
 export default function SpeedToLeadAudit() {
