@@ -111,7 +111,7 @@ export default function DriveFoldersAdmin() {
   return (
     <div className="max-w-3xl space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-text-muted">Manage Google Drive folders shown in the Shared Drive tile. Folders must be shared "Anyone with the link → Viewer."</p>
+        <p className="text-sm text-text-muted">Manage Google Drive folders shown in the Shared Drive tile. Folders must be shared "Anyone with the link → Viewer." To make a Google Sheet editable inside the portal, share that Sheet (or its folder) as "Anyone with the link → Editor" — it will be auto-detected and show an Editable badge.</p>
         <button onClick={openAdd} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 transition-colors shrink-0">
           + Add Folder
         </button>
@@ -189,7 +189,7 @@ export default function DriveFoldersAdmin() {
               <div>
                 <label className="block text-sm font-semibold text-text-primary mb-1">Drive Folder URL or ID</label>
                 <input type="text" value={form.folder_id_or_url} onChange={e => setForm(f => ({ ...f, folder_id_or_url: e.target.value }))} placeholder="https://drive.google.com/drive/folders/abc123..." className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red" />
-                <p className="text-[10px] text-text-muted mt-1">Paste the share URL or just the folder ID. Folder must be shared "Anyone with the link → Viewer."</p>
+                <p className="text-[10px] text-text-muted mt-1">Paste the share URL or just the folder ID. Folder must be shared "Anyone with the link → Viewer." Sheets shared as Editor become editable in the portal.</p>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-text-primary mb-1">Visible to</label>
