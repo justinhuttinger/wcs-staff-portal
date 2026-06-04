@@ -34,16 +34,9 @@ function attachContextMenu(webContents) {
       menu.append(new MenuItem({ role: 'selectAll', enabled: editFlags.canSelectAll }))
     }
 
-    if (menu.items.length > 0) menu.append(new MenuItem({ type: 'separator' }))
-    menu.append(new MenuItem({
-      label: 'Inspect Element',
-      click: () => {
-        webContents.inspectElement(params.x, params.y)
-        if (!webContents.isDevToolsOpened()) webContents.openDevTools({ mode: 'detach' })
-      },
-    }))
-
-    menu.popup()
+    // No Inspect Element / DevTools entry — launchers run on unattended gym
+    // kiosks, so the menu only exposes clipboard + link actions.
+    if (menu.items.length > 0) menu.popup()
   })
 }
 
