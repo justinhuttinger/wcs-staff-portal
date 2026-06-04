@@ -229,6 +229,17 @@ export default function TrainerAvailabilityView({ user, onBack, location, isAdmi
   const defaultSlug = (location || 'Salem').toLowerCase()
   const [locationSlug, setLocationSlug] = useState(defaultSlug)
 
+  // Clubs this user can switch between: admin/corporate see all (isAdmin),
+  // managers see the clubs they're assigned to, everyone else stays on
+  // their own club.
+  const role = user?.staff?.role
+  const assignedSlugs = (user?.staff?.locations || []).map(l => (l.name || '').toLowerCase())
+  const switchableClubs = isAdmin
+    ? LOCATIONS
+    : role === 'manager'
+      ? LOCATIONS.filter(loc => assignedSlugs.includes(loc.slug))
+      : []
+
   useEffect(() => { loadData() }, [locationSlug])
 
   async function loadData() {
@@ -251,9 +262,9 @@ export default function TrainerAvailabilityView({ user, onBack, location, isAdmi
           <p className="text-xs text-text-muted mt-1">Calendar: {data.calendarName}</p>
         )}
 
-        {isAdmin ? (
+        {switchableClubs.length > 1 ? (
           <div className="flex flex-wrap gap-2 mt-4">
-            {LOCATIONS.map(loc => (
+            {switchableClubs.map(loc => (
               <button
                 key={loc.slug}
                 onClick={() => setLocationSlug(loc.slug)}
