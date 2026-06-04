@@ -75,6 +75,25 @@ function parseLocationsSection(text) {
   return rows
 }
 
+// Stash an email the summary parser couldn't handle into the staging table
+// (operandio_raw_emails) so per-submission / overdue / late trigger emails
+// accumulate as real samples for future parsers. Best-effort: a failed insert
+// must never break the webhook's 200 response (SendGrid retries for 24h).
+async function captureRawEmail({ subject, text, from, reason }) {
+  try {
+    const { error } = await supabaseAdmin.from('operandio_raw_emails').insert({
+      subject: subject || null,
+      from_email: from || null,
+      body_text: (text || '').slice(0, 100 * 1024), // cap at 100KB
+      reason,
+    })
+    if (error) throw error
+    console.log('[Operandio] Captured unrecognized email:', reason, '-', subject)
+  } catch (err) {
+    console.error('[Operandio] Raw email capture failed:', err.message)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // POST /operandio/webhook — SendGrid Inbound Parse target
 // ---------------------------------------------------------------------------
@@ -87,16 +106,19 @@ router.post('/webhook', upload.none(), async (req, res) => {
 
   const subject = req.body?.subject || ''
   const text = req.body?.text || ''
+  const from = req.body?.from || ''
 
   const period = parsePeriodFromSubject(subject)
   if (!period) {
     console.warn('[Operandio] Subject did not match expected pattern:', subject)
+    await captureRawEmail({ subject, text, from, reason: 'subject_unrecognized' })
     return res.status(200).json({ ignored: true, reason: 'Subject not recognized' })
   }
 
   const rows = parseLocationsSection(text)
   if (!rows.length) {
     console.warn('[Operandio] No location rows parsed for', subject)
+    await captureRawEmail({ subject, text, from, reason: 'no_location_rows' })
     return res.status(200).json({ ignored: true, reason: 'No location rows parsed' })
   }
 
