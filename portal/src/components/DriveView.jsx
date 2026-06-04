@@ -69,6 +69,29 @@ function getCopyUrl(file) {
   return null
 }
 
+// Inline edit embed for Google Sheets shared "Anyone with the link → Editor".
+// The backend sets anyoneCanEdit by reading the file's Drive permissions, so
+// editability is controlled entirely from Google Drive's share dialog.
+// rm=minimal trims Google's menu chrome but keeps the toolbar + cell editing.
+function getEditUrl(file) {
+  if (!file?.anyoneCanEdit) return null
+  if (file.mimeType === 'application/vnd.google-apps.spreadsheet') {
+    return `https://docs.google.com/spreadsheets/d/${file.id}/edit?rm=minimal&widget=true`
+  }
+  return null
+}
+
+function EditableBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-green-100 text-green-700 shrink-0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-2.5 h-2.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Z" />
+      </svg>
+      Editable
+    </span>
+  )
+}
+
 // Download URL: Google Workspace files export to PDF; binary files use direct download
 function getDownloadUrl(file) {
   if (!file) return null
@@ -293,6 +316,7 @@ function DriveBrowser({ root, onBack }) {
   if (previewFile) {
     const downloadUrl = getDownloadUrl(previewFile)
     const copyUrl = getCopyUrl(previewFile)
+    const editUrl = getEditUrl(previewFile)
     return (
       <div className="w-full flex flex-col px-8 pb-4" style={{ height: 'calc(100vh - 80px)' }}>
         <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4 mb-4 shrink-0 flex items-center gap-3 flex-wrap">
@@ -332,7 +356,10 @@ function DriveBrowser({ root, onBack }) {
           {previewIndex >= 0 && previewableSiblings.length > 1 && (
             <span className="text-[11px] text-text-muted shrink-0">{previewIndex + 1} of {previewableSiblings.length}</span>
           )}
-          <h2 className="text-lg font-bold text-text-primary truncate flex-1 min-w-0">{previewFile.name}</h2>
+          <h2 className="text-lg font-bold text-text-primary truncate flex-1 min-w-0 flex items-center gap-2">
+            <span className="truncate">{previewFile.name}</span>
+            {editUrl && <EditableBadge />}
+          </h2>
           <div className="flex items-center gap-2 shrink-0">
             <PrintButton file={previewFile} />
             {copyUrl && (
@@ -382,10 +409,10 @@ function DriveBrowser({ root, onBack }) {
           )}
           <iframe
             key={previewFile.id}
-            src={`https://drive.google.com/file/d/${previewFile.id}/preview`}
+            src={editUrl || `https://drive.google.com/file/d/${previewFile.id}/preview`}
             title={previewFile.name}
             className="w-full h-full border-0"
-            allow="autoplay"
+            allow={editUrl ? 'autoplay; clipboard-read; clipboard-write' : 'autoplay'}
             referrerPolicy="no-referrer-when-downgrade"
             onLoad={() => setPreviewLoading(false)}
           />
@@ -607,6 +634,7 @@ function DriveBrowser({ root, onBack }) {
                     <td className="px-4 py-2 flex items-center gap-3">
                       {fileIcon(file.mimeType)}
                       <span className="font-medium text-text-primary truncate">{file.name}</span>
+                      {getEditUrl(file) && <EditableBadge />}
                     </td>
                     {isSearching && <td className="px-4 py-2 text-xs text-text-muted truncate">{file.parent_name || ''}</td>}
                     <td className="px-4 py-2 text-right text-xs text-text-muted">{fmtDate(file.modifiedTime)}</td>
@@ -725,7 +753,10 @@ function GridTile({ file, onClick, showLocation }) {
       <div className="p-2.5 flex items-center gap-2 min-w-0">
         <div className="shrink-0">{fileIcon(file.mimeType)}</div>
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-text-primary truncate" title={file.name}>{file.name}</p>
+          <p className="text-xs font-medium text-text-primary truncate flex items-center gap-1.5" title={file.name}>
+            <span className="truncate">{file.name}</span>
+            {getEditUrl(file) && <EditableBadge />}
+          </p>
           <p className="text-[10px] text-text-muted truncate">
             {showLocation && file.parent_name
               ? `in ${file.parent_name}`

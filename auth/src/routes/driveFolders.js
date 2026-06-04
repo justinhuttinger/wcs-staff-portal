@@ -13,6 +13,23 @@ const DRIVE_LIST_TTL_MS = 5 * 60 * 1000
 const router = Router()
 router.use(authenticate)
 
+// Detect "Anyone with the link → Editor" sharing on a Drive file. The
+// permissions field is only populated for My Drive files the connected
+// account can read permissions on; shared-drive items omit it, which
+// safely falls back to false (read-only preview in the portal).
+function anyoneCanEdit(permissions) {
+  return (permissions || []).some(
+    p => p.type === 'anyone' && ['writer', 'fileOrganizer', 'organizer'].includes(p.role)
+  )
+}
+
+// Strip the raw permissions array from API responses, keeping only the
+// derived anyoneCanEdit flag the frontend needs.
+function withEditFlag(file) {
+  const { permissions, ...rest } = file
+  return { ...rest, anyoneCanEdit: anyoneCanEdit(permissions) }
+}
+
 // Extract a Google Drive folder ID from various URL formats
 // Accepts: raw ID, /folders/<id>, /drive/folders/<id>, ?id=<id>
 function extractFolderId(input) {
@@ -236,7 +253,7 @@ router.get('/list', async (req, res) => {
       const token = await getAccessToken()
       const params = new URLSearchParams({
         q: `'${folder_id.replace(/'/g, "\\'")}' in parents and trashed=false`,
-        fields: 'files(id,name,mimeType,iconLink,modifiedTime,size,thumbnailLink,webViewLink,webContentLink)',
+        fields: 'files(id,name,mimeType,iconLink,modifiedTime,size,thumbnailLink,webViewLink,webContentLink,permissions(type,role))',
         orderBy: 'folder,name',
         pageSize: '200',
         supportsAllDrives: 'true',
@@ -252,7 +269,7 @@ router.get('/list', async (req, res) => {
         err.status = r.status || 500
         throw err
       }
-      return data.files || []
+      return (data.files || []).map(withEditFlag)
     })
 
     res.json({ files })
@@ -315,7 +332,7 @@ router.get('/search', async (req, res) => {
     const escapedQ = q.replace(/'/g, "\\'")
     const searchParams = new URLSearchParams({
       q: `name contains '${escapedQ}' and trashed = false`,
-      fields: 'files(id,name,mimeType,iconLink,modifiedTime,size,thumbnailLink,webViewLink,webContentLink,parents)',
+      fields: 'files(id,name,mimeType,iconLink,modifiedTime,size,thumbnailLink,webViewLink,webContentLink,parents,permissions(type,role))',
       pageSize: '200',
       orderBy: 'folder,name',
       supportsAllDrives: 'true',
@@ -333,7 +350,7 @@ router.get('/search', async (req, res) => {
       .filter(f => Array.isArray(f.parents) && f.parents.some(p => descendantIds.has(p)))
       .map(f => {
         const parentId = (f.parents || []).find(p => descendantIds.has(p))
-        return { ...f, parent_name: folderNamesById.get(parentId) || '' }
+        return { ...withEditFlag(f), parent_name: folderNamesById.get(parentId) || '' }
       })
 
     res.json({ files: matched })
