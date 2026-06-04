@@ -55,6 +55,8 @@ export default function App() {
   const [locationOverride, setLocationOverride] = useState(() => localStorage.getItem('wcs_location_override') || '')
   const isElectron = !!window.wcsElectron
   const isAdmin = user?.staff?.role === 'admin'
+  // corporate sees all clubs portal-wide (same as Drive/report gating)
+  const seesAllClubs = ['admin', 'corporate'].includes(user?.staff?.role)
 
   useEffect(() => {
     document.title = 'WCS Staff Portal'
@@ -348,7 +350,7 @@ export default function App() {
       ) : showCalendar ? (
         <CalendarView user={user} onBack={() => setShowCalendar(false)} location={location} isAdmin={isAdmin} />
       ) : showTrainerAvail ? (
-        <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={isAdmin} />
+        <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={seesAllClubs} />
       ) : showTickets ? (
         <TicketsView onBack={() => setShowTickets(false)} />
       ) : showDrive ? (
