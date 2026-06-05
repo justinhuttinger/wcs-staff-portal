@@ -106,6 +106,28 @@ function parseQaScore(text) {
   }
 }
 
+// Per-item breakdown from the HTML part. Each item row looks like:
+//   <td...><div...>1</div></td>
+//   <td...> Lobby-Windows <div...>Justin Huttinger - Jun 05, 2026 10:26AM PDT </div></td>
+//   <td...> ... <span...>7</span> ... </td>
+// Used by the portal's in-house HTML report viewer.
+function parseQaItems(html) {
+  if (!html) return null
+  const re = /<div[^>]*>(\d{1,3})<\/div><\/td>\s*<td[^>]*>\s*([^<]+?)\s*<div[^>]*>([^<]*?)\s*-\s*([A-Z][a-z]{2} \d{1,2}, \d{4} \d{1,2}:\d{2}[AP]M [A-Z]{2,4})\s*<\/div>\s*<\/td>\s*<td[^>]*>\s*<span[^>]*>(\d{1,3})<\/span>/g
+  const items = []
+  let m
+  while ((m = re.exec(html)) !== null) {
+    items.push({
+      n: parseInt(m[1], 10),
+      name: m[2].trim(),
+      by: m[3].trim(),
+      at: m[4].trim(),
+      score: parseInt(m[5], 10),
+    })
+  }
+  return items.length ? items : null
+}
+
 // The email wraps every URL in a link.app.operandio.com click tracker that may
 // expire — resolve it to the real app.operandio.com job URL at ingest time.
 async function resolveReportUrl(text) {
@@ -204,6 +226,7 @@ router.post('/webhook', upload.any(), async (req, res) => {
   const qa = parseQaSubject(subject)
   if (qa) {
     const score = parseQaScore(text)
+    const items = parseQaItems(html)
     const reportUrl = await resolveReportUrl(text)
     const attachments = await storeAttachments(req.files)
     const rawId = await captureRawEmail({ subject, text, html, from, reason: 'qa_cleaning', attachments })
@@ -216,6 +239,7 @@ router.post('/webhook', upload.any(), async (req, res) => {
         score_achieved: score?.achieved ?? null,
         score_pct: score?.pct ?? null,
         report_url: reportUrl,
+        items,
         raw_email_id: rawId,
         submitted_date: pacificToday(),
       }, { onConflict: 'location_slug,job_name,submitted_date', ignoreDuplicates: true })
@@ -322,6 +346,26 @@ router.get('/qa-reports', authenticate, requireRole('manager'), async (req, res)
     res.json({ rows: data || [] })
   } catch (err) {
     console.error('[Operandio] /qa-reports error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /operandio/qa-reports/:id — single audit with its per-item breakdown,
+// used by the portal's in-house HTML report viewer.
+// ---------------------------------------------------------------------------
+router.get('/qa-reports/:id', authenticate, requireRole('manager'), async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('operandio_qa_reports')
+      .select('id, location_slug, job_name, score_possible, score_achieved, score_pct, report_url, items, submitted_date, submitted_at')
+      .eq('id', req.params.id)
+      .maybeSingle()
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Report not found' })
+    res.json(data)
+  } catch (err) {
+    console.error('[Operandio] /qa-reports/:id error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })
