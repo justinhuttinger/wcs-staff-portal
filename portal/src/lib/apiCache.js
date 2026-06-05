@@ -36,10 +36,6 @@ const TTL_BY_PATH = {
   '/reports/vip':                                          2 * 60_000,
   '/reports/salesperson-stats':                            2 * 60_000,
 
-  // Filter-option lookups change rarely; long TTL is fine.
-  '/reports/website-submissions/filter-options':           5 * 60_000,
-  '/reports/website-submissions':                              60_000,
-
   // Meta Ads — short TTL since campaign/adset numbers churn during the day.
   '/meta-ads/overview':                                    2 * 60_000,
   '/meta-ads/campaigns':                                   2 * 60_000,
@@ -61,8 +57,8 @@ const TTL_BY_PATH = {
 
 // Return the TTL for a request path, or 0 if the endpoint isn't cacheable.
 // Compares the request's path portion (everything before `?`) against the
-// configured keys, longest-prefix-wins so `/reports/website-submissions/filter-options`
-// beats `/reports/website-submissions` if both ever coexist.
+// configured keys, longest-prefix-wins so a more specific path (e.g. a
+// `/filter-options` sub-route) beats its parent if both ever coexist.
 function ttlForPath(pathOnly) {
   let best = 0
   let bestLen = -1
