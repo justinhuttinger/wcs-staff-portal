@@ -5,7 +5,13 @@ const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 
 const router = Router()
-const upload = multer()
+// In-memory upload: SendGrid Inbound Parse posts email attachments as
+// multipart file parts (attachment1..N). upload.none() used to 500 on any
+// email with an attachment, losing it entirely — Operandio QA submissions
+// carry their score report as a PDF attachment.
+const upload = multer({ limits: { fileSize: 15 * 1024 * 1024, files: 10 } })
+
+const ATTACHMENT_BUCKET = 'operandio-attachments'
 
 const WEBHOOK_SECRET = process.env.OPERANDIO_WEBHOOK_SECRET
 
@@ -75,32 +81,112 @@ function parseLocationsSection(text) {
   return rows
 }
 
+// ---------------------------------------------------------------------------
+// QA-Cleaning audits
+// Subject: "QA-Cleaning (Jun 5) submitted at Salem"
+// Body (text part) carries: "Overall score 370 215 58%"
+// and a click-tracking link to the full report in the Operandio app.
+// ---------------------------------------------------------------------------
+
+function parseQaSubject(subject) {
+  const m = (subject || '').match(/^(QA-Cleaning[^]*?)\s+submitted at\s+(.+)$/i)
+  if (!m) return null
+  const slug = m[2].trim().toLowerCase()
+  if (!KNOWN_LOCATIONS.includes(slug)) return null
+  return { jobName: m[1].trim(), locationSlug: slug }
+}
+
+function parseQaScore(text) {
+  const m = (text || '').match(/Overall score\s+(\d+)\s+(\d+)\s+(\d+)%/i)
+  if (!m) return null
+  return {
+    possible: parseInt(m[1], 10),
+    achieved: parseInt(m[2], 10),
+    pct: parseInt(m[3], 10),
+  }
+}
+
+// The email wraps every URL in a link.app.operandio.com click tracker that may
+// expire — resolve it to the real app.operandio.com job URL at ingest time.
+async function resolveReportUrl(text) {
+  const m = (text || '').match(/Download the full report\s*\(\s*(https?:\/\/\S+)\s*\)/i)
+    || (text || '').match(/View job\s*\(\s*(https?:\/\/\S+)\s*\)/i)
+  if (!m) return null
+  let url = m[1]
+  try {
+    for (let hop = 0; hop < 5; hop++) {
+      const resp = await fetch(url, { method: 'GET', redirect: 'manual' })
+      const loc = resp.headers.get('location')
+      if (resp.status >= 300 && resp.status < 400 && loc) {
+        url = new URL(loc, url).toString()
+        continue
+      }
+      break
+    }
+  } catch (err) {
+    console.warn('[Operandio] QA report URL resolve failed, keeping tracking link:', err.message)
+  }
+  return url
+}
+
+// Today's date in Pacific time (the clubs' local day, consistent with the
+// rest of the app's date handling).
+function pacificToday() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+}
+
+// Upload email attachments (req.files from multer) to the private
+// operandio-attachments bucket. Returns metadata rows for the
+// operandio_raw_emails.attachments jsonb column. Best-effort per file: one
+// failed upload records the error but doesn't block the others.
+async function storeAttachments(files) {
+  const out = []
+  for (const f of files || []) {
+    const safeName = (f.originalname || 'attachment').replace(/[^\w.\-]+/g, '_')
+    const path = `raw/${new Date().toISOString().slice(0, 7)}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`
+    try {
+      const { error } = await supabaseAdmin.storage
+        .from(ATTACHMENT_BUCKET)
+        .upload(path, f.buffer, { contentType: f.mimetype || 'application/octet-stream', upsert: false })
+      if (error) throw error
+      out.push({ filename: f.originalname, content_type: f.mimetype, size: f.size, storage_path: path })
+    } catch (err) {
+      console.error('[Operandio] Attachment upload failed:', f.originalname, '-', err.message)
+      out.push({ filename: f.originalname, content_type: f.mimetype, size: f.size, error: err.message })
+    }
+  }
+  return out
+}
+
 // Stash an email the summary parser couldn't handle into the staging table
 // (operandio_raw_emails) so per-submission / overdue trigger emails accumulate
 // as real samples for future parsers. Both body parts are kept: submission
 // emails carry the per-task table (who completed what, when) ONLY in the HTML
 // part. Best-effort: a failed insert must never break the webhook's 200
 // response (SendGrid retries for 24h).
-async function captureRawEmail({ subject, text, html, from, reason }) {
+async function captureRawEmail({ subject, text, html, from, reason, attachments }) {
   try {
-    const { error } = await supabaseAdmin.from('operandio_raw_emails').insert({
+    const { data, error } = await supabaseAdmin.from('operandio_raw_emails').insert({
       subject: subject || null,
       from_email: from || null,
       body_text: (text || '').slice(0, 100 * 1024),  // cap at 100KB
       body_html: (html || '').slice(0, 500 * 1024),  // cap at 500KB
       reason,
-    })
+      attachments: attachments && attachments.length ? attachments : null,
+    }).select('id').single()
     if (error) throw error
-    console.log('[Operandio] Captured unrecognized email:', reason, '-', subject)
+    console.log('[Operandio] Captured email:', reason, '-', subject)
+    return data?.id || null
   } catch (err) {
     console.error('[Operandio] Raw email capture failed:', err.message)
+    return null
   }
 }
 
 // ---------------------------------------------------------------------------
 // POST /operandio/webhook — SendGrid Inbound Parse target
 // ---------------------------------------------------------------------------
-router.post('/webhook', upload.none(), async (req, res) => {
+router.post('/webhook', upload.any(), async (req, res) => {
   // Auth via shared secret query param. SendGrid sends multipart, no headers
   // we can use for HMAC.
   if (!WEBHOOK_SECRET || req.query.secret !== WEBHOOK_SECRET) {
@@ -112,17 +198,48 @@ router.post('/webhook', upload.none(), async (req, res) => {
   const html = req.body?.html || ''
   const from = req.body?.from || ''
 
+  // QA-Cleaning audit submission — parsed into operandio_qa_reports for the
+  // Cleanliness - Quality Assessment KPI. These arrive on an irregular
+  // (roughly monthly) cadence per club.
+  const qa = parseQaSubject(subject)
+  if (qa) {
+    const score = parseQaScore(text)
+    const reportUrl = await resolveReportUrl(text)
+    const attachments = await storeAttachments(req.files)
+    const rawId = await captureRawEmail({ subject, text, html, from, reason: 'qa_cleaning', attachments })
+    const { error: qaErr } = await supabaseAdmin
+      .from('operandio_qa_reports')
+      .upsert({
+        location_slug: qa.locationSlug,
+        job_name: qa.jobName,
+        score_possible: score?.possible ?? null,
+        score_achieved: score?.achieved ?? null,
+        score_pct: score?.pct ?? null,
+        report_url: reportUrl,
+        raw_email_id: rawId,
+        submitted_date: pacificToday(),
+      }, { onConflict: 'location_slug,job_name,submitted_date', ignoreDuplicates: true })
+    if (qaErr) {
+      console.error('[Operandio] QA report upsert failed:', qaErr.message)
+      return res.status(500).json({ error: 'QA report upsert failed' })
+    }
+    console.log('[Operandio] QA report stored:', qa.locationSlug, '-', qa.jobName, '-', score ? `${score.pct}%` : 'no score')
+    return res.json({ qa: true, location: qa.locationSlug, score_pct: score?.pct ?? null })
+  }
+
   const period = parsePeriodFromSubject(subject)
   if (!period) {
     console.warn('[Operandio] Subject did not match expected pattern:', subject)
-    await captureRawEmail({ subject, text, html, from, reason: 'subject_unrecognized' })
+    const attachments = await storeAttachments(req.files)
+    await captureRawEmail({ subject, text, html, from, reason: 'subject_unrecognized', attachments })
     return res.status(200).json({ ignored: true, reason: 'Subject not recognized' })
   }
 
   const rows = parseLocationsSection(text)
   if (!rows.length) {
     console.warn('[Operandio] No location rows parsed for', subject)
-    await captureRawEmail({ subject, text, html, from, reason: 'no_location_rows' })
+    const attachments = await storeAttachments(req.files)
+    await captureRawEmail({ subject, text, html, from, reason: 'no_location_rows', attachments })
     return res.status(200).json({ ignored: true, reason: 'No location rows parsed' })
   }
 
@@ -175,6 +292,36 @@ router.get('/range', authenticate, requireRole('manager'), async (req, res) => {
     res.json({ rows: data || [] })
   } catch (err) {
     console.error('[Operandio] /range error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /operandio/qa-reports — QA-Cleaning audit submissions in a date range
+// Query: start_date, end_date (YYYY-MM-DD), optional location_slug (comma ok)
+// Returns: { rows: [{location_slug, job_name, score_*, report_url, submitted_date}] }
+// ---------------------------------------------------------------------------
+router.get('/qa-reports', authenticate, requireRole('manager'), async (req, res) => {
+  try {
+    const { start_date, end_date, location_slug } = req.query
+
+    let q = supabaseAdmin
+      .from('operandio_qa_reports')
+      .select('id, location_slug, job_name, score_possible, score_achieved, score_pct, report_url, submitted_date, submitted_at')
+      .order('submitted_date', { ascending: false })
+    if (start_date) q = q.gte('submitted_date', start_date)
+    if (end_date) q = q.lte('submitted_date', end_date)
+    if (location_slug && location_slug !== 'all') {
+      const slugs = String(location_slug).split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+      if (slugs.length === 1) q = q.eq('location_slug', slugs[0])
+      else if (slugs.length > 1) q = q.in('location_slug', slugs)
+    }
+
+    const { data, error } = await q
+    if (error) throw error
+    res.json({ rows: data || [] })
+  } catch (err) {
+    console.error('[Operandio] /qa-reports error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })

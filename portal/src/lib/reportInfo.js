@@ -362,6 +362,11 @@ const REPORT_INFO = {
           'Of the members whose cancellation took effect in the range, the share that went through Click2Save. Each cancelled member is matched to their Click2Save cancel request, which can be up to 90 days earlier since cancels sit in Pending Cancel until their effective date. Insurance plans (A2 / Active and Fit) are excluded since those don\'t cancel through Click2Save. Everyone should be cancelling through Click2Save, so low numbers mean staff are cancelling directly in ABC.',
       },
       {
+        heading: 'Cleanliness - Quality Assessment',
+        body:
+          'QA-Cleaning audits submitted in Operandio by leadership, on an irregular (roughly monthly) cadence per club. The value is the average audit score in the selected range. Expand the tile to see each submission with its date and a View Report link that opens the full scored report in Operandio in a new window (an Operandio login is required to view it).',
+      },
+      {
         heading: 'How the percentages work',
         body: [
           'Trial Conversion is won trials divided by trials started, the same number shown on the Membership report.',

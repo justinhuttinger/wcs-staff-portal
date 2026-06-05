@@ -10,6 +10,7 @@ const GOAL_FIELDS = [
   { prefix: 'kpi_goal_speed', label: 'Speed to Lead Goal (min)' },
   { prefix: 'kpi_goal_ops', label: 'Operational Compliance Goal %' },
   { prefix: 'kpi_goal_c2s', label: 'Click2Save Utilization Goal %' },
+  { prefix: 'kpi_goal_qa', label: 'Cleanliness QA Goal %' },
 ]
 
 export default function KpiGoalsAdmin() {
