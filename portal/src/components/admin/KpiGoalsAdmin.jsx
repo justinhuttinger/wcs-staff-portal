@@ -19,7 +19,8 @@ export default function KpiGoalsAdmin() {
   const [message, setMessage] = useState(null)
 
   useEffect(() => {
-    getAppSettings('kpi_goal_')
+    // 'kpi_' covers both kpi_goal_* values and kpi_off_* per-club toggles.
+    getAppSettings('kpi_')
       .then(map => setGoals(map || {}))
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -48,7 +49,7 @@ export default function KpiGoalsAdmin() {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-bold text-text-primary">KPI Goals</h3>
-          <p className="text-xs text-text-muted mt-1">Set per-club target percentages for the experimental KPIs report. Leave blank for no goal.</p>
+          <p className="text-xs text-text-muted mt-1">Set per-club target percentages for the experimental KPIs report. Leave blank for no goal. Toggle a KPI Off for clubs that don't use it — it won't show in that club's view and won't count toward blended numbers.</p>
         </div>
         <div className="flex items-center gap-3">
           {message && (
@@ -75,17 +76,35 @@ export default function KpiGoalsAdmin() {
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {GOAL_FIELDS.map(field => {
                   const key = `${field.prefix}_${slug}`
+                  // kpi_goal_trial → kpi_off_trial_{slug}; must match offFor() in KpiReport.jsx
+                  const offKey = `kpi_off_${field.prefix.replace('kpi_goal_', '')}_${slug}`
+                  const isOff = goals[offKey] === '1'
                   return (
-                    <div key={key}>
-                      <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-1">{field.label}</label>
+                    <div key={key} className={isOff ? 'opacity-60' : ''}>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wide">{field.label}</label>
+                        <button
+                          type="button"
+                          onClick={() => handleChange(offKey, isOff ? '' : '1')}
+                          title={isOff ? 'Turn this KPI on for this club' : 'Turn this KPI off for this club'}
+                          className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border transition-colors flex-shrink-0 ${
+                            isOff
+                              ? 'bg-bg text-text-muted border-border hover:text-text-primary'
+                              : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                          }`}
+                        >
+                          {isOff ? 'Off' : 'On'}
+                        </button>
+                      </div>
                       <input
                         type="number"
                         min="0"
                         max="100"
                         value={goals[key] ?? ''}
                         onChange={e => handleChange(key, e.target.value)}
-                        placeholder="e.g. 65"
-                        className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red"
+                        placeholder={isOff ? 'Off at this club' : 'e.g. 65'}
+                        disabled={isOff}
+                        className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-bg text-text-primary focus:outline-none focus:border-wcs-red disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                     </div>
                   )
