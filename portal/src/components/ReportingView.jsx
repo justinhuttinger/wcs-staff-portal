@@ -16,6 +16,7 @@ import RevenueReport from './reports/RevenueReport'
 import MetaAdsView from './MetaAdsView'
 import GoogleMarketingView from './GoogleMarketingView'
 import KpiReport from './reports/KpiReport'
+import AuditsReport from './reports/AuditsReport'
 import ReportInfoButton from './ReportInfoButton'
 import { getReportInfo } from '../lib/reportInfo'
 
@@ -39,6 +40,7 @@ const REPORT_ICONS = {
   'meta-ads': 'M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6',
   'google-marketing': 'm21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z',
   kpis: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z',
+  audits: 'M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V19.5a2.25 2.25 0 0 0 2.25 2.25h7.5a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08M15.75 18.75h-7.5m7.5-3h-7.5m-4.5-9v12.75c0 .621.504 1.125 1.125 1.125h.375',
 }
 
 const ALL_REPORT_TILES = [
@@ -59,6 +61,7 @@ const ALL_REPORT_TILES = [
   { key: 'meta-ads', label: 'Meta Ads', desc: 'Facebook & Instagram' },
   { key: 'google-marketing', label: 'Google', desc: 'Business + Analytics' },
   { key: 'kpis', label: 'KPIs', desc: 'Goals vs. Actuals' },
+  { key: 'audits', label: 'Audits', desc: 'Operandio Scores' },
 ]
 
 // Group tiles surface fewer items at the top level. Each group holds an
@@ -91,7 +94,7 @@ const REPORT_GROUPS = [
     label: 'Experimental',
     desc: 'In Development',
     iconPath: 'M10.5 1.5H8.25A2.25 2.25 0 0 0 6 3.75v16.5a2.25 2.25 0 0 0 2.25 2.25h7.5A2.25 2.25 0 0 0 18 20.25V3.75a2.25 2.25 0 0 0-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3',
-    reports: ['kpis'],
+    reports: ['kpis', 'audits'],
   },
 ]
 
@@ -105,8 +108,8 @@ function getReportTilesForRole(role) {
       return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'operations', 'revenue'].includes(t.key))
     case 'marketing':
       // Marketing: marketing tiles + broader reports per REPORT_ACCESS, minus
-      // kpis (corp+admin only).
-      return ALL_REPORT_TILES.filter(t => t.key !== 'kpis')
+      // the experimental reports (corp+admin only).
+      return ALL_REPORT_TILES.filter(t => t.key !== 'kpis' && t.key !== 'audits')
     default: // corporate, admin, director
       return ALL_REPORT_TILES
   }
@@ -326,7 +329,7 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
       {/* Header card */}
       <div className="relative z-20 bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
         {(() => {
-          const showDateControls = activeReport !== 'pt-roster' && activeReport !== 'operations' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing'
+          const showDateControls = activeReport !== 'pt-roster' && activeReport !== 'operations' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing' && activeReport !== 'audits'
           const showLocation = hasMultipleReportLocations
           return (
             <>
@@ -506,6 +509,9 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           )}
           {activeReport === 'kpis' && (
             <KpiReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+          )}
+          {activeReport === 'audits' && (
+            <AuditsReport locationSlug={locationSlug} />
           )}
         </>
       </div>

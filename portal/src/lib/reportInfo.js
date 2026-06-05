@@ -391,6 +391,29 @@ const REPORT_INFO = {
     ],
   },
 
+  audits: {
+    title: 'Audits',
+    sections: [
+      {
+        heading: 'What this is',
+        body:
+          'Every Operandio job with "Audit" in its name (PT Audit, Membership Coordinator Audit, ...), roughly one per club per department per month, grouped by department. Each department shows change over time per club plus the list of individual audits.',
+      },
+      {
+        heading: 'How it works',
+        body: [
+          'Audits arrive automatically: when one is submitted in Operandio, its notification email is parsed and the audit appears here.',
+          'Location — filters to one club; the chart shows one line per club otherwise.',
+          'View Report — opens a full scored breakdown of that audit in a new window, printable to PDF.',
+          'Audits are infrequent, so the full history always shows (no date range).',
+        ],
+      },
+    ],
+    notes: [
+      'Experimental report. QA-Cleaning is not an audit — it\'s the hyper-specific job behind the Cleanliness - Quality Assessment KPI and is excluded here. Other scored jobs are collected in the background for future reporting.',
+    ],
+  },
+
 }
 
 export function getReportInfo(reportKey) {

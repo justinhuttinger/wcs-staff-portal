@@ -82,18 +82,25 @@ function parseLocationsSection(text) {
 }
 
 // ---------------------------------------------------------------------------
-// QA-Cleaning audits
+// Operandio audits (QA-Cleaning + the other monthly department audits)
 // Subject: "QA-Cleaning (Jun 5) submitted at Salem"
 // Body (text part) carries: "Overall score 370 215 58%"
 // and a click-tracking link to the full report in the Operandio app.
+// Any "<job> submitted at <club>" email whose body has an Overall score is an
+// audit; scoreless submission emails (daily checklists) fall through to the
+// raw capture like before.
 // ---------------------------------------------------------------------------
 
-function parseQaSubject(subject) {
-  const m = (subject || '').match(/^(QA-Cleaning[^]*?)\s+submitted at\s+(.+)$/i)
+function parseAuditSubject(subject) {
+  const m = (subject || '').match(/^(.+?)\s+submitted at\s+(.+)$/i)
   if (!m) return null
   const slug = m[2].trim().toLowerCase()
   if (!KNOWN_LOCATIONS.includes(slug)) return null
-  return { jobName: m[1].trim(), locationSlug: slug }
+  const jobName = m[1].trim()
+  // Department = job name minus the date parenthetical: "QA-Cleaning (Jun 5)"
+  // -> "QA-Cleaning". One audit per club per department per month.
+  const department = jobName.replace(/\s*\([^)]*\)\s*/g, ' ').trim()
+  return { jobName, department, locationSlug: slug }
 }
 
 function parseQaScore(text) {
@@ -220,35 +227,37 @@ router.post('/webhook', upload.any(), async (req, res) => {
   const html = req.body?.html || ''
   const from = req.body?.from || ''
 
-  // QA-Cleaning audit submission — parsed into operandio_qa_reports for the
-  // Cleanliness - Quality Assessment KPI. These arrive on an irregular
-  // (roughly monthly) cadence per club.
-  const qa = parseQaSubject(subject)
-  if (qa) {
-    const score = parseQaScore(text)
+  // Audit submission (QA-Cleaning, department audits, ...) — parsed into
+  // operandio_qa_reports for the KPI report + Audits report. Only emails with
+  // a scored "Overall score" are audits; daily-checklist submission emails
+  // have no score and fall through to the raw capture.
+  const audit = parseAuditSubject(subject)
+  const auditScore = audit ? parseQaScore(text) : null
+  if (audit && auditScore) {
     const items = parseQaItems(html)
     const reportUrl = await resolveReportUrl(text)
     const attachments = await storeAttachments(req.files)
-    const rawId = await captureRawEmail({ subject, text, html, from, reason: 'qa_cleaning', attachments })
+    const rawId = await captureRawEmail({ subject, text, html, from, reason: 'audit', attachments })
     const { error: qaErr } = await supabaseAdmin
       .from('operandio_qa_reports')
       .upsert({
-        location_slug: qa.locationSlug,
-        job_name: qa.jobName,
-        score_possible: score?.possible ?? null,
-        score_achieved: score?.achieved ?? null,
-        score_pct: score?.pct ?? null,
+        location_slug: audit.locationSlug,
+        job_name: audit.jobName,
+        department: audit.department,
+        score_possible: auditScore.possible,
+        score_achieved: auditScore.achieved,
+        score_pct: auditScore.pct,
         report_url: reportUrl,
         items,
         raw_email_id: rawId,
         submitted_date: pacificToday(),
       }, { onConflict: 'location_slug,job_name,submitted_date', ignoreDuplicates: true })
     if (qaErr) {
-      console.error('[Operandio] QA report upsert failed:', qaErr.message)
-      return res.status(500).json({ error: 'QA report upsert failed' })
+      console.error('[Operandio] Audit upsert failed:', qaErr.message)
+      return res.status(500).json({ error: 'Audit upsert failed' })
     }
-    console.log('[Operandio] QA report stored:', qa.locationSlug, '-', qa.jobName, '-', score ? `${score.pct}%` : 'no score')
-    return res.json({ qa: true, location: qa.locationSlug, score_pct: score?.pct ?? null })
+    console.log('[Operandio] Audit stored:', audit.locationSlug, '-', audit.jobName, '-', `${auditScore.pct}%`)
+    return res.json({ audit: true, location: audit.locationSlug, department: audit.department, score_pct: auditScore.pct })
   }
 
   const period = parsePeriodFromSubject(subject)
@@ -327,14 +336,15 @@ router.get('/range', authenticate, requireRole('manager'), async (req, res) => {
 // ---------------------------------------------------------------------------
 router.get('/qa-reports', authenticate, requireRole('manager'), async (req, res) => {
   try {
-    const { start_date, end_date, location_slug } = req.query
+    const { start_date, end_date, location_slug, department } = req.query
 
     let q = supabaseAdmin
       .from('operandio_qa_reports')
-      .select('id, location_slug, job_name, score_possible, score_achieved, score_pct, report_url, submitted_date, submitted_at')
+      .select('id, location_slug, job_name, department, score_possible, score_achieved, score_pct, report_url, submitted_date, submitted_at')
       .order('submitted_date', { ascending: false })
     if (start_date) q = q.gte('submitted_date', start_date)
     if (end_date) q = q.lte('submitted_date', end_date)
+    if (department) q = q.eq('department', department)
     if (location_slug && location_slug !== 'all') {
       const slugs = String(location_slug).split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
       if (slugs.length === 1) q = q.eq('location_slug', slugs[0])
@@ -358,7 +368,7 @@ router.get('/qa-reports/:id', authenticate, requireRole('manager'), async (req, 
   try {
     const { data, error } = await supabaseAdmin
       .from('operandio_qa_reports')
-      .select('id, location_slug, job_name, score_possible, score_achieved, score_pct, report_url, items, submitted_date, submitted_at')
+      .select('id, location_slug, job_name, department, score_possible, score_achieved, score_pct, report_url, items, submitted_date, submitted_at')
       .eq('id', req.params.id)
       .maybeSingle()
     if (error) throw error
