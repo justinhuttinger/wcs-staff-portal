@@ -152,7 +152,7 @@ function Click2SaveSection({ saveCount, cancelReasons, saveOptions, error }) {
   )
 }
 
-export default function CancelsReport({ startDate, endDate, locationSlug }) {
+export default function CancelsReport({ startDate, endDate, locationSlug, planType = 'all' }) {
   const { data, loading, error } = useCancellableFetch(
     (signal) => {
       const params = {}
@@ -168,6 +168,11 @@ export default function CancelsReport({ startDate, endDate, locationSlug }) {
   if (error) return <p className="text-wcs-red text-sm py-4">{error.message || String(error)}</p>
   if (!data) return null
 
+  // Plan-type pill filter (All / Membership / Insurance) selects a pre-computed
+  // breakdown from the response — no refetch needed. Falls back to the legacy
+  // top-level keys if the API doesn't return plan_types yet.
+  const view = data.plan_types?.[planType] || data.plan_types?.all || data
+
   return (
     <div className="space-y-6">
       <SectionHeader title="Cancellations" />
@@ -175,17 +180,23 @@ export default function CancelsReport({ startDate, endDate, locationSlug }) {
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-surface rounded-xl border border-border p-6 text-center">
           <p className="text-xs text-text-muted uppercase tracking-wide">Members Cancelled</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{data.total_members ?? 0}</p>
+          <p className="text-4xl font-bold text-text-primary mt-2">{view.total_members ?? 0}</p>
+          {planType === 'insurance' && (
+            <p className="text-[11px] text-text-muted mt-1">Non-dues-paying (A2 / Active and Fit plans)</p>
+          )}
         </div>
         <div className="bg-surface rounded-xl border border-border p-6 text-center">
           <p className="text-xs text-text-muted uppercase tracking-wide">Agreements Cancelled</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{data.total_agreements ?? 0}</p>
+          <p className="text-4xl font-bold text-text-primary mt-2">{view.total_agreements ?? 0}</p>
+          {planType === 'insurance' && (
+            <p className="text-[11px] text-text-muted mt-1">Non-dues-paying (A2 / Active and Fit plans)</p>
+          )}
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <StatusBreakdown counts={data.by_status} />
-        <MembershipTypeTable title="Cancels by Membership Type" rows={data.by_membership_type} />
+        <StatusBreakdown counts={view.by_status} />
+        <MembershipTypeTable title="Cancels by Membership Type" rows={view.by_membership_type} />
       </div>
 
       <SectionHeader title="Click2Save" />

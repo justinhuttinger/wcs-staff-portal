@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { getCancelsReport } from '../../../lib/api'
 import MobileLoading from '../MobileLoading'
 import MembershipTypeTable from './MembershipTypeTable'
@@ -99,7 +99,14 @@ function StatusBreakdown({ counts }) {
   )
 }
 
+const PLAN_TYPE_OPTIONS = [
+  { key: 'all', label: 'All' },
+  { key: 'membership', label: 'Membership' },
+  { key: 'insurance', label: 'Insurance' },
+]
+
 export default function MobileCancels({ startDate, endDate, locationSlug }) {
+  const [planType, setPlanType] = useState('all')
   const { data, loading, error } = useCancellableFetch(
     (signal) => {
       const params = {}
@@ -119,18 +126,43 @@ export default function MobileCancels({ startDate, endDate, locationSlug }) {
   )
   if (!data) return null
 
+  // Plan-type pill filter selects a pre-computed breakdown from the response —
+  // no refetch needed. Falls back to legacy top-level keys if plan_types is absent.
+  const view = data.plan_types?.[planType] || data.plan_types?.all || data
+
   return (
     <div className="space-y-4">
+      {/* All / Membership / Insurance plan-type filter */}
+      <div className="flex items-center gap-1.5">
+        {PLAN_TYPE_OPTIONS.map(opt => {
+          const active = planType === opt.key
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setPlanType(opt.key)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${
+                active
+                  ? 'bg-wcs-red text-white border-wcs-red'
+                  : 'bg-bg text-text-muted border-border'
+              }`}
+            >
+              {opt.label}
+            </button>
+          )
+        })}
+      </div>
+
       <SectionHeader title="Cancellations" />
 
       <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Members Cancelled" value={data.total_members ?? 0} />
-        <StatCard label="Agreements Cancelled" value={data.total_agreements ?? 0} />
+        <StatCard label="Members Cancelled" value={view.total_members ?? 0} />
+        <StatCard label="Agreements Cancelled" value={view.total_agreements ?? 0} />
       </div>
 
-      <StatusBreakdown counts={data.by_status} />
+      <StatusBreakdown counts={view.by_status} />
 
-      <MembershipTypeTable title="Cancels by Membership Type" rows={data.by_membership_type} />
+      <MembershipTypeTable title="Cancels by Membership Type" rows={view.by_membership_type} />
 
       <SectionHeader title="Click2Save" />
       {data.c2s_error ? (

@@ -794,34 +794,50 @@ router.get('/cancels', async (req, res) => {
     }
     const cancelFiltered = cancelRows.filter(m => !skipTypes.has((m.membership_type || '').toLowerCase()))
 
-    const totalMembers = cancelFiltered.length
-    const totalAgreements = new Set(cancelFiltered.map(m => m.agreement_number).filter(Boolean)).size
-
-    // By status
-    const byStatusCounts = {}
-    for (const m of cancelFiltered) {
-      const s = m.member_status || 'Unknown'
-      byStatusCounts[s] = (byStatusCounts[s] || 0) + 1
+    // Insurance plans are non-dues-paying members — broken out so the UI can
+    // filter All / Membership / Insurance. Insurance = membership type
+    // starting with "A2" (A2 CORE / A2 EXEC / A2 RECIP USE) or any
+    // "Active and Fit" variant.
+    const isInsuranceType = (type) => {
+      const t = (type || '').toLowerCase()
+      return t.startsWith('a2') || t.includes('active and fit')
     }
+    const membershipCancels = cancelFiltered.filter(m => !isInsuranceType(m.membership_type))
+    const insuranceCancels = cancelFiltered.filter(m => isInsuranceType(m.membership_type))
 
-    // By membership type (members + agreements per type)
-    const cancelAgreementsByType = {}
-    const cancelMembersByType = {}
-    for (const m of cancelFiltered) {
-      const t = m.membership_type || 'Unknown'
-      cancelMembersByType[t] = (cancelMembersByType[t] || 0) + 1
-      if (m.agreement_number) {
-        if (!cancelAgreementsByType[t]) cancelAgreementsByType[t] = new Set()
-        cancelAgreementsByType[t].add(m.agreement_number)
+    // Shared aggregation: totals + by-status + by-membership-type for a row set
+    const aggregateCancels = (rows) => {
+      const byStatusCounts = {}
+      const membersByType = {}
+      const agreementsByType = {}
+      for (const m of rows) {
+        const s = m.member_status || 'Unknown'
+        byStatusCounts[s] = (byStatusCounts[s] || 0) + 1
+        const t = m.membership_type || 'Unknown'
+        membersByType[t] = (membersByType[t] || 0) + 1
+        if (m.agreement_number) {
+          if (!agreementsByType[t]) agreementsByType[t] = new Set()
+          agreementsByType[t].add(m.agreement_number)
+        }
+      }
+      const byMembershipType = Object.keys(membersByType)
+        .map(t => ({
+          membership_type: t,
+          members: membersByType[t],
+          agreements: agreementsByType[t]?.size || 0,
+        }))
+        .sort((a, b) => b.agreements - a.agreements || b.members - a.members)
+      return {
+        members: rows.length,
+        agreements: new Set(rows.map(m => m.agreement_number).filter(Boolean)).size,
+        by_status: byStatusCounts,
+        by_membership_type: byMembershipType,
       }
     }
-    const byMembershipType = Object.keys(cancelMembersByType)
-      .map(t => ({
-        membership_type: t,
-        members: cancelMembersByType[t],
-        agreements: cancelAgreementsByType[t]?.size || 0,
-      }))
-      .sort((a, b) => b.agreements - a.agreements || b.members - a.members)
+
+    const allAgg = aggregateCancels(cancelFiltered)
+    const membershipAgg = aggregateCancels(membershipCancels)
+    const insuranceAgg = aggregateCancels(insuranceCancels)
 
     // Daily cancels for the bar chart
     const cancelsByDate = {}
@@ -924,11 +940,33 @@ router.get('/cancels', async (req, res) => {
     }
 
     res.json({
-      total_members: totalMembers,
-      total_agreements: totalAgreements,
-      by_status: byStatusCounts,
-      by_membership_type: byMembershipType,
+      total_members: allAgg.members,
+      total_agreements: allAgg.agreements,
+      by_status: allAgg.by_status,
+      by_membership_type: allAgg.by_membership_type,
       by_date: byDate,
+      // Plan-type breakdowns for the All / Membership / Insurance pill filter.
+      // Insurance (A2 / Active and Fit) members are non-dues-paying.
+      plan_types: {
+        all: {
+          total_members: allAgg.members,
+          total_agreements: allAgg.agreements,
+          by_status: allAgg.by_status,
+          by_membership_type: allAgg.by_membership_type,
+        },
+        membership: {
+          total_members: membershipAgg.members,
+          total_agreements: membershipAgg.agreements,
+          by_status: membershipAgg.by_status,
+          by_membership_type: membershipAgg.by_membership_type,
+        },
+        insurance: {
+          total_members: insuranceAgg.members,
+          total_agreements: insuranceAgg.agreements,
+          by_status: insuranceAgg.by_status,
+          by_membership_type: insuranceAgg.by_membership_type,
+        },
+      },
       pending_cancel_count: pendingFiltered.length,
       pending_cancel_agreements: new Set(pendingFiltered.map(m => m.agreement_number).filter(Boolean)).size,
       pending_cancels: pendingFiltered.slice(0, 200).map(m => ({

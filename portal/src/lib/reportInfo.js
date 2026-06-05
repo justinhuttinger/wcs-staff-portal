@@ -71,6 +71,7 @@ const REPORT_INFO = {
         body: [
           'Date range — looks at the cancel date.',
           'Location — filtered to one club.',
+          'Plan type — All shows everything. Membership hides insurance plans. Insurance shows only insurance plans (any "A2" type or "Active and Fit" variant), which are non-dues-paying members.',
         ],
       },
     ],
