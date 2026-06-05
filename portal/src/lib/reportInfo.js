@@ -397,7 +397,7 @@ const REPORT_INFO = {
       {
         heading: 'What this is',
         body:
-          'Every scored audit submitted in Operandio (roughly one per club per department per month), grouped by department. Each department shows change over time per club plus the list of individual audits.',
+          'Every Operandio job with "Audit" in its name (PT Audit, Membership Coordinator Audit, ...), roughly one per club per department per month, grouped by department. Each department shows change over time per club plus the list of individual audits.',
       },
       {
         heading: 'How it works',
@@ -410,7 +410,7 @@ const REPORT_INFO = {
       },
     ],
     notes: [
-      'Experimental report. The QA-Cleaning department also feeds the Cleanliness - Quality Assessment KPI.',
+      'Experimental report. QA-Cleaning is not an audit — it\'s the hyper-specific job behind the Cleanliness - Quality Assessment KPI and is excluded here. Other scored jobs are collected in the background for future reporting.',
     ],
   },
 

@@ -185,6 +185,11 @@ export default function AuditsReport({ locationSlug }) {
     const byDept = {}
     for (const r of (data?.rows || [])) {
       const dept = r.department || r.job_name || 'Unknown'
+      // This report shows only jobs with "Audit" in the name (PT Audit,
+      // Membership Coordinator Audit, ...). Other scored jobs — QA-Cleaning
+      // (which feeds the Cleanliness KPI instead) and scored cleaning tasks —
+      // are still collected in the same table for future use, just not shown.
+      if (!/audit/i.test(dept)) continue
       if (!byDept[dept]) {
         byDept[dept] = { department: dept, rows: [] }
         out.push(byDept[dept])
