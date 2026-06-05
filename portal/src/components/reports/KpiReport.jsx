@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { getMembershipReport, getAppSettings, getSpeedToLead } from '../../lib/api'
-import { pct, gapInfo, monthRangesBetween, median, formatMinutes } from '../../lib/kpiMath'
+import { getMembershipReport, getAppSettings, getSpeedToLead, getCancelsReport, getOperandioRange } from '../../lib/api'
+import { pct, gapInfo, monthRangesBetween, median, mean, formatMinutes } from '../../lib/kpiMath'
 import { LOCATION_NAMES } from '../../config/locations'
 import DesktopLoading from '../DesktopLoading'
 
@@ -230,11 +230,28 @@ export const KPI_DEFS = [
   { key: 'speed', label: 'Speed to Lead', goalKey: 'kpi_goal_speed', source: 'speed',
     format: 'minutes', lowerIsBetter: true,
     derive: d => (d?.contacted_count ? d.median_minutes : null) },
+  // Average of the daily Operandio overall scores in range (weekly rows are
+  // skipped so they don't double-count) — same math as the Operations report.
+  { key: 'ops', label: 'Operational Compliance', goalKey: 'kpi_goal_ops', source: 'operations',
+    derive: d => mean((d?.rows || []).filter(r => r.period_start === r.period_end).map(r => r.overall_pct)) },
+  // Share of Cancelled members that went through Click2Save. Numerator =
+  // Click2Save CANCEL events; denominator = membership (non-insurance) cancels
+  // with status Cancelled — insurance plans don't cancel through Click2Save.
+  { key: 'c2s', label: 'Click2Save Utilization', goalKey: 'kpi_goal_c2s', source: 'cancels',
+    derive: d => {
+      const c2sCancels = (d?.c2s_cancel_reasons || []).reduce((s, r) => s + (r.count || 0), 0)
+      const cancelled = d?.plan_types?.membership
+        ? (d.plan_types.membership.by_status?.['Cancelled'] || 0)
+        : (d?.by_status?.['Cancelled'] || 0)
+      return pct(c2sCancels, cancelled)
+    } },
 ]
 
 const SOURCE_FETCHERS = {
   membership: (params, opts) => getMembershipReport(params, opts),
   speed: (params, opts) => getSpeedToLead(params, opts),
+  operations: (params, opts) => getOperandioRange(params, opts),
+  cancels: (params, opts) => getCancelsReport(params, opts),
 }
 const DISTINCT_SOURCES = [...new Set(KPI_DEFS.map(d => d.source))]
 
