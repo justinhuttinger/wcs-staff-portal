@@ -5,7 +5,13 @@ const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 
 const router = Router()
-const upload = multer()
+// In-memory upload: SendGrid Inbound Parse posts email attachments as
+// multipart file parts (attachment1..N). upload.none() used to 500 on any
+// email with an attachment, losing it entirely — Operandio QA submissions
+// carry their score report as a PDF attachment.
+const upload = multer({ limits: { fileSize: 15 * 1024 * 1024, files: 10 } })
+
+const ATTACHMENT_BUCKET = 'operandio-attachments'
 
 const WEBHOOK_SECRET = process.env.OPERANDIO_WEBHOOK_SECRET
 
@@ -75,13 +81,36 @@ function parseLocationsSection(text) {
   return rows
 }
 
+// Upload email attachments (req.files from multer) to the private
+// operandio-attachments bucket. Returns metadata rows for the
+// operandio_raw_emails.attachments jsonb column. Best-effort per file: one
+// failed upload records the error but doesn't block the others.
+async function storeAttachments(files) {
+  const out = []
+  for (const f of files || []) {
+    const safeName = (f.originalname || 'attachment').replace(/[^\w.\-]+/g, '_')
+    const path = `raw/${new Date().toISOString().slice(0, 7)}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`
+    try {
+      const { error } = await supabaseAdmin.storage
+        .from(ATTACHMENT_BUCKET)
+        .upload(path, f.buffer, { contentType: f.mimetype || 'application/octet-stream', upsert: false })
+      if (error) throw error
+      out.push({ filename: f.originalname, content_type: f.mimetype, size: f.size, storage_path: path })
+    } catch (err) {
+      console.error('[Operandio] Attachment upload failed:', f.originalname, '-', err.message)
+      out.push({ filename: f.originalname, content_type: f.mimetype, size: f.size, error: err.message })
+    }
+  }
+  return out
+}
+
 // Stash an email the summary parser couldn't handle into the staging table
 // (operandio_raw_emails) so per-submission / overdue trigger emails accumulate
 // as real samples for future parsers. Both body parts are kept: submission
 // emails carry the per-task table (who completed what, when) ONLY in the HTML
 // part. Best-effort: a failed insert must never break the webhook's 200
 // response (SendGrid retries for 24h).
-async function captureRawEmail({ subject, text, html, from, reason }) {
+async function captureRawEmail({ subject, text, html, from, reason, attachments }) {
   try {
     const { error } = await supabaseAdmin.from('operandio_raw_emails').insert({
       subject: subject || null,
@@ -89,6 +118,7 @@ async function captureRawEmail({ subject, text, html, from, reason }) {
       body_text: (text || '').slice(0, 100 * 1024),  // cap at 100KB
       body_html: (html || '').slice(0, 500 * 1024),  // cap at 500KB
       reason,
+      attachments: attachments && attachments.length ? attachments : null,
     })
     if (error) throw error
     console.log('[Operandio] Captured unrecognized email:', reason, '-', subject)
@@ -100,7 +130,7 @@ async function captureRawEmail({ subject, text, html, from, reason }) {
 // ---------------------------------------------------------------------------
 // POST /operandio/webhook — SendGrid Inbound Parse target
 // ---------------------------------------------------------------------------
-router.post('/webhook', upload.none(), async (req, res) => {
+router.post('/webhook', upload.any(), async (req, res) => {
   // Auth via shared secret query param. SendGrid sends multipart, no headers
   // we can use for HMAC.
   if (!WEBHOOK_SECRET || req.query.secret !== WEBHOOK_SECRET) {
@@ -115,14 +145,16 @@ router.post('/webhook', upload.none(), async (req, res) => {
   const period = parsePeriodFromSubject(subject)
   if (!period) {
     console.warn('[Operandio] Subject did not match expected pattern:', subject)
-    await captureRawEmail({ subject, text, html, from, reason: 'subject_unrecognized' })
+    const attachments = await storeAttachments(req.files)
+    await captureRawEmail({ subject, text, html, from, reason: 'subject_unrecognized', attachments })
     return res.status(200).json({ ignored: true, reason: 'Subject not recognized' })
   }
 
   const rows = parseLocationsSection(text)
   if (!rows.length) {
     console.warn('[Operandio] No location rows parsed for', subject)
-    await captureRawEmail({ subject, text, html, from, reason: 'no_location_rows' })
+    const attachments = await storeAttachments(req.files)
+    await captureRawEmail({ subject, text, html, from, reason: 'no_location_rows', attachments })
     return res.status(200).json({ ignored: true, reason: 'No location rows parsed' })
   }
 
