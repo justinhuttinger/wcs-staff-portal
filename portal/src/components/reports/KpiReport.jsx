@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getMembershipReport, getAppSettings, getSpeedToLead, getCancelsReport, getOperandioRange } from '../../lib/api'
+import { getMembershipReport, getAppSettings, getSpeedToLead, getCancelsReport, getOperandioRange, getOperandioQaReports } from '../../lib/api'
 import { pct, gapInfo, monthRangesBetween, median, mean, formatMinutes } from '../../lib/kpiMath'
 import { LOCATION_NAMES } from '../../config/locations'
 import DesktopLoading from '../DesktopLoading'
@@ -128,6 +128,61 @@ function PerClubGoalTable({ def, clubs, perClub, goals }) {
   )
 }
 
+// Individual audit submissions in range — these arrive on an irregular
+// (roughly monthly) cadence, so each row shows its submission date plus a
+// link that opens the full scored report in Operandio in a new window.
+function SubmissionsList({ rows }) {
+  const list = rows || []
+  if (list.length === 0) {
+    return <p className="text-xs text-text-muted mt-3">No audits submitted in this date range.</p>
+  }
+  return (
+    <div className="bg-surface rounded-xl border border-border p-4 mt-3 overflow-x-auto">
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Submissions</p>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-[11px] uppercase tracking-wide text-text-muted">
+            <th className="text-left font-semibold py-1">Date</th>
+            <th className="text-left font-semibold py-1">Club</th>
+            <th className="text-left font-semibold py-1">Audit</th>
+            <th className="text-right font-semibold py-1">Score</th>
+            <th className="text-right font-semibold py-1">%</th>
+            <th className="text-right font-semibold py-1"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map(r => (
+            <tr key={r.id} className="border-t border-border">
+              <td className="py-1.5 text-text-primary whitespace-nowrap">{r.submitted_date}</td>
+              <td className="py-1.5 text-text-primary">{CLUB_LABEL[r.location_slug] || r.location_slug}</td>
+              <td className="py-1.5 text-text-muted truncate max-w-[220px]" title={r.job_name}>{r.job_name}</td>
+              <td className="py-1.5 text-right tabular-nums text-text-muted whitespace-nowrap">
+                {r.score_achieved != null && r.score_possible != null ? `${r.score_achieved}/${r.score_possible}` : '—'}
+              </td>
+              <td className="py-1.5 text-right tabular-nums font-semibold text-text-primary">
+                {r.score_pct != null ? `${r.score_pct}%` : 'n/a'}
+              </td>
+              <td className="py-1.5 text-right">
+                {r.report_url ? (
+                  <button
+                    type="button"
+                    onClick={() => window.open(r.report_url, '_blank', 'noopener')}
+                    className="text-xs font-semibold text-wcs-red hover:text-wcs-red/80"
+                  >
+                    View Report
+                  </button>
+                ) : (
+                  <span className="text-xs text-text-muted">No report</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function fmtDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -243,6 +298,13 @@ export const KPI_DEFS = [
     derive: d => (d?.c2s_utilization
       ? pct(d.c2s_utilization.via_c2s, d.c2s_utilization.cancelled_members)
       : null) },
+  // QA-Cleaning audits submitted in Operandio by leadership on an irregular
+  // (roughly monthly) cadence. Value = average audit score in range; the
+  // expanded tile lists each submission with a link to the full Operandio
+  // report. hasSubmissions enables that list in the detail view.
+  { key: 'qa', label: 'Cleanliness - Quality Assessment', goalKey: 'kpi_goal_qa', source: 'qa',
+    hasSubmissions: true,
+    derive: d => mean((d?.rows || []).map(r => r.score_pct).filter(v => v != null)) },
 ]
 
 const SOURCE_FETCHERS = {
@@ -250,6 +312,7 @@ const SOURCE_FETCHERS = {
   speed: (params, opts) => getSpeedToLead(params, opts),
   operations: (params, opts) => getOperandioRange(params, opts),
   cancels: (params, opts) => getCancelsReport(params, opts),
+  qa: (params, opts) => getOperandioQaReports(params, opts),
 }
 const DISTINCT_SOURCES = [...new Set(KPI_DEFS.map(d => d.source))]
 
@@ -543,6 +606,9 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                     )}
                     {points && <KpiTrendChart points={points} goal={singleGoal} format={def.format} />}
                   </>
+                )}
+                {def.hasSubmissions && (
+                  <SubmissionsList rows={dataByPlan?.[plan.key]?.rows} />
                 )}
               </div>
             )}

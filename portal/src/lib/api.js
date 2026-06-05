@@ -836,6 +836,16 @@ export async function getOperandioRange(params = {}, options = {}) {
   return api('/operandio/range' + (qs ? '?' + qs : ''), options)
 }
 
+// QA-Cleaning audit submissions (Cleanliness - Quality Assessment KPI)
+export async function getOperandioQaReports(params = {}, options = {}) {
+  const cleaned = {}
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') cleaned[k] = v
+  }
+  const qs = new URLSearchParams(cleaned).toString()
+  return api('/operandio/qa-reports' + (qs ? '?' + qs : ''), options)
+}
+
 // Webhook Logs
 export async function getWebhookLogs(params = {}) {
   const qs = new URLSearchParams(params).toString()
