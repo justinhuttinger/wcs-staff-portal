@@ -276,6 +276,18 @@ function formatValue(def, v) {
 function gapFor(def, value, goal) {
   return gapInfo(value, goal, { lowerIsBetter: !!def.lowerIsBetter, unit: def.format === 'minutes' ? 'm' : '%' })
 }
+// Big-number rendering of the goal gap: "+5%" / "-12m" with a caption like
+// "Above goal" — matches the Actual/Goal stat columns instead of small text.
+function gapValueText(def, gap) {
+  if (gap.diff === 0) return 'Met'
+  const unit = def.format === 'minutes' ? 'm' : '%'
+  return `${gap.diff > 0 ? '+' : ''}${gap.diff}${unit}`
+}
+function gapCaption(def, gap) {
+  if (gap.diff === 0) return 'Goal met'
+  if (def.lowerIsBetter) return gap.tone === 'above' ? 'Under goal' : 'Over goal'
+  return gap.tone === 'above' ? 'Above goal' : 'Below goal'
+}
 function onTarget(def, value, goal) {
   if (value == null || goal == null) return false
   return def.lowerIsBetter ? value <= goal : value >= goal
@@ -440,7 +452,6 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
         const singleGoal = !isMulti ? goalForSlug(def, goals, clubs[0]) : null
         const gap = !isMulti ? gapFor(def, value, singleGoal) : null
         const open = openKey === def.key
-        const excluded = clubs.length - plan.enabled.length
 
         // Multi-club: count how many enabled clubs (with a goal) are on target.
         let onGoal = 0, withGoal = 0
@@ -468,7 +479,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                 <p className="text-lg font-bold text-text-primary">{def.label}</p>
                 <p className="text-xs text-text-muted mt-0.5">
                   {isMulti
-                    ? `${plan.enabled.length} club${plan.enabled.length === 1 ? '' : 's'}${excluded > 0 ? ` (${excluded} off)` : ''}`
+                    ? `${plan.enabled.length} club${plan.enabled.length === 1 ? '' : 's'}`
                     : 'Current period'}
                 </p>
               </div>
@@ -488,20 +499,26 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                 <div className="w-40 text-right">
                   {isMulti ? (
                     !perClub ? (
-                      <span className="text-xs text-text-muted">Loading clubs…</span>
+                      <span className="text-sm text-text-muted">Loading clubs…</span>
                     ) : withGoal === 0 ? (
-                      <span className="text-xs text-text-muted">No goals set</span>
+                      <span className="text-sm text-text-muted">No goals set</span>
                     ) : (
-                      <span className={`text-xs font-semibold ${onGoal === withGoal ? 'text-green-600' : 'text-red-500'}`}>
-                        {onGoal}/{withGoal} clubs on goal
-                      </span>
+                      <>
+                        <p className={`text-2xl font-bold leading-none ${onGoal === withGoal ? 'text-green-600' : 'text-red-500'}`}>
+                          {onGoal}/{withGoal}
+                        </p>
+                        <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">Clubs on goal</p>
+                      </>
                     )
                   ) : gap ? (
-                    <span className={`text-xs font-semibold ${gap.tone === 'above' ? 'text-green-600' : 'text-red-500'}`}>
-                      {gap.text}
-                    </span>
+                    <>
+                      <p className={`text-2xl font-bold leading-none ${gap.tone === 'above' ? 'text-green-600' : 'text-red-500'}`}>
+                        {gapValueText(def, gap)}
+                      </p>
+                      <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">{gapCaption(def, gap)}</p>
+                    </>
                   ) : (
-                    <span className="text-xs text-text-muted">Set a goal</span>
+                    <span className="text-sm text-text-muted">Set a goal</span>
                   )}
                 </div>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
