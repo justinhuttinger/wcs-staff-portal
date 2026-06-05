@@ -211,6 +211,16 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
   // Cancels report: All / Membership / Insurance plan-type filter
   const [cancelsPlanType, setCancelsPlanType] = useState('all')
 
+  // Audits is strictly per-club (no All pill) — snap to the first club when
+  // arriving on it with the all-locations selection.
+  useEffect(() => {
+    if (activeReport !== 'audits' || locationSlug !== 'all') return
+    const first = isAdmin
+      ? LOCATIONS.find(l => l.slug !== 'all')?.slug
+      : reportLocations[0]?.name?.toLowerCase()
+    if (first) setLocationSlug(first)
+  }, [activeReport, locationSlug]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     // Make sure the URL hash matches the resolved initial report so refreshes
     // land in the same place.
@@ -368,8 +378,8 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
                   </div>
                 )}
                 <div className="ml-auto flex-shrink-0">
-                  {/* KPIs uses location pills below the date range instead of this dropdown. */}
-                  {activeReport === 'kpis' ? null : showLocation ? (
+                  {/* KPIs and Audits use location pills below the date range instead of this dropdown. */}
+                  {activeReport === 'kpis' || activeReport === 'audits' ? null : showLocation ? (
                     <LocationMultiSelect
                       value={locationSlug}
                       onChange={setLocationSlug}
@@ -421,11 +431,12 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
                 </div>
               )}
 
-              {/* KPIs report: single-select location pills under the date range for
-                  quick club-to-club navigation (this report is mostly viewed per club). */}
-              {activeReport === 'kpis' && showLocation && (
+              {/* KPIs + Audits: single-select location pills for quick
+                  club-to-club navigation (these reports are viewed per club).
+                  Audits has no All option — it's strictly one club at a time. */}
+              {(activeReport === 'kpis' || activeReport === 'audits') && showLocation && (
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {[{ slug: 'all', label: 'All' }, ...(isAdmin
+                  {[...(activeReport === 'kpis' ? [{ slug: 'all', label: 'All' }] : []), ...(isAdmin
                     ? LOCATIONS.filter(l => l.slug !== 'all')
                     : reportLocations.map(l => ({ slug: l.name.toLowerCase(), label: l.name }))
                   )].map(opt => {
