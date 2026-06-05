@@ -1026,22 +1026,6 @@ export async function getCustomFields(location) {
   return api('/custom-fields' + qs)
 }
 
-// Website Submissions (Marketing)
-export async function getWebsiteSubmissions(filters = {}, options = {}) {
-  const params = new URLSearchParams()
-  if (filters.form_name) params.set('form_name', filters.form_name)
-  if (filters.location) params.set('location', filters.location)
-  if (filters.start) params.set('start', filters.start)
-  if (filters.end) params.set('end', filters.end)
-  if (filters.limit) params.set('limit', String(filters.limit))
-  const qs = params.toString()
-  return api('/reports/website-submissions' + (qs ? '?' + qs : ''), options)
-}
-
-export async function getWebsiteSubmissionFilterOptions(options = {}) {
-  return api('/reports/website-submissions/filter-options', options)
-}
-
 // Daily Snapshot
 export async function getDailySnapshot({ date, location } = {}) {
   const params = new URLSearchParams()

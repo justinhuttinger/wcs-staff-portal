@@ -386,23 +386,6 @@ const REPORT_INFO = {
     ],
   },
 
-  'website-submissions': {
-    title: 'Website Submissions',
-    sections: [
-      {
-        heading: 'What this is',
-        body:
-          'Every lead submitted through the public website forms, broken out by which form and which location they came in on.',
-      },
-      {
-        heading: 'How filters work',
-        body: [
-          'Date range — by submission timestamp.',
-          'Location — one club. The location is parsed from the form name (e.g. "Salem - VIP" → Salem).',
-        ],
-      },
-    ],
-  },
 }
 
 export function getReportInfo(reportKey) {

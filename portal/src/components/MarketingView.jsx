@@ -1,19 +1,9 @@
 import { useState } from 'react'
 import MetaAdsView from './MetaAdsView'
 import GoogleMarketingView from './GoogleMarketingView'
-import WebsiteSubmissionsReport from './reports/WebsiteSubmissionsReport'
 
-// Mirrors auth/src/middleware/role.js: director is an alias for corporate.
-function resolveRole(role) {
-  if (role === 'director') return 'corporate'
-  if (role === 'front_desk' || role === 'personal_trainer') return 'team_member'
-  return role
-}
-
-export default function MarketingView({ onBack, user }) {
+export default function MarketingView({ onBack }) {
   const [activeReport, setActiveReport] = useState(null)
-  const role = resolveRole(user?.staff?.role)
-  const canSeeWebsiteSubmissions = role === 'corporate' || role === 'admin'
 
   if (activeReport === 'meta') {
     return <MetaAdsView onBack={() => setActiveReport(null)} />
@@ -21,10 +11,6 @@ export default function MarketingView({ onBack, user }) {
 
   if (activeReport === 'google') {
     return <GoogleMarketingView onBack={() => setActiveReport(null)} />
-  }
-
-  if (activeReport === 'website-submissions') {
-    return <WebsiteSubmissionsReport onBack={() => setActiveReport(null)} />
   }
 
   return (
@@ -66,24 +52,6 @@ export default function MarketingView({ onBack, user }) {
             <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">Business + Analytics</span>
           </div>
         </button>
-
-        {/* Website Submissions (corporate + admin only) */}
-        {canSeeWebsiteSubmissions && (
-          <button
-            onClick={() => setActiveReport('website-submissions')}
-            className="group relative flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
-          >
-            <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 text-wcs-red">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
-              </svg>
-            </div>
-            <div className="text-center">
-              <span className="block text-base font-semibold text-text-primary">Website Submissions</span>
-              <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">Form Leads</span>
-            </div>
-          </button>
-        )}
       </div>
     </div>
   )
