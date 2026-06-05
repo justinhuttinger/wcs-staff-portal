@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { getMembershipReport, getAppSettings, getSpeedToLead, getCancelsReport, getOperandioRange, getOperandioQaReports, getOperandioQaReport } from '../../lib/api'
-import { buildQaReportHtml } from '../../lib/qaReportHtml'
+import { openAuditReport } from '../../lib/qaReportHtml'
 import { pct, gapInfo, monthRangesBetween, median, mean, formatMinutes } from '../../lib/kpiMath'
 import { LOCATION_NAMES } from '../../config/locations'
 import DesktopLoading from '../DesktopLoading'
@@ -362,7 +362,9 @@ const SOURCE_FETCHERS = {
   speed: (params, opts) => getSpeedToLead(params, opts),
   operations: (params, opts) => getOperandioRange(params, opts),
   cancels: (params, opts) => getCancelsReport(params, opts),
-  qa: (params, opts) => getOperandioQaReports(params, opts),
+  // The KPI tracks only the QA-Cleaning audit; other departments live in the
+  // experimental Audits report.
+  qa: (params, opts) => getOperandioQaReports({ ...params, department: 'QA-Cleaning' }, opts),
 }
 const DISTINCT_SOURCES = [...new Set(KPI_DEFS.map(d => d.source))]
 // Sources still needing the per-club (date-bound) fetch in multi-club view —
@@ -394,28 +396,9 @@ function fmtQaDate(dateStr) {
   return `${m}-${d}-${y}`
 }
 
-// Opens the in-house HTML report for an audit in a new window. The window
-// opens synchronously (so popup blockers don't eat it) and is filled once the
-// per-item breakdown arrives; audits without parsed items fall back to the
-// Operandio app link, matching the old behavior.
-async function openQaReport(row) {
-  const w = window.open('', '_blank')
-  if (!w) return
-  w.document.write('<title>Loading report…</title><p style="font-family:sans-serif;color:#666;padding:24px">Loading report…</p>')
-  try {
-    const full = await getOperandioQaReport(row.id)
-    if (full?.items?.length) {
-      w.document.open()
-      w.document.write(buildQaReportHtml(full, CLUB_LABEL[full.location_slug] || full.location_slug))
-      w.document.close()
-      return
-    }
-    const url = full?.report_url || row.report_url
-    if (url) { w.location = url; return }
-    w.close()
-  } catch {
-    if (row.report_url) { w.location = row.report_url } else { w.close() }
-  }
+// Opens the in-house HTML report (shared with the Audits report).
+function openQaReport(row) {
+  return openAuditReport(row, getOperandioQaReport, CLUB_LABEL[row.location_slug] || row.location_slug)
 }
 
 // Per-club KPI toggle, set in Admin → KPI Goals. '1' = this KPI is turned off
