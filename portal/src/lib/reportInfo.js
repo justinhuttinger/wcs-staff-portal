@@ -349,7 +349,17 @@ const REPORT_INFO = {
       {
         heading: 'What this is',
         body:
-          'An experimental scoreboard that compares club metrics against goals you set per club in the admin panel: trial conversion, day one attachment, VIP collection percentage, and speed to lead.',
+          'An experimental scoreboard that compares club metrics against goals you set per club in the admin panel: trial conversion, day one attachment, VIP collection percentage, speed to lead, operational compliance, and Click2Save utilization.',
+      },
+      {
+        heading: 'Operational Compliance',
+        body:
+          'Average of the daily Operandio overall scores in the selected range, the same math as the Operational Compliance report\'s period summary. Days with no Operandio data are skipped, not counted as zero.',
+      },
+      {
+        heading: 'Click2Save Utilization',
+        body:
+          'How many cancellations went through Click2Save: Click2Save cancel events divided by members whose status changed to Cancelled in the range. Insurance plans (A2 / Active and Fit) are excluded from the denominator since those don\'t cancel through Click2Save. Everyone should be cancelling through Click2Save, so low numbers mean staff are cancelling directly in ABC.',
       },
       {
         heading: 'How the percentages work',
