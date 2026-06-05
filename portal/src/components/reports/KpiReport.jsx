@@ -253,6 +253,22 @@ const SOURCE_FETCHERS = {
 }
 const DISTINCT_SOURCES = [...new Set(KPI_DEFS.map(d => d.source))]
 
+// Per-club KPI toggle, set in Admin → KPI Goals. '1' = this KPI is turned off
+// for this club: hidden in its single-club view, excluded from the blended
+// combined number and the per-club tables in multi-club view.
+function offFor(settings, def, slug) {
+  return settings[`kpi_off_${def.key}_${slug}`] === '1'
+}
+
+// Resolve which of the selected clubs have this KPI enabled, plus the
+// location_slug param + cache key for the combined fetch. When every selected
+// club is enabled the original selector value is reused so 'all' stays 'all'.
+function planFor(settings, def, clubs, locationSlug) {
+  const enabled = clubs.filter(s => !offFor(settings, def, s))
+  const slugParam = enabled.length === clubs.length ? locationSlug : enabled.join(',')
+  return { enabled, slugParam, key: `${def.source}|${slugParam}` }
+}
+
 function formatValue(def, v) {
   if (v == null) return 'n/a'
   return def.format === 'minutes' ? formatMinutes(v) : `${v}%`
@@ -266,7 +282,10 @@ function onTarget(def, value, goal) {
 }
 
 export default function KpiReport({ startDate, endDate, locationSlug }) {
-  const [dataBySource, setDataBySource] = useState(null)
+  // dataByPlan: { '<source>|<slugParam>': response } — one entry per unique
+  // (source, enabled-club-set) combination among the KPI defs.
+  const [dataByPlan, setDataByPlan] = useState(null)
+  // goals holds ALL kpi_* app settings: kpi_goal_* values + kpi_off_* toggles.
   const [goals, setGoals] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -286,6 +305,8 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
   const compSig = `${locationSlug}|${comp.start}|${comp.end}`
 
   // Combined current-period data (aggregate across the selection) + goals.
+  // Settings load first so per-club KPI toggles can shape which clubs each
+  // KPI's combined fetch includes (the blended number excludes off clubs).
   useEffect(() => {
     let cancelled = false
     fetchToken.current += 1
@@ -295,19 +316,30 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
     setTrendByKey(null)
     trendSigRef.current = null
     setTrendLoading(false)
-    Promise.all([
-      Promise.all(DISTINCT_SOURCES.map(s =>
-        SOURCE_FETCHERS[s]({ start_date: startDate, end_date: endDate, location_slug: locationSlug })
-          .then(r => [s, r]).catch(() => [s, null])
-      )),
-      getAppSettings('kpi_goal_'),
-    ]).then(([pairs, goalMap]) => {
-      if (cancelled) return
-      setDataBySource(Object.fromEntries(pairs))
-      setGoals(goalMap || {})
-    })
-      .catch(err => { if (!cancelled) setError(err.message || 'Failed to load KPIs') })
-      .finally(() => { if (!cancelled) setLoading(false) })
+    ;(async () => {
+      try {
+        const settingsMap = (await getAppSettings('kpi_')) || {}
+        if (cancelled) return
+        setGoals(settingsMap)
+        const clubsNow = selectedClubSlugs(locationSlug)
+        const plans = new Map()
+        for (const def of KPI_DEFS) {
+          const p = planFor(settingsMap, def, clubsNow, locationSlug)
+          if (p.enabled.length === 0) continue
+          plans.set(p.key, { source: def.source, slugParam: p.slugParam })
+        }
+        const pairs = await Promise.all([...plans.entries()].map(([key, p]) =>
+          SOURCE_FETCHERS[p.source]({ start_date: startDate, end_date: endDate, location_slug: p.slugParam })
+            .then(r => [key, r]).catch(() => [key, null])
+        ))
+        if (cancelled) return
+        setDataByPlan(Object.fromEntries(pairs))
+      } catch (err) {
+        if (!cancelled) setError(err.message || 'Failed to load KPIs')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
     return () => { cancelled = true }
   }, [startDate, endDate, locationSlug])
 
@@ -343,8 +375,12 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
     setTrendLoading(true)
     ;(async () => {
       try {
+        // Only fetch sources still needed once per-club KPI toggles are applied
+        // (e.g. skip the Operandio calls if Operational Compliance is off here).
+        const activeDefs = KPI_DEFS.filter(def => clubs.some(s => !offFor(goals, def, s)))
+        const activeSources = [...new Set(activeDefs.map(d => d.source))]
         const perMonth = await Promise.all(ranges.map(async r => {
-          const pairs = await Promise.all(DISTINCT_SOURCES.map(s =>
+          const pairs = await Promise.all(activeSources.map(s =>
             SOURCE_FETCHERS[s]({ start_date: r.start, end_date: r.end, location_slug: locationSlug })
               .then(x => [s, x]).catch(() => [s, null])
           ))
@@ -352,7 +388,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
         }))
         if (token !== fetchToken.current) return
         const byKey = {}
-        for (const def of KPI_DEFS) {
+        for (const def of activeDefs) {
           byKey[def.key] = perMonth.map(({ range, bySource }) => ({
             key: range.key, label: range.label, value: def.derive(bySource[def.source]),
           }))
@@ -380,6 +416,9 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
 
   const trendReady = trendSigRef.current === compSig && trendByKey
 
+  // KPIs turned off for every selected club disappear from the report.
+  const visibleDefs = KPI_DEFS.filter(def => clubs.some(s => !offFor(goals, def, s)))
+
   return (
     <div className="space-y-3">
       {/* Compact comparison-range pill — only meaningful in single-club trend mode. */}
@@ -389,16 +428,24 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
         </div>
       )}
 
-      {KPI_DEFS.map(def => {
-        const value = def.derive(dataBySource?.[def.source])
+      {visibleDefs.length === 0 && (
+        <div className="bg-surface rounded-xl border border-border p-8 text-center text-text-muted">
+          All KPIs are turned off for this selection. Re-enable them in Admin → KPI Goals.
+        </div>
+      )}
+
+      {visibleDefs.map(def => {
+        const plan = planFor(goals, def, clubs, locationSlug)
+        const value = def.derive(dataByPlan?.[plan.key])
         const singleGoal = !isMulti ? goalForSlug(def, goals, clubs[0]) : null
         const gap = !isMulti ? gapFor(def, value, singleGoal) : null
         const open = openKey === def.key
+        const excluded = clubs.length - plan.enabled.length
 
-        // Multi-club: count how many selected clubs (with a goal) are on target.
+        // Multi-club: count how many enabled clubs (with a goal) are on target.
         let onGoal = 0, withGoal = 0
         if (isMulti && perClub) {
-          for (const slug of clubs) {
+          for (const slug of plan.enabled) {
             const g = goalForSlug(def, goals, slug)
             if (g == null) continue
             withGoal++
@@ -419,7 +466,11 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
             >
               <div className="min-w-0">
                 <p className="text-lg font-bold text-text-primary">{def.label}</p>
-                <p className="text-xs text-text-muted mt-0.5">{isMulti ? `${clubs.length} clubs` : 'Current period'}</p>
+                <p className="text-xs text-text-muted mt-0.5">
+                  {isMulti
+                    ? `${plan.enabled.length} club${plan.enabled.length === 1 ? '' : 's'}${excluded > 0 ? ` (${excluded} off)` : ''}`
+                    : 'Current period'}
+                </p>
               </div>
               <div className="ml-auto flex items-center gap-6 flex-shrink-0">
                 <div className="text-right">
@@ -466,7 +517,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                   !perClub ? (
                     <p className="text-xs text-text-muted mt-3">Loading clubs…</p>
                   ) : (
-                    <PerClubGoalTable def={def} clubs={clubs} perClub={perClub} goals={goals} />
+                    <PerClubGoalTable def={def} clubs={plan.enabled} perClub={perClub} goals={goals} />
                   )
                 ) : (
                   <>
