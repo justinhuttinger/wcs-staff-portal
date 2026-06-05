@@ -397,15 +397,16 @@ const REPORT_INFO = {
       {
         heading: 'What this is',
         body:
-          'Every Operandio job with "Audit" in its name (PT Audit, Membership Coordinator Audit, ...), roughly one per club per department per month, grouped by department. Each department shows change over time per club plus the list of individual audits.',
+          'Every Operandio job with "Audit" in its name (PT Audit, Membership Coordinator Audit, ...), roughly one per club per department per month. One row per audit with its most recent score.',
       },
       {
         heading: 'How it works',
         body: [
           'Audits arrive automatically: when one is submitted in Operandio, its notification email is parsed and the audit appears here.',
-          'Location — filters to one club; the chart shows one line per club otherwise.',
-          'View Report — opens a full scored breakdown of that audit in a new window, printable to PDF.',
+          'Location pills — this report is strictly one club at a time; pick the club with the pills under the title.',
+          'Click a row to expand the change-over-time chart and every submission, each with a View Report link that opens the full scored breakdown in a new window, printable to PDF.',
           'Audits are infrequent, so the full history always shows (no date range).',
+          'Admin → Audits toggles which audits each club does — off audits are hidden from that club\'s view.',
         ],
       },
     ],
