@@ -836,6 +836,11 @@ export async function getOperandioRange(params = {}, options = {}) {
   return api('/operandio/range' + (qs ? '?' + qs : ''), options)
 }
 
+// Single QA audit with its per-item breakdown (in-house HTML report viewer)
+export async function getOperandioQaReport(id, options = {}) {
+  return api('/operandio/qa-reports/' + id, options)
+}
+
 // QA-Cleaning audit submissions (Cleanliness - Quality Assessment KPI)
 export async function getOperandioQaReports(params = {}, options = {}) {
   const cleaned = {}

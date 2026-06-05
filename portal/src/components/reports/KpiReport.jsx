@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { getMembershipReport, getAppSettings, getSpeedToLead, getCancelsReport, getOperandioRange, getOperandioQaReports } from '../../lib/api'
+import { getMembershipReport, getAppSettings, getSpeedToLead, getCancelsReport, getOperandioRange, getOperandioQaReports, getOperandioQaReport } from '../../lib/api'
+import { buildQaReportHtml } from '../../lib/qaReportHtml'
 import { pct, gapInfo, monthRangesBetween, median, mean, formatMinutes } from '../../lib/kpiMath'
 import { LOCATION_NAMES } from '../../config/locations'
 import DesktopLoading from '../DesktopLoading'
@@ -154,7 +155,7 @@ function QaPerClubTable({ def, clubs, latestByClub, goals }) {
               <tr key={slug} className="border-t border-border">
                 <td className="py-1.5 text-text-primary">{CLUB_LABEL[slug] || slug}</td>
                 <td className="py-1.5 text-right tabular-nums text-text-primary">{a == null ? 'n/a' : `${a}%`}</td>
-                <td className="py-1.5 text-right tabular-nums text-text-muted whitespace-nowrap">{r?.submitted_date || 'Never'}</td>
+                <td className="py-1.5 text-right tabular-nums text-text-muted whitespace-nowrap">{r?.submitted_date ? fmtQaDate(r.submitted_date) : 'Never'}</td>
                 <td className="py-1.5 text-right text-text-muted">{g == null ? '—' : `${g}%`}</td>
                 <td className="py-1.5 text-right">
                   {g == null ? (
@@ -201,7 +202,7 @@ function SubmissionsList({ rows }) {
         <tbody>
           {list.map(r => (
             <tr key={r.id} className="border-t border-border">
-              <td className="py-1.5 text-text-primary whitespace-nowrap">{r.submitted_date}</td>
+              <td className="py-1.5 text-text-primary whitespace-nowrap">{fmtQaDate(r.submitted_date)}</td>
               <td className="py-1.5 text-text-primary">{CLUB_LABEL[r.location_slug] || r.location_slug}</td>
               <td className="py-1.5 text-text-muted truncate max-w-[220px]" title={r.job_name}>{r.job_name}</td>
               <td className="py-1.5 text-right tabular-nums text-text-muted whitespace-nowrap">
@@ -211,17 +212,13 @@ function SubmissionsList({ rows }) {
                 {r.score_pct != null ? `${r.score_pct}%` : 'n/a'}
               </td>
               <td className="py-1.5 text-right">
-                {r.report_url ? (
-                  <button
-                    type="button"
-                    onClick={() => window.open(r.report_url, '_blank', 'noopener')}
-                    className="text-xs font-semibold text-wcs-red hover:text-wcs-red/80"
-                  >
-                    View Report
-                  </button>
-                ) : (
-                  <span className="text-xs text-text-muted">No report</span>
-                )}
+                <button
+                  type="button"
+                  onClick={() => openQaReport(r)}
+                  className="text-xs font-semibold text-wcs-red hover:text-wcs-red/80"
+                >
+                  View Report
+                </button>
               </td>
             </tr>
           ))}
@@ -387,6 +384,38 @@ function fmtSubmittedLabel(dateStr) {
   if (!dateStr) return ''
   const [y, m, d] = dateStr.split('-').map(Number)
   return y === new Date().getFullYear() ? `${m}/${d}` : `${m}/${d}/${String(y).slice(-2)}`
+}
+
+// Full QA dates everywhere else (Last Submitted column, tile subtitle, the
+// submissions list): MM-DD-YYYY.
+function fmtQaDate(dateStr) {
+  if (!dateStr) return ''
+  const [y, m, d] = dateStr.split('-')
+  return `${m}-${d}-${y}`
+}
+
+// Opens the in-house HTML report for an audit in a new window. The window
+// opens synchronously (so popup blockers don't eat it) and is filled once the
+// per-item breakdown arrives; audits without parsed items fall back to the
+// Operandio app link, matching the old behavior.
+async function openQaReport(row) {
+  const w = window.open('', '_blank')
+  if (!w) return
+  w.document.write('<title>Loading report…</title><p style="font-family:sans-serif;color:#666;padding:24px">Loading report…</p>')
+  try {
+    const full = await getOperandioQaReport(row.id)
+    if (full?.items?.length) {
+      w.document.open()
+      w.document.write(buildQaReportHtml(full, CLUB_LABEL[full.location_slug] || full.location_slug))
+      w.document.close()
+      return
+    }
+    const url = full?.report_url || row.report_url
+    if (url) { w.location = url; return }
+    w.close()
+  } catch {
+    if (row.report_url) { w.location = row.report_url } else { w.close() }
+  }
 }
 
 // Per-club KPI toggle, set in Admin → KPI Goals. '1' = this KPI is turned off
@@ -635,7 +664,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                     ? `${plan.enabled.length} club${plan.enabled.length === 1 ? '' : 's'}`
                     : def.timeless
                       ? (latestByClub?.[clubs[0]]
-                          ? `Last submitted ${fmtSubmittedLabel(latestByClub[clubs[0]].submitted_date)}`
+                          ? `Last submitted ${fmtQaDate(latestByClub[clubs[0]].submitted_date)}`
                           : 'No audits yet')
                       : 'Current period'}
                 </p>
