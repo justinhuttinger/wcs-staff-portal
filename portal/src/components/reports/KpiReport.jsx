@@ -128,13 +128,61 @@ function PerClubGoalTable({ def, clubs, perClub, goals }) {
   )
 }
 
-// Individual audit submissions in range — these arrive on an irregular
+// Multi-club view for timeless audit KPIs: each club's MOST RECENT audit
+// score against its goal, plus when that audit was submitted (the cadence is
+// irregular, so the date matters as much as the score).
+function QaPerClubTable({ def, clubs, latestByClub, goals }) {
+  return (
+    <div className="bg-surface rounded-xl border border-border p-4 mt-3 overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-[11px] uppercase tracking-wide text-text-muted">
+            <th className="text-left font-semibold py-1">Club</th>
+            <th className="text-right font-semibold py-1">Latest Score</th>
+            <th className="text-right font-semibold py-1">Last Submitted</th>
+            <th className="text-right font-semibold py-1">Goal</th>
+            <th className="text-right font-semibold py-1">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {clubs.map(slug => {
+            const r = latestByClub?.[slug]
+            const a = r?.score_pct ?? null
+            const g = goalForSlug(def, goals, slug)
+            const hit = onTarget(def, a, g)
+            return (
+              <tr key={slug} className="border-t border-border">
+                <td className="py-1.5 text-text-primary">{CLUB_LABEL[slug] || slug}</td>
+                <td className="py-1.5 text-right tabular-nums text-text-primary">{a == null ? 'n/a' : `${a}%`}</td>
+                <td className="py-1.5 text-right tabular-nums text-text-muted whitespace-nowrap">{r?.submitted_date || 'Never'}</td>
+                <td className="py-1.5 text-right text-text-muted">{g == null ? '—' : `${g}%`}</td>
+                <td className="py-1.5 text-right">
+                  {g == null ? (
+                    <span className="text-text-muted text-xs">No goal</span>
+                  ) : a == null ? (
+                    <span className="text-text-muted text-xs">n/a</span>
+                  ) : hit ? (
+                    <span className="text-green-600 font-semibold text-xs">Hit</span>
+                  ) : (
+                    <span className="text-red-500 font-semibold text-xs">Missed</span>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// Individual audit submissions (newest first) — these arrive on an irregular
 // (roughly monthly) cadence, so each row shows its submission date plus a
 // link that opens the full scored report in Operandio in a new window.
 function SubmissionsList({ rows }) {
   const list = rows || []
   if (list.length === 0) {
-    return <p className="text-xs text-text-muted mt-3">No audits submitted in this date range.</p>
+    return <p className="text-xs text-text-muted mt-3">No audits submitted yet.</p>
   }
   return (
     <div className="bg-surface rounded-xl border border-border p-4 mt-3 overflow-x-auto">
@@ -299,12 +347,17 @@ export const KPI_DEFS = [
       ? pct(d.c2s_utilization.via_c2s, d.c2s_utilization.cancelled_members)
       : null) },
   // QA-Cleaning audits submitted in Operandio by leadership on an irregular
-  // (roughly monthly) cadence. Value = average audit score in range; the
-  // expanded tile lists each submission with a link to the full Operandio
-  // report. hasSubmissions enables that list in the detail view.
+  // (roughly monthly) cadence. `timeless`: the fetch ignores the report date
+  // range and the value is each club's MOST RECENT audit score (averaged when
+  // multiple clubs are selected) — audits are too infrequent for date-range
+  // math. The trend plots one point per submission instead of month buckets,
+  // and hasSubmissions lists each audit with a link to the Operandio report.
   { key: 'qa', label: 'Cleanliness - Quality Assessment', goalKey: 'kpi_goal_qa', source: 'qa',
-    hasSubmissions: true,
-    derive: d => mean((d?.rows || []).map(r => r.score_pct).filter(v => v != null)) },
+    hasSubmissions: true, timeless: true,
+    derive: d => {
+      const latest = Object.values(latestQaByClub(d)).map(r => r.score_pct).filter(v => v != null)
+      return latest.length ? mean(latest) : null
+    } },
 ]
 
 const SOURCE_FETCHERS = {
@@ -315,6 +368,26 @@ const SOURCE_FETCHERS = {
   qa: (params, opts) => getOperandioQaReports(params, opts),
 }
 const DISTINCT_SOURCES = [...new Set(KPI_DEFS.map(d => d.source))]
+// Sources still needing the per-club (date-bound) fetch in multi-club view —
+// timeless defs derive per-club values from their combined dateless response.
+const PER_CLUB_SOURCES = [...new Set(KPI_DEFS.filter(d => !d.timeless).map(d => d.source))]
+
+// Most recent audit per club (the /qa-reports rows arrive newest-first).
+function latestQaByClub(d) {
+  const out = {}
+  for (const r of (d?.rows || [])) {
+    if (!out[r.location_slug]) out[r.location_slug] = r
+  }
+  return out
+}
+
+// Compact date label for per-submission trend points: "6/5", with a 2-digit
+// year tacked on once the data spans into earlier years.
+function fmtSubmittedLabel(dateStr) {
+  if (!dateStr) return ''
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return y === new Date().getFullYear() ? `${m}/${d}` : `${m}/${d}/${String(y).slice(-2)}`
+}
 
 // Per-club KPI toggle, set in Admin → KPI Goals. '1' = this KPI is turned off
 // for this club: hidden in its single-club view, excluded from the blended
@@ -401,10 +474,12 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
         for (const def of KPI_DEFS) {
           const p = planFor(settingsMap, def, clubsNow, locationSlug)
           if (p.enabled.length === 0) continue
-          plans.set(p.key, { source: def.source, slugParam: p.slugParam })
+          plans.set(p.key, { source: def.source, slugParam: p.slugParam, timeless: !!def.timeless })
         }
         const pairs = await Promise.all([...plans.entries()].map(([key, p]) =>
-          SOURCE_FETCHERS[p.source]({ start_date: startDate, end_date: endDate, location_slug: p.slugParam })
+          SOURCE_FETCHERS[p.source](p.timeless
+            ? { location_slug: p.slugParam }
+            : { start_date: startDate, end_date: endDate, location_slug: p.slugParam })
             .then(r => [key, r]).catch(() => [key, null])
         ))
         if (cancelled) return
@@ -425,7 +500,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
     let cancelled = false
     setPerClub(null) // clear stale rows when switching between multi-club selections
     Promise.all(clubs.map(async slug => {
-      const pairs = await Promise.all(DISTINCT_SOURCES.map(s =>
+      const pairs = await Promise.all(PER_CLUB_SOURCES.map(s =>
         SOURCE_FETCHERS[s]({ start_date: startDate, end_date: endDate, location_slug: slug })
           .then(r => [s, r]).catch(() => [s, null])
       ))
@@ -452,7 +527,9 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
       try {
         // Only fetch sources still needed once per-club KPI toggles are applied
         // (e.g. skip the Operandio calls if Operational Compliance is off here).
-        const activeDefs = KPI_DEFS.filter(def => clubs.some(s => !offFor(goals, def, s)))
+        // Timeless defs (QA audits) build their trend from the combined
+        // dateless response — no monthly refetches.
+        const activeDefs = KPI_DEFS.filter(def => !def.timeless && clubs.some(s => !offFor(goals, def, s)))
         const activeSources = [...new Set(activeDefs.map(d => d.source))]
         const perMonth = await Promise.all(ranges.map(async r => {
           const pairs = await Promise.all(activeSources.map(s =>
@@ -511,23 +588,36 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
 
       {visibleDefs.map(def => {
         const plan = planFor(goals, def, clubs, locationSlug)
-        const value = def.derive(dataByPlan?.[plan.key])
+        const planData = dataByPlan?.[plan.key]
+        const value = def.derive(planData)
         const singleGoal = !isMulti ? goalForSlug(def, goals, clubs[0]) : null
         const gap = !isMulti ? gapFor(def, value, singleGoal) : null
         const open = openKey === def.key
 
+        // Timeless defs (QA audits): per-club latest values come straight from
+        // the combined dateless response — no per-club fetches needed.
+        const latestByClub = def.timeless ? latestQaByClub(planData) : null
+
         // Multi-club: count how many enabled clubs (with a goal) are on target.
         let onGoal = 0, withGoal = 0
-        if (isMulti && perClub) {
+        const perClubReady = def.timeless ? !!planData : !!perClub
+        if (isMulti && perClubReady) {
           for (const slug of plan.enabled) {
             const g = goalForSlug(def, goals, slug)
             if (g == null) continue
             withGoal++
-            const a = def.derive(perClub[slug]?.[def.source])
+            const a = def.timeless
+              ? (latestByClub[slug]?.score_pct ?? null)
+              : def.derive(perClub[slug]?.[def.source])
             if (onTarget(def, a, g)) onGoal++
           }
         }
-        const points = trendReady ? trendByKey[def.key] : null
+        // Timeless trend: one point per submission (oldest → newest); others
+        // use the lazily-fetched monthly buckets.
+        const points = def.timeless
+          ? (planData?.rows || []).slice().reverse().filter(r => r.score_pct != null)
+              .map(r => ({ key: r.id, label: fmtSubmittedLabel(r.submitted_date), value: r.score_pct }))
+          : (trendReady ? trendByKey[def.key] : null)
 
         return (
           <div key={def.key} className="bg-surface rounded-xl border border-border p-5">
@@ -543,7 +633,11 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                 <p className="text-xs text-text-muted mt-0.5">
                   {isMulti
                     ? `${plan.enabled.length} club${plan.enabled.length === 1 ? '' : 's'}`
-                    : 'Current period'}
+                    : def.timeless
+                      ? (latestByClub?.[clubs[0]]
+                          ? `Last submitted ${fmtSubmittedLabel(latestByClub[clubs[0]].submitted_date)}`
+                          : 'No audits yet')
+                      : 'Current period'}
                 </p>
               </div>
               <div className="ml-auto flex items-center gap-6 flex-shrink-0">
@@ -551,7 +645,9 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                   <p className="text-2xl font-bold text-text-primary leading-none">
                     {formatValue(def, value)}
                   </p>
-                  <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">{isMulti ? 'Combined' : 'Actual'}</p>
+                  <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">
+                    {def.timeless ? (isMulti ? 'Avg of latest' : 'Latest') : (isMulti ? 'Combined' : 'Actual')}
+                  </p>
                 </div>
                 {!isMulti && (
                   <div className="text-right">
@@ -561,7 +657,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                 )}
                 <div className="w-40 text-right">
                   {isMulti ? (
-                    !perClub ? (
+                    !perClubReady ? (
                       <span className="text-sm text-text-muted">Loading clubs…</span>
                     ) : withGoal === 0 ? (
                       <span className="text-sm text-text-muted">No goals set</span>
@@ -594,21 +690,23 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
             {open && (
               <div id={`kpi-detail-${def.key}`}>
                 {isMulti ? (
-                  !perClub ? (
+                  def.timeless ? (
+                    <QaPerClubTable def={def} clubs={plan.enabled} latestByClub={latestByClub} goals={goals} />
+                  ) : !perClub ? (
                     <p className="text-xs text-text-muted mt-3">Loading clubs…</p>
                   ) : (
                     <PerClubGoalTable def={def} clubs={plan.enabled} perClub={perClub} goals={goals} />
                   )
                 ) : (
                   <>
-                    {trendLoading && !points && (
+                    {!def.timeless && trendLoading && !points && (
                       <p className="text-xs text-text-muted mt-3">Loading trend…</p>
                     )}
-                    {points && <KpiTrendChart points={points} goal={singleGoal} format={def.format} />}
+                    {points && points.length > 0 && <KpiTrendChart points={points} goal={singleGoal} format={def.format} />}
                   </>
                 )}
                 {def.hasSubmissions && (
-                  <SubmissionsList rows={dataByPlan?.[plan.key]?.rows} />
+                  <SubmissionsList rows={planData?.rows} />
                 )}
               </div>
             )}

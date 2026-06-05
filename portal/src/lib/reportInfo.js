@@ -364,7 +364,7 @@ const REPORT_INFO = {
       {
         heading: 'Cleanliness - Quality Assessment',
         body:
-          'QA-Cleaning audits submitted in Operandio by leadership, on an irregular (roughly monthly) cadence per club. The value is the average audit score in the selected range. Expand the tile to see each submission with its date and a View Report link that opens the full scored report in Operandio in a new window (an Operandio login is required to view it).',
+          'QA-Cleaning audits submitted in Operandio by leadership, on an irregular (roughly monthly) cadence per club. Because audits are infrequent, this KPI ignores the date range: the value is each club\'s most recent audit score (averaged when multiple clubs are selected), and the trend plots a point for every submission rather than month buckets. The all-clubs table shows each club\'s latest score and when it was last audited. Expand the tile to see every submission with a View Report link that opens the full scored report in Operandio in a new window (an Operandio login is required to view it).',
       },
       {
         heading: 'How the percentages work',
