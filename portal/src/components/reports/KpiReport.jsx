@@ -234,17 +234,15 @@ export const KPI_DEFS = [
   // skipped so they don't double-count) — same math as the Operations report.
   { key: 'ops', label: 'Operational Compliance', goalKey: 'kpi_goal_ops', source: 'operations',
     derive: d => mean((d?.rows || []).filter(r => r.period_start === r.period_end).map(r => r.overall_pct)) },
-  // Share of Cancelled members that went through Click2Save. Numerator =
-  // Click2Save CANCEL events; denominator = membership (non-insurance) cancels
-  // with status Cancelled — insurance plans don't cancel through Click2Save.
+  // Share of Cancelled members that went through Click2Save. Member-level
+  // match computed server-side (c2s_utilization): of the membership
+  // (non-insurance) members whose cancel took effect in range, how many have a
+  // matching C2S CANCEL request. Bounded at 100% — comparing raw event counts
+  // to effective cancels overshoots because requests precede effective dates.
   { key: 'c2s', label: 'Click2Save Utilization', goalKey: 'kpi_goal_c2s', source: 'cancels',
-    derive: d => {
-      const c2sCancels = (d?.c2s_cancel_reasons || []).reduce((s, r) => s + (r.count || 0), 0)
-      const cancelled = d?.plan_types?.membership
-        ? (d.plan_types.membership.by_status?.['Cancelled'] || 0)
-        : (d?.by_status?.['Cancelled'] || 0)
-      return pct(c2sCancels, cancelled)
-    } },
+    derive: d => (d?.c2s_utilization
+      ? pct(d.c2s_utilization.via_c2s, d.c2s_utilization.cancelled_members)
+      : null) },
 ]
 
 const SOURCE_FETCHERS = {

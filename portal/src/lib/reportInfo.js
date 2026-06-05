@@ -359,7 +359,7 @@ const REPORT_INFO = {
       {
         heading: 'Click2Save Utilization',
         body:
-          'How many cancellations went through Click2Save: Click2Save cancel events divided by members whose status changed to Cancelled in the range. Insurance plans (A2 / Active and Fit) are excluded from the denominator since those don\'t cancel through Click2Save. Everyone should be cancelling through Click2Save, so low numbers mean staff are cancelling directly in ABC.',
+          'Of the members whose cancellation took effect in the range, the share that went through Click2Save. Each cancelled member is matched to their Click2Save cancel request, which can be up to 90 days earlier since cancels sit in Pending Cancel until their effective date. Insurance plans (A2 / Active and Fit) are excluded since those don\'t cancel through Click2Save. Everyone should be cancelling through Click2Save, so low numbers mean staff are cancelling directly in ABC.',
       },
       {
         heading: 'How the percentages work',

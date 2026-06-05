@@ -776,7 +776,7 @@ router.get('/cancels', async (req, res) => {
     // 1. Cancels with member_status_date in range (supports multi-slug)
     let cancelsQuery = supabaseAdmin
       .from('abc_members')
-      .select('first_name, last_name, email, membership_type, agreement_number, member_status, member_status_date, sales_person_name, sign_date, since_date')
+      .select('first_name, last_name, email, member_id, membership_type, agreement_number, member_status, member_status_date, sales_person_name, sign_date, since_date')
       .in('member_status', ['Cancelled', 'Expired', 'Return For Collection'])
     if (start_date) cancelsQuery = cancelsQuery.gte('member_status_date', start_date)
     if (end_date) cancelsQuery = cancelsQuery.lte('member_status_date', end_date)
@@ -880,6 +880,7 @@ router.get('/cancels', async (req, res) => {
     let c2sCancelReasons = []
     let c2sSaveCount = 0
     let c2sSaveOptions = []
+    let c2sUtilization = null
     let c2sError = null
 
     try {
@@ -932,6 +933,49 @@ router.get('/cancels', async (req, res) => {
       c2sSaveOptions = Object.entries(offerCounts)
         .map(([subtype, count]) => ({ subtype, count }))
         .sort((a, b) => b.count - a.count)
+
+      // Click2Save utilization: of the membership (non-insurance) members whose
+      // status flipped to Cancelled in range, how many came through Click2Save.
+      // C2S cancels are REQUESTED weeks before they take effect (member sits in
+      // Pending Cancel until the effective date), so the member-level match
+      // looks at CANCEL events from up to 90 days before the range start —
+      // comparing raw event counts to effective cancels overshoots 100%.
+      const cancelledMembers = membershipCancels.filter(m => m.member_status === 'Cancelled')
+      let lookbackIso = null
+      if (start_date) {
+        const lb = new Date(`${start_date}T00:00:00Z`)
+        lb.setUTCDate(lb.getUTCDate() - 90)
+        lookbackIso = lb.toISOString()
+      }
+      let evQuery = supabaseAdmin
+        .from('click2save_events_expanded')
+        .select('member_id, agreement_id')
+        .eq('request_type', 'CANCEL')
+      if (lookbackIso) evQuery = evQuery.gte('occurred_at', lookbackIso)
+      if (c2sEnd) evQuery = evQuery.lte('occurred_at', c2sEnd)
+      if (clubNumbersC.length > 0) evQuery = evQuery.in('club_code', clubNumbersC)
+
+      const evRows = []
+      let eFrom = 0
+      while (true) {
+        const { data: page, error: evErr } = await evQuery.range(eFrom, eFrom + 999)
+        if (evErr) throw evErr
+        if (!page || page.length === 0) break
+        evRows.push(...page)
+        if (page.length < 1000) break
+        eFrom += 1000
+      }
+      const c2sMemberIds = new Set()
+      const c2sAgreementIds = new Set()
+      for (const e of evRows) {
+        if (e.member_id) c2sMemberIds.add(String(e.member_id))
+        if (e.agreement_id) c2sAgreementIds.add(String(e.agreement_id))
+      }
+      const viaC2s = cancelledMembers.filter(m =>
+        (m.member_id && c2sMemberIds.has(String(m.member_id))) ||
+        (m.agreement_number && c2sAgreementIds.has(String(m.agreement_number)))
+      ).length
+      c2sUtilization = { cancelled_members: cancelledMembers.length, via_c2s: viaC2s }
     } catch (err) {
       // Don't fail the whole report if Click2Save data is unavailable —
       // surface the error in the response so the UI can show a soft warning.
@@ -981,6 +1025,8 @@ router.get('/cancels', async (req, res) => {
       c2s_cancel_reasons: c2sCancelReasons,
       c2s_save_count: c2sSaveCount,
       c2s_save_options: c2sSaveOptions,
+      // Member-matched utilization for the KPI report: { cancelled_members, via_c2s }
+      c2s_utilization: c2sUtilization,
       c2s_error: c2sError,
     })
   } catch (err) {
