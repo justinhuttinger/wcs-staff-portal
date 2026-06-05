@@ -208,6 +208,8 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
   const defaultSlug = hasMultipleReportLocations ? 'all' : (location || 'Salem').toLowerCase()
   const [locationSlug, setLocationSlug] = useState(defaultSlug)
   const [activeQuick, setActiveQuick] = useState('this_month')
+  // Cancels report: All / Membership / Insurance plan-type filter
+  const [cancelsPlanType, setCancelsPlanType] = useState('all')
 
   useEffect(() => {
     // Make sure the URL hash matches the resolved initial report so refreshes
@@ -339,6 +341,32 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
                 {activeReport && (
                   <ReportInfoButton info={getReportInfo(activeReport)} />
                 )}
+                {/* Cancels: All / Membership / Insurance plan-type pills */}
+                {activeReport === 'cancels' && (
+                  <div className="flex items-center gap-1.5">
+                    {[
+                      { key: 'all', label: 'All' },
+                      { key: 'membership', label: 'Membership' },
+                      { key: 'insurance', label: 'Insurance' },
+                    ].map(opt => {
+                      const active = cancelsPlanType === opt.key
+                      return (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => setCancelsPlanType(opt.key)}
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${
+                            active
+                              ? 'bg-wcs-red text-white border-wcs-red'
+                              : 'bg-bg text-text-muted border-border hover:text-text-primary'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
                 <div className="ml-auto flex-shrink-0">
                   {/* KPIs uses location pills below the date range instead of this dropdown. */}
                   {activeReport === 'kpis' ? null : showLocation ? (
@@ -438,7 +466,7 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
             <MembershipReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
           )}
           {activeReport === 'cancels' && (
-            <CancelsReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+            <CancelsReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} planType={cancelsPlanType} />
           )}
           {activeReport === 'pt' && (
             <PTReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
