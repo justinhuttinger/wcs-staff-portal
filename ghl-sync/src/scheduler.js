@@ -3,6 +3,7 @@ const { fullSync } = require('./sync/fullSync');
 const { deltaSync } = require('./sync/deltaSync');
 const { crossLocCleanup } = require('./sync/crossLocCleanup');
 const { abcSync } = require('./abc/abcSync');
+const { syncPayrollRecurringWindow } = require('./abc/recurringServices');
 const { alertSyncFailed } = require('./alerts');
 
 function startScheduler() {
@@ -53,7 +54,24 @@ function startScheduler() {
     }
   });
 
+  // PT sales commissions (ABC recurring services) — daily, previous + current
+  // month, so the Payroll report stays fresh intra-month and late-posted
+  // sales keep reconciling after the month closes. Replaces the manual
+  // scripts/sync-payroll-recurring.js run (still available for backfills).
+  const payrollSyncHour = process.env.PAYROLL_SYNC_HOUR || 4; // PST
+  const payrollSyncHourUTC = (parseInt(payrollSyncHour) + 8) % 24;
+  cron.schedule(`0 ${payrollSyncHourUTC} * * *`, async () => {
+    console.log('[Scheduler] Starting payroll recurring sync...');
+    try {
+      await syncPayrollRecurringWindow();
+    } catch (err) {
+      console.error('[Scheduler] Payroll recurring sync failed:', err.message);
+      await alertSyncFailed(err).catch(() => {});
+    }
+  });
+
   console.log(`[Scheduler] Delta sync every ${intervalMinutes}m, full sync daily at ${fullSyncHour}:00 PST (${fullSyncHourUTC}:00 UTC)`);
+  console.log(`[Scheduler] Payroll recurring sync daily at ${payrollSyncHour}:00 PST (${payrollSyncHourUTC}:00 UTC)`);
   console.log(`[Scheduler] ABC sync every ${abcIntervalMinutes}m (DRY_RUN=${process.env.DRY_RUN || 'true'})`);
 }
 
