@@ -11,6 +11,7 @@
  */
 const axios = require('axios');
 const supabase = require('../db/supabase');
+const LOCATIONS = require('../config/locations');
 
 const ABC_BASE_URL = process.env.ABC_BASE_URL || 'https://api.abcfinancial.com/rest';
 const ABC_APP_ID = process.env.ABC_APP_ID;
@@ -177,10 +178,36 @@ async function syncRecurringCommissionsForClub(clubNumber, fromDate, toDate, sle
   return total;
 }
 
+/**
+ * Scheduler entry point: sync the previous + current month for every club.
+ * One saleTimestampRange spanning both months per club; each row's period is
+ * derived from its own sale_date, so the two months land in their own
+ * periods. Covering the previous month daily means late-posted sales keep
+ * reconciling after the month closes (the upsert makes re-syncs idempotent).
+ * Per-club failures are logged and skipped so one club can't block the rest.
+ */
+async function syncPayrollRecurringWindow() {
+  const now = new Date();
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)); // last day of current month
+  const clubs = LOCATIONS.map((l) => l.clubNumber).filter(Boolean);
+  let grand = 0;
+  for (const club of clubs) {
+    try {
+      grand += await syncRecurringCommissionsForClub(club, from, to);
+    } catch (err) {
+      console.error(`[Payroll] recurring sync failed for club ${club}: ${err.message}`);
+    }
+  }
+  console.log(`[Payroll] recurring sync done: ${grand} services across ${clubs.length} clubs (${fmtDate(from)} -> ${fmtDate(to)})`);
+  return grand;
+}
+
 module.exports = {
   fetchRecurringServicesForRange,
   fetchEmployeeMap,
   syncRecurringCommissionsForClub,
+  syncPayrollRecurringWindow,
   transformRecurringService,
   resolveCommissionEmployee,
   totalContractValue,
