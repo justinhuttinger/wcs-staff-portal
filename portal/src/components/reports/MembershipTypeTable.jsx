@@ -4,15 +4,17 @@ import { useState } from 'react'
 // Sales by Membership Type) and Cancels (by Membership Type).
 // When `collapsible` is true the component renders as a compact pill
 // (auto-width) until clicked, then expands to the full breakdown card.
-export default function MembershipTypeTable({ title, rows, collapsible = false }) {
-  const [open, setOpen] = useState(!collapsible)
+export default function MembershipTypeTable({ title, rows, collapsible = false, flush = false }) {
+  // flush = render without the bordered card chrome (for use inside a
+  // ReportBlock). Always expanded; never the collapsed pill.
+  const [open, setOpen] = useState(flush ? true : !collapsible)
   const list = rows || []
   const totalMembers = list.reduce((s, r) => s + (r.members || 0), 0)
   const totalAgreements = list.reduce((s, r) => s + (r.agreements || 0), 0)
   const max = list.reduce((m, r) => Math.max(m, r.members || 0), 0)
 
   // Compact bubble — collapsed state
-  if (collapsible && !open) {
+  if (collapsible && !open && !flush) {
     return (
       <button
         type="button"
@@ -34,8 +36,8 @@ export default function MembershipTypeTable({ title, rows, collapsible = false }
 
   // Expanded card — full breakdown
   return (
-    <div className="bg-surface rounded-xl border border-border p-6">
-      {collapsible ? (
+    <div className={flush ? '' : 'bg-surface rounded-xl border border-border p-6'}>
+      {collapsible && !flush ? (
         <button
           type="button"
           onClick={() => setOpen(false)}

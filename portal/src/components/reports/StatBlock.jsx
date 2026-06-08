@@ -19,12 +19,18 @@ const COL_CLASS = {
   6: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6',
 }
 
-export function StatBlock({ cols = 4, children, className = '' }) {
+export function StatBlock({ cols = 4, children, className = '', flush = false }) {
+  const grid = (
+    <div className={`grid ${COL_CLASS[cols] || COL_CLASS[4]} gap-px bg-border`}>
+      {children}
+    </div>
+  )
+  // flush = no own border/rounding; used inside a ReportBlock where the outer
+  // panel provides the border and the grid sits edge-to-edge.
+  if (flush) return <div className={className}>{grid}</div>
   return (
     <div className={`bg-surface border border-border rounded-xl overflow-hidden ${className}`}>
-      <div className={`grid ${COL_CLASS[cols] || COL_CLASS[4]} gap-px bg-border`}>
-        {children}
-      </div>
+      {grid}
     </div>
   )
 }
@@ -46,6 +52,34 @@ export function Panel({ children, className = '' }) {
   return (
     <div className={`bg-surface border border-border rounded-xl overflow-hidden ${className}`}>
       {children}
+    </div>
+  )
+}
+
+// "Whole report = one block": a single bordered panel whose direct children
+// (sections) are separated by hairline dividers. Inner content should be
+// borderless and rely on this panel's border + the dividers.
+export function ReportBlock({ children, className = '' }) {
+  return (
+    <div className={`bg-surface border border-border rounded-xl overflow-hidden divide-y divide-border ${className}`}>
+      {children}
+    </div>
+  )
+}
+
+// One section inside a ReportBlock: an uppercase heading followed by content.
+// The heading sits directly above its content (no divider between them); the
+// divider falls between sections via ReportBlock's divide-y.
+export function ReportSection({ title, action, children, bodyClassName = 'px-5 sm:px-6 pb-5' }) {
+  return (
+    <div>
+      {title && (
+        <div className="flex items-center gap-3 px-5 sm:px-6 pt-4 pb-3">
+          <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text-primary">{title}</h3>
+          {action}
+        </div>
+      )}
+      {bodyClassName ? <div className={bodyClassName}>{children}</div> : children}
     </div>
   )
 }

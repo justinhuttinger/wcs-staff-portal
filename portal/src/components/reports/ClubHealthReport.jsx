@@ -3,16 +3,17 @@ import { getClubHealthReport } from '../../lib/api'
 import MembershipTypeTable from './MembershipTypeTable'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
-import { StatBlock, StatCell } from './StatBlock'
+import { StatBlock, StatCell, ReportBlock } from './StatBlock'
 
 const PIE_COLORS = ['#e53e3e', '#38a169', '#3182ce', '#d69e2e', '#805ad5', '#dd6b20', '#319795']
 
-function PieChart({ title, data, colorMap }) {
+function PieChart({ title, data, colorMap, flush = false }) {
+  const wrap = flush ? 'bg-surface p-6' : 'bg-surface rounded-xl border border-border p-6'
   const entries = Object.entries(data || {}).filter(([, v]) => v > 0)
   const total = entries.reduce((sum, [, v]) => sum + v, 0)
   if (total === 0) {
     return (
-      <div className="bg-surface rounded-xl border border-border p-6 text-center">
+      <div className={`${wrap} text-center`}>
         <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">{title}</p>
         <p className="text-sm text-text-muted py-4">No data</p>
       </div>
@@ -32,7 +33,7 @@ function PieChart({ title, data, colorMap }) {
   })
 
   return (
-    <div className="bg-surface rounded-xl border border-border p-6">
+    <div className={wrap}>
       <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">{title}</p>
       <div className="flex items-center gap-6">
         <div
@@ -57,10 +58,10 @@ function PieChart({ title, data, colorMap }) {
 const MEDAL_COLORS = ['#d4af37', '#9aa1a8', '#a8722c']
 const MEDAL_LABELS = ['1st', '2nd', '3rd']
 
-function TopPerformers({ title, units, performers }) {
+function TopPerformers({ title, units, performers, flush = false }) {
   const list = performers || []
   return (
-    <div className="bg-surface rounded-xl border border-border p-6">
+    <div className={flush ? 'bg-surface p-6' : 'bg-surface rounded-xl border border-border p-6'}>
       <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">{title}</p>
       {list.length === 0 ? (
         <p className="text-sm text-text-muted py-4 text-center">No data</p>
@@ -105,13 +106,14 @@ function buildDailyPoints(byDate, startDate, endDate) {
   return points
 }
 
-function BarChart({ title, points }) {
+function BarChart({ title, points, flush = false }) {
+  const wrap = flush ? 'bg-surface p-6' : 'bg-surface rounded-xl border border-border p-6'
   const [hover, setHover] = useState(null)
   const total = points.reduce((s, p) => s + p.count, 0)
 
   if (points.length === 0 || total === 0) {
     return (
-      <div className="bg-surface rounded-xl border border-border p-6 text-center">
+      <div className={`${wrap} text-center`}>
         <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">{title}</p>
         <p className="text-sm text-text-muted py-4">No data</p>
       </div>
@@ -127,7 +129,7 @@ function BarChart({ title, points }) {
   const hovered = hover !== null ? points[hover] : null
 
   return (
-    <div className="bg-surface rounded-xl border border-border p-6">
+    <div className={wrap}>
       <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">{title}</p>
       <div className="h-5 mb-1 text-xs text-text-muted">
         {hovered && (
@@ -239,37 +241,43 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
   const sameDayRatio = { 'Same Day': data.total_same_day_sales || 0, 'Other': Math.max(0, totalAgreements - (data.total_same_day_sales || 0)) }
 
   return (
-    <div className="space-y-6">
+    <ReportBlock>
       {/* ---------- ACTIVE MEMBERS (full roster, not date-filtered) ---------- */}
-      <SectionHeader title="Active Members" />
-
-      <StatBlock cols={2}>
-        <StatCell label="Total Members" value={data.active_members_total ?? 0} />
-        <StatCell label="Total Agreements" value={data.active_agreements_total ?? 0} />
-      </StatBlock>
-
-      <MembershipTypeTable title="Active Members by Membership Type" rows={data.active_by_membership_type} collapsible />
-
-      {/* ---------- MEMBERSHIP (date-filtered new sales) ---------- */}
-      <SectionHeader title="Membership" />
-
-      <StatBlock cols={4}>
-        <StatCell label="Agreements" value={totalAgreements} />
-        <StatCell label="Members" value={totalMemberships} />
-        <StatCell label="Total VIPs" value={data.total_vips} />
-        <StatCell label="Same Day Sales" value={data.total_same_day_sales} />
-      </StatBlock>
-
-      <TopPerformers title="Top 3 Salespeople" units="pts" performers={data.top_salespeople} />
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <PieChart title="Same Day Sales to Memberships" data={sameDayRatio} colorMap={{ 'Same Day': '#38a169', 'Other': '#e2e8f0' }} />
-        <BarChart title="Memberships by Day" points={buildDailyPoints(data.by_date, startDate, endDate)} />
+      <div>
+        <Heading>Active Members</Heading>
+        <StatBlock cols={2} flush>
+          <StatCell label="Total Members" value={data.active_members_total ?? 0} />
+          <StatCell label="Total Agreements" value={data.active_agreements_total ?? 0} />
+        </StatBlock>
       </div>
 
-      <MembershipTypeTable title="Sales by Membership Type" rows={data.by_membership_type} />
+      <div className="px-5 sm:px-6 py-5">
+        <MembershipTypeTable title="Active Members by Membership Type" rows={data.active_by_membership_type} flush />
+      </div>
 
-      <StatBlock cols={4}>
+      {/* ---------- MEMBERSHIP (date-filtered new sales) ---------- */}
+      <div>
+        <Heading>Membership</Heading>
+        <StatBlock cols={4} flush>
+          <StatCell label="Agreements" value={totalAgreements} />
+          <StatCell label="Members" value={totalMemberships} />
+          <StatCell label="Total VIPs" value={data.total_vips} />
+          <StatCell label="Same Day Sales" value={data.total_same_day_sales} />
+        </StatBlock>
+      </div>
+
+      <TopPerformers title="Top 3 Salespeople" units="pts" performers={data.top_salespeople} flush />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-border">
+        <PieChart title="Same Day Sales to Memberships" data={sameDayRatio} colorMap={{ 'Same Day': '#38a169', 'Other': '#e2e8f0' }} flush />
+        <BarChart title="Memberships by Day" points={buildDailyPoints(data.by_date, startDate, endDate)} flush />
+      </div>
+
+      <div className="px-5 sm:px-6 py-5">
+        <MembershipTypeTable title="Sales by Membership Type" rows={data.by_membership_type} flush />
+      </div>
+
+      <StatBlock cols={4} flush>
         <StatCell label="Cancels (Members)" value={data.cancels_members ?? 0} />
         <StatCell label="Cancels (Agreements)" value={data.cancels_agreements ?? 0} />
         <StatCell
@@ -285,21 +293,31 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
       </StatBlock>
 
       {/* ---------- PT / DAY ONE ---------- */}
-      <SectionHeader title="PT / Day One" />
-
-      <StatBlock cols={3}>
-        <StatCell label="Set" value={dayOneSet} sub="Day Ones Booked" />
-        <StatCell label="Show" value={dayOneShow} sub={`${showRate}% of set`} />
-        <StatCell label="Close" value={dayOneClose} sub={`${closeRate}% of shown`} />
-      </StatBlock>
-
-      <TopPerformers title="Top 3 Trainers" units="closes" performers={data.top_trainers} />
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <PieChart title="Day One Booked" data={data.day_one_booked} colorMap={{ 'Yes': '#38a169', 'No': '#e53e3e' }} />
-        <PieChart title="Day One Status" data={data.day_one_status} colorMap={STATUS_COLORS} />
-        <PieChart title="Day One Sale" data={data.day_one_sale} colorMap={{ 'Sale': '#38a169', 'No Sale': '#e53e3e' }} />
+      <div>
+        <Heading>PT / Day One</Heading>
+        <StatBlock cols={3} flush>
+          <StatCell label="Set" value={dayOneSet} sub="Day Ones Booked" />
+          <StatCell label="Show" value={dayOneShow} sub={`${showRate}% of set`} />
+          <StatCell label="Close" value={dayOneClose} sub={`${closeRate}% of shown`} />
+        </StatBlock>
       </div>
+
+      <TopPerformers title="Top 3 Trainers" units="closes" performers={data.top_trainers} flush />
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-border">
+        <PieChart title="Day One Booked" data={data.day_one_booked} colorMap={{ 'Yes': '#38a169', 'No': '#e53e3e' }} flush />
+        <PieChart title="Day One Status" data={data.day_one_status} colorMap={STATUS_COLORS} flush />
+        <PieChart title="Day One Sale" data={data.day_one_sale} colorMap={{ 'Sale': '#38a169', 'No Sale': '#e53e3e' }} flush />
+      </div>
+    </ReportBlock>
+  )
+}
+
+// Section heading inside the single report block.
+function Heading({ children }) {
+  return (
+    <div className="px-5 sm:px-6 pt-4 pb-3">
+      <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text-primary">{children}</h3>
     </div>
   )
 }
