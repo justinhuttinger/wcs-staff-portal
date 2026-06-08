@@ -3,6 +3,7 @@ const multer = require('multer')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
+const { classifyJobEmail, persistJobEmail } = require('../lib/operandioJobs')
 
 const router = Router()
 // In-memory upload: SendGrid Inbound Parse posts email attachments as
@@ -260,6 +261,25 @@ router.post('/webhook', upload.any(), async (req, res) => {
     return res.json({ audit: true, location: audit.locationSlug, department: audit.department, score_pct: auditScore.pct })
   }
 
+  // Per-job submission / overdue events (Phase 2). A checklist submission
+  // ("<Job> submitted at <Loc>") or an overdue notice ("Overdue: <Job> at
+  // <Loc>") is parsed into operandio_job_events (+ per-task completions for
+  // submissions). These used to fall through to the raw-email staging table.
+  const jobEmail = classifyJobEmail({ subject, text, html, receivedAt: new Date().toISOString() })
+  if (jobEmail) {
+    try {
+      await persistJobEmail(supabaseAdmin, jobEmail, null)
+      console.log('[Operandio] Job event stored:', jobEmail.kind, '-', jobEmail.event.location_slug, '-', jobEmail.event.job_name)
+      return res.json({ jobEvent: true, kind: jobEmail.kind, location: jobEmail.event.location_slug, job: jobEmail.event.job_name })
+    } catch (err) {
+      console.error('[Operandio] Job event store failed:', err.message)
+      // Don't lose the email — stash it raw so it can be reprocessed.
+      const attachments = await storeAttachments(req.files)
+      await captureRawEmail({ subject, text, html, from, reason: 'job_event_error', attachments })
+      return res.status(200).json({ ignored: true, reason: 'Job event store failed; captured raw' })
+    }
+  }
+
   const period = parsePeriodFromSubject(subject)
   if (!period) {
     console.warn('[Operandio] Subject did not match expected pattern:', subject)
@@ -376,6 +396,137 @@ router.get('/qa-reports/:id', authenticate, requireRole('manager'), async (req, 
     res.json(data)
   } catch (err) {
     console.error('[Operandio] /qa-reports/:id error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /operandio/jobs — per-job submission/overdue compliance for a date range
+// Query: start_date, end_date (YYYY-MM-DD), optional location_slug (comma ok),
+//        optional job (exact job_name), optional person (completed_by)
+// Returns who is doing the jobs and what is not getting done.
+// ---------------------------------------------------------------------------
+router.get('/jobs', authenticate, requireRole('manager'), async (req, res) => {
+  try {
+    const { start_date, end_date, location_slug, job, person } = req.query
+    if (!start_date || !end_date) return res.status(400).json({ error: 'start_date and end_date required' })
+
+    const slugs = (location_slug && location_slug !== 'all')
+      ? String(location_slug).split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+      : null
+
+    // --- Job events (submissions + overdue) ---
+    let evq = supabaseAdmin
+      .from('operandio_job_events')
+      .select('location_slug, job_name, event_type, job_date, due_by, occurred_at, steps_completed, steps_total, percent, assigned_area, submitted_by')
+      .gte('job_date', start_date)
+      .lte('job_date', end_date)
+      .order('job_date', { ascending: false })
+    if (slugs) evq = slugs.length === 1 ? evq.eq('location_slug', slugs[0]) : evq.in('location_slug', slugs)
+    if (job) evq = evq.eq('job_name', job)
+    const { data: events, error: evErr } = await evq
+    if (evErr) throw evErr
+
+    // --- Task completions (who did what) ---
+    let tq = supabaseAdmin
+      .from('operandio_task_completions')
+      .select('location_slug, job_name, job_date, step_n, task_name, completed_by, completed_at, status')
+      .gte('job_date', start_date)
+      .lte('job_date', end_date)
+    if (slugs) tq = slugs.length === 1 ? tq.eq('location_slug', slugs[0]) : tq.in('location_slug', slugs)
+    if (job) tq = tq.eq('job_name', job)
+    if (person) tq = tq.eq('completed_by', person)
+    const { data: tasks, error: tErr } = await tq
+    if (tErr) throw tErr
+
+    // Status per (location, job_name, job_date): submitted+overdue = late,
+    // submitted only = on_time, overdue only = missed.
+    const instanceKey = e => `${e.location_slug}|${e.job_name}|${e.job_date}`
+    const inst = {}
+    for (const e of events) {
+      const k = instanceKey(e)
+      if (!inst[k]) inst[k] = { location_slug: e.location_slug, job_name: e.job_name, job_date: e.job_date, submitted: null, overdue: null }
+      inst[k][e.event_type === 'submitted' ? 'submitted' : 'overdue'] = e
+    }
+    const instances = Object.values(inst).map(i => ({
+      ...i,
+      status: i.submitted ? (i.overdue ? 'late' : 'on_time') : 'missed',
+    }))
+
+    // Per-job rollup (across dates in range).
+    const jobMap = {}
+    for (const i of instances) {
+      const k = `${i.location_slug}|${i.job_name}`
+      const j = jobMap[k] || (jobMap[k] = { location_slug: i.location_slug, job_name: i.job_name, on_time: 0, late: 0, missed: 0, total: 0 })
+      j[i.status]++; j.total++
+    }
+    const jobs = Object.values(jobMap)
+      .map(j => ({ ...j, submitted: j.on_time + j.late, completion_pct: j.total ? Math.round(((j.on_time + j.late) / j.total) * 100) : 0 }))
+      .sort((a, b) => a.completion_pct - b.completion_pct || b.total - a.total)
+
+    // Per-person rollup (task completions).
+    const personMap = {}
+    for (const t of tasks) {
+      if (!t.completed_by) continue
+      const k = `${t.completed_by}`
+      const p = personMap[k] || (personMap[k] = { name: t.completed_by, locations: new Set(), tasks_done: 0, tasks_skipped: 0, jobs: new Set() })
+      p.locations.add(t.location_slug)
+      p.jobs.add(`${t.location_slug}|${t.job_name}|${t.job_date}`)
+      if (t.status === 'skipped') p.tasks_skipped++
+      else p.tasks_done++
+    }
+    const people = Object.values(personMap)
+      .map(p => ({ name: p.name, locations: [...p.locations], tasks_done: p.tasks_done, tasks_skipped: p.tasks_skipped, jobs_submitted: p.jobs.size }))
+      .sort((a, b) => b.tasks_done - a.tasks_done)
+
+    // What isn't getting done: missed (overdue, never submitted) instances.
+    const missed = instances
+      .filter(i => i.status === 'missed')
+      .map(i => ({
+        location_slug: i.location_slug, job_name: i.job_name, job_date: i.job_date,
+        due_by: i.overdue.due_by, steps_completed: i.overdue.steps_completed,
+        steps_total: i.overdue.steps_total, percent: i.overdue.percent, assigned_area: i.overdue.assigned_area,
+      }))
+      .sort((a, b) => (a.job_date < b.job_date ? 1 : -1))
+
+    const totals = {
+      instances: instances.length,
+      on_time: instances.filter(i => i.status === 'on_time').length,
+      late: instances.filter(i => i.status === 'late').length,
+      missed: missed.length,
+      submitted: instances.filter(i => i.status !== 'missed').length,
+      tasks_done: tasks.filter(t => t.status !== 'skipped').length,
+      tasks_skipped: tasks.filter(t => t.status === 'skipped').length,
+    }
+
+    res.json({ range: { start: start_date, end: end_date }, totals, jobs, people, missed })
+  } catch (err) {
+    console.error('[Operandio] /jobs error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /operandio/jobs/instance — task-level detail for one job instance
+// Query: location_slug, job_name, job_date (all required)
+// ---------------------------------------------------------------------------
+router.get('/jobs/instance', authenticate, requireRole('manager'), async (req, res) => {
+  try {
+    const { location_slug, job_name, job_date } = req.query
+    if (!location_slug || !job_name || !job_date) {
+      return res.status(400).json({ error: 'location_slug, job_name, job_date required' })
+    }
+    const { data, error } = await supabaseAdmin
+      .from('operandio_task_completions')
+      .select('step_n, task_name, completed_by, completed_at, status')
+      .eq('location_slug', String(location_slug).toLowerCase())
+      .eq('job_name', job_name)
+      .eq('job_date', job_date)
+      .order('step_n', { ascending: true })
+    if (error) throw error
+    res.json({ tasks: data || [] })
+  } catch (err) {
+    console.error('[Operandio] /jobs/instance error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })

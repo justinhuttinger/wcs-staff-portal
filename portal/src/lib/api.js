@@ -836,6 +836,26 @@ export async function getOperandioRange(params = {}, options = {}) {
   return api('/operandio/range' + (qs ? '?' + qs : ''), options)
 }
 
+// Per-job submission/overdue compliance (who's doing jobs, what's not done)
+export async function getOperandioJobs(params = {}, options = {}) {
+  const cleaned = {}
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') cleaned[k] = v
+  }
+  const qs = new URLSearchParams(cleaned).toString()
+  return api('/operandio/jobs' + (qs ? '?' + qs : ''), options)
+}
+
+// Task-level detail for a single job instance (drill-down)
+export async function getOperandioJobInstance(params = {}, options = {}) {
+  const cleaned = {}
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') cleaned[k] = v
+  }
+  const qs = new URLSearchParams(cleaned).toString()
+  return api('/operandio/jobs/instance' + (qs ? '?' + qs : ''), options)
+}
+
 // Single QA audit with its per-item breakdown (in-house HTML report viewer)
 export async function getOperandioQaReport(id, options = {}) {
   return api('/operandio/qa-reports/' + id, options)
