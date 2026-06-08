@@ -391,6 +391,29 @@ const REPORT_INFO = {
     ],
   },
 
+  'membership-audit': {
+    title: 'Membership Audit',
+    sections: [
+      {
+        heading: 'Who\'s in it',
+        body:
+          'All current (active) members from ABC. Dues are normalized to a monthly equivalent so monthly, bi-weekly, and annual plans compare fairly. Tenure runs from the membership begin date.',
+      },
+      {
+        heading: 'How filters work',
+        body: [
+          'Location — All or one club (pills).',
+          'Dues — All / Dues-paying / Non-dues. Non-dues are members with $0 recurring dues (insurance, comp, paid-in-full).',
+        ],
+      },
+      {
+        heading: 'Dues Leaks',
+        body:
+          'Members on a "paying plan" whose monthly dues are below half their plan type\'s median (including $0). A plan type counts as a paying plan when at least half its members pay, so legitimately-free plans (CORP, insurance, Employee, GymPass) are not flagged.',
+      },
+    ],
+  },
+
   audits: {
     title: 'Audits',
     sections: [
