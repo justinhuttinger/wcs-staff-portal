@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { getOperandioRange, getOperandioJobs } from '../../lib/api'
 import { LOCATION_NAMES } from '../../config/locations'
+import { ReportBlock } from './StatBlock'
 
 const SEGMENT_COLORS = {
   on_time: '#18CE99',
@@ -287,10 +288,10 @@ export default function OperationsReport({ locationSlug }) {
       {error && <p className="text-wcs-red text-sm py-4">{error}</p>}
 
       {!loading && !error && (
-        <>
+        <ReportBlock>
           {/* ---------- Period Summary ---------- */}
-          <SectionHeader title="Period Summary" />
-          <div className="bg-surface border border-border rounded-xl overflow-hidden">
+          <div>
+            <Heading>Period Summary</Heading>
             <ul className="divide-y divide-border">
               {slugs.map(slug => {
                 const rows = grouped[slug] || []
@@ -333,9 +334,11 @@ export default function OperationsReport({ locationSlug }) {
           </div>
 
           {/* ---------- Daily Trend ---------- */}
-          <SectionHeader title="Daily Trend" />
-          <TrendLegend />
-          <div className="bg-surface border border-border rounded-xl overflow-hidden">
+          <div>
+            <Heading>Daily Trend</Heading>
+            <div className="px-5 pb-3">
+              <TrendLegend />
+            </div>
             <ul className="divide-y divide-border">
               {slugs.map(slug => {
                 const rows = grouped[slug] || []
@@ -355,7 +358,7 @@ export default function OperationsReport({ locationSlug }) {
 
           {/* ---------- Job Compliance (per-submission / overdue) ---------- */}
           <JobCompliance startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
-        </>
+        </ReportBlock>
       )}
     </div>
   )
@@ -363,7 +366,7 @@ export default function OperationsReport({ locationSlug }) {
 
 function TrendLegend() {
   return (
-    <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-3 shadow-sm flex flex-wrap items-center gap-4 text-xs text-text-muted">
+    <div className="flex flex-wrap items-center gap-4 text-xs text-text-muted">
       <div className="flex items-center gap-1.5">
         <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: '#18CE99' }} />
         70%+ on track
@@ -391,6 +394,15 @@ function SectionHeader({ title }) {
         <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text-primary">{title}</h3>
       </div>
       <div className="flex-1 h-px bg-border" />
+    </div>
+  )
+}
+
+// Section heading inside the single report block.
+function Heading({ children }) {
+  return (
+    <div className="px-5 sm:px-6 pt-4 pb-3">
+      <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text-primary">{children}</h3>
     </div>
   )
 }
@@ -514,9 +526,9 @@ function JobCompliance({ startDate, endDate, locationSlug }) {
   const TABS = [['jobs', 'By Job'], ['people', 'By Person'], ['missed', 'Not Done']]
 
   return (
-    <>
-      <SectionHeader title="Job Compliance" />
-      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+    <div>
+      <Heading>Job Compliance</Heading>
+      <div>
         {/* Summary band + view toggle */}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-5 py-4 border-b border-border">
           <Stat label="on time" value={t?.on_time} color="#18CE99" />
@@ -550,6 +562,6 @@ function JobCompliance({ startDate, endDate, locationSlug }) {
           </>
         )}
       </div>
-    </>
+    </div>
   )
 }

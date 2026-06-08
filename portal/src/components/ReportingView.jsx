@@ -423,8 +423,9 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
                   </div>
                 )}
                 <div className="ml-auto flex-shrink-0">
-                  {/* KPIs and Audits use location pills below the date range instead of this dropdown. */}
-                  {activeReport === 'kpis' || activeReport === 'audits' ? null : showLocation ? (
+                  {/* KPIs, Audits, and Operational Compliance use location pills
+                      below instead of this dropdown. */}
+                  {['kpis', 'audits', 'operations'].includes(activeReport) ? null : showLocation ? (
                     <LocationMultiSelect
                       value={locationSlug}
                       onChange={setLocationSlug}
@@ -476,12 +477,12 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
                 </div>
               )}
 
-              {/* KPIs + Audits: single-select location pills for quick
-                  club-to-club navigation (these reports are viewed per club).
-                  Audits has no All option — it's strictly one club at a time. */}
-              {(activeReport === 'kpis' || activeReport === 'audits') && showLocation && (
+              {/* KPIs, Audits, Operational Compliance: single-select location
+                  pills for quick club-to-club navigation. Audits has no All
+                  option — it's strictly one club at a time. */}
+              {['kpis', 'audits', 'operations'].includes(activeReport) && showLocation && (
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {[...(activeReport === 'kpis' ? [{ slug: 'all', label: 'All' }] : []), ...(isAdmin
+                  {[...(activeReport !== 'audits' ? [{ slug: 'all', label: 'All' }] : []), ...(isAdmin
                     ? LOCATIONS.filter(l => l.slug !== 'all')
                     : reportLocations.map(l => ({ slug: l.name.toLowerCase(), label: l.name }))
                   )].map(opt => {
