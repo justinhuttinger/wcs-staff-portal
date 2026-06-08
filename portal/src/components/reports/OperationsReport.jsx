@@ -402,7 +402,7 @@ function SectionHeader({ title }) {
 function Heading({ children }) {
   return (
     <div className="px-5 sm:px-6 pt-4 pb-3">
-      <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text-primary">{children}</h3>
+      <h3 className="text-lg font-bold text-text-primary">{children}</h3>
     </div>
   )
 }
@@ -413,6 +413,10 @@ function Heading({ children }) {
 // single block (one panel, divided rows) rather than per-item bubbles.
 // ---------------------------------------------------------------------------
 function pctColor(p) { return p >= 85 ? '#18CE99' : p >= 60 ? '#FCD34D' : '#F26C4F' }
+
+// Strip the schedule parenthetical(s) from a job name for display:
+// "AM Cleaning Log (Saturday) (Saturday)" -> "AM Cleaning Log".
+function cleanJob(name) { return (name || '').replace(/\s*\([^)]*\)/g, '').trim() }
 
 function Stat({ label, value, color }) {
   return (
@@ -442,7 +446,7 @@ function JobsView({ jobs, showLoc, name }) {
       {jobs.map((j, i) => (
         <li key={i} className="flex items-center gap-4 px-5 py-3">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-text-primary truncate">{j.job_name}</p>
+            <p className="text-sm font-medium text-text-primary truncate">{cleanJob(j.job_name)}</p>
             {showLoc && <p className="text-[11px] text-text-muted">{name(j.location_slug)}</p>}
           </div>
           <div className="flex items-center gap-1.5">
@@ -450,11 +454,13 @@ function JobsView({ jobs, showLoc, name }) {
             <CountTag color="#F26C4F" n={j.late} title="late" />
             <CountTag color="#EF4444" n={j.missed} title="missed" />
           </div>
-          <div className="w-32 flex items-center gap-2">
+          <div className="w-44 flex items-center gap-2">
             <div className="flex-1 h-2 rounded-full bg-bg overflow-hidden">
               <div className="h-full rounded-full" style={{ width: `${j.completion_pct}%`, backgroundColor: pctColor(j.completion_pct) }} />
             </div>
-            <span className="text-xs font-bold text-text-primary w-9 text-right">{j.completion_pct}%</span>
+            <span className="text-xs font-bold text-text-primary whitespace-nowrap" title="done out of scheduled">
+              {j.submitted}/{j.total} · {j.completion_pct}%
+            </span>
           </div>
         </li>
       ))}
@@ -490,7 +496,7 @@ function MissedView({ missed, showLoc, name }) {
       {missed.map((m, i) => (
         <li key={i} className="flex items-center gap-4 px-5 py-3">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-text-primary truncate">{m.job_name}</p>
+            <p className="text-sm font-medium text-text-primary truncate">{cleanJob(m.job_name)}</p>
             <p className="text-[11px] text-text-muted">
               {showLoc ? name(m.location_slug) + ' · ' : ''}{fmtDate(m.job_date)}{m.assigned_area ? ' · ' + m.assigned_area : ''}
             </p>
@@ -535,8 +541,14 @@ function JobCompliance({ startDate, endDate, locationSlug }) {
           <Stat label="late" value={t?.late} color="#F26C4F" />
           <Stat label="missed" value={t?.missed} color="#EF4444" />
           <span className="w-px h-8 bg-border hidden sm:block" />
-          <Stat label="tasks done" value={t?.tasks_done} />
-          <Stat label="skipped" value={t?.tasks_skipped} color="#3B82F6" />
+          {/* Where the completion % comes from: jobs done (on-time + late) out
+              of total scheduled instances. */}
+          <div className="flex items-center gap-2" title="Jobs completed (on-time or late) out of total scheduled">
+            <span className="text-lg font-bold text-text-primary">{t ? `${t.submitted}/${t.instances}` : '0/0'}</span>
+            <span className="text-xs text-text-muted">
+              done{t?.instances ? ` (${Math.round((t.submitted / t.instances) * 100)}%)` : ''}
+            </span>
+          </div>
           <div className="ml-auto flex gap-1.5">
             {TABS.map(([k, lbl]) => (
               <button

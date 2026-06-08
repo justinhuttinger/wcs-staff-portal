@@ -252,7 +252,7 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
       </div>
 
       <div className="px-5 sm:px-6 py-5">
-        <MembershipTypeTable title="Active Members by Membership Type" rows={data.active_by_membership_type} flush />
+        <MembershipTypeTable title="Active Members by Membership Type" rows={data.active_by_membership_type} collapsible flush />
       </div>
 
       {/* ---------- MEMBERSHIP (date-filtered new sales) ---------- */}
@@ -317,7 +317,7 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
 function Heading({ children }) {
   return (
     <div className="px-5 sm:px-6 pt-4 pb-3">
-      <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text-primary">{children}</h3>
+      <h3 className="text-lg font-bold text-text-primary">{children}</h3>
     </div>
   )
 }
