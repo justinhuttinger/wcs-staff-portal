@@ -23,6 +23,8 @@ test('parses the MC audit (Springfield)', () => {
   assert.equal(r.items[0].score, 5)
   assert.equal(r.items[0].by, 'Steve Vedder')
   assert.ok(r.items.every(it => typeof it.score === 'number' && it.name))
+  assert.equal(r.submittedAt, '2026-06-02T11:36:00-07:00')
+  assert.equal(r.scoreAchieved, r.items.reduce((s, it) => s + it.score, 0))
 })
 
 test('parses the PT audit (Clackamas), excludes non-scored Auditor Name row', () => {
@@ -37,12 +39,15 @@ test('parses the PT audit (Clackamas), excludes non-scored Auditor Name row', ()
   assert.equal(r.items.length, 8)
   assert.equal(r.scorePossible % r.items.length, 0)
   assert.ok(!r.items.some(it => /Auditor Name/i.test(it.name)))
+  assert.equal(r.submittedAt, '2025-10-31T15:11:00-07:00')
+  assert.equal(r.scoreAchieved, r.items.reduce((s, it) => s + it.score, 0))
 })
 
 test('rejects a blank template (not a submitted audit)', () => {
   const r = parseAuditPdfText(fx('blank-template.txt'))
   assert.equal(r.ok, false)
   assert.ok(r.reason)
+  assert.equal(r.reason, 'not a Job Report')
 })
 
 test('rejects empty input', () => {

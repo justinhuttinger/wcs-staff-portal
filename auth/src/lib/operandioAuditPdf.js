@@ -49,7 +49,7 @@ function parseAuditPdfText(rawText) {
   if (!/Job Report/i.test(text)) return { ok: false, reason: 'not a Job Report' }
 
   // Header line: "<Department> | <Location> | Submitted <Mon D, YYYY>"
-  const header = text.match(/\n\s*([^\n|]+?)\s*\|\s*([A-Za-z .'-]+?)\s*\|\s*Submitted\s+([A-Z][a-z]{2} \d{1,2}, \d{4})/)
+  const header = text.match(/(?:^|\n)\s*([^\n|]+?)\s*\|\s*([A-Za-z .'-]+?)\s*\|\s*Submitted\s+([A-Z][a-z]{2} \d{1,2}, \d{4})/)
   if (!header) return { ok: false, reason: 'no job-report header line' }
 
   const department = header[1].replace(/\s*\([^)]*\)\s*/g, ' ').trim()
@@ -64,7 +64,9 @@ function parseAuditPdfText(rawText) {
   const dt = parseHeaderDate(sub[1])
   if (!dt) return { ok: false, reason: 'unparseable submitted date' }
   const submittedBy = sub[4].trim()
-  const tzOffset = sub[3] === 'PST' ? '-08:00' : '-07:00'
+  const TZ_OFFSETS = { PST: '-08:00', PDT: '-07:00' }
+  const tzOffset = TZ_OFFSETS[sub[3]]
+  if (!tzOffset) return { ok: false, reason: `unrecognized timezone: ${sub[3]}` }
   const time24 = to24h(sub[2].replace(/\s+/g, ''))
   const submittedAt = `${dt.iso}T${time24}:00${tzOffset}`
   const atLabel = `${sub[1]}, ${sub[2].replace(/\s+/g, '')} ${sub[3]}`
