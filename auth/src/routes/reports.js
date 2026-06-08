@@ -2,6 +2,7 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { recombineTotals } = require('../lib/membershipAuditTotals')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { countVipsByTeamMember: _countVipsByTeamMember } = require('../utils/vipsByTeamMember')
 const { parseLocationSlugParam } = require('../utils/locationSlug')
@@ -1276,6 +1277,59 @@ router.get('/speed-to-lead/audit', async (req, res) => {
     res.json({ rows: out, returned: out.length, truncated: rows.length >= limit })
   } catch (err) {
     res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /reports/membership-audit
+// Current-state snapshot of active members from abc_members: per-type dues +
+// tenure aggregates, recombined totals, and the dues-leak list. No date range.
+// Query params: location_slug (single | comma list | 'all'), include_anomalies.
+// ---------------------------------------------------------------------------
+router.get('/membership-audit', async (req, res) => {
+  try {
+    const locationFilter = await resolveLocationFilter(req.query)
+    let clubNumbers = []
+    if (locationFilter) {
+      clubNumbers = locationFilter.values.map(s => SLUG_CLUB_MAP[s]).filter(Boolean)
+    }
+    const pClubs = clubNumbers.length > 0 ? clubNumbers : null
+    const includeAnomalies = req.query.include_anomalies !== 'false'
+
+    const { data: byType, error: e1 } = await supabaseAdmin
+      .rpc('membership_audit_summary', { p_club_numbers: pClubs })
+    if (e1) return res.status(500).json({ error: 'Failed to fetch membership audit summary', detail: e1.message })
+
+    let anomalies = []
+    let truncated = false
+    if (includeAnomalies) {
+      const { data: an, error: e2 } = await supabaseAdmin
+        .rpc('membership_audit_anomalies', { p_club_numbers: pClubs })
+      if (e2) return res.status(500).json({ error: 'Failed to fetch membership audit anomalies', detail: e2.message })
+      anomalies = (an || []).map(r => ({
+        member_id:        r.member_id,
+        agreement_number: r.agreement_number,
+        name:             `${r.first_name || ''} ${r.last_name || ''}`.trim(),
+        club:             CLUB_SLUG_MAP[r.club_number] || r.club_number,
+        membership_type:  r.membership_type,
+        next_due_amount:  r.next_due_amount,
+        monthly_dues:     r.monthly_dues,
+        type_median_dues: r.type_median_dues,
+        pct_of_typical:   r.pct_of_typical,
+        begin_date:       r.begin_date,
+        tenure_months:    r.tenure_months,
+      }))
+      truncated = anomalies.length >= 1000
+    }
+
+    return res.json({
+      by_type: byType || [],
+      totals: recombineTotals(byType || []),
+      anomalies,
+      anomalies_truncated: truncated,
+    })
+  } catch (err) {
+    return res.status(500).json({ error: err.message })
   }
 })
 
