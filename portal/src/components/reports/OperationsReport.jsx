@@ -469,10 +469,29 @@ function JobsView({ jobs, showLoc, name }) {
 }
 
 function PeopleView({ people, showLoc, name }) {
+  const [sort, setSort] = useState('top')
   if (!people?.length) return <EmptyRow>No task completions in this range.</EmptyRow>
+  // Rank by tasks completed: top = most done, least = fewest done.
+  const sorted = [...people].sort((a, b) => sort === 'top' ? b.tasks_done - a.tasks_done : a.tasks_done - b.tasks_done)
   return (
-    <ul className="divide-y divide-border">
-      {people.map((p, i) => (
+    <>
+      <div className="flex items-center gap-1.5 px-5 py-2.5 border-b border-border">
+        <span className="text-[11px] uppercase tracking-wide text-text-muted font-semibold mr-1">Show</span>
+        {[['top', 'Top completers'], ['least', 'Least completers']].map(([k, lbl]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setSort(k)}
+            className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors whitespace-nowrap ${
+              sort === k ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'
+            }`}
+          >
+            {lbl}
+          </button>
+        ))}
+      </div>
+      <ul className="divide-y divide-border">
+        {sorted.map((p, i) => (
         <li key={i} className="flex items-center gap-4 px-5 py-3">
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-text-primary truncate">{p.name}</p>
@@ -485,7 +504,8 @@ function PeopleView({ people, showLoc, name }) {
           </div>
         </li>
       ))}
-    </ul>
+      </ul>
+    </>
   )
 }
 
