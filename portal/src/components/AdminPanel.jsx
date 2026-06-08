@@ -33,6 +33,7 @@ import ReferralRewardsAdmin from './admin/ReferralRewardsAdmin'
 import KpiGoalsAdmin from './admin/KpiGoalsAdmin'
 import AuditTogglesAdmin from './admin/AuditTogglesAdmin'
 import SpeedToLeadAudit from './admin/SpeedToLeadAudit'
+import MembershipAuditReport from './reports/MembershipAuditReport'
 
 const SETUP_TILES = [
   { key: 'staff', label: 'Staff', desc: 'Accounts & Roles', icon: 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z' },
@@ -76,6 +77,7 @@ const EXPERIMENTAL_TILES = [
   { key: 'kpi-goals', label: 'KPI Goals', desc: 'Report Targets (Beta)', icon: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z' },
   { key: 'audit-toggles', label: 'Audits', desc: 'Per-Club Audit Toggles (Beta)', icon: 'M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V19.5a2.25 2.25 0 0 0 2.25 2.25h7.5a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08M15.75 18.75h-7.5m7.5-3h-7.5m-4.5-9v12.75c0 .621.504 1.125 1.125 1.125h.375' },
   { key: 'speed-to-lead-audit', label: 'Speed to Lead Audit', desc: 'Vet Lead Response Times (Beta)', icon: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
+  { key: 'membership-audit', label: 'Membership Audit', desc: 'Dues & Leaks (Beta)', icon: 'M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z M6 6h.008v.008H6V6Z' },
 ]
 
 const ALL_TILES = [...SETUP_TILES, ...TECHNICAL_TILES, ...EXPERIMENTAL_TILES]
@@ -155,6 +157,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange }) {
         {activeSection === 'kpi-goals' && <KpiGoalsAdmin />}
         {activeSection === 'audit-toggles' && <AuditTogglesAdmin />}
         {activeSection === 'speed-to-lead-audit' && <SpeedToLeadAudit />}
+        {activeSection === 'membership-audit' && <MembershipAuditReport />}
         {activeSection === 'daily-snapshot' && <DailySnapshotReport />}
         {activeSection === 'paychex-training' && <PaychexTrainingAdmin />}
         {activeSection === 'revenue-backfill' && <RevenueBackfillTile />}

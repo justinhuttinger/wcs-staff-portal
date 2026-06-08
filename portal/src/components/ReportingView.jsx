@@ -17,7 +17,6 @@ import MetaAdsView from './MetaAdsView'
 import GoogleMarketingView from './GoogleMarketingView'
 import KpiReport from './reports/KpiReport'
 import AuditsReport from './reports/AuditsReport'
-import MembershipAuditReport from './reports/MembershipAuditReport'
 import ReportInfoButton from './ReportInfoButton'
 import { getReportInfo } from '../lib/reportInfo'
 
@@ -42,7 +41,6 @@ const REPORT_ICONS = {
   'google-marketing': 'm21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z',
   kpis: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z',
   audits: 'M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V19.5a2.25 2.25 0 0 0 2.25 2.25h7.5a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08M15.75 18.75h-7.5m7.5-3h-7.5m-4.5-9v12.75c0 .621.504 1.125 1.125 1.125h.375',
-  'membership-audit': 'M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z M6 6h.008v.008H6V6Z',
 }
 
 const ALL_REPORT_TILES = [
@@ -64,12 +62,11 @@ const ALL_REPORT_TILES = [
   { key: 'google-marketing', label: 'Google', desc: 'Business + Analytics' },
   { key: 'kpis', label: 'KPIs', desc: 'Goals vs. Actuals' },
   { key: 'audits', label: 'Audits', desc: 'Operandio Scores' },
-  { key: 'membership-audit', label: 'Membership Audit', desc: 'Dues & Leaks' },
 ]
 
 // Reports that sit at the very top of the nav as standalone items — no group
 // header, no dropdown. KPIs leads the list.
-const STANDALONE_REPORTS = ['kpis', 'membership-audit']
+const STANDALONE_REPORTS = ['kpis']
 
 // Group tiles surface fewer items at the top level. Each group holds an
 // ordered list of report keys; reports outside any group render either as
@@ -109,7 +106,7 @@ function getReportTilesForRole(role) {
     case 'marketing':
       // Marketing: marketing tiles + broader reports per REPORT_ACCESS, minus
       // the experimental reports (corp+admin only).
-      return ALL_REPORT_TILES.filter(t => t.key !== 'kpis' && t.key !== 'audits' && t.key !== 'membership-audit')
+      return ALL_REPORT_TILES.filter(t => t.key !== 'kpis' && t.key !== 'audits')
     default: // corporate, admin, director
       return ALL_REPORT_TILES
   }
@@ -387,7 +384,7 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
       {/* Header card */}
       <div className="relative z-20 bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
         {(() => {
-          const showDateControls = activeReport !== 'pt-roster' && activeReport !== 'operations' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing' && activeReport !== 'audits' && activeReport !== 'membership-audit'
+          const showDateControls = activeReport !== 'pt-roster' && activeReport !== 'operations' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing' && activeReport !== 'audits'
           const showLocation = hasMultipleReportLocations
           return (
             <>
@@ -428,7 +425,7 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
                 <div className="ml-auto flex-shrink-0">
                   {/* KPIs, Audits, and Operational Compliance use location pills
                       below instead of this dropdown. */}
-                  {['kpis', 'audits', 'operations', 'membership-audit'].includes(activeReport) ? null : showLocation ? (
+                  {['kpis', 'audits', 'operations'].includes(activeReport) ? null : showLocation ? (
                     <LocationMultiSelect
                       value={locationSlug}
                       onChange={setLocationSlug}
@@ -483,7 +480,7 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
               {/* KPIs, Audits, Operational Compliance: single-select location
                   pills for quick club-to-club navigation. Audits has no All
                   option — it's strictly one club at a time. */}
-              {['kpis', 'audits', 'operations', 'membership-audit'].includes(activeReport) && showLocation && (
+              {['kpis', 'audits', 'operations'].includes(activeReport) && showLocation && (
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {[...(activeReport !== 'audits' ? [{ slug: 'all', label: 'All' }] : []), ...(isAdmin
                     ? LOCATIONS.filter(l => l.slug !== 'all')
@@ -572,9 +569,6 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           )}
           {activeReport === 'audits' && (
             <AuditsReport locationSlug={locationSlug} />
-          )}
-          {activeReport === 'membership-audit' && (
-            <MembershipAuditReport locationSlug={locationSlug} />
           )}
         </>
       </div>
