@@ -332,13 +332,12 @@ export default function OperationsReport({ locationSlug }) {
                       skipped={agg.skipped_pct}
                       uncompleted={agg.uncompleted_pct}
                     />
-                    {/* Breakdown of the overall %: it's on-time + late + skipped
-                        (i.e. 100% minus uncompleted), at the task level. */}
+                    {/* Breakdown of the overall %: on-time + late + skipped,
+                        with uncompleted shown separately, at the task level. */}
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-2 text-[11px] text-text-muted">
                       <span><b className="text-text-primary font-semibold">{agg.on_time_pct.toFixed(0)}%</b> on-time</span>
                       <span>+ <b className="text-text-primary font-semibold">{agg.late_pct.toFixed(0)}%</b> late</span>
                       <span>+ <b className="text-text-primary font-semibold">{agg.skipped_pct.toFixed(0)}%</b> skipped</span>
-                      <span className="text-text-muted">= {agg.overall_pct.toFixed(0)}% overall</span>
                       <span className="ml-auto"><b className="text-text-primary font-semibold">{agg.uncompleted_pct.toFixed(0)}%</b> not done</span>
                     </div>
                   </li>
