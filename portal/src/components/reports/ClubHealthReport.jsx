@@ -3,6 +3,7 @@ import { getClubHealthReport } from '../../lib/api'
 import MembershipTypeTable from './MembershipTypeTable'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
+import { StatBlock, StatCell } from './StatBlock'
 
 const PIE_COLORS = ['#e53e3e', '#38a169', '#3182ce', '#d69e2e', '#805ad5', '#dd6b20', '#319795']
 
@@ -242,40 +243,22 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
       {/* ---------- ACTIVE MEMBERS (full roster, not date-filtered) ---------- */}
       <SectionHeader title="Active Members" />
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Total Members</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{data.active_members_total ?? 0}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Total Agreements</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{data.active_agreements_total ?? 0}</p>
-        </div>
-      </div>
+      <StatBlock cols={2}>
+        <StatCell label="Total Members" value={data.active_members_total ?? 0} />
+        <StatCell label="Total Agreements" value={data.active_agreements_total ?? 0} />
+      </StatBlock>
 
       <MembershipTypeTable title="Active Members by Membership Type" rows={data.active_by_membership_type} collapsible />
 
       {/* ---------- MEMBERSHIP (date-filtered new sales) ---------- */}
       <SectionHeader title="Membership" />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Agreements</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{totalAgreements}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Members</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{totalMemberships}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Total VIPs</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{data.total_vips}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Same Day Sales</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{data.total_same_day_sales}</p>
-        </div>
-      </div>
+      <StatBlock cols={4}>
+        <StatCell label="Agreements" value={totalAgreements} />
+        <StatCell label="Members" value={totalMemberships} />
+        <StatCell label="Total VIPs" value={data.total_vips} />
+        <StatCell label="Same Day Sales" value={data.total_same_day_sales} />
+      </StatBlock>
 
       <TopPerformers title="Top 3 Salespeople" units="pts" performers={data.top_salespeople} />
 
@@ -286,49 +269,29 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
 
       <MembershipTypeTable title="Sales by Membership Type" rows={data.by_membership_type} />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Cancels (Members)</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{data.cancels_members ?? 0}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Cancels (Agreements)</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{data.cancels_agreements ?? 0}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Net Change (Members)</p>
-          <p className={`text-4xl font-bold mt-2 ${(data.net_change_members ?? 0) >= 0 ? 'text-green-600' : 'text-wcs-red'}`}>
-            {(data.net_change_members ?? 0) >= 0 ? '+' : ''}{data.net_change_members ?? 0}
-          </p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Net Change (Agreements)</p>
-          <p className={`text-4xl font-bold mt-2 ${(data.net_change_agreements ?? 0) >= 0 ? 'text-green-600' : 'text-wcs-red'}`}>
-            {(data.net_change_agreements ?? 0) >= 0 ? '+' : ''}{data.net_change_agreements ?? 0}
-          </p>
-        </div>
-      </div>
+      <StatBlock cols={4}>
+        <StatCell label="Cancels (Members)" value={data.cancels_members ?? 0} />
+        <StatCell label="Cancels (Agreements)" value={data.cancels_agreements ?? 0} />
+        <StatCell
+          label="Net Change (Members)"
+          value={`${(data.net_change_members ?? 0) >= 0 ? '+' : ''}${data.net_change_members ?? 0}`}
+          valueClassName={(data.net_change_members ?? 0) >= 0 ? 'text-green-600' : 'text-wcs-red'}
+        />
+        <StatCell
+          label="Net Change (Agreements)"
+          value={`${(data.net_change_agreements ?? 0) >= 0 ? '+' : ''}${data.net_change_agreements ?? 0}`}
+          valueClassName={(data.net_change_agreements ?? 0) >= 0 ? 'text-green-600' : 'text-wcs-red'}
+        />
+      </StatBlock>
 
       {/* ---------- PT / DAY ONE ---------- */}
       <SectionHeader title="PT / Day One" />
 
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Set</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{dayOneSet}</p>
-          <p className="text-[11px] text-text-muted mt-1">Day Ones Booked</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Show</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{dayOneShow}</p>
-          <p className="text-[11px] text-text-muted mt-1">{showRate}% of set</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Close</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{dayOneClose}</p>
-          <p className="text-[11px] text-text-muted mt-1">{closeRate}% of shown</p>
-        </div>
-      </div>
+      <StatBlock cols={3}>
+        <StatCell label="Set" value={dayOneSet} sub="Day Ones Booked" />
+        <StatCell label="Show" value={dayOneShow} sub={`${showRate}% of set`} />
+        <StatCell label="Close" value={dayOneClose} sub={`${closeRate}% of shown`} />
+      </StatBlock>
 
       <TopPerformers title="Top 3 Trainers" units="closes" performers={data.top_trainers} />
 

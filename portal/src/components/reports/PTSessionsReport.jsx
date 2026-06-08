@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { getPTSessionsReport, getPTSessionsTrainer } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
+import { StatBlock, StatCell } from './StatBlock'
 
 const ALL_STATUSES = ['Completed', 'Canceled-Charge']
 
@@ -45,16 +46,6 @@ const EVENT_TYPE_COLOR = {
 }
 function colorFor(type) {
   return EVENT_TYPE_COLOR[type] || '#718096'
-}
-
-function KpiCard({ label, value, sub }) {
-  return (
-    <div className="bg-surface rounded-xl border border-border p-6 text-center">
-      <p className="text-xs text-text-muted uppercase tracking-wide">{label}</p>
-      <p className="text-4xl font-bold text-text-primary mt-2">{value}</p>
-      {sub && <p className="text-[11px] text-text-muted mt-1">{sub}</p>}
-    </div>
-  )
 }
 
 function CenterCard({ children }) {
@@ -370,11 +361,11 @@ export default function PTSessionsReport({ startDate, endDate, locationSlug }) {
       />
 
       {/* Summary KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <KpiCard label="Total Sessions" value={data.summary.total_sessions.toLocaleString()} />
-        <KpiCard label="Completed" value={data.summary.completed.toLocaleString()} />
-        <KpiCard label="Canceled-Charge" value={data.summary.canceled_charge.toLocaleString()} />
-      </div>
+      <StatBlock cols={3}>
+        <StatCell label="Total Sessions" value={data.summary.total_sessions.toLocaleString()} />
+        <StatCell label="Completed" value={data.summary.completed.toLocaleString()} />
+        <StatCell label="Canceled-Charge" value={data.summary.canceled_charge.toLocaleString()} />
+      </StatBlock>
 
       {/* Pivot table */}
       <div className="bg-surface rounded-xl border border-border p-6 overflow-x-auto">

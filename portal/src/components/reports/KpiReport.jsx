@@ -598,6 +598,9 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
         </div>
       )}
 
+      {visibleDefs.length > 0 && (
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <ul className="divide-y divide-border">
       {visibleDefs.map(def => {
         const plan = planFor(goals, def, clubs, locationSlug)
         const planData = dataByPlan?.[plan.key]
@@ -632,7 +635,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
           : (trendReady ? trendByKey[def.key] : null)
 
         return (
-          <div key={def.key} className="bg-surface rounded-xl border border-border p-5">
+          <li key={def.key} className="px-5 py-4">
             <button
               type="button"
               onClick={() => toggle(def.key)}
@@ -722,9 +725,12 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                 )}
               </div>
             )}
-          </div>
+          </li>
         )
       })}
+        </ul>
+      </div>
+      )}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { getSalespersonStats } from '../../lib/api'
 import { exportCSV, exportPDF } from '../../lib/export'
+import { StatBlock, StatCell } from './StatBlock'
 
 export default function SalespersonStats({ startDate, endDate, locationSlug }) {
   const [data, setData] = useState(null)
@@ -67,24 +68,12 @@ export default function SalespersonStats({ startDate, endDate, locationSlug }) {
   return (
     <div className="space-y-6">
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Total Sales</p>
-          <p className="text-2xl font-bold text-text-primary mt-1">{totalSales}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Total VIPs</p>
-          <p className="text-2xl font-bold text-text-primary mt-1">{totalVIPs}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Day One Booked</p>
-          <p className="text-2xl font-bold text-text-primary mt-1">{totalDayOne}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Same Day Sales</p>
-          <p className="text-2xl font-bold text-text-primary mt-1">{totalSameDay}</p>
-        </div>
-      </div>
+      <StatBlock cols={4}>
+        <StatCell label="Total Sales" value={totalSales} />
+        <StatCell label="Total VIPs" value={totalVIPs} />
+        <StatCell label="Day One Booked" value={totalDayOne} />
+        <StatCell label="Same Day Sales" value={totalSameDay} />
+      </StatBlock>
 
       {/* Sort, Search & Export Controls */}
       <div className="flex items-center justify-between">
