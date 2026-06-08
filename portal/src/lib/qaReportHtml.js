@@ -265,7 +265,32 @@ export function buildQaReportHtml(report, clubLabel) {
     color: #E31E24;
   }
 
+  /* Sticky back bar — the report opens in its own window/tab, so on mobile
+     (PWA / no browser chrome) this is the only way back to the app. */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    background: #fff;
+    border-bottom: 1px solid #e5e5e5;
+    padding: 10px 16px;
+  }
+  .topbar .back-btn {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 16px;
+    letter-spacing: 1px;
+    padding: 8px 18px;
+    border: 2px solid #000;
+    background: #fff;
+    color: #000;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .topbar .back-btn:active { background: #000; color: #fff; }
+
   @media print {
+    .topbar { display: none; }
     .page { padding: 0; max-width: none; }
     .logo-image { top: 0; left: 0; }
     footer .actions { display: none; }
@@ -273,6 +298,9 @@ export function buildQaReportHtml(report, clubLabel) {
 </style>
 </head>
 <body>
+<div class="topbar">
+  <button type="button" class="back-btn" onclick="window.close();setTimeout(function(){if(!window.closed&&window.history.length>1)window.history.back()},120)">&lsaquo; Back</button>
+</div>
 <div class="page">
   <img class="logo-image" src="${esc(logoUrl)}" alt="WCS" onerror="this.style.display='none'">
   <div class="page-header">
@@ -300,6 +328,7 @@ export function buildQaReportHtml(report, clubLabel) {
   <footer>
     <span>Generated from Operandio audit data by the WCS Staff Portal</span>
     <span class="actions">
+      <button onclick="window.close();setTimeout(function(){if(!window.closed&&window.history.length>1)window.history.back()},120)">Back</button>
       <button onclick="window.print()">Print / Save as PDF</button>
       ${report.report_url ? `<a href="${esc(report.report_url)}" target="_blank" rel="noopener">Open in Operandio</a>` : ''}
     </span>
