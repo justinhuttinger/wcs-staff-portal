@@ -102,7 +102,7 @@ function getReportTilesForRole(role) {
     case 'lead':
       return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health'].includes(t.key))
     case 'manager':
-      return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'operations', 'revenue'].includes(t.key))
+      return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'operations', 'revenue', 'kpis', 'audits'].includes(t.key))
     case 'marketing':
       // Marketing: marketing tiles + broader reports per REPORT_ACCESS, minus
       // the experimental reports (corp+admin only).
