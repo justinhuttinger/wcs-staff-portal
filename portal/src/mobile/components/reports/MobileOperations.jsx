@@ -469,6 +469,13 @@ export default function MobileOperations({ user }) {
                     skipped={agg.skipped_pct}
                     uncompleted={agg.uncompleted_pct}
                   />
+                  {/* Breakdown: overall = on-time + late + skipped (100% - uncompleted). */}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-2 text-[10px] text-text-muted">
+                    <span><b className="text-text-primary font-semibold">{agg.on_time_pct.toFixed(0)}%</b> on-time</span>
+                    <span>+ <b className="text-text-primary font-semibold">{agg.late_pct.toFixed(0)}%</b> late</span>
+                    <span>+ <b className="text-text-primary font-semibold">{agg.skipped_pct.toFixed(0)}%</b> skip</span>
+                    <span className="ml-auto"><b className="text-text-primary font-semibold">{agg.uncompleted_pct.toFixed(0)}%</b> not done</span>
+                  </div>
                 </div>
               )
             })}
