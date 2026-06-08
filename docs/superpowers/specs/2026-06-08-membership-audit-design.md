@@ -47,8 +47,16 @@ types. Fields used:
   data shows a wide gap — real plans 78–98% paying, comp/insurance plans 0–20% — so the
   threshold is robust. Examples: paying-plan = SINGLE, FAMILY, PREMIUM, COUPLE, STUDENT,
   SENIOR; non-paying = CORP, A2 *, Employee, GYMPASS, TEMPORARY SINGLE.
-- **$0-on-paying-plan anomaly** = an active member on a **paying-plan type** whose
-  monthly-equivalent dues = 0. These are the revenue leaks (e.g. SINGLE has 496).
+- **Type median dues** = the median monthly-equivalent dues of the **dues-paying**
+  members of a membership type (e.g. SINGLE median = $50; note the median sits below the
+  mean because higher plans pull the mean up).
+- **Dues leak (anomaly)** = an active member on a **paying-plan type** whose
+  monthly-equivalent dues are **below `LOW_DUES_PCT × type_median_dues`** (default
+  `LOW_DUES_PCT` = **0.50**, i.e. under half the typical due for their plan). $0 is always
+  a leak; this also catches members paying suspiciously little (e.g. a SINGLE paying $20
+  vs a $50 median). On real data this flags ~1,400 members across 19 paying-plan types
+  (1,079 of them strictly $0). Both thresholds (`PAYING_PLAN_THRESHOLD`, `LOW_DUES_PCT`)
+  are constants in the SQL, easy to tune.
 
 ## Report layout (`portal`)
 
@@ -61,23 +69,23 @@ desktop, with the standard **per-club pill** (All + 7 clubs) like Audits/KPIs, p
    - Avg Monthly Dues (over dues-paying members)
    - Total Monthly Dues (sum of monthly-equivalent, dues-paying)
    - Avg Tenure (months)
-   - **$0 on Paying Plan** (anomaly count) — tappable, jumps to the anomalies section.
+   - **Dues Leaks** (low/zero-due members on paying plans, ~1,400) — tappable, jumps to
+     the leaks section.
 
 2. **By Membership Type table** (the core): one row per `membership_type`, sortable by
    any column:
    - Type (with an "Insurance" / "Comp/Non-dues" badge where applicable)
    - Members · % of members
-   - Avg Monthly Dues · Total Monthly Dues
+   - Median Monthly Dues (the type's typical) · Avg Monthly Dues · Total Monthly Dues
    - Avg Tenure (months)
-   - $0 count (anomalies) for paying-plan types
+   - Leaks count (low/zero-due members) for paying-plan types
 
-3. **"$0 on a Paying Plan" anomalies section (the leaks list)**: a table of the flagged
-   members — **Name · Agreement # · Dues** (monthly-equivalent, $0 for a pure leak) ·
-   Membership Type · Club · Tenure (months) · Begin Date — sorted longest-tenure first
-   (longest-running leak first). Count shown per club. CSV export (matches other reports'
-   export affordance). The Dues column is shown even though it's $0 for strict leaks so
-   the list reads as an actionable account list and so it can later widen to
-   "unusually-low dues" without changing the layout.
+3. **Dues Leaks section (the leaks list)**: a table of the flagged members —
+   **Name · Agreement # · Dues** (monthly-equivalent) **· Typical** (the type median)
+   **· % of Typical** · Membership Type · Club · Tenure (months) · Begin Date — sorted by
+   most severe first (lowest % of typical), so $0s and the biggest underpayers surface at
+   the top. Count shown per club. CSV export (matches other reports' export affordance).
+   The "% of Typical" makes severity obvious (e.g. SINGLE paying $20 vs $50 median = 40%).
 
 ## Backend (`auth`)
 
@@ -87,20 +95,25 @@ Aggregation over ~20k active rows is done in Postgres (fast, single round-trip),
 same pattern as the existing trends RPCs (migration 025/026).
 
 - `membership_audit_summary(club_numbers text[])` → one row **per membership_type**:
-  `membership_type`, `members`, `paying`, `non_dues`, `avg_monthly_dues` (paying),
-  `total_monthly_dues` (paying), `avg_tenure_months`, `tenure_sum_months` +
-  `tenure_count` (members with non-null `begin_date`, so the route can recombine a
-  correct member-weighted overall average), `pct_paying`, `is_insurance`,
-  `is_paying_plan` (pct_paying ≥ threshold), `zero_on_paying_plan` (count). The function
-  computes monthly-equivalent dues + tenure inline. `club_numbers` empty/null = all clubs.
+  `membership_type`, `members`, `paying`, `non_dues`, `median_monthly_dues` (paying),
+  `avg_monthly_dues` (paying), `total_monthly_dues` (paying), `avg_tenure_months`,
+  `tenure_sum_months` + `tenure_count` (members with non-null `begin_date`, so the route
+  can recombine a correct member-weighted overall average), `pct_paying`, `is_insurance`,
+  `is_paying_plan` (pct_paying ≥ threshold), `leaks` (count of low/zero-due members on
+  this type when it's a paying plan). The function computes monthly-equivalent dues +
+  tenure inline. `club_numbers` empty/null = all clubs.
 - `membership_audit_anomalies(club_numbers text[])` → one row **per flagged member**
-  (active, paying-plan type, $0): `member_id`, `agreement_number`, `first_name`,
-  `last_name`, `club_number`, `membership_type`, `next_due_amount`, `monthly_dues`,
-  `begin_date`, `tenure_months`. Ordered by tenure desc. Bounded (e.g. LIMIT 1000) with a
-  returned `truncated` signal if needed.
+  (active, on a paying-plan type, monthly dues `< LOW_DUES_PCT × type_median`):
+  `member_id`, `agreement_number`, `first_name`, `last_name`, `club_number`,
+  `membership_type`, `next_due_amount`, `monthly_dues`, `type_median_dues`,
+  `pct_of_typical` (monthly_dues / type_median), `begin_date`, `tenure_months`. Ordered by
+  `pct_of_typical` asc (most severe first). Bounded (e.g. LIMIT 1000) with a returned
+  `truncated` signal if needed.
 
-The 0.50 threshold lives in the SQL (a CTE computing per-type `pct_paying`), so both RPCs
-share one definition of "paying plan."
+The `PAYING_PLAN_THRESHOLD` (0.50) and `LOW_DUES_PCT` (0.50) constants and the per-type
+`pct_paying` + `type_median` live in a shared CTE, so both RPCs use one definition of
+"paying plan" and "leak". Note: a paying plan's `type_median` is computed over its
+**paying** members (so a plan with many $0s still has a sensible typical due).
 
 ### Route `GET /reports/membership-audit`
 
@@ -110,14 +123,15 @@ share one definition of "paying plan."
 - Resolves slugs → `club_number[]`, calls both RPCs, returns:
   ```json
   {
-    "by_type": [ { membership_type, members, paying, non_dues, avg_monthly_dues,
-                   total_monthly_dues, avg_tenure_months, pct_paying, is_insurance,
-                   is_paying_plan, zero_on_paying_plan } ],
+    "by_type": [ { membership_type, members, paying, non_dues, median_monthly_dues,
+                   avg_monthly_dues, total_monthly_dues, avg_tenure_months, pct_paying,
+                   is_insurance, is_paying_plan, leaks } ],
     "totals": { active_members, paying_members, non_dues_members,
                 avg_monthly_dues, total_monthly_dues, avg_tenure_months,
-                anomaly_count },
+                leak_count },
     "anomalies": [ { member_id, agreement_number, name, club, membership_type,
-                     next_due_amount, monthly_dues, begin_date, tenure_months } ],
+                     next_due_amount, monthly_dues, type_median_dues, pct_of_typical,
+                     begin_date, tenure_months } ],
     "anomalies_truncated": false
   }
   ```
@@ -154,7 +168,12 @@ Non-dues); the anomalies section is independent of the dues pill (always paying-
 - Tiny types (e.g. 1–2 members): `pct_paying` still computed; a 1-member $0 type is
   non-paying (0% paying) → not flagged. Acceptable (a single-member type can't be
   confidently called a "paying plan").
-- A paying-plan member with a small but nonzero due is **not** an anomaly (only $0 flags).
+- A leak now includes **unusually-low, not just $0**: a paying-plan member below
+  `LOW_DUES_PCT × type_median` is flagged; at/above it is not. (Tune `LOW_DUES_PCT` to
+  widen/narrow.)
+- `type_median` for a paying plan is taken over its **paying** members; a plan with very
+  few paying members has a noisier median (acceptable for v1 — a `min_paying_members`
+  guard before trusting a type's median is a possible follow-up).
 - `dues_filter = Non-dues` view: avg/total dues are $0 by definition; the value of that
   view is the member **count** and **tenure** of non-dues members (and the insurance badge).
 - Club filter 'all' vs single vs comma list → handled by `resolveLocationFilter`.
@@ -162,8 +181,9 @@ Non-dues); the anomalies section is independent of the dues pill (always paying-
 ## Testing
 
 - **RPC** (SQL, seeded fixture rows): per-type aggregates correct; monthly-equivalent
-  math for each frequency; `is_paying_plan` threshold boundary; `zero_on_paying_plan`
-  counts; anomalies list returns exactly the paying-plan $0 members; club filter.
+  math for each frequency; `type_median` over paying members; `is_paying_plan` threshold
+  boundary; `leaks` counts; anomalies list returns exactly the paying-plan members below
+  `LOW_DUES_PCT × type_median` (incl. $0), ordered by `pct_of_typical`; club filter.
 - **Route**: shape + totals recombination (member-weighted tenure, summed dues); role gate.
 - **UI** (manual): cards update with both pills; table sorts; anomalies table + count
   match the headline; CSV export; corp-only visibility.
