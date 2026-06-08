@@ -71,7 +71,7 @@ export default function PTHealthReport({ startDate, endDate, locationSlug }) {
         <SummaryCard
           label="Net Change · Revenue"
           value={<span className="text-3xl">{fmtSignedMoney(t.netRevenue)}</span>}
-          sub={`${fmtMoney(t.newPT.revenue)} new − ${fmtMoney(t.deactivated.value)} lost`}
+          sub={`${fmtMoney(t.newPT.newClientRevenue)} new + ${fmtMoney(t.newPT.resignRevenue)} resign − ${fmtMoney(t.deactivated.value)} lost`}
           tone={netRevenueTone}
         />
       </div>
