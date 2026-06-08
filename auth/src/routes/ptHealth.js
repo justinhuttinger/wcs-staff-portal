@@ -182,13 +182,16 @@ async function computeNewPT(club, startDate, endDate) {
   let newClientCount = 0
   let resignCount = 0
   let revenue = 0
+  let newClientRevenue = 0
+  let resignRevenue = 0
 
   for (const sales of byMember.values()) {
     for (let i = 0; i < sales.length; i++) {
       const { saleDate, raw } = sales[i]
       if (saleDate < startDate || saleDate > endDate) continue
       count++
-      revenue += parsePriceField(raw.invoiceTotal ?? raw.totalPrice)
+      const price = parsePriceField(raw.invoiceTotal ?? raw.totalPrice)
+      revenue += price
       const cutoff = new Date(saleDate + 'T00:00:00')
       cutoff.setDate(cutoff.getDate() - 90)
       const cutoffISO = fmtDate(cutoff)
@@ -199,12 +202,12 @@ async function computeNewPT(club, startDate, endDate) {
         hasPrior = true
         break
       }
-      if (hasPrior) resignCount++
-      else newClientCount++
+      if (hasPrior) { resignCount++; resignRevenue += price }
+      else { newClientCount++; newClientRevenue += price }
     }
   }
 
-  return { count, newClientCount, resignCount, revenue }
+  return { count, newClientCount, resignCount, revenue, newClientRevenue, resignRevenue }
 }
 
 // Deactivated PT — mirror Deactivated PT backend: non-active RS within window
@@ -385,6 +388,8 @@ async function buildPtHealthPayload({ start_date, end_date, location_slug }) {
           acc.newPT.newClientCount += c.newPT.newClientCount
           acc.newPT.resignCount += c.newPT.resignCount
           acc.newPT.revenue += c.newPT.revenue
+          acc.newPT.newClientRevenue += c.newPT.newClientRevenue
+          acc.newPT.resignRevenue += c.newPT.resignRevenue
           acc.deactivated.count += c.deactivated.count
           acc.deactivated.deactivatedRSCount += c.deactivated.deactivatedRSCount
           acc.deactivated.burnedPIFCount += c.deactivated.burnedPIFCount
@@ -394,7 +399,7 @@ async function buildPtHealthPayload({ start_date, end_date, location_slug }) {
           return acc
         }, {
           dayOnes: { set: 0, show: 0, close: 0 },
-          newPT: { count: 0, newClientCount: 0, resignCount: 0, revenue: 0 },
+          newPT: { count: 0, newClientCount: 0, resignCount: 0, revenue: 0, newClientRevenue: 0, resignRevenue: 0 },
           deactivated: {
             count: 0, deactivatedRSCount: 0, burnedPIFCount: 0,
             value: 0, deactivatedRSValue: 0, burnedPIFValue: 0,
