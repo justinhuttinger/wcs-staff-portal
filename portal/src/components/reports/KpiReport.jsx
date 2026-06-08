@@ -635,16 +635,16 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
           : (trendReady ? trendByKey[def.key] : null)
 
         return (
-          <li key={def.key} className="px-5 py-4">
+          <li key={def.key} className="px-4 sm:px-5 py-4">
             <button
               type="button"
               onClick={() => toggle(def.key)}
               aria-expanded={open}
               aria-controls={`kpi-detail-${def.key}`}
-              className="w-full flex items-center gap-4 text-left"
+              className="w-full flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-left"
             >
               <div className="min-w-0">
-                <p className="text-lg font-bold text-text-primary">{def.label}</p>
+                <p className="text-base sm:text-lg font-bold text-text-primary">{def.label}</p>
                 <p className="text-xs text-text-muted mt-0.5">
                   {isMulti
                     ? `${plan.enabled.length} club${plan.enabled.length === 1 ? '' : 's'}`
@@ -655,9 +655,9 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                       : 'Current period'}
                 </p>
               </div>
-              <div className="ml-auto flex items-center gap-6 flex-shrink-0">
+              <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-6 w-full sm:w-auto sm:ml-auto sm:flex-shrink-0">
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-text-primary leading-none">
+                  <p className="text-xl sm:text-2xl font-bold text-text-primary leading-none">
                     {formatValue(def, value)}
                   </p>
                   <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">
@@ -666,11 +666,11 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                 </div>
                 {!isMulti && (
                   <div className="text-right">
-                    <p className="text-2xl font-bold text-text-muted leading-none">{singleGoal == null ? '—' : formatValue(def, singleGoal)}</p>
+                    <p className="text-xl sm:text-2xl font-bold text-text-muted leading-none">{singleGoal == null ? '—' : formatValue(def, singleGoal)}</p>
                     <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">Goal</p>
                   </div>
                 )}
-                <div className="w-40 text-right">
+                <div className="w-auto sm:w-40 text-right">
                   {isMulti ? (
                     !perClubReady ? (
                       <span className="text-sm text-text-muted">Loading clubs…</span>
@@ -678,7 +678,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                       <span className="text-sm text-text-muted">No goals set</span>
                     ) : (
                       <>
-                        <p className={`text-2xl font-bold leading-none ${onGoal === withGoal ? 'text-green-600' : 'text-red-500'}`}>
+                        <p className={`text-xl sm:text-2xl font-bold leading-none ${onGoal === withGoal ? 'text-green-600' : 'text-red-500'}`}>
                           {onGoal}/{withGoal}
                         </p>
                         <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">Clubs on goal</p>
@@ -686,7 +686,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                     )
                   ) : gap ? (
                     <>
-                      <p className={`text-2xl font-bold leading-none ${gap.tone === 'above' ? 'text-green-600' : 'text-red-500'}`}>
+                      <p className={`text-xl sm:text-2xl font-bold leading-none ${gap.tone === 'above' ? 'text-green-600' : 'text-red-500'}`}>
                         {gapValueText(def, gap)}
                       </p>
                       <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">{gapCaption(def, gap)}</p>
@@ -696,7 +696,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                   )}
                 </div>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                  className={`w-4 h-4 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}>
+                  className={`w-4 h-4 text-text-muted transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                 </svg>
               </div>
