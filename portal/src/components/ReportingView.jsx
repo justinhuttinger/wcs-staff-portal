@@ -320,7 +320,7 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
     <div className="w-full px-6 py-6 max-w-7xl mx-auto flex gap-6">
       {/* Left sidebar — grouped report nav */}
       <aside className="w-56 flex-shrink-0 hidden md:block">
-        <div className="bg-surface rounded-xl border border-border p-2 sticky top-6">
+        <div className="bg-surface rounded-xl border border-border p-2 sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto">
           {onBack && (
             <button
               type="button"
