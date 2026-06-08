@@ -243,7 +243,7 @@ export default function MobileClubHealth({ startDate, endDate, locationSlug }) {
 
       <BarChart title="Memberships by Day" points={buildDailyPoints(data.by_date, startDate, endDate)} />
 
-      <MembershipTypeTable title="Sales by Membership Type" rows={data.by_membership_type} />
+      <MembershipTypeTable title="Sales by Membership Type" rows={data.by_membership_type} collapsible />
 
       <div className="grid grid-cols-2 gap-3">
         <StatCard label="Cancels (Members)" value={data.cancels_members ?? 0} />

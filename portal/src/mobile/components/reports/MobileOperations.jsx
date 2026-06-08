@@ -204,7 +204,6 @@ function MobileJobCompliance({ startDate, endDate, locationSlug }) {
           <span className="flex items-center gap-1.5 text-sm"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#18CE99' }} /><b className="text-text-primary">{t?.on_time ?? 0}</b><span className="text-[11px] text-text-muted">on time</span></span>
           <span className="flex items-center gap-1.5 text-sm"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#F26C4F' }} /><b className="text-text-primary">{t?.late ?? 0}</b><span className="text-[11px] text-text-muted">late</span></span>
           <span className="flex items-center gap-1.5 text-sm"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#EF4444' }} /><b className="text-text-primary">{t?.missed ?? 0}</b><span className="text-[11px] text-text-muted">missed</span></span>
-          <span className="flex items-center gap-1.5 text-sm ml-auto"><b className="text-text-primary">{t ? `${t.submitted}/${t.instances}` : '0/0'}</b><span className="text-[11px] text-text-muted">done{t?.instances ? ` (${Math.round((t.submitted / t.instances) * 100)}%)` : ''}</span></span>
         </div>
 
         {/* View toggle */}
@@ -469,13 +468,6 @@ export default function MobileOperations({ user }) {
                     skipped={agg.skipped_pct}
                     uncompleted={agg.uncompleted_pct}
                   />
-                  {/* Breakdown: overall = on-time + late + skipped (100% - uncompleted). */}
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-2 text-[10px] text-text-muted">
-                    <span><b className="text-text-primary font-semibold">{agg.on_time_pct.toFixed(0)}%</b> on-time</span>
-                    <span>+ <b className="text-text-primary font-semibold">{agg.late_pct.toFixed(0)}%</b> late</span>
-                    <span>+ <b className="text-text-primary font-semibold">{agg.skipped_pct.toFixed(0)}%</b> skip</span>
-                    <span className="ml-auto"><b className="text-text-primary font-semibold">{agg.uncompleted_pct.toFixed(0)}%</b> not done</span>
-                  </div>
                 </div>
               )
             })}
