@@ -1326,7 +1326,7 @@ router.get('/membership-audit', async (req, res) => {
       by_type: byType || [],
       totals: recombineTotals(byType || []),
       anomalies,
-      anomalies_truncated: truncated,
+      anomalies_truncated: includeAnomalies ? truncated : null,
     })
   } catch (err) {
     return res.status(500).json({ error: err.message })

@@ -23,3 +23,12 @@ test('empty input yields zeros, no divide-by-zero', () => {
   assert.equal(t.avg_monthly_dues, 0)
   assert.equal(t.avg_tenure_months, 0)
 })
+
+test('null/undefined input is treated as empty', () => {
+  for (const t of [recombineTotals(null), recombineTotals(undefined)]) {
+    assert.equal(t.active_members, 0)
+    assert.equal(t.avg_monthly_dues, 0)
+    assert.equal(t.avg_tenure_months, 0)
+    assert.equal(t.leak_count, 0)
+  }
+})
