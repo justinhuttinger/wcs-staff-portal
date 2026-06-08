@@ -201,7 +201,7 @@ export default function CancelsReport({ startDate, endDate, locationSlug, planTy
 function Heading({ children }) {
   return (
     <div className="px-5 sm:px-6 pt-4 pb-3">
-      <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text-primary">{children}</h3>
+      <h3 className="text-lg font-bold text-text-primary">{children}</h3>
     </div>
   )
 }

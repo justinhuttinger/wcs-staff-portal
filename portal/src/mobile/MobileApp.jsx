@@ -27,6 +27,9 @@ import MobileDeactivatedPT from './components/reports/MobileDeactivatedPT'
 import MobilePTHealth from './components/reports/MobilePTHealth'
 import MobilePayroll from './components/reports/MobilePayroll'
 import MobileRevenue from './components/reports/MobileRevenue'
+// KPIs + Audits reuse the (responsive) desktop report components on mobile.
+import KpiReport from '../components/reports/KpiReport'
+import AuditsReport from '../components/reports/AuditsReport'
 import { getReportInfo } from '../lib/reportInfo'
 
 // Icons for bottom tab bar (Heroicons outline)
@@ -441,6 +444,36 @@ export default function MobileApp() {
               {({ startDate, endDate, locationSlug }) => (
                 <div className="px-4 pb-4">
                   <MobileRevenue startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+                </div>
+              )}
+            </MobileReportShell>
+          </div>
+        )
+      case 'reports/kpis':
+        return (
+          <div className="pt-2">
+            <div className="px-4">
+              <MobileHeader title="KPIs" info={getReportInfo('kpis')} onBack={() => navigate('reports')} />
+            </div>
+            <MobileReportShell title="KPIs" user={user}>
+              {({ startDate, endDate, locationSlug }) => (
+                <div className="px-4 pb-4">
+                  <KpiReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+                </div>
+              )}
+            </MobileReportShell>
+          </div>
+        )
+      case 'reports/audits':
+        return (
+          <div className="pt-2">
+            <div className="px-4">
+              <MobileHeader title="Audits" info={getReportInfo('audits')} onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+            </div>
+            <MobileReportShell title="Audits" user={user}>
+              {({ startDate, endDate, locationSlug }) => (
+                <div className="px-4 pb-4">
+                  <AuditsReport locationSlug={locationSlug} />
                 </div>
               )}
             </MobileReportShell>

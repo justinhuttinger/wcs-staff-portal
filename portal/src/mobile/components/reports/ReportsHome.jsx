@@ -163,6 +163,26 @@ const REPORT_TILES = [
       </svg>
     ),
   },
+  {
+    key: 'kpis',
+    label: 'KPIs',
+    description: 'Goals vs. actuals',
+    icon: (
+      <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z" />
+      </svg>
+    ),
+  },
+  {
+    key: 'audits',
+    label: 'Audits',
+    description: 'Operandio scores',
+    icon: (
+      <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586" />
+      </svg>
+    ),
+  },
 ]
 
 function getTilesForRole(role) {
@@ -174,11 +194,16 @@ function getTilesForRole(role) {
     case 'manager':
       return REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'operations', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'revenue'].includes(t.key))
     case 'marketing':
-      return REPORT_TILES
+      // Marketing sees everything except the corp-only experimental reports.
+      return REPORT_TILES.filter(t => t.key !== 'kpis' && t.key !== 'audits')
     default: // corporate, admin, director
       return REPORT_TILES
   }
 }
+
+// Reports shown as a standalone full-width tile above the group sections
+// (mirrors desktop, where KPIs leads the report list).
+const STANDALONE_REPORTS = ['kpis']
 
 // Mirrors desktop ReportingView's REPORT_GROUPS. The third Marketing group is
 // mobile-only because desktop houses those reports on a separate Marketing
@@ -193,7 +218,7 @@ const REPORT_GROUPS = [
         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z" />
       </svg>
     ),
-    reports: ['club-health', 'membership', 'cancels', 'operations', 'checkins', 'payroll', 'revenue'],
+    reports: ['club-health', 'membership', 'cancels', 'operations', 'audits', 'checkins', 'payroll', 'revenue'],
   },
   {
     key: 'training',
@@ -269,10 +294,30 @@ export default function ReportsHome({ onNavigate, user, activeGroup, onSelectGro
     )
   }
 
-  // Top-level group tiles
+  // Top-level: standalone KPIs (full-width) + group section tiles
+  const tilesById = Object.fromEntries(REPORT_TILES.map(t => [t.key, t]))
+  const visibleKeys = new Set(getTilesForRole(role).map(t => t.key))
+  const standalone = STANDALONE_REPORTS.filter(k => visibleKeys.has(k))
   return (
     <div className="p-4">
       <div className="grid grid-cols-2 gap-3">
+        {standalone.map(key => {
+          const tile = tilesById[key]
+          if (!tile) return null
+          return (
+            <button
+              key={key}
+              onClick={() => onNavigate(key)}
+              className="col-span-2 bg-surface rounded-2xl border border-border p-4 text-left active:scale-[0.97] transition-transform flex items-center gap-3"
+            >
+              <div className="text-wcs-red flex-shrink-0">{tile.icon}</div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-text-primary">{tile.label}</p>
+                <p className="text-xs text-text-muted mt-0.5">{tile.description}</p>
+              </div>
+            </button>
+          )
+        })}
         {visibleGroups.map(group => (
           <button
             key={group.key}

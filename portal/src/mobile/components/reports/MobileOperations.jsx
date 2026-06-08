@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react'
-import { getOperandioRange } from '../../../lib/api'
+import { getOperandioRange, getOperandioJobs } from '../../../lib/api'
 import { LOCATION_NAMES } from '../../../config/locations'
 import MobileLoading from '../MobileLoading'
 import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
@@ -171,6 +171,120 @@ function SectionHeader({ title }) {
         <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-text-primary">{title}</h3>
       </div>
       <div className="flex-1 h-px bg-border" />
+    </div>
+  )
+}
+
+// Strip the schedule parenthetical(s): "AM Cleaning Log (Saturday) (Saturday)" -> "AM Cleaning Log".
+function cleanJob(name) { return (name || '').replace(/\s*\([^)]*\)/g, '').trim() }
+function pctColor(p) { return p >= 85 ? '#18CE99' : p >= 60 ? '#FCD34D' : '#F26C4F' }
+
+// Mobile Job Compliance — per-job submission/overdue tracking (who's doing the
+// jobs, what's not getting done). Mirrors the desktop section, single-column.
+function MobileJobCompliance({ startDate, endDate, locationSlug }) {
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => getOperandioJobs({ start_date: startDate, end_date: endDate, location_slug: locationSlug }, { signal }),
+    [startDate, endDate, locationSlug]
+  )
+  const [view, setView] = useState('jobs')
+  const [sort, setSort] = useState('top')
+  const t = data?.totals
+  const showLoc = !locationSlug || locationSlug === 'all'
+  const name = slug => LOCATION_NAMES.find(n => n.toLowerCase() === slug) || slug
+  const TABS = [['jobs', 'By Job'], ['people', 'By Person'], ['missed', 'Not Done']]
+
+  const people = data?.people || []
+  const sortedPeople = [...people].sort((a, b) => sort === 'top' ? b.tasks_done - a.tasks_done : a.tasks_done - b.tasks_done)
+
+  return (
+    <div className="px-4">
+      <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+        {/* Summary band */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 p-4 border-b border-border">
+          <span className="flex items-center gap-1.5 text-sm"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#18CE99' }} /><b className="text-text-primary">{t?.on_time ?? 0}</b><span className="text-[11px] text-text-muted">on time</span></span>
+          <span className="flex items-center gap-1.5 text-sm"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#F26C4F' }} /><b className="text-text-primary">{t?.late ?? 0}</b><span className="text-[11px] text-text-muted">late</span></span>
+          <span className="flex items-center gap-1.5 text-sm"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#EF4444' }} /><b className="text-text-primary">{t?.missed ?? 0}</b><span className="text-[11px] text-text-muted">missed</span></span>
+          <span className="flex items-center gap-1.5 text-sm ml-auto"><b className="text-text-primary">{t ? `${t.submitted}/${t.instances}` : '0/0'}</b><span className="text-[11px] text-text-muted">done{t?.instances ? ` (${Math.round((t.submitted / t.instances) * 100)}%)` : ''}</span></span>
+        </div>
+
+        {/* View toggle */}
+        <div className="flex gap-1.5 p-3 border-b border-border overflow-x-auto scrollbar-hide">
+          {TABS.map(([k, lbl]) => (
+            <button key={k} onClick={() => setView(k)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${view === k ? 'bg-wcs-red text-white' : 'bg-bg border border-border text-text-secondary'}`}>
+              {lbl}{k === 'missed' && t?.missed ? ` (${t.missed})` : ''}
+            </button>
+          ))}
+        </div>
+
+        {loading && <p className="text-text-muted text-sm p-5 text-center">Loading…</p>}
+        {error && !loading && <p className="text-text-muted text-sm p-5 text-center">No job data for this range yet.</p>}
+
+        {!loading && !error && data && view === 'jobs' && (
+          (data.jobs || []).length === 0 ? <p className="text-text-muted text-sm p-5 text-center">No jobs in range.</p> : (
+            <ul className="divide-y divide-border">
+              {data.jobs.map((j, i) => (
+                <li key={i} className="p-4">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <p className="text-sm font-medium text-text-primary truncate">{cleanJob(j.job_name)}</p>
+                    <span className="text-xs font-bold text-text-primary whitespace-nowrap">{j.submitted}/{j.total} · {j.completion_pct}%</span>
+                  </div>
+                  {showLoc && <p className="text-[11px] text-text-muted mb-1.5">{name(j.location_slug)}</p>}
+                  <div className="h-2 rounded-full bg-bg overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${j.completion_pct}%`, backgroundColor: pctColor(j.completion_pct) }} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )
+        )}
+
+        {!loading && !error && data && view === 'people' && (
+          people.length === 0 ? <p className="text-text-muted text-sm p-5 text-center">No task completions in range.</p> : (
+            <>
+              <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-border">
+                <span className="text-[10px] uppercase tracking-wide text-text-muted font-semibold mr-1">Show</span>
+                {[['top', 'Top'], ['least', 'Least']].map(([k, lbl]) => (
+                  <button key={k} onClick={() => setSort(k)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${sort === k ? 'bg-wcs-red text-white' : 'bg-bg border border-border text-text-secondary'}`}>
+                    {lbl} completers
+                  </button>
+                ))}
+              </div>
+              <ul className="divide-y divide-border">
+                {sortedPeople.map((p, i) => (
+                  <li key={i} className="flex items-center justify-between gap-3 p-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-text-primary truncate">{p.name}</p>
+                      {showLoc && <p className="text-[11px] text-text-muted truncate">{p.locations.map(name).join(', ')}</p>}
+                    </div>
+                    <div className="flex items-center gap-3 text-xs whitespace-nowrap">
+                      <span className="text-text-primary font-semibold">{p.tasks_done} <span className="text-text-muted font-normal">done</span></span>
+                      <span className={`font-semibold ${p.tasks_skipped ? 'text-blue-600' : 'text-text-muted'}`}>{p.tasks_skipped} <span className="text-text-muted font-normal">skip</span></span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )
+        )}
+
+        {!loading && !error && data && view === 'missed' && (
+          (data.missed || []).length === 0 ? <p className="text-text-muted text-sm p-5 text-center">Nothing overdue. Everything got done.</p> : (
+            <ul className="divide-y divide-border">
+              {data.missed.map((m, i) => (
+                <li key={i} className="flex items-center justify-between gap-3 p-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-text-primary truncate">{cleanJob(m.job_name)}</p>
+                    <p className="text-[11px] text-text-muted truncate">{showLoc ? name(m.location_slug) + ' · ' : ''}{fmtDate(m.job_date)}{m.assigned_area ? ' · ' + m.assigned_area : ''}</p>
+                  </div>
+                  <span className="text-xs font-semibold text-red-600 whitespace-nowrap">{m.steps_completed ?? 0}/{m.steps_total ?? '?'}</span>
+                </li>
+              ))}
+            </ul>
+          )
+        )}
+      </div>
     </div>
   )
 }
@@ -396,6 +510,9 @@ export default function MobileOperations({ user }) {
               )
             })}
           </div>
+
+          <SectionHeader title="Job Compliance" />
+          <MobileJobCompliance startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
         </>
       )}
     </div>
