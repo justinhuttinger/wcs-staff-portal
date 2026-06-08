@@ -4,6 +4,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { classifyJobEmail, persistJobEmail } = require('../lib/operandioJobs')
+const { resolveScopedSlugs } = require('../services/locationScope')
 
 const router = Router()
 // In-memory upload: SendGrid Inbound Parse posts email attachments as
@@ -334,10 +335,11 @@ router.get('/range', authenticate, requireRole('manager'), async (req, res) => {
       .lte('period_end', end_date)
       .order('period_start', { ascending: true })
 
-    if (location_slug && location_slug !== 'all') {
-      const slugs = String(location_slug).split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
-      if (slugs.length === 1) q = q.eq('location_slug', slugs[0])
-      else if (slugs.length > 1) q = q.in('location_slug', slugs)
+    // Lock lead/manager to their assigned clubs (corp/admin see all).
+    const scoped = await resolveScopedSlugs(req)
+    if (scoped.slugs) {
+      if (scoped.slugs.length === 1) q = q.eq('location_slug', scoped.slugs[0])
+      else q = q.in('location_slug', scoped.slugs)
     }
 
     const { data, error } = await q
@@ -365,10 +367,11 @@ router.get('/qa-reports', authenticate, requireRole('manager'), async (req, res)
     if (start_date) q = q.gte('submitted_date', start_date)
     if (end_date) q = q.lte('submitted_date', end_date)
     if (department) q = q.eq('department', department)
-    if (location_slug && location_slug !== 'all') {
-      const slugs = String(location_slug).split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
-      if (slugs.length === 1) q = q.eq('location_slug', slugs[0])
-      else if (slugs.length > 1) q = q.in('location_slug', slugs)
+    // Lock lead/manager to their assigned clubs (corp/admin see all).
+    const scoped = await resolveScopedSlugs(req)
+    if (scoped.slugs) {
+      if (scoped.slugs.length === 1) q = q.eq('location_slug', scoped.slugs[0])
+      else q = q.in('location_slug', scoped.slugs)
     }
 
     const { data, error } = await q

@@ -6,6 +6,7 @@ const { recombineTotals } = require('../lib/membershipAuditTotals')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { countVipsByTeamMember: _countVipsByTeamMember } = require('../utils/vipsByTeamMember')
 const { parseLocationSlugParam } = require('../utils/locationSlug')
+const { resolveScopedSlugs } = require('../services/locationScope')
 
 const router = Router()
 router.use(authenticate)
@@ -16,20 +17,18 @@ router.use(requireRole('lead'))
 // Returns { column, values: [...] } or null (no filter = all locations).
 // Accepts location_slug as a single slug, comma-separated multi-slug, or 'all'.
 // ---------------------------------------------------------------------------
-async function resolveLocationFilter(query) {
-  const { location_id, location_slug } = query
-
-  const parsed = parseLocationSlugParam(location_slug)
-  if (parsed.invalid) {
-    const err = new Error(`Unknown location_slug: ${parsed.invalid}`)
-    err.status = 400
-    throw err
+async function resolveLocationFilter(req) {
+  // Scope to the caller's assigned clubs (lead/manager are locked to their own;
+  // corp/admin/marketing may see all). Restricted roles always come back as an
+  // explicit slug list — never "all".
+  const scoped = await resolveScopedSlugs(req)
+  if (scoped.slugs) {
+    return { column: 'location_slug', values: scoped.slugs }
   }
 
-  if (!parsed.all) {
-    return { column: 'location_slug', values: parsed.slugs }
-  }
-
+  // All-location role requesting "all": honor the optional single-club
+  // location_id lookup, else no filter (= every club).
+  const { location_id } = req.query
   if (location_id) {
     const { data } = await supabaseAdmin
       .from('locations')
@@ -132,7 +131,7 @@ router.get('/membership', async (req, res) => {
   const { start_date, end_date } = req.query
 
   try {
-    const locationFilter = await resolveLocationFilter(req.query)
+    const locationFilter = await resolveLocationFilter(req)
 
     const startMs = dateToMs(start_date, false)
     const endMs   = dateToMs(end_date, true)
@@ -367,7 +366,7 @@ router.get('/pt', async (req, res) => {
   const { start_date, end_date } = req.query
 
   try {
-    const locationFilter = await resolveLocationFilter(req.query)
+    const locationFilter = await resolveLocationFilter(req)
 
     const startMs = dateToMs(start_date, false)
     const endMs   = dateToMs(end_date, true)
@@ -474,7 +473,7 @@ router.get('/club-health', async (req, res) => {
   const { start_date, end_date } = req.query
 
   try {
-    const locationFilter = await resolveLocationFilter(req.query)
+    const locationFilter = await resolveLocationFilter(req)
 
     const startMs = dateToMs(start_date, false)
     const endMs   = dateToMs(end_date, true)
@@ -766,7 +765,7 @@ router.get('/cancels', async (req, res) => {
   const { start_date, end_date } = req.query
 
   try {
-    const locationFilter = await resolveLocationFilter(req.query)
+    const locationFilter = await resolveLocationFilter(req)
     let clubNumbersC = []
     if (locationFilter && locationFilter.column === 'location_slug') {
       clubNumbersC = locationFilter.values.map(s => SLUG_CLUB_MAP[s]).filter(Boolean)
@@ -1044,7 +1043,7 @@ router.get('/speed-to-lead', async (req, res) => {
   const { start_date, end_date } = req.query
 
   try {
-    const locationFilter = await resolveLocationFilter(req.query)
+    const locationFilter = await resolveLocationFilter(req)
 
     // ISO bounds for the TIMESTAMPTZ column opportunity_created_at
     const startISO = start_date ? start_date + 'T00:00:00.000Z' : null
@@ -1178,7 +1177,7 @@ router.get('/speed-to-lead/audit', async (req, res) => {
   const { start_date, end_date } = req.query
   const limit = Math.min(parseInt(req.query.limit || '1000', 10) || 1000, 5000)
   try {
-    const locationFilter = await resolveLocationFilter(req.query)
+    const locationFilter = await resolveLocationFilter(req)
     const startISO = start_date ? start_date + 'T00:00:00.000Z' : null
     const endISO = end_date ? end_date + 'T23:59:59.999Z' : null
 
@@ -1288,7 +1287,7 @@ router.get('/speed-to-lead/audit', async (req, res) => {
 // ---------------------------------------------------------------------------
 router.get('/membership-audit', async (req, res) => {
   try {
-    const locationFilter = await resolveLocationFilter(req.query)
+    const locationFilter = await resolveLocationFilter(req)
     let clubNumbers = []
     if (locationFilter) {
       clubNumbers = locationFilter.values.map(s => SLUG_CLUB_MAP[s]).filter(Boolean)
