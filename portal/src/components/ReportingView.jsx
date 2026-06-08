@@ -64,16 +64,20 @@ const ALL_REPORT_TILES = [
   { key: 'audits', label: 'Audits', desc: 'Operandio Scores' },
 ]
 
+// Reports that sit at the very top of the nav as standalone items — no group
+// header, no dropdown. KPIs leads the list.
+const STANDALONE_REPORTS = ['kpis']
+
 // Group tiles surface fewer items at the top level. Each group holds an
-// ordered list of report keys; reports outside any group still render as
-// top-level tiles (none today, but easy to add).
+// ordered list of report keys; reports outside any group render either as
+// standalone items (STANDALONE_REPORTS above) or not at all.
 const REPORT_GROUPS = [
   {
     key: 'health',
     label: 'Club Health',
     desc: 'Health, Activity & Compliance',
     iconPath: REPORT_ICONS['club-health'],
-    reports: ['club-health', 'membership', 'cancels', 'operations', 'checkins', 'payroll', 'revenue'],
+    reports: ['club-health', 'membership', 'cancels', 'operations', 'audits', 'checkins', 'payroll', 'revenue'],
   },
   {
     key: 'training',
@@ -88,13 +92,6 @@ const REPORT_GROUPS = [
     desc: 'Ads, SEO & Lead Capture',
     iconPath: REPORT_ICONS['marketing'],
     reports: ['meta-ads', 'google-marketing'],
-  },
-  {
-    key: 'experimental',
-    label: 'Experimental',
-    desc: 'In Development',
-    iconPath: 'M10.5 1.5H8.25A2.25 2.25 0 0 0 6 3.75v16.5a2.25 2.25 0 0 0 2.25 2.25h7.5A2.25 2.25 0 0 0 18 20.25V3.75a2.25 2.25 0 0 0-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3',
-    reports: ['kpis', 'audits'],
   },
 ]
 
@@ -189,7 +186,11 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
     .map(g => ({ ...g, reports: g.reports.filter(k => VISIBLE_REPORT_KEYS.has(k)) }))
     .filter(g => g.reports.length > 0)
 
-  const defaultReportKey = visibleGroups[0]?.reports[0] || null
+  // Standalone reports the user can see, in declared order. These render above
+  // the groups, so they lead the overall report list.
+  const visibleStandalone = STANDALONE_REPORTS.filter(k => VISIBLE_REPORT_KEYS.has(k))
+  const orderedReportKeys = [...visibleStandalone, ...visibleGroups.flatMap(g => g.reports)]
+  const defaultReportKey = orderedReportKeys[0] || null
   const initial = parseHash()
   // If hash points at a group only, jump to its first report. If hash has no
   // report at all, fall back to the very first report the user can see.
@@ -199,6 +200,9 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
   const initialGroup = initialReport ? findGroupForReport(initialReport)?.key || null : null
   const [activeGroup, setActiveGroup] = useState(initialGroup)
   const [activeReport, setActiveReport] = useState(initialReport)
+  // Which group accordions are expanded. The group holding the active report
+  // starts open; the rest start collapsed.
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set(initialGroup ? [initialGroup] : []))
   const [startDate, setStartDate] = useState(getMonthStart())
   const [endDate, setEndDate] = useState(getToday())
 
@@ -241,6 +245,7 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
       }
       setActiveGroup(next.group)
       setActiveReport(next.report)
+      if (next.group) setExpandedGroups(prev => new Set(prev).add(next.group))
     }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
@@ -257,6 +262,16 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
     window.location.hash = '#reporting/' + reportKey
     setActiveGroup(group?.key || null)
     setActiveReport(reportKey)
+    if (group?.key) setExpandedGroups(prev => new Set(prev).add(group.key))
+  }
+
+  function toggleGroup(groupKey) {
+    setExpandedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(groupKey)) next.delete(groupKey)
+      else next.add(groupKey)
+      return next
+    })
   }
 
   function applyQuickRange(key) {
@@ -274,6 +289,32 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
 
   const currentGroup = activeGroup ? visibleGroups.find(g => g.key === activeGroup) : null
   const activeReportTile = activeReport ? REPORT_TILES.find(t => t.key === activeReport) : null
+
+  // Renders a single report link in the sidebar (shared by the standalone list
+  // and the group accordions).
+  function renderReportItem(reportKey) {
+    const tile = ALL_REPORT_TILES.find(t => t.key === reportKey)
+    if (!tile) return null
+    const active = activeReport === reportKey
+    return (
+      <li key={reportKey}>
+        <button
+          type="button"
+          onClick={() => navigateToReport(reportKey)}
+          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            active
+              ? 'bg-wcs-red/10 text-wcs-red'
+              : 'text-text-primary hover:bg-bg'
+          }`}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4 flex-shrink-0">
+            <path strokeLinecap="round" strokeLinejoin="round" d={REPORT_ICONS[reportKey]} />
+          </svg>
+          <span className="truncate text-left">{tile.label}</span>
+        </button>
+      </li>
+    )
+  }
 
   return (
     <div className="w-full px-6 py-6 max-w-7xl mx-auto flex gap-6">
@@ -299,38 +340,42 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           >
             Reports
           </button>
-          {visibleGroups.map(group => (
-            <div key={group.key} className="mt-3 first:mt-0">
-              <div className="px-3 pt-1 pb-1.5 text-sm font-bold text-text-primary">
-                {group.label}
+          {/* Standalone reports (e.g. KPIs) lead the list — no group header. */}
+          {visibleStandalone.length > 0 && (
+            <ul className="space-y-0.5 mb-1">
+              {visibleStandalone.map(renderReportItem)}
+            </ul>
+          )}
+          {/* Collapsible group accordions */}
+          {visibleGroups.map(group => {
+            const expanded = expandedGroups.has(group.key)
+            return (
+              <div key={group.key} className="mt-3 first:mt-0">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.key)}
+                  aria-expanded={expanded}
+                  className="w-full flex items-center justify-between gap-2 px-3 pt-1 pb-1.5 text-sm font-bold text-text-primary hover:text-wcs-red transition-colors"
+                >
+                  <span className="truncate text-left">{group.label}</span>
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {expanded && (
+                  <ul className="space-y-0.5">
+                    {group.reports.map(renderReportItem)}
+                  </ul>
+                )}
               </div>
-              <ul className="space-y-0.5">
-                {group.reports.map(reportKey => {
-                  const tile = ALL_REPORT_TILES.find(t => t.key === reportKey)
-                  if (!tile) return null
-                  const active = activeReport === reportKey
-                  return (
-                    <li key={reportKey}>
-                      <button
-                        type="button"
-                        onClick={() => navigateToReport(reportKey)}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                          active
-                            ? 'bg-wcs-red/10 text-wcs-red'
-                            : 'text-text-primary hover:bg-bg'
-                        }`}
-                      >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4 flex-shrink-0">
-                          <path strokeLinecap="round" strokeLinejoin="round" d={REPORT_ICONS[reportKey]} />
-                        </svg>
-                        <span className="truncate text-left">{tile.label}</span>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </aside>
 

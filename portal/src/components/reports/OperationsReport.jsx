@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { getOperandioRange } from '../../lib/api'
+import { getOperandioRange, getOperandioJobs } from '../../lib/api'
 import { LOCATION_NAMES } from '../../config/locations'
 
 const SEGMENT_COLORS = {
@@ -290,62 +290,71 @@ export default function OperationsReport({ locationSlug }) {
         <>
           {/* ---------- Period Summary ---------- */}
           <SectionHeader title="Period Summary" />
-          {slugs.map(slug => {
-            const rows = grouped[slug] || []
-            const prevRows = prevGrouped[slug] || []
-            const agg = aggregateLocation(rows)
-            const prevAgg = aggregateLocation(prevRows)
-            const displayName = LOCATION_NAMES.find(n => n.toLowerCase() === slug) || slug
+          <div className="bg-surface border border-border rounded-xl overflow-hidden">
+            <ul className="divide-y divide-border">
+              {slugs.map(slug => {
+                const rows = grouped[slug] || []
+                const prevRows = prevGrouped[slug] || []
+                const agg = aggregateLocation(rows)
+                const prevAgg = aggregateLocation(prevRows)
+                const displayName = LOCATION_NAMES.find(n => n.toLowerCase() === slug) || slug
 
-            if (!agg) {
-              return (
-                <div key={slug} className="bg-surface border border-border rounded-xl p-5">
-                  <div className="flex items-center justify-between gap-4">
-                    <p className="text-sm font-semibold text-text-primary">{displayName}</p>
-                    <span className="text-xs text-text-muted">No data in range</span>
-                  </div>
-                </div>
-              )
-            }
+                if (!agg) {
+                  return (
+                    <li key={slug} className="flex items-center justify-between gap-4 px-5 py-4">
+                      <p className="text-sm font-semibold text-text-primary">{displayName}</p>
+                      <span className="text-xs text-text-muted">No data in range</span>
+                    </li>
+                  )
+                }
 
-            return (
-              <div key={slug} className="bg-surface border border-border rounded-xl p-5">
-                <div className="flex items-center justify-between gap-4 mb-2">
-                  <div>
-                    <p className="text-sm font-semibold text-text-primary">{displayName}</p>
-                    <p className="text-[11px] text-text-muted">{agg.days} day{agg.days === 1 ? '' : 's'} in range</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <DeltaChip current={agg.overall_pct} previous={prevAgg?.overall_pct} />
-                    <span className="text-2xl font-bold text-text-primary">{agg.overall_pct.toFixed(0)}%</span>
-                  </div>
-                </div>
-                <StackedBar
-                  on_time={agg.on_time_pct}
-                  late={agg.late_pct}
-                  skipped={agg.skipped_pct}
-                  uncompleted={agg.uncompleted_pct}
-                />
-              </div>
-            )
-          })}
+                return (
+                  <li key={slug} className="px-5 py-4">
+                    <div className="flex items-center justify-between gap-4 mb-2">
+                      <div>
+                        <p className="text-sm font-semibold text-text-primary">{displayName}</p>
+                        <p className="text-[11px] text-text-muted">{agg.days} day{agg.days === 1 ? '' : 's'} in range</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <DeltaChip current={agg.overall_pct} previous={prevAgg?.overall_pct} />
+                        <span className="text-2xl font-bold text-text-primary">{agg.overall_pct.toFixed(0)}%</span>
+                      </div>
+                    </div>
+                    <StackedBar
+                      on_time={agg.on_time_pct}
+                      late={agg.late_pct}
+                      skipped={agg.skipped_pct}
+                      uncompleted={agg.uncompleted_pct}
+                    />
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
 
           {/* ---------- Daily Trend ---------- */}
           <SectionHeader title="Daily Trend" />
           <TrendLegend />
-          {slugs.map(slug => {
-            const rows = grouped[slug] || []
-            const displayName = LOCATION_NAMES.find(n => n.toLowerCase() === slug) || slug
-            const dailyRows = rows.filter(r => r.period_start === r.period_end)
-            if (dailyRows.length === 0) return null
+          <div className="bg-surface border border-border rounded-xl overflow-hidden">
+            <ul className="divide-y divide-border">
+              {slugs.map(slug => {
+                const rows = grouped[slug] || []
+                const displayName = LOCATION_NAMES.find(n => n.toLowerCase() === slug) || slug
+                const dailyRows = rows.filter(r => r.period_start === r.period_end)
+                if (dailyRows.length === 0) return null
 
-            return (
-              <div key={slug} className="bg-surface border border-border rounded-xl p-5">
-                <p className="text-sm font-semibold text-text-primary mb-3">{displayName}</p>
-                <Sparkline rows={rows} dateRange={{ start: startDate, end: endDate }} />
-              </div>
-            )
-          })}
+                return (
+                  <li key={slug} className="px-5 py-4">
+                    <p className="text-sm font-semibold text-text-primary mb-3">{displayName}</p>
+                    <Sparkline rows={rows} dateRange={{ start: startDate, end: endDate }} />
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+
+          {/* ---------- Job Compliance (per-submission / overdue) ---------- */}
+          <JobCompliance startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
         </>
       )}
     </div>
@@ -383,5 +392,164 @@ function SectionHeader({ title }) {
       </div>
       <div className="flex-1 h-px bg-border" />
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Job Compliance — per-job submission + overdue tracking from operandio_job_events.
+// Answers: who is doing the jobs, and what is not getting done. Rendered as a
+// single block (one panel, divided rows) rather than per-item bubbles.
+// ---------------------------------------------------------------------------
+function pctColor(p) { return p >= 85 ? '#18CE99' : p >= 60 ? '#FCD34D' : '#F26C4F' }
+
+function Stat({ label, value, color }) {
+  return (
+    <div className="flex items-center gap-2">
+      {color && <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />}
+      <span className="text-lg font-bold text-text-primary">{value ?? 0}</span>
+      <span className="text-xs text-text-muted">{label}</span>
+    </div>
+  )
+}
+
+function CountTag({ color, n, title }) {
+  return (
+    <span title={title} className="inline-flex items-center justify-center min-w-[22px] px-1.5 py-0.5 rounded text-[11px] font-semibold"
+      style={{ backgroundColor: color + '1A', color }}>{n}</span>
+  )
+}
+
+function EmptyRow({ children }) {
+  return <p className="text-text-muted text-sm px-5 py-6 text-center">{children}</p>
+}
+
+function JobsView({ jobs, showLoc, name }) {
+  if (!jobs?.length) return <EmptyRow>No submitted or overdue jobs in this range.</EmptyRow>
+  return (
+    <ul className="divide-y divide-border">
+      {jobs.map((j, i) => (
+        <li key={i} className="flex items-center gap-4 px-5 py-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-text-primary truncate">{j.job_name}</p>
+            {showLoc && <p className="text-[11px] text-text-muted">{name(j.location_slug)}</p>}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <CountTag color="#18CE99" n={j.on_time} title="on time" />
+            <CountTag color="#F26C4F" n={j.late} title="late" />
+            <CountTag color="#EF4444" n={j.missed} title="missed" />
+          </div>
+          <div className="w-32 flex items-center gap-2">
+            <div className="flex-1 h-2 rounded-full bg-bg overflow-hidden">
+              <div className="h-full rounded-full" style={{ width: `${j.completion_pct}%`, backgroundColor: pctColor(j.completion_pct) }} />
+            </div>
+            <span className="text-xs font-bold text-text-primary w-9 text-right">{j.completion_pct}%</span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function PeopleView({ people, showLoc, name }) {
+  if (!people?.length) return <EmptyRow>No task completions in this range.</EmptyRow>
+  return (
+    <ul className="divide-y divide-border">
+      {people.map((p, i) => (
+        <li key={i} className="flex items-center gap-4 px-5 py-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-text-primary truncate">{p.name}</p>
+            {showLoc && <p className="text-[11px] text-text-muted">{p.locations.map(name).join(', ')}</p>}
+          </div>
+          <div className="flex items-center gap-4 text-xs whitespace-nowrap">
+            <span className="text-text-primary font-semibold">{p.jobs_submitted} <span className="text-text-muted font-normal">jobs</span></span>
+            <span className="text-text-primary font-semibold">{p.tasks_done} <span className="text-text-muted font-normal">done</span></span>
+            <span className={`font-semibold ${p.tasks_skipped ? 'text-blue-600' : 'text-text-muted'}`}>{p.tasks_skipped} <span className="text-text-muted font-normal">skipped</span></span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function MissedView({ missed, showLoc, name }) {
+  if (!missed?.length) return <EmptyRow>Nothing overdue in this range. Everything got done.</EmptyRow>
+  return (
+    <ul className="divide-y divide-border">
+      {missed.map((m, i) => (
+        <li key={i} className="flex items-center gap-4 px-5 py-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-text-primary truncate">{m.job_name}</p>
+            <p className="text-[11px] text-text-muted">
+              {showLoc ? name(m.location_slug) + ' · ' : ''}{fmtDate(m.job_date)}{m.assigned_area ? ' · ' + m.assigned_area : ''}
+            </p>
+          </div>
+          <span className="text-xs font-semibold text-red-600 whitespace-nowrap">
+            {m.steps_completed ?? 0}/{m.steps_total ?? '?'} steps
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function JobCompliance({ startDate, endDate, locationSlug }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [view, setView] = useState('jobs')
+  const reqRef = useRef(0)
+
+  useEffect(() => {
+    const id = ++reqRef.current
+    setLoading(true)
+    setError('')
+    getOperandioJobs({ start_date: startDate, end_date: endDate, location_slug: locationSlug })
+      .then(d => { if (id === reqRef.current) { setData(d); setLoading(false) } })
+      .catch(e => { if (id === reqRef.current) { setError(e.message || 'Failed to load'); setLoading(false) } })
+  }, [startDate, endDate, locationSlug])
+
+  const t = data?.totals
+  const showLoc = !locationSlug || locationSlug === 'all'
+  const name = slug => LOCATION_NAMES.find(n => n.toLowerCase() === slug) || slug
+  const TABS = [['jobs', 'By Job'], ['people', 'By Person'], ['missed', 'Not Done']]
+
+  return (
+    <>
+      <SectionHeader title="Job Compliance" />
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        {/* Summary band + view toggle */}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-5 py-4 border-b border-border">
+          <Stat label="on time" value={t?.on_time} color="#18CE99" />
+          <Stat label="late" value={t?.late} color="#F26C4F" />
+          <Stat label="missed" value={t?.missed} color="#EF4444" />
+          <span className="w-px h-8 bg-border hidden sm:block" />
+          <Stat label="tasks done" value={t?.tasks_done} />
+          <Stat label="skipped" value={t?.tasks_skipped} color="#3B82F6" />
+          <div className="ml-auto flex gap-1.5">
+            {TABS.map(([k, lbl]) => (
+              <button
+                key={k}
+                onClick={() => setView(k)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  view === k ? 'bg-text-primary text-white border-text-primary' : 'bg-bg text-text-muted border-border hover:text-text-primary'
+                }`}
+              >
+                {lbl}{k === 'missed' && t?.missed ? ` (${t.missed})` : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {loading && <p className="loading-card mx-auto block my-6">Loading job compliance...</p>}
+        {error && !loading && <EmptyRow>No job data captured for this range yet.</EmptyRow>}
+        {!loading && !error && data && (
+          <>
+            {view === 'jobs' && <JobsView jobs={data.jobs} showLoc={showLoc} name={name} />}
+            {view === 'people' && <PeopleView people={data.people} showLoc={showLoc} name={name} />}
+            {view === 'missed' && <MissedView missed={data.missed} showLoc={showLoc} name={name} />}
+          </>
+        )}
+      </div>
+    </>
   )
 }
