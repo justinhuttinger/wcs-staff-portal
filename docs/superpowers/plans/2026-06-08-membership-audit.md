@@ -87,8 +87,8 @@ LANGUAGE sql STABLE AS $$
       count(*)                                                              AS members,
       count(*) FILTER (WHERE coalesce(a.mdue, 0) > 0)                       AS paying,
       count(*) FILTER (WHERE coalesce(a.mdue, 0) = 0)                       AS non_dues,
-      percentile_cont(0.5) WITHIN GROUP (ORDER BY a.mdue)
-        FILTER (WHERE a.mdue > 0)                                          AS median_due,
+      (percentile_cont(0.5) WITHIN GROUP (ORDER BY a.mdue)
+        FILTER (WHERE a.mdue > 0))::numeric                                AS median_due,  -- percentile_cont returns double; cast so round()/comparisons stay numeric
       avg(a.mdue) FILTER (WHERE a.mdue > 0)                                 AS avg_due,
       sum(a.mdue) FILTER (WHERE a.mdue > 0)                                 AS total_due,
       avg(a.tenure_m)                                                       AS avg_ten,
@@ -160,8 +160,8 @@ LANGUAGE sql STABLE AS $$
       a.membership_type,
       count(*)                                       AS members,
       count(*) FILTER (WHERE coalesce(a.mdue,0) > 0) AS paying,
-      percentile_cont(0.5) WITHIN GROUP (ORDER BY a.mdue)
-        FILTER (WHERE a.mdue > 0)                    AS median_due
+      (percentile_cont(0.5) WITHIN GROUP (ORDER BY a.mdue)
+        FILTER (WHERE a.mdue > 0))::numeric          AS median_due
     FROM active a
     GROUP BY a.membership_type
   )
