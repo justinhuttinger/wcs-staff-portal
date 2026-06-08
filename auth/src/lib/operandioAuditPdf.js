@@ -19,6 +19,25 @@ function isAuditDept(dept) {
   return /audit/i.test(dept || '')
 }
 
+// auditKey()-style slug used to canonicalize the department name and to match
+// the Admin -> Audits toggle keys.
+function deptKey(dept) {
+  return (dept || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+}
+
+// Canonical display names for the known audit departments. Older Operandio
+// exports print ALL-CAPS headers ("FRONT DESK AUDIT") while newer ones use
+// title case; normalizing keeps the Audits report from splitting one department
+// into multiple case-variant groups and matches the email pipeline's names. An
+// unknown audit type falls back to its parsed (trimmed) header text.
+const CANON_DEPT = {
+  front_desk_audit: 'Front Desk Audit',
+  pt_audit: 'PT Audit',
+  membership_coordinator_audit: 'Membership Coordinator Audit',
+  group_x_audit: 'Group X Audit',
+  childcare_audit: 'Childcare Audit',
+}
+
 // "Jun 2, 2026" -> { iso: '2026-06-02', monthDay: 'Jun 2' }
 function parseHeaderDate(s) {
   const m = (s || '').match(/([A-Z][a-z]{2}) (\d{1,2}), (\d{4})/)
@@ -52,8 +71,9 @@ function parseAuditPdfText(rawText) {
   const header = text.match(/(?:^|\n)\s*([^\n|]+?)\s*\|\s*([A-Za-z .'-]+?)\s*\|\s*Submitted\s+([A-Z][a-z]{2} \d{1,2}, \d{4})/)
   if (!header) return { ok: false, reason: 'no job-report header line' }
 
-  const department = header[1].replace(/\s*\([^)]*\)\s*/g, ' ').trim()
-  if (!isAuditDept(department)) return { ok: false, reason: `not an audit department: ${department}` }
+  const rawDept = header[1].replace(/\s*\([^)]*\)\s*/g, ' ').trim()
+  if (!isAuditDept(rawDept)) return { ok: false, reason: `not an audit department: ${rawDept}` }
+  const department = CANON_DEPT[deptKey(rawDept)] || rawDept
 
   const locationSlug = header[2].trim().toLowerCase()
   if (!ALL_SLUGS.includes(locationSlug)) return { ok: false, reason: `unknown location: ${header[2].trim()}` }
@@ -64,7 +84,15 @@ function parseAuditPdfText(rawText) {
   const dt = parseHeaderDate(sub[1])
   if (!dt) return { ok: false, reason: 'unparseable submitted date' }
   const submittedBy = sub[4].trim()
-  const TZ_OFFSETS = { PST: '-08:00', PDT: '-07:00' }
+  // US timezones the auditor's device may report. submittedDate is read from the
+  // printed date (not recomputed from the offset), so this only sets the stored
+  // timestamp's offset. Truly unknown zones are skipped rather than guessed.
+  const TZ_OFFSETS = {
+    PST: '-08:00', PDT: '-07:00',
+    MST: '-07:00', MDT: '-06:00',
+    CST: '-06:00', CDT: '-05:00',
+    EST: '-05:00', EDT: '-04:00',
+  }
   const tzOffset = TZ_OFFSETS[sub[3]]
   if (!tzOffset) return { ok: false, reason: `unrecognized timezone: ${sub[3]}` }
   const time24 = to24h(sub[2].replace(/\s+/g, ''))

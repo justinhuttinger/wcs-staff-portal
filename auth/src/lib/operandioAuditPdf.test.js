@@ -43,6 +43,25 @@ test('parses the PT audit (Clackamas), excludes non-scored Auditor Name row', ()
   assert.equal(r.scoreAchieved, r.items.reduce((s, it) => s + it.score, 0))
 })
 
+test('parses an all-caps MST export, canonicalizes the department', () => {
+  const r = parseAuditPdfText(fx('fd-audit-mst-salem.txt'))
+  assert.equal(r.ok, true)
+  assert.equal(r.locationSlug, 'salem')
+  // Header reads "FRONT DESK AUDIT" (all caps) but is canonicalized.
+  assert.equal(r.department, 'Front Desk Audit')
+  assert.equal(r.jobName, 'Front Desk Audit (Oct 10)')
+  assert.equal(r.submittedDate, '2025-10-10')
+  assert.equal(r.submittedBy, 'Justin Huttinger')
+  assert.equal(r.scoreAchieved, 36)
+  assert.equal(r.scorePossible, 50)
+  assert.equal(r.scorePct, 72)
+  assert.equal(r.items.length, 10) // "Auditor Name:" excluded
+  assert.equal(r.scorePossible % r.items.length, 0)
+  // MST maps to -07:00 (1:23PM -> 13:23); date comes from the printed header.
+  assert.equal(r.submittedAt, '2025-10-10T13:23:00-07:00')
+  assert.equal(r.scoreAchieved, r.items.reduce((s, it) => s + it.score, 0))
+})
+
 test('rejects a blank template (not a submitted audit)', () => {
   const r = parseAuditPdfText(fx('blank-template.txt'))
   assert.equal(r.ok, false)
