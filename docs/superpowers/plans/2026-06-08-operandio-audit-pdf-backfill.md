@@ -132,16 +132,18 @@ The Read tool's PDF rendering is NOT necessarily what `pdf-parse` emits. Capture
 Create `auth/scripts/_probe-pdf.js`:
 ```js
 // TEMPORARY: dump pdf-parse text for given PDF paths. Deleted in Task 7.
+// pdf-parse v2 is class-based: new PDFParse({ data }).getText() -> { text }.
 const fs = require('fs')
-let pdf
-try { pdf = require('pdf-parse') } catch { pdf = require('pdf-parse/lib/pdf-parse.js') }
+const { PDFParse } = require('pdf-parse')
 
 async function main() {
   for (const p of process.argv.slice(2)) {
-    const data = await pdf(fs.readFileSync(p))
+    const parser = new PDFParse({ data: new Uint8Array(fs.readFileSync(p)) })
+    const { text } = await parser.getText()
+    await parser.destroy()
     console.log('\n===== ' + p + ' =====')
-    console.log(data.text)
-    console.log('===== END (' + data.text.length + ' chars) =====')
+    console.log(text)
+    console.log('===== END (' + text.length + ' chars) =====')
   }
 }
 main().catch(e => { console.error(e); process.exit(1) })
@@ -284,8 +286,11 @@ function parseHeaderDate(s) {
   return { iso: `${m[3]}-${mm}-${String(m[2]).padStart(2, '0')}`, monthDay: `${m[1]} ${m[2]}` }
 }
 
-function parseAuditPdfText(text) {
-  if (!text || typeof text !== 'string') return { ok: false, reason: 'empty text' }
+function parseAuditPdfText(rawText) {
+  if (!rawText || typeof rawText !== 'string') return { ok: false, reason: 'empty text' }
+  // Normalize line endings so regexes (and \n-sensitive captures) behave the
+  // same whether the source has LF or CRLF.
+  const text = rawText.replace(/\r\n?/g, '\n')
 
   // Must be an Operandio Job Report.
   if (!/Job Report/i.test(text)) return { ok: false, reason: 'not a Job Report' }
@@ -420,9 +425,18 @@ const path = require('path')
 const os = require('os')
 const { createClient } = require('@supabase/supabase-js')
 const { parseAuditPdfText } = require('../src/lib/operandioAuditPdf')
+const { PDFParse } = require('pdf-parse') // v2 class API: new PDFParse({ data }).getText()
 
-let pdfParse
-try { pdfParse = require('pdf-parse') } catch { pdfParse = require('pdf-parse/lib/pdf-parse.js') }
+// Extract concatenated text from a PDF buffer using pdf-parse v2.
+async function extractPdfText(buffer) {
+  const parser = new PDFParse({ data: new Uint8Array(buffer) })
+  try {
+    const { text } = await parser.getText()
+    return text
+  } finally {
+    await parser.destroy()
+  }
+}
 
 const BUCKET = 'operandio-attachments'
 const args = process.argv.slice(2)
@@ -449,7 +463,7 @@ async function main() {
   const skips = []
   for (const file of files) {
     try {
-      const { text } = await pdfParse(fs.readFileSync(file))
+      const text = await extractPdfText(fs.readFileSync(file))
       const r = parseAuditPdfText(text)
       if (!r.ok) { skips.push({ file: path.basename(file), reason: r.reason }); continue }
       if (r.scorePossible % r.items.length !== 0) {
