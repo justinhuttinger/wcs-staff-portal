@@ -1,0 +1,51 @@
+const test = require('node:test')
+const assert = require('node:assert')
+const fs = require('fs')
+const path = require('path')
+const { parseAuditPdfText } = require('./operandioAuditPdf')
+
+const fx = name => fs.readFileSync(path.join(__dirname, '__fixtures__', name), 'utf8')
+
+test('parses the MC audit (Springfield)', () => {
+  const r = parseAuditPdfText(fx('mc-audit-springfield.txt'))
+  assert.equal(r.ok, true)
+  assert.equal(r.locationSlug, 'springfield')
+  assert.equal(r.department, 'Membership Coordinator Audit')
+  assert.equal(r.jobName, 'Membership Coordinator Audit (Jun 2)')
+  assert.equal(r.submittedDate, '2026-06-02')
+  assert.equal(r.submittedBy, 'Steve Vedder')
+  assert.equal(r.scoreAchieved, 54)
+  assert.equal(r.scorePossible, 55)
+  assert.equal(r.scorePct, 98)
+  assert.equal(r.items.length, 11)
+  assert.equal(r.scorePossible % r.items.length, 0)
+  assert.equal(r.items[0].name, 'GoHighLevel Ability')
+  assert.equal(r.items[0].score, 5)
+  assert.equal(r.items[0].by, 'Steve Vedder')
+  assert.ok(r.items.every(it => typeof it.score === 'number' && it.name))
+})
+
+test('parses the PT audit (Clackamas), excludes non-scored Auditor Name row', () => {
+  const r = parseAuditPdfText(fx('pt-audit-clackamas.txt'))
+  assert.equal(r.ok, true)
+  assert.equal(r.locationSlug, 'clackamas')
+  assert.equal(r.department, 'PT Audit')
+  assert.equal(r.submittedDate, '2025-10-31')
+  assert.equal(r.scoreAchieved, 39)
+  assert.equal(r.scorePossible, 40)
+  assert.equal(r.scorePct, 98)
+  assert.equal(r.items.length, 8)
+  assert.equal(r.scorePossible % r.items.length, 0)
+  assert.ok(!r.items.some(it => /Auditor Name/i.test(it.name)))
+})
+
+test('rejects a blank template (not a submitted audit)', () => {
+  const r = parseAuditPdfText(fx('blank-template.txt'))
+  assert.equal(r.ok, false)
+  assert.ok(r.reason)
+})
+
+test('rejects empty input', () => {
+  const r = parseAuditPdfText('')
+  assert.equal(r.ok, false)
+})
