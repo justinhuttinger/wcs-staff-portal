@@ -42,7 +42,9 @@ function downloadLeaksCsv(rows) {
   a.href = url
   a.download = 'membership-dues-leaks.csv'
   a.click()
-  URL.revokeObjectURL(url)
+  // Defer revoke so the browser can start the download before the blob URL is
+  // freed (a synchronous revoke races the download in some browsers).
+  setTimeout(() => URL.revokeObjectURL(url), 100)
 }
 
 const SORT_COLS = [
@@ -111,9 +113,14 @@ export default function MembershipAuditReport({ locationSlug }) {
     const arr = [...rows]
     const { col, dir } = sort
     arr.sort((a, b) => {
-      const av = a[col], bv = b[col]
-      if (typeof av === 'string') return dir === 'asc' ? String(av).localeCompare(bv) : String(bv).localeCompare(av)
-      return dir === 'asc' ? (Number(av) || 0) - (Number(bv) || 0) : (Number(bv) || 0) - (Number(av) || 0)
+      const ra = a[col], rb = b[col]
+      if (typeof ra === 'string' || typeof rb === 'string') {
+        return dir === 'asc' ? String(ra).localeCompare(String(rb)) : String(rb).localeCompare(String(ra))
+      }
+      // null/undefined numerics (e.g. tenure with no begin_date) sort to the bottom either way
+      const av = ra == null ? (dir === 'asc' ? Infinity : -Infinity) : Number(ra)
+      const bv = rb == null ? (dir === 'asc' ? Infinity : -Infinity) : Number(rb)
+      return dir === 'asc' ? av - bv : bv - av
     })
     return arr
   }, [rows, sort])
@@ -135,6 +142,8 @@ export default function MembershipAuditReport({ locationSlug }) {
       avgDues: paying ? totalDues / paying : 0,
       totalDues,
       avgTenure: tenCnt ? tenSum / tenCnt : 0,
+      // Leaks are a standing paying-plan concern shown independently of the dues
+      // pill (per spec) — the Dues Leaks section below is labeled accordingly.
       leaks: data?.totals?.leak_count || 0,
     }
   }, [rows, data])
