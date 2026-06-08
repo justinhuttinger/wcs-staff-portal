@@ -3,6 +3,7 @@ import { getMembershipAudit } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { StatBlock, StatCell, ReportBlock } from './StatBlock'
+import { LOCATION_NAMES } from '../../config/locations'
 
 const DUES_PILLS = [
   { key: 'all', label: 'All' },
@@ -57,7 +58,8 @@ const SORT_COLS = [
   { key: 'leaks', label: 'Leaks', align: 'right' },
 ]
 
-export default function MembershipAuditReport({ locationSlug }) {
+export default function MembershipAuditReport() {
+  const [loc, setLoc] = useState('all')
   const [dues, setDues] = useState('all')
   const [sort, setSort] = useState({ col: 'members', dir: 'desc' })
   const [showLeaks, setShowLeaks] = useState(false)
@@ -65,10 +67,10 @@ export default function MembershipAuditReport({ locationSlug }) {
   const { data, loading, error } = useCancellableFetch(
     (signal) => {
       const params = {}
-      if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
+      if (loc && loc !== 'all') params.location_slug = loc
       return getMembershipAudit(params, { signal })
     },
-    [locationSlug]
+    [loc]
   )
 
   // Apply the dues pill to the by-type rows (cards + table aggregate over the
@@ -160,20 +162,30 @@ export default function MembershipAuditReport({ locationSlug }) {
 
   return (
     <ReportBlock>
-      {/* Dues pill */}
-      <div className="px-5 sm:px-6 pt-4 flex items-center gap-1.5">
-        {DUES_PILLS.map(p => (
-          <button
-            key={p.key}
-            type="button"
-            onClick={() => setDues(p.key)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-              dues === p.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
+      {/* Location selector + dues pill */}
+      <div className="px-5 sm:px-6 pt-4 flex items-center gap-3 flex-wrap">
+        <select
+          value={loc}
+          onChange={e => setLoc(e.target.value)}
+          className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red"
+        >
+          <option value="all">All Locations</option>
+          {LOCATION_NAMES.map(n => <option key={n} value={n.toLowerCase()}>{n}</option>)}
+        </select>
+        <div className="flex items-center gap-1.5">
+          {DUES_PILLS.map(p => (
+            <button
+              key={p.key}
+              type="button"
+              onClick={() => setDues(p.key)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                dues === p.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Headline cards */}
