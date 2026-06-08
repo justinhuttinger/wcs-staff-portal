@@ -3,7 +3,7 @@ import { getCancelsReport } from '../../lib/api'
 import MembershipTypeTable from './MembershipTypeTable'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
-import { StatBlock, StatCell } from './StatBlock'
+import { StatBlock, StatCell, ReportBlock } from './StatBlock'
 
 const STATUS_COLORS = {
   'Cancelled': '#e53e3e',
@@ -13,7 +13,7 @@ const STATUS_COLORS = {
 
 const STATUS_ORDER = ['Cancelled', 'Expired', 'Return For Collection']
 
-function StatusBreakdown({ counts }) {
+function StatusBreakdown({ counts, flush = false }) {
   const counts_ = counts || {}
   const total = Object.values(counts_).reduce((s, v) => s + (v || 0), 0)
   // Show in fixed order; tack on any unexpected statuses at the end
@@ -22,7 +22,7 @@ function StatusBreakdown({ counts }) {
     ...Object.keys(counts_).filter(s => !STATUS_ORDER.includes(s) && counts_[s] > 0),
   ]
   return (
-    <div className="bg-surface rounded-xl border border-border p-6">
+    <div className={flush ? 'bg-surface p-6' : 'bg-surface rounded-xl border border-border p-6'}>
       <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">By Status</p>
       {total === 0 ? (
         <p className="text-sm text-text-muted py-4 text-center">No data</p>
@@ -41,17 +41,6 @@ function StatusBreakdown({ counts }) {
           })}
         </div>
       )}
-    </div>
-  )
-}
-
-function SectionHeader({ title }) {
-  return (
-    <div className="flex items-center gap-3 pt-2">
-      <div className="bg-surface/95 backdrop-blur-sm rounded-lg border border-border px-3 py-1.5 shadow-sm">
-        <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text-primary">{title}</h3>
-      </div>
-      <div className="flex-1 h-px bg-border" />
     </div>
   )
 }
@@ -102,8 +91,10 @@ function CountedList({ rows, getLabel, getColor, emptyText = 'No data' }) {
 function Click2SaveSection({ saveCount, cancelReasons, saveOptions, error }) {
   if (error) {
     return (
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-        Click2Save data unavailable: {error}
+      <div className="px-5 sm:px-6 pb-5">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+          Click2Save data unavailable: {error}
+        </div>
       </div>
     )
   }
@@ -112,17 +103,17 @@ function Click2SaveSection({ saveCount, cancelReasons, saveOptions, error }) {
   const hasAny = (saveCount || 0) > 0 || reasons.length > 0 || options.length > 0
   if (!hasAny) {
     return (
-      <p className="text-sm text-text-muted py-4 text-center">No Click2Save events in this date range.</p>
+      <p className="text-sm text-text-muted pb-5 px-5 sm:px-6 text-center">No Click2Save events in this date range.</p>
     )
   }
   return (
-    <div className="space-y-4">
-      <StatBlock cols={2}>
+    <>
+      <StatBlock cols={2} flush>
         <StatCell label="Members Saved" value={saveCount ?? 0} sub="Accepted a save offer instead of cancelling" />
         <StatCell label="Cancel Reasons Captured" value={reasons.reduce((s, r) => s + r.count, 0)} sub="From Click2Save webhook events" />
       </StatBlock>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-surface rounded-xl border border-border p-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-border">
+        <div className="bg-surface p-6">
           <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">Reasons for Cancel</p>
           <CountedList
             rows={reasons}
@@ -131,7 +122,7 @@ function Click2SaveSection({ saveCount, cancelReasons, saveOptions, error }) {
             emptyText="No reasons captured in this date range"
           />
         </div>
-        <div className="bg-surface rounded-xl border border-border p-6">
+        <div className="bg-surface p-6">
           <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">Save Option Chosen</p>
           <CountedList
             rows={options}
@@ -141,7 +132,7 @@ function Click2SaveSection({ saveCount, cancelReasons, saveOptions, error }) {
           />
         </div>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -167,34 +158,50 @@ export default function CancelsReport({ startDate, endDate, locationSlug, planTy
   const view = data.plan_types?.[planType] || data.plan_types?.all || data
 
   return (
-    <div className="space-y-6">
-      <SectionHeader title="Cancellations" />
-
-      <StatBlock cols={2}>
-        <StatCell
-          label="Members Cancelled"
-          value={view.total_members ?? 0}
-          sub={planType === 'insurance' ? 'Non-dues-paying (A2 / Active and Fit plans)' : undefined}
-        />
-        <StatCell
-          label="Agreements Cancelled"
-          value={view.total_agreements ?? 0}
-          sub={planType === 'insurance' ? 'Non-dues-paying (A2 / Active and Fit plans)' : undefined}
-        />
-      </StatBlock>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <StatusBreakdown counts={view.by_status} />
-        <MembershipTypeTable title="Cancels by Membership Type" rows={view.by_membership_type} />
+    <ReportBlock>
+      {/* ---------- CANCELLATIONS ---------- */}
+      <div>
+        <Heading>Cancellations</Heading>
+        <StatBlock cols={2} flush>
+          <StatCell
+            label="Members Cancelled"
+            value={view.total_members ?? 0}
+            sub={planType === 'insurance' ? 'Non-dues-paying (A2 / Active and Fit plans)' : undefined}
+          />
+          <StatCell
+            label="Agreements Cancelled"
+            value={view.total_agreements ?? 0}
+            sub={planType === 'insurance' ? 'Non-dues-paying (A2 / Active and Fit plans)' : undefined}
+          />
+        </StatBlock>
       </div>
 
-      <SectionHeader title="Click2Save" />
-      <Click2SaveSection
-        saveCount={data.c2s_save_count}
-        cancelReasons={data.c2s_cancel_reasons}
-        saveOptions={data.c2s_save_options}
-        error={data.c2s_error}
-      />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-border">
+        <StatusBreakdown counts={view.by_status} flush />
+        <div className="bg-surface p-6">
+          <MembershipTypeTable title="Cancels by Membership Type" rows={view.by_membership_type} flush />
+        </div>
+      </div>
+
+      {/* ---------- CLICK2SAVE ---------- */}
+      <div>
+        <Heading>Click2Save</Heading>
+        <Click2SaveSection
+          saveCount={data.c2s_save_count}
+          cancelReasons={data.c2s_cancel_reasons}
+          saveOptions={data.c2s_save_options}
+          error={data.c2s_error}
+        />
+      </div>
+    </ReportBlock>
+  )
+}
+
+// Section heading inside the single report block.
+function Heading({ children }) {
+  return (
+    <div className="px-5 sm:px-6 pt-4 pb-3">
+      <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text-primary">{children}</h3>
     </div>
   )
 }
