@@ -332,14 +332,6 @@ export default function OperationsReport({ locationSlug }) {
                       skipped={agg.skipped_pct}
                       uncompleted={agg.uncompleted_pct}
                     />
-                    {/* Breakdown of the overall %: on-time + late + skipped,
-                        with uncompleted shown separately, at the task level. */}
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-2 text-[11px] text-text-muted">
-                      <span><b className="text-text-primary font-semibold">{agg.on_time_pct.toFixed(0)}%</b> on-time</span>
-                      <span>+ <b className="text-text-primary font-semibold">{agg.late_pct.toFixed(0)}%</b> late</span>
-                      <span>+ <b className="text-text-primary font-semibold">{agg.skipped_pct.toFixed(0)}%</b> skipped</span>
-                      <span className="ml-auto"><b className="text-text-primary font-semibold">{agg.uncompleted_pct.toFixed(0)}%</b> not done</span>
-                    </div>
                   </li>
                 )
               })}
@@ -573,15 +565,6 @@ function JobCompliance({ startDate, endDate, locationSlug }) {
           <Stat label="on time" value={t?.on_time} color="#18CE99" />
           <Stat label="late" value={t?.late} color="#F26C4F" />
           <Stat label="missed" value={t?.missed} color="#EF4444" />
-          <span className="w-px h-8 bg-border hidden sm:block" />
-          {/* Where the completion % comes from: jobs done (on-time + late) out
-              of total scheduled instances. */}
-          <div className="flex items-center gap-2" title="Jobs completed (on-time or late) out of total scheduled">
-            <span className="text-lg font-bold text-text-primary">{t ? `${t.submitted}/${t.instances}` : '0/0'}</span>
-            <span className="text-xs text-text-muted">
-              done{t?.instances ? ` (${Math.round((t.submitted / t.instances) * 100)}%)` : ''}
-            </span>
-          </div>
           <div className="ml-auto flex gap-1.5">
             {TABS.map(([k, lbl]) => (
               <button

@@ -274,7 +274,7 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
       </div>
 
       <div className="px-5 sm:px-6 py-5">
-        <MembershipTypeTable title="Sales by Membership Type" rows={data.by_membership_type} flush />
+        <MembershipTypeTable title="Sales by Membership Type" rows={data.by_membership_type} collapsible flush />
       </div>
 
       <StatBlock cols={4} flush>
