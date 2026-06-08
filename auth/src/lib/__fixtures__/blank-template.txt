@@ -1,0 +1,51 @@
+Membership/Front Desk Audit - Salem
+Audit Completed By
+Audit Date:
+Score Analysis 	0 - 5 	0 = Fail 	3 = Standard 	5 = Exceptional
+ABC Fluency 	Score 	Description 	Comments
+Selling a Membership
+Selling PT
+Checking Members In
+Freezing an Account
+Full Member Details Understanding
+Selling Through POS
+Changing Card on File
+Paying Dues through POS
+Problem Solving (Invoices/etc.)
+TOTAL
+Customer Service 	Score 	Description 	Comments
+Answering the Phone
+Tours
+Greeting Members
+Selling Behaviors/Model
+New Member Onboarding
+TOTAL
+Cleaning 	Score 	Description 	Comments
+Towels
+Trashes
+Restock
+Unisex Bathroms
+Locker rooms
+Red
+Black
+Cardio
+Vacuuming
+Performance Room
+Mirrors
+Resetting the Gym
+Other
+TOTAL
+General Policies/Procedures 	Score 	Description 	Comments
+Cleaning Logs
+Dress Code
+Music Policy
+Lost & Found
+Keys
+Restocking Front of House
+Paperwork/Communication Notes
+Communication Outside of Work
+TOTAL
+OVERALL TOTAL
+
+-- 1 of 1 --
+
