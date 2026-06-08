@@ -3,6 +3,7 @@ import { getPTReport } from '../../lib/api'
 import { exportCSV, exportPDF } from '../../lib/export'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
+import { StatBlock, StatCell } from './StatBlock'
 
 function capitalize(str) {
   if (!str) return ''
@@ -132,23 +133,11 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
   return (
     <div className="space-y-6">
       {/* Stat Cards — Set / Show / Close */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Set</p>
-          <p className="text-2xl font-bold text-text-primary mt-1">{totalDayOnes}</p>
-          <p className="text-xs text-text-muted mt-0.5">Total Day Ones</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Show</p>
-          <p className="text-2xl font-bold text-text-primary mt-1">{totalCompleted}</p>
-          <p className="text-xs text-text-muted mt-0.5">{completionRate}% of {totalDayOnes} set</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Close</p>
-          <p className="text-2xl font-bold text-text-primary mt-1">{totalSales}</p>
-          <p className="text-xs text-text-muted mt-0.5">{closeRate}% of {totalCompleted} shown</p>
-        </div>
-      </div>
+      <StatBlock cols={3}>
+        <StatCell label="Set" value={totalDayOnes} sub="Total Day Ones" />
+        <StatCell label="Show" value={totalCompleted} sub={`${completionRate}% of ${totalDayOnes} set`} />
+        <StatCell label="Close" value={totalSales} sub={`${closeRate}% of ${totalCompleted} shown`} />
+      </StatBlock>
 
       {/* Trainer Summary Table */}
       <div className="bg-surface rounded-xl border border-border overflow-hidden">
