@@ -3,6 +3,7 @@ import { getMembershipReport } from '../../lib/api'
 import { exportCSV, exportPDF } from '../../lib/export'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
+import { StatBlock, StatCell } from './StatBlock'
 
 const LINE_COLORS = { memberships: '#e53e3e', vips: '#805ad5', day_ones: '#38a169' }
 
@@ -213,28 +214,13 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
   return (
     <div className="space-y-6">
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Total Sales</p>
-          <p className="text-2xl font-bold text-text-primary mt-1">{totalMemberships}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Trial Conversion</p>
-          <p className="text-2xl font-bold text-text-primary mt-1">{trialRate}%</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Day One Booked</p>
-          <p className="text-2xl font-bold text-text-primary mt-1">{dayOneBooked}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Total VIPs</p>
-          <p className="text-2xl font-bold text-text-primary mt-1">{totalVips}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Same Day Sales</p>
-          <p className="text-2xl font-bold text-text-primary mt-1">{totalSameDay}</p>
-        </div>
-      </div>
+      <StatBlock cols={5}>
+        <StatCell label="Total Sales" value={totalMemberships} />
+        <StatCell label="Trial Conversion" value={`${trialRate}%`} />
+        <StatCell label="Day One Booked" value={dayOneBooked} />
+        <StatCell label="Total VIPs" value={totalVips} />
+        <StatCell label="Same Day Sales" value={totalSameDay} />
+      </StatBlock>
 
       {/* Line Chart */}
       <LineChart points={chartPoints} />

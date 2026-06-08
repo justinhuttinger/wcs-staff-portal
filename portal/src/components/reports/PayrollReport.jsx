@@ -7,6 +7,7 @@ import {
   disconnectGoogleSheets,
 } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
+import { StatBlock, StatCell } from './StatBlock'
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
@@ -81,16 +82,6 @@ function defaultMonth() {
 function fmtMoney(n) {
   const v = Number(n) || 0
   return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-function KpiCard({ label, value, sub }) {
-  return (
-    <div className="bg-surface rounded-xl border border-border p-6 text-center">
-      <p className="text-xs text-text-muted uppercase tracking-wide">{label}</p>
-      <p className="text-4xl font-bold text-text-primary mt-2">{value}</p>
-      {sub && <p className="text-[11px] text-text-muted mt-1">{sub}</p>}
-    </div>
-  )
 }
 
 function SalesTable({ rows }) {
@@ -572,28 +563,28 @@ export default function PayrollReport({ locationSlug }) {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard
+      <StatBlock cols={4}>
+        <StatCell
           label="POS Sales Commission"
           value={`$${fmtMoney(summary.sales_commission)}`}
           sub="From CSV upload"
         />
-        <KpiCard
+        <StatCell
           label="PT Sales Commission"
           value={`$${fmtMoney(summary.recurring_commission)}`}
           sub={`${summary.recurring_services_count || 0} services @ 4%`}
         />
-        <KpiCard
+        <StatCell
           label="Trainer Sessions"
           value={summary.sessions_total || 0}
           sub={`${summary.sessions_completed || 0} completed · ${summary.sessions_canceled_charge || 0} cxl-charge`}
         />
-        <KpiCard
+        <StatCell
           label="Grand Total Commission"
           value={`$${fmtMoney(summary.grand_total_commission)}`}
           sub="POS + PT Sales"
         />
-      </div>
+      </StatBlock>
 
       {/* Tabs */}
       <div className="bg-surface rounded-xl border border-border">

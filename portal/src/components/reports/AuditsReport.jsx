@@ -169,50 +169,52 @@ export default function AuditsReport({ locationSlug }) {
   }
 
   return (
-    <div className="space-y-3">
-      {departments.map(dept => {
-        const latest = dept.rows[0]
-        const open = openDept === dept.department
-        return (
-          <div key={dept.department} className="bg-surface rounded-xl border border-border p-5">
-            <button
-              type="button"
-              onClick={() => setOpenDept(prev => (prev === dept.department ? null : dept.department))}
-              aria-expanded={open}
-              className="w-full flex items-center gap-4 text-left"
-            >
-              <div className="min-w-0">
-                <p className="text-lg font-bold text-text-primary">{dept.department}</p>
-                <p className="text-xs text-text-muted mt-0.5">
-                  {latest?.submitted_date ? `Last submitted ${fmtQaDate(latest.submitted_date)}` : 'No audits yet'}
-                </p>
-              </div>
-              <div className="ml-auto flex items-center gap-6 flex-shrink-0">
-                <div className="text-right">
-                  <p className="text-2xl font-bold text-text-primary leading-none">
-                    {latest?.score_pct != null ? `${latest.score_pct}%` : 'n/a'}
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <ul className="divide-y divide-border">
+        {departments.map(dept => {
+          const latest = dept.rows[0]
+          const open = openDept === dept.department
+          return (
+            <li key={dept.department} className="px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setOpenDept(prev => (prev === dept.department ? null : dept.department))}
+                aria-expanded={open}
+                className="w-full flex items-center gap-4 text-left"
+              >
+                <div className="min-w-0">
+                  <p className="text-lg font-bold text-text-primary">{dept.department}</p>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    {latest?.submitted_date ? `Last submitted ${fmtQaDate(latest.submitted_date)}` : 'No audits yet'}
                   </p>
-                  <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">Latest</p>
                 </div>
-                <div className="w-28 text-right">
-                  <span className="text-sm text-text-muted">{dept.rows.length} audit{dept.rows.length === 1 ? '' : 's'}</span>
+                <div className="ml-auto flex items-center gap-6 flex-shrink-0">
+                  <div className="text-right">
+                    <p className="text-2xl font-bold text-text-primary leading-none">
+                      {latest?.score_pct != null ? `${latest.score_pct}%` : 'n/a'}
+                    </p>
+                    <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">Latest</p>
+                  </div>
+                  <div className="w-28 text-right">
+                    <span className="text-sm text-text-muted">{dept.rows.length} audit{dept.rows.length === 1 ? '' : 's'}</span>
+                  </div>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                    className={`w-4 h-4 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
                 </div>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                  className={`w-4 h-4 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-            </button>
+              </button>
 
-            {open && (
-              <div>
-                <AuditTrendChart rows={dept.rows} />
-                <AuditTable rows={dept.rows} />
-              </div>
-            )}
-          </div>
-        )
-      })}
+              {open && (
+                <div>
+                  <AuditTrendChart rows={dept.rows} />
+                  <AuditTable rows={dept.rows} />
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }

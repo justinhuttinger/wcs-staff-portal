@@ -3,6 +3,7 @@ import { getCancelsReport } from '../../lib/api'
 import MembershipTypeTable from './MembershipTypeTable'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
+import { StatBlock, StatCell } from './StatBlock'
 
 const STATUS_COLORS = {
   'Cancelled': '#e53e3e',
@@ -116,18 +117,10 @@ function Click2SaveSection({ saveCount, cancelReasons, saveOptions, error }) {
   }
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Members Saved</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{saveCount ?? 0}</p>
-          <p className="text-[11px] text-text-muted mt-1">Accepted a save offer instead of cancelling</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Cancel Reasons Captured</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{reasons.reduce((s, r) => s + r.count, 0)}</p>
-          <p className="text-[11px] text-text-muted mt-1">From Click2Save webhook events</p>
-        </div>
-      </div>
+      <StatBlock cols={2}>
+        <StatCell label="Members Saved" value={saveCount ?? 0} sub="Accepted a save offer instead of cancelling" />
+        <StatCell label="Cancel Reasons Captured" value={reasons.reduce((s, r) => s + r.count, 0)} sub="From Click2Save webhook events" />
+      </StatBlock>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-surface rounded-xl border border-border p-6">
           <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">Reasons for Cancel</p>
@@ -177,22 +170,18 @@ export default function CancelsReport({ startDate, endDate, locationSlug, planTy
     <div className="space-y-6">
       <SectionHeader title="Cancellations" />
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Members Cancelled</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{view.total_members ?? 0}</p>
-          {planType === 'insurance' && (
-            <p className="text-[11px] text-text-muted mt-1">Non-dues-paying (A2 / Active and Fit plans)</p>
-          )}
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-6 text-center">
-          <p className="text-xs text-text-muted uppercase tracking-wide">Agreements Cancelled</p>
-          <p className="text-4xl font-bold text-text-primary mt-2">{view.total_agreements ?? 0}</p>
-          {planType === 'insurance' && (
-            <p className="text-[11px] text-text-muted mt-1">Non-dues-paying (A2 / Active and Fit plans)</p>
-          )}
-        </div>
-      </div>
+      <StatBlock cols={2}>
+        <StatCell
+          label="Members Cancelled"
+          value={view.total_members ?? 0}
+          sub={planType === 'insurance' ? 'Non-dues-paying (A2 / Active and Fit plans)' : undefined}
+        />
+        <StatCell
+          label="Agreements Cancelled"
+          value={view.total_agreements ?? 0}
+          sub={planType === 'insurance' ? 'Non-dues-paying (A2 / Active and Fit plans)' : undefined}
+        />
+      </StatBlock>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <StatusBreakdown counts={view.by_status} />

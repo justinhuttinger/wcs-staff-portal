@@ -2,6 +2,7 @@ import { Fragment, useState, useMemo } from 'react'
 import { getCheckinsReport } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
+import { StatBlock, StatCell } from './StatBlock'
 
 const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const HOURS = Array.from({ length: 24 }, (_, h) => h)
@@ -25,16 +26,6 @@ function SectionHeader({ title }) {
         <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text-primary">{title}</h3>
       </div>
       <div className="flex-1 h-px bg-border" />
-    </div>
-  )
-}
-
-function KpiCard({ label, value, sub }) {
-  return (
-    <div className="bg-surface rounded-xl border border-border p-6 text-center">
-      <p className="text-xs text-text-muted uppercase tracking-wide">{label}</p>
-      <p className="text-4xl font-bold text-text-primary mt-2">{value}</p>
-      {sub && <p className="text-[11px] text-text-muted mt-1">{sub}</p>}
     </div>
   )
 }
@@ -303,37 +294,37 @@ export default function CheckinsReport({ startDate, endDate, locationSlug }) {
   return (
     <div className="space-y-6">
       <SectionHeader title="Summary" />
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <KpiCard
+      <StatBlock cols={6}>
+        <StatCell
           label="Total Check-ins"
           value={(s.total_checkins ?? 0).toLocaleString()}
           sub={`${s.days_with_data ?? 0} days with data`}
         />
-        <KpiCard
+        <StatCell
           label="Member-Hours"
           value={(s.member_hours ?? 0).toLocaleString()}
           sub={s.visits_per_member_hour ? `${s.visits_per_member_hour} visits per member-hour` : ''}
         />
-        <KpiCard
+        <StatCell
           label="Avg Members / Hour"
           value={(s.avg_members_per_active_hour ?? 0).toLocaleString()}
           sub="while gym is active"
         />
-        <KpiCard
+        <StatCell
           label="Avg Check-ins / Day"
           value={(s.avg_per_open_day ?? 0).toLocaleString()}
         />
-        <KpiCard
+        <StatCell
           label="Peak Day"
           value={s.peak_day ? s.peak_day.count.toLocaleString() : '—'}
           sub={s.peak_day ? s.peak_day.date : ''}
         />
-        <KpiCard
+        <StatCell
           label="Peak Hour"
           value={s.peak_hour ? formatHour(s.peak_hour.hour) : '—'}
           sub={s.peak_hour ? `${s.peak_hour.avg.toFixed(1)} avg/hr` : ''}
         />
-      </div>
+      </StatBlock>
 
       <SectionHeader title="Trends" />
       <BarChart title="Check-ins by Day" points={data.by_date || []} />
