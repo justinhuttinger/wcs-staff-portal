@@ -1,9 +1,33 @@
 const { Router } = require('express')
+const multer = require('multer')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { getAccessToken } = require('./googleBusiness')
 const memoryCache = require('../services/memoryCache')
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
+
+// Target Drive folder for Marketing Tracker uploads. Prefer an env override,
+// else read app_config.marketing_upload_folder_id (set by an admin).
+async function getUploadFolderId() {
+  if (process.env.MARKETING_UPLOAD_FOLDER_ID) return process.env.MARKETING_UPLOAD_FOLDER_ID
+  const { data } = await supabaseAdmin
+    .from('app_config').select('value').eq('key', 'marketing_upload_folder_id').maybeSingle()
+  return data?.value || null
+}
+
+// multer runs as middleware before the handler, so its errors (e.g. too-large)
+// bypass the handler try/catch — translate them into clean responses here.
+function uploadSingle(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      const tooBig = err.code === 'LIMIT_FILE_SIZE'
+      return res.status(tooBig ? 413 : 400).json({ error: tooBig ? 'File exceeds the 50 MB limit' : 'Upload failed' })
+    }
+    next()
+  })
+}
 
 const router = Router()
 router.use(authenticate)
@@ -136,6 +160,60 @@ router.get('/drive-folder', async (req, res) => {
   } catch (err) {
     console.error('[MarketingTracker] drive-folder error:', err.message)
     res.status(err.status || 500).json({ error: err.message })
+  }
+})
+
+// POST /upload — upload a photo/video/pdf to the shared Drive folder and return
+// a viewable Drive link (so the original quality is preserved and the inline
+// preview works). Uses the shared Google connection (needs drive.file scope).
+router.post('/upload', uploadSingle, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
+    const mime = req.file.mimetype || 'application/octet-stream'
+    // Allow raster images/videos/pdf; exclude SVG (can carry scripts).
+    if (!/^image\/(?!svg)|^video\/|^application\/pdf$/.test(mime)) {
+      return res.status(400).json({ error: 'Only photo, video, or PDF files are allowed' })
+    }
+    const folderId = await getUploadFolderId()
+    if (!folderId) return res.status(400).json({ error: 'Upload folder is not configured yet' })
+
+    const token = await getAccessToken()
+    const name = (req.file.originalname || 'marketing-upload').replace(/[\r\n"]/g, '').slice(0, 200)
+    const boundary = '----wcsMarketingUploadBoundary'
+    const metadata = JSON.stringify({ name, parents: [folderId] })
+    const pre = Buffer.from(
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n` +
+      `--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`, 'utf8')
+    const post = Buffer.from(`\r\n--${boundary}--`, 'utf8')
+    const body = Buffer.concat([pre, req.file.buffer, post])
+
+    const up = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': `multipart/related; boundary=${boundary}` },
+      body,
+    })
+    const created = await up.json()
+    if (created.error) {
+      const msg = created.error.message || 'Drive upload failed'
+      const scopeIssue = /insufficient|scope|permission/i.test(msg)
+      return res.status(scopeIssue ? 403 : (up.status || 500)).json({
+        error: scopeIssue
+          ? 'Drive upload was rejected. Reconnect Google in Admin → Google Connections to grant write access, and make sure that Google account has edit access to the upload folder.'
+          : msg,
+      })
+    }
+
+    // Anyone-with-link can view, so the inline Drive preview renders.
+    await fetch(`https://www.googleapis.com/drive/v3/files/${created.id}/permissions?supportsAllDrives=true`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+    }).catch((e) => { console.warn('[MarketingTracker] set-permission failed:', e?.message) /* file still uploaded; link may need manual share */ })
+
+    res.status(201).json({ id: created.id, name: created.name, link: `https://drive.google.com/file/d/${created.id}/view` })
+  } catch (err) {
+    console.error('[MarketingTracker] upload error:', err.message)
+    res.status(500).json({ error: err.message })
   }
 })
 
