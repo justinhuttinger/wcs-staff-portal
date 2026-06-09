@@ -234,6 +234,32 @@ export default function MarketingTrackerView({ onBack }) {
 
   useEffect(() => { load() }, [])
 
+  // Near-live updates: while the tracker is open and the tab is visible,
+  // silently re-poll so people working the board together see each other's
+  // adds / edits / status changes without leaving and re-entering. Pauses when
+  // the tab is hidden and refreshes immediately on refocus. Silent = no spinner
+  // and last-good data is kept on a transient error.
+  useEffect(() => {
+    const POLL_MS = 15000
+    let cancelled = false
+    async function refresh() {
+      if (document.visibilityState !== 'visible') return
+      try {
+        const res = await getMarketingEfforts()
+        if (!cancelled) setEfforts(res.efforts || [])
+      } catch { /* keep last good data */ }
+    }
+    const timer = setInterval(refresh, POLL_MS)
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [])
+
   const locationSet = useMemo(() => {
     if (!locationValue || locationValue === 'all') return null // null = all
     return new Set(String(locationValue).split(',').map(s => s.trim().toLowerCase()).filter(Boolean))
@@ -606,10 +632,15 @@ function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
 
   useEffect(() => {
     let alive = true
-    getMarketingEffortComments(effort.id)
-      .then(r => { if (alive) setComments(r.comments || []) })
-      .catch(() => { if (alive) setComments([]) })
-    return () => { alive = false }
+    function loadComments(initial) {
+      getMarketingEffortComments(effort.id)
+        .then(r => { if (alive) setComments(r.comments || []) })
+        .catch(() => { if (alive && initial) setComments([]) })
+    }
+    loadComments(true)
+    // Poll so a teammate's comment appears while you have the effort open.
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') loadComments(false) }, 15000)
+    return () => { alive = false; clearInterval(timer) }
   }, [effort.id])
 
   async function changeStatus(next) {
