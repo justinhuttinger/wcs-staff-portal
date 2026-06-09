@@ -618,7 +618,7 @@ function ListView({ efforts, onEdit }) {
 
 // --- Read-only detail view (with inline status + comments) ---
 
-function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
+export function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
   const typeDef = TYPE_BY_SLUG[effort.type]
   const st = typeStyle(effort.type)
 
@@ -832,7 +832,7 @@ function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
 const inputClass = 'w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red'
 const labelClass = 'block text-xs font-medium text-text-muted mb-1'
 
-function EffortModal({ effort, defaultDate, onClose, onSaved, onDeleted }) {
+export function EffortModal({ effort, defaultDate, onClose, onSaved, onDeleted }) {
   const editing = !!effort
   const startParts = effort ? isoToParts(effort.start_at) : { date: defaultDate, time: '' }
   const endParts = effort?.end_at ? isoToParts(effort.end_at) : { date: '', time: '' }
