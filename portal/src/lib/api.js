@@ -628,6 +628,18 @@ export async function deleteMarketingEffort(id) {
   return api('/marketing-tracker/' + id, { method: 'DELETE' })
 }
 
+export async function updateMarketingEffortStatus(id, status) {
+  return api('/marketing-tracker/' + id + '/status', { method: 'PATCH', body: JSON.stringify({ status }) })
+}
+
+export async function getMarketingEffortComments(id) {
+  return api('/marketing-tracker/' + id + '/comments')
+}
+
+export async function addMarketingEffortComment(id, body) {
+  return api('/marketing-tracker/' + id + '/comments', { method: 'POST', body: JSON.stringify({ body }) })
+}
+
 // Day One Tracker
 export async function getDayOneTrackerAppointments(params = {}) {
   const qs = new URLSearchParams(params).toString()

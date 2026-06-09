@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   getMarketingEfforts, createMarketingEffort, updateMarketingEffort, deleteMarketingEffort,
+  updateMarketingEffortStatus, getMarketingEffortComments, addMarketingEffortComment,
 } from '../lib/api'
 import { LOCATION_NAMES, LOCATION_OPTIONS } from '../config/locations'
 import LocationMultiSelect from './LocationMultiSelect'
@@ -87,6 +88,75 @@ function locationsLabel(slugs) {
   return slugs.map(s => bySlug[s] || s).join(', ')
 }
 
+// --- Asset preview detection (Google Drive files, direct image/video/pdf) ---
+
+function driveFileId(url) {
+  if (!url) return null
+  const m = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/)
+  if (m) return m[1]
+  // Only the canonical open/uc forms carry a file id in `id=`; other Google
+  // URLs (folders, forms, search) also have `id=` but aren't single files.
+  if (/drive\.google\.com\/(open|uc)/.test(url)) {
+    const m2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/)
+    if (m2) return m2[1]
+  }
+  return null
+}
+
+function googleDocPreview(url) {
+  const m = url && url.match(/docs\.google\.com\/(document|spreadsheets|presentation)\/d\/([a-zA-Z0-9_-]+)/)
+  return m ? `https://docs.google.com/${m[1]}/d/${m[2]}/preview` : null
+}
+
+function directAssetKind(url) {
+  // Only embed https URLs directly — blocks mixed-content and non-http schemes
+  // from ever reaching an iframe/img/video src.
+  if (!url || !/^https:\/\//i.test(url)) return null
+  const clean = url.split('?')[0].split('#')[0].toLowerCase()
+  if (/\.(png|jpe?g|gif|webp|svg|bmp|avif)$/.test(clean)) return 'image'
+  if (/\.(mp4|webm|mov|m4v|ogv)$/.test(clean)) return 'video'
+  if (/\.pdf$/.test(clean)) return 'pdf'
+  return null
+}
+
+// Renders an inline preview for a single-asset link when we can recognize it
+// (Google Drive file, Google Doc/Sheet/Slide, or a direct image/video/pdf URL).
+// Returns null when the URL isn't previewable — caller still shows the link.
+function AssetPreview({ url }) {
+  const driveId = driveFileId(url)
+  if (driveId) {
+    return <iframe src={`https://drive.google.com/file/d/${driveId}/preview`} title="Asset preview" className="w-full rounded-lg border border-border bg-black/5" style={{ height: 360 }} allow="autoplay" />
+  }
+  const doc = googleDocPreview(url)
+  if (doc) {
+    return <iframe src={doc} title="Document preview" className="w-full rounded-lg border border-border" style={{ height: 360 }} />
+  }
+  const kind = directAssetKind(url)
+  if (kind === 'image') {
+    return <img src={url} alt="" loading="lazy" className="max-h-80 rounded-lg border border-border object-contain bg-bg" />
+  }
+  if (kind === 'video') {
+    return <video src={url} controls className="max-h-80 w-full rounded-lg border border-border bg-black" />
+  }
+  if (kind === 'pdf') {
+    return <iframe src={url} title="PDF preview" className="w-full rounded-lg border border-border" style={{ height: 360 }} />
+  }
+  return null
+}
+
+function ExternalLink({ url }) {
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="text-wcs-red hover:underline break-all inline-flex items-center gap-1 text-sm">
+      <span className="truncate max-w-full">{url}</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3 shrink-0"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+    </a>
+  )
+}
+
+function formatCommentTime(iso) {
+  return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
 // --- Main view ---
 
 export default function MarketingTrackerView({ onBack }) {
@@ -98,14 +168,14 @@ export default function MarketingTrackerView({ onBack }) {
   const [currentDate, setCurrentDate] = useState(todayStr())
   const [typeFilter, setTypeFilter] = useState(() => new Set(MARKETING_TYPES.map(t => t.slug)))
   const [locationValue, setLocationValue] = useState('all')
-  const [modal, setModal] = useState(null)               // { effort } | { date } | null
+  const [modal, setModal] = useState(null)               // { view } | { effort } | { date } | null
 
   function load() {
     setLoading(true)
     setError('')
-    getMarketingEfforts()
-      .then(res => setEfforts(res.efforts || []))
-      .catch(err => setError(err.message))
+    return getMarketingEfforts()
+      .then(res => { const list = res.efforts || []; setEfforts(list); return list })
+      .catch(err => { setError(err.message); return [] })
       .finally(() => setLoading(false))
   }
 
@@ -200,30 +270,38 @@ export default function MarketingTrackerView({ onBack }) {
         </div>
 
         {/* Filters */}
-        <div className="flex items-center gap-3 mt-4 flex-wrap">
-          <LocationMultiSelect value={locationValue} onChange={setLocationValue} options={LOCATION_OPTIONS.filter(o => o.slug !== 'all')} />
-          <div className="h-5 w-px bg-border" />
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <button
-              onClick={() => setTypeFilter(allTypesOn ? new Set() : new Set(MARKETING_TYPES.map(t => t.slug)))}
-              className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${allTypesOn ? 'bg-text-primary text-white border-text-primary' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
-            >
-              All Types
-            </button>
-            {MARKETING_TYPES.map(t => {
-              const on = typeFilter.has(t.slug)
-              const st = typeStyle(t.slug)
-              return (
-                <button
-                  key={t.slug}
-                  onClick={() => toggleType(t.slug)}
-                  className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors inline-flex items-center gap-1.5 ${on ? st.badge : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${on ? st.dot : 'bg-text-muted/40'}`} />
-                  {t.label}
-                </button>
-              )
-            })}
+        <div className="flex items-start gap-3 mt-4 flex-wrap">
+          <div className="shrink-0">
+            <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Location</span>
+            <LocationMultiSelect value={locationValue} onChange={setLocationValue} options={LOCATION_OPTIONS.filter(o => o.slug !== 'all')} />
+          </div>
+          <div className="flex-1 min-w-[260px]">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Type</span>
+              <button
+                onClick={() => setTypeFilter(allTypesOn ? new Set() : new Set(MARKETING_TYPES.map(t => t.slug)))}
+                className="text-[10px] font-semibold uppercase tracking-wide text-text-muted hover:text-wcs-red transition-colors"
+              >
+                {allTypesOn ? 'Clear all' : 'Select all'}
+              </button>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {MARKETING_TYPES.map(t => {
+                const on = typeFilter.has(t.slug)
+                const st = typeStyle(t.slug)
+                return (
+                  <button
+                    key={t.slug}
+                    onClick={() => toggleType(t.slug)}
+                    aria-pressed={on}
+                    className={`group px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all inline-flex items-center gap-1.5 ${on ? st.badge + ' shadow-sm' : 'bg-bg text-text-muted border-border hover:border-text-muted/60 hover:text-text-primary'}`}
+                  >
+                    <span className={`w-2 h-2 rounded-full transition-colors ${st.dot} ${on ? '' : 'opacity-30 group-hover:opacity-60'}`} />
+                    {t.label}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -259,24 +337,37 @@ export default function MarketingTrackerView({ onBack }) {
           </div>
 
           {calView === 'day' && (
-            <DayView items={itemsForDate(currentDate)} onAdd={() => setModal({ date: currentDate })} onEdit={e => setModal({ effort: e })} />
+            <DayView items={itemsForDate(currentDate)} onAdd={() => setModal({ date: currentDate })} onEdit={e => setModal({ view: e })} />
           )}
 
           {calView === 'week' && (
-            <WeekGrid weekDates={weekDates} today={today} itemsForDate={itemsForDate} onAdd={d => setModal({ date: d })} onEdit={e => setModal({ effort: e })} />
+            <WeekGrid weekDates={weekDates} today={today} itemsForDate={itemsForDate} onAdd={d => setModal({ date: d })} onEdit={e => setModal({ view: e })} />
           )}
 
           {calView === 'month' && (
-            <MonthGrid weeks={monthWeeks} month={monthOfCurrent} today={today} itemsForDate={itemsForDate} onAdd={d => setModal({ date: d })} onEdit={e => setModal({ effort: e })} />
+            <MonthGrid weeks={monthWeeks} month={monthOfCurrent} today={today} itemsForDate={itemsForDate} onAdd={d => setModal({ date: d })} onEdit={e => setModal({ view: e })} />
           )}
         </>
       )}
 
       {!loading && mode === 'list' && (
-        <ListView efforts={filtered} onEdit={e => setModal({ effort: e })} />
+        <ListView efforts={filtered} onEdit={e => setModal({ view: e })} />
       )}
 
-      {modal && (
+      {modal && modal.view && (
+        <ViewModal
+          effort={modal.view}
+          onClose={() => setModal(null)}
+          onEdit={() => setModal({ effort: modal.view })}
+          onChanged={async () => {
+            const list = await load()
+            setModal(m => (m && m.view) ? { view: list.find(x => x.id === m.view.id) || m.view } : m)
+          }}
+          onDeleted={() => { setModal(null); load() }}
+        />
+      )}
+
+      {modal && !modal.view && (
         <EffortModal
           effort={modal.effort || null}
           defaultDate={modal.date || currentDate}
@@ -464,6 +555,212 @@ function ListView({ efforts, onEdit }) {
           })}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+// --- Read-only detail view (with inline status + comments) ---
+
+function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
+  const typeDef = TYPE_BY_SLUG[effort.type]
+  const st = typeStyle(effort.type)
+
+  const [status, setStatus] = useState(effort.status)
+  const [statusSaving, setStatusSaving] = useState(false)
+  const [comments, setComments] = useState(null)
+  const [commentText, setCommentText] = useState('')
+  const [posting, setPosting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    getMarketingEffortComments(effort.id)
+      .then(r => { if (alive) setComments(r.comments || []) })
+      .catch(() => { if (alive) setComments([]) })
+    return () => { alive = false }
+  }, [effort.id])
+
+  async function changeStatus(next) {
+    if (next === status || statusSaving) return
+    const prev = status
+    setStatus(next); setStatusSaving(true); setErr('')
+    try {
+      await updateMarketingEffortStatus(effort.id, next)
+      if (onChanged) onChanged()
+    } catch (e) {
+      setStatus(prev); setErr(e.message)
+    } finally {
+      setStatusSaving(false)
+    }
+  }
+
+  async function postComment() {
+    const body = commentText.trim()
+    if (!body || posting) return
+    setPosting(true); setErr('')
+    try {
+      const r = await addMarketingEffortComment(effort.id, body)
+      setComments(prev => [...(prev || []), r.comment])
+      setCommentText('')
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setPosting(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!window.confirm('Delete this marketing effort?')) return
+    setDeleting(true); setErr('')
+    try {
+      await deleteMarketingEffort(effort.id)
+      onDeleted()
+    } catch (e) {
+      setErr(e.message); setDeleting(false)
+    }
+  }
+
+  const filledFields = (typeDef?.fields || []).filter(f => {
+    const v = effort.custom?.[f.key]
+    return v !== undefined && v !== null && String(v).trim() !== ''
+  })
+
+  const startStr = formatLongDate(isoToDateStr(effort.start_at))
+  const startT = formatTime(effort.start_at)
+  const endStr = effort.end_at ? formatLongDate(isoToDateStr(effort.end_at)) : null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-surface rounded-xl border border-border shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3 sticky top-0 bg-surface z-10">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-lg font-bold text-text-primary">{effort.title}</h3>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border uppercase tracking-wide inline-flex items-center gap-1 ${st.badge}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{typeLabel(effort.type)}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={onEdit} className="px-2.5 py-1.5 rounded-lg border border-border text-text-muted hover:text-text-primary hover:border-text-muted text-xs font-semibold transition-colors">Edit</button>
+            <button onClick={onClose} className="text-text-muted hover:text-text-primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+        </div>
+
+        <div className="p-5 space-y-5">
+          {err && <p className="text-sm text-wcs-red">{err}</p>}
+
+          {/* Status — the only editable field here */}
+          <div>
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Status</span>
+              {statusSaving && <span className="text-[10px] text-text-muted">saving…</span>}
+            </div>
+            <div className="inline-flex rounded-lg border border-border overflow-hidden">
+              {STATUSES.map((s, i) => (
+                <button
+                  key={s.key}
+                  onClick={() => changeStatus(s.key)}
+                  disabled={statusSaving}
+                  className={`px-3.5 py-1.5 text-xs font-semibold transition-colors disabled:opacity-60 ${i !== 0 ? 'border-l border-border' : ''} ${status === s.key ? 'bg-wcs-red text-white' : 'bg-bg text-text-muted hover:text-text-primary'}`}
+                >{s.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Meta */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1">When</span>
+              <p className="text-sm text-text-primary">{startStr}{startT ? `, ${startT}` : ''}</p>
+              {endStr && <p className="text-sm text-text-muted">through {endStr}</p>}
+            </div>
+            <div>
+              <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1">Locations</span>
+              <p className="text-sm text-text-primary">{locationsLabel(effort.locations)}</p>
+            </div>
+          </div>
+
+          {/* Type-specific details */}
+          {filledFields.length > 0 && (
+            <div className="space-y-4 pt-1 border-t border-border">
+              {filledFields.map(f => {
+                const v = effort.custom[f.key]
+                return (
+                  <div key={f.key}>
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1">{f.label}</span>
+                    {f.type === 'url' ? (
+                      <div className="space-y-2">
+                        <ExternalLink url={v} />
+                        <AssetPreview url={v} />
+                      </div>
+                    ) : f.type === 'textarea' ? (
+                      <p className="text-sm text-text-primary whitespace-pre-wrap">{v}</p>
+                    ) : (
+                      <p className="text-sm text-text-primary">{v}</p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Notes */}
+          {effort.notes && (
+            <div className="pt-1 border-t border-border">
+              <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1 pt-1">Notes</span>
+              <p className="text-sm text-text-primary whitespace-pre-wrap">{effort.notes}</p>
+            </div>
+          )}
+
+          {/* Comments */}
+          <div className="pt-1 border-t border-border">
+            <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-2 pt-1">
+              Comments{comments ? ` (${comments.length})` : ''}
+            </span>
+            <div className="space-y-2.5 mb-3">
+              {comments === null && <p className="text-xs text-text-muted">Loading…</p>}
+              {comments && comments.length === 0 && <p className="text-xs text-text-muted">No comments yet.</p>}
+              {comments && comments.map(c => (
+                <div key={c.id} className="rounded-lg bg-bg border border-border p-3">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-xs font-semibold text-text-primary">{c.created_by_name || 'Unknown'}</span>
+                    <span className="text-[10px] text-text-muted">{formatCommentTime(c.created_at)}</span>
+                  </div>
+                  <p className="text-sm text-text-primary whitespace-pre-wrap">{c.body}</p>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-end gap-2">
+              <textarea
+                rows={2}
+                value={commentText}
+                onChange={e => setCommentText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) postComment() }}
+                placeholder="Add a comment…"
+                className="flex-1 px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red resize-none"
+              />
+              <button
+                onClick={postComment}
+                disabled={posting || !commentText.trim()}
+                className="px-3 py-2 rounded-lg bg-wcs-red text-white text-xs font-semibold hover:bg-wcs-red/90 transition-colors disabled:opacity-50 shrink-0"
+              >{posting ? 'Posting…' : 'Add Comment'}</button>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-border flex items-center justify-between sticky bottom-0 bg-surface">
+          <button onClick={handleDelete} disabled={deleting} className="px-3 py-2 rounded-lg text-xs font-semibold text-wcs-red border border-wcs-red/30 hover:bg-wcs-red/10 transition-colors disabled:opacity-50">
+            {deleting ? 'Deleting…' : 'Delete'}
+          </button>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-text-muted hover:text-text-primary transition-colors">Close</button>
+        </div>
+      </div>
     </div>
   )
 }
