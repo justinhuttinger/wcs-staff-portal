@@ -14,9 +14,9 @@ const SECTIONS = [
   { key: 'sessions',  label: 'Sessions' },
 ]
 
-// Profit centers to exclude from POS Sale Commissions (handled separately
-// under PT Sales Commissions).
-const POS_EXCLUDED_CENTERS = new Set(['TRAINING'])
+// POS Sale Commissions shows ONLY these retail profit centers, in this order.
+const POS_ALLOWED_CENTERS = ['WCS Drinks', 'WCS Merchandise', 'WCS Snacks', 'WCS Supplements', 'WCS Tanning']
+const centerLabel = (c) => c.replace(/^WCS\s+/i, '')
 
 function lastNameKey(fullName) {
   if (!fullName) return ''
@@ -60,13 +60,11 @@ function fmtMoney(n) {
 // ---- POS Sale Commissions section ----
 function SalesSection({ rows }) {
   const allCenters = useMemo(() => {
-    const set = new Set()
+    const present = new Set()
     for (const r of rows) {
-      for (const k of Object.keys(r.by_profit_center || {})) {
-        if (!POS_EXCLUDED_CENTERS.has(k)) set.add(k)
-      }
+      for (const k of Object.keys(r.by_profit_center || {})) present.add(k)
     }
-    return [...set].sort()
+    return POS_ALLOWED_CENTERS.filter((c) => present.has(c))
   }, [rows])
 
   const visibleRows = useMemo(() => {
@@ -109,7 +107,7 @@ function SalesSection({ rows }) {
                     key={c}
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-bg border border-border text-text-muted"
                   >
-                    <span className="font-medium text-text-primary">{c}</span>
+                    <span className="font-medium text-text-primary">{centerLabel(c)}</span>
                     <span>${fmtMoney(v)}</span>
                   </span>
                 )

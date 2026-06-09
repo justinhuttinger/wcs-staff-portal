@@ -17,9 +17,12 @@ const SECTIONS = [
   { key: 'sessions',  label: 'Trainer Sessions' },
 ]
 
-// Profit centers to exclude from POS Sale Commissions (handled separately
-// under PT Sales Commissions).
-const POS_EXCLUDED_CENTERS = new Set(['TRAINING'])
+// POS Sale Commissions shows ONLY these retail profit centers, in this order.
+// (Other centers like DUES / TRAINING / Lockers are intentionally excluded.)
+const POS_ALLOWED_CENTERS = ['WCS Drinks', 'WCS Merchandise', 'WCS Snacks', 'WCS Supplements', 'WCS Tanning']
+
+// Display label drops the "WCS " brand prefix (e.g. "WCS Drinks" -> "Drinks").
+const centerLabel = (c) => c.replace(/^WCS\s+/i, '')
 
 function lastNameKey(fullName) {
   if (!fullName) return ''
@@ -84,21 +87,25 @@ function fmtMoney(n) {
   return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+function SortArrow({ active, dir }) {
+  if (!active) return null
+  return <span className="ml-1 text-wcs-red">{dir === 'asc' ? '▲' : '▼'}</span>
+}
+
 function SalesTable({ rows }) {
-  // Collect all profit-center keys present (excluding POS-excluded centers
-  // like TRAINING, which belongs under PT Sales Commissions).
+  // Click a profit-center (or Total) header to sort: desc -> asc -> off.
+  const [sort, setSort] = useState({ key: null, dir: null }) // key: center name | '_total' | null
+
+  // Only the allowlisted retail centers that actually appear, in fixed order.
   const allCenters = useMemo(() => {
-    const set = new Set()
+    const present = new Set()
     for (const r of rows) {
-      for (const k of Object.keys(r.by_profit_center || {})) {
-        if (!POS_EXCLUDED_CENTERS.has(k)) set.add(k)
-      }
+      for (const k of Object.keys(r.by_profit_center || {})) present.add(k)
     }
-    return [...set].sort()
+    return POS_ALLOWED_CENTERS.filter((c) => present.has(c))
   }, [rows])
 
-  // Recompute per-row totals excluding the dropped centers, then drop rows
-  // that have no remaining commissions.
+  // Per-row totals across the visible centers, dropping rows with none.
   const visibleRows = useMemo(() => {
     const out = []
     for (const r of rows) {
@@ -107,8 +114,23 @@ function SalesTable({ rows }) {
       if (total === 0 && !allCenters.some((c) => c in (r.by_profit_center || {}))) continue
       out.push({ ...r, _displayTotal: total })
     }
-    return sortByLastName(out)
-  }, [rows, allCenters])
+    if (!sort.key) return sortByLastName(out)
+    const mul = sort.dir === 'asc' ? 1 : -1
+    const valOf = (r) => (sort.key === '_total' ? r._displayTotal : Number(r.by_profit_center?.[sort.key] || 0))
+    return [...out].sort((a, b) => {
+      const d = (valOf(a) - valOf(b)) * mul
+      if (d !== 0) return d
+      return lastNameKey(a.employee_name).localeCompare(lastNameKey(b.employee_name))
+    })
+  }, [rows, allCenters, sort])
+
+  function toggleSort(key) {
+    setSort((prev) => {
+      if (prev.key !== key) return { key, dir: 'desc' }
+      if (prev.dir === 'desc') return { key, dir: 'asc' }
+      return { key: null, dir: null }
+    })
+  }
 
   if (!visibleRows.length) {
     return <p className="text-sm text-text-muted">No commissions for this period.</p>
@@ -122,6 +144,8 @@ function SalesTable({ rows }) {
     grand += r._displayTotal
   }
 
+  const sortableHead = 'px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-wcs-red transition-colors'
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm border-collapse">
@@ -130,9 +154,22 @@ function SalesTable({ rows }) {
             <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">Employee</th>
             <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">Club</th>
             {allCenters.map((c) => (
-              <th key={c} className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-text-muted whitespace-nowrap">{c}</th>
+              <th
+                key={c}
+                onClick={() => toggleSort(c)}
+                className={`${sortableHead} ${sort.key === c ? 'text-wcs-red' : 'text-text-muted'}`}
+                title="Click to sort"
+              >
+                {centerLabel(c)}<SortArrow active={sort.key === c} dir={sort.dir} />
+              </th>
             ))}
-            <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-text-primary">Total</th>
+            <th
+              onClick={() => toggleSort('_total')}
+              className={`${sortableHead} ${sort.key === '_total' ? 'text-wcs-red' : 'text-text-primary'}`}
+              title="Click to sort"
+            >
+              Total<SortArrow active={sort.key === '_total'} dir={sort.dir} />
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -430,15 +467,13 @@ export default function PayrollReport({ locationSlug }) {
 
     // ---- POS Sale Commissions ----
     const sales = sortByLastName(data.sales || [])
-    const posCenters = new Set()
+    const present = new Set()
     for (const r of sales) {
-      for (const k of Object.keys(r.by_profit_center || {})) {
-        if (!POS_EXCLUDED_CENTERS.has(k)) posCenters.add(k)
-      }
+      for (const k of Object.keys(r.by_profit_center || {})) present.add(k)
     }
-    const posCols = [...posCenters].sort()
+    const posCols = POS_ALLOWED_CENTERS.filter((c) => present.has(c))
     rows.push(['POS Sale Commissions'])
-    rows.push(['Employee', 'Club', ...posCols, 'Total'])
+    rows.push(['Employee', 'Club', ...posCols.map(centerLabel), 'Total'])
     for (const r of sales) {
       let total = 0
       const cells = posCols.map((c) => {

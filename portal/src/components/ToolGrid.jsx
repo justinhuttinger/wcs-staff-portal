@@ -258,12 +258,24 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   // Marketing role: tightly scoped to Reporting + Insights, all locations.
   // Marketing reports live inside Reporting now, so no standalone tile.
   if (userRole === 'marketing') {
+    const growTool = allTools.find(t => t.id === 'grow')
+    const abcTool = allTools.find(t => t.id === 'abc')
     return (
       <div className="w-full max-w-4xl mx-auto px-8 pt-4">
         <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">
           Marketing
         </p>
         <div className="grid grid-cols-3 gap-5">
+          {growTool && <ToolButton label={growTool.label} description={growTool.description} icon={growTool.icon} url={getUrl(growTool)} star />}
+          {abcTool && <ToolButton label={abcTool.label} description={abcTool.description} icon={abcTool.icon} url={getUrl(abcTool)} star />}
+          <ToolButton label="Insights" description="ABC" url="https://app.fitnessbi.com/signin" />
+          <ToolButton label="Send Notifications" description="Member App" url="https://westcoaststrength.trainerize.com/app/login" />
+          {onLeaderboard && (
+            <SvgTileButton onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />
+          )}
+          {onMarketingTracker && (
+            <SvgTileButton onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />
+          )}
           {onReporting && (
             <SvgTileButton
               onClick={() => { window.location.hash = '#reporting'; onReporting() }}
@@ -272,15 +284,6 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
               desc="All Locations"
             />
           )}
-          {onMarketingTracker && (
-            <SvgTileButton
-              onClick={onMarketingTracker}
-              iconPath={TILE_ICONS.marketing}
-              label="Marketing Tracker"
-              desc="Campaigns"
-            />
-          )}
-          <ToolButton label="Insights" description="ABC" url="https://app.fitnessbi.com/signin" />
         </div>
       </div>
     )
