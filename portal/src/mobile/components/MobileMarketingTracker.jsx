@@ -5,6 +5,7 @@ import { LOCATION_NAMES, LOCATION_OPTIONS } from '../../config/locations'
 import LocationMultiSelect from '../../components/LocationMultiSelect'
 import { MARKETING_TYPES, typeLabel, typeStyle, STATUS_BY_KEY } from '../../config/marketingTypes'
 import { ViewModal, EffortModal } from '../../components/MarketingTrackerView'
+import MobileHeader from './MobileHeader'
 
 // --- date helpers (local) ---
 function toLocalDateStr(d) {
@@ -99,13 +100,13 @@ export default function MobileMarketingTracker() {
 
   return (
     <div className="pt-4 px-4 pb-24">
-      <div className="flex items-center justify-between mb-1">
-        <h1 className="text-2xl font-bold text-text-primary">Marketing Tracker</h1>
-        <span className="px-2 py-0.5 rounded-full bg-wcs-red/10 text-wcs-red text-[10px] font-bold uppercase tracking-wider border border-wcs-red/20">Beta</span>
-      </div>
+      <MobileHeader
+        title="Marketing Tracker"
+        rightAction={<span className="px-2 py-0.5 rounded-full bg-wcs-red/10 text-wcs-red text-[10px] font-bold uppercase tracking-wider border border-wcs-red/20">Beta</span>}
+      />
 
       {/* Filters */}
-      <div className="flex items-center gap-2 mt-3 mb-4 flex-wrap">
+      <div className="bg-surface border border-border rounded-2xl p-3 mt-3 mb-4 flex items-center gap-2 flex-wrap">
         <LocationMultiSelect value={locationValue} onChange={setLocationValue} options={LOCATION_OPTIONS.filter(o => o.slug !== 'all')} applyLabel="Apply" />
         <LocationMultiSelect value={typeValue} onChange={setTypeValue} options={TYPE_OPTIONS} allLabel="All Types" noneLabel="No Types" nounPlural="types" applyLabel="Apply" />
       </div>
@@ -118,12 +119,12 @@ export default function MobileMarketingTracker() {
       )}
 
       {!loading && total === 0 && (
-        <p className="text-sm text-text-muted text-center py-10">No marketing efforts yet. Tap + to add one.</p>
+        <p className="text-sm text-white/80 text-center py-10 drop-shadow">No marketing efforts yet. Tap + to add one.</p>
       )}
 
       {upcoming.length > 0 && (
         <>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-2">Upcoming & Active</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/80 mb-2 drop-shadow">Upcoming & Active</p>
           <div className="space-y-2.5 mb-6">
             {upcoming.map(e => <EffortCardWithDate key={e.id} effort={e} onOpen={onOpen} />)}
           </div>
@@ -132,7 +133,7 @@ export default function MobileMarketingTracker() {
 
       {past.length > 0 && (
         <>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-2">Past</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/80 mb-2 drop-shadow">Past</p>
           <div className="space-y-2.5">
             {past.map(e => <EffortCardWithDate key={e.id} effort={e} onOpen={onOpen} />)}
           </div>
