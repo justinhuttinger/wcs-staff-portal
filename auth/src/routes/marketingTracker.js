@@ -2,6 +2,8 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { getAccessToken } = require('./googleBusiness')
+const memoryCache = require('../services/memoryCache')
 
 const router = Router()
 router.use(authenticate)
@@ -92,6 +94,48 @@ router.get('/', async (req, res) => {
   } catch (err) {
     console.error('[MarketingTracker] list error:', err.message)
     res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /drive-folder?folder_id=xxx — list media files (images/video/pdf) inside a
+// Google Drive folder, for the inline carousel in the effort view. Role-gated by
+// the router-level requireRole('corporate'); uses the shared Drive token. The
+// folder must be accessible to the connected Google account (shared / public).
+const DRIVE_FOLDER_TTL_MS = 5 * 60 * 1000
+router.get('/drive-folder', async (req, res) => {
+  const folderId = String(req.query.folder_id || '')
+  if (!/^[a-zA-Z0-9_-]+$/.test(folderId)) {
+    return res.status(400).json({ error: 'Invalid folder id' })
+  }
+  try {
+    const cacheKey = `mkt:drive-folder:${folderId}`
+    if (req.query.refresh === '1') memoryCache.del(cacheKey)
+    const files = await memoryCache.wrap(cacheKey, DRIVE_FOLDER_TTL_MS, async () => {
+      const token = await getAccessToken()
+      const params = new URLSearchParams({
+        q: `'${folderId}' in parents and trashed=false and (mimeType contains 'image/' or mimeType contains 'video/' or mimeType='application/pdf')`,
+        fields: 'files(id,name,mimeType)',
+        orderBy: 'name',
+        pageSize: '200',
+        supportsAllDrives: 'true',
+        includeItemsFromAllDrives: 'true',
+        corpora: 'allDrives',
+      })
+      const r = await fetch('https://www.googleapis.com/drive/v3/files?' + params, {
+        headers: { Authorization: 'Bearer ' + token },
+      })
+      const data = await r.json()
+      if (data.error) {
+        const err = new Error(data.error.message || 'Drive API error')
+        err.status = r.status || 500
+        throw err
+      }
+      return (data.files || []).map(f => ({ id: f.id, name: f.name, mimeType: f.mimeType }))
+    })
+    res.json({ files })
+  } catch (err) {
+    console.error('[MarketingTracker] drive-folder error:', err.message)
+    res.status(err.status || 500).json({ error: err.message })
   }
 })
 

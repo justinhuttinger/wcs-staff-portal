@@ -640,6 +640,10 @@ export async function addMarketingEffortComment(id, body) {
   return api('/marketing-tracker/' + id + '/comments', { method: 'POST', body: JSON.stringify({ body }) })
 }
 
+export async function getMarketingDriveFolder(folderId) {
+  return api('/marketing-tracker/drive-folder?folder_id=' + encodeURIComponent(folderId))
+}
+
 // Day One Tracker
 export async function getDayOneTrackerAppointments(params = {}) {
   const qs = new URLSearchParams(params).toString()

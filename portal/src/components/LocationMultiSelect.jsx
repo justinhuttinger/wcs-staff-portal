@@ -16,7 +16,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 //   options   — [{ slug, label }] in canonical display order. Do NOT include an
 //               "all" entry; we handle that at the top of the panel.
 //   className — optional extra classes on the trigger button
-export default function LocationMultiSelect({ value, onChange, options, className = '' }) {
+export default function LocationMultiSelect({
+  value, onChange, options, className = '',
+  allLabel = 'All Locations', noneLabel = 'No Locations', nounPlural = 'locations', applyLabel = 'View Report',
+}) {
   const [open, setOpen] = useState(false)
   const panelRef = useRef(null)
   const buttonRef = useRef(null)
@@ -50,15 +53,15 @@ export default function LocationMultiSelect({ value, onChange, options, classNam
 
   const allSelected = committedSet.size === allSlugs.length
   const triggerText = useMemo(() => {
-    if (allSelected) return 'All Locations'
-    if (committedSet.size === 0) return 'No Locations'
+    if (allSelected) return allLabel
+    if (committedSet.size === 0) return noneLabel
     if (committedSet.size === 1) {
       const slug = [...committedSet][0]
       return labelBySlug.get(slug) || slug
     }
     const ordered = allSlugs.filter(s => committedSet.has(s)).map(s => labelBySlug.get(s) || s)
-    return `${committedSet.size} locations: ${ordered.join(', ')}`
-  }, [allSelected, committedSet, allSlugs, labelBySlug])
+    return `${committedSet.size} ${nounPlural}: ${ordered.join(', ')}`
+  }, [allSelected, committedSet, allSlugs, labelBySlug, allLabel, noneLabel, nounPlural])
 
   useEffect(() => {
     if (!open) return
@@ -169,7 +172,7 @@ export default function LocationMultiSelect({ value, onChange, options, classNam
           </ul>
           <div className="mt-2 pt-2 border-t border-border flex items-center justify-between gap-2">
             <span className="text-[11px] text-text-muted">
-              {pendingCount === 0 ? 'No locations selected' : `${pendingCount} selected`}
+              {pendingCount === 0 ? `No ${nounPlural} selected` : `${pendingCount} selected`}
             </span>
             <button
               type="button"
@@ -181,7 +184,7 @@ export default function LocationMultiSelect({ value, onChange, options, classNam
                   : 'bg-bg text-text-muted cursor-not-allowed border border-border'
               }`}
             >
-              View Report
+              {applyLabel}
             </button>
           </div>
         </div>
