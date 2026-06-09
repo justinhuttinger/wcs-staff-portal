@@ -606,6 +606,28 @@ export async function resolveReferralReward(id) {
   return api(`/referral-rewards/${id}/resolve`, { method: 'POST' })
 }
 
+// Marketing Tracker
+export async function getMarketingEfforts(params = {}) {
+  const cleaned = {}
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') cleaned[k] = v
+  }
+  const qs = new URLSearchParams(cleaned).toString()
+  return api('/marketing-tracker' + (qs ? '?' + qs : ''))
+}
+
+export async function createMarketingEffort(data) {
+  return api('/marketing-tracker', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateMarketingEffort(id, data) {
+  return api('/marketing-tracker/' + id, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function deleteMarketingEffort(id) {
+  return api('/marketing-tracker/' + id, { method: 'DELETE' })
+}
+
 // Day One Tracker
 export async function getDayOneTrackerAppointments(params = {}) {
   const qs = new URLSearchParams(params).toString()

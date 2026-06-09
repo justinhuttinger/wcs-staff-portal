@@ -5,6 +5,7 @@ import AdminPanel from './components/AdminPanel'
 import SaveCredentialToast from './components/SaveCredentialToast'
 import CalendarView from './components/CalendarView'
 import ReportingView from './components/ReportingView'
+import MarketingTrackerView from './components/MarketingTrackerView'
 import DayOneTrackerView from './components/DayOneTrackerView'
 import TrainerAvailabilityView from './components/TrainerAvailabilityView'
 import LeaderboardView from './components/LeaderboardView'
@@ -44,6 +45,7 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false)
   const [showCalendar, setShowCalendar] = useState(false)
   const [showReporting, setShowReporting] = useState(false)
+  const [showMarketingTracker, setShowMarketingTracker] = useState(false)
   const [showTrainerAvail, setShowTrainerAvail] = useState(false)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [showCommunicationNotes, setShowCommunicationNotes] = useState(false)
@@ -71,6 +73,7 @@ export default function App() {
   useEffect(() => { if (showAdmin) logEvent('view.admin') }, [showAdmin])
   useEffect(() => { if (showCalendar) logEvent('view.calendar') }, [showCalendar])
   useEffect(() => { if (showReporting) logEvent('view.reporting') }, [showReporting])
+  useEffect(() => { if (showMarketingTracker) logEvent('view.marketing_tracker') }, [showMarketingTracker])
   useEffect(() => { if (showTrainerAvail) logEvent('view.trainer_availability') }, [showTrainerAvail])
   useEffect(() => { if (showLeaderboard) logEvent('view.leaderboard') }, [showLeaderboard])
   useEffect(() => { if (showCommunicationNotes) logEvent('view.communication_notes') }, [showCommunicationNotes])
@@ -275,13 +278,14 @@ export default function App() {
     )
   }
 
-  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTickets && !showHelpCenter && !showDrive && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTickets && !showHelpCenter && !showDrive && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker
 
   function handleBackToPortal() {
     setShowAdmin(false)
     setShowCalendar(false)
     setShowTrainerAvail(false)
     setShowReporting(false)
+    setShowMarketingTracker(false)
     setShowLeaderboard(false)
     setShowCommunicationNotes(false)
     setShowHR(false)
@@ -365,9 +369,11 @@ export default function App() {
         <LeaderboardView user={user} onBack={() => setShowLeaderboard(false)} location={location} />
       ) : showReporting ? (
         <ReportingView user={user} onBack={() => { window.location.hash = ''; setShowReporting(false) }} location={location} isAdmin={isAdmin} />
+      ) : showMarketingTracker ? (
+        <MarketingTrackerView onBack={() => setShowMarketingTracker(false)} />
       ) : (
         <main className="flex-1 flex items-start pt-1 pb-12">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDrive(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDrive(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} />
         </main>
       )}
       </div>
