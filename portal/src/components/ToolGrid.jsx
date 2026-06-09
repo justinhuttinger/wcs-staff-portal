@@ -102,7 +102,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTickets, onDrive, onCommunicationNotes, onReporting, userRole, userName }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTickets, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, userRole, userName }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [showOrdering, setShowOrdering] = useState(false)
@@ -270,6 +270,14 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
               iconPath={TILE_ICONS.reporting}
               label="Reporting"
               desc="All Locations"
+            />
+          )}
+          {onMarketingTracker && (
+            <SvgTileButton
+              onClick={onMarketingTracker}
+              iconPath={TILE_ICONS.marketing}
+              label="Marketing Tracker"
+              desc="Campaigns"
             />
           )}
           <ToolButton label="Insights" description="ABC" url="https://app.fitnessbi.com/signin" />
@@ -561,6 +569,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {/* (Day One Tracking merged into Calendar) */}
           {/* 6. Trainer Availability */}
           {onTrainerAvail && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}
+          {/* 6.5. Marketing Tracker — corporate/director/admin (marketing role gets it in its own layout) */}
+          {onMarketingTracker && roleIdx >= ROLE_LEVELS.corporate && <SvgTileButton onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />}
           {/* 7-9. Reporting, Tickets + remaining custom tiles
               (Marketing now lives inside Reporting — no standalone tile) */}
           {toolCustomTiles.filter((tile) => {
