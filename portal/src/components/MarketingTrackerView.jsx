@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import {
   getMarketingEfforts, createMarketingEffort, updateMarketingEffort, deleteMarketingEffort,
   updateMarketingEffortStatus, getMarketingEffortComments, addMarketingEffortComment,
-  getMarketingDriveFolder,
+  getMarketingDriveFolder, uploadMarketingAsset,
 } from '../lib/api'
 import { LOCATION_NAMES, LOCATION_OPTIONS } from '../config/locations'
 import LocationMultiSelect from './LocationMultiSelect'
@@ -863,8 +863,25 @@ export function EffortModal({ effort, defaultDate, onClose, onSaved, onDeleted }
     })
   }
 
+  const [uploading, setUploading] = useState({})
+  const [uploadErr, setUploadErr] = useState('')
+
   function setCustomField(key, value) {
     setCustom(prev => ({ ...prev, [key]: value }))
+  }
+
+  async function handleUpload(key, file) {
+    if (!file) return
+    setUploadErr('')
+    setUploading(u => ({ ...u, [key]: true }))
+    try {
+      const r = await uploadMarketingAsset(file)
+      setCustomField(key, r.link)
+    } catch (e) {
+      setUploadErr(e.message)
+    } finally {
+      setUploading(u => ({ ...u, [key]: false }))
+    }
   }
 
   async function handleSave() {
@@ -927,6 +944,7 @@ export function EffortModal({ effort, defaultDate, onClose, onSaved, onDeleted }
 
         <div className="p-5 space-y-4">
           {err && <p className="text-sm text-wcs-red">{err}</p>}
+          {uploadErr && <p className="text-sm text-wcs-red">{uploadErr}</p>}
 
           <label className="block">
             <span className={labelClass}>Title <span className="text-wcs-red">*</span></span>
@@ -997,7 +1015,7 @@ export function EffortModal({ effort, defaultDate, onClose, onSaved, onDeleted }
             <div className="space-y-4 pt-1 border-t border-border">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted pt-2">{typeDef.label} details</p>
               {typeDef.fields.map(f => (
-                <label key={f.key} className="block">
+                <div key={f.key}>
                   <span className={labelClass}>{f.label}</span>
                   {f.type === 'textarea' ? (
                     <textarea rows={3} className={inputClass + ' resize-none'} value={custom[f.key] || ''} onChange={e => setCustomField(f.key, e.target.value)} />
@@ -1006,10 +1024,27 @@ export function EffortModal({ effort, defaultDate, onClose, onSaved, onDeleted }
                       <option value="">Select...</option>
                       {f.options.map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
+                  ) : f.type === 'url' ? (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <input type="url" className={inputClass} value={custom[f.key] || ''} onChange={e => setCustomField(f.key, e.target.value)} placeholder="https://… or upload" />
+                        <label className={`shrink-0 px-3 py-2 rounded-lg border text-xs font-semibold cursor-pointer transition-colors ${uploading[f.key] ? 'border-border text-text-muted' : 'border-border text-text-muted hover:text-wcs-red hover:border-wcs-red'}`}>
+                          {uploading[f.key] ? 'Uploading…' : 'Upload'}
+                          <input
+                            type="file"
+                            accept="image/*,video/*,application/pdf"
+                            className="hidden"
+                            disabled={uploading[f.key]}
+                            onChange={e => { const file = e.target.files?.[0]; if (file) handleUpload(f.key, file); e.target.value = '' }}
+                          />
+                        </label>
+                      </div>
+                      <span className="block text-[10px] text-text-muted mt-1">Upload a photo/video/PDF — it’s saved to Drive at full quality and the link is filled in.</span>
+                    </>
                   ) : (
-                    <input type={f.type === 'url' ? 'url' : 'text'} className={inputClass} value={custom[f.key] || ''} onChange={e => setCustomField(f.key, e.target.value)} placeholder={f.type === 'url' ? 'https://...' : ''} />
+                    <input type="text" className={inputClass} value={custom[f.key] || ''} onChange={e => setCustomField(f.key, e.target.value)} />
                   )}
-                </label>
+                </div>
               ))}
             </div>
           )}

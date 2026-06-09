@@ -644,6 +644,12 @@ export async function getMarketingDriveFolder(folderId) {
   return api('/marketing-tracker/drive-folder?folder_id=' + encodeURIComponent(folderId))
 }
 
+export async function uploadMarketingAsset(file) {
+  const fd = new FormData()
+  fd.append('file', file)
+  return api('/marketing-tracker/upload', { method: 'POST', body: fd })
+}
+
 // Day One Tracker
 export async function getDayOneTrackerAppointments(params = {}) {
   const qs = new URLSearchParams(params).toString()
