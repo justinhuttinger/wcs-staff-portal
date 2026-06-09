@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import {
   getMarketingEfforts, createMarketingEffort, updateMarketingEffort, deleteMarketingEffort,
   updateMarketingEffortStatus, getMarketingEffortComments, addMarketingEffortComment,
+  getMarketingDriveFolder,
 } from '../lib/api'
 import { LOCATION_NAMES, LOCATION_OPTIONS } from '../config/locations'
 import LocationMultiSelect from './LocationMultiSelect'
@@ -103,6 +104,12 @@ function driveFileId(url) {
   return null
 }
 
+function driveFolderId(url) {
+  if (!url) return null
+  const m = url.match(/drive\.google\.com\/(?:drive\/)?(?:u\/\d+\/)?folders\/([a-zA-Z0-9_-]+)/)
+  return m ? m[1] : null
+}
+
 function googleDocPreview(url) {
   const m = url && url.match(/docs\.google\.com\/(document|spreadsheets|presentation)\/d\/([a-zA-Z0-9_-]+)/)
   return m ? `https://docs.google.com/${m[1]}/d/${m[2]}/preview` : null
@@ -122,7 +129,51 @@ function directAssetKind(url) {
 // Renders an inline preview for a single-asset link when we can recognize it
 // (Google Drive file, Google Doc/Sheet/Slide, or a direct image/video/pdf URL).
 // Returns null when the URL isn't previewable — caller still shows the link.
+// Scrollable preview of all media inside a Google Drive folder.
+function FolderCarousel({ folderId }) {
+  const [files, setFiles] = useState(null)
+  const [idx, setIdx] = useState(0)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    setFiles(null); setErr(''); setIdx(0)
+    getMarketingDriveFolder(folderId)
+      .then(r => { if (alive) setFiles(r.files || []) })
+      .catch(e => { if (alive) setErr(e.message) })
+    return () => { alive = false }
+  }, [folderId])
+
+  if (err) return <p className="text-xs text-text-muted">Couldn't load folder: {err}</p>
+  if (files === null) return <p className="text-xs text-text-muted">Loading folder…</p>
+  if (files.length === 0) return <p className="text-xs text-text-muted">No media found (the folder may not be shared with the portal).</p>
+
+  const cur = files[idx]
+  const go = (d) => setIdx(i => (i + d + files.length) % files.length)
+  const arrow = 'shrink-0 w-8 h-8 rounded-full border border-border bg-surface text-text-muted hover:text-text-primary hover:border-text-muted disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors'
+
+  return (
+    <div className="rounded-lg border border-border overflow-hidden bg-bg">
+      <iframe key={cur.id} src={`https://drive.google.com/file/d/${cur.id}/preview`} title={cur.name} className="w-full bg-black/5" style={{ height: 360 }} allow="autoplay" />
+      <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-border">
+        <button type="button" onClick={() => go(-1)} disabled={files.length < 2} className={arrow} aria-label="Previous">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+        </button>
+        <div className="min-w-0 text-center">
+          <p className="text-xs font-medium text-text-primary truncate">{cur.name}</p>
+          <p className="text-[10px] text-text-muted">{idx + 1} of {files.length}</p>
+        </div>
+        <button type="button" onClick={() => go(1)} disabled={files.length < 2} className={arrow} aria-label="Next">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function AssetPreview({ url }) {
+  const folderId = driveFolderId(url)
+  if (folderId) return <FolderCarousel folderId={folderId} />
   const driveId = driveFileId(url)
   if (driveId) {
     return <iframe src={`https://drive.google.com/file/d/${driveId}/preview`} title="Asset preview" className="w-full rounded-lg border border-border bg-black/5" style={{ height: 360 }} allow="autoplay" />
@@ -166,8 +217,10 @@ export default function MarketingTrackerView({ onBack }) {
   const [mode, setMode] = useState('calendar')          // 'calendar' | 'list'
   const [calView, setCalView] = useState('month')        // 'day' | 'week' | 'month'
   const [currentDate, setCurrentDate] = useState(todayStr())
-  const [typeFilter, setTypeFilter] = useState(() => new Set(MARKETING_TYPES.map(t => t.slug)))
+  const [typeValue, setTypeValue] = useState('all')
   const [locationValue, setLocationValue] = useState('all')
+
+  const TYPE_OPTIONS = useMemo(() => MARKETING_TYPES.map(t => ({ slug: t.slug, label: t.label })), [])
   const [modal, setModal] = useState(null)               // { view } | { effort } | { date } | null
 
   function load() {
@@ -181,21 +234,52 @@ export default function MarketingTrackerView({ onBack }) {
 
   useEffect(() => { load() }, [])
 
+  // Near-live updates: while the tracker is open and the tab is visible,
+  // silently re-poll so people working the board together see each other's
+  // adds / edits / status changes without leaving and re-entering. Pauses when
+  // the tab is hidden and refreshes immediately on refocus. Silent = no spinner
+  // and last-good data is kept on a transient error.
+  useEffect(() => {
+    const POLL_MS = 15000
+    let cancelled = false
+    async function refresh() {
+      if (document.visibilityState !== 'visible') return
+      try {
+        const res = await getMarketingEfforts()
+        if (!cancelled) setEfforts(res.efforts || [])
+      } catch { /* keep last good data */ }
+    }
+    const timer = setInterval(refresh, POLL_MS)
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [])
+
   const locationSet = useMemo(() => {
     if (!locationValue || locationValue === 'all') return null // null = all
     return new Set(String(locationValue).split(',').map(s => s.trim().toLowerCase()).filter(Boolean))
   }, [locationValue])
 
+  const typeSet = useMemo(() => {
+    if (!typeValue || typeValue === 'all') return null // null = all
+    return new Set(String(typeValue).split(',').map(s => s.trim()).filter(Boolean))
+  }, [typeValue])
+
   const filtered = useMemo(() => {
     return efforts.filter(e => {
-      if (!typeFilter.has(e.type)) return false
+      if (typeSet && !typeSet.has(e.type)) return false
       if (locationSet) {
         const locs = e.locations || []
         if (!locs.some(l => locationSet.has(l))) return false
       }
       return true
     })
-  }, [efforts, typeFilter, locationSet])
+  }, [efforts, typeSet, locationSet])
 
   // Items overlapping a given day (start_at..end_at inclusive; single-day if no end).
   function itemsForDate(dateStr) {
@@ -216,16 +300,6 @@ export default function MarketingTrackerView({ onBack }) {
     setCurrentDate(toLocalDateStr(d))
   }
 
-  function toggleType(slug) {
-    setTypeFilter(prev => {
-      const next = new Set(prev)
-      if (next.has(slug)) next.delete(slug)
-      else next.add(slug)
-      return next
-    })
-  }
-
-  const allTypesOn = typeFilter.size === MARKETING_TYPES.length
   const weekDates = getWeekDates(currentDate)
   const monthWeeks = getMonthWeeks(currentDate)
   const monthOfCurrent = new Date(currentDate + 'T12:00:00').getMonth()
@@ -270,38 +344,21 @@ export default function MarketingTrackerView({ onBack }) {
         </div>
 
         {/* Filters */}
-        <div className="flex items-start gap-3 mt-4 flex-wrap">
-          <div className="shrink-0">
+        <div className="flex items-start gap-4 mt-4 flex-wrap">
+          <div>
             <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Location</span>
             <LocationMultiSelect value={locationValue} onChange={setLocationValue} options={LOCATION_OPTIONS.filter(o => o.slug !== 'all')} />
           </div>
-          <div className="flex-1 min-w-[260px]">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Type</span>
-              <button
-                onClick={() => setTypeFilter(allTypesOn ? new Set() : new Set(MARKETING_TYPES.map(t => t.slug)))}
-                className="text-[10px] font-semibold uppercase tracking-wide text-text-muted hover:text-wcs-red transition-colors"
-              >
-                {allTypesOn ? 'Clear all' : 'Select all'}
-              </button>
-            </div>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {MARKETING_TYPES.map(t => {
-                const on = typeFilter.has(t.slug)
-                const st = typeStyle(t.slug)
-                return (
-                  <button
-                    key={t.slug}
-                    onClick={() => toggleType(t.slug)}
-                    aria-pressed={on}
-                    className={`group px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all inline-flex items-center gap-1.5 ${on ? st.badge + ' shadow-sm' : 'bg-bg text-text-muted border-border hover:border-text-muted/60 hover:text-text-primary'}`}
-                  >
-                    <span className={`w-2 h-2 rounded-full transition-colors ${st.dot} ${on ? '' : 'opacity-30 group-hover:opacity-60'}`} />
-                    {t.label}
-                  </button>
-                )
-              })}
-            </div>
+          <div>
+            <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Type</span>
+            <LocationMultiSelect
+              value={typeValue}
+              onChange={setTypeValue}
+              options={TYPE_OPTIONS}
+              allLabel="All Types"
+              noneLabel="No Types"
+              nounPlural="types"
+            />
           </div>
         </div>
       </div>
@@ -575,10 +632,15 @@ function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
 
   useEffect(() => {
     let alive = true
-    getMarketingEffortComments(effort.id)
-      .then(r => { if (alive) setComments(r.comments || []) })
-      .catch(() => { if (alive) setComments([]) })
-    return () => { alive = false }
+    function loadComments(initial) {
+      getMarketingEffortComments(effort.id)
+        .then(r => { if (alive) setComments(r.comments || []) })
+        .catch(() => { if (alive && initial) setComments([]) })
+    }
+    loadComments(true)
+    // Poll so a teammate's comment appears while you have the effort open.
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') loadComments(false) }, 15000)
+    return () => { alive = false; clearInterval(timer) }
   }, [effort.id])
 
   async function changeStatus(next) {
