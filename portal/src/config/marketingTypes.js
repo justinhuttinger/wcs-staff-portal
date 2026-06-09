@@ -45,6 +45,13 @@ export const MARKETING_TYPES = [
     ],
   },
   {
+    slug: 'event',
+    label: 'Event',
+    fields: [
+      { key: 'description', label: 'Description', type: 'textarea' },
+    ],
+  },
+  {
     slug: 'email',
     label: 'Email',
     fields: [
@@ -96,6 +103,7 @@ export const TYPE_STYLES = {
   social_post:    { badge: 'bg-purple-50 text-purple-700 border-purple-200', dot: 'bg-purple-500',  chip: 'bg-purple-50 border-purple-200 hover:border-purple-300' },
   flyer:          { badge: 'bg-amber-50 text-amber-700 border-amber-200',   dot: 'bg-amber-500',   chip: 'bg-amber-50 border-amber-200 hover:border-amber-300' },
   facebook_event: { badge: 'bg-indigo-50 text-indigo-700 border-indigo-200', dot: 'bg-indigo-500', chip: 'bg-indigo-50 border-indigo-200 hover:border-indigo-300' },
+  event:          { badge: 'bg-orange-50 text-orange-700 border-orange-200', dot: 'bg-orange-500', chip: 'bg-orange-50 border-orange-200 hover:border-orange-300' },
   email:          { badge: 'bg-teal-50 text-teal-700 border-teal-200',     dot: 'bg-teal-500',    chip: 'bg-teal-50 border-teal-200 hover:border-teal-300' },
   sms:            { badge: 'bg-green-50 text-green-700 border-green-200',   dot: 'bg-green-500',   chip: 'bg-green-50 border-green-200 hover:border-green-300' },
   app_blast:      { badge: 'bg-pink-50 text-pink-700 border-pink-200',     dot: 'bg-pink-500',    chip: 'bg-pink-50 border-pink-200 hover:border-pink-300' },

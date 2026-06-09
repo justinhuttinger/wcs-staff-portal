@@ -11,7 +11,7 @@ router.use(requireRole('corporate'))
 
 // Allowed effort types — keep in sync with portal/src/config/marketingTypes.js
 const TYPES = new Set([
-  'meta_ad', 'social_post', 'flyer', 'facebook_event',
+  'meta_ad', 'social_post', 'flyer', 'facebook_event', 'event',
   'email', 'sms', 'app_blast', 'ad_tvs', 'website',
 ])
 const STATUSES = new Set(['planned', 'approved', 'complete'])
@@ -136,6 +136,72 @@ router.put('/:id', async (req, res) => {
     res.json({ effort: data })
   } catch (err) {
     console.error('[MarketingTracker] update error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// PATCH /:id/status — lightweight status-only update (from the read-only view).
+router.patch('/:id/status', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid effort id' })
+    const status = String(req.body.status || '')
+    if (!STATUSES.has(status)) return res.status(400).json({ error: 'Invalid status' })
+
+    const { data, error } = await supabaseAdmin
+      .from('marketing_efforts')
+      .update({ status })
+      .eq('id', req.params.id)
+      .select()
+      .maybeSingle()
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Effort not found' })
+    res.json({ effort: data })
+  } catch (err) {
+    console.error('[MarketingTracker] status error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /:id/comments — list comments for an effort (oldest first).
+router.get('/:id/comments', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid effort id' })
+    const { data, error } = await supabaseAdmin
+      .from('marketing_effort_comments')
+      .select('*')
+      .eq('effort_id', req.params.id)
+      .order('created_at', { ascending: true })
+    if (error) throw error
+    res.json({ comments: data || [] })
+  } catch (err) {
+    console.error('[MarketingTracker] comments list error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /:id/comments — add a comment (author taken from the session).
+router.post('/:id/comments', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid effort id' })
+    const body = typeof req.body.body === 'string' ? req.body.body.trim() : ''
+    if (!body) return res.status(400).json({ error: 'Comment cannot be empty' })
+
+    const { data, error } = await supabaseAdmin
+      .from('marketing_effort_comments')
+      .insert({
+        effort_id: req.params.id,
+        body,
+        created_by: req.staff.id,
+        created_by_name: req.staff.display_name || req.staff.email || null,
+      })
+      .select()
+      .single()
+    if (error) throw error
+    res.status(201).json({ comment: data })
+  } catch (err) {
+    // FK violation = parent effort doesn't exist → clean 404 instead of 500.
+    if (err && err.code === '23503') return res.status(404).json({ error: 'Effort not found' })
+    console.error('[MarketingTracker] comment create error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })
