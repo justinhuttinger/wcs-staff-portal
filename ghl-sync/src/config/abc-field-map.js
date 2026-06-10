@@ -19,6 +19,9 @@ const ABC_GHL_FIELD_MAP = {
 const ABC_TAGS = {
   active: 'sale',
   inactive: 'cancelled / past member',
+  // Add-only tag for members whose agreement was entered online (web sale).
+  // Never removed once applied — marks the join channel, not current status.
+  onlineJoin: 'online-join',
 };
 
 module.exports = { ABC_GHL_FIELD_MAP, ABC_TAGS };

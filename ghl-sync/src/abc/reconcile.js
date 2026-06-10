@@ -52,6 +52,17 @@ function isContactDeleted(err) {
 }
 
 /**
+ * Online ("web") sale detection. ABC records the channel an agreement was
+ * entered through in agreement.agreementEntrySource — "Web" for members who
+ * joined via the online-join flow. transformABCMember stores it on
+ * abc_members.agreement_entry_source. Web sales get the add-only `online-join`
+ * GHL tag.
+ */
+function isWebSale(abc) {
+  return (abc?.agreement_entry_source || '').trim().toLowerCase() === 'web';
+}
+
+/**
  * Reconcile ABC members against GHL contacts for one location.
  * Matches by: abc_member_id → email → phone → name (flagged for review).
  * Applies tags + custom field updates to matched GHL contacts.
@@ -366,8 +377,11 @@ async function reconcileLocation(location, runId) {
           try {
             const ex = await get(`/contacts/${ghlDuplicate.id}`, {}, apiKey);
             const existingTags = ex?.contact?.tags || [];
-            if (!existingTags.includes(ABC_TAGS.active)) {
-              await put(`/contacts/${ghlDuplicate.id}`, { tags: [...existingTags, ABC_TAGS.active] }, apiKey);
+            const wantTags = [...existingTags];
+            if (!wantTags.includes(ABC_TAGS.active)) wantTags.push(ABC_TAGS.active);
+            if (isWebSale(abc) && !wantTags.includes(ABC_TAGS.onlineJoin)) wantTags.push(ABC_TAGS.onlineJoin);
+            if (wantTags.length !== existingTags.length) {
+              await put(`/contacts/${ghlDuplicate.id}`, { tags: wantTags }, apiKey);
             }
             await sleep(650);
           } catch (err) {
@@ -396,7 +410,7 @@ async function reconcileLocation(location, runId) {
         lastName: abc.last_name || '',
         email: trimmedEmail || undefined,
         phone: phone || undefined,
-        tags: [ABC_TAGS.active],
+        tags: isWebSale(abc) ? [ABC_TAGS.active, ABC_TAGS.onlineJoin] : [ABC_TAGS.active],
         customFields: Object.entries(newCustomFields).map(([id, value]) => ({ id, value })),
       };
 
@@ -470,6 +484,9 @@ async function reconcileLocation(location, runId) {
     const removeTag = isActive ? ABC_TAGS.inactive : ABC_TAGS.active;
     const needsAddTag = !currentTags.includes(addTag);
     const needsRemoveTag = currentTags.includes(removeTag);
+    // Add-only online-join tag for web sales (applies regardless of active/
+    // inactive — it marks the join channel, not current status).
+    const needsOnlineJoinTag = isWebSale(abc) && !currentTags.includes(ABC_TAGS.onlineJoin);
 
     // --- Custom field logic ---
     // Normalize values to strings for comparison — GHL stores everything as strings in JSONB
@@ -544,19 +561,20 @@ async function reconcileLocation(location, runId) {
       }
     }
 
-    const hasChanges = needsAddTag || needsRemoveTag || Object.keys(customFieldUpdates).length > 0;
+    const hasChanges = needsAddTag || needsRemoveTag || needsOnlineJoinTag || Object.keys(customFieldUpdates).length > 0;
     if (!hasChanges) continue;
 
     // Build GHL update payload
     const newTags = [...currentTags];
     if (needsAddTag) newTags.push(addTag);
+    if (needsOnlineJoinTag) newTags.push(ABC_TAGS.onlineJoin);
     if (needsRemoveTag) {
       const idx = newTags.indexOf(removeTag);
       if (idx !== -1) newTags.splice(idx, 1);
     }
 
     const updateBody = {};
-    if (needsAddTag || needsRemoveTag) {
+    if (needsAddTag || needsRemoveTag || needsOnlineJoinTag) {
       updateBody.tags = newTags;
     }
     if (Object.keys(customFieldUpdates).length > 0) {
@@ -581,6 +599,16 @@ async function reconcileLocation(location, runId) {
         ghl_contact_id: ghlContact.id, ghl_contact_name: contactName, ghl_contact_email: ghlContact.email,
         abc_member_id: abc.member_id, action: 'remove_tag',
         detail: { tag: removeTag, match_method: matchMethod },
+        applied: false, error: null,
+      });
+    }
+    if (needsOnlineJoinTag) {
+      tagChanges++;
+      logEntries.push({
+        run_id: runId, club_number: clubNumber, club_name: locationName, dry_run: DRY_RUN,
+        ghl_contact_id: ghlContact.id, ghl_contact_name: contactName, ghl_contact_email: ghlContact.email,
+        abc_member_id: abc.member_id, action: 'add_tag',
+        detail: { tag: ABC_TAGS.onlineJoin, reason: 'web_sale', match_method: matchMethod },
         applied: false, error: null,
       });
     }
