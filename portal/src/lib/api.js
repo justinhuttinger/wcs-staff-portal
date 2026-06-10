@@ -235,8 +235,22 @@ export const onlineJoin = {
   updateLocation: (id, body) => prospectsApi(`/api/admin/online-join/locations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deactivateLocation: (id) => prospectsApi(`/api/admin/online-join/locations/${id}`, { method: 'DELETE' }),
 
+  // Membership types (parent of plans)
+  listTypes: (location) => prospectsApi('/api/admin/online-join/types' + (location ? `?location=${encodeURIComponent(location)}` : '')),
+  getType: (id) => prospectsApi(`/api/admin/online-join/types/${id}`),
+  createType: (body) => prospectsApi('/api/admin/online-join/types', { method: 'POST', body: JSON.stringify(body) }),
+  updateType: (id, patch) => prospectsApi(`/api/admin/online-join/types/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  deactivateType: (id) => prospectsApi(`/api/admin/online-join/types/${id}`, { method: 'DELETE' }),
+
   // Plans
-  listPlans: (location) => prospectsApi('/api/admin/online-join/plans' + (location ? `?location=${encodeURIComponent(location)}` : '')),
+  listPlans: (location, type) => prospectsApi('/api/admin/online-join/plans' + (() => {
+    const qs = new URLSearchParams()
+    if (location) qs.set('location', location)
+    if (type) qs.set('type', type)
+    const s = qs.toString()
+    return s ? `?${s}` : ''
+  })()),
+  listPlansByType: (typeId) => prospectsApi('/api/admin/online-join/plans' + (typeId ? `?type=${encodeURIComponent(typeId)}` : '')),
   getPlan: (id) => prospectsApi(`/api/admin/online-join/plans/${id}`),
   createPlan: (body) => prospectsApi('/api/admin/online-join/plans', { method: 'POST', body: JSON.stringify(body) }),
   updatePlan: (id, body) => prospectsApi(`/api/admin/online-join/plans/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
