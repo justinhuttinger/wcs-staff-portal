@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react'
 import allTools from '../config/tools.json'
 import ToolButton from './ToolButton'
+import { PORTAL_TILE_CATALOG } from '../config/portalTiles'
 import { getTiles, getDayOneTrackerAppointments, getTours, getLeaderboard, getCommunicationNotes, getAppSettings } from '../lib/api'
+
+// Shared Drive uses an inline icon path in the main layout; mirror it here so
+// the custom-role layout can render the same tile.
+const DRIVE_ICON = 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z'
 
 const TILE_ICONS = {
   dayOne: 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9 2 2 4-4',
@@ -38,6 +43,7 @@ const ROLE_LEVELS = {
   front_desk: 0, personal_trainer: 0, team_member: 0,
   lead: 1,
   manager: 2,
+  custom: 1,
   director: 3, corporate: 3,
   marketing: 3,
   admin: 4,
@@ -102,7 +108,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTickets, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, userRole, userName }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTickets, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, userRole, userName, marketingAddon, customReports }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [showOrdering, setShowOrdering] = useState(false)
@@ -255,36 +261,71 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
 
   if (!tilesLoaded) return null
 
-  // Marketing role: tightly scoped to Reporting + Insights, all locations.
-  // Marketing reports live inside Reporting now, so no standalone tile.
-  if (userRole === 'marketing') {
-    const growTool = allTools.find(t => t.id === 'grow')
-    const abcTool = allTools.find(t => t.id === 'abc')
+  // Custom role: render exactly the tiles an admin granted (visibleTools holds
+  // the granted catalog keys from /me). The marketing add-on always surfaces
+  // the Marketing Tracker tile regardless of the custom tile list.
+  if (userRole === 'custom') {
+    const granted = new Set(visibleTools || [])
+    const showMarketingTracker = marketingAddon
+    // Surface Reporting whenever any report is granted, even if the tile itself
+    // wasn't explicitly checked — otherwise granted reports would be unreachable.
+    const showReporting = granted.has('reporting') || (customReports && customReports.length > 0)
+    // External app shortcuts pulled from tools.json so URLs stay in one place.
+    const appTool = (id) => allTools.find(t => t.id === id)
+    const tile = (key) => {
+      switch (key) {
+        case 'grow': case 'abc': case 'wheniwork': case 'paychex': case 'gmail': {
+          const t = appTool(key)
+          return t ? <ToolButton key={key} label={t.label} description={t.description} icon={t.icon} url={getUrl(t)} star={key === 'grow' || key === 'abc'} /> : null
+        }
+        case 'insights':
+          return <ToolButton key={key} label="Insights" description="ABC" url="https://app.fitnessbi.com/signin" />
+        case 'notifications':
+          return <ToolButton key={key} label="Send Notifications" description="Member App" url="https://westcoaststrength.trainerize.com/app/login" />
+        case 'drive':
+          return onDrive && <SvgTileButton key={key} onClick={onDrive} iconPath={DRIVE_ICON} label="Shared Drive" desc="Documents" />
+        case 'calendar':
+          return onCalendar && <SvgTileButton key={key} onClick={onCalendar} iconPath={TILE_ICONS.tours} label="Calendar" desc="Tours & Day Ones" badge={calendarBadge} />
+        case 'leaderboard':
+          return onLeaderboard && <SvgTileButton key={key} onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />
+        case 'commNotes':
+          return onCommunicationNotes && <SvgTileButton key={key} onClick={onCommunicationNotes} iconPath={TILE_ICONS.commNotes} label="Comm Notes" desc="Team Notes" badge={commNotesBadge} />
+        case 'hr':
+          return onHR && <SvgTileButton key={key} onClick={onHR} iconPath={TILE_ICONS.hr} label="HR Docs" desc="Documents" />
+        case 'helpCenter':
+          return onHelpCenter && <SvgTileButton key={key} onClick={onHelpCenter} iconPath={TILE_ICONS.helpCenter} label="Help Center" desc="Guides" />
+        case 'ordering':
+          return <SvgTileButton key={key} onClick={() => setShowOrdering(true)} iconPath={TILE_ICONS.ordering} label="Ordering" desc="Vendors" />
+        case 'tickets':
+          return onTickets && <SvgTileButton key={key} onClick={onTickets} iconPath={TILE_ICONS.tickets} label="Tickets/Support" desc="Help Desk" />
+        case 'trainerAvail':
+          return onTrainerAvail && <SvgTileButton key={key} onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />
+        case 'reporting':
+          return onReporting && <SvgTileButton key={key} onClick={() => { window.location.hash = '#reporting'; onReporting() }} iconPath={TILE_ICONS.reporting} label="Reporting" desc="Reports" />
+        case 'marketingTracker':
+          return onMarketingTracker && <SvgTileButton key={key} onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />
+        default:
+          return null
+      }
+    }
+    const grantedKeys = PORTAL_TILE_CATALOG
+      .map(t => t.key)
+      .filter(k => (k === 'reporting' ? showReporting : granted.has(k)))
+    const cells = grantedKeys.map(tile).filter(Boolean)
+    // Marketing Tracker rides on the add-on, not the custom tile list.
+    if (showMarketingTracker) cells.push(tile('marketingTracker'))
     return (
       <div className="w-full max-w-4xl mx-auto px-8 pt-4">
         <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">
-          Marketing
+          {userName ? `${userName}'s Portal` : 'Portal'}
         </p>
-        <div className="grid grid-cols-3 gap-5">
-          {growTool && <ToolButton label={growTool.label} description={growTool.description} icon={growTool.icon} url={getUrl(growTool)} star />}
-          {abcTool && <ToolButton label={abcTool.label} description={abcTool.description} icon={abcTool.icon} url={getUrl(abcTool)} star />}
-          <ToolButton label="Insights" description="ABC" url="https://app.fitnessbi.com/signin" />
-          <ToolButton label="Send Notifications" description="Member App" url="https://westcoaststrength.trainerize.com/app/login" />
-          {onLeaderboard && (
-            <SvgTileButton onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />
-          )}
-          {onMarketingTracker && (
-            <SvgTileButton onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />
-          )}
-          {onReporting && (
-            <SvgTileButton
-              onClick={() => { window.location.hash = '#reporting'; onReporting() }}
-              iconPath={TILE_ICONS.reporting}
-              label="Reporting"
-              desc="All Locations"
-            />
-          )}
-        </div>
+        {cells.length === 0 ? (
+          <p className="text-sm text-text-muted bg-surface/95 border border-border rounded-xl px-4 py-6 text-center">
+            No tools have been assigned to your account yet. Contact an admin.
+          </p>
+        ) : (
+          <div className="grid grid-cols-3 gap-5">{cells}</div>
+        )}
       </div>
     )
   }
@@ -572,8 +613,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {/* (Day One Tracking merged into Calendar) */}
           {/* 6. Trainer Availability */}
           {onTrainerAvail && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}
-          {/* 6.5. Marketing Tracker — corporate/director/admin (marketing role gets it in its own layout) */}
-          {onMarketingTracker && roleIdx >= ROLE_LEVELS.corporate && <SvgTileButton onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />}
+          {/* 6.5. Marketing Tracker — corporate/admin, or anyone with the marketing add-on */}
+          {onMarketingTracker && (roleIdx >= ROLE_LEVELS.corporate || marketingAddon) && <SvgTileButton onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />}
           {/* 7-9. Reporting, Tickets + remaining custom tiles
               (Marketing now lives inside Reporting — no standalone tile) */}
           {toolCustomTiles.filter((tile) => {

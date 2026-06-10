@@ -19,7 +19,7 @@ async function authenticate(req, res, next) {
     // Fetch staff profile + locations
     const { data: staff, error } = await supabaseAdmin
       .from('staff')
-      .select('id, email, display_name, first_name, last_name, role, must_change_password')
+      .select('id, email, display_name, first_name, last_name, role, must_change_password, marketing_addon, marketing_locations, marketing_types, custom_tiles, custom_reports')
       .eq('id', userId)
       .single()
 

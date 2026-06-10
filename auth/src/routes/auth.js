@@ -293,13 +293,18 @@ router.get('/me', authenticate, async (req, res) => {
     can_view_reports: sl.can_view_reports,
   }))
 
-  const { data: visibility } = await supabaseAdmin
-    .from('role_tool_visibility')
-    .select('tool_key')
-    .eq('role', req.staff.role)
-    .eq('visible', true)
-
-  const visible_tools = (visibility || []).map(v => v.tool_key)
+  let visible_tools
+  if (req.staff.role === 'custom') {
+    // Custom-role members get exactly the tiles an admin granted them.
+    visible_tools = Array.isArray(req.staff.custom_tiles) ? req.staff.custom_tiles : []
+  } else {
+    const { data: visibility } = await supabaseAdmin
+      .from('role_tool_visibility')
+      .select('tool_key')
+      .eq('role', req.staff.role)
+      .eq('visible', true)
+    visible_tools = (visibility || []).map(v => v.tool_key)
+  }
 
   res.json({
     staff: {
@@ -310,6 +315,11 @@ router.get('/me', authenticate, async (req, res) => {
       last_name: req.staff.last_name,
       role: req.staff.role,
       locations,
+      marketing_addon: !!req.staff.marketing_addon,
+      marketing_locations: req.staff.marketing_locations || null,
+      marketing_types: req.staff.marketing_types || null,
+      custom_tiles: req.staff.custom_tiles || [],
+      custom_reports: req.staff.custom_reports || [],
     },
     visible_tools,
   })

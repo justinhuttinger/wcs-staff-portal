@@ -7,15 +7,24 @@ const ROLE_ALIASES = {
   director: 'corporate',
 }
 
-// 'marketing' sits ABOVE 'corporate' but below 'admin' so that
-// requireRole('corporate') checks (reports, meta ads, google analytics,
-// google business) all pass for marketing without needing per-endpoint
-// allowlists. The portal UI for the marketing role is restricted to a
-// curated 3-tile layout regardless of what the API would otherwise allow.
-const ROLE_HIERARCHY = ['team_member', 'lead', 'manager', 'corporate', 'marketing', 'admin']
+// Role tiers, low → high. Notes:
+//  * 'custom' sits just ABOVE 'lead' but BELOW 'manager'. That means a
+//    custom-role member can reach the lead-tier endpoints (membership / PT /
+//    club-health / check-in reports, comm notes, trainer availability, …) for
+//    anything an admin grants them, but is hard-blocked from manager+ APIs
+//    (HR, payroll, revenue, operations) and corporate APIs (meta ads, Google).
+//    The curated tile/report picker is therefore backed by a real server gate.
+//  * 'marketing' is legacy. Marketing is now an add-on capability (see
+//    marketing_addon) layered on a base role, not a standalone role; the tier
+//    is kept only so any pre-migration rows still resolve sanely.
+const ROLE_HIERARCHY = ['team_member', 'lead', 'custom', 'manager', 'corporate', 'marketing', 'admin']
 
 function resolveRole(role) {
   return ROLE_ALIASES[role] || role
+}
+
+function roleLevel(role) {
+  return ROLE_HIERARCHY.indexOf(resolveRole(role))
 }
 
 // Report access matrix — which roles can view which reports
@@ -31,7 +40,8 @@ const REPORT_ACCESS = {
   'daily-snapshot': ['manager', 'marketing', 'corporate', 'admin'],
 }
 
-// Roles that can see all locations (not locked to home club)
+// Roles that can see all locations (not locked to home club). 'custom' is
+// intentionally excluded — custom members are limited to their assigned clubs.
 const ALL_LOCATION_ROLES = ['marketing', 'corporate', 'admin']
 
 function requireRole(minimumRole) {
@@ -39,7 +49,7 @@ function requireRole(minimumRole) {
   if (minLevel === -1) throw new Error('Invalid role: ' + minimumRole)
 
   return (req, res, next) => {
-    const userLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
+    const userLevel = roleLevel(req.staff.role)
     if (userLevel < minLevel) {
       return res.status(403).json({ error: 'Insufficient role. Requires: ' + minimumRole })
     }
@@ -56,4 +66,51 @@ function canAccessReport(role, reportKey) {
   return allowed ? allowed.includes(resolveRole(role)) : false
 }
 
-module.exports = { requireRole, resolveRole, ROLE_HIERARCHY, ROLE_ALIASES, REPORT_ACCESS, canAccessReport, canSeeAllLocations, ALL_LOCATION_ROLES }
+// --- Marketing add-on ------------------------------------------------------
+//
+// Marketing is a capability layered on top of a base role. Full marketing
+// access (Marketing Tracker for every club + type, plus marketing reports) is
+// granted either by a corporate-or-higher base role OR by the add-on flag.
+// Add-on members below corporate can be scoped to specific clubs and types.
+
+function isFullMarketing(staff) {
+  // corporate / admin (and legacy marketing) always get unrestricted marketing.
+  return roleLevel(staff?.role) >= ROLE_HIERARCHY.indexOf('corporate')
+}
+
+function hasMarketingAddon(staff) {
+  return !!(staff && staff.marketing_addon)
+}
+
+// Whether this member can open the Marketing Tracker / marketing reports at all.
+function canUseMarketing(staff) {
+  return isFullMarketing(staff) || hasMarketingAddon(staff)
+}
+
+// The clubs + effort types a member may see/edit in the Marketing Tracker.
+// `null` means "no restriction" (all clubs / all types). Full-marketing members
+// are never restricted; scoped add-on members get their configured arrays.
+function marketingScope(staff) {
+  if (isFullMarketing(staff)) return { locations: null, types: null }
+  const locations = Array.isArray(staff?.marketing_locations) && staff.marketing_locations.length
+    ? staff.marketing_locations.map(s => String(s).toLowerCase())
+    : null
+  const types = Array.isArray(staff?.marketing_types) && staff.marketing_types.length
+    ? staff.marketing_types.map(String)
+    : null
+  return { locations, types }
+}
+
+// Router/route middleware: allow only members with marketing access.
+function requireMarketing(req, res, next) {
+  if (!canUseMarketing(req.staff)) {
+    return res.status(403).json({ error: 'Marketing access required' })
+  }
+  next()
+}
+
+module.exports = {
+  requireRole, resolveRole, roleLevel, ROLE_HIERARCHY, ROLE_ALIASES,
+  REPORT_ACCESS, canAccessReport, canSeeAllLocations, ALL_LOCATION_ROLES,
+  isFullMarketing, hasMarketingAddon, canUseMarketing, marketingScope, requireMarketing,
+}

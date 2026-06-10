@@ -2,7 +2,7 @@ const { Router } = require('express')
 const multer = require('multer')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { requireMarketing, marketingScope } = require('../middleware/role')
 const { getAccessToken } = require('./googleBusiness')
 const memoryCache = require('../services/memoryCache')
 
@@ -31,9 +31,42 @@ function uploadSingle(req, res, next) {
 
 const router = Router()
 router.use(authenticate)
-// Corporate, marketing, and admin can view + edit the marketing tracker.
-// (corporate is also the level that gets all-location visibility.)
-router.use(requireRole('corporate'))
+// Corporate/admin (full marketing) and anyone with the marketing add-on can
+// open the tracker. Add-on members may be scoped to specific clubs/types —
+// that scoping is enforced per-request below via marketingScope().
+router.use(requireMarketing)
+
+// Verify an existing effort falls within the caller's marketing scope before
+// they can read its comments or mutate/delete it. Returns { effort } when in
+// scope, { error, status } otherwise (404 to avoid leaking existence).
+async function loadEffortInScope(id, staff) {
+  const { data, error } = await supabaseAdmin
+    .from('marketing_efforts')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) return { error: error.message, status: 500 }
+  if (!data) return { error: 'Effort not found', status: 404 }
+  const scope = marketingScope(staff)
+  if (scope.types && !scope.types.includes(data.type)) return { error: 'Effort not found', status: 404 }
+  if (scope.locations && !(data.locations || []).some(l => scope.locations.includes(l))) {
+    return { error: 'Effort not found', status: 404 }
+  }
+  return { effort: data }
+}
+
+// Reject a create/update payload that targets clubs or a type outside the
+// caller's scope. Returns an error string, or null when allowed.
+function scopeViolation(row, staff) {
+  const scope = marketingScope(staff)
+  if (scope.types && !scope.types.includes(row.type)) {
+    return 'You do not have access to that effort type'
+  }
+  if (scope.locations && (row.locations || []).some(l => !scope.locations.includes(l))) {
+    return 'You do not have access to one or more of those clubs'
+  }
+  return null
+}
 
 // Allowed effort types — keep in sync with portal/src/config/marketingTypes.js
 const TYPES = new Set([
@@ -105,6 +138,12 @@ router.get('/', async (req, res) => {
       .order('start_at', { ascending: false })
       .limit(2000)
 
+    // Enforce the caller's marketing scope (add-on members limited to certain
+    // clubs/types). Full-marketing members get null scope = no restriction.
+    const scope = marketingScope(req.staff)
+    if (scope.types) q = q.in('type', scope.types)
+    if (scope.locations) q = q.overlaps('locations', scope.locations)
+
     if (req.query.type && TYPES.has(req.query.type)) q = q.eq('type', req.query.type)
     if (req.query.location && LOCATION_SLUGS.has(String(req.query.location).toLowerCase())) {
       q = q.contains('locations', [String(req.query.location).toLowerCase()])
@@ -123,7 +162,7 @@ router.get('/', async (req, res) => {
 
 // GET /drive-folder?folder_id=xxx — list media files (images/video/pdf) inside a
 // Google Drive folder, for the inline carousel in the effort view. Role-gated by
-// the router-level requireRole('corporate'); uses the shared Drive token. The
+// the router-level requireMarketing gate; uses the shared Drive token. The
 // folder must be accessible to the connected Google account (shared / public).
 const DRIVE_FOLDER_TTL_MS = 5 * 60 * 1000
 router.get('/drive-folder', async (req, res) => {
@@ -222,6 +261,8 @@ router.post('/', async (req, res) => {
   try {
     const { row, error: vErr } = buildRow(req.body, req.staff)
     if (vErr) return res.status(400).json({ error: vErr })
+    const sErr = scopeViolation(row, req.staff)
+    if (sErr) return res.status(403).json({ error: sErr })
 
     const { data, error } = await supabaseAdmin
       .from('marketing_efforts')
@@ -247,6 +288,13 @@ router.put('/:id', async (req, res) => {
     const { row, error: vErr } = buildRow(req.body, req.staff)
     if (vErr) return res.status(400).json({ error: vErr })
 
+    // Must already be allowed to touch this effort, and the new values must
+    // also stay within scope (so a scoped member can't move it out of reach).
+    const scoped = await loadEffortInScope(req.params.id, req.staff)
+    if (scoped.error) return res.status(scoped.status).json({ error: scoped.error })
+    const sErr = scopeViolation(row, req.staff)
+    if (sErr) return res.status(403).json({ error: sErr })
+
     const { data, error } = await supabaseAdmin
       .from('marketing_efforts')
       .update(row)
@@ -269,6 +317,9 @@ router.patch('/:id/status', async (req, res) => {
     const status = String(req.body.status || '')
     if (!STATUSES.has(status)) return res.status(400).json({ error: 'Invalid status' })
 
+    const scoped = await loadEffortInScope(req.params.id, req.staff)
+    if (scoped.error) return res.status(scoped.status).json({ error: scoped.error })
+
     const { data, error } = await supabaseAdmin
       .from('marketing_efforts')
       .update({ status })
@@ -288,6 +339,8 @@ router.patch('/:id/status', async (req, res) => {
 router.get('/:id/comments', async (req, res) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid effort id' })
+    const scoped = await loadEffortInScope(req.params.id, req.staff)
+    if (scoped.error) return res.status(scoped.status).json({ error: scoped.error })
     const { data, error } = await supabaseAdmin
       .from('marketing_effort_comments')
       .select('*')
@@ -307,6 +360,9 @@ router.post('/:id/comments', async (req, res) => {
     if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid effort id' })
     const body = typeof req.body.body === 'string' ? req.body.body.trim() : ''
     if (!body) return res.status(400).json({ error: 'Comment cannot be empty' })
+
+    const scoped = await loadEffortInScope(req.params.id, req.staff)
+    if (scoped.error) return res.status(scoped.status).json({ error: scoped.error })
 
     const { data, error } = await supabaseAdmin
       .from('marketing_effort_comments')
@@ -332,6 +388,8 @@ router.post('/:id/comments', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid effort id' })
+    const scoped = await loadEffortInScope(req.params.id, req.staff)
+    if (scoped.error) return res.status(scoped.status).json({ error: scoped.error })
     const { data, error } = await supabaseAdmin
       .from('marketing_efforts')
       .delete()
