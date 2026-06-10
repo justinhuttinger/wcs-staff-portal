@@ -93,8 +93,8 @@ function TypeEditor({ type, locations, ageRules, onClose, onSaved }) {
       if (isNew) {
         await onlineJoin.createType(body)
       } else {
-        // type_key + wcs_location_id are immutable on existing rows.
-        const { type_key, wcs_location_id, ...patch } = body
+        // wcs_location_id is immutable; type_key (slug) can be changed.
+        const { wcs_location_id, ...patch } = body
         await onlineJoin.updateType(type.id, patch)
       }
       onSaved()
@@ -153,10 +153,7 @@ function TypeEditor({ type, locations, ageRules, onClose, onSaved }) {
                   ))}
                 </select>
               </label>
-              {isNew
-                ? <Field label="Type key (slug)" value={draft.type_key} onChange={v => update('type_key', v.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} placeholder="standard" required hint="Permanent slug; unique per location." />
-                : <Field label="Type key" value={draft.type_key} onChange={() => {}} readOnly hint="Permanent — cannot change." />
-              }
+              <Field label="Type key (slug)" value={draft.type_key} onChange={v => update('type_key', v.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} placeholder="standard" required hint="URL-safe slug; unique per location. You can change this." />
             </div>
           </section>
 
@@ -298,6 +295,7 @@ function TypeEditor({ type, locations, ageRules, onClose, onSaved }) {
         plan={editingPlan}
         locations={locations}
         ageRules={ageRules}
+        types={[{ id: type.id, type_label: draft.type_label || type.type_label, wcs_location_id: draft.wcs_location_id }]}
         defaultTerm={editingPlan.term}
         membershipTypeId={type.id}
         onClose={() => setEditingPlan(null)}
