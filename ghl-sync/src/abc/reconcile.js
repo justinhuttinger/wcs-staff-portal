@@ -38,6 +38,20 @@ async function ghlContactExists(locationId, email, phone, apiKey) {
 }
 
 /**
+ * Detect GHL "contact deleted" responses. The Supabase cache (ghl_contacts_v2)
+ * is eventually consistent, so a contact deleted in GHL can linger in the cache.
+ * Every reconcile cycle then tries to update/tag that ghost id, GHL 404s, and it
+ * gets counted as a sync error — which fires an SMS alert every 30 minutes. These
+ * are not actionable failures, so we treat them separately and self-heal the cache.
+ */
+function isContactDeleted(err) {
+  if (err?.response?.status === 404) return true;
+  const detail = err?.response?.data?.message || err?.response?.data || err?.message || '';
+  const msg = typeof detail === 'string' ? detail : JSON.stringify(detail);
+  return /contact not found/i.test(msg);
+}
+
+/**
  * Reconcile ABC members against GHL contacts for one location.
  * Matches by: abc_member_id → email → phone → name (flagged for review).
  * Applies tags + custom field updates to matched GHL contacts.
@@ -206,6 +220,8 @@ async function reconcileLocation(location, runId) {
   let tagChanges = 0;
   let fieldUpdates = 0;
   let errors = 0;
+  let staleContacts = 0; // cached contacts GHL 404'd on (deleted in GHL) — not alert-worthy
+  const staleContactIds = new Set(); // self-heal: drop these from ghl_contacts_v2 after the run
 
   let skipped = 0;
 
@@ -594,13 +610,25 @@ async function reconcileLocation(location, runId) {
         }
         await sleep(650); // Rate limit
       } catch (err) {
-        errors++;
         const errDetail = err.response?.data?.message || err.response?.data || err.message;
         const errMsg = typeof errDetail === 'string' ? errDetail : JSON.stringify(errDetail);
-        console.error(`[Reconcile] Failed to update ${contactName}:`, errMsg);
+        const deleted = isContactDeleted(err);
+        // Contact was deleted in GHL but still cached — not a real error. Don't
+        // count it toward the alert, and queue it for cache removal so next cycle
+        // re-matches by email/phone or recreates it (create path runs its own
+        // authoritative GHL duplicate-check, so this can't spawn duplicates).
+        if (deleted) {
+          staleContacts++;
+          staleContactIds.add(ghlContact.id);
+          console.warn(`[Reconcile] stale (deleted-in-GHL) contact ${contactName} [${ghlContact.id}] — dropping from cache`);
+        } else {
+          errors++;
+          console.error(`[Reconcile] Failed to update ${contactName}:`, errMsg);
+        }
         for (const entry of logEntries) {
           if (entry.ghl_contact_id === ghlContact.id && !entry.applied) {
-            entry.error = errMsg;
+            entry.error = deleted ? `stale_contact: ${errMsg}` : errMsg;
+            if (deleted) entry.detail = { ...(entry.detail || {}), stale_contact: true };
           }
         }
       }
@@ -677,6 +705,22 @@ async function reconcileLocation(location, runId) {
     console.log(`[Reconcile] ${locationName}: ${referralCandidates.length} referral candidate(s), ${processedReferrals} eligible + processed`);
   }
 
+  // 4.9 Self-heal: remove contacts GHL reported as deleted from the cache so we
+  // stop attempting (and alerting on) them every cycle. Skip in dry-run.
+  if (!DRY_RUN && staleContactIds.size > 0) {
+    const ids = [...staleContactIds];
+    const { error: delErr } = await supabase
+      .from('ghl_contacts_v2')
+      .delete()
+      .eq('location_id', locationId)
+      .in('id', ids);
+    if (delErr) {
+      console.error(`[Reconcile] ${locationName}: failed to prune ${ids.length} stale cached contact(s):`, delErr.message);
+    } else {
+      console.log(`[Reconcile] ${locationName}: pruned ${ids.length} stale (deleted-in-GHL) contact(s) from cache`);
+    }
+  }
+
   // 5. Write log entries to Supabase in batches
   if (logEntries.length > 0) {
     for (let i = 0; i < logEntries.length; i += 500) {
@@ -690,7 +734,7 @@ async function reconcileLocation(location, runId) {
     }
   }
 
-  const summary = { matched, unmatched, skipped, tagChanges, fieldUpdates, errors, total: abcMembers.length };
+  const summary = { matched, unmatched, skipped, tagChanges, fieldUpdates, errors, staleContacts, total: abcMembers.length };
   console.log(`[Reconcile] ${locationName}: ${JSON.stringify(summary)}`);
   return summary;
 }

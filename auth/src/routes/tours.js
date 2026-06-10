@@ -83,20 +83,58 @@ router.get('/', async (req, res) => {
     }
 
     const eventsData = await eventsRes.json()
+    const events = eventsData.events || []
+
+    // GHL's /calendars/events does NOT return the contact's name/email/phone —
+    // only a contactId and a generic appointment `title` (e.g. "West Coast
+    // Strength Gym Tour"). Resolve the real person from contactId so staff can
+    // see who is coming in. Fetch unique contacts in parallel (a week view is a
+    // small handful of tours), with a graceful fallback to the title.
+    const uniqueContactIds = [...new Set(events.map(e => e.contactId).filter(Boolean))]
+    const contactsById = {}
+    await Promise.all(uniqueContactIds.map(async (contactId) => {
+      try {
+        const cRes = await fetch(
+          'https://services.leadconnectorhq.com/contacts/' + contactId,
+          {
+            headers: {
+              'Authorization': 'Bearer ' + location.ghl_api_key,
+              'Version': '2021-04-15',
+            },
+          }
+        )
+        if (!cRes.ok) return
+        const cData = await cRes.json()
+        const c = cData.contact || cData
+        const fullName = [c.firstName, c.lastName].filter(Boolean).join(' ').trim()
+        contactsById[contactId] = {
+          name: fullName || c.name || c.contactName || '',
+          email: c.email || '',
+          phone: c.phone || '',
+        }
+      } catch (err) {
+        // Leave this contact unresolved; the tour falls back to the title.
+        console.error('GHL contact fetch error for', contactId, err.message)
+      }
+    }))
 
     // Map to a clean format
-    const tours = (eventsData.events || []).map(event => ({
-      id: event.id,
-      title: event.title || event.contactName || 'Tour',
-      contact_name: event.contactName || event.title || '',
-      contact_email: event.contactEmail || '',
-      contact_phone: event.contactPhone || '',
-      start_time: event.startTime || event.start,
-      end_time: event.endTime || event.end,
-      status: event.status || event.appointmentStatus || 'confirmed',
-      notes: event.notes || '',
-      assigned_to: event.assignedUserId || '',
-    }))
+    const tours = events.map(event => {
+      const contact = contactsById[event.contactId] || {}
+      return {
+        id: event.id,
+        title: event.title || 'Tour',
+        contact_name: contact.name || event.contactName || event.title || '',
+        contact_email: contact.email || event.contactEmail || '',
+        contact_phone: contact.phone || event.contactPhone || '',
+        contact_id: event.contactId || '',
+        start_time: event.startTime || event.start,
+        end_time: event.endTime || event.end,
+        status: event.status || event.appointmentStatus || 'confirmed',
+        notes: event.notes || '',
+        assigned_to: event.assignedUserId || '',
+      }
+    })
 
     // Sort by start time
     tours.sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
