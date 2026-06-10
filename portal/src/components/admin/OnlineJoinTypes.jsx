@@ -14,6 +14,7 @@ const EMPTY_TYPE = {
   promo_code: '',
   promo_starts_at: '',
   promo_ends_at: '',
+  allow_secondary_members: false,
   active: true,
 }
 
@@ -88,6 +89,7 @@ function TypeEditor({ type, locations, ageRules, onClose, onSaved }) {
         promo_code: draft.promo_code || null,
         promo_starts_at: toIso(draft.promo_starts_at),
         promo_ends_at: toIso(draft.promo_ends_at),
+        allow_secondary_members: !!draft.allow_secondary_members,
         active: !!draft.active,
       }
       if (isNew) {
@@ -240,6 +242,25 @@ function TypeEditor({ type, locations, ageRules, onClose, onSaved }) {
                 </div>
               </>
             )}
+          </section>
+
+          <section>
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={!!draft.allow_secondary_members}
+                onChange={e => update('allow_secondary_members', e.target.checked)}
+                className="w-4 h-4 mt-0.5"
+              />
+              <span className="text-sm text-text-primary">
+                Allow household / secondary members
+                <span className="block text-[10px] text-text-muted">
+                  Shows a "Household Members" step on the join flow. Add a plan per household size
+                  (set "Covers N total members" on each plan: base = 3, then 4, 5…). The widget
+                  auto-picks the plan from the member count.
+                </span>
+              </span>
+            </label>
           </section>
 
           <section className="flex items-center gap-2">

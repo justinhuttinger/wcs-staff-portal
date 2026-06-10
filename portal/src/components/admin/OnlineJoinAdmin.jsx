@@ -22,10 +22,6 @@ export default function OnlineJoinAdmin() {
 
   return (
     <div className="space-y-4">
-      <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-2 text-xs text-yellow-800">
-        <span className="font-semibold">Experimental — Online Join admin.</span> Full admin panel live. Backend writes (/start, /submit) shipped — waiting on ABC PayPage ID to flip to production.
-      </div>
-
       {/* Tab bar */}
       <div className="bg-surface border border-border rounded-xl p-2 flex flex-wrap gap-1">
         {TABS.map(t => (
