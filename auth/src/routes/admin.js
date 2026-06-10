@@ -7,6 +7,58 @@ const router = Router()
 
 router.use(authenticate)
 
+// --- Per-staff permission fields (marketing add-on + custom role) ----------
+// Keep these allow-lists in sync with portal/src/config/portalTiles.js,
+// portal/src/config/locations.js and portal/src/config/marketingTypes.js.
+const MARKETING_LOCATION_SLUGS = new Set([
+  'salem', 'keizer', 'eugene', 'springfield', 'clackamas', 'milwaukie', 'medford',
+])
+const MARKETING_TYPE_SLUGS = new Set([
+  'meta_ad', 'social_post', 'flyer', 'facebook_event', 'event',
+  'email', 'sms', 'app_blast', 'ad_tvs', 'website',
+])
+// Marketing Tracker (rides on the add-on) and HR Docs (manager-gated, above the
+// custom tier) are intentionally absent from the custom tile picker.
+const CUSTOM_TILE_KEYS = new Set([
+  'grow', 'abc', 'wheniwork', 'paychex', 'gmail', 'drive', 'insights', 'notifications',
+  'calendar', 'leaderboard', 'commNotes', 'helpCenter', 'ordering', 'tickets',
+  'trainerAvail', 'reporting',
+])
+// Lead-tier reports only — matches the custom role's server gate.
+const CUSTOM_REPORT_KEYS = new Set([
+  'club-health', 'membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions',
+  'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health',
+])
+
+// Filter an incoming array down to allowed values. `null`/non-array → null
+// (meaning "no restriction" for marketing scope, or "nothing granted" for the
+// custom role — interpreted by the readers).
+function cleanList(arr, allowed) {
+  if (!Array.isArray(arr)) return null
+  const out = [...new Set(arr.map(v => String(v)).filter(v =>
+    allowed === 'tiles'
+      ? (CUSTOM_TILE_KEYS.has(v) || /^tile:[0-9a-f-]+$/i.test(v))
+      : allowed.has(v),
+  ))]
+  return out
+}
+
+// Normalize the permission columns from a staff create/update body. Returns an
+// object suitable for spreading into the staff insert/update. An empty
+// marketing scope array means "all" → stored as null so it stays unrestricted.
+function permissionFields(body) {
+  const marketing_addon = !!body.marketing_addon
+  const locs = marketing_addon ? cleanList(body.marketing_locations, MARKETING_LOCATION_SLUGS) : null
+  const types = marketing_addon ? cleanList(body.marketing_types, MARKETING_TYPE_SLUGS) : null
+  return {
+    marketing_addon,
+    marketing_locations: locs && locs.length ? locs : null,
+    marketing_types: types && types.length ? types : null,
+    custom_tiles: cleanList(body.custom_tiles, 'tiles') || [],
+    custom_reports: cleanList(body.custom_reports, CUSTOM_REPORT_KEYS) || [],
+  }
+}
+
 // GET /admin/staff — manager+ (returns staff at caller's locations)
 router.get('/staff', requireRole('manager'), async (req, res) => {
   try {
@@ -23,7 +75,7 @@ router.get('/staff', requireRole('manager'), async (req, res) => {
 
     const { data: staffList } = await supabaseAdmin
       .from('staff')
-      .select('id, email, display_name, first_name, last_name, role, must_change_password, created_at')
+      .select('id, email, display_name, first_name, last_name, role, must_change_password, created_at, marketing_addon, marketing_locations, marketing_types, custom_tiles, custom_reports')
       .in('id', staffIds)
       .order('display_name')
 
@@ -88,6 +140,7 @@ router.post('/staff', requireRole('admin'), async (req, res) => {
       last_name: last_name || null,
       role,
       must_change_password: true,
+      ...permissionFields(req.body),
     })
 
     if (staffError) {
@@ -158,6 +211,12 @@ router.put('/staff/:id', requireRole('admin'), async (req, res) => {
     if (last_name !== undefined) updates.last_name = last_name
     if (first_name !== undefined || last_name !== undefined || display_name) {
       updates.display_name = display_name || ((first_name || '') + ' ' + (last_name || '')).trim()
+    }
+
+    // Permission columns (marketing add-on + custom role) are only touched when
+    // the client sends the marketing_addon flag — keeps unrelated PUTs clean.
+    if (req.body.marketing_addon !== undefined) {
+      Object.assign(updates, permissionFields(req.body))
     }
 
     if (Object.keys(updates).length > 0) {

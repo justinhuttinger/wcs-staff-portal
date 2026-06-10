@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react'
 import { getStaff, createStaff, updateStaff, deleteStaff, getLocations } from '../lib/api'
+import { LOCATION_NAMES } from '../config/locations'
+import { MARKETING_TYPES } from '../config/marketingTypes'
+import { PORTAL_TILE_CATALOG, CUSTOM_REPORT_CATALOG } from '../config/portalTiles'
 
-const ROLES = ['team_member', 'lead', 'manager', 'marketing', 'corporate', 'admin']
+// 'marketing' is no longer a base role — it's an add-on toggle below. 'custom'
+// lets an admin hand-pick tiles + reports for one person.
+const ROLES = ['team_member', 'lead', 'manager', 'custom', 'corporate', 'admin']
 
 const emptyForm = {
   email: '',
@@ -11,6 +16,11 @@ const emptyForm = {
   location_ids: [],
   location_permissions: {},
   temp_password: '',
+  marketing_addon: false,
+  marketing_locations: [],   // [] = all clubs
+  marketing_types: [],       // [] = all types
+  custom_tiles: [],
+  custom_reports: [],
 }
 
 function StaffModal({ member, locations, onClose, onSaved }) {
@@ -28,6 +38,11 @@ function StaffModal({ member, locations, onClose, onSaved }) {
       }])
     ),
     temp_password: '',
+    marketing_addon: !!member.marketing_addon,
+    marketing_locations: member.marketing_locations || [], // null → [] = all clubs
+    marketing_types: member.marketing_types || [],         // null → [] = all types
+    custom_tiles: member.custom_tiles || [],
+    custom_reports: member.custom_reports || [],
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -59,6 +74,17 @@ function StaffModal({ member, locations, onClose, onSaved }) {
         },
       },
     }))
+  }
+
+  // Toggle a value in one of the array-valued permission fields.
+  function toggleInList(field, value) {
+    setForm(prev => {
+      const list = prev[field] || []
+      return {
+        ...prev,
+        [field]: list.includes(value) ? list.filter(v => v !== value) : [...list, value],
+      }
+    })
   }
 
   async function handleSubmit(e) {
@@ -205,6 +231,109 @@ function StaffModal({ member, locations, onClose, onSaved }) {
             )}
           </div>
 
+          {/* Marketing add-on — layers on top of any base role */}
+          <div className="rounded-lg border border-border p-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.marketing_addon}
+                onChange={() => setForm(f => ({ ...f, marketing_addon: !f.marketing_addon }))}
+                className="rounded border-border text-wcs-red focus:ring-wcs-red"
+              />
+              <span className="text-sm font-medium text-text-primary">Marketing add-on</span>
+              <span className="text-xs text-text-muted">— grants the Marketing Tracker</span>
+            </label>
+
+            {form.marketing_addon && (
+              <div className="mt-3 space-y-3">
+                <div>
+                  <p className="text-xs text-text-muted font-medium mb-1.5">
+                    Clubs they can see <span className="text-text-muted/70">(none = all clubs)</span>
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {LOCATION_NAMES.map(name => {
+                      const slug = name.toLowerCase()
+                      const on = form.marketing_locations.includes(slug)
+                      return (
+                        <button
+                          key={slug}
+                          type="button"
+                          onClick={() => toggleInList('marketing_locations', slug)}
+                          className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${on ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
+                        >{name}</button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-text-muted font-medium mb-1.5">
+                    Content types they can see <span className="text-text-muted/70">(none = all types)</span>
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {MARKETING_TYPES.map(t => {
+                      const on = form.marketing_types.includes(t.slug)
+                      return (
+                        <button
+                          key={t.slug}
+                          type="button"
+                          onClick={() => toggleInList('marketing_types', t.slug)}
+                          className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${on ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
+                        >{t.label}</button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Custom role — hand-pick tiles + reports (clubs come from Locations above) */}
+          {form.role === 'custom' && (
+            <div className="rounded-lg border border-border p-3 space-y-4">
+              <p className="text-xs text-text-muted">
+                Custom role: this person sees only the tiles and reports you check below.
+                Their clubs are the Locations selected above.
+              </p>
+              <div>
+                <p className="text-xs text-text-muted font-medium mb-1.5">Tiles</p>
+                {['apps', 'tools'].map(group => (
+                  <div key={group} className="mb-2">
+                    <p className="text-[10px] uppercase tracking-wider text-text-muted/70 mb-1">{group}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {PORTAL_TILE_CATALOG.filter(t => t.group === group).map(t => {
+                        const on = form.custom_tiles.includes(t.key)
+                        return (
+                          <button
+                            key={t.key}
+                            type="button"
+                            onClick={() => toggleInList('custom_tiles', t.key)}
+                            className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${on ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
+                          >{t.label}</button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <p className="text-xs text-text-muted font-medium mb-1.5">Reports</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {CUSTOM_REPORT_CATALOG.map(r => {
+                    const on = form.custom_reports.includes(r.key)
+                    return (
+                      <button
+                        key={r.key}
+                        type="button"
+                        onClick={() => toggleInList('custom_reports', r.key)}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${on ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
+                      >{r.label}</button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
@@ -312,9 +441,16 @@ export default function AdminStaffTab() {
                 </td>
                 <td className="px-4 py-3 text-text-muted">{member.email}</td>
                 <td className="px-4 py-3">
-                  <span className="px-2 py-0.5 bg-bg border border-border rounded text-xs text-text-primary capitalize">
-                    {member.role?.replace(/_/g, ' ') || '—'}
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-2 py-0.5 bg-bg border border-border rounded text-xs text-text-primary capitalize">
+                      {member.role?.replace(/_/g, ' ') || '—'}
+                    </span>
+                    {member.marketing_addon && (
+                      <span className="px-2 py-0.5 bg-wcs-red/10 border border-wcs-red/20 rounded text-[10px] font-semibold text-wcs-red uppercase tracking-wide">
+                        Marketing
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-text-muted text-xs">
                   {member.locations?.length

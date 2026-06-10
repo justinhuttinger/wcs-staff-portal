@@ -95,7 +95,12 @@ const REPORT_GROUPS = [
   },
 ]
 
-function getReportTilesForRole(role) {
+function getReportTilesForRole(role, customReports) {
+  // Custom-role members see exactly the reports an admin granted them.
+  if (role === 'custom') {
+    const set = new Set(customReports || [])
+    return ALL_REPORT_TILES.filter(t => set.has(t.key))
+  }
   switch (role) {
     case 'team_member':
       return []
@@ -178,7 +183,7 @@ function parseHash() {
 
 export default function ReportingView({ user, onBack, location, isAdmin }) {
   const userRole = user?.staff?.role || 'team_member'
-  const REPORT_TILES = getReportTilesForRole(userRole)
+  const REPORT_TILES = getReportTilesForRole(userRole, user?.staff?.custom_reports)
   const VISIBLE_REPORT_KEYS = new Set(REPORT_TILES.map(t => t.key))
 
   // Only show groups that contain at least one report the user can see.
