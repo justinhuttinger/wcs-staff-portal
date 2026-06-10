@@ -107,15 +107,22 @@ function TypeEditor({ type, locations, ageRules, onClose, onSaved }) {
     }
   }
 
-  const oneYr = plans.find(p => p.term === '1yr')
-  const m2m = plans.find(p => p.term === 'm2m')
-
+  const TERMS = [{ key: '1yr', label: '1-Year' }, { key: 'm2m', label: 'Month-to-Month' }]
+  function plansForTerm(term) {
+    return plans.filter(p => p.term === term).sort((a, b) => (a.max_members || 1) - (b.max_members || 1))
+  }
   function addPlan(term) {
+    // For family types suggest the next household size (base 3, then 4, 5…).
+    const existing = plansForTerm(term)
+    const nextMax = draft.allow_secondary_members
+      ? (existing.length ? Math.max(...existing.map(p => p.max_members || 1)) + 1 : 3)
+      : 1
     setEditingPlan({
       _isNew: true,
       wcs_location_id: draft.wcs_location_id,
       membership_type_id: type.id,
       term,
+      max_members: nextMax,
     })
   }
 
@@ -277,26 +284,44 @@ function TypeEditor({ type, locations, ageRules, onClose, onSaved }) {
           {!isNew && (
             <section>
               <p className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-2">Plans</p>
-              <p className="text-[10px] text-text-muted mb-2">Each type has up to two plans: a 1-Year and a Month-to-Month. These hold the ABC payment-plan IDs and pricing.</p>
+              <p className="text-[10px] text-text-muted mb-2">
+                {draft.allow_secondary_members
+                  ? 'Add one plan per household size — base covers 3, then add 4, 5… each with its own price + ABC payment-plan ID. The join page auto-picks the plan from the member count.'
+                  : 'A 1-Year and a Month-to-Month plan, each holding the ABC payment-plan ID and pricing.'}
+              </p>
               {plansLoading && <p className="text-xs text-text-muted">Loading plans…</p>}
-              <div className="grid grid-cols-2 gap-3">
-                {[{ term: '1yr', label: '1-Year', plan: oneYr }, { term: 'm2m', label: 'Month-to-Month', plan: m2m }].map(({ term, label, plan }) => (
-                  <div key={term} className="bg-bg border border-border rounded-lg px-3 py-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold text-text-primary">{label}</div>
-                        {plan
-                          ? <div className="text-[11px] text-text-muted">${Number(plan.today_amount).toFixed(2)} today / ${Number(plan.monthly_amount).toFixed(2)} /mo</div>
-                          : <div className="text-[11px] text-text-muted">Not set up yet</div>
-                        }
+              <div className="space-y-3">
+                {TERMS.map(({ key, label }) => {
+                  const termPlans = plansForTerm(key)
+                  return (
+                    <div key={key} className="bg-bg border border-border rounded-lg px-3 py-2.5">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-sm font-semibold text-text-primary">{label}</span>
+                        <button onClick={() => addPlan(key)} className="text-xs text-wcs-red hover:underline">
+                          + Add {draft.allow_secondary_members ? 'size tier' : 'plan'}
+                        </button>
                       </div>
-                      {plan
-                        ? <button onClick={() => setEditingPlan(plan)} className="text-xs text-wcs-red hover:underline shrink-0">Edit</button>
-                        : <button onClick={() => addPlan(term)} className="text-xs text-wcs-red hover:underline shrink-0">+ Add</button>
+                      {termPlans.length === 0
+                        ? <div className="text-[11px] text-text-muted">Not set up yet</div>
+                        : (
+                          <div className="space-y-1">
+                            {termPlans.map(p => (
+                              <div key={p.id} className="flex items-center justify-between gap-2">
+                                <div className="text-[11px] text-text-muted">
+                                  {draft.allow_secondary_members && (
+                                    <span className="inline-block px-1.5 py-0.5 mr-2 rounded-full bg-wcs-red/10 text-wcs-red font-medium">Covers {p.max_members || 1}</span>
+                                  )}
+                                  ${Number(p.today_amount).toFixed(2)} today / ${Number(p.monthly_amount).toFixed(2)} /mo
+                                </div>
+                                <button onClick={() => setEditingPlan(p)} className="text-xs text-wcs-red hover:underline shrink-0">Edit</button>
+                              </div>
+                            ))}
+                          </div>
+                        )
                       }
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </section>
           )}
