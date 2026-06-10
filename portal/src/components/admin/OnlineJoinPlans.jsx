@@ -296,8 +296,9 @@ export function PlanEditor({ plan, locations, ageRules, types = [], onClose, onS
       if (isNew) {
         await onlineJoin.createPlan(body)
       } else {
-        // PATCH doesn't accept plan_key changes on existing rows (unique constraint)
-        const { plan_key, wcs_location_id, ...patch } = body
+        // wcs_location_id is immutable; plan_key (slug) can be changed. The
+        // (wcs_location_id, plan_key) unique constraint still guards collisions.
+        const { wcs_location_id, ...patch } = body
         await onlineJoin.updatePlan(plan.id, patch)
       }
       onSaved()
@@ -371,10 +372,7 @@ export function PlanEditor({ plan, locations, ageRules, types = [], onClose, onS
                   ))}
                 </select>
               </label>
-              {isNew
-                ? <Field label="Plan key (slug)" value={draft.plan_key} onChange={v => update('plan_key', v.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} placeholder="standard-monthly" required hint="Permanent slug; unique per location." />
-                : <Field label="Plan key" value={draft.plan_key} onChange={() => {}} readOnly hint="Permanent — cannot change." />
-              }
+              <Field label="Plan key (slug)" value={draft.plan_key} onChange={v => update('plan_key', v.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} placeholder="standard-monthly" required hint="URL-safe slug; unique per location. You can change this." />
               <label className="block">
                 <span className="block text-xs font-medium text-text-muted mb-1">Membership type</span>
                 <select
