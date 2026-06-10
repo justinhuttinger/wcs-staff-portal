@@ -32,7 +32,25 @@ const EMPTY_PLAN = {
   term: '',
   // Family: total people this plan covers (1 normal, 3 family base, 4+ tiers).
   max_members: 1,
+  // Plan-level promo: hidden from normal browse, shown only via ?promo=<code>.
+  promo_code: '',
+  promo_starts_at: '',
+  promo_ends_at: '',
   active: true,
+}
+
+// datetime-local <-> ISO helpers (mirror OnlineJoinTypes).
+function dtToLocalInput(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const pad = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+function dtToIso(localValue) {
+  if (!localValue) return null
+  const d = new Date(localValue)
+  return isNaN(d.getTime()) ? null : d.toISOString()
 }
 
 export function Field({ label, value, onChange, type = 'text', placeholder, hint, required, readOnly, mono }) {
@@ -247,6 +265,8 @@ export function PlanEditor({ plan, locations, ageRules, types = [], onClose, onS
     features: Array.isArray(plan.features) ? plan.features : [],
     membership_type_id: plan.membership_type_id ?? membershipTypeId ?? null,
     term: plan.term ?? defaultTerm ?? '',
+    promo_starts_at: dtToLocalInput(plan.promo_starts_at),
+    promo_ends_at: dtToLocalInput(plan.promo_ends_at),
   }))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -295,6 +315,10 @@ export function PlanEditor({ plan, locations, ageRules, types = [], onClose, onS
         term: draft.term || null,
         // Family: total people this plan covers (1 normal, 3 base, 4+ tiers).
         max_members: parseInt(draft.max_members) || 1,
+        // Plan-level promo.
+        promo_code: draft.promo_code || null,
+        promo_starts_at: dtToIso(draft.promo_starts_at),
+        promo_ends_at: dtToIso(draft.promo_ends_at),
         active: !!draft.active,
       }
       if (isNew) {
@@ -506,6 +530,28 @@ export function PlanEditor({ plan, locations, ageRules, types = [], onClose, onS
                 ))}
               </select>
             </label>
+          </section>
+
+          <section>
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-2">Promo (optional)</p>
+            <p className="text-[10px] text-text-muted mb-2">
+              Give a plan a promo code and it's <b>hidden from normal browsing</b>. The widget shows it only via
+              <span className="font-mono"> ?promo=&lt;code&gt;</span>, going straight to this plan (skipping type selection).
+              Tag two plans (a 1-Year + an M2M) with the <b>same code</b> to offer a term choice.
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Promo code" value={draft.promo_code} onChange={v => update('promo_code', v)} mono placeholder="SUMMER50" />
+              <label className="block">
+                <span className="block text-xs font-medium text-text-muted mb-1">Promo starts</span>
+                <input type="datetime-local" value={draft.promo_starts_at || ''} onChange={e => update('promo_starts_at', e.target.value)}
+                  className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red" />
+              </label>
+              <label className="block">
+                <span className="block text-xs font-medium text-text-muted mb-1">Promo ends</span>
+                <input type="datetime-local" value={draft.promo_ends_at || ''} onChange={e => update('promo_ends_at', e.target.value)}
+                  className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red" />
+              </label>
+            </div>
           </section>
 
           <section className="flex items-center gap-2">
