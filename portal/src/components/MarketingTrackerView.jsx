@@ -208,6 +208,46 @@ function formatCommentTime(iso) {
   return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
+// --- Activity feed helpers (comments + recorded edits) ---
+
+const FIELD_LABELS = {
+  title: 'Title', type: 'Type', status: 'Status',
+  start_at: 'Start date', end_at: 'End date',
+  locations: 'Locations', notes: 'Notes',
+}
+
+// Resolve a change `field` (base column or `custom.<key>`) to a display label.
+function activityFieldLabel(effort, field) {
+  if (field && field.startsWith('custom.')) {
+    const key = field.slice(7)
+    const def = (TYPE_BY_SLUG[effort.type]?.fields || []).find(f => f.key === key)
+    return def?.label || key.replace(/_/g, ' ')
+  }
+  return FIELD_LABELS[field] || field
+}
+
+// Human phrase for one recorded change, e.g. "edited Creative Link",
+// "added Copy", "changed Status from Planned to Approved".
+function changePhrase(effort, c) {
+  const label = activityFieldLabel(effort, c.field)
+  if (c.field === 'status') {
+    const from = STATUS_BY_KEY[c.from]?.label || c.from
+    const to = STATUS_BY_KEY[c.to]?.label || c.to
+    return `changed Status from ${from} to ${to}`
+  }
+  if (c.field === 'locations') {
+    if (c.action === 'removed') return 'cleared Locations'
+    return `${c.action === 'added' ? 'set' : 'changed'} Locations to ${locationsLabel(c.to || [])}`
+  }
+  if (c.field === 'start_at' || c.field === 'end_at') {
+    if (c.action === 'removed') return `removed ${label}`
+    return `${c.action === 'added' ? 'set' : 'changed'} ${label} to ${formatLongDate(isoToDateStr(c.to))}`
+  }
+  if (c.action === 'added') return `added ${label}`
+  if (c.action === 'removed') return `removed ${label}`
+  return `edited ${label}`
+}
+
 // --- Main view ---
 
 export default function MarketingTrackerView({ onBack }) {
@@ -558,9 +598,11 @@ function MonthGrid({ weeks, month, today, itemsForDate, onAdd, onEdit }) {
                   <div className="flex items-center justify-between">
                     <span className={`text-xs font-semibold ${isToday ? 'text-white bg-wcs-red w-5 h-5 rounded-full flex items-center justify-center' : inMonth ? 'text-text-primary' : 'text-text-muted/50'}`}>{d.getDate()}</span>
                   </div>
-                  <div className="flex flex-col gap-0.5 overflow-hidden">
-                    {items.slice(0, 3).map(e => <EffortChip key={e.id} effort={e} onEdit={onEdit} compact />)}
-                    {items.length > 3 && <span className="text-[10px] text-text-muted pl-1">+{items.length - 3} more</span>}
+                  {/* Show every item — the cell (and its week row, via grid
+                      stretch) grows to fit. min-h floor keeps quiet days at the
+                      current size. */}
+                  <div className="flex flex-col gap-0.5">
+                    {items.map(e => <EffortChip key={e.id} effort={e} onEdit={onEdit} compact />)}
                   </div>
                 </div>
               )
@@ -704,6 +746,12 @@ export function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
                 <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{typeLabel(effort.type)}
               </span>
             </div>
+            {effort.created_by_name && (
+              <p className="text-[11px] text-text-muted mt-1">
+                Created by <span className="font-semibold text-text-primary">{effort.created_by_name}</span>
+                {effort.created_at && <> · {formatCommentTime(effort.created_at)}</>}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button onClick={onEdit} className="px-2.5 py-1.5 rounded-lg border border-border text-text-muted hover:text-text-primary hover:border-text-muted text-xs font-semibold transition-colors">Edit</button>
@@ -779,23 +827,44 @@ export function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
             </div>
           )}
 
-          {/* Comments */}
+          {/* Activity — comments + recorded edits, oldest first. The first
+              entry is always "created by", derived from the effort itself. */}
           <div className="pt-1 border-t border-border">
             <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-2 pt-1">
-              Comments{comments ? ` (${comments.length})` : ''}
+              Activity
             </span>
             <div className="space-y-2.5 mb-3">
               {comments === null && <p className="text-xs text-text-muted">Loading…</p>}
-              {comments && comments.length === 0 && <p className="text-xs text-text-muted">No comments yet.</p>}
-              {comments && comments.map(c => (
-                <div key={c.id} className="rounded-lg bg-bg border border-border p-3">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-xs font-semibold text-text-primary">{c.created_by_name || 'Unknown'}</span>
-                    <span className="text-[10px] text-text-muted">{formatCommentTime(c.created_at)}</span>
+              {comments !== null && (
+                <>
+                  {/* Created-by — synthetic first item from the effort record */}
+                  <div className="flex items-baseline justify-between gap-2 text-xs px-1">
+                    <span className="text-text-muted">
+                      <span className="font-semibold text-text-primary">{effort.created_by_name || 'Someone'}</span> created this effort
+                    </span>
+                    {effort.created_at && <span className="text-[10px] text-text-muted/80 shrink-0">{formatCommentTime(effort.created_at)}</span>}
                   </div>
-                  <p className="text-sm text-text-primary whitespace-pre-wrap">{c.body}</p>
-                </div>
-              ))}
+                  {comments.map(c => c.kind === 'edit' ? (
+                    <div key={c.id} className="flex items-baseline justify-between gap-2 text-xs px-1">
+                      <span className="text-text-muted">
+                        <span className="font-semibold text-text-primary">{c.created_by_name || 'Someone'}</span>{' '}
+                        {(c.meta?.changes && c.meta.changes.length > 0)
+                          ? c.meta.changes.map((ch, i) => <span key={i}>{i > 0 ? ', ' : ''}{changePhrase(effort, ch)}</span>)
+                          : (c.body || 'made a change')}
+                      </span>
+                      <span className="text-[10px] text-text-muted/80 shrink-0">{formatCommentTime(c.created_at)}</span>
+                    </div>
+                  ) : (
+                    <div key={c.id} className="rounded-lg bg-bg border border-border p-3">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-xs font-semibold text-text-primary">{c.created_by_name || 'Unknown'}</span>
+                        <span className="text-[10px] text-text-muted">{formatCommentTime(c.created_at)}</span>
+                      </div>
+                      <p className="text-sm text-text-primary whitespace-pre-wrap">{c.body}</p>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
             <div className="flex items-end gap-2">
               <textarea

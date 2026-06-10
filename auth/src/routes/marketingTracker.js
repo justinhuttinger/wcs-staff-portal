@@ -129,6 +129,77 @@ function buildRow(body, staff) {
   }
 }
 
+// --- Activity feed (comments + edit history) ---
+
+function blank(v) {
+  if (v == null) return true
+  if (Array.isArray(v)) return v.length === 0
+  return String(v).trim() === ''
+}
+
+// Keep stored from/to values bounded so a long URL/copy doesn't bloat the row.
+function trunc(v) {
+  if (v == null || Array.isArray(v)) return v
+  const s = String(v)
+  return s.length > 140 ? s.slice(0, 140) + '…' : s
+}
+
+// Diff two effort rows → [{ field, action, from, to }]. `field` is a base
+// column or `custom.<key>`; display labels are resolved UI-side. `action` is
+// added | removed | edited.
+function diffEffort(oldRow, newRow) {
+  const changes = []
+  const pushChange = (field, o, n) => {
+    if (blank(o) && blank(n)) return
+    if (String(o ?? '') === String(n ?? '')) return
+    changes.push({ field, action: blank(o) ? 'added' : blank(n) ? 'removed' : 'edited', from: trunc(o), to: trunc(n) })
+  }
+
+  for (const f of ['title', 'type', 'status', 'start_at', 'end_at', 'notes']) {
+    pushChange(f, oldRow[f], newRow[f])
+  }
+
+  // locations: order-insensitive array compare
+  const oLoc = [...(oldRow.locations || [])].sort()
+  const nLoc = [...(newRow.locations || [])].sort()
+  if (oLoc.join('|') !== nLoc.join('|')) {
+    changes.push({ field: 'locations', action: oLoc.length === 0 ? 'added' : nLoc.length === 0 ? 'removed' : 'edited', from: oLoc, to: nLoc })
+  }
+
+  // custom fields: union of keys
+  const oc = oldRow.custom || {}, nc = newRow.custom || {}
+  for (const key of new Set([...Object.keys(oc), ...Object.keys(nc)])) {
+    pushChange(`custom.${key}`, oc[key], nc[key])
+  }
+
+  return changes
+}
+
+// Plain-text summary for the row body (fallback; the UI renders from meta).
+function summarizeChanges(changes) {
+  return changes
+    .map(c => `${c.action} ${c.field.startsWith('custom.') ? c.field.slice(7) : c.field}`)
+    .join(', ')
+}
+
+// Insert an activity row. Never throws — an audit-log failure must not fail the
+// parent mutation.
+async function recordActivity(effortId, staff, kind, changes) {
+  if (kind === 'edit' && (!changes || changes.length === 0)) return
+  try {
+    await supabaseAdmin.from('marketing_effort_comments').insert({
+      effort_id: effortId,
+      kind,
+      body: kind === 'edit' ? summarizeChanges(changes) : null,
+      meta: kind === 'edit' ? { changes } : null,
+      created_by: staff.id,
+      created_by_name: staff.display_name || staff.email || null,
+    })
+  } catch (e) {
+    console.warn('[MarketingTracker] activity log failed:', e.message)
+  }
+}
+
 // GET / — list efforts. Optional filters: type, location (slug), from, to (ISO).
 router.get('/', async (req, res) => {
   try {
@@ -303,6 +374,8 @@ router.put('/:id', async (req, res) => {
       .maybeSingle()
     if (error) throw error
     if (!data) return res.status(404).json({ error: 'Effort not found' })
+    // Record what changed for the activity feed (old = scoped.effort).
+    await recordActivity(req.params.id, req.staff, 'edit', diffEffort(scoped.effort, data))
     res.json({ effort: data })
   } catch (err) {
     console.error('[MarketingTracker] update error:', err.message)
@@ -328,6 +401,11 @@ router.patch('/:id/status', async (req, res) => {
       .maybeSingle()
     if (error) throw error
     if (!data) return res.status(404).json({ error: 'Effort not found' })
+    if (scoped.effort.status !== status) {
+      await recordActivity(req.params.id, req.staff, 'edit', [
+        { field: 'status', action: 'edited', from: scoped.effort.status, to: status },
+      ])
+    }
     res.json({ effort: data })
   } catch (err) {
     console.error('[MarketingTracker] status error:', err.message)
