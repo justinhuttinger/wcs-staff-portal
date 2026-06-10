@@ -582,19 +582,19 @@ export default function OnlineJoinPlans() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-text-muted">Filter by location:</label>
-          <select
-            value={locationFilter}
-            onChange={e => setLocationFilter(e.target.value)}
-            className="px-2.5 py-1 bg-bg border border-border rounded-lg text-xs focus:outline-none focus:border-wcs-red"
-          >
-            <option value="">All locations</option>
-            {locations.map(l => (
-              <option key={l.wcs_location_id} value={l.wcs_location_id}>{l.display_name}</option>
-            ))}
-          </select>
-          <p className="text-xs text-text-muted ml-2">{loading ? 'Loading…' : `${plans.length} plan${plans.length === 1 ? '' : 's'}`}</p>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => setLocationFilter('')}
+            className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${locationFilter === '' ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:border-wcs-red'}`}
+          >All</button>
+          {locations.map(l => (
+            <button
+              key={l.wcs_location_id}
+              onClick={() => setLocationFilter(l.wcs_location_id)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${locationFilter === l.wcs_location_id ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:border-wcs-red'}`}
+            >{l.display_name}</button>
+          ))}
+          <span className="text-xs text-text-muted ml-1">{loading ? 'Loading…' : `${plans.length} plan${plans.length === 1 ? '' : 's'}`}</span>
         </div>
         <button
           onClick={() => setEditing({ _isNew: true, wcs_location_id: locationFilter })}
