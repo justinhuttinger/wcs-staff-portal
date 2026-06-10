@@ -130,7 +130,11 @@ function transformABCMember(raw, clubNumber) {
     sales_person_id: a.salesPersonId || null,
     sales_person_name: a.salesPersonName || null,
     sales_person_home_club: a.salesPersonHomeClub || null,
-    agreement_entry_source: a.agreementEntrySourceReportName || null,
+    // Canonical channel the agreement was entered through ("Web" for online
+    // joins, "EAE"/"ABC"/etc otherwise). NOTE: this is agreementEntrySource,
+    // NOT agreementEntrySourceReportName (that field is the station name, e.g.
+    // "Home", and never distinguishes web vs in-club). Used to tag online sales.
+    agreement_entry_source: a.agreementEntrySource || null,
     last_sync_at: new Date().toISOString(),
   };
 }
