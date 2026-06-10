@@ -30,6 +30,8 @@ const EMPTY_PLAN = {
   // is managed standalone from the flat Plans list these stay empty).
   membership_type_id: null,
   term: '',
+  // Family: total people this plan covers (1 normal, 3 family base, 4+ tiers).
+  max_members: 1,
   active: true,
 }
 
@@ -291,6 +293,8 @@ export function PlanEditor({ plan, locations, ageRules, types = [], onClose, onS
         // Online Join v2 parent type + term ('1yr' | 'm2m').
         membership_type_id: draft.membership_type_id || null,
         term: draft.term || null,
+        // Family: total people this plan covers (1 normal, 3 base, 4+ tiers).
+        max_members: parseInt(draft.max_members) || 1,
         active: !!draft.active,
       }
       if (isNew) {
@@ -407,6 +411,7 @@ export function PlanEditor({ plan, locations, ageRules, types = [], onClose, onS
                   {draft.membership_type_id ? 'Which plan of the membership type this is (1-Year or Month-to-Month).' : 'Set this when attaching to a membership type.'}
                 </span>
               </label>
+              <Field label="Covers (total members)" type="number" value={draft.max_members} onChange={v => update('max_members', v)} hint="People this plan covers. 1 = normal. Family base = 3; add 4/5… tiers for bigger households (each its own ABC plan)." />
             </div>
           </section>
 
