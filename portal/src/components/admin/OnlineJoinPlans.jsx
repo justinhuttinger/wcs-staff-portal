@@ -235,7 +235,7 @@ export function FeaturesEditor({ value, onChange }) {
   )
 }
 
-export function PlanEditor({ plan, locations, ageRules, onClose, onSaved, defaultTerm, membershipTypeId }) {
+export function PlanEditor({ plan, locations, ageRules, types = [], onClose, onSaved, defaultTerm, membershipTypeId }) {
   const isNew = !plan.id
   // When launched from a membership type, pre-seat the parent type id + term.
   // Explicit values already on the plan win (e.g. editing an existing child).
@@ -257,6 +257,10 @@ export function PlanEditor({ plan, locations, ageRules, onClose, onSaved, defaul
   }
 
   const selectedLocation = locations.find(l => l.wcs_location_id === draft.wcs_location_id)
+  // Membership types available to attach this plan to (same location). When the
+  // editor is launched from inside a type, the parent is fixed (locked select).
+  const typeLocked = !!membershipTypeId
+  const typeOptions = (types || []).filter(t => t.wcs_location_id === draft.wcs_location_id)
 
   async function save() {
     setSaving(true); setError(null)
@@ -270,7 +274,6 @@ export function PlanEditor({ plan, locations, ageRules, onClose, onSaved, defaul
         plan_key: draft.plan_key,
         plan_label: draft.plan_label,
         plan_description: draft.plan_description || null,
-        features: draft.features,
         badge: draft.badge || null,
         today_amount: parseFloat(draft.today_amount),
         monthly_amount: parseFloat(draft.monthly_amount),
@@ -373,6 +376,25 @@ export function PlanEditor({ plan, locations, ageRules, onClose, onSaved, defaul
                 : <Field label="Plan key" value={draft.plan_key} onChange={() => {}} readOnly hint="Permanent — cannot change." />
               }
               <label className="block">
+                <span className="block text-xs font-medium text-text-muted mb-1">Membership type</span>
+                <select
+                  value={draft.membership_type_id || ''}
+                  onChange={e => update('membership_type_id', e.target.value || null)}
+                  disabled={typeLocked || !draft.wcs_location_id}
+                  className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red disabled:opacity-60"
+                >
+                  <option value="">— none (standalone) —</option>
+                  {typeOptions.map(t => (
+                    <option key={t.id} value={t.id}>{t.type_label}</option>
+                  ))}
+                </select>
+                <span className="block text-[10px] text-text-muted mt-0.5">
+                  {typeLocked
+                    ? 'Set by the membership type you opened this from.'
+                    : (draft.wcs_location_id ? 'Attach this plan to a membership type so it shows on the join page.' : 'Pick a location first.')}
+                </span>
+              </label>
+              <label className="block">
                 <span className="block text-xs font-medium text-text-muted mb-1">Term</span>
                 <select
                   value={draft.term || ''}
@@ -384,7 +406,7 @@ export function PlanEditor({ plan, locations, ageRules, onClose, onSaved, defaul
                   <option value="m2m">Month-to-Month</option>
                 </select>
                 <span className="block text-[10px] text-text-muted mt-0.5">
-                  {draft.membership_type_id ? 'Which plan of the parent membership type this is.' : 'Optional for standalone plans.'}
+                  {draft.membership_type_id ? 'Which plan of the membership type this is (1-Year or Month-to-Month).' : 'Set this when attaching to a membership type.'}
                 </span>
               </label>
             </div>
@@ -456,10 +478,9 @@ export function PlanEditor({ plan, locations, ageRules, onClose, onSaved, defaul
                 className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red"
               />
             </div>
-            <div className="mt-3">
-              <span className="block text-xs font-medium text-text-muted mb-1">Features</span>
-              <FeaturesEditor value={draft.features} onChange={v => update('features', v)} />
-            </div>
+            <p className="mt-3 text-[10px] text-text-muted">
+              Amenities live on the membership type, not the plan — edit them under Membership Types.
+            </p>
           </section>
 
           <section>
