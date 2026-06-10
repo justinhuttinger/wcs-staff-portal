@@ -542,6 +542,7 @@ export default function OnlineJoinPlans() {
   const [plans, setPlans] = useState([])
   const [locations, setLocations] = useState([])
   const [ageRules, setAgeRules] = useState([])
+  const [types, setTypes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [editing, setEditing] = useState(null)
@@ -550,20 +551,23 @@ export default function OnlineJoinPlans() {
   async function load() {
     setLoading(true); setError(null)
     try {
-      const [plansR, locsR, rulesR] = await Promise.all([
+      const [plansR, locsR, rulesR, typesR] = await Promise.all([
         onlineJoin.listPlans(locationFilter || undefined),
         onlineJoin.listLocations(),
         onlineJoin.listAgeRules(),
+        onlineJoin.listTypes(),
       ])
       setPlans(plansR.plans || [])
       setLocations(locsR.locations || [])
       setAgeRules(rulesR.age_rules || [])
+      setTypes(typesR.types || [])
     } catch (e) {
       setError(e.message || 'Failed to load')
     } finally {
       setLoading(false)
     }
   }
+  const typeLabel = id => types.find(t => t.id === id)?.type_label
 
   useEffect(() => { load() }, [locationFilter])
 
@@ -611,6 +615,7 @@ export default function OnlineJoinPlans() {
             <tr>
               <th className="text-left px-4 py-2 text-xs font-semibold text-text-muted">Plan</th>
               <th className="text-left px-3 py-2 text-xs font-semibold text-text-muted">Location</th>
+              <th className="text-left px-3 py-2 text-xs font-semibold text-text-muted">Membership type</th>
               <th className="text-right px-3 py-2 text-xs font-semibold text-text-muted">Today / Monthly</th>
               <th className="text-left px-3 py-2 text-xs font-semibold text-text-muted">Age rule</th>
               <th className="text-center px-3 py-2 text-xs font-semibold text-text-muted">Order</th>
@@ -620,7 +625,7 @@ export default function OnlineJoinPlans() {
           </thead>
           <tbody>
             {plans.length === 0 && !loading && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-text-muted">No plans yet. Click "Add Plan" to create one.</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-text-muted">No plans yet. Click "Add Plan" to create one.</td></tr>
             )}
             {plans.map(p => {
               const loc = locations.find(l => l.wcs_location_id === p.wcs_location_id)
@@ -636,6 +641,11 @@ export default function OnlineJoinPlans() {
                     </div>
                   </td>
                   <td className="px-3 py-2 text-xs text-text-muted">{loc?.display_name || p.wcs_location_id}</td>
+                  <td className="px-3 py-2 text-xs whitespace-nowrap">
+                    {p.membership_type_id
+                      ? <span className="text-text-primary">{typeLabel(p.membership_type_id) || 'Unknown type'}{p.term ? <span className="text-text-muted"> · {p.term === '1yr' ? '1-Year' : p.term === 'm2m' ? 'M2M' : p.term}</span> : ''}</span>
+                      : <span className="text-text-muted">— unassigned —</span>}
+                  </td>
                   <td className="px-3 py-2 text-right text-xs font-mono text-text-muted whitespace-nowrap">
                     ${Number(p.today_amount).toFixed(2)} / ${Number(p.monthly_amount).toFixed(2)}
                   </td>
@@ -660,6 +670,7 @@ export default function OnlineJoinPlans() {
           plan={editing}
           locations={locations}
           ageRules={ageRules}
+          types={types}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load() }}
         />
