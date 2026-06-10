@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import OnlineJoinLocations from './OnlineJoinLocations'
+import OnlineJoinTypes from './OnlineJoinTypes'
 import OnlineJoinPlans from './OnlineJoinPlans'
 import OnlineJoinAgeRules from './OnlineJoinAgeRules'
 import OnlineJoinCopy from './OnlineJoinCopy'
@@ -9,6 +10,7 @@ import OnlineJoinPreview from './OnlineJoinPreview'
 const TABS = [
   { key: 'preview',   label: 'Preview',   desc: 'Live widget preview — pick a location and walk the flow' },
   { key: 'locations', label: 'Locations', desc: 'Address, hours, hero copy per club' },
+  { key: 'types',     label: 'Membership Types', desc: 'Membership types: amenities, badge, age rule, promo + child plans' },
   { key: 'plans',     label: 'Plans',     desc: 'Per-location plans + ABC IDs (with Pull-from-ABC picker)' },
   { key: 'age-rules', label: 'Age Rules', desc: 'Named age ranges with live preview' },
   { key: 'copy',      label: 'Copy',      desc: 'Editable global strings' },
@@ -45,6 +47,7 @@ export default function OnlineJoinAdmin() {
       {/* Tab body */}
       {tab === 'preview' && <OnlineJoinPreview />}
       {tab === 'locations' && <OnlineJoinLocations />}
+      {tab === 'types' && <OnlineJoinTypes />}
       {tab === 'plans' && <OnlineJoinPlans />}
       {tab === 'age-rules' && <OnlineJoinAgeRules />}
       {tab === 'copy' && <OnlineJoinCopy />}

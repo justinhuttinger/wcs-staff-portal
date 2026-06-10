@@ -25,10 +25,15 @@ const EMPTY_PLAN = {
   today_amount_ach: '',
   monthly_amount_ach: '',
   age_rule_id: null,
+  // Online Join v2: a plan is a child of a membership type. `term` is either
+  // '1yr' or 'm2m'; `membership_type_id` is the parent type's id (when a plan
+  // is managed standalone from the flat Plans list these stay empty).
+  membership_type_id: null,
+  term: '',
   active: true,
 }
 
-function Field({ label, value, onChange, type = 'text', placeholder, hint, required, readOnly, mono }) {
+export function Field({ label, value, onChange, type = 'text', placeholder, hint, required, readOnly, mono }) {
   return (
     <label className="block">
       <span className="block text-xs font-medium text-text-muted mb-1">
@@ -198,7 +203,7 @@ function PullFromAbcModal({ clubNumber, locationLabel, onPick, onClose }) {
   )
 }
 
-function FeaturesEditor({ value, onChange }) {
+export function FeaturesEditor({ value, onChange }) {
   const features = Array.isArray(value) ? value : []
   function update(i, v) {
     const next = features.slice()
@@ -230,9 +235,17 @@ function FeaturesEditor({ value, onChange }) {
   )
 }
 
-function PlanEditor({ plan, locations, ageRules, onClose, onSaved }) {
+export function PlanEditor({ plan, locations, ageRules, onClose, onSaved, defaultTerm, membershipTypeId }) {
   const isNew = !plan.id
-  const [draft, setDraft] = useState(() => ({ ...EMPTY_PLAN, ...plan, features: Array.isArray(plan.features) ? plan.features : [] }))
+  // When launched from a membership type, pre-seat the parent type id + term.
+  // Explicit values already on the plan win (e.g. editing an existing child).
+  const [draft, setDraft] = useState(() => ({
+    ...EMPTY_PLAN,
+    ...plan,
+    features: Array.isArray(plan.features) ? plan.features : [],
+    membership_type_id: plan.membership_type_id ?? membershipTypeId ?? null,
+    term: plan.term ?? defaultTerm ?? '',
+  }))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [showAbcPicker, setShowAbcPicker] = useState(false)
@@ -272,6 +285,9 @@ function PlanEditor({ plan, locations, ageRules, onClose, onSaved }) {
         today_amount_ach: numOrNull(draft.today_amount_ach),
         monthly_amount_ach: numOrNull(draft.monthly_amount_ach),
         age_rule_id: draft.age_rule_id || null,
+        // Online Join v2 parent type + term ('1yr' | 'm2m').
+        membership_type_id: draft.membership_type_id || null,
+        term: draft.term || null,
         active: !!draft.active,
       }
       if (isNew) {
@@ -356,6 +372,21 @@ function PlanEditor({ plan, locations, ageRules, onClose, onSaved }) {
                 ? <Field label="Plan key (slug)" value={draft.plan_key} onChange={v => update('plan_key', v.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} placeholder="standard-monthly" required hint="Permanent slug; unique per location." />
                 : <Field label="Plan key" value={draft.plan_key} onChange={() => {}} readOnly hint="Permanent — cannot change." />
               }
+              <label className="block">
+                <span className="block text-xs font-medium text-text-muted mb-1">Term</span>
+                <select
+                  value={draft.term || ''}
+                  onChange={e => update('term', e.target.value || null)}
+                  className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red"
+                >
+                  <option value="">— none —</option>
+                  <option value="1yr">1-Year</option>
+                  <option value="m2m">Month-to-Month</option>
+                </select>
+                <span className="block text-[10px] text-text-muted mt-0.5">
+                  {draft.membership_type_id ? 'Which plan of the parent membership type this is.' : 'Optional for standalone plans.'}
+                </span>
+              </label>
             </div>
           </section>
 
