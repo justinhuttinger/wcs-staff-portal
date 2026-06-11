@@ -1,12 +1,18 @@
 import { useState, useEffect } from 'react'
 import { onlineJoin } from '../../lib/api'
 
+// Ordered as the signup funnel so the labels read as "how far they got":
+//   started → reached payment form → entered billing → submitted → created.
+// payment_pending = handed the PayPage but no billing entered (bounced at the
+// payment form). reviewing = billing tokenized + on Review & Sign, never
+// confirmed (sign/agreement friction). failed = ABC rejected the agreement.
 const STATUS_BADGE = {
-  started:           { label: 'Started',        cls: 'bg-gray-100 text-gray-700' },
-  payment_pending:   { label: 'Payment pending', cls: 'bg-amber-100 text-amber-800' },
-  submitted_to_abc:  { label: 'Submitting',     cls: 'bg-blue-100 text-blue-800' },
-  agreement_created: { label: 'Member created', cls: 'bg-green-100 text-green-800' },
-  failed:            { label: 'Failed',         cls: 'bg-red-100 text-red-800' },
+  started:           { label: 'Started (no payment)',        cls: 'bg-gray-100 text-gray-700' },
+  payment_pending:   { label: 'At payment · no billing yet', cls: 'bg-amber-100 text-amber-800' },
+  reviewing:         { label: 'Billing entered · not signed', cls: 'bg-orange-100 text-orange-800' },
+  submitted_to_abc:  { label: 'Submitting to ABC',           cls: 'bg-blue-100 text-blue-800' },
+  agreement_created: { label: 'Member created',              cls: 'bg-green-100 text-green-800' },
+  failed:            { label: 'Failed at ABC',               cls: 'bg-red-100 text-red-800' },
 }
 
 function StatusBadge({ status }) {
