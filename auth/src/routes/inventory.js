@@ -52,7 +52,8 @@ function decorateItem(it) {
 // --- Items -------------------------------------------------------------------
 
 // GET / items list. Filters: location_slug, q (name/upc search), category,
-// include_archived=1.
+// include_archived=1. When from/to (YYYY-MM-DD) are given, each item also
+// gets sold_in_range — net units sold over that window (returns subtract).
 router.get('/items', async (req, res) => {
   try {
     const { clubs, error: cErr } = clubFilter(req)
@@ -68,7 +69,32 @@ router.get('/items', async (req, res) => {
     }
     const { data, error } = await q
     if (error) throw error
-    res.json({ items: (data || []).map(decorateItem) })
+
+    // Units sold per item over the requested window.
+    const soldByItem = new Map()
+    if (req.query.from || req.query.to) {
+      let sq = supabaseAdmin
+        .from('inventory_transaction_items')
+        .select('item_id, quantity, inventory_transactions!inner(transaction_at, is_return)')
+        .not('item_id', 'is', null)
+        .limit(50000)
+      if (clubs) sq = sq.in('club_number', clubs)
+      if (req.query.from) sq = sq.gte('inventory_transactions.transaction_at', `${req.query.from}T00:00:00Z`)
+      if (req.query.to) sq = sq.lte('inventory_transactions.transaction_at', `${req.query.to}T23:59:59Z`)
+      const { data: sales, error: sErr } = await sq
+      if (sErr) throw sErr
+      for (const row of sales || []) {
+        const sign = row.inventory_transactions?.is_return ? -1 : 1
+        soldByItem.set(row.item_id, (soldByItem.get(row.item_id) || 0) + (num(row.quantity) || 0) * sign)
+      }
+    }
+
+    res.json({
+      items: (data || []).map(it => ({
+        ...decorateItem(it),
+        sold_in_range: soldByItem.has(it.id) ? +soldByItem.get(it.id).toFixed(2) : 0,
+      })),
+    })
   } catch (err) {
     console.error('[Inventory] items list error:', err.message)
     res.status(500).json({ error: err.message })
@@ -143,15 +169,23 @@ router.patch('/items/:id', async (req, res) => {
 })
 
 // POST /items/:id/adjust — manual stock change.
-// Body: { set_qty } for a physical count, or { qty_delta } for receive/spoilage;
-// optional note + source ('manual' | 'mobile').
+// Body: { set_qty } for a physical count, or { qty_delta } to ADD stock;
+// optional note + source ('manual' | 'mobile'). Manual removals are not
+// allowed — sales/removals must flow through ABC POS so the books reconcile;
+// a physical count (set_qty) is the only way to lower stock here.
 router.post('/items/:id/adjust', async (req, res) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid item id' })
     const setQty = num(req.body.set_qty)
     const qtyDelta = num(req.body.qty_delta)
     if (setQty == null && (qtyDelta == null || qtyDelta === 0)) {
-      return res.status(400).json({ error: 'Provide set_qty or a non-zero qty_delta' })
+      return res.status(400).json({ error: 'Provide set_qty or a qty_delta' })
+    }
+    if (setQty != null && setQty < 0) {
+      return res.status(400).json({ error: 'Count cannot be negative' })
+    }
+    if (setQty == null && qtyDelta < 0) {
+      return res.status(400).json({ error: 'Stock can only be added here — removals must go through ABC POS' })
     }
 
     const { data: item, error: iErr } = await supabaseAdmin
@@ -271,6 +305,91 @@ router.get('/summary', async (req, res) => {
     res.json({ summary: rows })
   } catch (err) {
     console.error('[Inventory] summary error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// --- Audit (admin only) -----------------------------------------------------------
+
+// GET /audit?location_slug=&days=30&min_margin=15 — items that are priced
+// poorly or have data problems. Issue flags per item:
+//   negative_margin     price < cost (losing money on every sale)
+//   low_margin          margin below min_margin % (default 15)
+//   selling_below_price actual avg sold price in window < 90% of catalog price
+//   no_cost             sells (or holds stock) but no invoice cost on file
+//   no_price            no/zero catalog price from ABC
+//   negative_stock      qty_on_hand < 0 (oversold — counts have drifted)
+//   missing_upc         no UPC, so it can't be scanned
+router.get('/audit', requireRole('admin'), async (req, res) => {
+  try {
+    const { clubs, error: cErr } = clubFilter(req)
+    if (cErr) return res.status(400).json({ error: cErr })
+    const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), 365)
+    const minMargin = Number.isFinite(parseFloat(req.query.min_margin)) ? parseFloat(req.query.min_margin) : 15
+
+    let iq = supabaseAdmin.from('inventory_items').select('*').eq('archived', false).limit(5000)
+    if (clubs) iq = iq.in('club_number', clubs)
+    const { data: items, error: iErr } = await iq
+    if (iErr) throw iErr
+
+    const fromIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+    let sq = supabaseAdmin
+      .from('inventory_transaction_items')
+      .select('item_id, quantity, unit_price, subtotal, inventory_transactions!inner(transaction_at, is_return)')
+      .not('item_id', 'is', null)
+      .gte('inventory_transactions.transaction_at', fromIso)
+      .limit(50000)
+    if (clubs) sq = sq.in('club_number', clubs)
+    const { data: sales, error: sErr } = await sq
+    if (sErr) throw sErr
+
+    // Per-item sold units + quantity-weighted average actual sold price.
+    const salesByItem = new Map()
+    for (const row of sales || []) {
+      if (row.inventory_transactions?.is_return) continue
+      const qty = num(row.quantity) || 0
+      const price = num(row.unit_price)
+      const e = salesByItem.get(row.item_id) || { units: 0, priceQty: 0, priceWeight: 0 }
+      e.units += qty
+      if (price != null && qty > 0) { e.priceQty += price * qty; e.priceWeight += qty }
+      salesByItem.set(row.item_id, e)
+    }
+
+    const flagged = []
+    for (const raw of items || []) {
+      const it = decorateItem(raw)
+      const s = salesByItem.get(it.id)
+      const soldUnits = s ? +s.units.toFixed(2) : 0
+      const avgSoldPrice = s && s.priceWeight > 0 ? +(s.priceQty / s.priceWeight).toFixed(2) : null
+      const price = num(it.abc_unit_price)
+      const cost = it.unit_cost
+      const onHand = num(it.qty_on_hand) || 0
+
+      const issues = []
+      if (price == null || price <= 0) issues.push('no_price')
+      if (cost != null && price != null && price > 0) {
+        if (cost >= price) issues.push('negative_margin')
+        else if (it.margin_pct != null && it.margin_pct < minMargin) issues.push('low_margin')
+      }
+      if (avgSoldPrice != null && price != null && price > 0 && avgSoldPrice < price * 0.9) {
+        issues.push('selling_below_price')
+      }
+      if (cost == null && (soldUnits > 0 || onHand > 0)) issues.push('no_cost')
+      if (onHand < 0) issues.push('negative_stock')
+      if (!it.upc) issues.push('missing_upc')
+
+      if (issues.length > 0) {
+        flagged.push({ ...it, sold_units: soldUnits, avg_sold_price: avgSoldPrice, issues })
+      }
+    }
+
+    // Worst offenders first: more issues, then lowest margin.
+    flagged.sort((a, b) =>
+      b.issues.length - a.issues.length || (a.margin_pct ?? 999) - (b.margin_pct ?? 999))
+
+    res.json({ items: flagged, days, min_margin: minMargin, scanned: (items || []).length })
+  } catch (err) {
+    console.error('[Inventory] audit error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })

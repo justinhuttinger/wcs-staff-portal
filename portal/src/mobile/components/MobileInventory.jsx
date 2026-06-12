@@ -98,8 +98,12 @@ function Scanner({ onDetected, onClose }) {
   )
 }
 
+// Bottom sheets sit at z-[60] (above the z-50 tab bar) and pad for the home
+// indicator so the action buttons are never hidden behind the nav.
+const SHEET_PAD = { paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))' }
+
 function AdjustSheet({ item, onClose, onSaved }) {
-  const [mode, setMode] = useState('delta') // delta | count
+  const [mode, setMode] = useState('delta') // delta (add only) | count
   const [value, setValue] = useState('')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
@@ -108,6 +112,8 @@ function AdjustSheet({ item, onClose, onSaved }) {
   async function save() {
     const n = parseFloat(value)
     if (!Number.isFinite(n)) { setError('Enter a number'); return }
+    if (mode === 'delta' && n <= 0) { setError('Enter a positive amount — removals are done in ABC'); return }
+    if (mode === 'count' && n < 0) { setError('Count cannot be negative'); return }
     setSaving(true); setError('')
     try {
       const body = mode === 'count' ? { set_qty: n, note, source: 'mobile' } : { qty_delta: n, note, source: 'mobile' }
@@ -118,12 +124,12 @@ function AdjustSheet({ item, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-end" onClick={onClose}>
-      <div className="bg-surface rounded-t-2xl w-full p-5 pb-8" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={onClose}>
+      <div className="bg-surface rounded-t-2xl w-full p-5 max-h-[85dvh] overflow-y-auto" style={SHEET_PAD} onClick={e => e.stopPropagation()}>
         <h3 className="text-base font-bold text-text-primary mb-1">{item.item_name}</h3>
         <p className="text-xs text-text-muted mb-3">On hand: <span className="font-bold text-text-primary">{fmtQty(item.qty_on_hand)}</span></p>
         <div className="flex gap-1 bg-bg rounded-lg p-1 mb-3">
-          {[{ key: 'delta', label: 'Add / remove' }, { key: 'count', label: 'Set exact count' }].map(m => (
+          {[{ key: 'delta', label: 'Add stock' }, { key: 'count', label: 'Set exact count' }].map(m => (
             <button key={m.key} onClick={() => setMode(m.key)}
               className={`flex-1 px-3 py-2 rounded-md text-xs font-medium ${mode === m.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted'}`}>
               {m.label}
@@ -131,12 +137,13 @@ function AdjustSheet({ item, onClose, onSaved }) {
           ))}
         </div>
         <input
-          type="number" step="any" inputMode="decimal" autoFocus value={value} onChange={e => setValue(e.target.value)}
-          placeholder={mode === 'count' ? 'Counted quantity' : 'Change (e.g. 12 or -3)'}
+          type="number" step="any" min="0" inputMode="decimal" autoFocus value={value} onChange={e => setValue(e.target.value)}
+          placeholder={mode === 'count' ? 'Counted quantity' : 'Amount to add (e.g. 12)'}
           className="w-full px-3 py-3 rounded-xl border border-border bg-bg text-base text-text-primary mb-3"
         />
         <input value={note} onChange={e => setNote(e.target.value)} placeholder="Note (optional)"
           className="w-full px-3 py-3 rounded-xl border border-border bg-bg text-sm text-text-primary mb-3" />
+        <p className="text-[11px] text-text-muted mb-3">Removals aren't done here — sales and write-offs go through ABC POS.</p>
         {error && <p className="text-xs text-wcs-red mb-3">{error}</p>}
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-muted">Cancel</button>
@@ -302,8 +309,8 @@ export default function MobileInventory({ user }) {
       {adjusting && <AdjustSheet item={adjusting} onClose={() => setAdjusting(null)} onSaved={onSaved} />}
 
       {history && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-end" onClick={() => setHistory(null)}>
-          <div className="bg-surface rounded-t-2xl w-full p-5 pb-8 max-h-[75vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={() => setHistory(null)}>
+          <div className="bg-surface rounded-t-2xl w-full p-5 max-h-[75dvh] overflow-y-auto" style={SHEET_PAD} onClick={e => e.stopPropagation()}>
             <h3 className="text-base font-bold text-text-primary mb-3">{history.item.item_name} — History</h3>
             {history.movements.length === 0 && <p className="text-sm text-text-muted">No stock movements yet.</p>}
             {history.movements.map(m => (
