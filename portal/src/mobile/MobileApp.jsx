@@ -28,6 +28,7 @@ import MobilePTHealth from './components/reports/MobilePTHealth'
 import MobilePayroll from './components/reports/MobilePayroll'
 import MobileRevenue from './components/reports/MobileRevenue'
 import MobileMarketingTracker from './components/MobileMarketingTracker'
+import MobileInventory from './components/MobileInventory'
 // KPIs + Audits reuse the (responsive) desktop report components on mobile.
 import KpiReport from '../components/reports/KpiReport'
 import AuditsReport from '../components/reports/AuditsReport'
@@ -486,6 +487,8 @@ export default function MobileApp() {
         return <MobileCalendar user={user} />
       case 'marketing-tracker':
         return <MobileMarketingTracker />
+      case 'inventory':
+        return <MobileInventory user={user} />
       case 'leaderboard':
         return <MobileLeaderboard user={user} />
       case 'comm-notes':

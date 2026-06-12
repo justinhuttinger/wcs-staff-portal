@@ -664,6 +664,85 @@ export async function uploadMarketingAsset(file) {
   return api('/marketing-tracker/upload', { method: 'POST', body: fd })
 }
 
+// Inventory (experimental)
+function inventoryQs(params = {}) {
+  const cleaned = {}
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') cleaned[k] = v
+  }
+  const qs = new URLSearchParams(cleaned).toString()
+  return qs ? '?' + qs : ''
+}
+
+export async function getInventoryItems(params = {}) {
+  return api('/inventory/items' + inventoryQs(params))
+}
+
+export async function getInventoryCategories() {
+  return api('/inventory/items/categories')
+}
+
+export async function lookupInventoryUpc(code, params = {}) {
+  return api('/inventory/upc/' + encodeURIComponent(code) + inventoryQs(params))
+}
+
+export async function getInventoryItemMovements(id) {
+  return api('/inventory/items/' + id + '/movements')
+}
+
+export async function adjustInventoryItem(id, data) {
+  return api('/inventory/items/' + id + '/adjust', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateInventoryItem(id, data) {
+  return api('/inventory/items/' + id, { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+export async function getInventoryTransactions(params = {}) {
+  return api('/inventory/transactions' + inventoryQs(params))
+}
+
+export async function getInventorySummary(params = {}) {
+  return api('/inventory/summary' + inventoryQs(params))
+}
+
+export async function getInventoryInvoices() {
+  return api('/inventory/invoices')
+}
+
+export async function createInventoryInvoice(fields, file) {
+  const fd = new FormData()
+  for (const [k, v] of Object.entries(fields)) {
+    if (v !== undefined && v !== null && v !== '') fd.append(k, v)
+  }
+  if (file) fd.append('file', file)
+  return api('/inventory/invoices', { method: 'POST', body: fd })
+}
+
+export async function addInventoryInvoiceItem(invoiceId, data) {
+  return api('/inventory/invoices/' + invoiceId + '/items', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function deleteInventoryInvoiceItem(invoiceId, lineId) {
+  return api('/inventory/invoices/' + invoiceId + '/items/' + lineId, { method: 'DELETE' })
+}
+
+export async function receiveInventoryInvoice(invoiceId) {
+  return api('/inventory/invoices/' + invoiceId + '/receive', { method: 'POST' })
+}
+
+export async function deleteInventoryInvoice(invoiceId) {
+  return api('/inventory/invoices/' + invoiceId, { method: 'DELETE' })
+}
+
+export async function startInventorySync(kind = 'all', locationSlug) {
+  return api('/inventory/sync', { method: 'POST', body: JSON.stringify({ kind, location_slug: locationSlug }) })
+}
+
+export async function getInventorySyncStatus() {
+  return api('/inventory/sync-status')
+}
+
 // Day One Tracker
 export async function getDayOneTrackerAppointments(params = {}) {
   const qs = new URLSearchParams(params).toString()

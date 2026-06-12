@@ -1,0 +1,587 @@
+// Experimental Inventory tool API.
+//
+// Catalog + sale prices mirror ABC (synced by services/inventorySync); stock
+// levels, costs (from uploaded vendor invoices), and profit margins are
+// portal-owned. Whole router is manager+ — costs and margins are sensitive.
+
+const { Router } = require('express')
+const multer = require('multer')
+const { supabaseAdmin } = require('../services/supabase')
+const authenticate = require('../middleware/auth')
+const { requireRole } = require('../middleware/role')
+const { getAccessToken } = require('./googleBusiness')
+const { parseLocationSlugParam, SLUG_CLUB_MAP } = require('../utils/locationSlug')
+const inventorySync = require('../services/inventorySync')
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const CLUB_TO_SLUG = Object.fromEntries(Object.entries(SLUG_CLUB_MAP).map(([s, c]) => [c, s]))
+
+const router = Router()
+router.use(authenticate)
+router.use(requireRole('manager'))
+
+// Resolve ?location_slug= into a club_number list. Returns null (= no filter)
+// for 'all', or { error } for unknown slugs.
+function clubFilter(req) {
+  const parsed = parseLocationSlugParam(req.query.location_slug)
+  if (parsed.invalid) return { error: `Unknown location: ${parsed.invalid}` }
+  if (parsed.all) return { clubs: null }
+  return { clubs: parsed.slugs.map(s => SLUG_CLUB_MAP[s]) }
+}
+
+const num = (v) => {
+  const n = parseFloat(v)
+  return Number.isFinite(n) ? n : null
+}
+
+// Attach slug + margin fields the UI renders everywhere.
+function decorateItem(it) {
+  const cost = num(it.avg_unit_cost) ?? num(it.last_unit_cost)
+  const price = num(it.abc_unit_price)
+  return {
+    ...it,
+    location_slug: CLUB_TO_SLUG[it.club_number] || null,
+    unit_cost: cost,
+    unit_margin: cost != null && price != null ? +(price - cost).toFixed(2) : null,
+    margin_pct: cost != null && price != null && price > 0 ? +(((price - cost) / price) * 100).toFixed(1) : null,
+  }
+}
+
+// --- Items -------------------------------------------------------------------
+
+// GET / items list. Filters: location_slug, q (name/upc search), category,
+// include_archived=1.
+router.get('/items', async (req, res) => {
+  try {
+    const { clubs, error: cErr } = clubFilter(req)
+    if (cErr) return res.status(400).json({ error: cErr })
+
+    let q = supabaseAdmin.from('inventory_items').select('*').order('item_name').limit(5000)
+    if (clubs) q = q.in('club_number', clubs)
+    if (req.query.include_archived !== '1') q = q.eq('archived', false)
+    if (req.query.category) q = q.eq('category', String(req.query.category))
+    if (req.query.q) {
+      const term = String(req.query.q).replace(/[%_,()]/g, ' ').trim()
+      if (term) q = q.or(`item_name.ilike.%${term}%,upc.ilike.%${term}%`)
+    }
+    const { data, error } = await q
+    if (error) throw error
+    res.json({ items: (data || []).map(decorateItem) })
+  } catch (err) {
+    console.error('[Inventory] items list error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /items/categories — distinct categories for the filter dropdown.
+router.get('/items/categories', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('inventory_items').select('category').eq('archived', false).not('category', 'is', null)
+    if (error) throw error
+    res.json({ categories: [...new Set((data || []).map(r => r.category))].sort() })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /upc/:code?location_slug=salem — barcode lookup for the mobile scanner.
+// Tries the raw code plus leading-zero variants (UPC-A scanned as EAN-13).
+router.get('/upc/:code', async (req, res) => {
+  try {
+    const code = String(req.params.code || '').replace(/\D/g, '')
+    if (!code) return res.status(400).json({ error: 'Invalid UPC' })
+    const { clubs, error: cErr } = clubFilter(req)
+    if (cErr) return res.status(400).json({ error: cErr })
+
+    const candidates = [...new Set([code, code.replace(/^0+/, ''), '0' + code, '00' + code])]
+    let q = supabaseAdmin.from('inventory_items').select('*')
+      .in('upc', candidates).eq('archived', false).limit(10)
+    if (clubs) q = q.in('club_number', clubs)
+    const { data, error } = await q
+    if (error) throw error
+    res.json({ items: (data || []).map(decorateItem) })
+  } catch (err) {
+    console.error('[Inventory] upc lookup error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /items/:id/movements — ledger history for one item.
+router.get('/items/:id/movements', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid item id' })
+    const { data, error } = await supabaseAdmin
+      .from('inventory_movements').select('*')
+      .eq('item_id', req.params.id)
+      .order('occurred_at', { ascending: false })
+      .limit(200)
+    if (error) throw error
+    res.json({ movements: data || [] })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// PATCH /items/:id — toggle tracking.
+router.patch('/items/:id', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid item id' })
+    const patch = {}
+    if (typeof req.body.is_tracked === 'boolean') patch.is_tracked = req.body.is_tracked
+    if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'Nothing to update' })
+    const { data, error } = await supabaseAdmin
+      .from('inventory_items').update(patch).eq('id', req.params.id).select().maybeSingle()
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Item not found' })
+    res.json({ item: decorateItem(data) })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /items/:id/adjust — manual stock change.
+// Body: { set_qty } for a physical count, or { qty_delta } for receive/spoilage;
+// optional note + source ('manual' | 'mobile').
+router.post('/items/:id/adjust', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid item id' })
+    const setQty = num(req.body.set_qty)
+    const qtyDelta = num(req.body.qty_delta)
+    if (setQty == null && (qtyDelta == null || qtyDelta === 0)) {
+      return res.status(400).json({ error: 'Provide set_qty or a non-zero qty_delta' })
+    }
+
+    const { data: item, error: iErr } = await supabaseAdmin
+      .from('inventory_items').select('*').eq('id', req.params.id).maybeSingle()
+    if (iErr) throw iErr
+    if (!item) return res.status(404).json({ error: 'Item not found' })
+
+    const current = num(item.qty_on_hand) || 0
+    const kind = setQty != null ? 'count' : 'adjustment'
+    const delta = setQty != null ? setQty - current : qtyDelta
+    const after = current + delta
+
+    const { error: mErr } = await supabaseAdmin.from('inventory_movements').insert({
+      item_id: item.id,
+      club_number: item.club_number,
+      kind,
+      qty_delta: delta,
+      qty_after: after,
+      source: req.body.source === 'mobile' ? 'mobile' : 'manual',
+      note: typeof req.body.note === 'string' ? req.body.note.slice(0, 500) : null,
+      created_by: req.staff.id,
+      created_by_name: req.staff.display_name || req.staff.email || null,
+    })
+    if (mErr) throw mErr
+
+    const { data: updated, error: uErr } = await supabaseAdmin
+      .from('inventory_items').update({ qty_on_hand: after }).eq('id', item.id).select().single()
+    if (uErr) throw uErr
+    res.json({ item: decorateItem(updated) })
+  } catch (err) {
+    console.error('[Inventory] adjust error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// --- Transactions --------------------------------------------------------------
+
+// GET /transactions?location_slug=&from=&to=&limit= — synced POS sales with
+// line items (newest first). from/to are YYYY-MM-DD.
+router.get('/transactions', async (req, res) => {
+  try {
+    const { clubs, error: cErr } = clubFilter(req)
+    if (cErr) return res.status(400).json({ error: cErr })
+    const limit = Math.min(parseInt(req.query.limit) || 200, 1000)
+
+    let q = supabaseAdmin
+      .from('inventory_transactions')
+      .select('*, inventory_transaction_items(*)')
+      .order('transaction_at', { ascending: false })
+      .limit(limit)
+    if (clubs) q = q.in('club_number', clubs)
+    if (req.query.from) q = q.gte('transaction_at', `${req.query.from}T00:00:00Z`)
+    if (req.query.to) q = q.lte('transaction_at', `${req.query.to}T23:59:59Z`)
+
+    const { data, error } = await q
+    if (error) throw error
+    const transactions = (data || []).map(t => ({
+      ...t,
+      location_slug: CLUB_TO_SLUG[t.club_number] || null,
+      raw: undefined,
+      items: (t.inventory_transaction_items || []).sort((a, b) => a.line_no - b.line_no),
+      inventory_transaction_items: undefined,
+    }))
+    res.json({ transactions })
+  } catch (err) {
+    console.error('[Inventory] transactions error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /summary?location_slug=&from=&to= — per-item revenue, COGS, profit.
+router.get('/summary', async (req, res) => {
+  try {
+    const { clubs, error: cErr } = clubFilter(req)
+    if (cErr) return res.status(400).json({ error: cErr })
+
+    let q = supabaseAdmin
+      .from('inventory_transaction_items')
+      .select('item_id, name, upc, quantity, unit_price, subtotal, unit_cost_at_sale, club_number, inventory_transactions!inner(transaction_at, is_return)')
+      .limit(50000)
+    if (clubs) q = q.in('club_number', clubs)
+    if (req.query.from) q = q.gte('inventory_transactions.transaction_at', `${req.query.from}T00:00:00Z`)
+    if (req.query.to) q = q.lte('inventory_transactions.transaction_at', `${req.query.to}T23:59:59Z`)
+
+    const { data, error } = await q
+    if (error) throw error
+
+    const byItem = new Map()
+    for (const row of data || []) {
+      const isReturn = row.inventory_transactions?.is_return
+      const sign = isReturn ? -1 : 1
+      const key = row.item_id || `unmatched:${row.name}`
+      const entry = byItem.get(key) || {
+        item_id: row.item_id, name: row.name, upc: row.upc,
+        location_slug: CLUB_TO_SLUG[row.club_number] || null,
+        units: 0, revenue: 0, cogs: 0, cogs_known: true,
+      }
+      const qty = (num(row.quantity) || 0) * sign
+      const rev = (num(row.subtotal) ?? (num(row.unit_price) || 0) * (num(row.quantity) || 0)) * sign
+      entry.units += qty
+      entry.revenue += rev
+      const cost = num(row.unit_cost_at_sale)
+      if (cost != null) entry.cogs += cost * qty
+      else if (qty !== 0) entry.cogs_known = false
+      byItem.set(key, entry)
+    }
+
+    const rows = [...byItem.values()].map(e => ({
+      ...e,
+      units: +e.units.toFixed(2),
+      revenue: +e.revenue.toFixed(2),
+      cogs: e.cogs_known ? +e.cogs.toFixed(2) : null,
+      profit: e.cogs_known ? +(e.revenue - e.cogs).toFixed(2) : null,
+      margin_pct: e.cogs_known && e.revenue > 0 ? +(((e.revenue - e.cogs) / e.revenue) * 100).toFixed(1) : null,
+    })).sort((a, b) => b.revenue - a.revenue)
+
+    res.json({ summary: rows })
+  } catch (err) {
+    console.error('[Inventory] summary error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// --- Invoices -------------------------------------------------------------------
+
+async function getUploadFolderId() {
+  if (process.env.INVENTORY_UPLOAD_FOLDER_ID) return process.env.INVENTORY_UPLOAD_FOLDER_ID
+  const { data } = await supabaseAdmin
+    .from('app_config').select('value').eq('key', 'inventory_upload_folder_id').maybeSingle()
+  return data?.value || null
+}
+
+function uploadSingle(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      const tooBig = err.code === 'LIMIT_FILE_SIZE'
+      return res.status(tooBig ? 413 : 400).json({ error: tooBig ? 'File exceeds the 50 MB limit' : 'Upload failed' })
+    }
+    next()
+  })
+}
+
+// GET /invoices — list with line items.
+router.get('/invoices', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('inventory_invoices')
+      .select('*, inventory_invoice_items(*)')
+      .order('created_at', { ascending: false })
+      .limit(500)
+    if (error) throw error
+    res.json({
+      invoices: (data || []).map(inv => ({
+        ...inv,
+        location_slug: inv.club_number ? CLUB_TO_SLUG[inv.club_number] || null : null,
+        items: inv.inventory_invoice_items || [],
+        inventory_invoice_items: undefined,
+      })),
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /invoices — create an invoice. multipart/form-data with an optional
+// `file` (pdf/image, stored in Drive) plus vendor / invoice_number /
+// invoice_date / total / notes / location_slug fields.
+router.post('/invoices', uploadSingle, async (req, res) => {
+  try {
+    const vendor = typeof req.body.vendor === 'string' ? req.body.vendor.trim() : ''
+    if (!vendor) return res.status(400).json({ error: 'Vendor is required' })
+
+    let clubNumber = null
+    if (req.body.location_slug && req.body.location_slug !== 'all') {
+      clubNumber = SLUG_CLUB_MAP[String(req.body.location_slug).toLowerCase()]
+      if (!clubNumber) return res.status(400).json({ error: 'Unknown location' })
+    }
+
+    let fileLink = null, fileName = null
+    if (req.file) {
+      const mime = req.file.mimetype || 'application/octet-stream'
+      if (!/^image\/(?!svg)|^application\/pdf$/.test(mime)) {
+        return res.status(400).json({ error: 'Only photo or PDF files are allowed' })
+      }
+      const folderId = await getUploadFolderId()
+      if (!folderId) {
+        return res.status(400).json({ error: 'Invoice upload folder is not configured yet (set app_config key inventory_upload_folder_id or INVENTORY_UPLOAD_FOLDER_ID)' })
+      }
+      const token = await getAccessToken()
+      // ABC drops uploads with disallowed filename chars; Drive is fine, but
+      // strip newlines/quotes to keep the metadata JSON safe.
+      const name = (req.file.originalname || 'invoice').replace(/[\r\n"]/g, '').slice(0, 200)
+      const boundary = '----wcsInventoryUploadBoundary'
+      const metadata = JSON.stringify({ name, parents: [folderId] })
+      const pre = Buffer.from(
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n` +
+        `--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`, 'utf8')
+      const post = Buffer.from(`\r\n--${boundary}--`, 'utf8')
+      const up = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': `multipart/related; boundary=${boundary}` },
+        body: Buffer.concat([pre, req.file.buffer, post]),
+      })
+      const created = await up.json()
+      if (created.error) {
+        return res.status(up.status || 500).json({ error: created.error.message || 'Drive upload failed' })
+      }
+      await fetch(`https://www.googleapis.com/drive/v3/files/${created.id}/permissions?supportsAllDrives=true`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+      }).catch(() => {})
+      fileLink = `https://drive.google.com/file/d/${created.id}/view`
+      fileName = created.name
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('inventory_invoices')
+      .insert({
+        club_number: clubNumber,
+        vendor,
+        invoice_number: req.body.invoice_number ? String(req.body.invoice_number).slice(0, 100) : null,
+        invoice_date: req.body.invoice_date || null,
+        total: num(req.body.total),
+        notes: req.body.notes ? String(req.body.notes).slice(0, 2000) : null,
+        file_link: fileLink,
+        file_name: fileName,
+        created_by: req.staff.id,
+        created_by_name: req.staff.display_name || req.staff.email || null,
+      })
+      .select()
+      .single()
+    if (error) throw error
+    res.status(201).json({ invoice: { ...data, items: [] } })
+  } catch (err) {
+    console.error('[Inventory] invoice create error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /invoices/:id/items — add a line item (qty + unit cost, optionally
+// linked to a catalog item).
+router.post('/invoices/:id/items', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid invoice id' })
+    const quantity = num(req.body.quantity)
+    const unitCost = num(req.body.unit_cost)
+    if (!quantity || quantity <= 0) return res.status(400).json({ error: 'Quantity must be positive' })
+    if (unitCost == null || unitCost < 0) return res.status(400).json({ error: 'Unit cost is required' })
+    if (req.body.item_id && !UUID_RE.test(req.body.item_id)) return res.status(400).json({ error: 'Invalid item id' })
+
+    const { data, error } = await supabaseAdmin
+      .from('inventory_invoice_items')
+      .insert({
+        invoice_id: req.params.id,
+        item_id: req.body.item_id || null,
+        description: req.body.description ? String(req.body.description).slice(0, 300) : null,
+        upc: req.body.upc ? String(req.body.upc).slice(0, 50) : null,
+        quantity,
+        unit_cost: unitCost,
+      })
+      .select()
+      .single()
+    if (error) {
+      if (error.code === '23503') return res.status(404).json({ error: 'Invoice not found' })
+      throw error
+    }
+    res.status(201).json({ item: data })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /invoices/:id/items/:lineId — remove an unreceived line.
+router.delete('/invoices/:id/items/:lineId', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.lineId)) return res.status(400).json({ error: 'Invalid line id' })
+    const { data, error } = await supabaseAdmin
+      .from('inventory_invoice_items')
+      .delete()
+      .eq('id', req.params.lineId)
+      .eq('invoice_id', req.params.id)
+      .eq('received', false)
+      .select()
+      .maybeSingle()
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Line not found (or already received)' })
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /invoices/:id/receive — apply all unreceived, item-matched lines to
+// stock: 'received' movement per line, qty_on_hand += qty, and cost basis
+// update (last cost + moving average).
+router.post('/invoices/:id/receive', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid invoice id' })
+    const { data: invoice, error: iErr } = await supabaseAdmin
+      .from('inventory_invoices').select('*').eq('id', req.params.id).maybeSingle()
+    if (iErr) throw iErr
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
+
+    const { data: lines, error: lErr } = await supabaseAdmin
+      .from('inventory_invoice_items').select('*')
+      .eq('invoice_id', invoice.id).eq('received', false)
+    if (lErr) throw lErr
+
+    const matched = (lines || []).filter(l => l.item_id)
+    if (matched.length === 0) {
+      return res.status(400).json({ error: 'No unreceived lines are linked to a catalog item' })
+    }
+
+    let applied = 0
+    for (const line of matched) {
+      const { data: item } = await supabaseAdmin
+        .from('inventory_items').select('*').eq('id', line.item_id).maybeSingle()
+      if (!item) continue
+
+      const qty = num(line.quantity) || 0
+      const cost = num(line.unit_cost) || 0
+      const onHand = Math.max(num(item.qty_on_hand) || 0, 0)
+      const prevAvg = num(item.avg_unit_cost)
+      // Moving average over positive stock; first receipt sets the average.
+      const newAvg = prevAvg != null && onHand > 0
+        ? (onHand * prevAvg + qty * cost) / (onHand + qty)
+        : cost
+
+      const { error: mErr } = await supabaseAdmin.from('inventory_movements').insert({
+        item_id: item.id,
+        club_number: item.club_number,
+        kind: 'received',
+        qty_delta: qty,
+        qty_after: (num(item.qty_on_hand) || 0) + qty,
+        unit_cost: cost,
+        source: 'invoice',
+        ref_id: invoice.id,
+        note: invoice.vendor + (invoice.invoice_number ? ` #${invoice.invoice_number}` : ''),
+        created_by: req.staff.id,
+        created_by_name: req.staff.display_name || req.staff.email || null,
+      })
+      if (mErr) throw mErr
+
+      const { error: uErr } = await supabaseAdmin.from('inventory_items').update({
+        qty_on_hand: (num(item.qty_on_hand) || 0) + qty,
+        last_unit_cost: cost,
+        avg_unit_cost: +newAvg.toFixed(4),
+      }).eq('id', item.id)
+      if (uErr) throw uErr
+
+      await supabaseAdmin.from('inventory_invoice_items')
+        .update({ received: true }).eq('id', line.id)
+      applied++
+    }
+
+    await supabaseAdmin.from('inventory_invoices')
+      .update({ received_at: new Date().toISOString() }).eq('id', invoice.id)
+
+    res.json({ success: true, applied, skipped: (lines || []).length - applied })
+  } catch (err) {
+    console.error('[Inventory] receive error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /invoices/:id — only before any line was received.
+router.delete('/invoices/:id', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid invoice id' })
+    const { count } = await supabaseAdmin
+      .from('inventory_invoice_items')
+      .select('id', { count: 'exact', head: true })
+      .eq('invoice_id', req.params.id).eq('received', true)
+    if (count > 0) return res.status(400).json({ error: 'Invoice has received lines — it can no longer be deleted' })
+
+    const { data, error } = await supabaseAdmin
+      .from('inventory_invoices').delete().eq('id', req.params.id).select().maybeSingle()
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Invoice not found' })
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// --- Sync -----------------------------------------------------------------------
+
+// POST /sync { kind: 'catalog' | 'pos' | 'all', location_slug? } — fire and
+// poll /sync-status; a full catalog pull across 7 clubs takes a few minutes.
+router.post('/sync', async (req, res) => {
+  try {
+    const kind = String(req.body.kind || 'all')
+    const parsed = parseLocationSlugParam(req.body.location_slug)
+    if (parsed.invalid) return res.status(400).json({ error: `Unknown location: ${parsed.invalid}` })
+
+    if (kind !== 'catalog' && kind !== 'pos' && kind !== 'all') {
+      return res.status(400).json({ error: 'kind must be catalog, pos, or all' })
+    }
+    if ((kind === 'catalog' || kind === 'all') && inventorySync.running.catalog) {
+      return res.status(409).json({ error: 'A catalog sync is already running' })
+    }
+    if ((kind === 'pos' || kind === 'all') && inventorySync.running.pos) {
+      return res.status(409).json({ error: 'A POS sync is already running' })
+    }
+
+    // Run in the background; status lands in inventory_sync_state.
+    ;(async () => {
+      if (kind === 'catalog' || kind === 'all') await inventorySync.runCatalogSync(parsed.slugs)
+      if (kind === 'pos' || kind === 'all') await inventorySync.runPosSync(parsed.slugs)
+    })().catch(err => console.error('[Inventory] manual sync failed:', err.message))
+
+    res.status(202).json({ started: true, kind, locations: parsed.slugs })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /sync-status — per club+kind state rows.
+router.get('/sync-status', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('inventory_sync_state').select('*')
+    if (error) throw error
+    res.json({
+      status: (data || []).map(r => ({ ...r, location_slug: CLUB_TO_SLUG[r.club_number] || null })),
+      running: inventorySync.running,
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+module.exports = router
