@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   getInventoryItems, getInventoryCategories, getInventoryItemMovements,
-  adjustInventoryItem, getInventoryTransactions, getInventorySummary,
+  adjustInventoryItem, getInventorySummary,
   getInventoryInvoices, createInventoryInvoice, addInventoryInvoiceItem,
   deleteInventoryInvoiceItem, receiveInventoryInvoice, deleteInventoryInvoice,
-  startInventorySync, getInventorySyncStatus,
+  startInventorySync, getInventorySyncStatus, getInventoryAudit,
 } from '../lib/api'
 import { LOCATION_OPTIONS } from '../config/locations'
 
@@ -33,7 +33,18 @@ function daysAgoStr(n) {
 }
 
 const MOVEMENT_LABELS = {
-  sale: 'Sale', return: 'Return', received: 'Received', adjustment: 'Adjustment', count: 'Count',
+  sale: 'Sale', return: 'Return', received: 'Received', adjustment: 'Stock Added', count: 'Count',
+}
+
+// Audit issue metadata — label + severity styling + what it means.
+const AUDIT_ISSUES = {
+  negative_margin: { label: 'Losing Money', cls: 'bg-red-50 text-red-700 border-red-200', desc: 'Cost is at or above the sale price' },
+  selling_below_price: { label: 'Sold Below Price', cls: 'bg-red-50 text-red-700 border-red-200', desc: 'Actual sold price is under 90% of catalog price (heavy discounting)' },
+  negative_stock: { label: 'Oversold', cls: 'bg-red-50 text-red-700 border-red-200', desc: 'On-hand is negative — counts have drifted, do a recount' },
+  low_margin: { label: 'Low Margin', cls: 'bg-amber-50 text-amber-700 border-amber-200', desc: 'Margin is under the threshold' },
+  no_cost: { label: 'No Cost Data', cls: 'bg-amber-50 text-amber-700 border-amber-200', desc: 'Sells or holds stock but no invoice cost on file' },
+  no_price: { label: 'No Price', cls: 'bg-amber-50 text-amber-700 border-amber-200', desc: 'No catalog price from ABC' },
+  missing_upc: { label: 'No UPC', cls: 'bg-bg text-text-muted border-border', desc: 'Cannot be scanned on mobile' },
 }
 
 const inputCls = 'px-3 py-2 rounded-lg border border-border bg-bg text-sm text-text-primary focus:outline-none focus:border-wcs-red w-full'
@@ -44,24 +55,25 @@ function Modal({ title, onClose, children, wide }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div
-        className={`bg-surface rounded-2xl border border-border shadow-2xl w-full ${wide ? 'max-w-3xl' : 'max-w-md'} max-h-[85vh] overflow-y-auto p-5`}
+        className={`bg-surface rounded-2xl border border-border shadow-2xl w-full ${wide ? 'max-w-3xl' : 'max-w-md'} max-h-[85vh] flex flex-col p-5`}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 shrink-0">
           <h3 className="text-lg font-bold text-text-primary">{title}</h3>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary p-1">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
-        {children}
+        <div className="overflow-y-auto min-h-0">{children}</div>
       </div>
     </div>
   )
 }
 
-// Adjust stock modal: set an exact counted quantity OR apply a +/- change.
+// Adjust stock modal: add stock or set an exact counted quantity. Removals
+// happen in ABC POS only, so the delta path accepts positive numbers.
 function AdjustModal({ item, onClose, onSaved }) {
-  const [mode, setMode] = useState('count') // count | delta
+  const [mode, setMode] = useState('delta') // delta (add) | count
   const [value, setValue] = useState('')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
@@ -70,6 +82,8 @@ function AdjustModal({ item, onClose, onSaved }) {
   async function save() {
     const n = parseFloat(value)
     if (!Number.isFinite(n)) { setError('Enter a number'); return }
+    if (mode === 'delta' && n <= 0) { setError('Enter a positive amount — removals are done in ABC'); return }
+    if (mode === 'count' && n < 0) { setError('Count cannot be negative'); return }
     setSaving(true); setError('')
     try {
       const body = mode === 'count' ? { set_qty: n, note } : { qty_delta: n, note }
@@ -83,7 +97,7 @@ function AdjustModal({ item, onClose, onSaved }) {
     <Modal title={`Adjust — ${item.item_name}`} onClose={onClose}>
       <p className="text-xs text-text-muted mb-3">Current on hand: <span className="font-bold text-text-primary">{fmtQty(item.qty_on_hand)}</span></p>
       <div className="flex gap-1 bg-bg rounded-lg p-1 mb-3">
-        {[{ key: 'count', label: 'Set exact count' }, { key: 'delta', label: 'Add / remove' }].map(m => (
+        {[{ key: 'delta', label: 'Add stock' }, { key: 'count', label: 'Set exact count' }].map(m => (
           <button key={m.key} onClick={() => setMode(m.key)}
             className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${mode === m.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>
             {m.label}
@@ -91,11 +105,12 @@ function AdjustModal({ item, onClose, onSaved }) {
         ))}
       </div>
       <input
-        type="number" step="any" autoFocus value={value} onChange={e => setValue(e.target.value)}
-        placeholder={mode === 'count' ? 'Counted quantity' : 'Change (e.g. 12 or -3)'}
+        type="number" step="any" min="0" autoFocus value={value} onChange={e => setValue(e.target.value)}
+        placeholder={mode === 'count' ? 'Counted quantity' : 'Amount to add (e.g. 12)'}
         className={inputCls + ' mb-3'}
       />
       <input value={note} onChange={e => setNote(e.target.value)} placeholder="Note (optional)" className={inputCls + ' mb-3'} />
+      <p className="text-[11px] text-text-muted mb-3">Removals aren't done here — sales and write-offs go through ABC POS.</p>
       {error && <p className="text-xs text-wcs-red mb-3">{error}</p>}
       <div className="flex justify-end gap-2">
         <button className={btnGhost} onClick={onClose}>Cancel</button>
@@ -117,30 +132,32 @@ function HistoryModal({ item, onClose }) {
     <Modal title={`History — ${item.item_name}`} onClose={onClose} wide>
       {error && <p className="text-xs text-wcs-red">{error}</p>}
       {!movements && !error && <p className="text-sm text-text-muted">Loading...</p>}
-      {movements && movements.length === 0 && <p className="text-sm text-text-muted">No stock movements yet.</p>}
+      {movements && movements.length === 0 && <p className="text-sm text-text-muted">No sales or stock movements yet.</p>}
       {movements && movements.length > 0 && (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border">
-              <th className="py-2 pr-3">When</th><th className="py-2 pr-3">Type</th><th className="py-2 pr-3 text-right">Change</th>
-              <th className="py-2 pr-3 text-right">Price</th><th className="py-2 pr-3 text-right">Cost</th><th className="py-2 pr-3">By / Note</th>
-            </tr>
-          </thead>
-          <tbody>
-            {movements.map(m => (
-              <tr key={m.id} className="border-b border-border/50">
-                <td className="py-2 pr-3 whitespace-nowrap">{fmtDateTime(m.occurred_at)}</td>
-                <td className="py-2 pr-3">{MOVEMENT_LABELS[m.kind] || m.kind}</td>
-                <td className={`py-2 pr-3 text-right font-semibold ${Number(m.qty_delta) < 0 ? 'text-wcs-red' : 'text-emerald-600'}`}>
-                  {Number(m.qty_delta) > 0 ? '+' : ''}{fmtQty(m.qty_delta)}
-                </td>
-                <td className="py-2 pr-3 text-right">{fmtMoney(m.unit_price)}</td>
-                <td className="py-2 pr-3 text-right">{fmtMoney(m.unit_cost)}</td>
-                <td className="py-2 pr-3 text-text-muted text-xs">{[m.created_by_name, m.note].filter(Boolean).join(' — ') || (m.source === 'abc_pos' ? 'ABC POS' : '—')}</td>
+        <div className="max-h-[60vh] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-surface">
+              <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border">
+                <th className="py-2 pr-3">When</th><th className="py-2 pr-3">Type</th><th className="py-2 pr-3 text-right">Change</th>
+                <th className="py-2 pr-3 text-right">Price</th><th className="py-2 pr-3 text-right">Cost</th><th className="py-2 pr-3">By / Note</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {movements.map(m => (
+                <tr key={m.id} className="border-b border-border/50">
+                  <td className="py-2 pr-3 whitespace-nowrap">{fmtDateTime(m.occurred_at)}</td>
+                  <td className="py-2 pr-3">{MOVEMENT_LABELS[m.kind] || m.kind}</td>
+                  <td className={`py-2 pr-3 text-right font-semibold ${Number(m.qty_delta) < 0 ? 'text-wcs-red' : 'text-emerald-600'}`}>
+                    {Number(m.qty_delta) > 0 ? '+' : ''}{fmtQty(m.qty_delta)}
+                  </td>
+                  <td className="py-2 pr-3 text-right">{fmtMoney(m.unit_price)}</td>
+                  <td className="py-2 pr-3 text-right">{fmtMoney(m.unit_cost)}</td>
+                  <td className="py-2 pr-3 text-text-muted text-xs">{[m.created_by_name, m.note].filter(Boolean).join(' — ') || (m.source === 'abc_pos' ? 'ABC POS' : '—')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </Modal>
   )
@@ -247,18 +264,18 @@ function InvoiceModal({ onClose, onCreated, defaultSlug }) {
 function InvoiceDetail({ invoice, onClose, onChanged }) {
   const [items, setItems] = useState([])
   const [lines, setLines] = useState(invoice.items || [])
-
-  useEffect(() => {
-    getInventoryItems({ location_slug: invoice.location_slug || '' })
-      .then(res => setItems(res.items || []))
-      .catch(() => {})
-  }, [invoice.id, invoice.location_slug])
   const [desc, setDesc] = useState('')
   const [qty, setQty] = useState('')
   const [cost, setCost] = useState('')
   const [linkedItem, setLinkedItem] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    getInventoryItems({ location_slug: invoice.location_slug || '' })
+      .then(res => setItems(res.items || []))
+      .catch(() => {})
+  }, [invoice.id, invoice.location_slug])
 
   async function addLine() {
     const q = parseFloat(qty), c = parseFloat(cost)
@@ -369,35 +386,61 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
   )
 }
 
-export default function InventoryView({ onBack, location }) {
+// Sortable column header. Click cycles: desc → asc → no sort.
+function SortHeader({ label, col, sort, onSort, align = 'right' }) {
+  const active = sort?.col === col
+  return (
+    <th className={`py-2.5 px-2 text-${align}`}>
+      <button
+        onClick={() => onSort(col)}
+        className={`inline-flex items-center gap-1 uppercase text-[10px] tracking-wider font-semibold transition-colors ${active ? 'text-wcs-red' : 'text-text-muted hover:text-text-primary'}`}
+      >
+        {label}
+        <span className="w-2.5 inline-block">
+          {active && (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-2.5 h-2.5">
+              {sort.dir === 'desc'
+                ? <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                : <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />}
+            </svg>
+          )}
+        </span>
+      </button>
+    </th>
+  )
+}
+
+export default function InventoryView({ onBack, location, isAdmin }) {
   const defaultSlug = (location || '').toLowerCase()
   const validDefault = LOCATION_OPTIONS.some(o => o.slug === defaultSlug) ? defaultSlug : 'all'
 
-  const [tab, setTab] = useState('items') // items | sales | invoices | profit
+  const [tab, setTab] = useState('items') // items | invoices | profit | audit (admin)
   const [slug, setSlug] = useState(validDefault)
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
   const [categories, setCategories] = useState([])
   const [items, setItems] = useState([])
   const [itemsLoading, setItemsLoading] = useState(true)
-  const [transactions, setTransactions] = useState([])
   const [invoices, setInvoices] = useState([])
   const [summary, setSummary] = useState([])
   const [from, setFrom] = useState(daysAgoStr(30))
   const [to, setTo] = useState(toLocalDateStr(new Date()))
+  const [sort, setSort] = useState(null) // { col, dir: 'desc' | 'asc' } | null
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [modal, setModal] = useState(null) // { adjust } | { history } | { newInvoice } | { invoice }
   const [syncStatus, setSyncStatus] = useState(null)
   const [syncBusy, setSyncBusy] = useState(false)
+  const [audit, setAudit] = useState(null) // { items, scanned, min_margin, days }
+  const [auditIssueFilter, setAuditIssueFilter] = useState('')
 
   const loadItems = useCallback(() => {
     setItemsLoading(true)
-    getInventoryItems({ location_slug: slug === 'all' ? '' : slug })
+    getInventoryItems({ location_slug: slug === 'all' ? '' : slug, from, to })
       .then(res => setItems(res.items || []))
       .catch(err => setError(err.message))
       .finally(() => setItemsLoading(false))
-  }, [slug])
+  }, [slug, from, to])
 
   useEffect(() => { loadItems() }, [loadItems])
   useEffect(() => {
@@ -406,13 +449,7 @@ export default function InventoryView({ onBack, location }) {
   }, [])
 
   useEffect(() => {
-    if (tab === 'sales') {
-      setLoading(true)
-      getInventoryTransactions({ location_slug: slug === 'all' ? '' : slug, from, to })
-        .then(res => setTransactions(res.transactions || []))
-        .catch(err => setError(err.message))
-        .finally(() => setLoading(false))
-    } else if (tab === 'invoices') {
+    if (tab === 'invoices') {
       setLoading(true)
       getInventoryInvoices()
         .then(res => setInvoices(res.invoices || []))
@@ -422,6 +459,12 @@ export default function InventoryView({ onBack, location }) {
       setLoading(true)
       getInventorySummary({ location_slug: slug === 'all' ? '' : slug, from, to })
         .then(res => setSummary(res.summary || []))
+        .catch(err => setError(err.message))
+        .finally(() => setLoading(false))
+    } else if (tab === 'audit') {
+      setLoading(true)
+      getInventoryAudit({ location_slug: slug === 'all' ? '' : slug })
+        .then(setAudit)
         .catch(err => setError(err.message))
         .finally(() => setLoading(false))
     }
@@ -435,14 +478,44 @@ export default function InventoryView({ onBack, location }) {
     } catch (err) { setError(err.message) } finally { setSyncBusy(false) }
   }
 
+  // Click a sortable header: desc → asc → clear.
+  function cycleSort(col) {
+    setSort(s => {
+      if (!s || s.col !== col) return { col, dir: 'desc' }
+      if (s.dir === 'desc') return { col, dir: 'asc' }
+      return null
+    })
+  }
+
+  const SORT_VALUE = {
+    price: i => Number(i.abc_unit_price),
+    cost: i => Number(i.unit_cost),
+    margin: i => Number(i.margin_pct),
+    sold: i => Number(i.sold_in_range),
+    on_hand: i => Number(i.qty_on_hand),
+  }
+
   const filteredItems = useMemo(() => {
     const term = search.trim().toLowerCase()
-    return items.filter(i => {
+    let list = items.filter(i => {
       if (category && i.category !== category) return false
       if (term && !((i.item_name || '').toLowerCase().includes(term) || (i.upc || '').includes(term))) return false
       return true
     })
-  }, [items, search, category])
+    if (sort && SORT_VALUE[sort.col]) {
+      const get = SORT_VALUE[sort.col]
+      const dir = sort.dir === 'desc' ? -1 : 1
+      list = [...list].sort((a, b) => {
+        const av = get(a), bv = get(b)
+        const aBad = !Number.isFinite(av), bBad = !Number.isFinite(bv)
+        if (aBad && bBad) return 0
+        if (aBad) return 1 // missing values always sink to the bottom
+        if (bBad) return -1
+        return (av - bv) * dir
+      })
+    }
+    return list
+  }, [items, search, category, sort])
 
   const lastSync = useMemo(() => {
     const rows = syncStatus?.status || []
@@ -450,7 +523,7 @@ export default function InventoryView({ onBack, location }) {
     return ts.length ? new Date(Math.max(...ts)) : null
   }, [syncStatus])
 
-  const onItemSaved = (updated) => setItems(list => list.map(i => i.id === updated.id ? updated : i))
+  const onItemSaved = (updated) => setItems(list => list.map(i => i.id === updated.id ? { ...i, ...updated } : i))
   const refreshInvoices = () => getInventoryInvoices().then(res => setInvoices(res.invoices || [])).catch(() => {})
 
   return (
@@ -465,7 +538,12 @@ export default function InventoryView({ onBack, location }) {
           </div>
           <div className="flex items-center gap-3">
             <div className="flex gap-1 bg-bg rounded-lg p-1">
-              {[{ key: 'items', label: 'Items' }, { key: 'sales', label: 'Sales' }, { key: 'invoices', label: 'Invoices' }, { key: 'profit', label: 'Profit' }].map(m => (
+              {[
+                { key: 'items', label: 'Items' },
+                { key: 'invoices', label: 'Invoices' },
+                { key: 'profit', label: 'Profit' },
+                ...(isAdmin ? [{ key: 'audit', label: 'Audit' }] : []),
+              ].map(m => (
                 <button key={m.key} onClick={() => setTab(m.key)}
                   className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${tab === m.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>
                   {m.label}
@@ -487,22 +565,7 @@ export default function InventoryView({ onBack, location }) {
               {LOCATION_OPTIONS.map(o => <option key={o.slug} value={o.slug}>{o.label}</option>)}
             </select>
           </div>
-          {tab === 'items' && (
-            <>
-              <div className="flex-1 min-w-[200px]">
-                <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Search</span>
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or UPC..." className={inputCls} />
-              </div>
-              <div>
-                <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Category</span>
-                <select value={category} onChange={e => setCategory(e.target.value)} className={inputCls + ' w-44'}>
-                  <option value="">All Categories</option>
-                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-            </>
-          )}
-          {(tab === 'sales' || tab === 'profit') && (
+          {(tab === 'items' || tab === 'profit') && (
             <>
               <div>
                 <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">From</span>
@@ -514,7 +577,29 @@ export default function InventoryView({ onBack, location }) {
               </div>
             </>
           )}
+          {tab === 'items' && (
+            <div className="flex-1 min-w-[200px]">
+              <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Search</span>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or UPC..." className={inputCls} />
+            </div>
+          )}
         </div>
+
+        {/* Category filter chips */}
+        {tab === 'items' && categories.length > 0 && (
+          <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+            <button
+              onClick={() => setCategory('')}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${!category ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
+            >All Categories</button>
+            {categories.map(c => (
+              <button key={c}
+                onClick={() => setCategory(cat => cat === c ? '' : c)}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${category === c ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
+              >{c}</button>
+            ))}
+          </div>
+        )}
       </div>
 
       {error && <p className="text-sm text-wcs-red mb-4 bg-surface border border-border rounded-lg px-3 py-2">{error}</p>}
@@ -538,10 +623,11 @@ export default function InventoryView({ onBack, location }) {
                     {slug === 'all' && <th className="py-2.5 px-2">Club</th>}
                     <th className="py-2.5 px-2">Category</th>
                     <th className="py-2.5 px-2">UPC</th>
-                    <th className="py-2.5 px-2 text-right">Price</th>
-                    <th className="py-2.5 px-2 text-right">Cost</th>
-                    <th className="py-2.5 px-2 text-right">Margin</th>
-                    <th className="py-2.5 px-2 text-right">On Hand</th>
+                    <SortHeader label="Price" col="price" sort={sort} onSort={cycleSort} />
+                    <SortHeader label="Cost" col="cost" sort={sort} onSort={cycleSort} />
+                    <SortHeader label="Margin" col="margin" sort={sort} onSort={cycleSort} />
+                    <SortHeader label="Sold" col="sold" sort={sort} onSort={cycleSort} />
+                    <SortHeader label="On Hand" col="on_hand" sort={sort} onSort={cycleSort} />
                     <th className="py-2.5 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -559,6 +645,7 @@ export default function InventoryView({ onBack, location }) {
                           ? <span className={i.margin_pct < 0 ? 'text-wcs-red font-semibold' : 'text-emerald-600 font-semibold'}>{i.margin_pct}%</span>
                           : '—'}
                       </td>
+                      <td className="py-2 px-2 text-right font-semibold text-text-primary">{fmtQty(i.sold_in_range ?? 0)}</td>
                       <td className={`py-2 px-2 text-right font-bold ${Number(i.qty_on_hand) <= 0 ? 'text-wcs-red' : 'text-text-primary'}`}>{fmtQty(i.qty_on_hand)}</td>
                       <td className="py-2 px-4 text-right whitespace-nowrap">
                         <button onClick={() => setModal({ adjust: i })} className="text-xs font-semibold text-wcs-red hover:underline mr-3">Adjust</button>
@@ -570,43 +657,6 @@ export default function InventoryView({ onBack, location }) {
               </table>
             </div>
           )}
-        </div>
-      )}
-
-      {/* === Sales tab === */}
-      {tab === 'sales' && (
-        <div className="space-y-3">
-          {loading && <p className="text-sm text-text-muted bg-surface rounded-xl border border-border p-6 text-center">Loading sales...</p>}
-          {!loading && transactions.length === 0 && (
-            <p className="text-sm text-text-muted bg-surface rounded-xl border border-border p-6 text-center">No POS transactions synced for this range yet.</p>
-          )}
-          {!loading && transactions.map(t => (
-            <div key={t.id} className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-text-primary text-sm">{fmtDateTime(t.transaction_at)}</span>
-                  <span className="text-xs text-text-muted capitalize">{t.location_slug}</span>
-                  {t.receipt_number && <span className="text-xs text-text-muted">Receipt #{t.receipt_number}</span>}
-                  {t.station_name && <span className="text-xs text-text-muted">{t.station_name}</span>}
-                  {t.is_return && <span className="px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold uppercase border border-amber-200">Return</span>}
-                </div>
-                <span className="font-bold text-text-primary text-sm">
-                  {fmtMoney((t.items || []).reduce((s, li) => s + (Number(li.subtotal) || 0), 0))}
-                </span>
-              </div>
-              <div className="space-y-1">
-                {(t.items || []).map(li => (
-                  <div key={li.id} className="flex items-center justify-between text-sm">
-                    <span className="text-text-primary">
-                      {fmtQty(li.quantity)}× {li.name || 'Unknown item'}
-                      {!li.item_id && <span className="ml-2 text-[10px] font-bold uppercase text-text-muted">(not in catalog)</span>}
-                    </span>
-                    <span className="text-text-muted">{fmtMoney(li.unit_price)} ea · {fmtMoney(li.subtotal)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
         </div>
       )}
 
@@ -710,6 +760,101 @@ export default function InventoryView({ onBack, location }) {
             <p className="text-xs text-text-muted px-4 py-3 border-t border-border">
               Items showing "no cost data" need a received invoice to establish their unit cost.
             </p>
+          )}
+        </div>
+      )}
+
+      {/* === Audit tab (admin) === */}
+      {tab === 'audit' && isAdmin && (
+        <div className="space-y-4">
+          {loading && <p className="text-sm text-text-muted bg-surface rounded-xl border border-border p-6 text-center">Auditing items...</p>}
+          {!loading && audit && (
+            <>
+              {/* Issue summary chips (click to filter) */}
+              <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4">
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                  <p className="text-sm text-text-primary">
+                    <span className="font-bold">{audit.items.length}</span> of {audit.scanned} items flagged
+                    <span className="text-text-muted text-xs ml-2">(sales window: last {audit.days} days · margin threshold {audit.min_margin}%)</span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    onClick={() => setAuditIssueFilter('')}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${!auditIssueFilter ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
+                  >All Issues</button>
+                  {Object.entries(AUDIT_ISSUES).map(([key, meta]) => {
+                    const count = audit.items.filter(i => i.issues.includes(key)).length
+                    if (count === 0) return null
+                    return (
+                      <button key={key} title={meta.desc}
+                        onClick={() => setAuditIssueFilter(f => f === key ? '' : key)}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${auditIssueFilter === key ? 'bg-wcs-red text-white border-wcs-red' : meta.cls + ' hover:opacity-80'}`}
+                      >{meta.label} · {count}</button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
+                {audit.items.length === 0 ? (
+                  <p className="text-sm text-text-muted p-8 text-center">No pricing or data issues found. Nice and clean.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
+                          <th className="py-2.5 px-4">Item</th>
+                          {slug === 'all' && <th className="py-2.5 px-2">Club</th>}
+                          <th className="py-2.5 px-2">Issues</th>
+                          <th className="py-2.5 px-2 text-right">Price</th>
+                          <th className="py-2.5 px-2 text-right">Cost</th>
+                          <th className="py-2.5 px-2 text-right">Margin</th>
+                          <th className="py-2.5 px-2 text-right">Avg Sold At</th>
+                          <th className="py-2.5 px-2 text-right">Sold {audit.days}d</th>
+                          <th className="py-2.5 px-2 text-right">On Hand</th>
+                          <th className="py-2.5 px-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {audit.items
+                          .filter(i => !auditIssueFilter || i.issues.includes(auditIssueFilter))
+                          .map(i => (
+                            <tr key={i.id} className="border-b border-border/50 hover:bg-bg/40">
+                              <td className="py-2 px-4 font-medium text-text-primary">{i.item_name}</td>
+                              {slug === 'all' && <td className="py-2 px-2 capitalize text-text-muted">{i.location_slug}</td>}
+                              <td className="py-2 px-2">
+                                <div className="flex gap-1 flex-wrap">
+                                  {i.issues.map(key => (
+                                    <span key={key} title={AUDIT_ISSUES[key]?.desc}
+                                      className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${AUDIT_ISSUES[key]?.cls || 'bg-bg text-text-muted border-border'}`}>
+                                      {AUDIT_ISSUES[key]?.label || key}
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="py-2 px-2 text-right">{fmtMoney(i.abc_unit_price)}</td>
+                              <td className="py-2 px-2 text-right">{fmtMoney(i.unit_cost)}</td>
+                              <td className="py-2 px-2 text-right">
+                                {i.margin_pct != null
+                                  ? <span className={i.margin_pct < 0 ? 'text-wcs-red font-semibold' : i.margin_pct < (audit.min_margin || 15) ? 'text-amber-600 font-semibold' : 'text-emerald-600 font-semibold'}>{i.margin_pct}%</span>
+                                  : '—'}
+                              </td>
+                              <td className="py-2 px-2 text-right">{fmtMoney(i.avg_sold_price)}</td>
+                              <td className="py-2 px-2 text-right">{fmtQty(i.sold_units)}</td>
+                              <td className={`py-2 px-2 text-right font-bold ${Number(i.qty_on_hand) < 0 ? 'text-wcs-red' : 'text-text-primary'}`}>{fmtQty(i.qty_on_hand)}</td>
+                              <td className="py-2 px-4 text-right whitespace-nowrap">
+                                <button onClick={() => setModal({ adjust: i })} className="text-xs font-semibold text-wcs-red hover:underline mr-3">Adjust</button>
+                                <button onClick={() => setModal({ history: i })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline">History</button>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
       )}

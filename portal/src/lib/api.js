@@ -743,6 +743,10 @@ export async function getInventorySyncStatus() {
   return api('/inventory/sync-status')
 }
 
+export async function getInventoryAudit(params = {}) {
+  return api('/inventory/audit' + inventoryQs(params))
+}
+
 // Day One Tracker
 export async function getDayOneTrackerAppointments(params = {}) {
   const qs = new URLSearchParams(params).toString()
