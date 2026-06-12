@@ -8,7 +8,7 @@ const { Router } = require('express')
 const multer = require('multer')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { requireRole, resolveRole } = require('../middleware/role')
 const { getAccessToken } = require('./googleBusiness')
 const { parseLocationSlugParam, SLUG_CLUB_MAP } = require('../utils/locationSlug')
 const inventorySync = require('../services/inventorySync')
@@ -151,12 +151,37 @@ router.get('/items/:id/movements', async (req, res) => {
   }
 })
 
-// PATCH /items/:id — toggle tracking.
+// PATCH /items/:id — toggle tracking (manager+). Admins can also set the
+// item's unit cost directly (ABC has the price but not the cost — invoices
+// or this field are where cost comes from) and fix a missing/wrong UPC.
 router.patch('/items/:id', async (req, res) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid item id' })
+    const isAdmin = resolveRole(req.staff.role) === 'admin'
     const patch = {}
+
     if (typeof req.body.is_tracked === 'boolean') patch.is_tracked = req.body.is_tracked
+
+    if ('unit_cost' in req.body || 'upc' in req.body) {
+      if (!isAdmin) return res.status(403).json({ error: 'Only admins can edit item cost or UPC' })
+      if ('unit_cost' in req.body) {
+        if (req.body.unit_cost === null || req.body.unit_cost === '') {
+          patch.last_unit_cost = null
+          patch.avg_unit_cost = null
+        } else {
+          const cost = num(req.body.unit_cost)
+          if (cost == null || cost < 0) return res.status(400).json({ error: 'Unit cost must be a non-negative number' })
+          // Manual cost overrides both bases so margins use it immediately.
+          patch.last_unit_cost = cost
+          patch.avg_unit_cost = cost
+        }
+      }
+      if ('upc' in req.body) {
+        const upc = String(req.body.upc || '').replace(/\D/g, '')
+        patch.upc = upc || null
+      }
+    }
+
     if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'Nothing to update' })
     const { data, error } = await supabaseAdmin
       .from('inventory_items').update(patch).eq('id', req.params.id).select().maybeSingle()

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   getInventoryItems, getInventoryCategories, getInventoryItemMovements,
-  adjustInventoryItem, getInventorySummary,
+  adjustInventoryItem, updateInventoryItem, getInventorySummary,
   getInventoryInvoices, createInventoryInvoice, addInventoryInvoiceItem,
   deleteInventoryInvoiceItem, receiveInventoryInvoice, deleteInventoryInvoice,
   startInventorySync, getInventorySyncStatus, getInventoryAudit,
@@ -115,6 +115,57 @@ function AdjustModal({ item, onClose, onSaved }) {
       <div className="flex justify-end gap-2">
         <button className={btnGhost} onClick={onClose}>Cancel</button>
         <button className={btnPrimary} onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
+      </div>
+    </Modal>
+  )
+}
+
+// Admin-only item editor. Price stays read-only (it comes from ABC); cost is
+// set here (or via received invoices) since ABC doesn't carry cost. UPC is
+// editable to fix unscannable items.
+function EditItemModal({ item, onClose, onSaved }) {
+  const [cost, setCost] = useState(item.unit_cost != null ? String(item.unit_cost) : '')
+  const [upc, setUpc] = useState(item.upc || '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function save() {
+    let costVal = null
+    if (cost.trim() !== '') {
+      costVal = parseFloat(cost)
+      if (!Number.isFinite(costVal) || costVal < 0) { setError('Cost must be a non-negative number'); return }
+    }
+    setSaving(true); setError('')
+    try {
+      const res = await updateInventoryItem(item.id, { unit_cost: costVal, upc: upc.trim() })
+      onSaved(res.item)
+      onClose()
+    } catch (err) { setError(err.message) } finally { setSaving(false) }
+  }
+
+  return (
+    <Modal title={`Edit — ${item.item_name}`} onClose={onClose}>
+      <div className="space-y-3">
+        <div>
+          <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Sale price (from ABC — read only)</span>
+          <input value={fmtMoney(item.abc_unit_price)} disabled className={inputCls + ' opacity-60'} />
+        </div>
+        <div>
+          <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Cost per item ($)</span>
+          <input type="number" step="0.01" min="0" autoFocus value={cost} onChange={e => setCost(e.target.value)}
+            placeholder="What you pay the vendor per unit" className={inputCls} />
+          <p className="text-[11px] text-text-muted mt-1.5">Used for margin and profit math. Receiving an invoice for this item updates it too. Leave blank to clear.</p>
+        </div>
+        <div>
+          <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">UPC</span>
+          <input value={upc} onChange={e => setUpc(e.target.value)} inputMode="numeric"
+            placeholder="Barcode number" className={inputCls} />
+        </div>
+        {error && <p className="text-xs text-wcs-red">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button className={btnGhost} onClick={onClose}>Cancel</button>
+          <button className={btnPrimary} onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
+        </div>
       </div>
     </Modal>
   )
@@ -650,6 +701,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
                       <td className="py-2 px-4 text-right whitespace-nowrap">
                         <button onClick={() => setModal({ adjust: i })} className="text-xs font-semibold text-wcs-red hover:underline mr-3">Adjust</button>
                         <button onClick={() => setModal({ history: i })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline">History</button>
+                        {isAdmin && <button onClick={() => setModal({ edit: i })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline ml-3">Edit</button>}
                       </td>
                     </tr>
                   ))}
@@ -844,7 +896,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
                               <td className="py-2 px-2 text-right">{fmtQty(i.sold_units)}</td>
                               <td className={`py-2 px-2 text-right font-bold ${Number(i.qty_on_hand) < 0 ? 'text-wcs-red' : 'text-text-primary'}`}>{fmtQty(i.qty_on_hand)}</td>
                               <td className="py-2 px-4 text-right whitespace-nowrap">
-                                <button onClick={() => setModal({ adjust: i })} className="text-xs font-semibold text-wcs-red hover:underline mr-3">Adjust</button>
+                                <button onClick={() => setModal({ edit: i })} className="text-xs font-semibold text-wcs-red hover:underline mr-3">Edit</button>
                                 <button onClick={() => setModal({ history: i })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline">History</button>
                               </td>
                             </tr>
@@ -861,6 +913,17 @@ export default function InventoryView({ onBack, location, isAdmin }) {
 
       {/* Modals */}
       {modal?.adjust && <AdjustModal item={modal.adjust} onClose={() => setModal(null)} onSaved={onItemSaved} />}
+      {modal?.edit && (
+        <EditItemModal
+          item={modal.edit}
+          onClose={() => setModal(null)}
+          onSaved={(updated) => {
+            onItemSaved(updated)
+            // Cost edits change audit results — refresh if we're on that tab.
+            if (tab === 'audit') getInventoryAudit({ location_slug: slug === 'all' ? '' : slug }).then(setAudit).catch(() => {})
+          }}
+        />
+      )}
       {modal?.history && <HistoryModal item={modal.history} onClose={() => setModal(null)} />}
       {modal?.newInvoice && (
         <InvoiceModal
