@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import MobileHeader from './MobileHeader'
 import { lookupInventoryUpc, adjustInventoryItem, getInventoryItems, getInventoryItemMovements } from '../../lib/api'
 import { LOCATION_OPTIONS } from '../../config/locations'
@@ -75,8 +76,10 @@ function Scanner({ onDetected, onClose }) {
     }
   }, [])
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+  // Portal to <body>: the app's content wrapper is `relative z-10`, which
+  // traps any z-index inside it below the z-50 tab bar.
+  return createPortal(
+    <div className="fixed inset-0 z-[60] bg-black flex flex-col">
       <div className="flex items-center justify-between px-4 py-3">
         <p className="text-white text-sm font-semibold">{failed ? 'Camera unavailable' : 'Point at a barcode'}</p>
         <button onClick={onClose} className="text-white/80 text-sm font-semibold px-3 py-1.5 rounded-lg border border-white/30">Close</button>
@@ -94,12 +97,14 @@ function Scanner({ onDetected, onClose }) {
           </p>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
-// Bottom sheets sit at z-[60] (above the z-50 tab bar) and pad for the home
-// indicator so the action buttons are never hidden behind the nav.
+// Bottom sheets render through a portal to <body> at z-[60] (above the z-50
+// tab bar — inside the app's `relative z-10` content wrapper they'd be
+// trapped underneath it) and pad for the home indicator.
 const SHEET_PAD = { paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))' }
 
 function AdjustSheet({ item, onClose, onSaved }) {
@@ -123,7 +128,7 @@ function AdjustSheet({ item, onClose, onSaved }) {
     } catch (err) { setError(err.message) } finally { setSaving(false) }
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={onClose}>
       <div className="bg-surface rounded-t-2xl w-full p-5 max-h-[85dvh] overflow-y-auto" style={SHEET_PAD} onClick={e => e.stopPropagation()}>
         <h3 className="text-base font-bold text-text-primary mb-1">{item.item_name}</h3>
@@ -152,7 +157,8 @@ function AdjustSheet({ item, onClose, onSaved }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -293,22 +299,25 @@ export default function MobileInventory({ user }) {
       )}
       {results.map(item => <ItemCard key={item.id} item={item} />)}
 
-      {/* Name search fallback */}
-      <div className="mt-2">
+      {/* Name search fallback — on a surface card so the label stays
+          readable over the dark location-photo background */}
+      <div className="mt-2 bg-surface border border-border rounded-2xl p-3">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Search by name</p>
         <input
           value={browseQ} onChange={e => setBrowseQ(e.target.value)}
           placeholder="Item name..."
-          className="w-full px-3 py-3 rounded-xl border border-border bg-surface text-sm text-text-primary mb-3"
+          className="w-full px-3 py-3 rounded-xl border border-border bg-bg text-sm text-text-primary"
         />
-        {browseLoading && <p className="text-xs text-text-muted mb-2">Searching...</p>}
+        {browseLoading && <p className="text-xs text-text-muted mt-2">Searching...</p>}
+      </div>
+      <div className="mt-3">
         {browse.map(item => <ItemCard key={item.id} item={item} />)}
       </div>
 
       {scanning && <Scanner onDetected={onScanDetected} onClose={() => setScanning(false)} />}
       {adjusting && <AdjustSheet item={adjusting} onClose={() => setAdjusting(null)} onSaved={onSaved} />}
 
-      {history && (
+      {history && createPortal(
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={() => setHistory(null)}>
           <div className="bg-surface rounded-t-2xl w-full p-5 max-h-[75dvh] overflow-y-auto" style={SHEET_PAD} onClick={e => e.stopPropagation()}>
             <h3 className="text-base font-bold text-text-primary mb-3">{history.item.item_name} — History</h3>
