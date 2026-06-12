@@ -91,6 +91,7 @@ app.use('/tickets', require('./routes/tickets'))
 app.use('/abc-sync', require('./routes/abcSync'))
 app.use('/referral-rewards', require('./routes/referralRewards'))
 app.use('/marketing-tracker', require('./routes/marketingTracker'))
+app.use('/inventory', require('./routes/inventory'))
 app.use('/custom-fields', require('./routes/customFields'))
 app.use('/admin/shared-credentials', require('./routes/sharedCredentials'))
 app.use('/admin/cache', require('./routes/cacheAdmin'))
@@ -129,5 +130,14 @@ app.listen(PORT, () => {
     require('./mastermind').start()
   } catch (err) {
     console.error('[mastermind] failed to start:', err.message)
+  }
+
+  // Inventory ABC sync (catalog daily, POS every 30m). Opt out via env.
+  if (process.env.INVENTORY_SYNC_DISABLED !== '1') {
+    try {
+      require('./services/inventorySync').start()
+    } catch (err) {
+      console.error('[inventorySync] failed to start:', err.message)
+    }
   }
 })
