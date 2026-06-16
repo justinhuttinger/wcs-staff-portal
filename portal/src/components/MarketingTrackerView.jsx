@@ -6,6 +6,8 @@ import {
 } from '../lib/api'
 import { LOCATION_NAMES, LOCATION_OPTIONS } from '../config/locations'
 import LocationMultiSelect from './LocationMultiSelect'
+import MarketingNeeds from './MarketingNeeds'
+import MarketingResearch from './MarketingResearch'
 import {
   MARKETING_TYPES, TYPE_BY_SLUG, typeLabel, typeStyle, STATUSES, STATUS_BY_KEY,
 } from '../config/marketingTypes'
@@ -259,6 +261,7 @@ export default function MarketingTrackerView({ onBack }) {
   const [currentDate, setCurrentDate] = useState(todayStr())
   const [typeValue, setTypeValue] = useState('all')
   const [locationValue, setLocationValue] = useState('all')
+  const [tab, setTab] = useState('tracker')              // 'tracker' | 'needs' | 'research'
 
   const TYPE_OPTIONS = useMemo(() => MARKETING_TYPES.map(t => ({ slug: t.slug, label: t.label })), [])
   const [modal, setModal] = useState(null)               // { view } | { effort } | { date } | null
@@ -360,30 +363,48 @@ export default function MarketingTrackerView({ onBack }) {
             <h2 className="text-xl font-bold text-text-primary">Marketing Tracker</h2>
             <span className="px-2 py-0.5 rounded-full bg-wcs-red/10 text-wcs-red text-[10px] font-bold uppercase tracking-wider border border-wcs-red/20">Experimental</span>
           </div>
-          <div className="flex items-center gap-3">
-            {/* List / Calendar toggle */}
-            <div className="flex gap-1 bg-bg rounded-lg p-1">
-              {[{ key: 'calendar', label: 'Calendar' }, { key: 'list', label: 'List' }].map(m => (
-                <button
-                  key={m.key}
-                  onClick={() => setMode(m.key)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${mode === m.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}
-                >{m.label}</button>
-              ))}
+          {tab === 'tracker' && (
+            <div className="flex items-center gap-3">
+              {/* List / Calendar toggle */}
+              <div className="flex gap-1 bg-bg rounded-lg p-1">
+                {[{ key: 'calendar', label: 'Calendar' }, { key: 'list', label: 'List' }].map(m => (
+                  <button
+                    key={m.key}
+                    onClick={() => setMode(m.key)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${mode === m.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}
+                  >{m.label}</button>
+                ))}
+              </div>
+              <button
+                onClick={() => setModal({ date: currentDate })}
+                className="px-3 py-1.5 rounded-lg bg-wcs-red text-white text-xs font-semibold hover:bg-wcs-red/90 transition-colors flex items-center gap-1.5"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                Add
+              </button>
             </div>
-            <button
-              onClick={() => setModal({ date: currentDate })}
-              className="px-3 py-1.5 rounded-lg bg-wcs-red text-white text-xs font-semibold hover:bg-wcs-red/90 transition-colors flex items-center gap-1.5"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              Add
-            </button>
-          </div>
+          )}
         </div>
 
-        {/* Filters */}
+        {/* Tab nav */}
+        <div className="flex gap-1 bg-bg rounded-lg p-1 mt-4 w-fit">
+          {[
+            { key: 'tracker', label: 'Tracker' },
+            { key: 'needs', label: 'Needs List' },
+            { key: 'research', label: 'Research' },
+          ].map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === t.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}
+            >{t.label}</button>
+          ))}
+        </div>
+
+        {/* Filters (Tracker only) */}
+        {tab === 'tracker' && (
         <div className="flex items-start gap-4 mt-4 flex-wrap">
           <div>
             <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Location</span>
@@ -401,12 +422,17 @@ export default function MarketingTrackerView({ onBack }) {
             />
           </div>
         </div>
+        )}
       </div>
 
-      {error && <p className="text-sm text-wcs-red mb-4">{error}</p>}
-      {loading && <p className="loading-card mx-auto block my-6">Loading marketing tracker...</p>}
+      {/* Needs List + Research tabs */}
+      {tab === 'needs' && <MarketingNeeds />}
+      {tab === 'research' && <MarketingResearch />}
 
-      {!loading && mode === 'calendar' && (
+      {tab === 'tracker' && error && <p className="text-sm text-wcs-red mb-4">{error}</p>}
+      {tab === 'tracker' && loading && <p className="loading-card mx-auto block my-6">Loading marketing tracker...</p>}
+
+      {tab === 'tracker' && !loading && mode === 'calendar' && (
         <>
           {/* Date navigation */}
           <div className="flex items-center justify-between mb-5 bg-surface border border-border rounded-xl px-4 py-3">
@@ -447,7 +473,7 @@ export default function MarketingTrackerView({ onBack }) {
         </>
       )}
 
-      {!loading && mode === 'list' && (
+      {tab === 'tracker' && !loading && mode === 'list' && (
         <ListView efforts={filtered} onEdit={e => setModal({ view: e })} />
       )}
 
