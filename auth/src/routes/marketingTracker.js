@@ -1,9 +1,11 @@
+const crypto = require('crypto')
 const { Router } = require('express')
 const multer = require('multer')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireMarketing, marketingScope } = require('../middleware/role')
 const { getAccessToken } = require('./googleBusiness')
+const { researchLocalEvents } = require('../services/marketingResearch')
 const memoryCache = require('../services/memoryCache')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
@@ -479,6 +481,165 @@ router.delete('/:id', async (req, res) => {
     res.json({ success: true })
   } catch (err) {
     console.error('[MarketingTracker] delete error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// === Needs List ============================================================
+// Internal requests (graphic design, media, print, etc.). Visible to all
+// marketing users — not location-scoped like efforts.
+
+const NEED_KINDS = new Set(['graphic_design', 'media', 'print', 'social', 'web', 'other'])
+const NEED_STATUSES = new Set(['open', 'in_progress', 'done'])
+const NEED_PRIORITIES = new Set(['low', 'normal', 'high'])
+const sstr = (v, max = 2000) => (typeof v === 'string' ? v.trim().slice(0, max) : null)
+
+function buildNeedRow(body) {
+  const title = sstr(body.title, 300)
+  if (!title) return { error: 'Title is required' }
+  const kind = NEED_KINDS.has(body.kind) ? body.kind : 'other'
+  const status = NEED_STATUSES.has(body.status) ? body.status : 'open'
+  const priority = NEED_PRIORITIES.has(body.priority) ? body.priority : 'normal'
+  const locations = Array.isArray(body.locations)
+    ? body.locations.filter(l => LOCATION_SLUGS.has(l))
+    : []
+  const due_date = /^\d{4}-\d{2}-\d{2}$/.test(body.due_date || '') ? body.due_date : null
+  return { row: { title, kind, status, priority, locations, due_date, assignee_name: sstr(body.assignee_name, 200), description: sstr(body.description, 4000) } }
+}
+
+router.get('/needs', async (req, res) => {
+  try {
+    let q = supabaseAdmin.from('marketing_needs').select('*').order('created_at', { ascending: false }).limit(1000)
+    if (req.query.status && NEED_STATUSES.has(req.query.status)) q = q.eq('status', req.query.status)
+    const { data, error } = await q
+    if (error) throw error
+    res.json({ needs: data || [] })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+router.post('/needs', async (req, res) => {
+  try {
+    const { row, error: vErr } = buildNeedRow(req.body || {})
+    if (vErr) return res.status(400).json({ error: vErr })
+    const { data, error } = await supabaseAdmin
+      .from('marketing_needs')
+      .insert({ ...row, requested_by: req.staff.id, requested_by_name: req.staff.display_name || req.staff.email || null })
+      .select().single()
+    if (error) throw error
+    res.status(201).json({ need: data })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+router.patch('/needs/:id', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid id' })
+    const patch = {}
+    if ('status' in req.body && NEED_STATUSES.has(req.body.status)) patch.status = req.body.status
+    if ('priority' in req.body && NEED_PRIORITIES.has(req.body.priority)) patch.priority = req.body.priority
+    if ('kind' in req.body && NEED_KINDS.has(req.body.kind)) patch.kind = req.body.kind
+    if ('title' in req.body) patch.title = sstr(req.body.title, 300)
+    if ('description' in req.body) patch.description = sstr(req.body.description, 4000)
+    if ('assignee_name' in req.body) patch.assignee_name = sstr(req.body.assignee_name, 200)
+    if ('due_date' in req.body) patch.due_date = /^\d{4}-\d{2}-\d{2}$/.test(req.body.due_date || '') ? req.body.due_date : null
+    if ('locations' in req.body && Array.isArray(req.body.locations)) patch.locations = req.body.locations.filter(l => LOCATION_SLUGS.has(l))
+    if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'Nothing to update' })
+    const { data, error } = await supabaseAdmin
+      .from('marketing_needs').update(patch).eq('id', req.params.id).select().maybeSingle()
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Need not found' })
+    res.json({ need: data })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+router.delete('/needs/:id', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid id' })
+    const { data, error } = await supabaseAdmin
+      .from('marketing_needs').delete().eq('id', req.params.id).select().maybeSingle()
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Need not found' })
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// === Research ==============================================================
+// AI web-search findings of local events/opportunities, saved per location.
+
+router.get('/research', async (req, res) => {
+  try {
+    let q = supabaseAdmin.from('marketing_research').select('*')
+      .neq('status', 'dismissed').order('created_at', { ascending: false }).limit(500)
+    if (req.query.location && req.query.location !== 'all') q = q.eq('location', String(req.query.location))
+    const { data, error } = await q
+    if (error) throw error
+    res.json({ research: data || [] })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /research/run { location } — run a live web-search and save the results.
+router.post('/research/run', async (req, res) => {
+  try {
+    const location = String(req.body.location || '').toLowerCase()
+    if (location !== 'all' && !LOCATION_SLUGS.has(location)) {
+      return res.status(400).json({ error: 'Pick a valid location' })
+    }
+    const { items } = await researchLocalEvents(location)
+    if (items.length === 0) return res.json({ research: [], run_id: null })
+
+    const runId = crypto.randomUUID()
+    const rows = items.map(it => ({
+      run_id: runId,
+      location,
+      title: it.title,
+      event_date: it.event_date,
+      category: it.category,
+      description: it.description,
+      relevance: it.relevance,
+      url: it.url,
+      created_by: req.staff.id,
+      created_by_name: req.staff.display_name || req.staff.email || null,
+    }))
+    const { data, error } = await supabaseAdmin.from('marketing_research').insert(rows).select()
+    if (error) throw error
+    res.status(201).json({ research: data || [], run_id: runId })
+  } catch (err) {
+    console.error('[MarketingTracker] research run error:', err.message)
+    res.status(err.status || 500).json({ error: err.message })
+  }
+})
+
+router.patch('/research/:id', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid id' })
+    const status = req.body.status
+    if (!['new', 'saved', 'dismissed', 'added'].includes(status)) return res.status(400).json({ error: 'Invalid status' })
+    const { data, error } = await supabaseAdmin
+      .from('marketing_research').update({ status }).eq('id', req.params.id).select().maybeSingle()
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Not found' })
+    res.json({ item: data })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+router.delete('/research/:id', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid id' })
+    const { error } = await supabaseAdmin.from('marketing_research').delete().eq('id', req.params.id)
+    if (error) throw error
+    res.json({ success: true })
+  } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })

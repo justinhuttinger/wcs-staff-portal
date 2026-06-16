@@ -667,6 +667,36 @@ export async function updateMarketingEffortStatus(id, status) {
   return api('/marketing-tracker/' + id + '/status', { method: 'PATCH', body: JSON.stringify({ status }) })
 }
 
+// Marketing Needs List
+export async function getMarketingNeeds(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/marketing-tracker/needs' + (qs ? '?' + qs : ''))
+}
+export async function createMarketingNeed(data) {
+  return api('/marketing-tracker/needs', { method: 'POST', body: JSON.stringify(data) })
+}
+export async function updateMarketingNeed(id, data) {
+  return api('/marketing-tracker/needs/' + id, { method: 'PATCH', body: JSON.stringify(data) })
+}
+export async function deleteMarketingNeed(id) {
+  return api('/marketing-tracker/needs/' + id, { method: 'DELETE' })
+}
+
+// Marketing Research (AI web-search)
+export async function getMarketingResearch(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/marketing-tracker/research' + (qs ? '?' + qs : ''))
+}
+export async function runMarketingResearch(location) {
+  return api('/marketing-tracker/research/run', { method: 'POST', body: JSON.stringify({ location }) })
+}
+export async function updateMarketingResearch(id, status) {
+  return api('/marketing-tracker/research/' + id, { method: 'PATCH', body: JSON.stringify({ status }) })
+}
+export async function deleteMarketingResearch(id) {
+  return api('/marketing-tracker/research/' + id, { method: 'DELETE' })
+}
+
 export async function getMarketingEffortComments(id) {
   return api('/marketing-tracker/' + id + '/comments')
 }
