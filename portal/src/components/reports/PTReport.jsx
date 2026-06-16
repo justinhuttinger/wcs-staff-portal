@@ -24,6 +24,18 @@ function SortArrow({ active, dir }) {
   return <span className="ml-1 text-wcs-red">{dir === 'asc' ? '▲' : '▼'}</span>
 }
 
+// Sort value for each Trainer Stats column. Rows are [name, stats] entries.
+const TRAINER_SORT = {
+  trainer: ([name]) => (name || '').toLowerCase(),
+  set: ([, s]) => s.total || 0,
+  completed: ([, s]) => s.completed || 0,
+  no_show: ([, s]) => s.no_show || 0,
+  sales: ([, s]) => s.sales || 0,
+  no_sale: ([, s]) => s.no_sales || 0,
+  show_pct: ([, s]) => (s.total > 0 ? (s.completed || 0) / s.total : 0),
+  close_pct: ([, s]) => (s.completed > 0 ? (s.sales || 0) / s.completed : 0),
+}
+
 // Sort value for each Day One Breakdown column.
 const DAY_ONE_SORT = {
   name: c => `${c.last_name || ''} ${c.first_name || ''}`.trim().toLowerCase(),
@@ -110,16 +122,17 @@ function DetailModal({ contact, onClose }) {
 export default function PTReport({ startDate, endDate, locationSlug }) {
   const [expandedTrainer, setExpandedTrainer] = useState(null)
   const [detailContact, setDetailContact] = useState(null)
-  const [sort, setSort] = useState({ key: null, dir: null }) // Day One Breakdown sort
+  const [sort, setSort] = useState({ key: null, dir: null })          // Day One Breakdown sort
+  const [trainerSort, setTrainerSort] = useState({ key: null, dir: null }) // Trainer Stats sort
 
   // Click a header: new column → desc, then desc → asc, then back to unsorted.
-  function toggleSort(key) {
-    setSort(prev => {
-      if (prev.key !== key) return { key, dir: 'desc' }
-      if (prev.dir === 'desc') return { key, dir: 'asc' }
-      return { key: null, dir: null }
-    })
+  function cycle(prev, key) {
+    if (prev.key !== key) return { key, dir: 'desc' }
+    if (prev.dir === 'desc') return { key, dir: 'asc' }
+    return { key: null, dir: null }
   }
+  const toggleSort = (key) => setSort(prev => cycle(prev, key))
+  const toggleTrainerSort = (key) => setTrainerSort(prev => cycle(prev, key))
 
   const { data, loading, error } = useCancellableFetch(
     (signal) => {
@@ -160,7 +173,21 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
   const totalCompleted = byStatus['Completed'] || 0
   const totalSales = Object.values(data.by_trainer || {}).reduce((sum, t) => sum + (t.sales || 0), 0)
 
-  const trainerRows = Object.entries(data.by_trainer || {}).sort((a, b) => b[1].total - a[1].total)
+  const trainerEntries = Object.entries(data.by_trainer || {})
+  const trainerRows = (() => {
+    if (!trainerSort.key || !TRAINER_SORT[trainerSort.key]) {
+      return trainerEntries.sort((a, b) => b[1].total - a[1].total) // default: most Set first
+    }
+    const get = TRAINER_SORT[trainerSort.key]
+    const mul = trainerSort.dir === 'asc' ? 1 : -1
+    return [...trainerEntries].sort((a, b) => {
+      const av = get(a), bv = get(b)
+      if (typeof av === 'string' || typeof bv === 'string') {
+        return String(av).localeCompare(String(bv)) * mul
+      }
+      return (av - bv) * mul
+    })
+  })()
 
   const totals = trainerRows.reduce((acc, [, s]) => {
     acc.total += s.total || 0
@@ -189,14 +216,25 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-bg">
-              <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Trainer</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Set</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Completed</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">No Show</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Sales</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">No Sale</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Show %</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Close %</th>
+              {[
+                { key: 'trainer', label: 'Trainer', align: 'left' },
+                { key: 'set', label: 'Set', align: 'center' },
+                { key: 'completed', label: 'Completed', align: 'center' },
+                { key: 'no_show', label: 'No Show', align: 'center' },
+                { key: 'sales', label: 'Sales', align: 'center' },
+                { key: 'no_sale', label: 'No Sale', align: 'center' },
+                { key: 'show_pct', label: 'Show %', align: 'center' },
+                { key: 'close_pct', label: 'Close %', align: 'center' },
+              ].map(col => (
+                <th
+                  key={col.key}
+                  onClick={() => toggleTrainerSort(col.key)}
+                  className={`text-${col.align} px-4 py-3 text-xs font-semibold uppercase cursor-pointer select-none hover:text-wcs-red transition-colors ${trainerSort.key === col.key ? 'text-wcs-red' : 'text-text-muted'}`}
+                  title="Click to sort"
+                >
+                  {col.label}<SortArrow active={trainerSort.key === col.key} dir={trainerSort.dir} />
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
