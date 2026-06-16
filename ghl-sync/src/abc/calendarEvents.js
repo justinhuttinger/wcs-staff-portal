@@ -125,9 +125,26 @@ async function syncCalendarEventsForClub(clubNumber, fromDate, toDate, statuses 
   return totalUpserted;
 }
 
+// Sync a wide window by walking it in chunks. ABC's /calendars/events caps
+// eventDateRange at ~31 days and SILENTLY returns empty for longer ranges, so a
+// single 60–75 day request comes back with nothing. Walk in 28-day chunks.
+async function syncCalendarEventsRange(clubNumber, fromDate, toDate, statuses = STATUSES_DEFAULT, sleepMs = 0, chunkDays = 28) {
+  let total = 0;
+  const end = new Date(toDate);
+  let chunkStart = new Date(fromDate);
+  while (chunkStart < end) {
+    const chunkEnd = new Date(chunkStart.getTime() + chunkDays * 86400000);
+    const actualEnd = chunkEnd > end ? end : chunkEnd;
+    total += await syncCalendarEventsForClub(clubNumber, chunkStart, actualEnd, statuses, sleepMs);
+    chunkStart = chunkEnd;
+  }
+  return total;
+}
+
 module.exports = {
   fetchCalendarEvents,
   syncCalendarEventsForClub,
+  syncCalendarEventsRange,
   transformEvent,
   parseAbcTimestamp,
 };
