@@ -45,6 +45,7 @@ const AUDIT_ISSUES = {
   no_cost: { label: 'No Cost Data', cls: 'bg-amber-50 text-amber-700 border-amber-200', desc: 'Sells or holds stock but no invoice cost on file' },
   no_price: { label: 'No Price', cls: 'bg-amber-50 text-amber-700 border-amber-200', desc: 'No catalog price from ABC' },
   missing_upc: { label: 'No UPC', cls: 'bg-bg text-text-muted border-border', desc: 'Cannot be scanned on mobile' },
+  no_category: { label: 'No Category', cls: 'bg-amber-50 text-amber-700 border-amber-200', desc: 'No ABC category — add one in ABC and it fixes on the next 3am sync' },
 }
 
 const inputCls = 'px-3 py-2 rounded-lg border border-border bg-bg text-sm text-text-primary focus:outline-none focus:border-wcs-red w-full'
@@ -203,7 +204,7 @@ function HistoryModal({ item, onClose }) {
                   </td>
                   <td className="py-2 pr-3 text-right">{fmtMoney(m.unit_price)}</td>
                   <td className="py-2 pr-3 text-right">{fmtMoney(m.unit_cost)}</td>
-                  <td className="py-2 pr-3 text-text-muted text-xs">{[m.created_by_name, m.note].filter(Boolean).join(' — ') || (m.source === 'abc_pos' ? 'ABC POS' : '—')}</td>
+                  <td className="py-2 pr-3 text-text-muted text-xs">{[m.created_by_name || m.employee_name, m.note].filter(Boolean).join(' — ') || (m.source === 'abc_pos' ? 'ABC POS' : '—')}</td>
                 </tr>
               ))}
             </tbody>
