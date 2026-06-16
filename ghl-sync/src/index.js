@@ -288,18 +288,20 @@ app.get('/api/sync/checkins/backfill/status', requireSecret, (req, res) => {
 // --- Speed to Lead: one-time historical backfill of ghl_first_contact -------
 let firstContactBackfillState = { running: false, startedAt: null, windowDays: null, checked: 0, resolved: 0, locationsDone: 0, errors: [], finishedAt: null };
 
-// POST /api/sync/first-contact/backfill?days=180 — compute first human contact
-// for every membership-pipeline opportunity in the window that lacks a resolved
-// row. Runs in background; poll GET .../status. Idempotent (skips resolved rows).
+// POST /api/sync/first-contact/backfill?days=180&force=1 — compute first human
+// contact for every membership-pipeline opportunity in the window. Runs in the
+// background; poll GET .../status. By default skips already-resolved rows;
+// pass force=1 to RE-CHECK resolved rows too (to correct bad data after a fix).
 app.post('/api/sync/first-contact/backfill', requireSecret, (req, res) => {
   if (firstContactBackfillState.running) {
     return res.status(409).json({ error: 'Backfill already in progress', state: firstContactBackfillState });
   }
   const days = parseInt(req.query.days || '180', 10);
-  firstContactBackfillState = { running: true, startedAt: new Date().toISOString(), windowDays: days, checked: 0, resolved: 0, locationsDone: 0, errors: [], finishedAt: null };
+  const force = req.query.force === '1' || req.query.force === 'true';
+  firstContactBackfillState = { running: true, startedAt: new Date().toISOString(), windowDays: days, force, checked: 0, resolved: 0, locationsDone: 0, errors: [], finishedAt: null };
   res.json({ status: 'started', state: firstContactBackfillState });
 
-  backfillFirstContact(days, firstContactBackfillState)
+  backfillFirstContact(days, firstContactBackfillState, { force })
     .catch(err => { firstContactBackfillState.errors.push({ error: err.message }); })
     .finally(() => {
       firstContactBackfillState.running = false;

@@ -98,7 +98,8 @@ async function computeFirstContact(location, pipelineIds) {
 // opportunity in the window that lacks a RESOLVED first-contact row, throttled.
 // `progress` (optional) is mutated in place so an HTTP endpoint can report
 // { checked, resolved, errors, locationsDone } while it runs in the background.
-async function backfillFirstContact(windowDays = 180, progress = {}) {
+async function backfillFirstContact(windowDays = 180, progress = {}, opts = {}) {
+  const force = !!opts.force; // re-check even already-resolved rows (to correct bad data)
   progress.checked = progress.checked || 0;
   progress.resolved = progress.resolved || 0;
   progress.errors = progress.errors || [];
@@ -148,6 +149,7 @@ async function backfillFirstContact(windowDays = 180, progress = {}) {
           .select('opportunity_id, resolved, checked_at')
           .in('opportunity_id', chunk);
         for (const r of (rows || [])) {
+          if (force) continue; // re-check everything in the window
           if (r.resolved) { skip.add(r.opportunity_id); continue; }
           if (r.checked_at && (now - new Date(r.checked_at).getTime()) < RECENT_MS) skip.add(r.opportunity_id);
         }
