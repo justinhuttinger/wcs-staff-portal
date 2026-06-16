@@ -7,6 +7,8 @@ const { employeeSync } = require('./abc/employeeSync');
 const { enrichAll: enrichAttributionAll, enrichForLocation: enrichAttributionForLocation } = require('./sync/attributionEnrich');
 const { refreshCurrentHourCheckins, fetchCheckinsForRange, backfillClub, pacificNowAsUtc } = require('./abc/checkins');
 const { backfillFirstContact } = require('./sync/computeFirstContact');
+const { syncCalendarEventsRange } = require('./abc/calendarEvents');
+const { writeSyncLog } = require('./sync/syncLog');
 const axios = require('axios');
 const LOCATIONS = require('./config/locations');
 const { startScheduler } = require('./scheduler');
@@ -111,6 +113,36 @@ app.post('/api/sync/full/:locationSlug', requireSecret, (req, res) => {
   fullSyncForLocation(req.params.locationSlug)
     .catch(err => console.error(`[API] Full sync for ${req.params.locationSlug} failed:`, err.message))
     .finally(() => { syncRunning = false; });
+});
+
+// POST /api/sync/calendar-reconcile { days? } — chunked calendar-only backfill
+// across all clubs. Fast (no GHL contacts/opps), so it actually finishes —
+// unlike the long full sync, which kept getting restarted before reaching the
+// later clubs. Recaptures sessions marked Completed/Canceled-Charge late.
+let calendarReconcileRunning = false;
+app.post('/api/sync/calendar-reconcile', requireSecret, (req, res) => {
+  if (calendarReconcileRunning) return res.status(409).json({ error: 'Calendar reconcile already in progress' });
+  const days = Math.min(Math.max(parseInt(req.body && req.body.days) || 75, 1), 365);
+  calendarReconcileRunning = true;
+  res.json({ status: 'started', message: `Calendar reconcile (${days}d) running for all clubs in background` });
+  (async () => {
+    const from = new Date(Date.now() - days * 86400000);
+    const to = new Date(Date.now() + 86400000);
+    for (const loc of LOCATIONS) {
+      if (!loc.clubNumber) continue;
+      const startedAt = new Date().toISOString();
+      try {
+        const upserted = await syncCalendarEventsRange(loc.clubNumber, from, to, undefined, 150);
+        console.log(`[CalReconcile] ${loc.name}: ${upserted} upserted (${days}d)`);
+        await writeSyncLog({ syncType: 'full', entity: 'calendar_events', locationId: loc.id, recordsFetched: upserted, recordsUpserted: upserted, errors: [], startedAt });
+      } catch (err) {
+        console.error(`[CalReconcile] ${loc.name} failed:`, err.message);
+        await writeSyncLog({ syncType: 'full', entity: 'calendar_events', locationId: loc.id, recordsFetched: 0, recordsUpserted: 0, errors: [{ error: err.message }], startedAt });
+      }
+    }
+    console.log('[CalReconcile] done');
+  })().catch(err => console.error('[API] Calendar reconcile failed:', err.message))
+    .finally(() => { calendarReconcileRunning = false; });
 });
 
 // POST /api/sync/checkins — run only the current-hour check-in refresh so we
