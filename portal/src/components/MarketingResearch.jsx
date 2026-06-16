@@ -25,13 +25,35 @@ const KINDS = [
 ]
 
 const toDateInput = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-// Best-effort parse of the free-text event_date into a YYYY-MM-DD default.
-function guessDate(eventDate) {
-  if (eventDate) {
-    const d = new Date(eventDate)
-    if (!isNaN(d.getTime())) return toDateInput(d)
+
+// Pull a {start, end} (YYYY-MM-DD) out of a free-text event_date label, handling
+// ranges the AI / sources write many ways:
+//   "Jul 19, 2026"            -> start only
+//   "Aug 28–Sep 7, 2026"      -> cross-month range
+//   "Jul 9–12, 2026"          -> same-month day range
+//   "Recurring (Dec 6, 2026)" -> the one dated mention
+function parseEventDates(text) {
+  const out = { start: '', end: '' }
+  if (!text) return out
+  const yearM = text.match(/\b(20\d{2})\b/)
+  const year = yearM ? yearM[1] : String(new Date().getFullYear())
+  const mk = (mon, day) => {
+    const d = new Date(`${String(mon).slice(0, 3)} ${day}, ${year}`)
+    return isNaN(d.getTime()) ? '' : toDateInput(d)
   }
-  return toDateInput(new Date())
+  const tokens = [...text.matchAll(/([A-Za-z]{3,9})\.?\s+(\d{1,2})/g)]
+  // Same-month day range: "Jul 9-12" (second number is a bare day, not a month)
+  const sameMonth = text.match(/([A-Za-z]{3,9})\.?\s+(\d{1,2})\s*[-–—]\s*(\d{1,2})(?!\s*[A-Za-z])/)
+  if (tokens.length >= 2) {
+    out.start = mk(tokens[0][1], tokens[0][2])
+    out.end = mk(tokens[1][1], tokens[1][2])
+  } else if (sameMonth) {
+    out.start = mk(sameMonth[1], sameMonth[2])
+    out.end = mk(sameMonth[1], sameMonth[3])
+  } else if (tokens.length === 1) {
+    out.start = mk(tokens[0][1], tokens[0][2])
+  }
+  return out
 }
 
 function ClubChips({ value, onChange }) {
@@ -52,10 +74,11 @@ function ClubChips({ value, onChange }) {
 function AddModal({ item, target, onClose, onAdded }) {
   const isTracker = target === 'tracker'
   const baseNotes = [item.event_date && `When: ${item.event_date}`, item.description, item.relevance && `Why: ${item.relevance}`, item.url].filter(Boolean).join('\n')
+  const parsed = parseEventDates(item.event_date)
   const [form, setForm] = useState({
     title: item.title,
-    start: item.event_start || guessDate(item.event_date),
-    end: item.event_end || '',          // blank = single-day
+    start: item.event_start || parsed.start || toDateInput(new Date()),
+    end: item.event_end || parsed.end || '',  // blank = single-day
     locations: CLUBS.some(c => c.slug === item.location) ? [item.location] : [],
     notes: baseNotes,
     kind: 'other',
