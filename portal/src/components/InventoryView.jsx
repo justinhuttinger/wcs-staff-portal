@@ -489,11 +489,11 @@ export default function InventoryView({ onBack, location, isAdmin }) {
 
   const loadItems = useCallback(() => {
     setItemsLoading(true)
-    getInventoryItems({ location_slug: slug === 'all' ? '' : slug, from, to })
+    getInventoryItems({ location_slug: slug === 'all' ? '' : slug })
       .then(res => setItems(res.items || []))
       .catch(err => setError(err.message))
       .finally(() => setItemsLoading(false))
-  }, [slug, from, to])
+  }, [slug])
 
   useEffect(() => { loadItems() }, [loadItems])
   useEffect(() => {
@@ -502,13 +502,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
   }, [])
 
   useEffect(() => {
-    if (tab === 'invoices') {
-      setLoading(true)
-      getInventoryInvoices()
-        .then(res => setInvoices(res.invoices || []))
-        .catch(err => setError(err.message))
-        .finally(() => setLoading(false))
-    } else if (tab === 'profit') {
+    if (tab === 'profit') {
       setLoading(true)
       getInventorySummary({ location_slug: slug === 'all' ? '' : slug, from, to })
         .then(res => setSummary(res.summary || []))
@@ -597,9 +591,8 @@ export default function InventoryView({ onBack, location, isAdmin }) {
           <div className="flex items-center gap-3">
             <div className="flex gap-1 bg-bg rounded-lg p-1">
               {[
-                { key: 'items', label: 'Items' },
-                { key: 'invoices', label: 'Invoices' },
-                { key: 'profit', label: 'Profit' },
+                { key: 'items', label: 'Inventory' },
+                { key: 'profit', label: 'Sales' },
                 ...(isAdmin ? [{ key: 'audit', label: 'Audit' }] : []),
               ].map(m => (
                 <button key={m.key} onClick={() => setTab(m.key)}
@@ -609,9 +602,6 @@ export default function InventoryView({ onBack, location, isAdmin }) {
               ))}
             </div>
             <button onClick={syncNow} disabled={syncBusy} className={btnGhost}>{syncBusy ? 'Starting...' : 'Sync from ABC'}</button>
-            {tab === 'invoices' && (
-              <button onClick={() => setModal({ newInvoice: true })} className={btnPrimary}>+ New Invoice</button>
-            )}
           </div>
         </div>
 
@@ -623,7 +613,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
               {LOCATION_OPTIONS.map(o => <option key={o.slug} value={o.slug}>{o.label}</option>)}
             </select>
           </div>
-          {(tab === 'items' || tab === 'profit') && (
+          {tab === 'profit' && (
             <>
               <div>
                 <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">From</span>
@@ -700,7 +690,6 @@ export default function InventoryView({ onBack, location, isAdmin }) {
                     <SortHeader label="Price" col="price" sort={sort} onSort={cycleSort} />
                     <SortHeader label="Cost" col="cost" sort={sort} onSort={cycleSort} />
                     <SortHeader label="Margin" col="margin" sort={sort} onSort={cycleSort} />
-                    <SortHeader label="Sold" col="sold" sort={sort} onSort={cycleSort} />
                     <SortHeader label="On Hand" col="on_hand" sort={sort} onSort={cycleSort} />
                     <th className="py-2.5 px-4 text-right">Actions</th>
                   </tr>
@@ -719,7 +708,6 @@ export default function InventoryView({ onBack, location, isAdmin }) {
                           ? <span className={i.margin_pct < 0 ? 'text-wcs-red font-semibold' : 'text-emerald-600 font-semibold'}>{i.margin_pct}%</span>
                           : '—'}
                       </td>
-                      <td className="py-2 px-2 text-right font-semibold text-text-primary">{fmtQty(i.sold_in_range ?? 0)}</td>
                       <td className="py-2 px-2 text-right">
                         {Number(i.qty_on_hand) < 0 ? (
                           <span className="inline-flex items-center gap-1.5">
@@ -744,61 +732,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
         </div>
       )}
 
-      {/* === Invoices tab === */}
-      {tab === 'invoices' && (
-        <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
-          {loading ? (
-            <p className="text-sm text-text-muted p-6 text-center">Loading invoices...</p>
-          ) : invoices.length === 0 ? (
-            <div className="p-8 text-center">
-              <p className="text-sm text-text-muted mb-3">No invoices yet. Upload vendor invoices to record what you paid for goods — that's where cost and profit numbers come from.</p>
-              <button onClick={() => setModal({ newInvoice: true })} className={btnPrimary}>+ New Invoice</button>
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
-                  <th className="py-2.5 px-4">Vendor</th><th className="py-2.5 px-2">Invoice #</th><th className="py-2.5 px-2">Date</th>
-                  <th className="py-2.5 px-2">Club</th><th className="py-2.5 px-2 text-right">Total</th><th className="py-2.5 px-2 text-right">Lines</th>
-                  <th className="py-2.5 px-2">Status</th><th className="py-2.5 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {invoices.map(inv => {
-                  const received = (inv.items || []).filter(l => l.received).length
-                  return (
-                    <tr key={inv.id} className="border-b border-border/50 hover:bg-bg/40 cursor-pointer" onClick={() => setModal({ invoice: inv })}>
-                      <td className="py-2 px-4 font-medium text-text-primary">{inv.vendor}</td>
-                      <td className="py-2 px-2 text-text-muted">{inv.invoice_number || '—'}</td>
-                      <td className="py-2 px-2 text-text-muted">{inv.invoice_date || '—'}</td>
-                      <td className="py-2 px-2 capitalize text-text-muted">{inv.location_slug || 'Corporate'}</td>
-                      <td className="py-2 px-2 text-right">{fmtMoney(inv.total)}</td>
-                      <td className="py-2 px-2 text-right">{(inv.items || []).length}</td>
-                      <td className="py-2 px-2">
-                        {received === (inv.items || []).length && received > 0
-                          ? <span className="text-[10px] font-bold uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5">Received</span>
-                          : received > 0
-                            ? <span className="text-[10px] font-bold uppercase text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">Partial</span>
-                            : <span className="text-[10px] font-bold uppercase text-text-muted bg-bg border border-border rounded-full px-1.5 py-0.5">Open</span>}
-                      </td>
-                      <td className="py-2 px-4 text-right" onClick={e => e.stopPropagation()}>
-                        {inv.file_link && <a href={inv.file_link} target="_blank" rel="noreferrer" className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline mr-3">File</a>}
-                        {received === 0 && (
-                          <button
-                            onClick={() => { if (confirm('Delete this invoice?')) deleteInventoryInvoice(inv.id).then(refreshInvoices).catch(err => setError(err.message)) }}
-                            className="text-xs font-semibold text-wcs-red hover:underline">Delete</button>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-
-      {/* === Profit tab === */}
+      {/* === Sales tab === */}
       {tab === 'profit' && (
         <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
           {loading ? (
@@ -928,7 +862,6 @@ export default function InventoryView({ onBack, location, isAdmin }) {
                               <td className="py-2 px-2 text-right">{fmtQty(i.sold_units)}</td>
                               <td className={`py-2 px-2 text-right font-bold ${Number(i.qty_on_hand) < 0 ? 'text-wcs-red' : 'text-text-primary'}`}>{fmtQty(i.qty_on_hand)}</td>
                               <td className="py-2 px-4 text-right whitespace-nowrap">
-                                <button onClick={() => setModal({ edit: i })} className="text-xs font-semibold text-wcs-red hover:underline mr-3">Edit</button>
                                 <button onClick={() => setModal({ history: i })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline">History</button>
                               </td>
                             </tr>
@@ -957,20 +890,6 @@ export default function InventoryView({ onBack, location, isAdmin }) {
         />
       )}
       {modal?.history && <HistoryModal item={modal.history} onClose={() => setModal(null)} />}
-      {modal?.newInvoice && (
-        <InvoiceModal
-          defaultSlug={slug}
-          onClose={() => setModal(null)}
-          onCreated={(inv) => { refreshInvoices(); setModal({ invoice: { ...inv, items: [] } }) }}
-        />
-      )}
-      {modal?.invoice && (
-        <InvoiceDetail
-          invoice={modal.invoice}
-          onClose={() => { setModal(null); loadItems() }}
-          onChanged={refreshInvoices}
-        />
-      )}
     </div>
   )
 }
