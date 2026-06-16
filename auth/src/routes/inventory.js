@@ -11,6 +11,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole, resolveRole } = require('../middleware/role')
 const { getAccessToken } = require('./googleBusiness')
 const { parseLocationSlugParam, SLUG_CLUB_MAP } = require('../utils/locationSlug')
+const { SELLABLE_PROFIT_CENTERS, sellableItemsOrFilter } = require('../utils/inventoryProfitCenters')
 const inventorySync = require('../services/inventorySync')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
@@ -59,7 +60,8 @@ router.get('/items', async (req, res) => {
     const { clubs, error: cErr } = clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
 
-    let q = supabaseAdmin.from('inventory_items').select('*').order('item_name').limit(5000)
+    let q = supabaseAdmin.from('inventory_items').select('*').order('item_name').limit(10000)
+    q = q.or(sellableItemsOrFilter()) // module shows sellable retail goods only
     if (clubs) q = q.in('club_number', clubs)
     if (req.query.include_archived !== '1') q = q.eq('archived', false)
     if (req.query.category) q = q.eq('category', String(req.query.category))
@@ -106,6 +108,7 @@ router.get('/items/categories', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('inventory_items').select('category').eq('archived', false).not('category', 'is', null)
+      .or(sellableItemsOrFilter())
     if (error) throw error
     res.json({ categories: [...new Set((data || []).map(r => r.category))].sort() })
   } catch (err) {
@@ -125,6 +128,7 @@ router.get('/upc/:code', async (req, res) => {
     const candidates = [...new Set([code, code.replace(/^0+/, ''), '0' + code, '00' + code])]
     let q = supabaseAdmin.from('inventory_items').select('*')
       .in('upc', candidates).eq('archived', false).limit(10)
+      .or(sellableItemsOrFilter())
     if (clubs) q = q.in('club_number', clubs)
     const { data, error } = await q
     if (error) throw error
@@ -290,6 +294,7 @@ router.get('/summary', async (req, res) => {
     let q = supabaseAdmin
       .from('inventory_transaction_items')
       .select('item_id, name, upc, quantity, unit_price, subtotal, unit_cost_at_sale, club_number, inventory_transactions!inner(transaction_at, is_return)')
+      .in('profit_center', SELLABLE_PROFIT_CENTERS) // sellable retail lines only
       .limit(50000)
     if (clubs) q = q.in('club_number', clubs)
     if (req.query.from) q = q.gte('inventory_transactions.transaction_at', `${req.query.from}T00:00:00Z`)
@@ -352,7 +357,8 @@ router.get('/audit', requireRole('admin'), async (req, res) => {
     const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), 365)
     const minMargin = Number.isFinite(parseFloat(req.query.min_margin)) ? parseFloat(req.query.min_margin) : 15
 
-    let iq = supabaseAdmin.from('inventory_items').select('*').eq('archived', false).limit(5000)
+    let iq = supabaseAdmin.from('inventory_items').select('*').eq('archived', false).limit(10000)
+      .or(sellableItemsOrFilter()) // audit sellable retail goods only
     if (clubs) iq = iq.in('club_number', clubs)
     const { data: items, error: iErr } = await iq
     if (iErr) throw iErr
