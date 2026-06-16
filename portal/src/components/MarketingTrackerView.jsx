@@ -359,9 +359,25 @@ export default function MarketingTrackerView({ onBack }) {
       {/* Header card */}
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-5">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-bold text-text-primary">Marketing Tracker</h2>
-            <span className="px-2 py-0.5 rounded-full bg-wcs-red/10 text-wcs-red text-[10px] font-bold uppercase tracking-wider border border-wcs-red/20">Experimental</span>
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-bold text-text-primary">Marketing Tracker</h2>
+              <span className="px-2 py-0.5 rounded-full bg-wcs-red/10 text-wcs-red text-[10px] font-bold uppercase tracking-wider border border-wcs-red/20">Experimental</span>
+            </div>
+            {/* Tab nav — inline with the title */}
+            <div className="flex gap-1 bg-bg rounded-lg p-1">
+              {[
+                { key: 'tracker', label: 'Tracker' },
+                { key: 'needs', label: 'Needs List' },
+                { key: 'research', label: 'Research' },
+              ].map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === t.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}
+                >{t.label}</button>
+              ))}
+            </div>
           </div>
           {tab === 'tracker' && (
             <div className="flex items-center gap-3">
@@ -386,21 +402,6 @@ export default function MarketingTrackerView({ onBack }) {
               </button>
             </div>
           )}
-        </div>
-
-        {/* Tab nav */}
-        <div className="flex gap-1 bg-bg rounded-lg p-1 mt-4 w-fit">
-          {[
-            { key: 'tracker', label: 'Tracker' },
-            { key: 'needs', label: 'Needs List' },
-            { key: 'research', label: 'Research' },
-          ].map(t => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === t.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}
-            >{t.label}</button>
-          ))}
         </div>
 
         {/* Filters (Tracker only) */}

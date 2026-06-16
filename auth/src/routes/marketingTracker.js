@@ -534,6 +534,39 @@ router.post('/needs', async (req, res) => {
   }
 })
 
+// Diff two need rows for the activity feed (mirrors diffEffort).
+function diffNeed(oldRow, newRow) {
+  const changes = []
+  const pushChange = (field, o, n) => {
+    if (blank(o) && blank(n)) return
+    if (String(o ?? '') === String(n ?? '')) return
+    changes.push({ field, action: blank(o) ? 'added' : blank(n) ? 'removed' : 'edited', from: trunc(o), to: trunc(n) })
+  }
+  for (const f of ['title', 'kind', 'status', 'priority', 'due_date', 'assignee_name', 'description']) {
+    pushChange(f, oldRow[f], newRow[f])
+  }
+  const oLoc = [...(oldRow.locations || [])].sort()
+  const nLoc = [...(newRow.locations || [])].sort()
+  if (oLoc.join('|') !== nLoc.join('|')) {
+    changes.push({ field: 'locations', action: oLoc.length === 0 ? 'added' : nLoc.length === 0 ? 'removed' : 'edited', from: oLoc, to: nLoc })
+  }
+  return changes
+}
+
+async function recordNeedActivity(needId, staff, kind, changes) {
+  if (kind === 'edit' && (!changes || changes.length === 0)) return
+  try {
+    await supabaseAdmin.from('marketing_need_comments').insert({
+      need_id: needId,
+      kind,
+      body: kind === 'edit' ? summarizeChanges(changes) : null,
+      meta: kind === 'edit' ? { changes } : null,
+      created_by: staff.id,
+      created_by_name: staff.display_name || staff.email || null,
+    })
+  } catch (e) { console.warn('[MarketingTracker] need activity log failed:', e.message) }
+}
+
 router.patch('/needs/:id', async (req, res) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid id' })
@@ -547,11 +580,49 @@ router.patch('/needs/:id', async (req, res) => {
     if ('due_date' in req.body) patch.due_date = /^\d{4}-\d{2}-\d{2}$/.test(req.body.due_date || '') ? req.body.due_date : null
     if ('locations' in req.body && Array.isArray(req.body.locations)) patch.locations = req.body.locations.filter(l => LOCATION_SLUGS.has(l))
     if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'Nothing to update' })
+
+    const { data: existing } = await supabaseAdmin.from('marketing_needs').select('*').eq('id', req.params.id).maybeSingle()
+    if (!existing) return res.status(404).json({ error: 'Need not found' })
+
     const { data, error } = await supabaseAdmin
       .from('marketing_needs').update(patch).eq('id', req.params.id).select().maybeSingle()
     if (error) throw error
     if (!data) return res.status(404).json({ error: 'Need not found' })
+    await recordNeedActivity(req.params.id, req.staff, 'edit', diffNeed(existing, data))
     res.json({ need: data })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /needs/:id/comments — comments + edit history (oldest first).
+router.get('/needs/:id/comments', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid id' })
+    const { data, error } = await supabaseAdmin
+      .from('marketing_need_comments').select('*').eq('need_id', req.params.id).order('created_at', { ascending: true })
+    if (error) throw error
+    res.json({ comments: data || [] })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /needs/:id/comments — add a comment.
+router.post('/needs/:id/comments', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid id' })
+    const body = typeof req.body.body === 'string' ? req.body.body.trim() : ''
+    if (!body) return res.status(400).json({ error: 'Comment cannot be empty' })
+    const { data, error } = await supabaseAdmin
+      .from('marketing_need_comments')
+      .insert({ need_id: req.params.id, body, created_by: req.staff.id, created_by_name: req.staff.display_name || req.staff.email || null })
+      .select().single()
+    if (error) {
+      if (error.code === '23503') return res.status(404).json({ error: 'Need not found' })
+      throw error
+    }
+    res.status(201).json({ comment: data })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

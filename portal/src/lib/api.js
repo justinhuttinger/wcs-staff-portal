@@ -681,6 +681,12 @@ export async function updateMarketingNeed(id, data) {
 export async function deleteMarketingNeed(id) {
   return api('/marketing-tracker/needs/' + id, { method: 'DELETE' })
 }
+export async function getMarketingNeedComments(id) {
+  return api('/marketing-tracker/needs/' + id + '/comments')
+}
+export async function addMarketingNeedComment(id, body) {
+  return api('/marketing-tracker/needs/' + id + '/comments', { method: 'POST', body: JSON.stringify({ body }) })
+}
 
 // Marketing Research (AI web-search)
 export async function getMarketingResearch(params = {}) {
