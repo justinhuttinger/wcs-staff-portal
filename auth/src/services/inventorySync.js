@@ -14,6 +14,7 @@ const cron = require('node-cron')
 const { supabaseAdmin } = require('./supabase')
 const { fetchCatalogItems, fetchPosTransactions, num } = require('./abcInventory')
 const { ALL_SLUGS, SLUG_CLUB_MAP } = require('../utils/locationSlug')
+const { isSellableProfitCenter } = require('../utils/inventoryProfitCenters')
 
 // First POS sync looks back this far; later runs resume from the last sync
 // minus a 1h overlap (the unique constraint dedupes the overlap).
@@ -134,6 +135,7 @@ async function syncPosForClub(clubNumber) {
   let newCount = 0
   let movementCount = 0
   const qtyDeltas = new Map() // item uuid → total delta
+  const pcByItem = new Map()  // item uuid → latest profit center (catalog backfill)
 
   for (const t of txns) {
     if (!t.transactionId) continue
@@ -180,7 +182,11 @@ async function syncPosForClub(clubNumber) {
         item_id: match?.id || null,
         unit_cost_at_sale: unitCost,
       })
-      if (match && it.quantity) {
+      // Only sellable retail lines move stock — dues, fees, passes, training,
+      // etc. share the catalog but are not physical inventory. Their lines are
+      // still recorded above (for profit/history) but never touch qty_on_hand.
+      if (match && it.quantity && isSellableProfitCenter(it.profitCenter)) {
+        if (it.profitCenter) pcByItem.set(match.id, it.profitCenter)
         const delta = t.isReturn ? Math.abs(it.quantity) : -Math.abs(it.quantity)
         movementRows.push({
           item_id: match.id,
@@ -212,12 +218,13 @@ async function syncPosForClub(clubNumber) {
   // single automated writer so contention is negligible).
   for (const [itemId, delta] of qtyDeltas) {
     const { data: cur } = await supabaseAdmin
-      .from('inventory_items').select('qty_on_hand').eq('id', itemId).maybeSingle()
+      .from('inventory_items').select('qty_on_hand, profit_center').eq('id', itemId).maybeSingle()
     if (!cur) continue
-    await supabaseAdmin
-      .from('inventory_items')
-      .update({ qty_on_hand: (num(cur.qty_on_hand) || 0) + delta })
-      .eq('id', itemId)
+    const patch = { qty_on_hand: (num(cur.qty_on_hand) || 0) + delta }
+    // Keep the catalog item's profit center in step with its POS lines.
+    const pc = pcByItem.get(itemId)
+    if (pc && cur.profit_center !== pc) patch.profit_center = pc
+    await supabaseAdmin.from('inventory_items').update(patch).eq('id', itemId)
   }
 
   return { transactions: txns.length, newTransactions: newCount, movements: movementCount }

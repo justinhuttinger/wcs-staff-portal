@@ -234,9 +234,14 @@ export default function MobileInventory({ user }) {
               {[item.category, item.upc].filter(Boolean).join(' · ') || '—'}
             </p>
           </div>
-          <span className={`text-lg font-black ${Number(item.qty_on_hand) <= 0 ? 'text-wcs-red' : 'text-text-primary'}`}>
-            {fmtQty(item.qty_on_hand)}
-          </span>
+          <div className="text-right">
+            <span className={`text-lg font-black ${Number(item.qty_on_hand) < 0 ? 'text-wcs-red' : Number(item.qty_on_hand) === 0 ? 'text-text-muted' : 'text-text-primary'}`}>
+              {fmtQty(item.qty_on_hand)}
+            </span>
+            {Number(item.qty_on_hand) < 0 && (
+              <p className="text-[9px] font-bold uppercase tracking-wide text-red-700">Oversold</p>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-3 mt-2 text-xs text-text-muted">
           <span>Price {fmtMoney(item.abc_unit_price)}</span>

@@ -40,7 +40,7 @@ const MOVEMENT_LABELS = {
 const AUDIT_ISSUES = {
   negative_margin: { label: 'Losing Money', cls: 'bg-red-50 text-red-700 border-red-200', desc: 'Cost is at or above the sale price' },
   selling_below_price: { label: 'Sold Below Price', cls: 'bg-red-50 text-red-700 border-red-200', desc: 'Actual sold price is under 90% of catalog price (heavy discounting)' },
-  negative_stock: { label: 'Oversold', cls: 'bg-red-50 text-red-700 border-red-200', desc: 'On-hand is negative — counts have drifted, do a recount' },
+  negative_stock: { label: 'Oversold', cls: 'bg-red-50 text-red-700 border-red-200', desc: 'Sold more than we had on record (on-hand is negative) — recount, and check for missed receiving or shrinkage' },
   low_margin: { label: 'Low Margin', cls: 'bg-amber-50 text-amber-700 border-amber-200', desc: 'Margin is under the threshold' },
   no_cost: { label: 'No Cost Data', cls: 'bg-amber-50 text-amber-700 border-amber-200', desc: 'Sells or holds stock but no invoice cost on file' },
   no_price: { label: 'No Price', cls: 'bg-amber-50 text-amber-700 border-amber-200', desc: 'No catalog price from ABC' },
@@ -484,6 +484,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
   const [syncBusy, setSyncBusy] = useState(false)
   const [audit, setAudit] = useState(null) // { items, scanned, min_margin, days }
   const [auditIssueFilter, setAuditIssueFilter] = useState('')
+  const [oversoldOnly, setOversoldOnly] = useState(false)
 
   const loadItems = useCallback(() => {
     setItemsLoading(true)
@@ -546,9 +547,14 @@ export default function InventoryView({ onBack, location, isAdmin }) {
     on_hand: i => Number(i.qty_on_hand),
   }
 
+  // Oversold = sold more than we had on record (qty_on_hand < 0). Someone rang
+  // up a sale ABC has, but stock says we didn't have it — a count/theft flag.
+  const oversoldCount = useMemo(() => items.filter(i => Number(i.qty_on_hand) < 0).length, [items])
+
   const filteredItems = useMemo(() => {
     const term = search.trim().toLowerCase()
     let list = items.filter(i => {
+      if (oversoldOnly && !(Number(i.qty_on_hand) < 0)) return false
       if (category && i.category !== category) return false
       if (term && !((i.item_name || '').toLowerCase().includes(term) || (i.upc || '').includes(term))) return false
       return true
@@ -566,7 +572,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
       })
     }
     return list
-  }, [items, search, category, sort])
+  }, [items, search, category, sort, oversoldOnly])
 
   const lastSync = useMemo(() => {
     const rows = syncStatus?.status || []
@@ -636,6 +642,22 @@ export default function InventoryView({ onBack, location, isAdmin }) {
           )}
         </div>
 
+        {/* Oversold filter — only sellable retail items are in the module, so a
+            negative on-hand here means a real oversell. */}
+        {tab === 'items' && oversoldCount > 0 && (
+          <div className="mt-3">
+            <button
+              onClick={() => setOversoldOnly(v => !v)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${oversoldOnly ? 'bg-wcs-red text-white border-wcs-red' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'}`}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-3.5 h-3.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+              </svg>
+              {oversoldOnly ? `Showing ${oversoldCount} oversold` : `${oversoldCount} oversold — show`}
+            </button>
+          </div>
+        )}
+
         {/* Category filter chips */}
         {tab === 'items' && categories.length > 0 && (
           <div className="flex items-center gap-1.5 mt-3 flex-wrap">
@@ -697,7 +719,16 @@ export default function InventoryView({ onBack, location, isAdmin }) {
                           : '—'}
                       </td>
                       <td className="py-2 px-2 text-right font-semibold text-text-primary">{fmtQty(i.sold_in_range ?? 0)}</td>
-                      <td className={`py-2 px-2 text-right font-bold ${Number(i.qty_on_hand) <= 0 ? 'text-wcs-red' : 'text-text-primary'}`}>{fmtQty(i.qty_on_hand)}</td>
+                      <td className="py-2 px-2 text-right">
+                        {Number(i.qty_on_hand) < 0 ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="text-[9px] font-bold uppercase tracking-wide text-red-700 bg-red-50 border border-red-200 rounded-full px-1.5 py-0.5">Oversold</span>
+                            <span className="font-bold text-wcs-red">{fmtQty(i.qty_on_hand)}</span>
+                          </span>
+                        ) : (
+                          <span className={`font-bold ${Number(i.qty_on_hand) === 0 ? 'text-text-muted' : 'text-text-primary'}`}>{fmtQty(i.qty_on_hand)}</span>
+                        )}
+                      </td>
                       <td className="py-2 px-4 text-right whitespace-nowrap">
                         <button onClick={() => setModal({ adjust: i })} className="text-xs font-semibold text-wcs-red hover:underline mr-3">Adjust</button>
                         <button onClick={() => setModal({ history: i })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline">History</button>
