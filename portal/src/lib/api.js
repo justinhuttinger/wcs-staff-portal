@@ -464,7 +464,7 @@ export async function getKioskInstalls() {
   return api('/launcher/installs')
 }
 
-export async function setKioskInstallTarget(id, data) {
+export async function updateKioskInstall(id, data) {
   return api('/launcher/installs/' + id, { method: 'PATCH', body: JSON.stringify(data) })
 }
 

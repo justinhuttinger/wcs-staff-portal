@@ -140,6 +140,7 @@ router.get('/installs', async (req, res) => {
 router.patch('/installs/:id', async (req, res) => {
   try {
     const patch = {}
+    if ('nickname' in req.body) patch.nickname = str(req.body.nickname, 120)
     if ('target_location' in req.body) {
       const loc = str(req.body.target_location, 100)
       patch.target_location = loc
