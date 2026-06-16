@@ -331,7 +331,7 @@ export default function MobileInventory({ user }) {
               <div key={m.id} className="flex items-center justify-between py-2 border-b border-border/50 text-sm">
                 <div>
                   <p className="text-text-primary font-medium">{MOVEMENT_LABELS[m.kind] || m.kind}</p>
-                  <p className="text-xs text-text-muted">{fmtDateTime(m.occurred_at)}{m.created_by_name ? ` · ${m.created_by_name}` : m.source === 'abc_pos' ? ' · ABC POS' : ''}</p>
+                  <p className="text-xs text-text-muted">{fmtDateTime(m.occurred_at)}{(m.created_by_name || m.employee_name) ? ` · ${m.created_by_name || m.employee_name}` : m.source === 'abc_pos' ? ' · ABC POS' : ''}</p>
                 </div>
                 <span className={`font-bold ${Number(m.qty_delta) < 0 ? 'text-wcs-red' : 'text-emerald-600'}`}>
                   {Number(m.qty_delta) > 0 ? '+' : ''}{fmtQty(m.qty_delta)}

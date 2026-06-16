@@ -11,7 +11,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole, resolveRole } = require('../middleware/role')
 const { getAccessToken } = require('./googleBusiness')
 const { parseLocationSlugParam, SLUG_CLUB_MAP } = require('../utils/locationSlug')
-const { SELLABLE_PROFIT_CENTERS, sellableItemsOrFilter } = require('../utils/inventoryProfitCenters')
+const { SELLABLE_PROFIT_CENTERS, SELLABLE_CATEGORIES, isSellableItem } = require('../utils/inventoryProfitCenters')
 const inventorySync = require('../services/inventorySync')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
@@ -61,7 +61,6 @@ router.get('/items', async (req, res) => {
     if (cErr) return res.status(400).json({ error: cErr })
 
     let q = supabaseAdmin.from('inventory_items').select('*').order('item_name').limit(10000)
-    q = q.or(sellableItemsOrFilter()) // module shows sellable retail goods only
     if (clubs) q = q.in('club_number', clubs)
     if (req.query.include_archived !== '1') q = q.eq('archived', false)
     if (req.query.category) q = q.eq('category', String(req.query.category))
@@ -69,8 +68,11 @@ router.get('/items', async (req, res) => {
       const term = String(req.query.q).replace(/[%_,()]/g, ' ').trim()
       if (term) q = q.or(`item_name.ilike.%${term}%,upc.ilike.%${term}%`)
     }
-    const { data, error } = await q
+    const { data: rawItems, error } = await q
     if (error) throw error
+    // Sellable retail goods only — by catalog category, with a barcode catch for
+    // uncategorized real products (profit center isn't on the catalog API).
+    const data = (rawItems || []).filter(isSellableItem)
 
     // Units sold per item over the requested window.
     const soldByItem = new Map()
@@ -107,8 +109,8 @@ router.get('/items', async (req, res) => {
 router.get('/items/categories', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
-      .from('inventory_items').select('category').eq('archived', false).not('category', 'is', null)
-      .or(sellableItemsOrFilter())
+      .from('inventory_items').select('category').eq('archived', false)
+      .in('category', SELLABLE_CATEGORIES)
     if (error) throw error
     res.json({ categories: [...new Set((data || []).map(r => r.category))].sort() })
   } catch (err) {
@@ -128,7 +130,6 @@ router.get('/upc/:code', async (req, res) => {
     const candidates = [...new Set([code, code.replace(/^0+/, ''), '0' + code, '00' + code])]
     let q = supabaseAdmin.from('inventory_items').select('*')
       .in('upc', candidates).eq('archived', false).limit(10)
-      .or(sellableItemsOrFilter())
     if (clubs) q = q.in('club_number', clubs)
     const { data, error } = await q
     if (error) throw error
@@ -149,7 +150,37 @@ router.get('/items/:id/movements', async (req, res) => {
       .order('occurred_at', { ascending: false })
       .limit(200)
     if (error) throw error
-    res.json({ movements: data || [] })
+
+    // For POS movements (ref_id = ABC transaction id) resolve the employee who
+    // rang the sale: transaction.employee_id -> name via abc_calendar_events
+    // (the only place ABC employee names live).
+    const movements = data || []
+    const posRefs = [...new Set(movements.filter(m => m.source === 'abc_pos' && m.ref_id).map(m => m.ref_id))]
+    if (posRefs.length) {
+      const { data: txns } = await supabaseAdmin
+        .from('inventory_transactions').select('transaction_id, employee_id').in('transaction_id', posRefs)
+      const empByTxn = new Map((txns || []).map(t => [t.transaction_id, t.employee_id]))
+      const empIds = [...new Set((txns || []).map(t => t.employee_id).filter(Boolean))]
+      const nameByEmp = new Map()
+      if (empIds.length) {
+        const { data: emps } = await supabaseAdmin
+          .from('abc_calendar_events')
+          .select('employee_id, employee_first_name, employee_last_name')
+          .in('employee_id', empIds).limit(5000)
+        for (const e of emps || []) {
+          if (!nameByEmp.has(e.employee_id)) {
+            const nm = `${e.employee_first_name || ''} ${e.employee_last_name || ''}`.trim()
+            if (nm) nameByEmp.set(e.employee_id, nm)
+          }
+        }
+      }
+      for (const m of movements) {
+        if (!m.created_by_name && m.source === 'abc_pos' && m.ref_id) {
+          m.employee_name = nameByEmp.get(empByTxn.get(m.ref_id)) || null
+        }
+      }
+    }
+    res.json({ movements })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -350,6 +381,7 @@ router.get('/summary', async (req, res) => {
 //   no_price            no/zero catalog price from ABC
 //   negative_stock      qty_on_hand < 0 (oversold — counts have drifted)
 //   missing_upc         no UPC, so it can't be scanned
+//   no_category         no ABC category — add one in ABC so the 3am sync fixes it
 router.get('/audit', requireRole('admin'), async (req, res) => {
   try {
     const { clubs, error: cErr } = clubFilter(req)
@@ -358,10 +390,10 @@ router.get('/audit', requireRole('admin'), async (req, res) => {
     const minMargin = Number.isFinite(parseFloat(req.query.min_margin)) ? parseFloat(req.query.min_margin) : 15
 
     let iq = supabaseAdmin.from('inventory_items').select('*').eq('archived', false).limit(10000)
-      .or(sellableItemsOrFilter()) // audit sellable retail goods only
     if (clubs) iq = iq.in('club_number', clubs)
-    const { data: items, error: iErr } = await iq
+    const { data: rawItems, error: iErr } = await iq
     if (iErr) throw iErr
+    const items = (rawItems || []).filter(isSellableItem) // sellable retail goods only
 
     const fromIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
     let sq = supabaseAdmin
@@ -408,6 +440,7 @@ router.get('/audit', requireRole('admin'), async (req, res) => {
       if (cost == null && (soldUnits > 0 || onHand > 0)) issues.push('no_cost')
       if (onHand < 0) issues.push('negative_stock')
       if (!it.upc) issues.push('missing_upc')
+      if (!raw.category) issues.push('no_category') // fix in ABC so the 3am sync picks it up
 
       if (issues.length > 0) {
         flagged.push({ ...it, sold_units: soldUnits, avg_sold_price: avgSoldPrice, issues })
