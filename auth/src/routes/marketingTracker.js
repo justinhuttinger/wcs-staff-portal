@@ -673,6 +673,8 @@ router.post('/research/run', async (req, res) => {
       location,
       title: it.title,
       event_date: it.event_date,
+      event_start: it.event_start,
+      event_end: it.event_end,
       category: it.category,
       description: it.description,
       relevance: it.relevance,

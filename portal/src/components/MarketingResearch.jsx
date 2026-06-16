@@ -54,7 +54,8 @@ function AddModal({ item, target, onClose, onAdded }) {
   const baseNotes = [item.event_date && `When: ${item.event_date}`, item.description, item.relevance && `Why: ${item.relevance}`, item.url].filter(Boolean).join('\n')
   const [form, setForm] = useState({
     title: item.title,
-    date: guessDate(item.event_date),
+    start: item.event_start || guessDate(item.event_date),
+    end: item.event_end || '',          // blank = single-day
     locations: CLUBS.some(c => c.slug === item.location) ? [item.location] : [],
     notes: baseNotes,
     kind: 'other',
@@ -67,6 +68,7 @@ function AddModal({ item, target, onClose, onAdded }) {
   async function submit() {
     if (!form.title.trim()) { setError('Title is required'); return }
     if (isTracker && form.locations.length === 0) { setError('Pick at least one club'); return }
+    if (form.end && form.end < form.start) { setError('End date must be on or after the start date'); return }
     setSaving(true); setError('')
     try {
       if (isTracker) {
@@ -74,7 +76,8 @@ function AddModal({ item, target, onClose, onAdded }) {
           title: form.title.trim(),
           type: 'event',
           status: 'planned',
-          start_at: new Date(form.date + 'T12:00:00').toISOString(),
+          start_at: new Date(form.start + 'T12:00:00').toISOString(),
+          end_at: form.end ? new Date(form.end + 'T12:00:00').toISOString() : null,
           locations: form.locations,
           notes: form.notes,
         })
@@ -84,7 +87,7 @@ function AddModal({ item, target, onClose, onAdded }) {
           kind: form.kind,
           priority: form.priority,
           locations: form.locations,
-          due_date: form.date,
+          due_date: form.start,
           description: form.notes,
         })
       }
@@ -101,9 +104,17 @@ function AddModal({ item, target, onClose, onAdded }) {
         <p className="text-[11px] text-text-muted mb-4">{isTracker ? 'Goes in as a marketing Event. Review the details below.' : 'Creates a request in the Needs List.'}</p>
         <div className="space-y-3">
           <input value={form.title} onChange={e => set('title', e.target.value)} className={inputCls + ' w-full'} placeholder="Title *" autoFocus />
-          <div>
-            <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">{isTracker ? 'Event date' : 'Due date'}</span>
-            <input type="date" value={form.date} onChange={e => set('date', e.target.value)} className={inputCls + ' w-48'} />
+          <div className="flex gap-3 flex-wrap">
+            <div>
+              <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">{isTracker ? 'Start date' : 'Due date'}</span>
+              <input type="date" value={form.start} onChange={e => set('start', e.target.value)} className={inputCls + ' w-44'} />
+            </div>
+            {isTracker && (
+              <div>
+                <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">End date <span className="normal-case text-text-muted/70">(multi-day)</span></span>
+                <input type="date" value={form.end} min={form.start} onChange={e => set('end', e.target.value)} className={inputCls + ' w-44'} />
+              </div>
+            )}
           </div>
           {!isTracker && (
             <div className="grid grid-cols-2 gap-3">

@@ -36,6 +36,8 @@ function pullJsonArray(text) {
 }
 
 const str = (v, max = 1000) => (typeof v === 'string' ? v.trim().slice(0, max) : null)
+// Accept only a clean ISO date; the column is a real `date`.
+const isoDate = (v) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.trim()) ? v.trim() : null)
 
 /**
  * Find local marketing opportunities near a club. `locationSlug` is one of the
@@ -55,7 +57,10 @@ async function researchLocalEvents(locationSlug) {
     `Think: community festivals, farmers/holiday markets, fun runs and races, sports tournaments, school/college events, charity drives, health & wellness fairs, expos, and local sponsorship openings. ` +
     `Prefer real, dated, verifiable events with a source URL. Aim for 6-10 of the best fits.\n\n` +
     `Respond with ONLY a JSON array (no prose, no code fences). Each element:\n` +
-    `{"title": string, "event_date": string (e.g. "Aug 12, 2026" or "Aug 2026" or "Recurring Sat"), "category": one of "festival"|"race"|"market"|"sponsorship"|"community"|"fair"|"sports"|"other", "description": string (1 sentence), "relevance": string (1 sentence on why it fits a gym), "url": string (source link)}`
+    `{"title": string, "event_date": string (human label, e.g. "Aug 12, 2026" or "Aug 12-14, 2026" or "Recurring Sat"), ` +
+    `"event_start": string|null (ISO "YYYY-MM-DD" of the first day if known, else null), ` +
+    `"event_end": string|null (ISO "YYYY-MM-DD" of the LAST day — set this ONLY for multi-day events, otherwise null), ` +
+    `"category": one of "festival"|"race"|"market"|"sponsorship"|"community"|"fair"|"sports"|"other", "description": string (1 sentence), "relevance": string (1 sentence on why it fits a gym), "url": string (source link)}`
 
   const resp = await client.messages.create({
     model: MODEL,
@@ -80,6 +85,8 @@ async function researchLocalEvents(locationSlug) {
     .map(o => ({
       title: str(o.title, 300),
       event_date: str(o.event_date, 120),
+      event_start: isoDate(o.event_start),
+      event_end: isoDate(o.event_end),
       category: str(o.category, 40) || 'other',
       description: str(o.description, 1000),
       relevance: str(o.relevance, 1000),
