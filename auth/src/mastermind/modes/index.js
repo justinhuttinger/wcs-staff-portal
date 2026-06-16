@@ -1,12 +1,10 @@
-// Mode handler registry. Each handler returns:
-//   { commentText, docName?, docContent?, statusAfter?, lane?, usage }
+// v2 mode handler registry. Two user-triggerable modes (strategize, build)
+// plus the @mastermind comment-mention iteration (continue). Older modes
+// (brief_me, analyze, draft, review, wrap_up) were collapsed into strategize
+// and build per Justin's request to simplify the dropdown UX.
 const HANDLERS = {
-  draft: require('./draft'),
-  brief_me: require('./briefMe'),
   strategize: require('./strategize'),
-  analyze: require('./analyze'),
-  review: require('./review'),
-  wrap_up: require('./wrapUp'),
+  build: require('./build'),
   continue: require('./continue'),
 }
 
