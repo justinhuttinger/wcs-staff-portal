@@ -8,7 +8,15 @@ const { upsertContacts } = require('../db/upsertContacts');
 const { upsertOpportunities } = require('../db/upsertOpportunities');
 const { upsertPipelines } = require('../db/upsertPipelines');
 const { upsertCustomFields } = require('../db/upsertCustomFields');
+const { syncCalendarEventsForClub } = require('../abc/calendarEvents');
 const { writeSyncLog } = require('./syncLog');
+
+// PT sessions are marked Completed / Canceled-Charge LATE — trainers often
+// check a session off weeks after it happened. The 10-min delta only re-pulls
+// the last 7 days, so any session that flips to a final status more than a week
+// after its date is never captured, which silently undercounts every PT report.
+// The daily full sync re-pulls a wide trailing window to recapture those flips.
+const CALENDAR_RECONCILE_DAYS = parseInt(process.env.CALENDAR_RECONCILE_DAYS || '75', 10);
 
 async function syncLocation(location, syncType) {
   console.log(`[Sync] Starting ${syncType} sync for ${location.name} (${location.id})`);
@@ -104,6 +112,23 @@ async function fullSync() {
       break;
     }
     await syncLocation(location, 'full');
+
+    // Wide calendar-events reconcile: recapture sessions that were marked
+    // Completed / Canceled-Charge after the 7-day delta window had moved past.
+    if (location.clubNumber) {
+      const calStart = new Date().toISOString();
+      try {
+        const now = new Date();
+        const calFrom = new Date(now.getTime() - CALENDAR_RECONCILE_DAYS * 86400000);
+        const calTo = new Date(now.getTime() + 86400000);
+        const upserted = await syncCalendarEventsForClub(location.clubNumber, calFrom, calTo, undefined, 150);
+        console.log(`[Sync] ${location.name}: calendar reconcile (${CALENDAR_RECONCILE_DAYS}d) upserted ${upserted}`);
+        await writeSyncLog({ syncType: 'full', entity: 'calendar_events', locationId: location.id, recordsFetched: upserted, recordsUpserted: upserted, errors: [], startedAt: calStart });
+      } catch (err) {
+        console.error(`[Sync] ${location.name} calendar reconcile failed:`, err.message);
+        await writeSyncLog({ syncType: 'full', entity: 'calendar_events', locationId: location.id, recordsFetched: 0, recordsUpserted: 0, errors: [{ error: err.message }], startedAt: calStart });
+      }
+    }
   }
 
   const duration = ((Date.now() - start) / 1000).toFixed(1);

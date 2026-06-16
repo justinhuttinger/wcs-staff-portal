@@ -91,13 +91,15 @@ async function deltaSync() {
       await writeSyncLog({ syncType: 'delta', entity: 'first_contact', locationId: location.id, recordsFetched: 0, recordsUpserted: 0, errors: [{ error: err.message }], startedAt: fcStart });
     }
 
-    // Calendar events delta — last 7 days through end-of-tomorrow.
-    // Catches newly-completed sessions and Pending->Completed/Canceled-Charge flips.
+    // Calendar events delta — last 14 days through end-of-tomorrow.
+    // Catches newly-completed sessions and Pending->Completed/Canceled-Charge
+    // flips. The daily full sync reconciles a much wider window (75d) for
+    // sessions checked off even later than this.
     if (location.clubNumber) {
       const calStart = new Date().toISOString();
       try {
         const now = new Date();
-        const calFrom = new Date(now.getTime() - 7 * 86400000);
+        const calFrom = new Date(now.getTime() - 14 * 86400000);
         const calTo = new Date(now.getTime() + 86400000);
         const upserted = await syncCalendarEventsForClub(location.clubNumber, calFrom, calTo);
         if (upserted > 0) {
