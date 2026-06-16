@@ -50,6 +50,21 @@ function decorateItem(it) {
   }
 }
 
+// Supabase/PostgREST caps a single response (~1000 rows) regardless of .limit(),
+// which was truncating the catalog (the item list cut off mid-alphabet). Fetch
+// in pages. `makeQuery` must return a FRESH ordered query on every call.
+async function fetchAllRows(makeQuery, pageSize = 1000) {
+  const all = []
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await makeQuery().range(from, from + pageSize - 1)
+    if (error) throw error
+    const batch = data || []
+    all.push(...batch)
+    if (batch.length < pageSize) break
+  }
+  return all
+}
+
 // --- Items -------------------------------------------------------------------
 
 // GET / items list. Filters: location_slug, q (name/upc search), category,
@@ -60,33 +75,36 @@ router.get('/items', async (req, res) => {
     const { clubs, error: cErr } = clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
 
-    let q = supabaseAdmin.from('inventory_items').select('*').order('item_name').limit(10000)
-    if (clubs) q = q.in('club_number', clubs)
-    if (req.query.include_archived !== '1') q = q.eq('archived', false)
-    if (req.query.category) q = q.eq('category', String(req.query.category))
-    if (req.query.q) {
-      const term = String(req.query.q).replace(/[%_,()]/g, ' ').trim()
-      if (term) q = q.or(`item_name.ilike.%${term}%,upc.ilike.%${term}%`)
+    const makeItemsQuery = () => {
+      let q = supabaseAdmin.from('inventory_items').select('*').order('item_name')
+      if (clubs) q = q.in('club_number', clubs)
+      if (req.query.include_archived !== '1') q = q.eq('archived', false)
+      if (req.query.category) q = q.eq('category', String(req.query.category))
+      if (req.query.q) {
+        const term = String(req.query.q).replace(/[%_,()]/g, ' ').trim()
+        if (term) q = q.or(`item_name.ilike.%${term}%,upc.ilike.%${term}%`)
+      }
+      return q
     }
-    const { data: rawItems, error } = await q
-    if (error) throw error
     // Sellable retail goods only — by catalog category, with a barcode catch for
     // uncategorized real products (profit center isn't on the catalog API).
-    const data = (rawItems || []).filter(isSellableItem)
+    const data = (await fetchAllRows(makeItemsQuery)).filter(isSellableItem)
 
     // Units sold per item over the requested window.
     const soldByItem = new Map()
     if (req.query.from || req.query.to) {
-      let sq = supabaseAdmin
-        .from('inventory_transaction_items')
-        .select('item_id, quantity, inventory_transactions!inner(transaction_at, is_return)')
-        .not('item_id', 'is', null)
-        .limit(50000)
-      if (clubs) sq = sq.in('club_number', clubs)
-      if (req.query.from) sq = sq.gte('inventory_transactions.transaction_at', `${req.query.from}T00:00:00Z`)
-      if (req.query.to) sq = sq.lte('inventory_transactions.transaction_at', `${req.query.to}T23:59:59Z`)
-      const { data: sales, error: sErr } = await sq
-      if (sErr) throw sErr
+      const makeSalesQuery = () => {
+        let sq = supabaseAdmin
+          .from('inventory_transaction_items')
+          .select('item_id, quantity, inventory_transactions!inner(transaction_at, is_return)')
+          .not('item_id', 'is', null)
+          .order('id')
+        if (clubs) sq = sq.in('club_number', clubs)
+        if (req.query.from) sq = sq.gte('inventory_transactions.transaction_at', `${req.query.from}T00:00:00Z`)
+        if (req.query.to) sq = sq.lte('inventory_transactions.transaction_at', `${req.query.to}T23:59:59Z`)
+        return sq
+      }
+      const sales = await fetchAllRows(makeSalesQuery)
       for (const row of sales || []) {
         const sign = row.inventory_transactions?.is_return ? -1 : 1
         soldByItem.set(row.item_id, (soldByItem.get(row.item_id) || 0) + (num(row.quantity) || 0) * sign)
@@ -322,17 +340,18 @@ router.get('/summary', async (req, res) => {
     const { clubs, error: cErr } = clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
 
-    let q = supabaseAdmin
-      .from('inventory_transaction_items')
-      .select('item_id, name, upc, quantity, unit_price, subtotal, unit_cost_at_sale, club_number, inventory_transactions!inner(transaction_at, is_return)')
-      .in('profit_center', SELLABLE_PROFIT_CENTERS) // sellable retail lines only
-      .limit(50000)
-    if (clubs) q = q.in('club_number', clubs)
-    if (req.query.from) q = q.gte('inventory_transactions.transaction_at', `${req.query.from}T00:00:00Z`)
-    if (req.query.to) q = q.lte('inventory_transactions.transaction_at', `${req.query.to}T23:59:59Z`)
-
-    const { data, error } = await q
-    if (error) throw error
+    const makeSummaryQuery = () => {
+      let q = supabaseAdmin
+        .from('inventory_transaction_items')
+        .select('item_id, name, upc, quantity, unit_price, subtotal, unit_cost_at_sale, club_number, inventory_transactions!inner(transaction_at, is_return)')
+        .in('profit_center', SELLABLE_PROFIT_CENTERS) // sellable retail lines only
+        .order('id')
+      if (clubs) q = q.in('club_number', clubs)
+      if (req.query.from) q = q.gte('inventory_transactions.transaction_at', `${req.query.from}T00:00:00Z`)
+      if (req.query.to) q = q.lte('inventory_transactions.transaction_at', `${req.query.to}T23:59:59Z`)
+      return q
+    }
+    const data = await fetchAllRows(makeSummaryQuery)
 
     const byItem = new Map()
     for (const row of data || []) {
@@ -389,22 +408,25 @@ router.get('/audit', requireRole('admin'), async (req, res) => {
     const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), 365)
     const minMargin = Number.isFinite(parseFloat(req.query.min_margin)) ? parseFloat(req.query.min_margin) : 15
 
-    let iq = supabaseAdmin.from('inventory_items').select('*').eq('archived', false).limit(10000)
-    if (clubs) iq = iq.in('club_number', clubs)
-    const { data: rawItems, error: iErr } = await iq
-    if (iErr) throw iErr
-    const items = (rawItems || []).filter(isSellableItem) // sellable retail goods only
+    const makeAuditItemsQuery = () => {
+      let iq = supabaseAdmin.from('inventory_items').select('*').eq('archived', false).order('item_name')
+      if (clubs) iq = iq.in('club_number', clubs)
+      return iq
+    }
+    const items = (await fetchAllRows(makeAuditItemsQuery)).filter(isSellableItem) // sellable retail goods only
 
     const fromIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
-    let sq = supabaseAdmin
-      .from('inventory_transaction_items')
-      .select('item_id, quantity, unit_price, subtotal, inventory_transactions!inner(transaction_at, is_return)')
-      .not('item_id', 'is', null)
-      .gte('inventory_transactions.transaction_at', fromIso)
-      .limit(50000)
-    if (clubs) sq = sq.in('club_number', clubs)
-    const { data: sales, error: sErr } = await sq
-    if (sErr) throw sErr
+    const makeAuditSalesQuery = () => {
+      let sq = supabaseAdmin
+        .from('inventory_transaction_items')
+        .select('item_id, quantity, unit_price, subtotal, inventory_transactions!inner(transaction_at, is_return)')
+        .not('item_id', 'is', null)
+        .gte('inventory_transactions.transaction_at', fromIso)
+        .order('id')
+      if (clubs) sq = sq.in('club_number', clubs)
+      return sq
+    }
+    const sales = await fetchAllRows(makeAuditSalesQuery)
 
     // Per-item sold units + quantity-weighted average actual sold price.
     const salesByItem = new Map()
