@@ -8,7 +8,7 @@ const { upsertContacts } = require('../db/upsertContacts');
 const { upsertOpportunities } = require('../db/upsertOpportunities');
 const { upsertPipelines } = require('../db/upsertPipelines');
 const { upsertCustomFields } = require('../db/upsertCustomFields');
-const { syncCalendarEventsForClub } = require('../abc/calendarEvents');
+const { syncCalendarEventsRange } = require('../abc/calendarEvents');
 const { writeSyncLog } = require('./syncLog');
 
 // PT sessions are marked Completed / Canceled-Charge LATE — trainers often
@@ -121,7 +121,8 @@ async function fullSync() {
         const now = new Date();
         const calFrom = new Date(now.getTime() - CALENDAR_RECONCILE_DAYS * 86400000);
         const calTo = new Date(now.getTime() + 86400000);
-        const upserted = await syncCalendarEventsForClub(location.clubNumber, calFrom, calTo, undefined, 150);
+        // Chunked — ABC silently returns empty for eventDateRange spans > ~31d.
+        const upserted = await syncCalendarEventsRange(location.clubNumber, calFrom, calTo, undefined, 150);
         console.log(`[Sync] ${location.name}: calendar reconcile (${CALENDAR_RECONCILE_DAYS}d) upserted ${upserted}`);
         await writeSyncLog({ syncType: 'full', entity: 'calendar_events', locationId: location.id, recordsFetched: upserted, recordsUpserted: upserted, errors: [], startedAt: calStart });
       } catch (err) {
