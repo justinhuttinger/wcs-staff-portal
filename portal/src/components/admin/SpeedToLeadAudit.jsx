@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getSpeedToLeadAudit } from '../../lib/api'
+import { exportCSV, exportPDF } from '../../lib/export'
 import { formatMinutes } from '../../lib/kpiMath'
 import { LOCATION_NAMES } from '../../config/locations'
 
@@ -10,6 +11,26 @@ function defaultRange() {
   const now = new Date()
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29)
   return { start: fmtDate(start), end: fmtDate(now) }
+}
+
+const QUICK_RANGES = [
+  { key: 'this_month', label: 'This Month' },
+  { key: 'last_month', label: 'Last Month' },
+  { key: 'last_30', label: 'Last 30 Days' },
+  { key: 'last_90', label: 'Last 90 Days' },
+  { key: 'ytd', label: 'YTD' },
+]
+function quickRange(key) {
+  const now = new Date()
+  const y = now.getFullYear(), m = now.getMonth()
+  switch (key) {
+    case 'this_month': return { start: fmtDate(new Date(y, m, 1)), end: fmtDate(now) }
+    case 'last_month': return { start: fmtDate(new Date(y, m - 1, 1)), end: fmtDate(new Date(y, m, 0)) }
+    case 'last_30': return { start: fmtDate(new Date(y, m, now.getDate() - 29)), end: fmtDate(now) }
+    case 'last_90': return { start: fmtDate(new Date(y, m, now.getDate() - 89)), end: fmtDate(now) }
+    case 'ytd': return { start: fmtDate(new Date(y, 0, 1)), end: fmtDate(now) }
+    default: return defaultRange()
+  }
 }
 
 const REASON_LABEL = {
@@ -29,19 +50,40 @@ export default function SpeedToLeadAudit() {
   const [error, setError] = useState(null)
   const [onlyCounted, setOnlyCounted] = useState(false)
 
-  function load() {
+  function load(r = range) {
     setLoading(true)
     setError(null)
-    getSpeedToLeadAudit({ location_slug: loc, start_date: range.start, end_date: range.end })
+    getSpeedToLeadAudit({ location_slug: loc, start_date: r.start, end_date: r.end })
       .then(d => { setRows(d.rows || []); setMeta({ returned: d.returned || 0, truncated: !!d.truncated }) })
       .catch(e => setError(e.message || 'Failed to load audit'))
       .finally(() => setLoading(false))
+  }
+
+  function pickQuick(key) {
+    const r = quickRange(key)
+    setRange(r)
+    load(r)
   }
 
   useEffect(() => { load() }, []) // initial load
 
   const shown = onlyCounted ? rows.filter(r => r.included) : rows
   const countedTotal = rows.filter(r => r.included).length
+
+  function exportRows() {
+    return [
+      ['Contact', 'Club', 'Lead Created', 'First Human Contact', 'Speed (min)', 'Status'],
+      ...shown.map(r => [
+        r.contact_name || '',
+        r.club || '',
+        r.opportunity_created_at ? new Date(r.opportunity_created_at).toLocaleString() : '',
+        r.first_human_contact_at ? new Date(r.first_human_contact_at).toLocaleString() : '',
+        r.included && r.speed_minutes != null ? r.speed_minutes : '',
+        REASON_LABEL[r.reason] || r.reason || '',
+      ]),
+    ]
+  }
+  const exportName = `speed-to-lead-audit_${range.start}_to_${range.end}`
 
   return (
     <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 space-y-4">
@@ -73,6 +115,26 @@ export default function SpeedToLeadAudit() {
           <input type="checkbox" checked={onlyCounted} onChange={e => setOnlyCounted(e.target.checked)} className="accent-wcs-red" />
           Counted only
         </label>
+        <div className="flex items-center gap-2 ml-auto">
+          <button onClick={() => exportCSV(exportRows(), exportName)} disabled={shown.length === 0}
+            className="text-xs border border-border rounded-lg px-3 py-1.5 font-medium text-text-muted hover:text-text-primary hover:border-text-muted disabled:opacity-50">
+            Export (Sheets/CSV)
+          </button>
+          <button onClick={() => exportPDF(`Speed to Lead Audit — ${range.start} to ${range.end}`)} disabled={shown.length === 0}
+            className="text-xs border border-border rounded-lg px-3 py-1.5 font-medium text-text-muted hover:text-text-primary hover:border-text-muted disabled:opacity-50">
+            Export PDF
+          </button>
+        </div>
+      </div>
+
+      {/* Quick date ranges */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {QUICK_RANGES.map(q => (
+          <button key={q.key} onClick={() => pickQuick(q.key)}
+            className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-border bg-bg text-text-muted hover:text-text-primary hover:border-text-muted transition-colors">
+            {q.label}
+          </button>
+        ))}
       </div>
 
       {error && <p className="text-xs text-red-500">{error}</p>}
