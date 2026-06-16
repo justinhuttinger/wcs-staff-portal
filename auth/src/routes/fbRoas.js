@@ -13,7 +13,7 @@
 
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { requireReportAccess } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 
 const FLAT_LTV = 990
@@ -171,7 +171,8 @@ async function fetchMetaAdSpend(startDate, endDate) {
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('corporate'))
+// FB ROAS is part of the Meta Ads report — same grant unlocks it for custom roles.
+router.use(requireReportAccess('corporate', ['meta-ads']))
 
 /**
  * GET /reports/fb-roas

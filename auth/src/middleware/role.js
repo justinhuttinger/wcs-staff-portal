@@ -101,6 +101,26 @@ function marketingScope(staff) {
   return { locations, types }
 }
 
+// Router/route middleware: allow a member through if their role tier already
+// meets `minRole`, OR if they are a custom-role member who has been granted one
+// of `grantKeys` in their custom_reports. This is what lets an admin hand a
+// single custom-role member an otherwise manager/corporate-gated report (KPIs,
+// Meta Ads, Google) without promoting their whole role. Non-custom roles keep
+// the exact same tier check as requireRole.
+function requireReportAccess(minRole, grantKeys = []) {
+  const minLevel = ROLE_HIERARCHY.indexOf(minRole)
+  if (minLevel === -1) throw new Error('Invalid role: ' + minRole)
+  const grants = Array.isArray(grantKeys) ? grantKeys : [grantKeys]
+  return (req, res, next) => {
+    if (roleLevel(req.staff.role) >= minLevel) return next()
+    if (resolveRole(req.staff.role) === 'custom') {
+      const granted = req.staff.custom_reports
+      if (Array.isArray(granted) && grants.some(k => granted.includes(k))) return next()
+    }
+    return res.status(403).json({ error: 'Insufficient role. Requires: ' + minRole })
+  }
+}
+
 // Router/route middleware: allow only members with marketing access.
 function requireMarketing(req, res, next) {
   if (!canUseMarketing(req.staff)) {
@@ -110,7 +130,7 @@ function requireMarketing(req, res, next) {
 }
 
 module.exports = {
-  requireRole, resolveRole, roleLevel, ROLE_HIERARCHY, ROLE_ALIASES,
+  requireRole, requireReportAccess, resolveRole, roleLevel, ROLE_HIERARCHY, ROLE_ALIASES,
   REPORT_ACCESS, canAccessReport, canSeeAllLocations, ALL_LOCATION_ROLES,
   isFullMarketing, hasMarketingAddon, canUseMarketing, marketingScope, requireMarketing,
 }
