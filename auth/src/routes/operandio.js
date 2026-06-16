@@ -1,7 +1,7 @@
 const { Router } = require('express')
 const multer = require('multer')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { requireRole, requireReportAccess } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { classifyJobEmail, persistJobEmail } = require('../lib/operandioJobs')
 const { resolveScopedSlugs } = require('../services/locationScope')
@@ -323,7 +323,7 @@ router.post('/webhook', upload.any(), async (req, res) => {
 // Returns: { rows: [{period_start, period_end, location_slug, ...pcts}] }
 // Daily rows have period_start = period_end. Weekly rows span 7 days.
 // ---------------------------------------------------------------------------
-router.get('/range', authenticate, requireRole('manager'), async (req, res) => {
+router.get('/range', authenticate, requireReportAccess('manager', ['kpis']), async (req, res) => {
   try {
     const { start_date, end_date, location_slug } = req.query
     if (!start_date || !end_date) return res.status(400).json({ error: 'start_date and end_date required' })
@@ -356,7 +356,7 @@ router.get('/range', authenticate, requireRole('manager'), async (req, res) => {
 // Query: start_date, end_date (YYYY-MM-DD), optional location_slug (comma ok)
 // Returns: { rows: [{location_slug, job_name, score_*, report_url, submitted_date}] }
 // ---------------------------------------------------------------------------
-router.get('/qa-reports', authenticate, requireRole('manager'), async (req, res) => {
+router.get('/qa-reports', authenticate, requireReportAccess('manager', ['kpis']), async (req, res) => {
   try {
     const { start_date, end_date, location_slug, department } = req.query
 

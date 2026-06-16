@@ -1,6 +1,6 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { requireReportAccess } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { getAccessToken, getStoredTokens } = require('./googleBusiness')
 const { parseLocationSlugParam, locationCacheKey } = require('../utils/locationSlug')
@@ -156,7 +156,7 @@ async function tokensWithAnalyticsScope() {
 // ---------------------------------------------------------------------------
 
 // GET /google-analytics/status
-router.get('/status', authenticate, requireRole('corporate'), async (req, res) => {
+router.get('/status', authenticate, requireReportAccess('corporate', ['google-marketing']), async (req, res) => {
   const tokens = await getStoredTokens()
   const propertyId = await getPropertyId()
   const scopeStr = tokens?.scope || ''
@@ -216,7 +216,7 @@ async function fetchOverview(propertyId, startDate, endDate, locationSlug) {
 }
 
 // GET /google-analytics/overview
-router.get('/overview', authenticate, requireRole('corporate'), async (req, res) => {
+router.get('/overview', authenticate, requireReportAccess('corporate', ['google-marketing']), async (req, res) => {
   try {
     const propertyId = await getPropertyId()
     if (!propertyId) return res.status(400).json({ error: 'GA4 property ID not configured' })
@@ -250,7 +250,7 @@ router.get('/overview', authenticate, requireRole('corporate'), async (req, res)
 })
 
 // GET /google-analytics/sources
-router.get('/sources', authenticate, requireRole('corporate'), async (req, res) => {
+router.get('/sources', authenticate, requireReportAccess('corporate', ['google-marketing']), async (req, res) => {
   try {
     const propertyId = await getPropertyId()
     if (!propertyId) return res.status(400).json({ error: 'GA4 property ID not configured' })
@@ -309,7 +309,7 @@ router.get('/sources', authenticate, requireRole('corporate'), async (req, res) 
 })
 
 // GET /google-analytics/pages
-router.get('/pages', authenticate, requireRole('corporate'), async (req, res) => {
+router.get('/pages', authenticate, requireReportAccess('corporate', ['google-marketing']), async (req, res) => {
   try {
     const propertyId = await getPropertyId()
     if (!propertyId) return res.status(400).json({ error: 'GA4 property ID not configured' })
@@ -355,7 +355,7 @@ router.get('/pages', authenticate, requireRole('corporate'), async (req, res) =>
 })
 
 // GET /google-analytics/devices-geo
-router.get('/devices-geo', authenticate, requireRole('corporate'), async (req, res) => {
+router.get('/devices-geo', authenticate, requireReportAccess('corporate', ['google-marketing']), async (req, res) => {
   try {
     const propertyId = await getPropertyId()
     if (!propertyId) return res.status(400).json({ error: 'GA4 property ID not configured' })
@@ -413,7 +413,7 @@ router.get('/devices-geo', authenticate, requireRole('corporate'), async (req, r
 
 // GET /google-analytics/key-events
 // Returns key events configured in GA4. Empty array if none.
-router.get('/key-events', authenticate, requireRole('corporate'), async (req, res) => {
+router.get('/key-events', authenticate, requireReportAccess('corporate', ['google-marketing']), async (req, res) => {
   try {
     const propertyId = await getPropertyId()
     if (!propertyId) return res.status(400).json({ error: 'GA4 property ID not configured' })

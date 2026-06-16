@@ -1,10 +1,11 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { requireReportAccess } = require('../middleware/role')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('corporate'))
+// Corporate+ normally; a custom-role member granted the 'meta-ads' report gets in too.
+router.use(requireReportAccess('corporate', ['meta-ads']))
 
 const META_API = 'https://graph.facebook.com/v21.0'
 

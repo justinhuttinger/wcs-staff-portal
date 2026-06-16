@@ -24,10 +24,15 @@ const CUSTOM_TILE_KEYS = new Set([
   'calendar', 'leaderboard', 'commNotes', 'helpCenter', 'ordering', 'tickets',
   'trainerAvail', 'reporting',
 ])
-// Lead-tier reports only — matches the custom role's server gate.
+// Reports an admin may grant to a custom-role member. Lead-tier reports the
+// custom role can already load, plus the higher-tier reports now unlocked per
+// grant via requireReportAccess: KPIs (manager-gated sources) and the marketing
+// reports Meta Ads + Google (corporate-gated). Keep in sync with the frontend
+// CUSTOM_REPORT_CATALOG.
 const CUSTOM_REPORT_KEYS = new Set([
   'club-health', 'membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions',
   'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health',
+  'kpis', 'meta-ads', 'google-marketing',
 ])
 
 // Filter an incoming array down to allowed values. `null`/non-array → null

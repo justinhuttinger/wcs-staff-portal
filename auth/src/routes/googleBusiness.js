@@ -1,6 +1,6 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { requireRole, requireReportAccess } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 
 const router = Router()
@@ -164,7 +164,7 @@ router.get('/callback', async (req, res) => {
 })
 
 // GET /google-business/status — check if authorized
-router.get('/status', authenticate, requireRole('corporate'), async (req, res) => {
+router.get('/status', authenticate, requireReportAccess('corporate', ['google-marketing']), async (req, res) => {
   const tokens = await getStoredTokens()
   const scopeStr = tokens?.scope || ''
   const scopes = scopeStr ? scopeStr.split(' ') : []
@@ -214,7 +214,7 @@ router.get('/locations', authenticate, requireRole('corporate'), async (req, res
 })
 
 // GET /google-business/performance — get performance metrics for all locations (cached 10 min)
-router.get('/performance', authenticate, requireRole('corporate'), async (req, res) => {
+router.get('/performance', authenticate, requireReportAccess('corporate', ['google-marketing']), async (req, res) => {
   const { start_date, end_date, location_name } = req.query
   const cacheKey = `perf:${start_date}:${end_date}:${location_name || 'all'}`
   const cached = getCached(cacheKey)

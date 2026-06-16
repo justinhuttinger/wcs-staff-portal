@@ -33,10 +33,12 @@ export const PORTAL_TILE_CATALOG = [
 
 export const TILE_BY_KEY = Object.fromEntries(PORTAL_TILE_CATALOG.map(t => [t.key, t]))
 
-// Reports an admin can grant to a custom-role member. Limited to the lead-tier
-// reports the custom role can actually load (its server gate). Manager+ reports
-// (payroll, revenue, operations/audits, KPIs) and the corporate-only marketing
-// reports (Meta Ads / Google) are intentionally excluded.
+// Reports an admin can grant to a custom-role member. The lead-tier reports the
+// custom role can already load, plus KPIs and the marketing reports (Meta Ads /
+// Google) — these are normally manager/corporate-gated but a custom member who
+// is granted them is let through per-report (see requireReportAccess on the
+// server). Keep in sync with CUSTOM_REPORT_KEYS in auth/src/routes/admin.js.
+// Payroll, Revenue, Operations and Audits remain excluded by design.
 export const CUSTOM_REPORT_CATALOG = [
   { key: 'club-health',       label: 'Club Health' },
   { key: 'membership',        label: 'Membership' },
@@ -49,4 +51,7 @@ export const CUSTOM_REPORT_CATALOG = [
   { key: 'session-frequency', label: 'Session Frequency' },
   { key: 'deactivated-pt',    label: 'Deactivated PT' },
   { key: 'pt-health',         label: 'PT Health' },
+  { key: 'kpis',              label: 'KPIs' },
+  { key: 'meta-ads',          label: 'Meta Ads' },
+  { key: 'google-marketing',  label: 'Google' },
 ]
