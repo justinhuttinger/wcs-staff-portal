@@ -18,6 +18,23 @@ function formatDate(val) {
   return val
 }
 
+// Click-to-sort arrow indicator (mirrors the Payroll/commissions report).
+function SortArrow({ active, dir }) {
+  if (!active) return null
+  return <span className="ml-1 text-wcs-red">{dir === 'asc' ? '▲' : '▼'}</span>
+}
+
+// Sort value for each Day One Breakdown column.
+const DAY_ONE_SORT = {
+  name: c => `${c.last_name || ''} ${c.first_name || ''}`.trim().toLowerCase(),
+  booking_team_member: c => (c.day_one_booking_team_member || '').toLowerCase(),
+  booking_date: c => c.day_one_booking_date || '',
+  day_one_date: c => c.day_one_date || '',
+  trainer: c => (c.day_one_trainer || '').toLowerCase(),
+  status: c => (c.day_one_status || '').toLowerCase(),
+  sale: c => (c.day_one_sale || '').toLowerCase(),
+}
+
 function StatusPill({ status }) {
   const s = (status || '').toLowerCase()
   if (s === 'show' || s === 'completed' || s === 'complete') {
@@ -93,6 +110,16 @@ function DetailModal({ contact, onClose }) {
 export default function PTReport({ startDate, endDate, locationSlug }) {
   const [expandedTrainer, setExpandedTrainer] = useState(null)
   const [detailContact, setDetailContact] = useState(null)
+  const [sort, setSort] = useState({ key: null, dir: null }) // Day One Breakdown sort
+
+  // Click a header: new column → desc, then desc → asc, then back to unsorted.
+  function toggleSort(key) {
+    setSort(prev => {
+      if (prev.key !== key) return { key, dir: 'desc' }
+      if (prev.dir === 'desc') return { key, dir: 'asc' }
+      return { key: null, dir: null }
+    })
+  }
 
   const { data, loading, error } = useCancellableFetch(
     (signal) => {
@@ -114,6 +141,21 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
   const closeRate = data.close_rate || 0
 
   const contacts = data.contacts || []
+  // Apply the Day One Breakdown column sort (empties always sink to the bottom).
+  const sortedContacts = (() => {
+    if (!sort.key || !DAY_ONE_SORT[sort.key]) return contacts
+    const get = DAY_ONE_SORT[sort.key]
+    const mul = sort.dir === 'asc' ? 1 : -1
+    return [...contacts].sort((a, b) => {
+      const av = get(a), bv = get(b)
+      const aEmpty = av === '' || av == null
+      const bEmpty = bv === '' || bv == null
+      if (aEmpty && bEmpty) return 0
+      if (aEmpty) return 1
+      if (bEmpty) return -1
+      return String(av).localeCompare(String(bv), undefined, { numeric: true }) * mul
+    })
+  })()
   const byStatus = data.by_status || {}
   const totalCompleted = byStatus['Completed'] || 0
   const totalSales = Object.values(data.by_trainer || {}).reduce((sum, t) => sum + (t.sales || 0), 0)
@@ -213,17 +255,28 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
           <table className="w-full text-sm min-w-[800px]">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Member Name</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Booking Team Member</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Date Scheduled</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Day One Date</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Trainer</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Status</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Sale</th>
+                {[
+                  { key: 'name', label: 'Member Name' },
+                  { key: 'booking_team_member', label: 'Booking Team Member' },
+                  { key: 'booking_date', label: 'Date Scheduled' },
+                  { key: 'day_one_date', label: 'Day One Date' },
+                  { key: 'trainer', label: 'Trainer' },
+                  { key: 'status', label: 'Status' },
+                  { key: 'sale', label: 'Sale' },
+                ].map(col => (
+                  <th
+                    key={col.key}
+                    onClick={() => toggleSort(col.key)}
+                    className={`text-left px-4 py-3 text-xs font-semibold uppercase cursor-pointer select-none hover:text-wcs-red transition-colors ${sort.key === col.key ? 'text-wcs-red' : 'text-text-muted'}`}
+                    title="Click to sort"
+                  >
+                    {col.label}<SortArrow active={sort.key === col.key} dir={sort.dir} />
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {contacts.map((c, i) => (
+              {sortedContacts.map((c, i) => (
                 <tr
                   key={i}
                   onClick={() => setDetailContact(c)}

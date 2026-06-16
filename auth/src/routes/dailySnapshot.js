@@ -16,6 +16,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { LOCATIONS, getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
 const { parseLocationSlugParam, intersectWithAllowed } = require('../utils/locationSlug')
+const { getSkipList } = require('../utils/membershipSkipList')
 
 const router = Router()
 router.use(authenticate)
@@ -344,6 +345,11 @@ async function computeMembershipSalesPanel(locations, dateStr, dayOneEventsForXr
   const { data, error } = await query.limit(2000)
   if (error) throw error
 
+  // Drop excluded membership types (Corporate Business, PT-only, etc.) so the
+  // snapshot's sale count matches the other reports.
+  const skipTypes = await getSkipList()
+  const realMembers = (data || []).filter(r => !skipTypes.has((r.membership_type || '').toLowerCase()))
+
   // Build a name index from same-day day-one events to flag "booked a Day One".
   const dayOneNames = new Set()
   for (const evt of dayOneEventsForXref || []) {
@@ -368,7 +374,7 @@ async function computeMembershipSalesPanel(locations, dateStr, dayOneEventsForXr
 
   const clubToLocation = new Map(LOCATIONS.map(l => [l.clubCode, l.name]))
 
-  const members = (data || []).map(row => ({
+  const members = realMembers.map(row => ({
     member_id: row.member_id,
     first_name: row.first_name,
     last_name: row.last_name,
