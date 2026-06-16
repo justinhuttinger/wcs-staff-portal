@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
-  getKioskInstalls, setKioskInstallTarget, deleteKioskInstall,
+  getKioskInstalls, updateKioskInstall, deleteKioskInstall,
   getKioskLinks, createKioskLink, getLocations,
 } from '../../lib/api'
 import { LOCATION_NAMES } from '../../config/locations'
@@ -93,7 +93,7 @@ export default function LauncherInstallsAdmin() {
     const d = draftFor(it)
     setSavingId(it.id); setError('')
     try {
-      const res = await setKioskInstallTarget(it.id, { target_location: d.location, target_abc_url: d.abc_url })
+      const res = await updateKioskInstall(it.id, { target_location: d.location, target_abc_url: d.abc_url })
       setInstalls(list => list.map(x => x.id === it.id ? res.install : x))
       setDrafts(dd => { const n = { ...dd }; delete n[it.id]; return n })
     } catch (err) { setError(err.message) } finally { setSavingId(null) }
@@ -102,13 +102,24 @@ export default function LauncherInstallsAdmin() {
   async function clearTarget(it) {
     setSavingId(it.id); setError('')
     try {
-      const res = await setKioskInstallTarget(it.id, { target_location: null })
+      const res = await updateKioskInstall(it.id, { target_location: null })
       setInstalls(list => list.map(x => x.id === it.id ? res.install : x))
     } catch (err) { setError(err.message) } finally { setSavingId(null) }
   }
 
+  // Save a nickname on blur if it changed. The nickname is the friendly label
+  // an admin gives a machine so it's easy to find.
+  async function saveNickname(it, value) {
+    const next = value.trim()
+    if (next === (it.nickname || '')) return
+    try {
+      const res = await updateKioskInstall(it.id, { nickname: next })
+      setInstalls(list => list.map(x => x.id === it.id ? res.install : x))
+    } catch (err) { setError(err.message) }
+  }
+
   async function removeInstall(it) {
-    if (!confirm(`Remove ${it.hostname || it.install_id} from the list? It reappears if the machine checks in again.`)) return
+    if (!confirm(`Remove ${it.nickname || it.hostname || it.install_id} from the list? It reappears if the machine checks in again.`)) return
     try {
       await deleteKioskInstall(it.id)
       setInstalls(list => list.filter(x => x.id !== it.id))
@@ -157,7 +168,7 @@ export default function LauncherInstallsAdmin() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
-                  <th className="py-2.5 px-4">Machine</th>
+                  <th className="py-2.5 px-4">Nickname / Host</th>
                   <th className="py-2.5 px-2">Current</th>
                   <th className="py-2.5 px-2">Set Location</th>
                   <th className="py-2.5 px-2">ABC URL</th>
@@ -173,8 +184,15 @@ export default function LauncherInstallsAdmin() {
                   return (
                     <tr key={it.id} className="border-b border-border/50 align-top">
                       <td className="py-2.5 px-4">
-                        <span className="font-medium text-text-primary">{it.hostname || '—'}</span>
-                        <span className="block text-[10px] text-text-muted font-mono">{it.install_id?.slice(0, 8)}</span>
+                        <input
+                          defaultValue={it.nickname || ''}
+                          onBlur={e => saveNickname(it, e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                          placeholder="Add a nickname…"
+                          className={inputCls + ' w-44 font-medium !py-1.5'}
+                          title="Friendly name for this machine — saves when you click away"
+                        />
+                        <span className="block text-[10px] text-text-muted font-mono mt-1">{it.hostname || '—'} · {it.install_id?.slice(0, 8)}</span>
                       </td>
                       <td className="py-2.5 px-2">
                         <span className="capitalize text-text-primary">{it.location || '—'}</span>
