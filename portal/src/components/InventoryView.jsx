@@ -32,6 +32,26 @@ function daysAgoStr(n) {
   return toLocalDateStr(d)
 }
 
+const QUICK_RANGES = [
+  { key: 'this_month', label: 'This Month' },
+  { key: 'last_month', label: 'Last Month' },
+  { key: 'last_30', label: 'Last 30 Days' },
+  { key: 'last_90', label: 'Last 90 Days' },
+  { key: 'ytd', label: 'YTD' },
+]
+function quickRange(key) {
+  const now = new Date()
+  const y = now.getFullYear(), m = now.getMonth()
+  switch (key) {
+    case 'this_month': return { from: toLocalDateStr(new Date(y, m, 1)), to: toLocalDateStr(now) }
+    case 'last_month': return { from: toLocalDateStr(new Date(y, m - 1, 1)), to: toLocalDateStr(new Date(y, m, 0)) }
+    case 'last_30': return { from: daysAgoStr(29), to: toLocalDateStr(now) }
+    case 'last_90': return { from: daysAgoStr(89), to: toLocalDateStr(now) }
+    case 'ytd': return { from: toLocalDateStr(new Date(y, 0, 1)), to: toLocalDateStr(now) }
+    default: return { from: daysAgoStr(30), to: toLocalDateStr(now) }
+  }
+}
+
 const MOVEMENT_LABELS = {
   sale: 'Sale', return: 'Return', received: 'Received', adjustment: 'Stock Added', count: 'Count',
 }
@@ -463,11 +483,8 @@ function SortHeader({ label, col, sort, onSort, align = 'right' }) {
 }
 
 export default function InventoryView({ onBack, location, isAdmin }) {
-  const defaultSlug = (location || '').toLowerCase()
-  const validDefault = LOCATION_OPTIONS.some(o => o.slug === defaultSlug) ? defaultSlug : 'all'
-
-  const [tab, setTab] = useState('items') // items | invoices | profit | audit (admin)
-  const [slug, setSlug] = useState(validDefault)
+  const [tab, setTab] = useState('items') // items | profit (Sales) | audit (admin)
+  const [slug, setSlug] = useState('all') // default to all clubs; dropdown can narrow
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
   const [categories, setCategories] = useState([])
@@ -622,6 +639,15 @@ export default function InventoryView({ onBack, location, isAdmin }) {
               <div>
                 <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">To</span>
                 <input type="date" value={to} onChange={e => setTo(e.target.value)} className={inputCls} />
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {QUICK_RANGES.map(q => (
+                  <button key={q.key}
+                    onClick={() => { const r = quickRange(q.key); setFrom(r.from); setTo(r.to) }}
+                    className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-border bg-bg text-text-muted hover:text-text-primary hover:border-text-muted transition-colors">
+                    {q.label}
+                  </button>
+                ))}
               </div>
             </>
           )}
