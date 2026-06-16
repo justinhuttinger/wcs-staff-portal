@@ -459,6 +459,27 @@ export async function getLocations() {
   return api('/config/locations')
 }
 
+// Launcher installs (kiosk registry) + one-time location deep links
+export async function getKioskInstalls() {
+  return api('/launcher/installs')
+}
+
+export async function setKioskInstallTarget(id, data) {
+  return api('/launcher/installs/' + id, { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+export async function deleteKioskInstall(id) {
+  return api('/launcher/installs/' + id, { method: 'DELETE' })
+}
+
+export async function getKioskLinks() {
+  return api('/launcher/links')
+}
+
+export async function createKioskLink(data) {
+  return api('/launcher/links', { method: 'POST', body: JSON.stringify(data) })
+}
+
 // Config - Role Visibility
 export async function getRoleVisibility() {
   return api('/config/role-visibility')

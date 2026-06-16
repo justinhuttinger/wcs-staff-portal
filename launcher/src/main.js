@@ -14,6 +14,22 @@ const { showOverlay, closeOverlay, onResize: onOverlayResize } = require('./over
 const { createTray } = require('./tray')
 const auth = require('./auth')
 const versionCheck = require('./version-check')
+const heartbeat = require('./heartbeat')
+const deepLink = require('./deep-link')
+
+// Register wcsportal:// so a clicked one-time link launches/focuses us with the
+// token. In dev (`electron .`) the script path must be passed through.
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(deepLink.SCHEME, process.execPath, [path.resolve(process.argv[1])])
+  }
+} else {
+  app.setAsDefaultProtocolClient(deepLink.SCHEME)
+}
+
+// macOS delivers deep links via open-url, which can fire before the window
+// exists — stash it until the portal tab is ready.
+let pendingDeepLink = null
 
 // First-launch location picker. Resolves with the saved config once
 // the user picks. If they close the window without picking, quits.
@@ -94,11 +110,56 @@ autoUpdater.on('update-downloaded', (info) => {
 })
 
 const gotLock = app.requestSingleInstanceLock()
-if (!gotLock) app.quit()
+if (!gotLock) {
+  app.quit()
+} else {
+  // A second launch (e.g. clicking a wcsportal:// link) routes its argv here.
+  app.on('second-instance', (event, argv) => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+    const link = deepLink.findDeepLink(argv)
+    if (link) deepLink.redeemAndApply(link, applyLocationConfig)
+  })
+}
+
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  if (tabManager) deepLink.redeemAndApply(url, applyLocationConfig)
+  else pendingDeepLink = url
+})
 
 const TAB_BAR_HEIGHT = 52
 let mainWindow = null
 let tabManager = null
+
+// Persist a new location/abc_url to config.json (preserving install_id and any
+// other fields) and reload the portal tab with the fresh params. Shared by the
+// admin kiosk-config IPC, the install heartbeat, and the deep-link redeemer.
+function applyLocationConfig({ location, abc_url } = {}) {
+  try {
+    const cfg = readConfig()
+    const next = { ...cfg }
+    if (location) next.location = location
+    if (abc_url) next.abc_url = abc_url
+    writeConfig(next)
+    log('[config] applied location=' + next.location)
+    const portalTab = tabManager && tabManager.tabs.get(1)
+    if (portalTab && !portalTab.view.webContents.isDestroyed()) {
+      const url = `${PORTAL_URL}?location=${next.location}` +
+        (next.abc_url ? `&abc_url=${encodeURIComponent(next.abc_url)}` : '') +
+        `&_t=${Date.now()}`
+      portalTab.view.webContents.loadURL(url)
+      log('[config] reloaded portal tab')
+    }
+    return { success: true }
+  } catch (err) {
+    log('[config] applyLocationConfig failed: ' + (err?.message || err))
+    return { success: false }
+  }
+}
 
 app.on('ready', async () => {
   // First-launch flow: prompt for location before showing the main
@@ -184,6 +245,20 @@ app.on('ready', async () => {
     closable: false,
     preload: path.join(__dirname, 'portal-preload.js'),
   })
+
+  // Install registry heartbeat — reports this machine and applies any target
+  // location an admin set from the Kiosk Installs panel.
+  heartbeat.setLogger(log)
+  deepLink.setLogger(log)
+  heartbeat.start(applyLocationConfig)
+
+  // Deep link that cold-started the app: Windows passes it in argv; macOS may
+  // have stashed it from an early open-url.
+  const coldLink = deepLink.findDeepLink(process.argv) || pendingDeepLink
+  if (coldLink) {
+    pendingDeepLink = null
+    deepLink.redeemAndApply(coldLink, applyLocationConfig)
+  }
 
   // Auth state bridge — portal notifies us when user logs in/out
   ipcMain.on('portal-auth-login', (e, token, userName) => {
@@ -374,31 +449,13 @@ app.on('ready', async () => {
     return null
   })
 
-  // Kiosk config IPC (admin only)
+  // Kiosk config IPC (admin only). applyLocationConfig merges into the existing
+  // config (preserving install_id) and reloads the portal tab with a _t cache-
+  // buster so navigation always fires even when params look unchanged.
   ipcMain.handle('get-kiosk-config', () => readConfig())
   ipcMain.handle('set-kiosk-config', (e, config) => {
-    writeConfig(config)
-    log('[admin-config] saved location=' + config.location)
-    // Reload the portal tab with the new params. The trailing _t
-    // cache-buster is critical: webContents.loadURL is a no-op when
-    // the URL matches the currently-loaded one, which can happen if
-    // an admin re-saves the same location, or if the URL params don't
-    // appear to change (e.g. abc_url unchanged). Bumping _t forces
-    // navigation every time so the renderer re-mounts with fresh
-    // location params.
-    const portalTab = tabManager.tabs.get(1)
-    if (portalTab) {
-      const newLocation = config.location || getLocation()
-      const newAbcUrl = config.abc_url || getAbcUrl()
-      const portalUrl = `${PORTAL_URL}?location=${newLocation}` +
-        (newAbcUrl ? `&abc_url=${encodeURIComponent(newAbcUrl)}` : '') +
-        `&_t=${Date.now()}`
-      portalTab.view.webContents.loadURL(portalUrl)
-      log('[admin-config] reloaded portal tab')
-    } else {
-      log('[admin-config] WARN: portal tab not found, cannot reload')
-    }
-    return { success: true }
+    log('[admin-config] saved location=' + (config && config.location))
+    return applyLocationConfig(config || {})
   })
 
   // Map URLs to tab names

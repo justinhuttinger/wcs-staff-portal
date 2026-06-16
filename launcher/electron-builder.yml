@@ -9,6 +9,13 @@ publish:
   owner: justinhuttinger
   repo: wcs-staff-portal
 
+# wcsportal:// one-time location deep links. electron-builder registers the
+# scheme in the Windows NSIS installer (registry) and the macOS Info.plist.
+protocols:
+  - name: WCS Portal
+    schemes:
+      - wcsportal
+
 # ---- Windows ----
 win:
   target: nsis
