@@ -51,6 +51,16 @@ function isContactDeleted(err) {
   return /contact not found/i.test(msg);
 }
 
+// GHL rejects malformed emails with ["email must be an email"], which then
+// errors on every reconcile cycle (e.g. a stray dot before the @, like
+// "name.@x.com"). This guards the create payload: an invalid address is dropped
+// so the contact is still created by phone/name instead of failing forever.
+// Stricter than HTML5 — the local part may not start or end with a dot.
+const EMAIL_RE = /^[^\s@.](?:[^\s@]*[^\s@.])?@[^\s@]+\.[^\s@]+$/;
+function isValidEmail(email) {
+  return EMAIL_RE.test((email || '').trim());
+}
+
 /**
  * Online ("web") sale detection. ABC records the channel an agreement was
  * entered through in agreement.agreementEntrySource — "Web" for members who
@@ -358,7 +368,25 @@ async function reconcileLocation(location, runId) {
       const phone = abc.primary_phone || abc.mobile_phone || null;
       const signDate = abc.sign_date || abc.since_date;
       const trimmedEmail = (abc.email || '').trim();
-      const ghlDuplicate = await ghlContactExists(locationId, trimmedEmail, phone, apiKey);
+      // Drop a malformed email so GHL doesn't reject the create every cycle.
+      const validEmail = isValidEmail(trimmedEmail) ? trimmedEmail : '';
+      if (trimmedEmail && !validEmail) {
+        console.warn(`[Reconcile] ${locationName}: invalid email for ${abc.first_name || ''} ${abc.last_name || ''} (${trimmedEmail}) — creating without it`);
+      }
+      // If the only contact method was that bad email, there's nothing to reach
+      // them by — skip rather than create a nameless/uncontactable record.
+      if (!validEmail && !phone) {
+        unmatched++;
+        logEntries.push({
+          run_id: runId, club_number: clubNumber, club_name: locationName, dry_run: DRY_RUN,
+          ghl_contact_id: null, ghl_contact_name: null, ghl_contact_email: null,
+          abc_member_id: abc.member_id, action: 'no_match',
+          detail: { abc_name: `${abc.first_name || ''} ${abc.last_name || ''}`.trim(), abc_email: abc.email, reason: 'no_reachable_contact_invalid_email' },
+          applied: false, error: null,
+        });
+        continue;
+      }
+      const ghlDuplicate = await ghlContactExists(locationId, validEmail, phone, apiKey);
       if (ghlDuplicate?.id) {
         // Treat the GHL-side duplicate as a match. Log it so we can see when
         // the Supabase cache lagged behind GHL, and skip the create.
@@ -409,7 +437,7 @@ async function reconcileLocation(location, runId) {
         locationId,
         firstName: abc.first_name || '',
         lastName: abc.last_name || '',
-        email: trimmedEmail || undefined,
+        email: validEmail || undefined,
         phone: phone || undefined,
         tags: isWebSale(abc) ? [ABC_TAGS.active, ABC_TAGS.onlineJoin] : [ABC_TAGS.active],
         customFields: Object.entries(newCustomFields).map(([id, value]) => ({ id, value })),
