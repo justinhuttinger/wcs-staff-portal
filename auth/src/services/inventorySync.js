@@ -86,9 +86,12 @@ async function runCatalogSync(slugs = ALL_SLUGS) {
       await setSyncState(clubNumber, 'catalog', { last_status: 'running', last_error: null })
       try {
         const count = await syncCatalogForClub(clubNumber)
-        results[slug] = { ok: true, items: count }
+        // Catalog just grew/changed — relink any sale lines that were orphaned
+        // because their item didn't exist when the sale was first synced.
+        const relinked = await reconcileUnmatchedForClub(clubNumber)
+        results[slug] = { ok: true, items: count, relinked }
         await setSyncState(clubNumber, 'catalog', { last_status: 'ok', last_synced_at: new Date().toISOString() })
-        console.log(`[InventorySync] catalog ${slug}: ${count} items`)
+        console.log(`[InventorySync] catalog ${slug}: ${count} items, ${relinked} sales relinked`)
       } catch (err) {
         results[slug] = { ok: false, error: err.message }
         await setSyncState(clubNumber, 'catalog', { last_status: 'error', last_error: err.message })
@@ -106,6 +109,47 @@ async function runCatalogSync(slugs = ALL_SLUGS) {
 // Cost snapshot for margin math: prefer the moving average, fall back to the
 // most recent invoice cost.
 const costOf = (item) => item ? (num(item.avg_unit_cost) ?? num(item.last_unit_cost)) : null
+
+// Re-link sale lines that were ingested before their catalog item existed.
+//
+// A line's item_id is decided at POS-sync time (by ABC sale-item id, then UPC)
+// and stored on the line; POS sync only ever touches *new* transactions, so the
+// catalog growing later never back-fills older orphaned lines — they'd read as
+// "(unmatched)" on the Sales report forever. After each catalog refresh we sweep
+// null-item_id lines for the club and relink any whose UPC now maps to a catalog
+// item, stamping the item's current cost so margins compute.
+//
+// Stock is intentionally NOT moved here: these past sales were never deducted
+// from on-hand, and on-hand reflects the latest physical count — retro-posting
+// movements now would wrongly drop it. This only fixes reporting linkage.
+async function reconcileUnmatchedForClub(clubNumber) {
+  const { data: catalog } = await supabaseAdmin
+    .from('inventory_items')
+    .select('id, upc, avg_unit_cost, last_unit_cost')
+    .eq('club_number', clubNumber)
+  const byUpc = new Map()
+  for (const it of catalog || []) if (it.upc) byUpc.set(it.upc, it)
+  if (byUpc.size === 0) return 0
+
+  const { data: orphans } = await supabaseAdmin
+    .from('inventory_transaction_items')
+    .select('id, upc, unit_cost_at_sale')
+    .eq('club_number', clubNumber)
+    .is('item_id', null)
+    .not('upc', 'is', null)
+
+  let relinked = 0
+  for (const line of orphans || []) {
+    const match = byUpc.get(line.upc)
+    if (!match) continue
+    const patch = { item_id: match.id }
+    if (line.unit_cost_at_sale == null) patch.unit_cost_at_sale = costOf(match)
+    const { error } = await supabaseAdmin
+      .from('inventory_transaction_items').update(patch).eq('id', line.id)
+    if (!error) relinked++
+  }
+  return relinked
+}
 
 async function syncPosForClub(clubNumber) {
   const { data: state } = await supabaseAdmin
