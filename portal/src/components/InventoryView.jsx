@@ -144,7 +144,7 @@ function AdjustModal({ item, onClose, onSaved }) {
 // Admin-only item editor. Price stays read-only (it comes from ABC); cost is
 // set here (or via received invoices) since ABC doesn't carry cost. UPC is
 // editable to fix unscannable items.
-function EditItemModal({ item, onClose, onSaved }) {
+function EditItemModal({ item, allClubs = false, onClose, onSaved }) {
   const [cost, setCost] = useState(item.unit_cost != null ? String(item.unit_cost) : '')
   const [upc, setUpc] = useState(item.upc || '')
   const [saving, setSaving] = useState(false)
@@ -158,7 +158,7 @@ function EditItemModal({ item, onClose, onSaved }) {
     }
     setSaving(true); setError('')
     try {
-      const res = await updateInventoryItem(item.id, { unit_cost: costVal, upc: upc.trim() })
+      const res = await updateInventoryItem(item.id, { unit_cost: costVal, upc: upc.trim(), apply_all_clubs: allClubs })
       onSaved(res.item)
       onClose()
     } catch (err) { setError(err.message) } finally { setSaving(false) }
@@ -167,6 +167,11 @@ function EditItemModal({ item, onClose, onSaved }) {
   return (
     <Modal title={`Edit — ${item.item_name}`} onClose={onClose}>
       <div className="space-y-3">
+        {allClubs && (
+          <p className="text-[11px] text-text-primary bg-wcs-red/5 border border-wcs-red/20 rounded-lg px-3 py-2">
+            Editing for <span className="font-semibold">all clubs</span> — the cost and UPC you save apply to every club that carries this product.
+          </p>
+        )}
         <div>
           <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Sale price (from ABC — read only)</span>
           <input value={fmtMoney(item.abc_unit_price)} disabled className={inputCls + ' opacity-60'} />
@@ -567,16 +572,58 @@ export default function InventoryView({ onBack, location, isAdmin }) {
     on_hand: i => Number(i.qty_on_hand),
   }
 
+  // On the All-clubs view we show one consolidated row per product (same UPC):
+  // on-hand and units-sold sum across clubs, price/cost are shared. Each row
+  // keeps its underlying per-club items in `_members` for edit/adjust actions.
+  // When a club is selected, every item is its own singleton row.
+  const itemRows = useMemo(() => {
+    const mk = (members) => {
+      const rep = members[0]
+      const price = Number(rep.abc_unit_price)
+      const cost = Number(rep.unit_cost)
+      const qty = members.reduce((s, m) => s + (Number(m.qty_on_hand) || 0), 0)
+      const sold = members.reduce((s, m) => s + (Number(m.sold_in_range) || 0), 0)
+      return {
+        id: rep.id,
+        item_name: rep.item_name,
+        upc: rep.upc,
+        category: rep.category,
+        location_slug: rep.location_slug,
+        abc_unit_price: rep.abc_unit_price,
+        unit_cost: rep.unit_cost,
+        margin_pct: Number.isFinite(price) && Number.isFinite(cost) && price > 0
+          ? +(((price - cost) / price) * 100).toFixed(1)
+          : (members.length === 1 ? rep.margin_pct : null),
+        qty_on_hand: qty,
+        sold_in_range: sold,
+        _members: members,
+        _consolidated: members.length > 1 || slug === 'all',
+        _clubCount: members.length,
+        _oversold: members.some(m => Number(m.qty_on_hand) < 0),
+      }
+    }
+    if (slug !== 'all') return items.map(i => mk([i]))
+    const byProduct = new Map()
+    for (const i of items) {
+      const key = i.upc ? `upc:${i.upc}` : `id:${i.id}`
+      if (!byProduct.has(key)) byProduct.set(key, [])
+      byProduct.get(key).push(i)
+    }
+    return [...byProduct.values()].map(mk)
+  }, [items, slug])
+
   // Oversold = sold more than we had on record (qty_on_hand < 0). Someone rang
   // up a sale ABC has, but stock says we didn't have it — a count/theft flag.
-  const oversoldCount = useMemo(() => items.filter(i => Number(i.qty_on_hand) < 0).length, [items])
+  // For a consolidated row, any club going negative flags the whole product so
+  // summing across clubs can't mask it.
+  const oversoldCount = useMemo(() => itemRows.filter(r => r._oversold).length, [itemRows])
 
   const filteredItems = useMemo(() => {
     const term = search.trim().toLowerCase()
-    let list = items.filter(i => {
-      if (oversoldOnly && !(Number(i.qty_on_hand) < 0)) return false
-      if (category && i.category !== category) return false
-      if (term && !((i.item_name || '').toLowerCase().includes(term) || (i.upc || '').includes(term))) return false
+    let list = itemRows.filter(r => {
+      if (oversoldOnly && !r._oversold) return false
+      if (category && r.category !== category) return false
+      if (term && !((r.item_name || '').toLowerCase().includes(term) || (r.upc || '').includes(term))) return false
       return true
     })
     if (sort && SORT_VALUE[sort.col]) {
@@ -592,7 +639,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
       })
     }
     return list
-  }, [items, search, category, sort, oversoldOnly])
+  }, [itemRows, search, category, sort, oversoldOnly])
 
   // Sales tab: same search box + clickable column sorting as the Items tab.
   const SALES_SORT_VALUE = {
@@ -604,8 +651,36 @@ export default function InventoryView({ onBack, location, isAdmin }) {
     margin: r => (r.margin_pct == null ? null : Number(r.margin_pct)),
   }
   const displaySummary = useMemo(() => {
+    // All-clubs view consolidates each product (same UPC) into one row: units,
+    // revenue and COGS sum across clubs; COGS is only "known" if every club's
+    // contribution had a cost. Matched-but-no-UPC and unmatched rows group on
+    // their own so nothing collapses incorrectly.
+    let base = summary
+    if (slug === 'all') {
+      const byProduct = new Map()
+      for (const r of summary) {
+        const key = r.upc ? `upc:${r.upc}` : (r.item_id ? `id:${r.item_id}` : `un:${r.name}`)
+        const e = byProduct.get(key) || {
+          item_id: r.item_id, name: r.name, upc: r.upc,
+          units: 0, revenue: 0, cogs: 0, cogsKnown: true,
+        }
+        e.units += Number(r.units) || 0
+        e.revenue += Number(r.revenue) || 0
+        if (r.cogs == null) { if ((Number(r.units) || 0) !== 0) e.cogsKnown = false }
+        else e.cogs += Number(r.cogs)
+        byProduct.set(key, e)
+      }
+      base = [...byProduct.values()].map(e => ({
+        item_id: e.item_id, name: e.name, upc: e.upc,
+        units: +e.units.toFixed(2),
+        revenue: +e.revenue.toFixed(2),
+        cogs: e.cogsKnown ? +e.cogs.toFixed(2) : null,
+        profit: e.cogsKnown ? +(e.revenue - e.cogs).toFixed(2) : null,
+        margin_pct: e.cogsKnown && e.revenue > 0 ? +(((e.revenue - e.cogs) / e.revenue) * 100).toFixed(1) : null,
+      }))
+    }
     const term = search.trim().toLowerCase()
-    let list = summary.filter(r =>
+    let list = base.filter(r =>
       !term || (r.name || '').toLowerCase().includes(term) || (r.upc || '').includes(term)
     )
     if (salesSort && SALES_SORT_VALUE[salesSort.col]) {
@@ -624,7 +699,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
       })
     }
     return list
-  }, [summary, search, salesSort])
+  }, [summary, search, salesSort, slug])
 
   const lastSync = useMemo(() => {
     const rows = syncStatus?.status || []
@@ -750,21 +825,24 @@ export default function InventoryView({ onBack, location, isAdmin }) {
                 <thead>
                   <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
                     <th className="py-2.5 px-4">Item</th>
-                    {slug === 'all' && <th className="py-2.5 px-2">Club</th>}
                     <th className="py-2.5 px-2">Category</th>
                     <th className="py-2.5 px-2">UPC</th>
                     <SortHeader label="Price" col="price" sort={sort} onSort={cycleSort} />
                     <SortHeader label="Cost" col="cost" sort={sort} onSort={cycleSort} />
                     <SortHeader label="Margin" col="margin" sort={sort} onSort={cycleSort} />
-                    <SortHeader label="On Hand" col="on_hand" sort={sort} onSort={cycleSort} />
+                    <SortHeader label={slug === 'all' ? 'On Hand (all)' : 'On Hand'} col="on_hand" sort={sort} onSort={cycleSort} />
                     <th className="py-2.5 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredItems.map(i => (
                     <tr key={i.id} className="border-b border-border/50 hover:bg-bg/40">
-                      <td className="py-2 px-4 font-medium text-text-primary">{i.item_name}</td>
-                      {slug === 'all' && <td className="py-2 px-2 capitalize text-text-muted">{i.location_slug}</td>}
+                      <td className="py-2 px-4 font-medium text-text-primary">
+                        {i.item_name}
+                        {i._consolidated && i._clubCount > 1 && (
+                          <span className="ml-2 text-[10px] font-semibold text-text-muted">· {i._clubCount} clubs</span>
+                        )}
+                      </td>
                       <td className="py-2 px-2 text-text-muted">{i.category || '—'}</td>
                       <td className="py-2 px-2 text-text-muted font-mono text-xs">{i.upc || '—'}</td>
                       <td className="py-2 px-2 text-right">{fmtMoney(i.abc_unit_price)}</td>
@@ -775,19 +853,23 @@ export default function InventoryView({ onBack, location, isAdmin }) {
                           : '—'}
                       </td>
                       <td className="py-2 px-2 text-right">
-                        {Number(i.qty_on_hand) < 0 ? (
+                        {i._oversold ? (
                           <span className="inline-flex items-center gap-1.5">
                             <span className="text-[9px] font-bold uppercase tracking-wide text-red-700 bg-red-50 border border-red-200 rounded-full px-1.5 py-0.5">Oversold</span>
-                            <span className="font-bold text-wcs-red">{fmtQty(i.qty_on_hand)}</span>
+                            <span className={`font-bold ${Number(i.qty_on_hand) < 0 ? 'text-wcs-red' : 'text-text-primary'}`}>{fmtQty(i.qty_on_hand)}</span>
                           </span>
                         ) : (
                           <span className={`font-bold ${Number(i.qty_on_hand) === 0 ? 'text-text-muted' : 'text-text-primary'}`}>{fmtQty(i.qty_on_hand)}</span>
                         )}
                       </td>
                       <td className="py-2 px-4 text-right whitespace-nowrap">
-                        <button onClick={() => setModal({ adjust: i })} className="text-xs font-semibold text-wcs-red hover:underline mr-3">Adjust</button>
-                        <button onClick={() => setModal({ history: i })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline">History</button>
-                        {isAdmin && <button onClick={() => setModal({ edit: i })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline ml-3">Edit</button>}
+                        {!i._consolidated && (
+                          <>
+                            <button onClick={() => setModal({ adjust: i._members[0] })} className="text-xs font-semibold text-wcs-red hover:underline mr-3">Adjust</button>
+                            <button onClick={() => setModal({ history: i._members[0] })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline">History</button>
+                          </>
+                        )}
+                        {isAdmin && <button onClick={() => setModal({ edit: i._members[0], allClubs: i._consolidated })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline ml-3">Edit</button>}
                       </td>
                     </tr>
                   ))}
@@ -812,7 +894,6 @@ export default function InventoryView({ onBack, location, isAdmin }) {
               <thead>
                 <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
                   <SortHeader label="Item" col="name" sort={salesSort} onSort={cycleSalesSort} align="left" />
-                  {slug === 'all' && <th className="py-2.5 px-2">Club</th>}
                   <SortHeader label="Units" col="units" sort={salesSort} onSort={cycleSalesSort} />
                   <SortHeader label="Revenue" col="revenue" sort={salesSort} onSort={cycleSalesSort} />
                   <SortHeader label="COGS" col="cogs" sort={salesSort} onSort={cycleSalesSort} />
@@ -827,7 +908,6 @@ export default function InventoryView({ onBack, location, isAdmin }) {
                       {r.name}
                       {!r.item_id && <span className="ml-2 text-[10px] font-bold uppercase text-text-muted">(unmatched)</span>}
                     </td>
-                    {slug === 'all' && <td className="py-2 px-2 capitalize text-text-muted">{r.location_slug}</td>}
                     <td className="py-2 px-2 text-right">{fmtQty(r.units)}</td>
                     <td className="py-2 px-2 text-right">{fmtMoney(r.revenue)}</td>
                     <td className="py-2 px-2 text-right">{r.cogs != null ? fmtMoney(r.cogs) : <span className="text-text-muted text-xs">no cost data</span>}</td>
@@ -949,9 +1029,13 @@ export default function InventoryView({ onBack, location, isAdmin }) {
       {modal?.edit && (
         <EditItemModal
           item={modal.edit}
+          allClubs={!!modal.allClubs}
           onClose={() => setModal(null)}
           onSaved={(updated) => {
-            onItemSaved(updated)
+            // An all-clubs edit touched sibling rows the response doesn't carry,
+            // so reload the catalog; otherwise just patch the one item in place.
+            if (modal.allClubs) loadItems()
+            else onItemSaved(updated)
             // Cost edits change audit results — refresh if we're on that tab.
             if (tab === 'audit') getInventoryAudit({ location_slug: slug === 'all' ? '' : slug }).then(setAudit).catch(() => {})
           }}
