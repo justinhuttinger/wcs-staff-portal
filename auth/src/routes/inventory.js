@@ -207,6 +207,10 @@ router.get('/items/:id/movements', async (req, res) => {
 // PATCH /items/:id — toggle tracking (manager+). Admins can also set the
 // item's unit cost directly (ABC has the price but not the cost — invoices
 // or this field are where cost comes from) and fix a missing/wrong UPC.
+//
+// apply_all_clubs=true (with a cost/UPC change) propagates that change to every
+// club's copy of the same product — matched by UPC — so a product that's the
+// same price everywhere only needs its cost set once from the All-clubs view.
 router.patch('/items/:id', async (req, res) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid item id' })
@@ -215,7 +219,8 @@ router.patch('/items/:id', async (req, res) => {
 
     if (typeof req.body.is_tracked === 'boolean') patch.is_tracked = req.body.is_tracked
 
-    if ('unit_cost' in req.body || 'upc' in req.body) {
+    const editsCostOrUpc = 'unit_cost' in req.body || 'upc' in req.body
+    if (editsCostOrUpc) {
       if (!isAdmin) return res.status(403).json({ error: 'Only admins can edit item cost or UPC' })
       if ('unit_cost' in req.body) {
         if (req.body.unit_cost === null || req.body.unit_cost === '') {
@@ -236,11 +241,28 @@ router.patch('/items/:id', async (req, res) => {
     }
 
     if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'Nothing to update' })
+
+    // Resolve which rows the cost/UPC change touches. apply_all_clubs fans the
+    // change out to every club's copy of this product (same UPC); is_tracked is
+    // never fanned out (it's per-club). Falls back to just this row if the item
+    // has no UPC to match siblings on.
+    let targetIds = [req.params.id]
+    if (req.body.apply_all_clubs === true && editsCostOrUpc) {
+      const { data: self } = await supabaseAdmin
+        .from('inventory_items').select('upc').eq('id', req.params.id).maybeSingle()
+      if (self?.upc) {
+        const { data: sibs } = await supabaseAdmin
+          .from('inventory_items').select('id').eq('upc', self.upc)
+        targetIds = [...new Set((sibs || []).map(s => s.id).concat(req.params.id))]
+      }
+    }
+
     const { data, error } = await supabaseAdmin
-      .from('inventory_items').update(patch).eq('id', req.params.id).select().maybeSingle()
+      .from('inventory_items').update(patch).in('id', targetIds).select()
     if (error) throw error
-    if (!data) return res.status(404).json({ error: 'Item not found' })
-    res.json({ item: decorateItem(data) })
+    if (!data || data.length === 0) return res.status(404).json({ error: 'Item not found' })
+    const self = data.find(r => r.id === req.params.id) || data[0]
+    res.json({ item: decorateItem(self), updated_count: data.length })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
