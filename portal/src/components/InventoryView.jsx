@@ -869,7 +869,9 @@ export default function InventoryView({ onBack, location, isAdmin }) {
                             <button onClick={() => setModal({ history: i._members[0] })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline">History</button>
                           </>
                         )}
-                        {isAdmin && <button onClick={() => setModal({ edit: i._members[0], allClubs: i._consolidated })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline ml-3">Edit</button>}
+                        {/* Cost is shared across clubs, so Edit only lives on the
+                            All-clubs view (where it applies everywhere). */}
+                        {isAdmin && i._consolidated && <button onClick={() => setModal({ edit: i._members[0], allClubs: true })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline ml-3">Edit</button>}
                       </td>
                     </tr>
                   ))}
