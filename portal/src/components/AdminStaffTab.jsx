@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { getStaff, createStaff, updateStaff, deleteStaff, getLocations } from '../lib/api'
+import { useState, useEffect, useMemo } from 'react'
+import { getStaff, createStaff, updateStaff, deleteStaff, setStaffActive, getLocations } from '../lib/api'
 import { LOCATION_NAMES } from '../config/locations'
 import { MARKETING_TYPES } from '../config/marketingTypes'
 import { PORTAL_TILE_CATALOG, CUSTOM_REPORT_CATALOG } from '../config/portalTiles'
@@ -107,13 +107,14 @@ function StaffModal({ member, locations, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface rounded-2xl border border-border w-full max-w-lg p-6">
-        <div className="flex items-center justify-between mb-5">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-surface rounded-2xl border border-border w-full max-w-lg max-h-[90vh] flex flex-col p-6">
+        <div className="flex items-center justify-between mb-5 shrink-0">
           <h3 className="text-lg font-bold text-text-primary">{isNew ? 'New Staff Member' : 'Edit Staff Member'}</h3>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary text-2xl leading-none">&times;</button>
         </div>
 
+        <div className="overflow-y-auto min-h-0 -mr-2 pr-2">
         {error && <p className="text-wcs-red text-sm mb-4">{error}</p>}
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -351,6 +352,7 @@ function StaffModal({ member, locations, onClose, onSaved }) {
             </button>
           </div>
         </form>
+        </div>
       </div>
     </div>
   )
@@ -362,6 +364,11 @@ export default function AdminStaffTab() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [modalMember, setModalMember] = useState(undefined) // undefined=closed, null=new, object=edit
+
+  // Filters. Defaults: every location + active employees only.
+  const [search, setSearch] = useState('')
+  const [locationFilter, setLocationFilter] = useState('all') // 'all' | location id
+  const [statusFilter, setStatusFilter] = useState('active')  // 'active' | 'inactive' | 'all'
 
   useEffect(() => { loadData() }, [])
 
@@ -390,6 +397,39 @@ export default function AdminStaffTab() {
     }
   }
 
+  async function handleToggleActive(member) {
+    const next = member.is_active === false // currently inactive → reactivating
+    const verb = next ? 'reactivate' : 'deactivate'
+    const name = [member.first_name, member.last_name].filter(Boolean).join(' ') || member.email
+    if (!window.confirm(
+      next
+        ? `Reactivate ${name}? They'll be able to sign in to the portal again.`
+        : `Deactivate ${name}? They'll be blocked from signing in. You can reactivate them later.`
+    )) return
+    setError(null)
+    try {
+      await setStaffActive(member.id, next)
+      await loadData()
+    } catch (e) {
+      setError(e.message || `Failed to ${verb} staff member`)
+    }
+  }
+
+  const filteredStaff = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    return staff.filter(m => {
+      const isActive = m.is_active !== false
+      if (statusFilter === 'active' && !isActive) return false
+      if (statusFilter === 'inactive' && isActive) return false
+      if (locationFilter !== 'all' && !(m.locations || []).some(l => l.id === locationFilter)) return false
+      if (term) {
+        const hay = [m.first_name, m.last_name, m.display_name, m.email].filter(Boolean).join(' ').toLowerCase()
+        if (!hay.includes(term)) return false
+      }
+      return true
+    })
+  }, [staff, search, locationFilter, statusFilter])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -406,7 +446,41 @@ export default function AdminStaffTab() {
         </div>
       )}
 
-      <div className="flex justify-end">
+      {/* Filters + add. Defaults to all locations + active employees. */}
+      <div className="flex items-end gap-3 flex-wrap">
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Search</label>
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Name or email..."
+            className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Location</label>
+          <select
+            value={locationFilter}
+            onChange={e => setLocationFilter(e.target.value)}
+            className="px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red"
+          >
+            <option value="all">All locations</option>
+            {locations.map(loc => <option key={loc.id} value={loc.id}>{loc.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Status</label>
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red"
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="all">All</option>
+          </select>
+        </div>
         <button
           onClick={() => setModalMember(null)}
           className="px-4 py-2 bg-wcs-red text-white text-sm font-medium rounded-lg hover:opacity-90 transition-opacity"
@@ -423,19 +497,22 @@ export default function AdminStaffTab() {
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">Email</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">Role</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">Locations</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted">Status</th>
               <th className="text-right px-4 py-3 text-xs font-semibold text-text-muted">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {staff.length === 0 && (
+            {filteredStaff.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-text-muted text-sm">
-                  No staff members found.
+                <td colSpan={6} className="px-4 py-8 text-center text-text-muted text-sm">
+                  {staff.length === 0 ? 'No staff members found.' : 'No staff match these filters.'}
                 </td>
               </tr>
             )}
-            {staff.map(member => (
-              <tr key={member.id} className="border-b border-border last:border-0 hover:bg-bg transition-colors">
+            {filteredStaff.map(member => {
+              const isActive = member.is_active !== false
+              return (
+              <tr key={member.id} className={`border-b border-border last:border-0 hover:bg-bg transition-colors ${isActive ? '' : 'opacity-60'}`}>
                 <td className="px-4 py-3 text-text-primary font-medium">
                   {[member.first_name, member.last_name].filter(Boolean).join(' ') || member.display_name || '—'}
                 </td>
@@ -457,6 +534,17 @@ export default function AdminStaffTab() {
                     ? member.locations.map(l => l.name).join(', ')
                     : '—'}
                 </td>
+                <td className="px-4 py-3">
+                  {isActive ? (
+                    <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded text-[10px] font-semibold text-emerald-700 uppercase tracking-wide">
+                      Active
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 bg-bg border border-border rounded text-[10px] font-semibold text-text-muted uppercase tracking-wide">
+                      Inactive
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-3">
                     <button
@@ -464,6 +552,12 @@ export default function AdminStaffTab() {
                       className="text-xs font-medium text-text-muted hover:text-text-primary transition-colors"
                     >
                       Edit
+                    </button>
+                    <button
+                      onClick={() => handleToggleActive(member)}
+                      className="text-xs font-medium text-text-muted hover:text-text-primary transition-colors"
+                    >
+                      {isActive ? 'Deactivate' : 'Reactivate'}
                     </button>
                     <button
                       onClick={() => handleDelete(member.id)}
@@ -474,7 +568,8 @@ export default function AdminStaffTab() {
                   </div>
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>
