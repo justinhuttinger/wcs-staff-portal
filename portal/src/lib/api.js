@@ -356,6 +356,13 @@ export async function deleteStaff(id) {
   return api('/admin/staff/' + id, { method: 'DELETE' })
 }
 
+export async function setStaffActive(id, isActive) {
+  return api('/admin/staff/' + id + '/active', {
+    method: 'PUT',
+    body: JSON.stringify({ is_active: isActive }),
+  })
+}
+
 // Admin - Bulk Import
 export async function downloadStaffTemplate() {
   const headers = {}

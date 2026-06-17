@@ -495,6 +495,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
   const [from, setFrom] = useState(daysAgoStr(30))
   const [to, setTo] = useState(toLocalDateStr(new Date()))
   const [sort, setSort] = useState(null) // { col, dir: 'desc' | 'asc' } | null
+  const [salesSort, setSalesSort] = useState(null) // Sales tab sort, same shape
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [modal, setModal] = useState(null) // { adjust } | { history } | { newInvoice } | { invoice }
@@ -550,6 +551,13 @@ export default function InventoryView({ onBack, location, isAdmin }) {
       return null
     })
   }
+  function cycleSalesSort(col) {
+    setSalesSort(s => {
+      if (!s || s.col !== col) return { col, dir: 'desc' }
+      if (s.dir === 'desc') return { col, dir: 'asc' }
+      return null
+    })
+  }
 
   const SORT_VALUE = {
     price: i => Number(i.abc_unit_price),
@@ -585,6 +593,38 @@ export default function InventoryView({ onBack, location, isAdmin }) {
     }
     return list
   }, [items, search, category, sort, oversoldOnly])
+
+  // Sales tab: same search box + clickable column sorting as the Items tab.
+  const SALES_SORT_VALUE = {
+    name: r => (r.name || '').toLowerCase(),
+    units: r => Number(r.units),
+    revenue: r => Number(r.revenue),
+    cogs: r => (r.cogs == null ? null : Number(r.cogs)),
+    profit: r => (r.profit == null ? null : Number(r.profit)),
+    margin: r => (r.margin_pct == null ? null : Number(r.margin_pct)),
+  }
+  const displaySummary = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    let list = summary.filter(r =>
+      !term || (r.name || '').toLowerCase().includes(term) || (r.upc || '').includes(term)
+    )
+    if (salesSort && SALES_SORT_VALUE[salesSort.col]) {
+      const get = SALES_SORT_VALUE[salesSort.col]
+      const dir = salesSort.dir === 'desc' ? -1 : 1
+      const isText = salesSort.col === 'name'
+      list = [...list].sort((a, b) => {
+        const av = get(a), bv = get(b)
+        if (isText) return String(av).localeCompare(String(bv)) * dir
+        const aBad = av == null || !Number.isFinite(av)
+        const bBad = bv == null || !Number.isFinite(bv)
+        if (aBad && bBad) return 0
+        if (aBad) return 1 // missing values sink to the bottom regardless of dir
+        if (bBad) return -1
+        return (av - bv) * dir
+      })
+    }
+    return list
+  }, [summary, search, salesSort])
 
   const lastSync = useMemo(() => {
     const rows = syncStatus?.status || []
@@ -651,7 +691,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
               </div>
             </>
           )}
-          {tab === 'items' && (
+          {(tab === 'items' || tab === 'profit') && (
             <div className="flex-1 min-w-[200px]">
               <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Search</span>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or UPC..." className={inputCls} />
@@ -765,21 +805,23 @@ export default function InventoryView({ onBack, location, isAdmin }) {
             <p className="text-sm text-text-muted p-6 text-center">Crunching numbers...</p>
           ) : summary.length === 0 ? (
             <p className="text-sm text-text-muted p-6 text-center">No sales in this range yet.</p>
+          ) : displaySummary.length === 0 ? (
+            <p className="text-sm text-text-muted p-6 text-center">No items match your search.</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
-                  <th className="py-2.5 px-4">Item</th>
+                  <SortHeader label="Item" col="name" sort={salesSort} onSort={cycleSalesSort} align="left" />
                   {slug === 'all' && <th className="py-2.5 px-2">Club</th>}
-                  <th className="py-2.5 px-2 text-right">Units</th>
-                  <th className="py-2.5 px-2 text-right">Revenue</th>
-                  <th className="py-2.5 px-2 text-right">COGS</th>
-                  <th className="py-2.5 px-2 text-right">Profit</th>
-                  <th className="py-2.5 px-4 text-right">Margin</th>
+                  <SortHeader label="Units" col="units" sort={salesSort} onSort={cycleSalesSort} />
+                  <SortHeader label="Revenue" col="revenue" sort={salesSort} onSort={cycleSalesSort} />
+                  <SortHeader label="COGS" col="cogs" sort={salesSort} onSort={cycleSalesSort} />
+                  <SortHeader label="Profit" col="profit" sort={salesSort} onSort={cycleSalesSort} />
+                  <SortHeader label="Margin" col="margin" sort={salesSort} onSort={cycleSalesSort} />
                 </tr>
               </thead>
               <tbody>
-                {summary.map((r, idx) => (
+                {displaySummary.map((r, idx) => (
                   <tr key={r.item_id || idx} className="border-b border-border/50 hover:bg-bg/40">
                     <td className="py-2 px-4 font-medium text-text-primary">
                       {r.name}

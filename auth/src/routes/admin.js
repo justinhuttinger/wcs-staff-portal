@@ -80,7 +80,7 @@ router.get('/staff', requireRole('manager'), async (req, res) => {
 
     const { data: staffList } = await supabaseAdmin
       .from('staff')
-      .select('id, email, display_name, first_name, last_name, role, must_change_password, created_at, marketing_addon, marketing_locations, marketing_types, custom_tiles, custom_reports')
+      .select('id, email, display_name, first_name, last_name, role, must_change_password, created_at, is_active, marketing_addon, marketing_locations, marketing_types, custom_tiles, custom_reports')
       .in('id', staffIds)
       .order('display_name')
 
@@ -256,6 +256,39 @@ router.put('/staff/:id', requireRole('admin'), async (req, res) => {
   } catch (err) {
     console.error('[admin/staff PUT] uncaught error', { staffId, err })
     res.status(500).json({ error: 'Failed to update staff: ' + (err.message || 'unknown error') })
+  }
+})
+
+// PUT /admin/staff/:id/active — director+. Deactivate/reactivate a login.
+// Deactivating flips the is_active flag AND bans the Supabase auth user so the
+// person cannot sign in; reactivating clears both. The record and its location
+// assignments are untouched (unlike DELETE), so it's fully reversible.
+router.put('/staff/:id/active', requireRole('admin'), async (req, res) => {
+  const staffId = req.params.id
+  const isActive = req.body.is_active === true
+
+  if (staffId === req.staff.id && !isActive) {
+    return res.status(400).json({ error: 'Cannot deactivate your own account' })
+  }
+
+  try {
+    // Ban (~100 years) to block login, or 'none' to lift the ban.
+    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(staffId, {
+      ban_duration: isActive ? 'none' : '876000h',
+    })
+    if (authError) return res.status(500).json({ error: 'Failed to update login: ' + authError.message })
+
+    const { error } = await supabaseAdmin.from('staff').update({ is_active: isActive }).eq('id', staffId)
+    if (error) {
+      // Roll the auth ban back so the flag and login can't drift apart.
+      await supabaseAdmin.auth.admin.updateUserById(staffId, { ban_duration: isActive ? '876000h' : 'none' }).catch(() => {})
+      return res.status(500).json({ error: 'Failed to update staff: ' + error.message })
+    }
+
+    res.json({ message: isActive ? 'Staff reactivated' : 'Staff deactivated' })
+  } catch (err) {
+    console.error('[admin/staff active] uncaught error', { staffId, err })
+    res.status(500).json({ error: 'Failed to update staff status: ' + (err.message || 'unknown error') })
   }
 })
 
