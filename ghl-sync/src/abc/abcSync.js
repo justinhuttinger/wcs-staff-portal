@@ -19,7 +19,7 @@ function stopAbcSync() {
 function isAbcSyncRunning() { return abcSyncRunning; }
 const { employeeSync } = require('./employeeSync');
 const { writeSyncLog } = require('../sync/syncLog');
-const { alertSyncFailed, alertSyncErrors } = require('../alerts');
+const { alertSyncFailed, alertSyncErrors, alertSyncRecovered } = require('../alerts');
 
 /**
  * Run the full ABC sync for all locations:
@@ -97,9 +97,15 @@ async function _runAbcSync() {
       totalFieldUpdates += reconcileResult.fieldUpdates || 0;
       totalSyncErrors += reconcileResult.errors || 0;
 
+      // Persist the actual GHL error details (message + which contact/stage)
+      // so a recurring failure is diagnosable from ghl_sync_log without diving
+      // into Render logs. Fall back to the bare count if details are absent.
+      const reconcileErrorRows = (reconcileResult.errorDetails && reconcileResult.errorDetails.length)
+        ? reconcileResult.errorDetails
+        : (reconcileResult.errors > 0 ? [{ ghl_errors: reconcileResult.errors }] : []);
       const errors = [
         ...upsertResult.errors,
-        ...(reconcileResult.errors > 0 ? [{ ghl_errors: reconcileResult.errors }] : []),
+        ...reconcileErrorRows,
       ];
 
       if (errors.length > 0) {
@@ -168,16 +174,41 @@ async function _runAbcSync() {
       unmatched: totalUnmatched,
       tag_changes: totalTagChanges,
       field_updates: totalFieldUpdates,
-      errors: totalSyncErrors,
+      errors: totalErrors,
       duration_s: parseFloat(duration),
     }, { onConflict: 'run_id' });
   } catch (err) {
     console.error('[ABC Sync] Failed to write run summary:', err.message);
   }
 
-  // Send alerts if there were errors
-  if (totalErrors > 0) {
-    await alertSyncErrors({ locationErrors, totalErrors });
+  // Alert only when the error STATE changes, not every cycle. A persistent
+  // error used to fire an SMS every 30 minutes; now we compare against the
+  // previous run and text once when errors appear and once when they clear,
+  // plus a single daily reminder while a problem lingers so it isn't forgotten.
+  try {
+    const { data: prev } = await supabase
+      .from('abc_sync_runs')
+      .select('errors')
+      .neq('run_id', runId)
+      .order('run_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const prevErrors = prev?.errors || 0;
+
+    // One reminder per day: only the first ABC cycle of the 17:00 UTC hour
+    // (~9am PST) — runs fire at :00 and :30, so the minute guard keeps it to one.
+    const nowUtc = new Date();
+    const dailyReminder = nowUtc.getUTCHours() === 17 && nowUtc.getUTCMinutes() < 30;
+
+    if (totalErrors > 0 && prevErrors === 0) {
+      await alertSyncErrors({ locationErrors, totalErrors });
+    } else if (totalErrors > 0 && dailyReminder) {
+      await alertSyncErrors({ locationErrors, totalErrors, reminder: true });
+    } else if (totalErrors === 0 && prevErrors > 0) {
+      await alertSyncRecovered();
+    }
+  } catch (err) {
+    console.error('[ABC Sync] Alert gating failed:', err.message);
   }
 
   return runId;
