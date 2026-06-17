@@ -100,6 +100,13 @@ app.use('/admin/exports', require('./routes/exports'))
 app.use('/admin/mastermind', require('./routes/mastermindStats'))
 app.use('/audit-log', require('./routes/auditLog'))
 
+// WCS University (voice roleplay training) — ships dark behind a flag until the
+// Retell agent + GHL custom fields are configured. See services/university/README.md.
+if (process.env.UNIVERSITY_ENABLED === 'true') {
+  app.use('/university', require('./routes/university'))
+  console.log('[university] routes mounted at /university')
+}
+
 // Global error handler — catch unhandled errors, don't leak stack traces
 app.use((err, req, res, next) => {
   console.error('[Server Error]', err.message, err.stack)

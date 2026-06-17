@@ -20,4 +20,10 @@ function getLocationByClubCode(clubCode) {
   return LOCATIONS.find(l => l.clubCode === norm) || null
 }
 
-module.exports = { LOCATIONS, getLocationBySlug, getLocationByClubCode }
+function getLocationById(locationId) {
+  const norm = String(locationId || '').trim()
+  if (!norm) return null
+  return LOCATIONS.find(l => l.id === norm) || null
+}
+
+module.exports = { LOCATIONS, getLocationBySlug, getLocationByClubCode, getLocationById }
