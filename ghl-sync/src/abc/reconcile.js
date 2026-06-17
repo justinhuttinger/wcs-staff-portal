@@ -231,6 +231,7 @@ async function reconcileLocation(location, runId) {
   let tagChanges = 0;
   let fieldUpdates = 0;
   let errors = 0;
+  const errorDetails = []; // { stage, name, member_id?, ghl_contact_id?, error } per real failure
   let staleContacts = 0; // cached contacts GHL 404'd on (deleted in GHL) — not alert-worthy
   const staleContactIds = new Set(); // self-heal: drop these from ghl_contacts_v2 after the run
 
@@ -449,6 +450,7 @@ async function reconcileLocation(location, runId) {
           } else {
             lastEntry.error = errMsg;
             errors++;
+            errorDetails.push({ stage: 'create_contact', name: abcName, member_id: abc.member_id, error: errMsg });
             console.error(`[Reconcile] Failed to create contact ${abcName}:`, lastEntry.error);
           }
         }
@@ -651,6 +653,7 @@ async function reconcileLocation(location, runId) {
           console.warn(`[Reconcile] stale (deleted-in-GHL) contact ${contactName} [${ghlContact.id}] — dropping from cache`);
         } else {
           errors++;
+          errorDetails.push({ stage: 'update_contact', name: contactName, ghl_contact_id: ghlContact.id, error: errMsg });
           console.error(`[Reconcile] Failed to update ${contactName}:`, errMsg);
         }
         for (const entry of logEntries) {
@@ -727,6 +730,7 @@ async function reconcileLocation(location, runId) {
       } catch (err) {
         console.error(`[Referral] unexpected error for new member ${cand.abcMember.member_id}: ${err.message}`);
         errors++;
+        errorDetails.push({ stage: 'referral', member_id: cand.abcMember.member_id, error: err.message });
       }
       await sleep(650);
     }
@@ -762,7 +766,7 @@ async function reconcileLocation(location, runId) {
     }
   }
 
-  const summary = { matched, unmatched, skipped, tagChanges, fieldUpdates, errors, staleContacts, total: abcMembers.length };
+  const summary = { matched, unmatched, skipped, tagChanges, fieldUpdates, errors, errorDetails, staleContacts, total: abcMembers.length };
   console.log(`[Reconcile] ${locationName}: ${JSON.stringify(summary)}`);
   return summary;
 }

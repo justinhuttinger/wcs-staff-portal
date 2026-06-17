@@ -97,9 +97,15 @@ async function _runAbcSync() {
       totalFieldUpdates += reconcileResult.fieldUpdates || 0;
       totalSyncErrors += reconcileResult.errors || 0;
 
+      // Persist the actual GHL error details (message + which contact/stage)
+      // so a recurring failure is diagnosable from ghl_sync_log without diving
+      // into Render logs. Fall back to the bare count if details are absent.
+      const reconcileErrorRows = (reconcileResult.errorDetails && reconcileResult.errorDetails.length)
+        ? reconcileResult.errorDetails
+        : (reconcileResult.errors > 0 ? [{ ghl_errors: reconcileResult.errors }] : []);
       const errors = [
         ...upsertResult.errors,
-        ...(reconcileResult.errors > 0 ? [{ ghl_errors: reconcileResult.errors }] : []),
+        ...reconcileErrorRows,
       ];
 
       if (errors.length > 0) {
