@@ -141,6 +141,19 @@ function resolveAgentId(scenarioKey, payloadAgentId) {
   return process.env.RETELL_DEFAULT_AGENT_ID || null
 }
 
+// For INBOUND calls: which agent to override to, WITHOUT the default fallback.
+// Returns the scenario/gendered agent if configured, else null. Null means
+// "don't override" — the call then uses whatever agent the dialed number is
+// bound to in Retell. So you can route voices either by env (set RETELL_AGENT_*)
+// OR simply by binding each number to the right-voice agent in Retell (no env).
+function resolveOverrideAgent(scenarioKey) {
+  const sc = getScenario(scenarioKey)
+  if (sc.agentEnv && process.env[sc.agentEnv]) return process.env[sc.agentEnv]
+  if (sc.gender === 'male' && process.env.RETELL_AGENT_MALE) return process.env.RETELL_AGENT_MALE
+  if (sc.gender === 'female' && process.env.RETELL_AGENT_FEMALE) return process.env.RETELL_AGENT_FEMALE
+  return null
+}
+
 // Resolve the Retell voice_id for a scenario so the lead's voice matches the
 // persona (instead of the agent's single hardcoded voice). Priority:
 //   1. UNIVERSITY_VOICE_MAP JSON — { "<scenario>": "<voice_id>" }
@@ -191,6 +204,7 @@ module.exports = {
   pickLeadName,
   pickObjection,
   resolveAgentId,
+  resolveOverrideAgent,
   resolveVoiceId,
   buildDynamicVariables,
 }

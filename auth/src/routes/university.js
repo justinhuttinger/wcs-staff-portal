@@ -17,7 +17,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 
 const { createPhoneCall, verifyWebhookSecret } = require('../services/university/retell')
-const { resolveAgentId, buildDynamicVariables } = require('../services/university/scenarios')
+const { resolveAgentId, resolveOverrideAgent, buildDynamicVariables } = require('../services/university/scenarios')
 const { processCompletedCall } = require('../services/university')
 const { recordCurriculumMilestone } = require('../services/university/milestones')
 const { getMilestoneConfig, clearCache } = require('../services/university/config')
@@ -384,11 +384,12 @@ router.post('/retell/inbound', async (req, res) => {
       sessionId: session?.id || null,
     })
 
-    // Route to the right agent for this persona (gendered agents carry their own
-    // voice — RETELL_AGENT_MALE / RETELL_AGENT_FEMALE). Retell does not honor
-    // agent_override.voice_id alongside override_agent_id, so we switch the whole
-    // agent rather than overriding the voice.
-    const overrideAgentId = resolveAgentId(a.scenario, null)
+    // Route to the right agent for this persona ONLY when explicitly configured
+    // (RETELL_AGENT_MALE/FEMALE or a scenario agent). No env set → no override,
+    // so the dialed number's bound agent (and its voice) is used as-is. Retell
+    // does not honor agent_override.voice_id alongside override_agent_id, so
+    // per-persona voice comes from switching/binding the whole agent.
+    const overrideAgentId = resolveOverrideAgent(a.scenario)
 
     const payload = { call_inbound: { dynamic_variables, metadata: { session_id: session?.id || null } } }
     if (overrideAgentId) payload.call_inbound.override_agent_id = overrideAgentId
