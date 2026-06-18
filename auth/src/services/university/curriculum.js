@@ -126,19 +126,12 @@ async function reconcileProgress(email, name) {
   }
 }
 
-// Trainee clicked Next on a non-graded step.
-async function advanceManual(email, name, stepKey) {
-  const cfg = await getCurriculum()
-  const steps = cfg.steps || []
-  const model = await reconcileProgress(email, name)
-  const step = steps.find(s => s.key === model.currentKey)
-  if (!step || step.key !== stepKey) return model               // not the current step
-  if (!['explore', 'info', 'action_webhook'].includes(step.type)) return model // graded/graduation: no manual
-
+// Mark a step complete + award its points (shared by manual + event paths).
+async function completeStep(email, name, step) {
   const row = await getProgressRow(email)
   const completed = Array.isArray(row.completed_steps) ? [...row.completed_steps] : []
-  if (completed.some(c => c.key === stepKey)) return reconcileProgress(email, name)
-  completed.push({ key: stepKey, at: new Date().toISOString(), points: step.points || 0 })
+  if (completed.some(c => c.key === step.key)) return reconcileProgress(email, name)
+  completed.push({ key: step.key, at: new Date().toISOString(), points: step.points || 0 })
   await supabaseAdmin.from('trainee_progress').upsert({
     trainee_id: email, trainee_name: name || row.trainee_name || null,
     completed_steps: completed, points: (row.points || 0) + (step.points || 0),
@@ -147,8 +140,22 @@ async function advanceManual(email, name, stepKey) {
   return reconcileProgress(email, name)
 }
 
+// Trainee clicked Next. Only explore/info steps can be advanced this way.
+// action_webhook steps are gated to the webhook event (no manual bypass), and
+// graded_call / graduation advance automatically.
+async function advanceManual(email, name, stepKey) {
+  const cfg = await getCurriculum()
+  const steps = cfg.steps || []
+  const model = await reconcileProgress(email, name)
+  const step = steps.find(s => s.key === model.currentKey)
+  if (!step || step.key !== stepKey) return model
+  if (!['explore', 'info'].includes(step.type)) return model    // webhook/graded/graduation: not manual
+  return completeStep(email, name, step)
+}
+
 // GHL automation event (e.g. appointment booked) → complete the matching
-// action_webhook step if the trainee is currently on it.
+// action_webhook step if the trainee is currently on it. This is the ONLY way
+// an action_webhook step completes — there is no manual bypass.
 async function completeEvent(email, name, eventKey) {
   const cfg = await getCurriculum()
   const steps = cfg.steps || []
@@ -157,7 +164,7 @@ async function completeEvent(email, name, eventKey) {
   if (!step || step.type !== 'action_webhook' || step.event_key !== eventKey) {
     return { ok: true, applied: false }
   }
-  await advanceManual(email, name, step.key)
+  await completeStep(email, name, step)
   return { ok: true, applied: true, step: step.key }
 }
 

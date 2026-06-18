@@ -60,14 +60,19 @@ function renderStepAction(step, course) {
   if (step.type === 'graduation') {
     return `<div class="action"><div class="grad-note">Keep practicing any time — every call is still scored and saved.</div></div>`
   }
-  // explore / info / action_webhook -> manual Next
-  const label = step.type === 'action_webhook' ? 'Mark done &amp; continue' : 'Done — Next'
-  const note = step.type === 'action_webhook'
-    ? `<div class="encourage muted">We will detect this automatically and award points. No detection yet? Use the button.</div>` : ''
+  if (step.type === 'action_webhook') {
+    // Webhook-gated: no manual bypass. Completes only when the GHL automation
+    // fires. The button just re-checks (reloads to re-run reconcile).
+    return `
+      <div class="action">
+        <div class="encourage muted">Do this in GoHighLevel. We detect it automatically and award your points — this step unlocks on its own once it's done.</div>
+        <button class="btn btn-ghost" onclick="location.reload()">I did it — check now</button>
+      </div>`
+  }
+  // explore / info -> manual Next
   return `
     <div class="action">
-      ${note}
-      <button class="btn btn-red" onclick="advance('${esc(step.key)}', this)">${label}</button>
+      <button class="btn btn-red" onclick="advance('${esc(step.key)}', this)">Done — Next</button>
     </div>`
 }
 
