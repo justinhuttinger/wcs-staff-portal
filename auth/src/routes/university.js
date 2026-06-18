@@ -20,6 +20,17 @@ const { resolveAgentId, buildDynamicVariables } = require('../services/universit
 const { processCompletedCall } = require('../services/university')
 const { recordCurriculumMilestone } = require('../services/university/milestones')
 const { getMilestoneConfig, clearCache } = require('../services/university/config')
+const { pickAssignment } = require('../services/university/assign')
+
+// Normalize a phone to E.164-ish for use as a stable trainee_id in the inbound
+// model (trainee identified by the number they dial from).
+function normalizePhone(p) {
+  const d = String(p || '').replace(/\D+/g, '')
+  if (!d) return null
+  if (d.length === 10) return `+1${d}`
+  if (d.length === 11 && d[0] === '1') return `+${d}`
+  return `+${d}`
+}
 
 const router = Router()
 
@@ -130,7 +141,8 @@ router.post('/retell/webhook', async (req, res) => {
     const eventType = body.event || body.event_type || ''
     const callId = call.call_id || call.callId || body.call_id || null
     const dynVars = call.retell_llm_dynamic_variables || call.dynamic_variables || {}
-    const sessionId = dynVars.session_id || null
+    // session_id rides in dynamic vars (outbound) and/or metadata (inbound).
+    const sessionId = dynVars.session_id || call.metadata?.session_id || null
     const transcript = call.transcript || call.transcript_text || body.transcript || null
     const recordingUrl = call.recording_url || call.recordingUrl || body.recording_url || null
     const analysis = call.call_analysis || call.analysis || null
@@ -172,6 +184,73 @@ router.post('/retell/webhook', async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
+// POST /university/retell/inbound  (machine — Retell inbound-call webhook)
+// Fires when a trainee DIALS the Retell number (e.g. hits "Dial" on a GHL
+// contact whose phone is that number). Retell calls us before connecting; we
+// pick a persona, mint a session, and return dynamic variables so the agent
+// opens in character. The session_id rides in dynamic_variables + metadata, so
+// the post-call webhook grades it like any other call.
+//
+// Request:  { event: "call_inbound", call_inbound: { from_number, to_number, agent_id } }
+// Response: { call_inbound: { dynamic_variables, metadata, override_agent_id? } }
+// ---------------------------------------------------------------------------
+router.post('/retell/inbound', async (req, res) => {
+  if (!verifyWebhookSecret(req)) return res.status(401).json({ error: 'Invalid retell secret' })
+
+  try {
+    const inbound = req.body?.call_inbound || req.body || {}
+    const fromNumber = inbound.from_number || null
+    const toNumber = inbound.to_number || null
+
+    // Trainee identified by the number they dial from (mapped to staff later).
+    const traineeId = normalizePhone(fromNumber) || `inbound:${toNumber || 'unknown'}`
+
+    // Pick the persona: a number mapped in UNIVERSITY_NUMBER_MAP wins, else random.
+    const a = await pickAssignment({ toNumber })
+
+    // Mint the session up front so the transcript can be matched + graded.
+    const { data: session, error: insErr } = await supabaseAdmin
+      .from('roleplay_sessions')
+      .insert({
+        trainee_id: traineeId,
+        trainee_phone: normalizePhone(fromNumber),
+        scenario: a.scenario,
+        difficulty: a.difficulty,
+        call_type: a.call_type,
+        lead_source: a.lead_source,
+        retell_agent_id: inbound.agent_id || null,
+        status: 'initiated',
+      })
+      .select()
+      .single()
+    if (insErr) {
+      // Don't block the call on our DB — let it connect with vars but no session.
+      console.error('[university] inbound session insert failed:', insErr.message)
+    }
+
+    const dynamic_variables = buildDynamicVariables({
+      scenario: a.scenario,
+      difficulty: a.difficulty,
+      callType: a.call_type,
+      leadSource: a.lead_source,
+      traineeName: null,
+      sessionId: session?.id || null,
+    })
+
+    // Optional per-scenario agent override (RETELL_AGENT_* / RETELL_DEFAULT_AGENT_ID).
+    const overrideAgentId = resolveAgentId(a.scenario, null)
+
+    const payload = { call_inbound: { dynamic_variables, metadata: { session_id: session?.id || null } } }
+    if (overrideAgentId) payload.call_inbound.override_agent_id = overrideAgentId
+
+    res.json(payload)
+  } catch (err) {
+    console.error('[university] inbound webhook error:', err.message)
+    // Still let the call connect (no personalization) rather than dropping it.
+    res.json({ call_inbound: {} })
+  }
+})
+
 // POST /university/curriculum  (machine — GHL workflow for module/event done)
 // Body: { trainee_id, milestone_key, contact_id?, location_id? }
 // Records an event-driven curriculum milestone (spec §9.7).

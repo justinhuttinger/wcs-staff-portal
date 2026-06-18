@@ -80,6 +80,34 @@ dimension (objection_handling for cold_lead, overcame_resistance for winback, �
 `{{difficulty}}`, `{{primary_objection}}`. The rep's goal is **not** sent — it's
 grader-only, so the lead can't play along.
 
+## Two ways to place a call
+
+**Outbound** — a GHL *workflow* (or curl) POSTs to `/calls/start` with a specific
+contact's persona. We dial the trainee; the AI plays exactly that persona. Use
+this when the persona must match the contact (see `GHL_SETUP.md`).
+
+**Inbound ("just dial")** — the rep hits **Dial** on a GHL contact whose phone is
+a Retell number. Retell calls our `/retell/inbound` webhook *before connecting*;
+we mint a session, pick a persona, and return the dynamic variables so the agent
+opens in character. The post-call webhook then grades it (session_id rides in
+both `dynamic_variables` and `metadata`). This is the most realistic rep
+experience — open the contact, hit Dial, talk to a prospect.
+
+> With **one shared number**, the native Dial button can't tell us *which*
+> contact you clicked, so the server picks the persona (`UNIVERSITY_INBOUND_MODE=random`).
+> To make a specific contact always reach a specific persona, give it its own
+> Retell number and map it in `UNIVERSITY_NUMBER_MAP`:
+> ```json
+> {"+15035551234": {"call_type":"cold_lead","scenario":"price_sensitive_snapchat","difficulty":"hard","lead_source":"instagram"}}
+> ```
+> Unmapped numbers fall back to random. One agent serves every number.
+
+### Inbound setup (Retell + GHL)
+1. In Retell, on the **phone number**, set the **inbound webhook URL** to
+   `https://wcs-auth-api.onrender.com/university/retell/inbound?secret=<RETELL_WEBHOOK_SECRET>`.
+2. In GHL, set the practice contact's **Phone** field to that Retell number.
+3. Open the contact → hit **Dial**. You reach the AI lead; hang up and it grades.
+
 ## Environment variables
 
 | Var | Purpose |
@@ -95,6 +123,8 @@ grader-only, so the lead can't play along.
 | `RETELL_AGENT_*` | Per-scenario agent ids (e.g. `RETELL_AGENT_PRICE_SENSITIVE`). See `scenarios.js`. |
 | `UNIVERSITY_GRADER_MODEL` | Grader model. Default `claude-opus-4-8`. |
 | `MASTERMIND_ANTHROPIC_API_KEY` / `ANTHROPIC_API_KEY` | Anthropic key for grading (same resolution as the mastermind module). |
+| `UNIVERSITY_INBOUND_MODE` | Inbound persona selection. `random` (default) assigns a random call_type + persona per dial. |
+| `UNIVERSITY_NUMBER_MAP` | (Optional) JSON map of Retell number → fixed persona, for the "number per persona" model. See below. |
 
 GHL location API keys reuse the existing `GHL_LOCATION_*` / `GHL_API_KEY_*` env
 (see `config/ghlLocations.js`).
