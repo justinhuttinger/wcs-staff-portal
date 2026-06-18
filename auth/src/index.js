@@ -103,6 +103,9 @@ app.use('/audit-log', require('./routes/auditLog'))
 // WCS University (voice roleplay training) — ships dark behind a flag until the
 // Retell agent + GHL custom fields are configured. See services/university/README.md.
 if (process.env.UNIVERSITY_ENABLED === 'true') {
+  // Trainee web app (server-rendered, param-auth) — mount BEFORE the API router
+  // so its JWT `authenticate` middleware doesn't intercept the public /app page.
+  app.use('/university', require('./routes/university-app'))
   app.use('/university', require('./routes/university'))
   console.log('[university] routes mounted at /university')
 }

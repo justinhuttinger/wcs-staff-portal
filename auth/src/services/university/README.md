@@ -225,6 +225,26 @@ cross-cutting `objection_handling` (all default `pass_threshold` 80) and the
 (admin) or directly in Supabase — thresholds and the required set are tunable
 without a code change.
 
+## Trainee web app (GHL custom menu link)
+
+A server-rendered, trainee-facing page at **`GET /university/app`** (route
+`university-app.js`, renderer `app-page.js`). Embed it in GHL as a **Custom Menu
+Link** that passes the logged-in user's context as params:
+
+```
+https://wcs-auth-api.onrender.com/university/app?phone={{user.phone}}&name={{user.first_name}}&email={{user.email}}
+```
+
+GHL substitutes the `{{user.*}}` tokens at click time. The page matches the
+trainee by **phone** (sessions are keyed by the caller's number) and shows three
+tabs: **My Progress** (milestones + graduation %), **My Calls** (each call's
+score, transcript, and coaching), and **Training** (walkthrough + the WCS sales
+process). It's framable (`frame-ancestors *`) and needs no build step.
+
+> Identity is via URL params today — spoofable, fine for internal training. The
+> hardening path is GHL **SSO** (`window.getToken()` + server-side validation).
+> Manager (all-trainees) view is a fast-follow.
+
 ## Flow
 
 ```
