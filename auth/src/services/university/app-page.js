@@ -83,45 +83,38 @@ function renderCourse(model) {
 
   const total = steps.length
   const done = steps.filter(s => s.status === 'done').length
-  const pct = Math.round((done / total) * 100)
+  // The one slide in view: the current step, or the last step once graduated.
+  let idx = steps.findIndex(s => s.status === 'current')
+  if (idx < 0) idx = steps.length - 1
+  const step = steps[idx]
+  const n = idx + 1
+  const pad = String(n).padStart(2, '0')
 
-  const rows = steps.map((s, i) => {
-    const n = i + 1
-    const isCurrent = s.status === 'current'
-    const isDone = s.status === 'done'
-    return `
-      <div class="step ${s.status}">
-        <div class="step-rail">
-          <div class="dot">${isDone ? '✓' : (isCurrent ? n : '<span class="lock">🔒</span>')}</div>
-          ${i < steps.length - 1 ? '<div class="line"></div>' : ''}
-        </div>
-        <div class="step-body">
-          <div class="step-head">
-            <span class="eyebrow">Step ${n}${s.points ? ` · ${s.points} pts` : ''}</span>
-            <h3>${esc(s.title)}</h3>
-          </div>
-          ${isCurrent ? `<div class="step-copy">${richBody(s.body)}</div>${renderStepAction(s, c)}
-            <div class="reminder">↩ Come back to the University after each step to keep going.</div>` : ''}
-          ${isDone && s.next_hint ? `<div class="hint">${esc(s.next_hint)}</div>` : ''}
-        </div>
-      </div>`
-  }).join('')
+  // Horizontal progress: one segment per step (done filled, current highlighted).
+  const segs = steps.map((s, i) =>
+    `<span class="seg ${s.status === 'done' || (c.graduated) ? 'fill' : ''} ${i === idx && !c.graduated ? 'cur' : ''}"></span>`
+  ).join('')
 
   return `
-    <div class="card course-top">
-      <div class="course-top-row">
-        <div>
-          <div class="course-pct">${pct}%</div>
-          <div class="muted small">${done} of ${total} steps</div>
-        </div>
-        <div class="course-meta">
-          <div class="pts"><span class="pts-num">${c.points || 0}</span><span class="pts-lbl">points</span></div>
-          ${c.graduated ? '<div class="badge badge-grad">★ Graduated</div>' : ''}
+    <div class="deck">
+      <div class="deck-top">
+        <div class="counter">Step <b>${n}</b> of ${total}</div>
+        <div class="deck-meta">
+          <span class="pts-pill">${c.points || 0} pts</span>
+          ${c.graduated ? '<span class="badge badge-grad">★ Graduated</span>' : ''}
         </div>
       </div>
-      <div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>
-    </div>
-    <div class="steps">${rows}</div>`
+      <div class="segs">${segs}</div>
+
+      <div class="slide">
+        <div class="slide-num">${pad}</div>
+        <span class="eyebrow">${c.graduated ? 'Complete' : 'Current step'}${step.points ? ` · ${step.points} pts` : ''}</span>
+        <h2 class="slide-title">${esc(step.title)}</h2>
+        <div class="slide-body">${richBody(step.body)}</div>
+        ${renderStepAction(step, c)}
+        ${!c.graduated ? '<div class="reminder">↩ Come back to the University after each step to keep going.</div>' : ''}
+      </div>
+    </div>`
 }
 
 function renderCalls(model) {
@@ -194,34 +187,29 @@ function renderAppPage(model) {
   .eyebrow{font-size:10px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:var(--red);}
   h3{font-family:var(--display);font-size:1.4rem;font-weight:400;letter-spacing:.02em;text-transform:uppercase;line-height:1.05;margin-top:2px;}
   .muted{color:var(--muted);} .small{font-size:12px;}
-  .course-top-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
-  .course-pct{font-family:var(--display);font-size:2.6rem;line-height:.9;}
-  .course-meta{display:flex;align-items:center;gap:12px;}
-  .pts{text-align:center;background:var(--red-soft);border-radius:4px;padding:6px 12px;}
-  .pts-num{font-family:var(--display);font-size:1.5rem;color:var(--red-dark);display:block;line-height:1;}
-  .pts-lbl{font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--red-dark);}
   .badge{font-size:11px;font-weight:800;letter-spacing:.08em;padding:7px 11px;border-radius:999px;text-transform:uppercase;}
   .badge-grad{background:#dcfce7;color:#166534;}
-  .bar{height:8px;background:#e4e4e7;border-radius:999px;overflow:hidden;}
-  .bar-fill{height:100%;background:var(--red);}
-  .steps{position:relative;}
-  .step{display:flex;gap:14px;}
-  .step-rail{display:flex;flex-direction:column;align-items:center;flex:0 0 auto;}
-  .dot{width:34px;height:34px;border-radius:999px;display:flex;align-items:center;justify-content:center;
-    font-family:var(--display);font-size:1.1rem;background:#e4e4e7;color:var(--soft);border:2px solid #e4e4e7;}
-  .step.done .dot{background:var(--success);border-color:var(--success);color:#fff;}
-  .step.current .dot{background:var(--red);border-color:var(--red);color:#fff;}
-  .line{width:2px;flex:1;background:#e4e4e7;min-height:14px;margin:4px 0;}
-  .step.done .line{background:var(--success);}
-  .step-body{flex:1;padding-bottom:18px;}
-  .step.locked .step-head h3,.step.locked .eyebrow{opacity:.45;}
-  .step-head h3{color:var(--ink);}
-  .step.current .step-body{background:#fff;border:1px solid var(--border);border-left:3px solid var(--red);
-    border-radius:4px;padding:14px;box-shadow:0 2px 8px rgba(10,10,12,.07);}
-  .step-copy{margin:8px 0 12px;font-size:14px;}
-  .step-copy b{font-weight:700;}
-  .hint{font-size:12px;color:var(--success);font-weight:600;margin-top:4px;}
-  .action{margin-top:6px;}
+  /* ---- slide deck (one step in focus, horizontal progress) ---- */
+  .deck-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .counter{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+  .counter b{font-family:var(--display);font-size:1.2rem;color:var(--ink);vertical-align:-2px;}
+  .deck-meta{display:flex;align-items:center;gap:8px;}
+  .pts-pill{background:var(--red-soft);color:var(--red-dark);font-size:11px;font-weight:800;letter-spacing:.06em;
+    padding:6px 10px;border-radius:999px;text-transform:uppercase;}
+  .segs{display:flex;gap:5px;margin-bottom:16px;}
+  .seg{flex:1;height:6px;border-radius:999px;background:#e1e1e4;transition:background .3s;}
+  .seg.fill{background:var(--success);}
+  .seg.cur{background:var(--red);}
+  .slide{background:#fff;border:1px solid var(--border);border-top:4px solid var(--red);border-radius:6px;
+    padding:30px 26px 26px;box-shadow:0 18px 40px -20px rgba(10,10,12,.4),0 2px 6px rgba(10,10,12,.08);
+    min-height:60vh;display:flex;flex-direction:column;position:relative;}
+  .slide-num{position:absolute;top:18px;right:22px;font-family:var(--display);font-size:3.4rem;
+    line-height:1;color:#f0f0ee;}
+  .slide-title{font-family:var(--display);font-size:clamp(2rem,7vw,3rem);font-weight:400;letter-spacing:.01em;
+    text-transform:uppercase;line-height:.98;margin:6px 0 16px;max-width:90%;}
+  .slide-body{font-size:16px;line-height:1.65;color:#2a2a30;flex:1;}
+  .slide-body b{font-weight:700;}
+  .action{margin-top:22px;}
   .gradeline{font-size:14px;margin-bottom:4px;} .encourage{font-size:13px;color:var(--muted);margin-bottom:10px;}
   .grad-note{font-size:14px;color:var(--muted);}
   .reminder{margin-top:12px;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--soft);text-transform:uppercase;}
@@ -230,6 +218,7 @@ function renderAppPage(model) {
   .btn-red{background:var(--red);color:#fff;} .btn-red:hover{background:var(--red-dark);}
   .btn-ghost{background:#fff;color:var(--ink);border:1px solid var(--border);}
   .btn:disabled{opacity:.5;cursor:default;}
+  .slide .action .btn{width:100%;padding:15px;font-size:14px;}
   .call-head{display:flex;align-items:center;justify-content:space-between;cursor:pointer;}
   .call-title{font-weight:700;}
   .score{color:#fff;font-family:var(--display);font-size:1.2rem;min-width:42px;height:42px;border-radius:4px;
