@@ -34,7 +34,8 @@ mounts and nothing runs.
    in the Retell dashboard. *Do this first; if the AI lead doesn't feel real,
    nothing else matters.*
 2. **GHL sub-account wiring** — restricted trainee users, practice/persona
-   contacts, the workflow + custom-code action.
+   contacts, the workflow + custom-code action. **See `GHL_SETUP.md`** for the
+   step-by-step, the custom-code action body, and starter practice contacts.
 3. **Manager dashboard UI** in `portal/` — reads the `GET` endpoints above.
 
 ## Call types (the backbone) vs persona color
