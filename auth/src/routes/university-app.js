@@ -23,12 +23,15 @@ function normalizePhone(p) {
 }
 
 router.get('/app', async (req, res) => {
+  // Email is the trainee key (attribution stamps trainee_id = email). Phone is
+  // a fallback for the shared-line case before /calls/identify reconciles it.
+  const email = req.query.email ? String(req.query.email).trim().toLowerCase() : null
   const phone = normalizePhone(req.query.phone)
-  const traineeId = phone || (req.query.email ? String(req.query.email) : null)
+  const traineeId = email || phone
   const trainee = {
-    name: req.query.name || req.query.email || 'Trainee',
+    name: req.query.name || email || 'Trainee',
     phone,
-    email: req.query.email || null,
+    email,
   }
 
   // Framable inside GHL.

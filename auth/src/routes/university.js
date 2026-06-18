@@ -399,6 +399,53 @@ router.post('/retell/inbound', async (req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// POST /university/calls/identify  (machine — GHL "call started" workflow)
+// When every trainee dials the SAME shared number, the inbound call carries no
+// trainee identity. This attributes the just-started call to the logged-in
+// trainee: the GHL call-started workflow fires (a few seconds late is fine —
+// attribution happens post-call, not at connect) with the user's email, and we
+// stamp it onto the most recent not-yet-attributed session. Email is the
+// trainee key (it's available in both this workflow AND the menu-link app).
+// Persona still comes from the number-map at connect; this is identity only.
+// Body: { email, name?, contact_id?, location_id? }
+// ---------------------------------------------------------------------------
+router.post('/calls/identify', tolerantBody, requireUniversitySecret, async (req, res) => {
+  try {
+    const b = req.body || {}
+    const email = String(b.email || b.trainee_email || '').trim().toLowerCase() || null
+    const name = b.name || b.trainee_name || b.full_name || null
+    const contactId = b.contact_id || null
+    const locationId = b.location_id || b.location?.id || null
+    if (!email) {
+      return res.status(400).json({ error: 'Missing required field: email', received: { keys: Object.keys(b) } })
+    }
+
+    // The call this trainee just started: the most recent session from the last
+    // ~120s whose trainee_id isn't yet an email (still the placeholder phone).
+    const cutoff = new Date(Date.now() - 120000).toISOString()
+    const { data: rows } = await supabaseAdmin
+      .from('roleplay_sessions')
+      .select('id, contact_id, location_id')
+      .gte('created_at', cutoff)
+      .not('trainee_id', 'ilike', '%@%')
+      .order('created_at', { ascending: false })
+      .limit(1)
+    const session = rows && rows[0]
+    if (!session) return res.json({ ok: true, attributed: false, reason: 'no recent unattributed session' })
+
+    const update = { trainee_id: email }
+    if (name) update.trainee_name = name
+    if (!session.contact_id && contactId) update.contact_id = contactId
+    if (!session.location_id && locationId) update.location_id = locationId
+    await supabaseAdmin.from('roleplay_sessions').update(update).eq('id', session.id)
+
+    res.json({ ok: true, attributed: true, session_id: session.id, trainee_id: email })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // POST /university/curriculum  (machine — GHL workflow for module/event done)
 // Body: { trainee_id, milestone_key, contact_id?, location_id? }
 // Records an event-driven curriculum milestone (spec §9.7).

@@ -225,6 +225,23 @@ cross-cutting `objection_handling` (all default `pass_threshold` 80) and the
 (admin) or directly in Supabase — thresholds and the required set are tunable
 without a code change.
 
+## Trainee identity on a shared dialing number
+
+When every trainee dials the **same** number, the inbound call carries no signal
+of *which* trainee made it — so we can't key the call on the caller's number.
+Instead, the GHL **"call started" workflow** fires `POST /university/calls/identify`
+with the logged-in user's **email** (`{{user.email}}`), and we stamp that onto
+the most recent not-yet-attributed session. A few seconds of GHL lag is fine:
+attribution happens post-call, not at connect (the persona already came from the
+number-map at connect). **Email is the trainee key** — it's the one stable id
+available in both the call-started workflow and the menu-link app, so calls and
+the app line up. Body: `{ email, name?, contact_id?, location_id? }`.
+
+> Shared-line caveat: attribution targets the most recent unattributed session,
+> so two trainees starting a call in the same ~120s window could in theory be
+> swapped. Rare at training volume; per-trainee numbers or app-launched outbound
+> would remove it entirely.
+
 ## Trainee web app (GHL custom menu link)
 
 A server-rendered, trainee-facing page at **`GET /university/app`** (route
@@ -232,11 +249,11 @@ A server-rendered, trainee-facing page at **`GET /university/app`** (route
 Link** that passes the logged-in user's context as params:
 
 ```
-https://wcs-auth-api.onrender.com/university/app?phone={{user.phone}}&name={{user.first_name}}&email={{user.email}}
+https://wcs-auth-api.onrender.com/university/app?email={{user.email}}&name={{user.first_name}}&phone={{user.phone}}
 ```
 
 GHL substitutes the `{{user.*}}` tokens at click time. The page matches the
-trainee by **phone** (sessions are keyed by the caller's number) and shows three
+trainee by **email** (the key `/calls/identify` stamps; phone is a fallback) and shows three
 tabs: **My Progress** (milestones + graduation %), **My Calls** (each call's
 score, transcript, and coaching), and **Training** (walkthrough + the WCS sales
 process). It's framable (`frame-ancestors *`) and needs no build step.
