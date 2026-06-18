@@ -10,6 +10,7 @@
 // Mounted at /university behind the UNIVERSITY_ENABLED flag (see index.js), so
 // it ships dark until the Retell agent + GHL fields are configured.
 
+const express = require('express')
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
@@ -31,6 +32,24 @@ function normalizePhone(p) {
   if (d.length === 11 && d[0] === '1') return `+${d}`
   return `+${d}`
 }
+
+// GHL's Webhook action sends "Custom Data" in inconsistent shapes (often NOT
+// application/json, sometimes form-encoded or on the query string), so the
+// global express.json parser leaves req.body empty. This chain accepts the body
+// however GHL transmits it — json (already parsed globally), form-encoded, or
+// raw text — and merges query params as a fallback. Apply to GHL-facing POSTs.
+const tolerantBody = [
+  express.urlencoded({ extended: true }),
+  express.text({ type: () => true }),
+  (req, res, next) => {
+    if (typeof req.body === 'string') {
+      try { req.body = JSON.parse(req.body) } catch { req.body = {} }
+    }
+    if (!req.body || typeof req.body !== 'object') req.body = {}
+    req.body = { ...req.query, ...req.body } // body wins; query is fallback
+    next()
+  },
+]
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
@@ -88,7 +107,7 @@ function requireUniversitySecret(req, res, next) {
 // Body: { trainee_id, trainee_name, trainee_phone, contact_id, location_id,
 //         persona_scenario, persona_difficulty, retell_agent_id? }
 // ---------------------------------------------------------------------------
-router.post('/calls/start', requireUniversitySecret, async (req, res) => {
+router.post('/calls/start', tolerantBody, requireUniversitySecret, async (req, res) => {
   try {
     const b = req.body || {}
     const trainee_id = b.trainee_id
@@ -237,14 +256,19 @@ router.post('/retell/webhook', async (req, res) => {
 // Body: { trainee_phone, persona_scenario, persona_difficulty, call_type,
 //         lead_source?, contact_id?, location_id?, trainee_id?, trainee_name?, ttl_seconds? }
 // ---------------------------------------------------------------------------
-router.post('/calls/prepare', requireUniversitySecret, async (req, res) => {
+router.post('/calls/prepare', tolerantBody, requireUniversitySecret, async (req, res) => {
   try {
     const b = req.body || {}
     const caller = normalizePhone(b.trainee_phone || b.caller_phone || b.from_number)
     const scenario = b.persona_scenario || b.scenario
     const difficulty = b.persona_difficulty || b.difficulty
     if (!caller || !scenario || !difficulty) {
-      return res.status(400).json({ error: 'Missing required fields: trainee_phone, persona_scenario, persona_difficulty' })
+      // Echo what we received so a misconfigured GHL webhook is diagnosable
+      // straight from the webhook's response panel.
+      return res.status(400).json({
+        error: 'Missing required fields: trainee_phone, persona_scenario, persona_difficulty',
+        received: { content_type: req.headers['content-type'] || null, keys: Object.keys(b), body: b },
+      })
     }
 
     const ttl = Math.min(Math.max(Number(b.ttl_seconds) || 120, 30), 600)
@@ -362,7 +386,7 @@ router.post('/retell/inbound', async (req, res) => {
 // Body: { trainee_id, milestone_key, contact_id?, location_id? }
 // Records an event-driven curriculum milestone (spec §9.7).
 // ---------------------------------------------------------------------------
-router.post('/curriculum', requireUniversitySecret, async (req, res) => {
+router.post('/curriculum', tolerantBody, requireUniversitySecret, async (req, res) => {
   try {
     const { trainee_id, milestone_key, contact_id, location_id } = req.body || {}
     if (!trainee_id || !milestone_key) {
