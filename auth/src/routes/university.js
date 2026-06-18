@@ -424,9 +424,13 @@ router.post('/calls/identify', tolerantBody, requireUniversitySecret, async (req
       return res.status(400).json({ error: 'Missing required field: email', received: { keys: Object.keys(b) } })
     }
 
-    // The call this trainee just started: the most recent session from the last
-    // ~120s whose trainee_id isn't yet an email (still the placeholder phone).
-    const cutoff = new Date(Date.now() - 120000).toISOString()
+    // The call this trainee just started: the most recent session whose
+    // trainee_id isn't yet an email (still the placeholder phone). The window
+    // must cover the whole call — /identify fires when the call *ends* but the
+    // session was created when it *started*, so a multi-minute call would age
+    // out of a tight window (seen with a ~4-min call). 30 min default, tunable.
+    const windowMs = Number(process.env.UNIVERSITY_IDENTIFY_WINDOW_MS) || 1800000
+    const cutoff = new Date(Date.now() - windowMs).toISOString()
     const { data: rows } = await supabaseAdmin
       .from('roleplay_sessions')
       .select('id, contact_id, location_id')
