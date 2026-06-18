@@ -158,22 +158,32 @@ router.post('/retell/webhook', async (req, res) => {
       return res.json({ ok: true, matched: false })
     }
 
-    // Persist whatever the event carried.
+    // Persist whatever the event carried (NOT status — that's claimed atomically below).
     const update = { ended_at: new Date().toISOString() }
     if (transcript) update.transcript = transcript
     if (recordingUrl) update.recording_url = recordingUrl
     if (analysis) update.call_analysis = analysis
-    if (session.status === 'initiated') update.status = 'completed'
-
     await supabaseAdmin.from('roleplay_sessions').update(update).eq('id', session.id)
 
-    // Grade only once we actually have a transcript and haven't graded yet.
+    // Grade once, even though Retell fires BOTH call_ended and call_analyzed
+    // (each carrying a transcript) and may retry. Atomically claim the session
+    // by flipping initiated/completed -> grading in a single conditional
+    // UPDATE; only the event that wins the claim grades. This closes the
+    // read-then-act race that previously let both events grade the same call.
     const haveTranscript = transcript || session.transcript
-    if (haveTranscript && session.status !== 'graded') {
-      const merged = { ...session, ...update, transcript: haveTranscript }
-      // Detached — don't make Retell wait on the LLM + GHL round-trips.
-      processCompletedCall(merged).catch(err =>
-        console.error(`[university] background grading error (session ${session.id}):`, err.message))
+    if (haveTranscript) {
+      const { data: claimed } = await supabaseAdmin
+        .from('roleplay_sessions')
+        .update({ status: 'grading' })
+        .eq('id', session.id)
+        .in('status', ['initiated', 'completed'])
+        .select('id')
+      if (claimed && claimed.length) {
+        const merged = { ...session, ...update, status: 'grading', transcript: haveTranscript }
+        // Detached — don't make Retell wait on the LLM + GHL round-trips.
+        processCompletedCall(merged).catch(err =>
+          console.error(`[university] background grading error (session ${session.id}):`, err.message))
+      }
     }
 
     res.json({ ok: true, matched: true, session_id: session.id })
