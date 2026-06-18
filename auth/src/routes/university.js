@@ -341,19 +341,23 @@ router.post('/retell/inbound', async (req, res) => {
     //   2. UNIVERSITY_NUMBER_MAP (this number is pinned to a persona).
     //   3. random.
     const pending = await claimPendingAssignment(caller)
+    // `a` is either the pending row or a number-map / random assignment. Both
+    // shapes carry scenario/difficulty/call_type/lead_source; the pending row
+    // and number-map entries additionally carry contact_id/location_id (and
+    // trainee_name) for write-back.
     const a = pending || (await pickAssignment({ toNumber }))
 
-    const traineeId = (pending && pending.trainee_id) || caller || `inbound:${toNumber || 'unknown'}`
+    const traineeId = a.trainee_id || caller || `inbound:${toNumber || 'unknown'}`
 
     // Mint the session up front so the transcript can be matched + graded.
     const { data: session, error: insErr } = await supabaseAdmin
       .from('roleplay_sessions')
       .insert({
         trainee_id: traineeId,
-        trainee_name: pending?.trainee_name || null,
+        trainee_name: a.trainee_name || null,
         trainee_phone: caller,
-        contact_id: pending?.contact_id || null,
-        location_id: pending?.location_id || null,
+        contact_id: a.contact_id || null,
+        location_id: a.location_id || null,
         scenario: a.scenario,
         difficulty: a.difficulty,
         call_type: a.call_type,
@@ -373,15 +377,15 @@ router.post('/retell/inbound', async (req, res) => {
       difficulty: a.difficulty,
       callType: a.call_type,
       leadSource: a.lead_source,
-      traineeName: pending?.trainee_name || null,
+      traineeName: a.trainee_name || null,
       sessionId: session?.id || null,
     })
 
     // Optional per-scenario agent override (RETELL_AGENT_* / RETELL_DEFAULT_AGENT_ID).
     const overrideAgentId = resolveAgentId(a.scenario, null)
     // Per-persona voice so the lead doesn't always sound like the agent's one
-    // hardcoded voice (e.g. male personas get a male voice). Null = keep default.
-    const voiceId = resolveVoiceId(a.scenario)
+    // hardcoded voice. A number-map voice_id wins; else gender-based resolution.
+    const voiceId = a.voice_id || resolveVoiceId(a.scenario)
 
     const payload = { call_inbound: { dynamic_variables, metadata: { session_id: session?.id || null } } }
     if (overrideAgentId) payload.call_inbound.override_agent_id = overrideAgentId

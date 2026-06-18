@@ -96,11 +96,29 @@ experience — open the contact, hit Dial, talk to a prospect.
 > With **one shared number**, the native Dial button can't tell us *which*
 > contact you clicked, so the server picks the persona (`UNIVERSITY_INBOUND_MODE=random`).
 > To make a specific contact always reach a specific persona, give it its own
-> Retell number and map it in `UNIVERSITY_NUMBER_MAP`:
+> Retell number and map it in `UNIVERSITY_NUMBER_MAP`. This is the **recommended
+> single-dial model** — the dialed number (`to_number`) is in the inbound
+> request itself, so there's no prepare step and no timing race. An entry may
+> also carry the persona contact's `contact_id`/`location_id` so grading writes
+> back to that GHL contact, and an optional `voice_id`:
 > ```json
-> {"+15035551234": {"call_type":"cold_lead","scenario":"price_sensitive_snapchat","difficulty":"hard","lead_source":"instagram"}}
+> {
+>   "+15035551234": {
+>     "scenario": "ready_to_buy", "difficulty": "easy", "call_type": "new_member",
+>     "lead_source": "instagram",
+>     "contact_id": "<GHL practice contact id>",
+>     "location_id": "<GHL location id>",
+>     "voice_id": "<optional Retell voice id>"
+>   }
+> }
 > ```
 > Unmapped numbers fall back to random. One agent serves every number.
+>
+> **Why this over the prepare/Dial-trigger model:** GHL's "call started"
+> workflow fires `/calls/prepare` several seconds *after* the call reaches
+> Retell (observed ~14s), but Retell's inbound webhook times out at ~10s — so a
+> dial-time prepare can't be buffered in time. Number-per-persona has no timing
+> dependency at all.
 
 ### Inbound setup (Retell + GHL)
 1. In Retell, on the **phone number**, set the **inbound webhook URL** to
