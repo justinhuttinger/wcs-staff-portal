@@ -37,6 +37,48 @@ mounts and nothing runs.
    contacts, the workflow + custom-code action.
 3. **Manager dashboard UI** in `portal/` — reads the `GET` endpoints above.
 
+## Call types (the backbone) vs persona color
+
+Two orthogonal dimensions drive a call:
+
+- **`call_type`** — the *situation* the trainee calls into. Changes the lead's
+  mindset, the rep's goal, and **the grading rubric**. Defined in `callTypes.js`:
+  `cold_lead`, `mid_trial`, `expired_trial` (winback), `new_member`.
+- **persona color** — `scenario` (lead name + primary objection), `difficulty`
+  (lead resistance), and `lead_source` (facebook / instagram / snapchat / …).
+  Pure flavor; doesn't change how the call is graded.
+
+**One base Retell agent plays every call type.** The scaffold computes the
+call-type `situation` and injects it as a dynamic variable, so you do NOT create
+a separate Retell agent per type. You only need separate agents if you want a
+different *voice* per type. In GHL, each "practice contact" is a persona: its
+custom fields (`call_type`, `persona_scenario`, `persona_difficulty`,
+`lead_source`) flow through `/calls/start` and become the dynamic variables — so
+the same Retell number + agent produces a different lead per contact.
+
+### Grading is per call type
+
+Each call type has its own scored dimensions and its own competency milestone:
+
+| call_type | rep's goal | milestone key |
+|---|---|---|
+| `cold_lead` | book a tour / Day One | `roleplay_cold_lead` |
+| `mid_trial` | re-engage, book next session | `roleplay_mid_trial` |
+| `expired_trial` | win back a lapsed trial | `roleplay_winback` |
+| `new_member` | Day One setup + PT positioning | `roleplay_new_member` |
+
+`objection_handling` is a cross-cutting competency fed by each type's objection
+dimension (objection_handling for cold_lead, overcame_resistance for winback, …).
+
+## Dynamic variables sent to Retell
+
+`scenarios.js → buildDynamicVariables` sends: `trainee_name`, `scenario`,
+`difficulty`, `call_type`, `lead_source`, `lead_name`, `primary_objection`,
+`situation`, `session_id`. The base persona prompt (§5, updated) references
+`{{lead_name}}`, `{{trainee_name}}`, `{{lead_source}}`, `{{situation}}`,
+`{{difficulty}}`, `{{primary_objection}}`. The rep's goal is **not** sent — it's
+grader-only, so the lead can't play along.
+
 ## Environment variables
 
 | Var | Purpose |
@@ -56,17 +98,25 @@ mounts and nothing runs.
 GHL location API keys reuse the existing `GHL_LOCATION_*` / `GHL_API_KEY_*` env
 (see `config/ghlLocations.js`).
 
-## GHL custom fields to create by hand
+## GHL custom fields
 
 The GHL API can't create custom fields (see `reference_clickup_custom_fields`),
-so create these on the contact in each WCS University location. Field **keys**
-(the system writes `contact.<key>`):
+so create these by hand in each WCS University location.
+
+**On each practice (persona) contact — the inputs that drive the call:**
+- `persona_scenario` (text, e.g. `price_sensitive_snapchat`)
+- `persona_difficulty` (text: easy | medium | hard)
+- `call_type` (text: cold_lead | mid_trial | expired_trial | new_member)
+- `lead_source` (text: facebook | instagram | snapchat | google | referral)
+
+**On the trainee contact — written back by the system** (keys; system writes `contact.<key>`):
 
 Mirrored after each graded call:
 - `last_call_score` (number), `last_call_summary` (text)
 
 Grade-gated competency booleans (flip on a fresh pass):
-- `roleplay_easy_passed`, `roleplay_medium_passed`, `roleplay_hard_passed`,
+- `roleplay_cold_lead_passed`, `roleplay_mid_trial_passed`,
+  `roleplay_winback_passed`, `roleplay_new_member_passed`,
   `objection_handling_passed`
 
 Curriculum booleans (event-driven via `/curriculum`):
@@ -79,10 +129,13 @@ Missing fields are logged and skipped — they never break a call or a grade.
 
 ## Milestone config (no redeploy needed)
 
-Lives in the `milestone_config` table (single row), seeded with the spec §9.6
-defaults (`pass_threshold` 75/80/85 for easy/medium/hard, default 80). Edit via
-`PUT /university/config` (admin) or directly in Supabase. Pass thresholds and
-the required-milestone set are tunable without a code change.
+Lives in the `milestone_config` table (single row). After migration 048 the
+competency milestones are call-type-keyed: `roleplay_cold_lead`,
+`roleplay_mid_trial`, `roleplay_winback`, `roleplay_new_member`, plus the
+cross-cutting `objection_handling` (all default `pass_threshold` 80) and the
+`mod1` / `first_call_made` curriculum milestones. Edit via `PUT /university/config`
+(admin) or directly in Supabase — thresholds and the required set are tunable
+without a code change.
 
 ## Flow
 

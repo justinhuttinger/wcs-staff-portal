@@ -20,9 +20,11 @@ async function processCompletedCall(session) {
     const scenario = getScenario(session.scenario)
     const grade = await gradeTranscript({
       transcript: session.transcript,
+      callType: session.call_type,
       scenario: session.scenario,
       difficulty: session.difficulty,
       primaryObjection: scenario.primary_objection,
+      leadSource: session.lead_source || scenario.lead_source,
     })
 
     // Persist the grade.

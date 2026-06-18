@@ -49,6 +49,8 @@ router.post('/calls/start', requireUniversitySecret, async (req, res) => {
     const trainee_phone = b.trainee_phone
     const scenario = b.persona_scenario || b.scenario
     const difficulty = b.persona_difficulty || b.difficulty
+    const call_type = b.persona_call_type || b.call_type || 'cold_lead'
+    const lead_source = b.lead_source || b.persona_lead_source || null
 
     if (!trainee_id || !trainee_phone || !scenario || !difficulty) {
       return res.status(400).json({ error: 'Missing required fields: trainee_id, trainee_phone, persona_scenario, persona_difficulty' })
@@ -68,6 +70,8 @@ router.post('/calls/start', requireUniversitySecret, async (req, res) => {
         location_id: b.location_id || null,
         scenario,
         difficulty,
+        call_type,
+        lead_source,
         retell_agent_id: agentId,
         status: 'initiated',
       })
@@ -85,6 +89,8 @@ router.post('/calls/start', requireUniversitySecret, async (req, res) => {
         dynamicVariables: buildDynamicVariables({
           scenario,
           difficulty,
+          callType: call_type,
+          leadSource: lead_source,
           traineeName: b.trainee_name,
           sessionId: session.id,
         }),

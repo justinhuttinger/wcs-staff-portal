@@ -7,6 +7,7 @@
 
 const { supabaseAdmin } = require('../supabase')
 const { getMilestoneConfig, resolveThreshold } = require('./config')
+const { getCallType } = require('./callTypes')
 const ghl = require('./ghlWriteback')
 
 // Upsert one ledger row. Returns { row, justFlippedToPassed }.
@@ -55,35 +56,37 @@ async function upsertTraineeMilestone({ traineeId, milestoneKey, milestoneType, 
 }
 
 // Apply competency progress from a graded call (spec §9.7). Flips the
-// difficulty milestone (roleplay_<difficulty>) and, when present, the
-// objection_handling milestone from stage_scores. Mirrors fresh passes to GHL,
-// then recomputes graduation.
+// call-type milestone (roleplay_<call_type>) and, when the call type has an
+// objection analog, the cross-cutting objection_handling milestone. Mirrors
+// fresh passes to GHL, then recomputes graduation.
 async function applyMilestoneProgress(session, grade) {
   const cfg = await getMilestoneConfig()
+  const ct = getCallType(session.call_type)
   const results = []
 
-  // 1. roleplay_<difficulty>
-  const difficultyKey = `roleplay_${session.difficulty}`
-  if ((cfg.milestones || []).some(m => m.key === difficultyKey)) {
-    const threshold = resolveThreshold(cfg, difficultyKey)
+  // 1. roleplay_<call_type>  (e.g. roleplay_cold_lead, roleplay_winback)
+  const callTypeKey = ct.milestoneKey
+  if ((cfg.milestones || []).some(m => m.key === callTypeKey)) {
+    const threshold = resolveThreshold(cfg, callTypeKey)
     const passedNow = grade.overall_score != null && grade.overall_score >= threshold
     const { justFlippedToPassed } = await upsertTraineeMilestone({
       traineeId: session.trainee_id,
-      milestoneKey: difficultyKey,
+      milestoneKey: callTypeKey,
       milestoneType: 'competency',
       score: grade.overall_score,
       sessionId: session.id,
       passedNow,
     })
-    results.push({ key: difficultyKey, passedNow, justFlippedToPassed })
+    results.push({ key: callTypeKey, passedNow, justFlippedToPassed })
     if (justFlippedToPassed && session.contact_id) {
-      await ghl.mirrorMilestonePass({ contactId: session.contact_id, locationId: session.location_id, milestoneKey: difficultyKey })
+      await ghl.mirrorMilestonePass({ contactId: session.contact_id, locationId: session.location_id, milestoneKey: callTypeKey })
     }
   }
 
-  // 2. objection_handling (from the per-dimension score)
+  // 2. objection_handling — fed by this call type's objection dimension
+  //    (objection_handling for cold_lead, overcame_resistance for winback, …).
   const objKey = 'objection_handling'
-  const objScore = grade.stage_scores?.objection_handling
+  const objScore = ct.objectionDim ? grade.stage_scores?.[ct.objectionDim] : null
   if ((cfg.milestones || []).some(m => m.key === objKey) && objScore != null) {
     const threshold = resolveThreshold(cfg, objKey)
     const passedNow = objScore >= threshold

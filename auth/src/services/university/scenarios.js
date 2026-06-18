@@ -14,35 +14,42 @@
 // Add scenarios here as the persona library grows (spec §10.2 recommends one
 // base agent + variables before building distinct agents).
 
+const { getCallType, DEFAULT_CALL_TYPE } = require('./callTypes')
+
 const SCENARIOS = {
   price_sensitive_snapchat: {
     label: 'Price-sensitive (Snapchat ad)',
     lead_name: 'Marcus',
     primary_objection: 'cost',
+    lead_source: 'a Snapchat ad',
     agentEnv: 'RETELL_AGENT_PRICE_SENSITIVE',
   },
   tire_kicker: {
     label: 'Just shopping around',
     lead_name: 'Dylan',
     primary_objection: 'not sure it is worth it',
+    lead_source: 'a Facebook ad',
     agentEnv: 'RETELL_AGENT_TIRE_KICKER',
   },
   ready_to_buy: {
     label: 'Ready to buy',
     lead_name: 'Sarah',
     primary_objection: 'scheduling',
+    lead_source: 'an Instagram ad',
     agentEnv: 'RETELL_AGENT_READY_TO_BUY',
   },
   hostile: {
     label: 'Hostile / skeptical',
     lead_name: 'Greg',
     primary_objection: 'bad past gym experience',
+    lead_source: 'a Google search',
     agentEnv: 'RETELL_AGENT_HOSTILE',
   },
   confused: {
     label: 'Confused about offerings',
     lead_name: 'Priya',
     primary_objection: 'does not understand what is included',
+    lead_source: 'an Instagram ad',
     agentEnv: 'RETELL_AGENT_CONFUSED',
   },
 }
@@ -53,6 +60,7 @@ const DEFAULT_SCENARIO = {
   label: 'Generic prospect',
   lead_name: 'Alex',
   primary_objection: 'cost',
+  lead_source: 'an ad',
   agentEnv: null,
 }
 
@@ -78,15 +86,23 @@ function resolveAgentId(scenarioKey, payloadAgentId) {
 }
 
 // Dynamic variables injected into the Retell agent prompt at call start.
-function buildDynamicVariables({ scenario, difficulty, traineeName, sessionId }) {
+// The call_type drives `situation` + `your_goal` (computed in callTypes.js) so
+// one base agent can play a cold lead, a mid-trial check-in, a winback, etc.
+function buildDynamicVariables({ scenario, difficulty, traineeName, sessionId, callType, leadSource }) {
   const sc = getScenario(scenario)
+  const ct = getCallType(callType)
   const firstName = String(traineeName || '').trim().split(/\s+/)[0] || 'there'
   return {
     trainee_name: firstName,
     scenario,
     difficulty,
+    call_type: callType || DEFAULT_CALL_TYPE,
+    lead_source: leadSource || sc.lead_source || 'an ad',
     lead_name: sc.lead_name,
     primary_objection: sc.primary_objection,
+    // The lead's situation + mindset for this call type (NOT the rep's goal —
+    // that's grader-only, so the lead never sees it and can't "play along").
+    situation: ct.situation(difficulty),
     session_id: sessionId,
   }
 }
