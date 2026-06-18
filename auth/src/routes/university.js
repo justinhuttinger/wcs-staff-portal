@@ -17,7 +17,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 
 const { createPhoneCall, verifyWebhookSecret } = require('../services/university/retell')
-const { resolveAgentId, resolveVoiceId, buildDynamicVariables } = require('../services/university/scenarios')
+const { resolveAgentId, buildDynamicVariables } = require('../services/university/scenarios')
 const { processCompletedCall } = require('../services/university')
 const { recordCurriculumMilestone } = require('../services/university/milestones')
 const { getMilestoneConfig, clearCache } = require('../services/university/config')
@@ -384,15 +384,14 @@ router.post('/retell/inbound', async (req, res) => {
       sessionId: session?.id || null,
     })
 
-    // Optional per-scenario agent override (RETELL_AGENT_* / RETELL_DEFAULT_AGENT_ID).
+    // Route to the right agent for this persona (gendered agents carry their own
+    // voice — RETELL_AGENT_MALE / RETELL_AGENT_FEMALE). Retell does not honor
+    // agent_override.voice_id alongside override_agent_id, so we switch the whole
+    // agent rather than overriding the voice.
     const overrideAgentId = resolveAgentId(a.scenario, null)
-    // Per-persona voice so the lead doesn't always sound like the agent's one
-    // hardcoded voice. A number-map voice_id wins; else gender-based resolution.
-    const voiceId = a.voice_id || resolveVoiceId(a.scenario)
 
     const payload = { call_inbound: { dynamic_variables, metadata: { session_id: session?.id || null } } }
     if (overrideAgentId) payload.call_inbound.override_agent_id = overrideAgentId
-    if (voiceId) payload.call_inbound.agent_override = { voice_id: voiceId }
 
     res.json(payload)
   } catch (err) {
