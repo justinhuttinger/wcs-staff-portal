@@ -57,6 +57,48 @@ const SCENARIOS = {
     lead_source: 'an Instagram ad',
     agentEnv: 'RETELL_AGENT_CONFUSED',
   },
+
+  // --- Course personas (one per dedicated Retell number) -------------------
+  easy_lead: {
+    label: 'Easy lead (warm)',
+    lead_name: 'Sarah',
+    gender: 'female',
+    primary_objection: 'the cost, but only mildly',
+    lead_source: 'an Instagram ad',
+    agentEnv: null,
+  },
+  hard_lead: {
+    label: 'Hard lead (skeptical)',
+    lead_name: 'Marcus',
+    gender: 'male',
+    primary_objection: 'cost, and whether it will actually work for him',
+    lead_source: 'a Snapchat ad',
+    agentEnv: null,
+  },
+  trial_ending: {
+    label: 'Trial ending (mid-trial)',
+    lead_name: 'Megan',
+    gender: 'female',
+    primary_objection: 'being too busy to come in',
+    lead_source: 'a trial sign-up',
+    agentEnv: null,
+  },
+  trial_expired: {
+    label: 'Trial expired (winback)',
+    lead_name: 'Brandon',
+    gender: 'male',
+    primary_objection: 'that he fell off and doubts he will stick with it',
+    lead_source: 'an expired trial',
+    agentEnv: null,
+  },
+  new_member: {
+    label: 'New member (onboarding)',
+    lead_name: 'Tyler',
+    gender: 'male',
+    primary_objection: 'not knowing what to do first',
+    lead_source: 'a new membership',
+    agentEnv: null,
+  },
 }
 
 // Fallback so an unknown scenario still produces a coherent lead rather than
