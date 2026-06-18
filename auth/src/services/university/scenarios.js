@@ -124,12 +124,20 @@ function pickObjection(scenarioKey) {
   return getScenario(scenarioKey).primary_objection
 }
 
-// Resolve the Retell agent id to dial for this scenario, honoring the payload
-// override first, then the scenario's env var, then a global default.
+// Resolve the Retell agent id for this scenario. Priority:
+//   1. explicit payload override
+//   2. scenario's own agent env (RETELL_AGENT_<SCENARIO>)
+//   3. gendered agent (RETELL_AGENT_MALE / RETELL_AGENT_FEMALE) — each agent
+//      carries its own voice, so routing by gender gives per-persona voices
+//      reliably (the inbound agent_override.voice_id is not honored alongside
+//      override_agent_id on Retell, so we switch the whole agent instead).
+//   4. global default agent.
 function resolveAgentId(scenarioKey, payloadAgentId) {
   if (payloadAgentId) return payloadAgentId
   const sc = getScenario(scenarioKey)
   if (sc.agentEnv && process.env[sc.agentEnv]) return process.env[sc.agentEnv]
+  if (sc.gender === 'male' && process.env.RETELL_AGENT_MALE) return process.env.RETELL_AGENT_MALE
+  if (sc.gender === 'female' && process.env.RETELL_AGENT_FEMALE) return process.env.RETELL_AGENT_FEMALE
   return process.env.RETELL_DEFAULT_AGENT_ID || null
 }
 
