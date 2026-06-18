@@ -108,6 +108,38 @@ experience — open the contact, hit Dial, talk to a prospect.
 2. In GHL, set the practice contact's **Phone** field to that Retell number.
 3. Open the contact → hit **Dial**. You reach the AI lead; hang up and it grades.
 
+### Match the contact to the persona with ONE number (the "prepare" handoff)
+With a single shared number, the inbound webhook can't tell which contact you
+dialed — so it picks a random persona. To make "Dial Marcus → reach Marcus" work
+with one number, pre-register the persona when the call starts:
+
+1. In GHL, add a **"Call started"**-triggered workflow with a **Webhook** action →
+   `POST …/university/calls/prepare` (Bearer `UNIVERSITY_API_KEY`), body mapped
+   from the contact:
+   ```json
+   {
+     "trainee_phone": "{{the caller number Retell will see}}",
+     "persona_scenario": "{{contact.persona_scenario}}",
+     "persona_difficulty": "{{contact.persona_difficulty}}",
+     "call_type": "{{contact.call_type}}",
+     "lead_source": "{{contact.lead_source}}",
+     "contact_id": "{{contact.id}}",
+     "location_id": "{{location.id}}",
+     "trainee_id": "{{contact.assigned_to}}",
+     "trainee_name": "{{user.name}}"
+   }
+   ```
+2. `/calls/prepare` stores a short-lived pending row keyed by `trainee_phone`.
+   The inbound webhook looks it up by `from_number`, **waits ~1.5s if needed**
+   (the GHL workflow + Retell inbound webhook race; Retell allows ~10s), serves
+   that persona, and consumes the row. `contact_id`/`location_id` flow through,
+   so grading **writes back to the GHL contact** (`last_call_score`, milestones).
+3. `trainee_phone` must equal the `from_number` Retell sees when GHL dials —
+   stable per setup; confirm once via `roleplay_sessions.trainee_phone`.
+
+No pending row → falls back to `UNIVERSITY_NUMBER_MAP`, then random. Table:
+`roleplay_pending_assignments` (migration 049).
+
 ## Environment variables
 
 | Var | Purpose |
