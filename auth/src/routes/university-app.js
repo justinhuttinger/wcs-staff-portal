@@ -48,12 +48,20 @@ router.get('/app', async (req, res) => {
       return res.send(renderAppPage({ trainee, graduation: null, milestones: [], requiredKeys, calls: [] }))
     }
 
-    const [msRes, gradRes, sessRes, gradesRes] = await Promise.all([
+    const [msRes, gradRes, sessRes] = await Promise.all([
       supabaseAdmin.from('trainee_milestones').select('*').eq('trainee_id', traineeId),
       supabaseAdmin.from('trainee_graduation').select('*').eq('trainee_id', traineeId).maybeSingle(),
       supabaseAdmin.from('roleplay_sessions').select('*').eq('trainee_id', traineeId).order('created_at', { ascending: false }).limit(50),
-      supabaseAdmin.from('roleplay_grades').select('*').eq('trainee_id', traineeId).order('graded_at', { ascending: false }),
     ])
+
+    // Fetch grades by SESSION id (not trainee_id): attribution can re-key a
+    // session's trainee_id after grading, so the grade row may carry a different
+    // trainee_id than the (now-attributed) session. Joining on session_id is
+    // race-proof.
+    const sessionIds = (sessRes.data || []).map(s => s.id)
+    const gradesRes = sessionIds.length
+      ? await supabaseAdmin.from('roleplay_grades').select('*').in('session_id', sessionIds).order('graded_at', { ascending: false })
+      : { data: [] }
 
     const gradeBySession = {}
     for (const g of gradesRes.data || []) {

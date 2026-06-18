@@ -468,6 +468,27 @@ router.post('/curriculum', tolerantBody, requireUniversitySecret, async (req, re
   }
 })
 
+// POST /university/calls/:id/regrade  (machine — secret) — re-run grading on a
+// session (e.g. one that failed grading). Resets a failed session to completed
+// so the pipeline proceeds, then grades + scores + applies milestones.
+router.post('/calls/:id/regrade', requireUniversitySecret, async (req, res) => {
+  try {
+    const { data: session, error } = await supabaseAdmin
+      .from('roleplay_sessions').select('*').eq('id', req.params.id).maybeSingle()
+    if (error) return res.status(500).json({ error: error.message })
+    if (!session) return res.status(404).json({ error: 'session not found' })
+    if (session.status === 'failed') {
+      await supabaseAdmin.from('roleplay_sessions')
+        .update({ status: 'completed', error_detail: null }).eq('id', session.id)
+      session.status = 'completed'
+    }
+    const result = await processCompletedCall(session)
+    res.json({ ok: true, result })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ===========================================================================
 // Read / admin endpoints (staff JWT) — for the manager completion dashboard.
 // ===========================================================================

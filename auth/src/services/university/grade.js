@@ -116,24 +116,39 @@ async function gradeTranscript({ transcript, callType, scenario, difficulty, pri
     text,
   ].join('\n')
 
-  const resp = await client.messages.create({
-    model: MODEL,
-    max_tokens: 2000,
-    thinking: { type: 'adaptive' },
-    system: buildRubricSystem(callType),
-    messages: [{ role: 'user', content: userContent }],
-  })
+  const system = buildRubricSystem(callType)
 
-  if (resp.stop_reason === 'refusal') {
-    throw new Error('Grader refused to score this transcript')
+  // Run the model and pull text. Adaptive thinking counts against max_tokens, so
+  // a too-small cap can let thinking starve the JSON answer (→ "No JSON object
+  // found"). Give a generous budget; the fallback attempt drops thinking so the
+  // whole budget goes to the answer.
+  async function run({ thinking, maxTokens }) {
+    const req = {
+      model: MODEL,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: 'user', content: userContent }],
+    }
+    if (thinking) req.thinking = { type: 'adaptive' }
+    const resp = await client.messages.create(req)
+    if (resp.stop_reason === 'refusal') throw new Error('Grader refused to score this transcript')
+    const out = (resp.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n')
+    return { out, resp }
   }
 
-  const out = (resp.content || [])
-    .filter(b => b.type === 'text')
-    .map(b => b.text)
-    .join('\n')
+  // Attempt 1: adaptive thinking, generous budget. Attempt 2 (on truncation or
+  // unparseable output): no thinking so the full budget produces the JSON.
+  let parsed, model
+  try {
+    const { out, resp } = await run({ thinking: true, maxTokens: 8192 })
+    parsed = extractJson(out)
+    model = resp.model || MODEL
+  } catch (e1) {
+    const { out, resp } = await run({ thinking: false, maxTokens: 4096 })
+    parsed = extractJson(out) // throws → caller marks the session failed
+    model = resp.model || MODEL
+  }
 
-  const parsed = extractJson(out)
   const stage = parsed.stage_scores || {}
 
   // Clamp only the dimensions this call type defines.
@@ -146,7 +161,7 @@ async function gradeTranscript({ transcript, callType, scenario, difficulty, pri
     strengths: typeof parsed.strengths === 'string' ? parsed.strengths : '',
     improvements: typeof parsed.improvements === 'string' ? parsed.improvements : '',
     raw: parsed,
-    model: resp.model || MODEL,
+    model: model || MODEL,
   }
 }
 
