@@ -22,6 +22,9 @@ const { processCompletedCall } = require('../services/university')
 const { recordCurriculumMilestone } = require('../services/university/milestones')
 const { getMilestoneConfig, clearCache } = require('../services/university/config')
 const { pickAssignment } = require('../services/university/assign')
+const { advanceManual, completeEvent } = require('../services/university/curriculum')
+
+function normEmail(e) { return e ? String(e).trim().toLowerCase() : null }
 
 // Normalize a phone to E.164-ish for use as a stable trainee_id in the inbound
 // model (trainee identified by the number they dial from).
@@ -484,6 +487,36 @@ router.post('/calls/:id/regrade', requireUniversitySecret, async (req, res) => {
     }
     const result = await processCompletedCall(session)
     res.json({ ok: true, result })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /university/progress/next  (trainee app — email-keyed, no JWT)
+// Trainee clicked "Next/Done" on a non-graded step. Same trust posture as the
+// app page (identified by email param; internal-only). Body: { email, step }.
+router.post('/progress/next', tolerantBody, async (req, res) => {
+  try {
+    const email = normEmail(req.body?.email)
+    const step = req.body?.step
+    if (!email || !step) return res.status(400).json({ error: 'Missing email or step' })
+    const model = await advanceManual(email, req.body?.name || null, step)
+    res.json({ ok: true, model })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /university/progress/event  (machine — GHL automation, secret)
+// Fires when a trainee completes a real action GHL can detect (e.g. booked an
+// appointment). Body: { email, event_key }.
+router.post('/progress/event', tolerantBody, requireUniversitySecret, async (req, res) => {
+  try {
+    const email = normEmail(req.body?.email || req.body?.trainee_email)
+    const eventKey = req.body?.event_key || req.body?.eventKey
+    if (!email || !eventKey) return res.status(400).json({ error: 'Missing email or event_key' })
+    const result = await completeEvent(email, req.body?.name || req.body?.full_name || null, eventKey)
+    res.json(result)
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

@@ -48,11 +48,18 @@ function buildRubricSystem(callTypeKey) {
   const stageKeys = dims.map(d => `    "${d}": <number 0-100>`).join(',\n')
 
   return `You grade a sales/retention-training roleplay call for West Coast Strength (WCS), a gym.
-A trainee (a WCS rep/coach) called an AI lead. Grade ONLY the trainee's performance. Be a fair but
-demanding evaluator — a "completed call" is not a "good call."
+
+WHO YOU GRADE: the transcript has two speakers — the WCS REP (the trainee, your only subject) and
+the PROSPECT (an AI playing a lead). You evaluate the REP ONLY. The prospect is a training prop:
+never score, praise, or critique the prospect, and never let the prospect's behavior change the
+rep's score. If the prospect was difficult, evasive, or rude, that is the scenario — judge only how
+well the REP handled it. Every score and every sentence of feedback is about the REP. Address the
+rep directly as "you" in strengths and improvements. Do not mention the prospect's performance.
+
+Be a fair but demanding evaluator — a "completed call" is not a "good call."
 
 CALL TYPE: ${ct.label}
-THE TRAINEE'S GOAL ON THIS CALL: ${ct.repGoal}
+THE REP'S GOAL ON THIS CALL: ${ct.repGoal}
 
 Score these dimensions 0-100 for THIS call type:
 ${dimLines}
@@ -66,8 +73,8 @@ Output STRICT JSON ONLY, no markdown, no code fences, no commentary, matching ex
   "stage_scores": {
 ${stageKeys}
   },
-  "strengths": "<2-4 sentences on what the trainee did well>",
-  "improvements": "<2-4 sentences of concrete, actionable coaching>"
+  "strengths": "<2-4 sentences addressed to the rep as 'you', on what you did well>",
+  "improvements": "<2-4 sentences of concrete coaching addressed to the rep as 'you'>"
 }`
 }
 
