@@ -47,7 +47,7 @@ async function getProgressRow(email) {
 // All graded practice calls for this trainee, oldest first, with their score.
 async function passingSessions(email) {
   const { data: sess } = await supabaseAdmin
-    .from('roleplay_sessions').select('id, created_at')
+    .from('roleplay_sessions').select('id, created_at, scenario')
     .eq('trainee_id', email).eq('status', 'graded')
     .order('created_at', { ascending: true })
   const ids = (sess || []).map(s => s.id)
@@ -59,7 +59,7 @@ async function passingSessions(email) {
     const v = g.overall_score == null ? null : Number(g.overall_score)
     if (v != null && (scoreBy[g.session_id] == null || v > scoreBy[g.session_id])) scoreBy[g.session_id] = v
   }
-  return (sess || []).map(s => ({ id: s.id, created_at: s.created_at, score: scoreBy[s.id] ?? null }))
+  return (sess || []).map(s => ({ id: s.id, created_at: s.created_at, scenario: s.scenario, score: scoreBy[s.id] ?? null }))
 }
 
 // Reconcile + return the view model the app renders.
@@ -81,25 +81,29 @@ async function reconcileProgress(email, name) {
 
   const nowIso = new Date().toISOString()
   let currentKey = null
+  let currentStep = null
 
   for (const step of steps) {
     if (completedKeys.has(step.key)) continue
     if (step.type === 'graded_call') {
       const thr = thresholdFor(step, cfg)
-      const idx = queue.findIndex(s => s.score >= thr)
+      // A graded step is satisfied only by a passing call to ITS lead — when
+      // step.scenario is set, the call's scenario must match (so call 1 must be
+      // to the easy lead's number, call 2 to the hard lead's, etc.).
+      const idx = queue.findIndex(s => s.score >= thr && (!step.scenario || s.scenario === step.scenario))
       if (idx >= 0) {
         const s = queue.splice(idx, 1)[0]
         completed.push({ key: step.key, at: nowIso, points: step.points || 0, session_id: s.id })
         completedKeys.add(step.key); points += step.points || 0; changed = true
         continue
       }
-      currentKey = step.key; break               // need a passing call here
+      currentKey = step.key; currentStep = step; break   // need a passing call to this lead
     } else if (step.type === 'graduation') {
       completed.push({ key: step.key, at: nowIso, points: 0 }); completedKeys.add(step.key)
       if (!graduated) { graduated = true; changed = true }
-      currentKey = step.key; break
+      currentKey = step.key; currentStep = step; break
     } else {
-      currentKey = step.key; break                // explore/info/webhook — await action
+      currentKey = step.key; currentStep = step; break    // explore/info/webhook — await action
     }
   }
 
@@ -111,9 +115,12 @@ async function reconcileProgress(email, name) {
     }, { onConflict: 'trainee_id' })
   }
 
-  // Best score on an unused call (for the current graded step's "call again" nudge).
-  const bestRecent = queue.reduce((m, s) => (s.score != null && s.score > m ? s.score : m), null)
-  const attempts = sessions.length
+  // Best score on an unused call to the CURRENT graded step's lead (drives the
+  // "best score X / need 80, call again" nudge). Scoped to the step's scenario.
+  const gradedScenario = currentStep && currentStep.type === 'graded_call' ? currentStep.scenario : null
+  const relevant = queue.filter(s => !gradedScenario || s.scenario === gradedScenario)
+  const bestRecent = relevant.reduce((m, s) => (s.score != null && s.score > m ? s.score : m), null)
+  const attempts = relevant.length
 
   return {
     steps: steps.map(s => ({
