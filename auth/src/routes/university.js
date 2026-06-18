@@ -17,7 +17,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 
 const { createPhoneCall, verifyWebhookSecret } = require('../services/university/retell')
-const { resolveAgentId, buildDynamicVariables } = require('../services/university/scenarios')
+const { resolveAgentId, resolveVoiceId, buildDynamicVariables } = require('../services/university/scenarios')
 const { processCompletedCall } = require('../services/university')
 const { recordCurriculumMilestone } = require('../services/university/milestones')
 const { getMilestoneConfig, clearCache } = require('../services/university/config')
@@ -47,6 +47,12 @@ const tolerantBody = [
     }
     if (!req.body || typeof req.body !== 'object') req.body = {}
     req.body = { ...req.query, ...req.body } // body wins; query is fallback
+    // GHL nests the workflow's "Custom Data" under `customData` and puts the
+    // contact's native fields at the top level. Lift customData up so handlers
+    // see our fields, while keeping the native contact_id / location for free.
+    if (req.body.customData && typeof req.body.customData === 'object') {
+      req.body = { ...req.body, ...req.body.customData }
+    }
     next()
   },
 ]
@@ -287,9 +293,12 @@ router.post('/calls/prepare', tolerantBody, requireUniversitySecret, async (req,
       .insert({
         caller_phone: caller,
         trainee_id: b.trainee_id || caller,
-        trainee_name: b.trainee_name || null,
+        // GHL's native envelope gives us full_name + contact_id + location.id
+        // for free — use them as fallbacks so write-back works without extra
+        // Custom Data mapping.
+        trainee_name: b.trainee_name || b.full_name || null,
         contact_id: b.contact_id || null,
-        location_id: b.location_id || null,
+        location_id: b.location_id || b.location?.id || null,
         scenario,
         difficulty,
         call_type: b.call_type || b.persona_call_type || 'cold_lead',
@@ -370,9 +379,13 @@ router.post('/retell/inbound', async (req, res) => {
 
     // Optional per-scenario agent override (RETELL_AGENT_* / RETELL_DEFAULT_AGENT_ID).
     const overrideAgentId = resolveAgentId(a.scenario, null)
+    // Per-persona voice so the lead doesn't always sound like the agent's one
+    // hardcoded voice (e.g. male personas get a male voice). Null = keep default.
+    const voiceId = resolveVoiceId(a.scenario)
 
     const payload = { call_inbound: { dynamic_variables, metadata: { session_id: session?.id || null } } }
     if (overrideAgentId) payload.call_inbound.override_agent_id = overrideAgentId
+    if (voiceId) payload.call_inbound.agent_override = { voice_id: voiceId }
 
     res.json(payload)
   } catch (err) {
