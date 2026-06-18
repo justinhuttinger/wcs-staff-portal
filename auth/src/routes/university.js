@@ -32,6 +32,41 @@ function normalizePhone(p) {
   return `+${d}`
 }
 
+const sleep = ms => new Promise(r => setTimeout(r, ms))
+
+// Claim the most recent unconsumed, unexpired pending assignment for a caller
+// (written by /calls/prepare when the rep hit Dial in GHL). Buffered: if it
+// isn't there yet, wait briefly and retry — the GHL "call started" workflow and
+// Retell's inbound webhook race, and Retell gives us ~10s before it proceeds.
+// Returns the claimed row (consumed) or null.
+async function claimPendingAssignment(callerPhone, { waitMs = 1500, tries = 3 } = {}) {
+  if (!callerPhone) return null
+  const nowIso = () => new Date().toISOString()
+  for (let i = 0; i < tries; i++) {
+    const { data: rows } = await supabaseAdmin
+      .from('roleplay_pending_assignments')
+      .select('*')
+      .eq('caller_phone', callerPhone)
+      .is('consumed_at', null)
+      .gt('expires_at', nowIso())
+      .order('created_at', { ascending: false })
+      .limit(1)
+    const pending = rows && rows[0]
+    if (pending) {
+      // Consume it atomically (only if still unconsumed) so a retry/dup can't reuse it.
+      const { data: claimed } = await supabaseAdmin
+        .from('roleplay_pending_assignments')
+        .update({ consumed_at: nowIso() })
+        .eq('id', pending.id)
+        .is('consumed_at', null)
+        .select()
+      if (claimed && claimed.length) return claimed[0]
+    }
+    if (i < tries - 1) await sleep(waitMs / (tries - 1))
+  }
+  return null
+}
+
 const router = Router()
 
 // --- shared-secret guard for machine endpoints -----------------------------
@@ -194,6 +229,60 @@ router.post('/retell/webhook', async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
+// POST /university/calls/prepare  (machine — GHL "call started" workflow)
+// Pre-registers which persona the inbound call that's connecting should get,
+// keyed by the caller's number (the from_number Retell will see). Lets a rep
+// hit Dial on a specific GHL contact and reach THAT persona, with one shared
+// Retell number, and threads contact_id/location_id for write-back.
+// Body: { trainee_phone, persona_scenario, persona_difficulty, call_type,
+//         lead_source?, contact_id?, location_id?, trainee_id?, trainee_name?, ttl_seconds? }
+// ---------------------------------------------------------------------------
+router.post('/calls/prepare', requireUniversitySecret, async (req, res) => {
+  try {
+    const b = req.body || {}
+    const caller = normalizePhone(b.trainee_phone || b.caller_phone || b.from_number)
+    const scenario = b.persona_scenario || b.scenario
+    const difficulty = b.persona_difficulty || b.difficulty
+    if (!caller || !scenario || !difficulty) {
+      return res.status(400).json({ error: 'Missing required fields: trainee_phone, persona_scenario, persona_difficulty' })
+    }
+
+    const ttl = Math.min(Math.max(Number(b.ttl_seconds) || 120, 30), 600)
+    const expiresAt = new Date(Date.now() + ttl * 1000).toISOString()
+
+    // Supersede any earlier unconsumed pending for this caller so the freshest
+    // Dial wins (handles a rep starting a call, hanging up, and re-dialing).
+    await supabaseAdmin
+      .from('roleplay_pending_assignments')
+      .update({ consumed_at: new Date().toISOString() })
+      .eq('caller_phone', caller)
+      .is('consumed_at', null)
+
+    const { data, error } = await supabaseAdmin
+      .from('roleplay_pending_assignments')
+      .insert({
+        caller_phone: caller,
+        trainee_id: b.trainee_id || caller,
+        trainee_name: b.trainee_name || null,
+        contact_id: b.contact_id || null,
+        location_id: b.location_id || null,
+        scenario,
+        difficulty,
+        call_type: b.call_type || b.persona_call_type || 'cold_lead',
+        lead_source: b.lead_source || null,
+        expires_at: expiresAt,
+      })
+      .select('id')
+      .single()
+    if (error) return res.status(500).json({ error: error.message })
+
+    res.json({ ok: true, pending_id: data.id, expires_at: expiresAt })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
 // POST /university/retell/inbound  (machine — Retell inbound-call webhook)
 // Fires when a trainee DIALS the Retell number (e.g. hits "Dial" on a GHL
 // contact whose phone is that number). Retell calls us before connecting; we
@@ -211,19 +300,27 @@ router.post('/retell/inbound', async (req, res) => {
     const inbound = req.body?.call_inbound || req.body || {}
     const fromNumber = inbound.from_number || null
     const toNumber = inbound.to_number || null
+    const caller = normalizePhone(fromNumber)
 
-    // Trainee identified by the number they dial from (mapped to staff later).
-    const traineeId = normalizePhone(fromNumber) || `inbound:${toNumber || 'unknown'}`
+    // Persona source, in priority order:
+    //   1. a pending assignment from /calls/prepare (rep hit Dial on a specific
+    //      GHL contact) — carries contact_id/location_id for write-back.
+    //   2. UNIVERSITY_NUMBER_MAP (this number is pinned to a persona).
+    //   3. random.
+    const pending = await claimPendingAssignment(caller)
+    const a = pending || (await pickAssignment({ toNumber }))
 
-    // Pick the persona: a number mapped in UNIVERSITY_NUMBER_MAP wins, else random.
-    const a = await pickAssignment({ toNumber })
+    const traineeId = (pending && pending.trainee_id) || caller || `inbound:${toNumber || 'unknown'}`
 
     // Mint the session up front so the transcript can be matched + graded.
     const { data: session, error: insErr } = await supabaseAdmin
       .from('roleplay_sessions')
       .insert({
         trainee_id: traineeId,
-        trainee_phone: normalizePhone(fromNumber),
+        trainee_name: pending?.trainee_name || null,
+        trainee_phone: caller,
+        contact_id: pending?.contact_id || null,
+        location_id: pending?.location_id || null,
         scenario: a.scenario,
         difficulty: a.difficulty,
         call_type: a.call_type,
@@ -243,7 +340,7 @@ router.post('/retell/inbound', async (req, res) => {
       difficulty: a.difficulty,
       callType: a.call_type,
       leadSource: a.lead_source,
-      traineeName: null,
+      traineeName: pending?.trainee_name || null,
       sessionId: session?.id || null,
     })
 
