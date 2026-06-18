@@ -47,11 +47,18 @@ function assignmentForNumber(toNumber) {
   const map = loadNumberMap()
   const m = map[toNumber] || map[String(toNumber).replace(/\s+/g, '')]
   if (!m) return null
+  // A number can also carry the GHL contact_id/location_id of its persona's
+  // practice contact, so grading writes back to that contact without a prepare
+  // step. voice_id optionally overrides the gender-based voice.
   return {
     call_type: m.call_type || 'cold_lead',
     scenario: m.scenario || 'price_sensitive_snapchat',
     difficulty: m.difficulty || 'medium',
     lead_source: m.lead_source || null,
+    contact_id: m.contact_id || null,
+    location_id: m.location_id || null,
+    trainee_name: m.trainee_name || null,
+    voice_id: m.voice_id || null,
   }
 }
 
