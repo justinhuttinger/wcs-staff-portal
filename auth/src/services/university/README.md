@@ -129,6 +129,10 @@ with one number, pre-register the persona when the call starts:
      "trainee_name": "{{user.name}}"
    }
    ```
+   > GHL sends these workflow "Custom Data" fields nested under a `customData`
+   > key (with the contact's native fields at the top level). The server unwraps
+   > `customData` automatically and also auto-fills `contact_id`/`location_id`
+   > from GHL's native envelope, so write-back works even if you don't map them.
 2. `/calls/prepare` stores a short-lived pending row keyed by `trainee_phone`.
    The inbound webhook looks it up by `from_number`, **waits ~1.5s if needed**
    (the GHL workflow + Retell inbound webhook race; Retell allows ~10s), serves
@@ -153,6 +157,9 @@ No pending row → falls back to `UNIVERSITY_NUMBER_MAP`, then random. Table:
 | `RETELL_WEBHOOK_SECRET` | Verifies the Retell post-call webhook (header `x-retell-secret` / `x-webhook-secret`, or `?secret=`). |
 | `RETELL_DEFAULT_AGENT_ID` | Fallback agent if a scenario / payload doesn't specify one. |
 | `RETELL_AGENT_*` | Per-scenario agent ids (e.g. `RETELL_AGENT_PRICE_SENSITIVE`). See `scenarios.js`. |
+| `RETELL_VOICE_MALE` / `RETELL_VOICE_FEMALE` | Retell voice ids used per persona gender on inbound calls (via `agent_override.voice_id`), so the lead isn't always the agent's one voice. Unset = keep the agent's default. |
+| `RETELL_VOICE_DEFAULT` | Voice id for personas with no gender match. |
+| `UNIVERSITY_VOICE_MAP` | (Optional) JSON `{ "<scenario>": "<voice_id>" }` — overrides the gender voices per scenario. |
 | `UNIVERSITY_GRADER_MODEL` | Grader model. Default `claude-opus-4-8`. |
 | `MASTERMIND_ANTHROPIC_API_KEY` / `ANTHROPIC_API_KEY` | Anthropic key for grading (same resolution as the mastermind module). |
 | `UNIVERSITY_INBOUND_MODE` | Inbound persona selection. `random` (default) assigns a random call_type + persona per dial. |

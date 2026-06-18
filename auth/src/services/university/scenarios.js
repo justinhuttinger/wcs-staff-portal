@@ -20,6 +20,7 @@ const SCENARIOS = {
   price_sensitive_snapchat: {
     label: 'Price-sensitive (Snapchat ad)',
     lead_name: 'Marcus',
+    gender: 'male',
     primary_objection: 'cost',
     lead_source: 'a Snapchat ad',
     agentEnv: 'RETELL_AGENT_PRICE_SENSITIVE',
@@ -27,6 +28,7 @@ const SCENARIOS = {
   tire_kicker: {
     label: 'Just shopping around',
     lead_name: 'Dylan',
+    gender: 'male',
     primary_objection: 'not sure it is worth it',
     lead_source: 'a Facebook ad',
     agentEnv: 'RETELL_AGENT_TIRE_KICKER',
@@ -34,6 +36,7 @@ const SCENARIOS = {
   ready_to_buy: {
     label: 'Ready to buy',
     lead_name: 'Sarah',
+    gender: 'female',
     primary_objection: 'scheduling',
     lead_source: 'an Instagram ad',
     agentEnv: 'RETELL_AGENT_READY_TO_BUY',
@@ -41,6 +44,7 @@ const SCENARIOS = {
   hostile: {
     label: 'Hostile / skeptical',
     lead_name: 'Greg',
+    gender: 'male',
     primary_objection: 'bad past gym experience',
     lead_source: 'a Google search',
     agentEnv: 'RETELL_AGENT_HOSTILE',
@@ -48,6 +52,7 @@ const SCENARIOS = {
   confused: {
     label: 'Confused about offerings',
     lead_name: 'Priya',
+    gender: 'female',
     primary_objection: 'does not understand what is included',
     lead_source: 'an Instagram ad',
     agentEnv: 'RETELL_AGENT_CONFUSED',
@@ -59,6 +64,7 @@ const SCENARIOS = {
 const DEFAULT_SCENARIO = {
   label: 'Generic prospect',
   lead_name: 'Alex',
+  gender: 'unknown',
   primary_objection: 'cost',
   lead_source: 'an ad',
   agentEnv: null,
@@ -83,6 +89,28 @@ function resolveAgentId(scenarioKey, payloadAgentId) {
   const sc = getScenario(scenarioKey)
   if (sc.agentEnv && process.env[sc.agentEnv]) return process.env[sc.agentEnv]
   return process.env.RETELL_DEFAULT_AGENT_ID || null
+}
+
+// Resolve the Retell voice_id for a scenario so the lead's voice matches the
+// persona (instead of the agent's single hardcoded voice). Priority:
+//   1. UNIVERSITY_VOICE_MAP JSON — { "<scenario>": "<voice_id>" }
+//   2. RETELL_VOICE_MALE / RETELL_VOICE_FEMALE by the persona's gender
+//   3. RETELL_VOICE_DEFAULT, else null (keep the agent's configured voice)
+// Returned via agent_override.voice_id on the inbound webhook response.
+function resolveVoiceId(scenarioKey) {
+  const raw = process.env.UNIVERSITY_VOICE_MAP
+  if (raw) {
+    try {
+      const map = JSON.parse(raw)
+      if (map && map[scenarioKey]) return map[scenarioKey]
+    } catch (e) {
+      console.warn('[university] UNIVERSITY_VOICE_MAP is not valid JSON:', e.message)
+    }
+  }
+  const g = getScenario(scenarioKey).gender
+  if (g === 'male' && process.env.RETELL_VOICE_MALE) return process.env.RETELL_VOICE_MALE
+  if (g === 'female' && process.env.RETELL_VOICE_FEMALE) return process.env.RETELL_VOICE_FEMALE
+  return process.env.RETELL_VOICE_DEFAULT || null
 }
 
 // Dynamic variables injected into the Retell agent prompt at call start.
@@ -113,5 +141,6 @@ module.exports = {
   pickLeadName,
   pickObjection,
   resolveAgentId,
+  resolveVoiceId,
   buildDynamicVariables,
 }
