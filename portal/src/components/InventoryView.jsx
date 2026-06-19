@@ -56,6 +56,14 @@ const MOVEMENT_LABELS = {
   sale: 'Sale', return: 'Return', received: 'Received', adjustment: 'Stock Added', count: 'Count',
 }
 
+// Reorder points by ABC catalog category — an item lands on the To Order list
+// when on-hand drops below the point for its category. Categories without a
+// point (Merchandise, Tanning) are not reorder-tracked.
+const REORDER_THRESHOLDS = { Drinks: 12, Snacks: 12, Supplements: 4 }
+// How far back a depleted (0 / oversold) item must have sold to still count as
+// worth reordering — dead stock that hasn't moved drops off the list.
+const REORDER_SOLD_WINDOW_DAYS = 30
+
 // Audit issue metadata — label + severity styling + what it means.
 const AUDIT_ISSUES = {
   negative_margin: { label: 'Losing Money', cls: 'bg-red-50 text-red-700 border-red-200', desc: 'Cost is at or above the sale price' },
@@ -495,6 +503,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
   const [categories, setCategories] = useState([])
   const [items, setItems] = useState([])
   const [itemsLoading, setItemsLoading] = useState(true)
+  const [orderItems, setOrderItems] = useState([]) // items carrying sold_in_range over the reorder window, for the To Order tab
   const [invoices, setInvoices] = useState([])
   const [summary, setSummary] = useState([])
   const [from, setFrom] = useState(daysAgoStr(30))
@@ -535,6 +544,18 @@ export default function InventoryView({ onBack, location, isAdmin }) {
       setLoading(true)
       getInventoryAudit({ location_slug: slug === 'all' ? '' : slug })
         .then(setAudit)
+        .catch(err => setError(err.message))
+        .finally(() => setLoading(false))
+    } else if (tab === 'order') {
+      // Pull per-club items with units sold over the reorder window so depleted
+      // items can be filtered to ones that actually still sell.
+      setLoading(true)
+      getInventoryItems({
+        location_slug: slug === 'all' ? '' : slug,
+        from: daysAgoStr(REORDER_SOLD_WINDOW_DAYS),
+        to: toLocalDateStr(new Date()),
+      })
+        .then(res => setOrderItems(res.items || []))
         .catch(err => setError(err.message))
         .finally(() => setLoading(false))
     }
@@ -641,6 +662,26 @@ export default function InventoryView({ onBack, location, isAdmin }) {
     return list
   }, [itemRows, search, category, sort, oversoldOnly])
 
+  // To Order tab: per-club items (never consolidated) below their category's
+  // reorder point. A depleted item (on-hand <= 0) only qualifies if it sold in
+  // the reorder window, so discontinued stock doesn't sit on the list forever.
+  const toOrderRows = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    const rows = orderItems.filter(it => {
+      const threshold = REORDER_THRESHOLDS[it.category]
+      if (threshold == null) return false
+      const qty = Number(it.qty_on_hand) || 0
+      if (qty >= threshold) return false
+      if (qty <= 0 && !(Number(it.sold_in_range) > 0)) return false
+      if (term && !((it.item_name || '').toLowerCase().includes(term) || (it.upc || '').includes(term))) return false
+      return true
+    })
+    // Most urgent first: lowest on-hand (oversold/out on top), then by name.
+    return [...rows].sort((a, b) =>
+      (Number(a.qty_on_hand) || 0) - (Number(b.qty_on_hand) || 0) ||
+      (a.item_name || '').localeCompare(b.item_name || ''))
+  }, [orderItems, search])
+
   // Sales tab: same search box + clickable column sorting as the Items tab.
   const SALES_SORT_VALUE = {
     name: r => (r.name || '').toLowerCase(),
@@ -724,6 +765,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
             <div className="flex gap-1 bg-bg rounded-lg p-1">
               {[
                 { key: 'items', label: 'Inventory' },
+                { key: 'order', label: 'To Order' },
                 { key: 'profit', label: 'Sales' },
                 ...(isAdmin ? [{ key: 'audit', label: 'Audit' }] : []),
               ].map(m => (
@@ -766,7 +808,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
               </div>
             </>
           )}
-          {(tab === 'items' || tab === 'profit') && (
+          {(tab === 'items' || tab === 'profit' || tab === 'order') && (
             <div className="flex-1 min-w-[200px]">
               <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Search</span>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or UPC..." className={inputCls} />
@@ -875,6 +917,63 @@ export default function InventoryView({ onBack, location, isAdmin }) {
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* === To Order tab === */}
+      {tab === 'order' && (
+        <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
+          <div className="px-4 py-3 border-b border-border bg-bg/40">
+            <p className="text-xs text-text-muted">
+              Reorder points: <span className="font-semibold text-text-primary">Drinks &amp; Snacks under 12</span>, <span className="font-semibold text-text-primary">Supplements under 4</span>. Items at 0 show only if they sold in the last {REORDER_SOLD_WINDOW_DAYS} days.
+            </p>
+          </div>
+          {loading ? (
+            <p className="text-sm text-text-muted p-6 text-center">Building order list...</p>
+          ) : toOrderRows.length === 0 ? (
+            <p className="text-sm text-text-muted p-8 text-center">
+              {orderItems.length === 0 ? 'No items yet — sync the ABC catalog first.' : 'Nothing to order — every tracked item is above its reorder point.'}
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
+                    <th className="py-2.5 px-4">Item</th>
+                    {slug === 'all' && <th className="py-2.5 px-2">Club</th>}
+                    <th className="py-2.5 px-2">Category</th>
+                    <th className="py-2.5 px-2 text-right">On Hand</th>
+                    <th className="py-2.5 px-2 text-right">Sold {REORDER_SOLD_WINDOW_DAYS}d</th>
+                    <th className="py-2.5 px-2 text-right">Reorder Below</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {toOrderRows.map(i => {
+                    const qty = Number(i.qty_on_hand) || 0
+                    return (
+                      <tr key={i.id} className="border-b border-border/50 hover:bg-bg/40">
+                        <td className="py-2 px-4 font-medium text-text-primary">{i.item_name}</td>
+                        {slug === 'all' && <td className="py-2 px-2 capitalize text-text-muted">{i.location_slug || '—'}</td>}
+                        <td className="py-2 px-2 text-text-muted">{i.category || '—'}</td>
+                        <td className="py-2 px-2 text-right">
+                          {qty <= 0 ? (
+                            <span className="inline-flex items-center gap-1.5 justify-end">
+                              <span className="text-[9px] font-bold uppercase tracking-wide text-red-700 bg-red-50 border border-red-200 rounded-full px-1.5 py-0.5">{qty < 0 ? 'Oversold' : 'Out'}</span>
+                              <span className={`font-bold ${qty < 0 ? 'text-wcs-red' : 'text-text-primary'}`}>{fmtQty(qty)}</span>
+                            </span>
+                          ) : (
+                            <span className="font-bold text-amber-600">{fmtQty(qty)}</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-right text-text-muted">{fmtQty(i.sold_in_range)}</td>
+                        <td className="py-2 px-2 text-right text-text-muted">{REORDER_THRESHOLDS[i.category]}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

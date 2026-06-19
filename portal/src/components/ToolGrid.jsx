@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import allTools from '../config/tools.json'
 import ToolButton from './ToolButton'
 import { PORTAL_TILE_CATALOG } from '../config/portalTiles'
-import { getTiles, getDayOneTrackerAppointments, getTours, getLeaderboard, getCommunicationNotes, getAppSettings } from '../lib/api'
+import { getTiles, getDayOneTrackerAppointments, getTours, getLeaderboard, getAppSettings } from '../lib/api'
 
 // Shared Drive uses an inline icon path in the main layout; mirror it here so
 // the custom-role layout can render the same tile.
@@ -115,7 +115,6 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   const [showOrdering, setShowOrdering] = useState(false)
   const [tilesLoaded, setTilesLoaded] = useState(false)
   const [calendarBadge, setCalendarBadge] = useState(0)
-  const [commNotesBadge, setCommNotesBadge] = useState(0)
   const [leaderboardData, setLeaderboardData] = useState(null)
   const [showPointsInfo, setShowPointsInfo] = useState(false)
   const [motivationalMsg, setMotivationalMsg] = useState(getMotivationalMessage())
@@ -153,11 +152,6 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
       const todayTours = (toursRes.tours || []).length
       setCalendarBadge(todayDayOnes + todayTours)
     })
-
-    // Fetch unresolved comm notes count
-    getCommunicationNotes({ status: 'unresolved' }).then(res => {
-      setCommNotesBadge((res.notes || []).length)
-    }).catch(() => {})
 
     // Fetch action link URLs for this location
     getAppSettings('tour_url_' + slug).then(settings => {
@@ -289,8 +283,6 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           return onCalendar && <SvgTileButton key={key} onClick={onCalendar} iconPath={TILE_ICONS.tours} label="Calendar" desc="Tours & Day Ones" badge={calendarBadge} />
         case 'leaderboard':
           return onLeaderboard && <SvgTileButton key={key} onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />
-        case 'commNotes':
-          return onCommunicationNotes && <SvgTileButton key={key} onClick={onCommunicationNotes} iconPath={TILE_ICONS.commNotes} label="Comm Notes" desc="Team Notes" badge={commNotesBadge} />
         case 'hr':
           return onHR && <SvgTileButton key={key} onClick={onHR} iconPath={TILE_ICONS.hr} label="HR Docs" desc="Documents" />
         case 'helpCenter':
@@ -601,8 +593,6 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {onCalendar && <SvgTileButton onClick={onCalendar} iconPath={TILE_ICONS.tours} label="Calendar" desc="Tours & Day Ones" badge={calendarBadge} star />}
           {/* 4. Leaderboard */}
           {onLeaderboard && <SvgTileButton onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />}
-          {/* 4.5. Communication Notes */}
-          {onCommunicationNotes && <SvgTileButton onClick={onCommunicationNotes} iconPath={TILE_ICONS.commNotes} label="Comm Notes" desc="Team Notes" badge={commNotesBadge} />}
           {/* 4.6. HR Documents — manager+ only */}
           {onHR && roleIdx >= ROLE_LEVELS.manager && <SvgTileButton onClick={onHR} iconPath={TILE_ICONS.hr} label="HR Docs" desc="Documents" />}
           {/* 4.7. Help Center — all roles */}
