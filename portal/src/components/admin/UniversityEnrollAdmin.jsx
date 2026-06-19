@@ -46,7 +46,7 @@ export default function UniversityEnrollAdmin() {
     try {
       const res = await enrollUniversityUser(u.id, { email: u.email, name: u.name })
       const e = res.enrollment || {}
-      setResult({ userId: u.id, status: e.status, error: e.error, contacts: (e.created_contacts || []).length })
+      setResult({ userId: u.id, status: e.status, error: e.error, note: (res.notes || []).join(' '), contacts: (e.created_contacts || []).length })
       // Patch the row in place so the badge updates without a full reload.
       setUsers(list => list.map(x => x.id === u.id
         ? { ...x, enrolled: true, enrollment_status: e.status, contacts_created: (e.created_contacts || []).length }
@@ -79,7 +79,7 @@ export default function UniversityEnrollAdmin() {
           <div>
             <h3 className="text-base font-bold text-text-primary">Enroll a trainee in WCS University</h3>
             <p className="text-xs text-text-muted mt-0.5">
-              Enroll grants the user access to the University sub-account (assigned-data-only) and creates their own 5 practice contacts, assigned to them.
+              Creates the trainee’s own 5 practice contacts in University, assigned to them. Add the user to the University sub-account and set their permissions in GHL first — only users already in University appear here.
             </p>
           </div>
           <button onClick={load} disabled={loading} className={btnGhost}>{loading ? 'Loading…' : 'Refresh'}</button>
@@ -94,6 +94,7 @@ export default function UniversityEnrollAdmin() {
           {result.status === 'complete' && `Enrolled — ${result.contacts} practice contacts created.`}
           {result.status === 'partial' && `Partially enrolled (${result.contacts} contacts). ${result.error || ''}`}
           {result.status === 'failed' && `Enrollment failed. ${result.error || ''}`}
+          {result.note && <span className="block mt-1 font-normal opacity-90">{result.note}</span>}
         </div>
       )}
 
@@ -109,7 +110,6 @@ export default function UniversityEnrollAdmin() {
                 <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
                   <th className="py-2.5 px-4">Name</th>
                   <th className="py-2.5 px-2">Email</th>
-                  <th className="py-2.5 px-2 text-center">Sub-accounts</th>
                   <th className="py-2.5 px-2">Status</th>
                   <th className="py-2.5 px-4 text-right">Action</th>
                 </tr>
@@ -119,14 +119,11 @@ export default function UniversityEnrollAdmin() {
                   <tr key={u.id} className="border-b border-border/50 hover:bg-bg/40">
                     <td className="py-2 px-4 font-medium text-text-primary">{u.name || '—'}</td>
                     <td className="py-2 px-2 text-text-muted">{u.email || '—'}</td>
-                    <td className="py-2 px-2 text-center text-text-muted">{(u.locationIds || []).length}</td>
                     <td className="py-2 px-2">
                       {u.enrollment_status ? (
                         <span className={`text-[10px] font-bold uppercase border rounded-full px-1.5 py-0.5 ${STATUS_BADGE[u.enrollment_status] || STATUS_BADGE.pending}`}>
                           {u.enrollment_status}{u.contacts_created ? ` · ${u.contacts_created}` : ''}
                         </span>
-                      ) : u.enrolled ? (
-                        <span className="text-[10px] font-bold uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5">In University</span>
                       ) : (
                         <span className="text-[10px] text-text-muted">—</span>
                       )}
@@ -137,7 +134,7 @@ export default function UniversityEnrollAdmin() {
                         disabled={busyId === u.id}
                         className={u.enrollment_status === 'complete' ? btnGhost : btnPrimary}
                       >
-                        {busyId === u.id ? 'Enrolling…' : u.enrollment_status ? 'Re-run' : 'Enroll'}
+                        {busyId === u.id ? 'Creating…' : u.enrollment_status === 'complete' ? 'Re-create' : u.enrollment_status ? 'Re-run' : 'Create contacts'}
                       </button>
                     </td>
                   </tr>

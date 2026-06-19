@@ -11,22 +11,22 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { getUniversityLocation } = require('../config/ghlLocations')
-const { listAllUsers } = require('../services/university/ghlUsers')
+const { listUniversityUsers } = require('../services/university/ghlUsers')
 const { enrollUser } = require('../services/university/enroll')
 
 const router = Router()
 router.use(authenticate)
 router.use(requireRole('admin'))
 
-// GET /university/admin/users — all GHL users across readable sub-accounts,
-// merged with their portal enrollment status (so the UI can badge "Enrolled").
+// GET /university/admin/users — users in the University sub-account, merged with
+// their portal enrollment status (so the UI can badge contacts created).
 router.get('/users', async (req, res) => {
   try {
     if (!getUniversityLocation()) {
       return res.status(503).json({ error: 'University GHL location is not configured (GHL_UNIVERSITY_LOCATION_ID + GHL_UNIVERSITY_API_KEY)' })
     }
     const [users, enrollRes] = await Promise.all([
-      listAllUsers(),
+      listUniversityUsers(),
       supabaseAdmin.from('university_enrollments').select('ghl_user_id, status, created_contacts'),
     ])
     const byUser = new Map((enrollRes.data || []).map(e => [e.ghl_user_id, e]))
@@ -51,14 +51,14 @@ router.post('/enroll', async (req, res) => {
   try {
     const userId = req.body?.user_id || req.body?.userId
     if (!userId) return res.status(400).json({ error: 'user_id is required' })
-    const enrollment = await enrollUser({
+    const { enrollment, notes } = await enrollUser({
       userId,
       email: req.body?.email || null,
       name: req.body?.name || null,
       enrolledBy: req.staff?.email || req.staff?.id || null,
     })
     const code = enrollment.status === 'failed' ? 502 : 200
-    res.status(code).json({ enrollment })
+    res.status(code).json({ enrollment, notes })
   } catch (err) {
     console.error('[university/admin] enroll error:', err.message)
     res.status(500).json({ error: err.message })

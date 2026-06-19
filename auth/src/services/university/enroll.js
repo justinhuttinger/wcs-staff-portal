@@ -9,7 +9,6 @@
 
 const { supabaseAdmin } = require('../supabase')
 const { getUniversityLocation } = require('../../config/ghlLocations')
-const { grantUniversityAccess } = require('./ghlUsers')
 const { createSeedContacts } = require('./seedContacts')
 
 // Find-or-create the enrollment row for a user (idempotency anchor).
@@ -43,52 +42,37 @@ async function getOrCreateEnrollment({ userId, email, name, locationId, enrolled
   return data
 }
 
-// Enroll a user. Returns the updated enrollment row. Resumable: if a prior run
-// granted access but a contact failed, re-running only creates the missing ones.
+// Enroll a user = create their practice contacts, assigned to them (access +
+// permissions are granted by hand in GHL). Resumable: re-running only creates
+// the contacts not already recorded for this user.
 async function enrollUser({ userId, email, name, enrolledBy }) {
   const uni = getUniversityLocation()
   if (!uni) throw new Error('University location not configured (set GHL_UNIVERSITY_LOCATION_ID + GHL_UNIVERSITY_API_KEY)')
   if (!userId) throw new Error('userId is required')
 
   const row = await getOrCreateEnrollment({ userId, email, name, locationId: uni.id, enrolledBy })
-  if (row.status === 'complete') return row
+  if (row.status === 'complete') return { enrollment: row, notes: [] }
 
-  const patch = {}
-  const errors = []
-
-  // 1. Grant University access + permissions (skip if a prior run did it).
-  let grantedLocation = row.granted_location
-  let permissionsApplied = row.permissions_applied
-  if (!grantedLocation || !permissionsApplied) {
-    const grant = await grantUniversityAccess(userId)
-    grantedLocation = grant.granted || grantedLocation
-    permissionsApplied = grant.permissionsApplied || permissionsApplied
-    if (!grant.ok) errors.push(`access: ${grant.error}`)
-  }
-  patch.granted_location = grantedLocation
-  patch.permissions_applied = permissionsApplied
-
-  // 2. Create the seed contacts not yet created for this enrollment.
-  const { created, errors: contactErrors } = await createSeedContacts(userId, row.created_contacts || [])
+  // Create the seed contacts not yet created for this enrollment.
+  const { created, errors } = await createSeedContacts(userId, row.created_contacts || [])
   const allContacts = [...(row.created_contacts || []), ...created]
-  patch.created_contacts = allContacts
-  errors.push(...contactErrors)
 
-  // 3. Status: complete only when access is granted, perms applied, and every
-  //    active seed produced a contact.
+  // Complete when every active seed produced a contact.
   const { data: activeSeeds } = await supabaseAdmin
     .from('university_seed_contacts').select('id').eq('active', true)
   const expected = (activeSeeds || []).length
   const fullySeeded = allContacts.length >= expected && allContacts.every(c => c.ghl_contact_id)
-  patch.status = (grantedLocation && permissionsApplied && fullySeeded && errors.length === 0)
-    ? 'complete'
-    : (grantedLocation || permissionsApplied || allContacts.length > 0) ? 'partial' : 'failed'
-  patch.error = errors.length ? errors.join(' | ') : null
+
+  const patch = {
+    created_contacts: allContacts,
+    status: (fullySeeded && errors.length === 0) ? 'complete' : (allContacts.length > 0 ? 'partial' : 'failed'),
+    error: errors.length ? errors.join(' | ') : null,
+  }
 
   const { data: updated, error: upErr } = await supabaseAdmin
     .from('university_enrollments').update(patch).eq('id', row.id).select().single()
   if (upErr) throw new Error(`enrollment update failed: ${upErr.message}`)
-  return updated
+  return { enrollment: updated, notes: [] }
 }
 
 module.exports = { enrollUser, getOrCreateEnrollment }

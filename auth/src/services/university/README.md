@@ -40,19 +40,23 @@ mounts and nothing runs.
 
 ## Trainee enrollment (admin "Enroll" button)
 
-Admin → Experimental Tools → **University Enrollment** lists GHL users and, on
-**Enroll**, (1) grants the user access to the University sub-account with
-assigned-data-only permissions and (2) creates that trainee's own copy of the 5
-practice contacts, assigned to them. Ships dark behind
+Admin → Experimental Tools → **University Enrollment** lists the users already in
+the University sub-account and, on **Enroll**, creates that trainee's own copy of
+the 5 practice contacts, assigned to them. Ships dark behind
 `UNIVERSITY_ENROLL_ENABLED=true` (in addition to `UNIVERSITY_ENABLED`).
+
+**Division of labor:** adding a user to the University sub-account and setting
+their permissions (e.g. "only assigned data") is done by hand in GHL — the tool
+only creates + assigns the contacts. So a user appears in the list only once
+they've been added to University in GHL.
 
 - **Migration** `auth/migrations/051_university_enrollments.sql` —
   `university_seed_contacts` (editable template, seeded with the 5 personas) and
   `university_enrollments` (UNIQUE `ghl_user_id` = idempotency guard + audit).
 - **Routes** `routes/university-admin.js` at `/university/admin` *(staff JWT, admin)*:
   `GET /users`, `POST /enroll` `{ user_id }`, `GET /enrollments`.
-- **Services** `services/university/`: `ghlUsers.js` (list/grant), `seedContacts.js`
-  (clone the 5 contacts), `enroll.js` (idempotent orchestration).
+- **Services** `services/university/`: `ghlUsers.js` (list University users),
+  `seedContacts.js` (create the 5 contacts), `enroll.js` (idempotent orchestration).
 
 ### Env
 
@@ -60,24 +64,11 @@ practice contacts, assigned to them. Ships dark behind
 |---|---|
 | `UNIVERSITY_ENROLL_ENABLED` | `true` to mount the admin enrollment routes |
 | `GHL_UNIVERSITY_LOCATION_ID` | the University sub-account id (e.g. `CIULF8ceWTeGvsjwiPrF`) |
-| `GHL_UNIVERSITY_API_KEY` | University **location** private-integration token — needs scopes **contacts.readonly/write, users.readonly/write, locations/customFields.readonly** |
-| `GHL_PERMISSION_TEMPLATE_USER` | name/email substring of the user to copy permissions from (default `staffpermissions`) |
-| `GHL_PERMISSION_TEMPLATE_USER_ID` | optional — exact GHL user id of the template, skips the name search |
+| `GHL_UNIVERSITY_API_KEY` | University **location** private-integration token — needs scopes **contacts.readonly/write, users.readonly** |
 
-User **listing** comes from the existing per-club tokens in `config/ghlLocations.js`
-(a location token can't list company-wide — GHL returns `E-102`), so a user only
-appears here once they exist in a sub-account the portal has a token for.
-
-### Caveats (verify on first live enroll)
-
-- **Permissions are global per GHL user, not per sub-account.** Setting
-  assigned-data-only on enroll affects that user in *every* sub-account they
-  belong to, not just University. Fine for University-only trainees; for someone
-  who also works a club, enroll a separate University-only account instead.
-- **Granting an existing club user into University** is a cross-location
-  `PUT /users/{id}` with the University token. If GHL restricts that, the run is
-  recorded `partial` with the error; add the user to University in the GHL UI and
-  re-run (it will only create the missing contacts).
+Note: the `granted_location` / `permissions_applied` columns on
+`university_enrollments` are unused (legacy of an earlier auto-grant design) and
+stay `false`; access + permissions are a manual GHL step.
 
 ## Call types (the backbone) vs persona color
 
