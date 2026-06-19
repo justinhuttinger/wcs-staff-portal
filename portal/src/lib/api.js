@@ -1109,6 +1109,19 @@ export async function addCommunicationNoteComment(noteId, data) {
   return api('/communication-notes/' + noteId + '/comments', { method: 'POST', body: JSON.stringify(data) })
 }
 
+// WCS University — admin enrollment (admin-gated, behind UNIVERSITY_ENROLL_ENABLED)
+export async function getUniversityUsers() {
+  return api('/university/admin/users')
+}
+
+export async function enrollUniversityUser(userId, extra = {}) {
+  return api('/university/admin/enroll', { method: 'POST', body: JSON.stringify({ user_id: userId, ...extra }) })
+}
+
+export async function getUniversityEnrollments() {
+  return api('/university/admin/enrollments')
+}
+
 // HR Documents
 export async function getHRDocuments(params = {}) {
   const qs = new URLSearchParams(params).toString()

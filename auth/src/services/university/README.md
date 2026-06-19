@@ -38,6 +38,38 @@ mounts and nothing runs.
    step-by-step, the custom-code action body, and starter practice contacts.
 3. **Manager dashboard UI** in `portal/` — reads the `GET` endpoints above.
 
+## Trainee enrollment (admin "Enroll" button)
+
+Admin → Experimental Tools → **University Enrollment** lists the users already in
+the University sub-account and, on **Enroll**, creates that trainee's own copy of
+the 5 practice contacts, assigned to them. Ships dark behind
+`UNIVERSITY_ENROLL_ENABLED=true` (in addition to `UNIVERSITY_ENABLED`).
+
+**Division of labor:** adding a user to the University sub-account and setting
+their permissions (e.g. "only assigned data") is done by hand in GHL — the tool
+only creates + assigns the contacts. So a user appears in the list only once
+they've been added to University in GHL.
+
+- **Migration** `auth/migrations/051_university_enrollments.sql` —
+  `university_seed_contacts` (editable template, seeded with the 5 personas) and
+  `university_enrollments` (UNIQUE `ghl_user_id` = idempotency guard + audit).
+- **Routes** `routes/university-admin.js` at `/university/admin` *(staff JWT, admin)*:
+  `GET /users`, `POST /enroll` `{ user_id }`, `GET /enrollments`.
+- **Services** `services/university/`: `ghlUsers.js` (list University users),
+  `seedContacts.js` (create the 5 contacts), `enroll.js` (idempotent orchestration).
+
+### Env
+
+| Var | What |
+|---|---|
+| `UNIVERSITY_ENROLL_ENABLED` | `true` to mount the admin enrollment routes |
+| `GHL_UNIVERSITY_LOCATION_ID` | the University sub-account id (e.g. `CIULF8ceWTeGvsjwiPrF`) |
+| `GHL_UNIVERSITY_API_KEY` | University **location** private-integration token — needs scopes **contacts.readonly/write, users.readonly** |
+
+Note: the `granted_location` / `permissions_applied` columns on
+`university_enrollments` are unused (legacy of an earlier auto-grant design) and
+stay `false`; access + permissions are a manual GHL step.
+
 ## Call types (the backbone) vs persona color
 
 Two orthogonal dimensions drive a call:
