@@ -144,7 +144,6 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     { label: 'Leaderboard', icon: <PodiumIcon />, route: 'leaderboard', desc: 'Top performers' },
     { label: 'Marketing', icon: <MegaphoneIcon />, route: 'marketing-tracker', desc: 'Campaign tracker' },
     { label: 'Inventory', icon: <BoxIcon />, route: 'inventory', desc: 'Scan & track stock' },
-    { label: 'Comm Notes', icon: <NotesIcon />, route: 'comm-notes', desc: 'Member & team notes' },
     { label: 'Tickets', icon: <TicketIcon />, route: 'tickets', desc: 'Status & support' },
     { label: 'HR', icon: <HRIcon />, route: 'hr', desc: 'Resources & docs' },
   ]

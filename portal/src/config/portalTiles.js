@@ -18,7 +18,6 @@ export const PORTAL_TILE_CATALOG = [
   // Tools (in-portal views)
   { key: 'calendar',        label: 'Calendar',         desc: 'Tours & Day Ones', group: 'tools' },
   { key: 'leaderboard',     label: 'Leaderboard',      desc: 'Rankings',      group: 'tools' },
-  { key: 'commNotes',       label: 'Comm Notes',       desc: 'Team Notes',    group: 'tools' },
   // HR Docs is intentionally omitted — it is manager-gated and above the
   // custom role's tier, so it can't be granted to a custom member.
   { key: 'helpCenter',      label: 'Help Center',      desc: 'Guides',        group: 'tools' },
