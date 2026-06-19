@@ -10,6 +10,23 @@ const LOCATIONS = [
   { id: process.env.GHL_LOCATION_MEDFORD,     apiKey: process.env.GHL_API_KEY_MEDFORD,     name: 'Medford',     slug: 'medford',     clubCode: '32073' },
 ].filter(loc => loc.id && loc.apiKey)
 
+// WCS University sub-account (not one of the 7 clubs). Its own location-level
+// private-integration token carries contacts.write + users.write so the portal
+// can enroll trainees and seed their practice contacts. Separate from LOCATIONS
+// so it never shows up as a club in reports/pickers.
+const UNIVERSITY = (process.env.GHL_UNIVERSITY_LOCATION_ID && process.env.GHL_UNIVERSITY_API_KEY)
+  ? {
+      id: process.env.GHL_UNIVERSITY_LOCATION_ID,
+      apiKey: process.env.GHL_UNIVERSITY_API_KEY,
+      name: 'WCS University',
+      slug: 'university',
+    }
+  : null
+
+function getUniversityLocation() {
+  return UNIVERSITY
+}
+
 function getLocationBySlug(slug) {
   return LOCATIONS.find(l => l.slug === slug) || null
 }
@@ -26,4 +43,4 @@ function getLocationById(locationId) {
   return LOCATIONS.find(l => l.id === norm) || null
 }
 
-module.exports = { LOCATIONS, getLocationBySlug, getLocationByClubCode, getLocationById }
+module.exports = { LOCATIONS, UNIVERSITY, getUniversityLocation, getLocationBySlug, getLocationByClubCode, getLocationById }
