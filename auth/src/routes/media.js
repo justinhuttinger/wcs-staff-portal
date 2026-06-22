@@ -4,6 +4,7 @@
 // in the role hierarchy). Thumbnails are proxied because the Drive folder is
 // private and <img> can't send a Bearer token directly.
 const { Router } = require('express')
+const { Readable } = require('stream')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
@@ -63,6 +64,29 @@ router.get('/thumbnail/:driveFileId', async (req, res) => {
   } catch (err) {
     console.error('[Media] thumbnail error:', err.message)
     res.status(500).end()
+  }
+})
+
+// GET /media/download/:driveFileId -- stream the original file as an attachment.
+router.get('/download/:driveFileId', async (req, res) => {
+  try {
+    const id = req.params.driveFileId
+    const token = await getAccessToken()
+    const meta = await fetch(`${DRIVE_FILES}/${id}?fields=name,mimeType&supportsAllDrives=true`, {
+      headers: { Authorization: 'Bearer ' + token },
+    }).then((r) => r.json())
+    const upstream = await fetch(`${DRIVE_FILES}/${id}?alt=media&supportsAllDrives=true`, {
+      headers: { Authorization: 'Bearer ' + token },
+    })
+    if (!upstream.ok || !upstream.body) return res.status(upstream.status || 404).end()
+    const name = (meta.name || 'media').replace(/[\r\n"]/g, '')
+    res.set('Content-Type', meta.mimeType || upstream.headers.get('content-type') || 'application/octet-stream')
+    res.set('Content-Disposition', `attachment; filename="${name}"`)
+    // Stream so large videos don't buffer in memory.
+    Readable.fromWeb(upstream.body).pipe(res)
+  } catch (err) {
+    console.error('[Media] download error:', err.message)
+    if (!res.headersSent) res.status(500).end()
   }
 })
 

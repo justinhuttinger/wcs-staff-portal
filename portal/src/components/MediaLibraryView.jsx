@@ -1,6 +1,6 @@
 // portal/src/components/MediaLibraryView.jsx
 import { useState } from 'react'
-import { searchMedia, reindexMedia } from '../lib/api'
+import { searchMedia, reindexMedia, downloadMediaFile } from '../lib/api'
 import AuthImg from './AuthImg'
 
 const LOCATIONS = ['Salem', 'Eugene', 'Springfield', 'Clackamas', 'Keizer', 'Milwaukie', 'Medford', 'Etc.']
@@ -22,6 +22,23 @@ export default function MediaLibraryView({ onBack, userRole }) {
   const [error, setError] = useState(null)
   const [searched, setSearched] = useState(false)
   const [lightbox, setLightbox] = useState(null)
+  const [copied, setCopied] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+
+  async function copyLink(link) {
+    try {
+      await navigator.clipboard.writeText(link)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { /* clipboard blocked */ }
+  }
+
+  async function download(asset) {
+    setDownloading(true)
+    try { await downloadMediaFile(asset.drive_file_id, asset.title) }
+    catch (e) { alert(e.message) }
+    finally { setDownloading(false) }
+  }
 
   async function runSearch(e) {
     e?.preventDefault()
@@ -88,9 +105,19 @@ export default function MediaLibraryView({ onBack, userRole }) {
               <button onClick={() => setLightbox(null)} className="text-tile-sub hover:text-text-primary text-lg leading-none">&times;</button>
             </div>
             <AuthImg driveFileId={lightbox.drive_file_id} alt={lightbox.title} className="w-full max-h-[60vh] object-contain rounded-lg bg-bg" />
-            <div className="flex items-center justify-between mt-3 text-xs text-tile-sub">
-              <span>{lightbox.location} &middot; {lightbox.folder_path}</span>
-              <a href={lightbox.web_view_link} target="_blank" rel="noreferrer" className="text-wcs-red font-semibold">Open in Drive</a>
+            <div className="flex items-center justify-between mt-3 text-xs text-tile-sub gap-2">
+              <span className="truncate">{lightbox.location} &middot; {lightbox.folder_path}</span>
+              <div className="flex items-center gap-3 shrink-0">
+                <button onClick={() => download(lightbox)} disabled={downloading}
+                  className="text-text-primary hover:text-wcs-red font-semibold disabled:opacity-50">
+                  {downloading ? 'Downloading...' : 'Download'}
+                </button>
+                <button onClick={() => copyLink(lightbox.web_view_link)}
+                  className={(copied ? 'text-green-600' : 'text-text-primary hover:text-wcs-red') + ' font-semibold transition-colors'}>
+                  {copied ? 'Copied!' : 'Copy link'}
+                </button>
+                <a href={lightbox.web_view_link} target="_blank" rel="noreferrer" className="text-wcs-red font-semibold">Open in Drive</a>
+              </div>
             </div>
           </div>
         </div>

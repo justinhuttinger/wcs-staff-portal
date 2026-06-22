@@ -1012,6 +1012,22 @@ export async function fetchMediaThumbBlob(driveFileId) {
   return URL.createObjectURL(await res.blob())
 }
 
+// Download the original media file (authed) and trigger a browser save.
+export async function downloadMediaFile(driveFileId, filename) {
+  const res = await fetch(API_URL + '/media/download/' + encodeURIComponent(driveFileId), {
+    headers: authToken ? { Authorization: 'Bearer ' + authToken } : {},
+  })
+  if (!res.ok) throw new Error('download ' + res.status)
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename || 'media'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 // Drive Folders
 export async function getDriveFolders() {
   return api('/drive-folders')
