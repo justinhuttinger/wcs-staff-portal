@@ -288,7 +288,20 @@ Integration:
 
 ## Rollout
 
-- Migration 040 applied to Supabase project `ybopxxydsuwlbwxiuzve`.
-- New env (optional): reuse `ANTHROPIC_API_KEY`; opt-out `INVENTORY_OCR_DISABLED=1`.
+- Migrations 040 + 041 applied to Supabase project `ybopxxydsuwlbwxiuzve`.
+- Required env on the `auth` service: `ANTHROPIC_API_KEY` (already present for
+  mastermind). Invoice file uploads require `app_config.inventory_upload_folder_id`
+  (or `INVENTORY_UPLOAD_FOLDER_ID`) — pre-existing requirement, unchanged.
+- Opt-out: `INVENTORY_OCR_DISABLED=1` disables the parse endpoint (manual entry
+  still works).
 - Ships behind the existing manager+ gate on `/inventory`; no separate flag needed
   since parse is user-initiated and the manual flow remains intact.
+- Deploy: the `auth` service must redeploy to pick up the new routes + sync; the
+  frontend ships with the next portal build.
+
+## Implementation status (2026-06-22)
+
+Built on branch `worktree-inventory-invoice-ocr` via subagent-driven development.
+All 15 tasks complete and task-reviewed. Verification: 19 pure-module unit tests
+pass (`node --test`), the `auth` route module loads, and the portal build is
+clean. Migrations 040 + 041 applied and verified against the live DB.
