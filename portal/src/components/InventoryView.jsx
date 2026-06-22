@@ -455,7 +455,7 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
         {files.map((f, i) => (
           <span key={f.id} className="inline-flex items-center gap-1 text-xs bg-bg border border-border rounded-full px-2 py-1">
             <a href={f.file_link} target="_blank" rel="noreferrer" className="text-wcs-red font-semibold hover:underline">Page {f.page_no || i + 1}</a>
-            <button onClick={() => removePage(f.id)} className="text-text-muted hover:text-wcs-red" title="Remove page">×</button>
+            <button type="button" onClick={() => removePage(f.id)} className="text-text-muted hover:text-wcs-red" title="Remove page">×</button>
           </span>
         ))}
         <label className="text-xs font-semibold text-wcs-red cursor-pointer hover:underline">
@@ -463,7 +463,7 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
           <input type="file" accept="application/pdf,image/*" capture="environment" multiple className="hidden"
             onChange={e => addPages(e.target.files)} />
         </label>
-        <button onClick={reparse} disabled={parsing || !files.length} className={btnGhost}>
+        <button type="button" onClick={reparse} disabled={parsing || !files.length} className={btnGhost}>
           {parsing ? 'Reading...' : 'Re-read invoice'}
         </button>
       </div>

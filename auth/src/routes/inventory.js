@@ -595,13 +595,16 @@ router.post('/invoices', uploadFiles, async (req, res) => {
       if (!ALLOWED_MIME.test(f.mimetype || '')) return res.status(400).json({ error: 'Only photo or PDF files are allowed' })
     }
 
-    // Resolve-or-create by normalized order number.
+    // Resolve-or-create by (club, vendor, normalized order number). An order
+    // number alone is not unique across vendors/clubs in the shared table.
     const orderNorm = normalizeOrderNumber(req.body.invoice_number)
     let invoice = null
     if (orderNorm) {
-      const { data: existing } = await supabaseAdmin
-        .from('inventory_invoices').select('*')
-        .ilike('invoice_number', orderNorm).limit(1).maybeSingle()
+      let q = supabaseAdmin.from('inventory_invoices').select('*')
+        .eq('invoice_number', orderNorm)
+        .eq('vendor', vendor)
+      q = clubNumber ? q.eq('club_number', clubNumber) : q.is('club_number', null)
+      const { data: existing } = await q.limit(1).maybeSingle()
       invoice = existing || null
     }
     if (!invoice) {
@@ -719,7 +722,7 @@ router.post('/invoices/:id/parse', async (req, res) => {
     if (rows.length) await supabaseAdmin.from('inventory_invoice_items').insert(rows)
 
     await supabaseAdmin.from('inventory_invoices').update({
-      vendor: invoice.vendor || parsed.vendor || invoice.vendor,
+      vendor: invoice.vendor || parsed.vendor,
       invoice_number: invoice.invoice_number || normalizeOrderNumber(parsed.order_number),
       invoice_date: invoice.invoice_date || parsed.invoice_date || null,
       total: invoice.total != null ? invoice.total : parsed.total,

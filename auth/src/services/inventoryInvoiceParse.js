@@ -16,7 +16,9 @@ function parseExtractionText(text) {
   const body = fenced ? fenced[1] : s
   const start = body.indexOf('{'); const end = body.lastIndexOf('}')
   if (start === -1 || end === -1 || end < start) throw new Error('No JSON object found')
-  const obj = JSON.parse(body.slice(start, end + 1))
+  const jsonSlice = body.slice(start, end + 1)
+  let obj
+  try { obj = JSON.parse(jsonSlice) } catch { throw new Error('Invoice JSON was malformed or truncated') }
   const lines = (Array.isArray(obj.lines) ? obj.lines : []).map(l => {
     const quantity = toNum(l.quantity)
     const lineTotal = toNum(l.line_total)
@@ -82,6 +84,9 @@ async function extractFromPages(pages, { token, client }) {
     } else {
       content.push({ type: 'image', source: { type: 'base64', media_type: mime, data: b64 } })
     }
+  }
+  if (!content.some(b => b.type === 'image' || b.type === 'document')) {
+    throw new Error('No readable pages (could not fetch any uploaded file)')
   }
   content.push({ type: 'text', text: 'Extract this invoice as JSON.' })
   const resp = await c.messages.create({

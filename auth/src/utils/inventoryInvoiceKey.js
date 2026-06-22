@@ -7,9 +7,4 @@ function normalizeOrderNumber(raw) {
   return s ? s.toUpperCase() : null
 }
 
-function generatePlaceholderOrderNumber(nowIso) {
-  const digits = String(nowIso || '').replace(/\D/g, '') || '0'
-  return `AUTO-${digits}`
-}
-
-module.exports = { normalizeOrderNumber, generatePlaceholderOrderNumber }
+module.exports = { normalizeOrderNumber }

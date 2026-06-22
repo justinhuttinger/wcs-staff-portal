@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { normalizeOrderNumber, generatePlaceholderOrderNumber } = require('./inventoryInvoiceKey')
+const { normalizeOrderNumber } = require('./inventoryInvoiceKey')
 
 test('normalizeOrderNumber: trims, uppercases, collapses whitespace', () => {
   assert.equal(normalizeOrderNumber('  po 12 345 '), 'PO 12 345')
@@ -15,7 +15,3 @@ test('normalizeOrderNumber: empty/nullish -> null', () => {
   for (const v of [null, undefined, '', '   ', '#']) assert.equal(normalizeOrderNumber(v), null)
 })
 
-test('generatePlaceholderOrderNumber: derives AUTO- key from iso, no wall clock', () => {
-  const a = generatePlaceholderOrderNumber('2026-06-22T17:04:05.000Z')
-  assert.match(a, /^AUTO-\d+$/)
-})

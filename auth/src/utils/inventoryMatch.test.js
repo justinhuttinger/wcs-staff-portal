@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { normalizeText, upcVariants, matchLine } = require('./inventoryMatch')
+const { normalizeText, upcVariants, matchLine, normalizeSku } = require('./inventoryMatch')
 
 const items = [
   { id: 'i-shaker', item_name: 'WCS Shaker Bottle Black', upc: '195602030729' },
@@ -53,8 +53,6 @@ test('matchLine: unmatched below threshold', () => {
   const r = matchLine({ description: 'garden hose 50ft', upc: null }, { items, aliases: [] })
   assert.deepEqual(r, { item_id: null, match_source: null, match_confidence: null })
 })
-
-const { normalizeSku } = require('./inventoryMatch')
 
 test('normalizeSku: uppercases and trims, null on empty', () => {
   assert.equal(normalizeSku(' s1181001 '), 'S1181001')
