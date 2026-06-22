@@ -337,7 +337,7 @@ function InvoiceModal({ onClose, onCreated, defaultSlug }) {
         <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes" rows={2} className={inputCls} />
         <div>
           <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Invoice pages (PDF or photos — attach all pages)</span>
-          <input type="file" accept="application/pdf,image/*" multiple
+          <input type="file" accept="application/pdf,image/*" multiple capture="environment"
             onChange={e => setFiles(Array.from(e.target.files || []))} className="text-xs text-text-muted" />
           {files.length > 0 && <p className="text-[11px] text-text-muted mt-1">{files.length} page(s) selected</p>}
         </div>
