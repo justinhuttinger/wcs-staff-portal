@@ -9,11 +9,12 @@ const { diffDriveVsDb } = require('./diff')
 const { deriveLocation, joinFolderPath } = require('./locationPath')
 
 const FRAME_INTERVAL = Number(process.env.MEDIA_VIDEO_FRAME_INTERVAL_SEC || 5)
-const PHOTO_BATCH = 50
+// Embed at most this many images per Voyage call. Kept modest so a batch's
+// base64 payloads don't spike memory on the shared instance.
+const PHOTO_BATCH = Number(process.env.MEDIA_PHOTO_BATCH || 25)
 // How many photos to fetch/prep at once. Bounded so the backfill stays a good
-// citizen alongside the other ghl-sync jobs and never fires 50+ concurrent
-// Drive requests at once.
-const PREP_CONCURRENCY = Number(process.env.MEDIA_PREP_CONCURRENCY || 8)
+// citizen alongside the other ghl-sync jobs and keeps peak memory low.
+const PREP_CONCURRENCY = Number(process.env.MEDIA_PREP_CONCURRENCY || 4)
 
 let running = false
 
@@ -80,21 +81,25 @@ async function indexPhotos(photos, stats) {
 
 async function indexVideo(file) {
   const tmp = await downloadToTemp(file.id)
+  let frameDir
   try {
-    const frames = await sampleFrames(tmp, FRAME_INTERVAL)
+    const { dir, frames } = await sampleFrames(tmp, FRAME_INTERVAL)
+    frameDir = dir
     if (!frames.length) return 0
     const assetId = await upsertAsset(file)
-    // Embed frames in batches of PHOTO_BATCH.
+    // Embed frames in batches; read each frame from disk just-in-time so we
+    // never hold every frame buffer of a long video in memory at once.
     for (let i = 0; i < frames.length; i += PHOTO_BATCH) {
       const slice = frames.slice(i, i + PHOTO_BATCH)
       const inputs = []
-      for (const fr of slice) inputs.push((await toEmbedInput(fr.buffer)))
+      for (const fr of slice) inputs.push(await toEmbedInput(fs.readFileSync(fr.path)))
       const vecs = await embedMultimodal(inputs, 'document')
       const rows = vecs.map((v, k) => ({ asset_id: assetId, embedding: v, frame_time_seconds: slice[k].timeSeconds }))
       await supabase.from('media_embeddings').insert(rows)
     }
     return 1
   } finally {
+    if (frameDir) fs.rmSync(frameDir, { recursive: true, force: true })
     fs.existsSync(tmp) && fs.unlinkSync(tmp)
   }
 }

@@ -1,5 +1,10 @@
 const sharp = require('sharp')
 
+// Bound libvips memory on the small shared instance: disable the operation cache
+// and cap worker threads so concurrent decodes don't balloon resident memory.
+sharp.cache(false)
+sharp.concurrency(2)
+
 const MAX_PIXELS = 2_000_000 // Voyage caps charge at 2MP; no value embedding larger.
 
 // Re-encode any image buffer to a JPEG data URL sized for Voyage.
