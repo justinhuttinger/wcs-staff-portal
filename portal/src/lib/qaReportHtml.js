@@ -63,6 +63,7 @@ export function buildQaReportHtml(report, clubLabel) {
         <td class="item-cell">
           ${esc(it.label)}
           <div class="scored-by">${esc(it.by)}${it.at ? ` &middot; ${esc(it.at)}` : ''}</div>
+          ${it.note ? `<div class="item-note">&ldquo;${esc(it.note)}&rdquo;</div>` : ''}
         </td>
         <td class="score-cell${lowScore(it.score, perItemMax) ? ' low' : ''}">${esc(it.score)} / ${perItemMax}</td>
       </tr>`).join('')
@@ -228,6 +229,15 @@ export function buildQaReportHtml(report, clubLabel) {
     font-size: 11px;
     font-weight: normal;
     color: #777;
+  }
+  /* Auditor's free-text note for the item — the "why" behind a low score. */
+  .item-note {
+    margin-top: 6px;
+    font-size: 12px;
+    font-style: italic;
+    color: #000;
+    border-left: 3px solid #E31E24;
+    padding-left: 10px;
   }
   .score-cell {
     width: 30%;

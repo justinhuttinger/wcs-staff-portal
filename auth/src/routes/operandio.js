@@ -4,6 +4,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole, requireReportAccess } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { classifyJobEmail, persistJobEmail } = require('../lib/operandioJobs')
+const { parseQaItems } = require('../lib/operandioEmailAudit')
 const { resolveScopedSlugs } = require('../services/locationScope')
 
 const router = Router()
@@ -115,27 +116,7 @@ function parseQaScore(text) {
   }
 }
 
-// Per-item breakdown from the HTML part. Each item row looks like:
-//   <td...><div...>1</div></td>
-//   <td...> Lobby-Windows <div...>Justin Huttinger - Jun 05, 2026 10:26AM PDT </div></td>
-//   <td...> ... <span...>7</span> ... </td>
-// Used by the portal's in-house HTML report viewer.
-function parseQaItems(html) {
-  if (!html) return null
-  const re = /<div[^>]*>(\d{1,3})<\/div><\/td>\s*<td[^>]*>\s*([^<]+?)\s*<div[^>]*>([^<]*?)\s*-\s*([A-Z][a-z]{2} \d{1,2}, \d{4} \d{1,2}:\d{2}[AP]M [A-Z]{2,4})\s*<\/div>\s*<\/td>\s*<td[^>]*>\s*<span[^>]*>(\d{1,3})<\/span>/g
-  const items = []
-  let m
-  while ((m = re.exec(html)) !== null) {
-    items.push({
-      n: parseInt(m[1], 10),
-      name: m[2].trim(),
-      by: m[3].trim(),
-      at: m[4].trim(),
-      score: parseInt(m[5], 10),
-    })
-  }
-  return items.length ? items : null
-}
+// Per-item breakdown (incl. auditor notes) is parsed by ../lib/operandioEmailAudit.
 
 // The email wraps every URL in a link.app.operandio.com click tracker that may
 // expire — resolve it to the real app.operandio.com job URL at ingest time.
