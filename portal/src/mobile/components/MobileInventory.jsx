@@ -175,14 +175,20 @@ function InvoiceCaptureSheet({ slug, onClose, onParsed }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const fileInputRef = useRef(null)
+  const previewsRef = useRef(previews)
   const locationLabel = LOCATION_OPTIONS.find(o => o.slug === slug)?.label || slug
 
-  // Revoke object URLs on unmount to avoid memory leaks
+  // Keep previewsRef in sync with previews state
+  useEffect(() => {
+    previewsRef.current = previews
+  }, [previews])
+
+  // Revoke object URLs on unmount only to avoid revoking URLs still in use
   useEffect(() => {
     return () => {
-      previews.forEach(p => { if (p.url) URL.revokeObjectURL(p.url) })
+      previewsRef.current.forEach(p => { if (p.url) URL.revokeObjectURL(p.url) })
     }
-  }, [previews])
+  }, [])
 
   function addFiles(fileList) {
     const incoming = Array.from(fileList || [])
@@ -274,7 +280,7 @@ function InvoiceCaptureSheet({ slug, onClose, onParsed }) {
         {previews.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-4">
             {previews.map((p, idx) => (
-              <div key={idx} className="relative">
+              <div key={(p.url || p.name) + '-' + idx} className="relative">
                 {p.isImage ? (
                   <img src={p.url} alt={`Page ${idx + 1}`} className="w-16 h-16 object-cover rounded-lg border border-border" />
                 ) : (
