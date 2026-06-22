@@ -5,6 +5,7 @@ const { crossLocCleanup } = require('./sync/crossLocCleanup');
 const { abcSync } = require('./abc/abcSync');
 const { syncPayrollRecurringWindow } = require('./abc/recurringServices');
 const { alertSyncFailed } = require('./alerts');
+const { runMediaIndex } = require('./media/mediaIndex');
 
 function startScheduler() {
   const intervalMinutes = process.env.SYNC_INTERVAL_MINUTES || 10;
@@ -69,6 +70,13 @@ function startScheduler() {
       await alertSyncFailed(err).catch(() => {});
     }
   });
+
+  // Media library index — daily at MEDIA_INDEX_HOUR UTC (default 08:00 UTC ~ 1am PT).
+  const mediaIndexHour = Number(process.env.MEDIA_INDEX_HOUR || 8)
+  cron.schedule(`0 ${mediaIndexHour} * * *`, () => {
+    console.log('[Scheduler] Starting media index...')
+    runMediaIndex().catch((err) => console.error('[Scheduler] Media index failed:', err.message))
+  })
 
   console.log(`[Scheduler] Delta sync every ${intervalMinutes}m, full sync daily at ${fullSyncHour}:00 PST (${fullSyncHourUTC}:00 UTC)`);
   console.log(`[Scheduler] Payroll recurring sync daily at ${payrollSyncHour}:00 PST (${payrollSyncHourUTC}:00 UTC)`);
