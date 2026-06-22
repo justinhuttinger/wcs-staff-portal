@@ -585,7 +585,7 @@ router.post('/price-list/apply', requireRole('admin'), upload.single('file'), as
     for (let i = 0; i < rows.length; i += CHUNK) {
       const chunk = rows.slice(i, i + CHUNK).map(r => ({
         vendor,
-        sku: r.sku,
+        sku: normalizeSku(r.sku) || r.sku,
         product_name: r.product_name,
         upc: r.upc,
         unit_upc: r.unit_upc,
@@ -840,10 +840,11 @@ router.post('/invoices/:id/parse', async (req, res) => {
         // Build a map: sku -> best row (prefer vendor match, then any)
         const skuMap = new Map()
         for (const row of skuRows) {
-          const existing = skuMap.get(row.sku)
+          const normalized = normalizeSku(row.sku)
+          const existing = skuMap.get(normalized)
           const isVendorMatch = row.vendor === invoiceVendorNorm
           if (!existing || (isVendorMatch && existing.vendor !== invoiceVendorNorm)) {
-            skuMap.set(row.sku, row)
+            skuMap.set(normalized, row)
           }
         }
         for (const line of parsed.lines) {
