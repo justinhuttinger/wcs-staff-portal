@@ -5,7 +5,9 @@ const path = require('path')
 const { spawn } = require('child_process')
 const ffmpegPath = require('ffmpeg-static')
 
-// Extract 1 frame per intervalSec seconds into a temp dir, return buffers + timestamps.
+// Extract 1 frame per intervalSec seconds into a temp dir. Returns the temp dir
+// plus frame file PATHS (not buffers) so the caller can read + embed them one
+// batch at a time, keeping memory bounded. The caller must remove `dir` when done.
 async function sampleFrames(videoPath, intervalSec) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'frames-'))
   const pattern = path.join(dir, 'f-%05d.jpg')
@@ -20,11 +22,10 @@ async function sampleFrames(videoPath, intervalSec) {
   })
   const files = fs.readdirSync(dir).filter((n) => n.endsWith('.jpg')).sort()
   const frames = files.map((name, i) => ({
-    buffer: fs.readFileSync(path.join(dir, name)),
+    path: path.join(dir, name),
     timeSeconds: i * intervalSec, // frame i ~ i*interval seconds in
   }))
-  fs.rmSync(dir, { recursive: true, force: true })
-  return frames
+  return { dir, frames }
 }
 
 module.exports = { sampleFrames }
