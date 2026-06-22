@@ -14,6 +14,8 @@ const { parseLocationSlugParam, SLUG_CLUB_MAP } = require('../utils/locationSlug
 const { SELLABLE_PROFIT_CENTERS, SELLABLE_CATEGORIES, isSellableItem } = require('../utils/inventoryProfitCenters')
 const inventorySync = require('../services/inventorySync')
 const { normalizeOrderNumber } = require('../utils/inventoryInvoiceKey')
+const invoiceParse = require('../services/inventoryInvoiceParse')
+const { matchLine } = require('../utils/inventoryMatch')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
 
@@ -651,6 +653,84 @@ router.post('/invoices', uploadFiles, async (req, res) => {
     res.status(201).json({ invoice: shapeInvoice(full) })
   } catch (err) {
     console.error('[Inventory] invoice create error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /invoices/:id/parse — vision-extract all pages, backfill header, and
+// regenerate UNRECEIVED draft lines with catalog matches. Received lines untouched.
+router.post('/invoices/:id/parse', async (req, res) => {
+  try {
+    if (process.env.INVENTORY_OCR_DISABLED === '1') return res.status(503).json({ error: 'Invoice OCR is disabled' })
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid invoice id' })
+
+    const { data: invoice } = await supabaseAdmin
+      .from('inventory_invoices').select('*, inventory_invoice_files(*)').eq('id', req.params.id).maybeSingle()
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
+    const pages = (invoice.inventory_invoice_files || []).sort((a, b) => (a.page_no || 0) - (b.page_no || 0))
+    if (!pages.length) return res.status(400).json({ error: 'No pages to parse — upload a photo or PDF first' })
+
+    let parsed
+    try {
+      const token = await getAccessToken()
+      parsed = await invoiceParse.extractFromPages(pages, { token })
+    } catch (e) {
+      await supabaseAdmin.from('inventory_invoices').update({ parse_status: 'error', parse_error: e.message }).eq('id', invoice.id)
+      return res.status(502).json({ error: 'Could not read the invoice: ' + e.message })
+    }
+
+    // Catalog for matching: this club, or every club for corporate invoices.
+    const makeCat = () => {
+      let q = supabaseAdmin.from('inventory_items').select('id,item_name,upc,club_number,category,profit_center').eq('archived', false)
+      if (invoice.club_number) q = q.eq('club_number', invoice.club_number)
+      return q.order('item_name')
+    }
+    const catalog = (await fetchAllRows(makeCat)).filter(isSellableItem)
+    let aliasQ = supabaseAdmin
+      .from('inventory_vendor_aliases').select('vendor_sku,alias_text,upc,item_id')
+      .eq('vendor', String(parsed.vendor || invoice.vendor || '').toLowerCase().trim())
+    aliasQ = invoice.club_number ? aliasQ.eq('club_number', invoice.club_number) : aliasQ.is('club_number', null)
+    const { data: aliases } = await aliasQ
+
+    // "Fresh parse": drop existing UNRECEIVED lines, keep received ones. Then
+    // regenerate draft lines, but SKIP any parsed line whose matched item is
+    // ALREADY received on this invoice — otherwise re-parsing (or attaching a
+    // page to a partly/fully-received order) would create duplicate draft lines
+    // for products already in stock and double-count them on the next Receive.
+    const { data: receivedLines } = await supabaseAdmin
+      .from('inventory_invoice_items').select('item_id').eq('invoice_id', invoice.id).eq('received', true)
+    const receivedItemIds = new Set((receivedLines || []).map(r => r.item_id).filter(Boolean))
+
+    await supabaseAdmin.from('inventory_invoice_items').delete().eq('invoice_id', invoice.id).eq('received', false)
+
+    const rows = parsed.lines
+      .filter(l => l.quantity && l.quantity > 0)
+      .map(l => {
+        const m = matchLine({ description: l.description, upc: l.upc, vendor_sku: l.vendor_sku }, { items: catalog, aliases: aliases || [] })
+        return {
+          invoice_id: invoice.id, item_id: m.item_id, description: l.description || null, upc: l.upc,
+          vendor_sku: l.vendor_sku || null,
+          quantity: l.quantity, unit_cost: l.unit_cost != null ? l.unit_cost : 0,
+          match_confidence: m.match_confidence, match_source: m.match_source,
+        }
+      })
+      // Skip products already received on this invoice (avoid double-count).
+      .filter(r => !(r.item_id && receivedItemIds.has(r.item_id)))
+    if (rows.length) await supabaseAdmin.from('inventory_invoice_items').insert(rows)
+
+    await supabaseAdmin.from('inventory_invoices').update({
+      vendor: invoice.vendor || parsed.vendor || invoice.vendor,
+      invoice_number: invoice.invoice_number || normalizeOrderNumber(parsed.order_number),
+      invoice_date: invoice.invoice_date || parsed.invoice_date || null,
+      total: invoice.total != null ? invoice.total : parsed.total,
+      parse_status: 'parsed', parsed_at: new Date().toISOString(), parse_error: null,
+    }).eq('id', invoice.id)
+
+    const { data: full } = await supabaseAdmin
+      .from('inventory_invoices').select('*, inventory_invoice_items(*), inventory_invoice_files(*)').eq('id', invoice.id).single()
+    res.json({ invoice: shapeInvoice(full), parsed_lines: rows.length })
+  } catch (err) {
+    console.error('[Inventory] parse error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })
