@@ -13,6 +13,9 @@ const { getAccessToken } = require('./googleBusiness')
 const { parseLocationSlugParam, SLUG_CLUB_MAP } = require('../utils/locationSlug')
 const { SELLABLE_PROFIT_CENTERS, SELLABLE_CATEGORIES, isSellableItem } = require('../utils/inventoryProfitCenters')
 const inventorySync = require('../services/inventorySync')
+const { normalizeOrderNumber } = require('../utils/inventoryInvoiceKey')
+const invoiceParse = require('../services/inventoryInvoiceParse')
+const { matchLine, normalizeText, normalizeSku } = require('../utils/inventoryMatch')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
 
@@ -47,6 +50,18 @@ function decorateItem(it) {
     unit_cost: cost,
     unit_margin: cost != null && price != null ? +(price - cost).toFixed(2) : null,
     margin_pct: cost != null && price != null && price > 0 ? +(((price - cost) / price) * 100).toFixed(1) : null,
+  }
+}
+
+function shapeInvoice(inv) {
+  if (!inv) return inv
+  return {
+    ...inv,
+    location_slug: inv.club_number ? CLUB_TO_SLUG[inv.club_number] || null : null,
+    items: inv.inventory_invoice_items || [],
+    files: (inv.inventory_invoice_files || []).sort((a, b) => (a.page_no || 0) - (b.page_no || 0)),
+    inventory_invoice_items: undefined,
+    inventory_invoice_files: undefined,
   }
 }
 
@@ -511,42 +526,60 @@ async function getUploadFolderId() {
   return data?.value || null
 }
 
-function uploadSingle(req, res, next) {
-  upload.single('file')(req, res, (err) => {
+async function uploadBufferToDrive(buffer, originalname, mime, token, folderId) {
+  const name = (originalname || 'invoice').replace(/[\r\n"]/g, '').slice(0, 200)
+  const boundary = '----wcsInventoryUploadBoundary'
+  const metadata = JSON.stringify({ name, parents: [folderId] })
+  const pre = Buffer.from(
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n` +
+    `--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`, 'utf8')
+  const post = Buffer.from(`\r\n--${boundary}--`, 'utf8')
+  const up = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body: Buffer.concat([pre, buffer, post]),
+  })
+  const created = await up.json()
+  if (created.error) { const e = new Error(created.error.message || 'Drive upload failed'); e.status = up.status || 500; throw e }
+  await fetch(`https://www.googleapis.com/drive/v3/files/${created.id}/permissions?supportsAllDrives=true`, {
+    method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+  }).catch(() => {})
+  return { fileLink: `https://drive.google.com/file/d/${created.id}/view`, fileName: created.name, mime }
+}
+
+const ALLOWED_MIME = /^image\/(?!svg)|^application\/pdf$/
+function uploadFiles(req, res, next) {
+  upload.array('files', 12)(req, res, (err) => {
     if (err) {
       const tooBig = err.code === 'LIMIT_FILE_SIZE'
-      return res.status(tooBig ? 413 : 400).json({ error: tooBig ? 'File exceeds the 50 MB limit' : 'Upload failed' })
+      return res.status(tooBig ? 413 : 400).json({ error: tooBig ? 'A file exceeds the 50 MB limit' : 'Upload failed' })
     }
     next()
   })
 }
 
-// GET /invoices — list with line items.
+// GET /invoices — list with line items and file pages.
 router.get('/invoices', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('inventory_invoices')
-      .select('*, inventory_invoice_items(*)')
+      .select('*, inventory_invoice_items(*), inventory_invoice_files(*)')
       .order('created_at', { ascending: false })
       .limit(500)
     if (error) throw error
-    res.json({
-      invoices: (data || []).map(inv => ({
-        ...inv,
-        location_slug: inv.club_number ? CLUB_TO_SLUG[inv.club_number] || null : null,
-        items: inv.inventory_invoice_items || [],
-        inventory_invoice_items: undefined,
-      })),
-    })
+    res.json({ invoices: (data || []).map(shapeInvoice) })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
-// POST /invoices — create an invoice. multipart/form-data with an optional
-// `file` (pdf/image, stored in Drive) plus vendor / invoice_number /
-// invoice_date / total / notes / location_slug fields.
-router.post('/invoices', uploadSingle, async (req, res) => {
+// POST /invoices — create or update an invoice. multipart/form-data with
+// optional `files` (1..n pdf/images, stored in Drive) or a single back-compat
+// `file` field, plus vendor / invoice_number / invoice_date / total / notes /
+// location_slug fields. Resolves an existing invoice by normalized order number
+// when provided; otherwise creates a new one.
+router.post('/invoices', uploadFiles, async (req, res) => {
   try {
     const vendor = typeof req.body.vendor === 'string' ? req.body.vendor.trim() : ''
     if (!vendor) return res.status(400).json({ error: 'Vendor is required' })
@@ -557,66 +590,193 @@ router.post('/invoices', uploadSingle, async (req, res) => {
       if (!clubNumber) return res.status(400).json({ error: 'Unknown location' })
     }
 
-    let fileLink = null, fileName = null
-    if (req.file) {
-      const mime = req.file.mimetype || 'application/octet-stream'
-      if (!/^image\/(?!svg)|^application\/pdf$/.test(mime)) {
-        return res.status(400).json({ error: 'Only photo or PDF files are allowed' })
-      }
-      const folderId = await getUploadFolderId()
-      if (!folderId) {
-        return res.status(400).json({ error: 'Invoice upload folder is not configured yet (set app_config key inventory_upload_folder_id or INVENTORY_UPLOAD_FOLDER_ID)' })
-      }
-      const token = await getAccessToken()
-      // ABC drops uploads with disallowed filename chars; Drive is fine, but
-      // strip newlines/quotes to keep the metadata JSON safe.
-      const name = (req.file.originalname || 'invoice').replace(/[\r\n"]/g, '').slice(0, 200)
-      const boundary = '----wcsInventoryUploadBoundary'
-      const metadata = JSON.stringify({ name, parents: [folderId] })
-      const pre = Buffer.from(
-        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n` +
-        `--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`, 'utf8')
-      const post = Buffer.from(`\r\n--${boundary}--`, 'utf8')
-      const up = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + token, 'Content-Type': `multipart/related; boundary=${boundary}` },
-        body: Buffer.concat([pre, req.file.buffer, post]),
-      })
-      const created = await up.json()
-      if (created.error) {
-        return res.status(up.status || 500).json({ error: created.error.message || 'Drive upload failed' })
-      }
-      await fetch(`https://www.googleapis.com/drive/v3/files/${created.id}/permissions?supportsAllDrives=true`, {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: 'reader', type: 'anyone' }),
-      }).catch(() => {})
-      fileLink = `https://drive.google.com/file/d/${created.id}/view`
-      fileName = created.name
+    const files = req.files && req.files.length ? req.files : (req.file ? [req.file] : [])
+    for (const f of files) {
+      if (!ALLOWED_MIME.test(f.mimetype || '')) return res.status(400).json({ error: 'Only photo or PDF files are allowed' })
     }
 
-    const { data, error } = await supabaseAdmin
-      .from('inventory_invoices')
-      .insert({
+    // Resolve-or-create by (club, vendor, normalized order number). An order
+    // number alone is not unique across vendors/clubs in the shared table.
+    const orderNorm = normalizeOrderNumber(req.body.invoice_number)
+    let invoice = null
+    if (orderNorm) {
+      let q = supabaseAdmin.from('inventory_invoices').select('*')
+        .eq('invoice_number', orderNorm)
+        .eq('vendor', vendor)
+      q = clubNumber ? q.eq('club_number', clubNumber) : q.is('club_number', null)
+      const { data: existing } = await q.limit(1).maybeSingle()
+      invoice = existing || null
+    }
+    if (!invoice) {
+      const { data, error } = await supabaseAdmin.from('inventory_invoices').insert({
         club_number: clubNumber,
         vendor,
-        invoice_number: req.body.invoice_number ? String(req.body.invoice_number).slice(0, 100) : null,
+        invoice_number: orderNorm,
         invoice_date: req.body.invoice_date || null,
         total: num(req.body.total),
         notes: req.body.notes ? String(req.body.notes).slice(0, 2000) : null,
-        file_link: fileLink,
-        file_name: fileName,
+        parse_status: files.length ? 'pending' : null,
         created_by: req.staff.id,
         created_by_name: req.staff.display_name || req.staff.email || null,
-      })
-      .select()
-      .single()
-    if (error) throw error
-    res.status(201).json({ invoice: { ...data, items: [] } })
+      }).select().single()
+      if (error) throw error
+      invoice = data
+    }
+
+    // Upload each page to Drive + record it.
+    if (files.length) {
+      const folderId = await getUploadFolderId()
+      if (!folderId) return res.status(400).json({ error: 'Invoice upload folder is not configured yet (set app_config key inventory_upload_folder_id or INVENTORY_UPLOAD_FOLDER_ID)' })
+      const token = await getAccessToken()
+      // Page numbers continue from the current count; assumes no concurrent uploads for one invoice.
+      const { count: existingPages } = await supabaseAdmin
+        .from('inventory_invoice_files').select('id', { count: 'exact', head: true }).eq('invoice_id', invoice.id)
+      let pageNo = existingPages || 0
+      for (const f of files) {
+        try {
+          const up = await uploadBufferToDrive(f.buffer, f.originalname, f.mimetype, token, folderId)
+          pageNo++
+          await supabaseAdmin.from('inventory_invoice_files').insert({
+            invoice_id: invoice.id, file_link: up.fileLink, file_name: up.fileName, page_no: pageNo, mime_type: up.mime,
+          })
+          if (!invoice.file_link) {
+            await supabaseAdmin.from('inventory_invoices').update({ file_link: up.fileLink, file_name: up.fileName }).eq('id', invoice.id)
+            invoice.file_link = up.fileLink
+          }
+        } catch (e) {
+          console.error('[Inventory] Drive upload page error:', e.message)
+          return res.status(e.status || 500).json({ error: e.message })
+        }
+      }
+    }
+
+    const { data: full } = await supabaseAdmin
+      .from('inventory_invoices').select('*, inventory_invoice_items(*), inventory_invoice_files(*)')
+      .eq('id', invoice.id).single()
+    res.status(201).json({ invoice: shapeInvoice(full) })
   } catch (err) {
     console.error('[Inventory] invoice create error:', err.message)
     res.status(500).json({ error: err.message })
   }
+})
+
+// POST /invoices/:id/parse — vision-extract all pages, backfill header, and
+// regenerate UNRECEIVED draft lines with catalog matches. Received lines untouched.
+router.post('/invoices/:id/parse', async (req, res) => {
+  try {
+    if (process.env.INVENTORY_OCR_DISABLED === '1') return res.status(503).json({ error: 'Invoice OCR is disabled' })
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid invoice id' })
+
+    const { data: invoice } = await supabaseAdmin
+      .from('inventory_invoices').select('*, inventory_invoice_files(*)').eq('id', req.params.id).maybeSingle()
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
+    const pages = (invoice.inventory_invoice_files || []).sort((a, b) => (a.page_no || 0) - (b.page_no || 0))
+    if (!pages.length) return res.status(400).json({ error: 'No pages to parse — upload a photo or PDF first' })
+
+    let parsed
+    try {
+      const token = await getAccessToken()
+      parsed = await invoiceParse.extractFromPages(pages, { token })
+    } catch (e) {
+      await supabaseAdmin.from('inventory_invoices').update({ parse_status: 'error', parse_error: e.message }).eq('id', invoice.id)
+      return res.status(502).json({ error: 'Could not read the invoice: ' + e.message })
+    }
+
+    // Catalog for matching: this club, or every club for corporate invoices.
+    const makeCat = () => {
+      let q = supabaseAdmin.from('inventory_items').select('id,item_name,upc,club_number,category,profit_center').eq('archived', false)
+      if (invoice.club_number) q = q.eq('club_number', invoice.club_number)
+      return q.order('item_name')
+    }
+    const catalog = (await fetchAllRows(makeCat)).filter(isSellableItem)
+    let aliasQ = supabaseAdmin
+      .from('inventory_vendor_aliases').select('vendor_sku,alias_text,upc,item_id')
+      .eq('vendor', String(parsed.vendor || invoice.vendor || '').toLowerCase().trim())
+    aliasQ = invoice.club_number ? aliasQ.eq('club_number', invoice.club_number) : aliasQ.is('club_number', null)
+    const { data: aliases } = await aliasQ
+
+    // "Fresh parse": drop existing UNRECEIVED lines, keep received ones. Then
+    // regenerate draft lines, but SKIP any parsed line whose matched item is
+    // ALREADY received on this invoice — otherwise re-parsing (or attaching a
+    // page to a partly/fully-received order) would create duplicate draft lines
+    // for products already in stock and double-count them on the next Receive.
+    const { data: receivedLines } = await supabaseAdmin
+      .from('inventory_invoice_items').select('item_id').eq('invoice_id', invoice.id).eq('received', true)
+    const receivedItemIds = new Set((receivedLines || []).map(r => r.item_id).filter(Boolean))
+
+    await supabaseAdmin.from('inventory_invoice_items').delete().eq('invoice_id', invoice.id).eq('received', false)
+
+    const rows = parsed.lines
+      .filter(l => l.quantity && l.quantity > 0)
+      .map(l => {
+        const m = matchLine({ description: l.description, upc: l.upc, vendor_sku: l.vendor_sku }, { items: catalog, aliases: aliases || [] })
+        return {
+          invoice_id: invoice.id, item_id: m.item_id, description: l.description || null, upc: l.upc,
+          vendor_sku: l.vendor_sku || null,
+          quantity: l.quantity, unit_cost: l.unit_cost != null ? l.unit_cost : 0,
+          match_confidence: m.match_confidence, match_source: m.match_source,
+        }
+      })
+      // Skip products already received on this invoice (avoid double-count).
+      .filter(r => !(r.item_id && receivedItemIds.has(r.item_id)))
+    if (rows.length) await supabaseAdmin.from('inventory_invoice_items').insert(rows)
+
+    await supabaseAdmin.from('inventory_invoices').update({
+      vendor: invoice.vendor || parsed.vendor,
+      invoice_number: invoice.invoice_number || normalizeOrderNumber(parsed.order_number),
+      invoice_date: invoice.invoice_date || parsed.invoice_date || null,
+      total: invoice.total != null ? invoice.total : parsed.total,
+      parse_status: 'parsed', parsed_at: new Date().toISOString(), parse_error: null,
+    }).eq('id', invoice.id)
+
+    const { data: full } = await supabaseAdmin
+      .from('inventory_invoices').select('*, inventory_invoice_items(*), inventory_invoice_files(*)').eq('id', invoice.id).single()
+    res.json({ invoice: shapeInvoice(full), parsed_lines: rows.length })
+  } catch (err) {
+    console.error('[Inventory] parse error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /invoices/:id/files — attach more page(s) to an existing invoice.
+router.post('/invoices/:id/files', uploadFiles, async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid invoice id' })
+    const files = req.files && req.files.length ? req.files : (req.file ? [req.file] : [])
+    if (!files.length) return res.status(400).json({ error: 'No files provided' })
+    for (const f of files) if (!ALLOWED_MIME.test(f.mimetype || '')) return res.status(400).json({ error: 'Only photo or PDF files are allowed' })
+
+    const { data: invoice } = await supabaseAdmin.from('inventory_invoices').select('*').eq('id', req.params.id).maybeSingle()
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
+
+    const folderId = await getUploadFolderId()
+    if (!folderId) return res.status(400).json({ error: 'Invoice upload folder is not configured yet' })
+    const token = await getAccessToken()
+    const { count } = await supabaseAdmin.from('inventory_invoice_files').select('id', { count: 'exact', head: true }).eq('invoice_id', invoice.id)
+    let pageNo = count || 0
+    for (const f of files) {
+      const up = await uploadBufferToDrive(f.buffer, f.originalname, f.mimetype, token, folderId)
+      pageNo++
+      await supabaseAdmin.from('inventory_invoice_files').insert({
+        invoice_id: invoice.id, file_link: up.fileLink, file_name: up.fileName, page_no: pageNo, mime_type: up.mime,
+      })
+    }
+    const { data: full } = await supabaseAdmin
+      .from('inventory_invoices').select('*, inventory_invoice_items(*), inventory_invoice_files(*)').eq('id', invoice.id).single()
+    res.status(201).json({ invoice: shapeInvoice(full) })
+  } catch (err) { res.status(err.status || 500).json({ error: err.message }) }
+})
+
+// DELETE /invoices/:id/files/:fileId — remove one page.
+router.delete('/invoices/:id/files/:fileId', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.fileId)) return res.status(400).json({ error: 'Invalid file id' })
+    const { data, error } = await supabaseAdmin
+      .from('inventory_invoice_files').delete().eq('id', req.params.fileId).eq('invoice_id', req.params.id).select().maybeSingle()
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Page not found' })
+    res.json({ success: true })
+  } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
 // POST /invoices/:id/items — add a line item (qty + unit cost, optionally
@@ -732,6 +892,22 @@ router.post('/invoices/:id/receive', async (req, res) => {
 
       await supabaseAdmin.from('inventory_invoice_items')
         .update({ received: true }).eq('id', line.id)
+      const vendorNorm = String(invoice.vendor || '').toLowerCase().trim()
+      const skuNorm = normalizeSku(line.vendor_sku)
+      const aliasText = normalizeText(line.description)
+      if (skuNorm) {
+        await supabaseAdmin.from('inventory_vendor_aliases').upsert({
+          club_number: item.club_number, vendor: vendorNorm,
+          vendor_sku: skuNorm, alias_text: null, upc: line.upc || null,
+          item_id: item.id, created_by: req.staff.id,
+        }, { onConflict: 'club_number,vendor,vendor_sku' }).then(() => {}, () => {})
+      } else if (aliasText) {
+        await supabaseAdmin.from('inventory_vendor_aliases').upsert({
+          club_number: item.club_number, vendor: vendorNorm,
+          vendor_sku: null, alias_text: aliasText, upc: line.upc || null,
+          item_id: item.id, created_by: req.staff.id,
+        }, { onConflict: 'club_number,vendor,alias_text' }).then(() => {}, () => {})
+      }
       applied++
     }
 

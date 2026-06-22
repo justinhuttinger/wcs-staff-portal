@@ -774,13 +774,28 @@ export async function getInventoryInvoices() {
   return api('/inventory/invoices')
 }
 
-export async function createInventoryInvoice(fields, file) {
+export async function createInventoryInvoice(fields, files) {
   const fd = new FormData()
   for (const [k, v] of Object.entries(fields)) {
     if (v !== undefined && v !== null && v !== '') fd.append(k, v)
   }
-  if (file) fd.append('file', file)
+  const list = Array.isArray(files) ? files : (files ? [files] : [])
+  for (const f of list) fd.append('files', f)
   return api('/inventory/invoices', { method: 'POST', body: fd })
+}
+
+export async function parseInventoryInvoice(invoiceId) {
+  return api('/inventory/invoices/' + invoiceId + '/parse', { method: 'POST' })
+}
+
+export async function addInventoryInvoiceFiles(invoiceId, files) {
+  const fd = new FormData()
+  for (const f of (Array.isArray(files) ? files : [files])) fd.append('files', f)
+  return api('/inventory/invoices/' + invoiceId + '/files', { method: 'POST', body: fd })
+}
+
+export async function deleteInventoryInvoiceFile(invoiceId, fileId) {
+  return api('/inventory/invoices/' + invoiceId + '/files/' + fileId, { method: 'DELETE' })
 }
 
 export async function addInventoryInvoiceItem(invoiceId, data) {
