@@ -17,3 +17,10 @@ test('diff flags new, changed, and deleted files', () => {
   assert.deepEqual(toEmbed.map((f) => f.id).sort(), ['b', 'c'])
   assert.deepEqual(toDelete.map((r) => r.drive_file_id), ['d'])
 })
+
+test('diff re-embeds files whose prior attempt errored', () => {
+  const drive = [{ id: 'a', md5: 'h1', modifiedTime: '2026-01-01T00:00:00Z' }]
+  const db = [{ drive_file_id: 'a', md5: 'h1', drive_modified_time: '2026-01-01T00:00:00Z', status: 'error' }]
+  const { toEmbed } = diffDriveVsDb(drive, db)
+  assert.deepEqual(toEmbed.map((f) => f.id), ['a'])
+})

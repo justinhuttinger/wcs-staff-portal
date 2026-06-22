@@ -4,6 +4,7 @@ function diffDriveVsDb(driveFiles, dbRows) {
   const toEmbed = driveFiles.filter((f) => {
     const row = byId.get(f.id)
     if (!row) return true // new
+    if (row.status === 'error') return true // retry previously failed files
     if (f.md5 && row.md5) return f.md5 !== row.md5
     return String(f.modifiedTime) !== String(row.drive_modified_time) // md5 missing -> fall back
   })
