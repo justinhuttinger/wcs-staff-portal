@@ -34,19 +34,19 @@ export default function MediaLibraryView({ onBack, userRole }) {
   }
 
   return (
-    <div className="bg-white min-h-screen">
-    <div className="max-w-6xl mx-auto p-4">
-      <div className="flex items-center justify-between mb-4">
-        <button onClick={onBack} className="text-sm text-tile-sub hover:text-text-primary">&larr; Back</button>
-        {userRole === 'admin' && (
-          <button onClick={() => reindexMedia().then(() => alert('Reindex started')).catch((e) => alert(e.message))}
-            className="text-xs text-tile-sub hover:text-wcs-red">Reindex</button>
-        )}
-      </div>
-      <h1 className="text-xl font-bold text-text-primary mb-1">Media Library</h1>
-      <p className="text-sm text-tile-sub mb-4">Search photos and videos by what is in them, like "deadlift" or "front desk".</p>
+    <div className="w-full max-w-5xl mx-auto px-8 pb-12">
+      <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={onBack} className="text-sm text-tile-sub hover:text-text-primary">&larr; Back</button>
+          {userRole === 'admin' && (
+            <button onClick={() => reindexMedia().then(() => alert('Reindex started')).catch((e) => alert(e.message))}
+              className="text-xs text-tile-sub hover:text-wcs-red">Reindex</button>
+          )}
+        </div>
+        <h2 className="text-lg font-bold text-text-primary">Media Library</h2>
+        <p className="text-sm text-tile-sub mt-1 mb-4">Search photos and videos by what is in them, like "deadlift" or "front desk".</p>
 
-      <form onSubmit={runSearch} className="flex flex-wrap gap-2 mb-5">
+        <form onSubmit={runSearch} className="flex flex-wrap gap-2">
         <input className={inputCls + ' flex-1 min-w-[200px]'} placeholder="Search the media library..."
           value={query} onChange={(e) => setQuery(e.target.value)} />
         <select className={inputCls} value={location} onChange={(e) => setLocation(e.target.value)}>
@@ -59,7 +59,8 @@ export default function MediaLibraryView({ onBack, userRole }) {
           <option value="video">Video</option>
         </select>
         <button className={btnPrimary} disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
-      </form>
+        </form>
+      </div>
 
       {error && <div className="text-sm text-wcs-red mb-3">{error}</div>}
       {searched && !loading && !results.length && <div className="text-sm text-tile-sub">No matches found.</div>}
@@ -94,7 +95,6 @@ export default function MediaLibraryView({ onBack, userRole }) {
           </div>
         </div>
       )}
-    </div>
     </div>
   )
 }
