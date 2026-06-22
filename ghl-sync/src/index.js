@@ -13,6 +13,7 @@ const axios = require('axios');
 const LOCATIONS = require('./config/locations');
 const { startScheduler } = require('./scheduler');
 const supabase = require('./db/supabase');
+const { runMediaIndex } = require('./media/mediaIndex');
 
 const app = express();
 app.use(express.json());
@@ -441,6 +442,12 @@ app.post('/api/sync/abc/:locationSlug', requireSecret, (req, res) => {
     .catch(err => console.error(`[API] ABC sync for ${req.params.locationSlug} failed:`, err.message))
     .finally(() => { syncRunning = false; });
 });
+
+// POST /api/media/reindex — manual trigger (secret-guarded). Fires in background.
+app.post('/api/media/reindex', requireSecret, (req, res) => {
+  res.json({ status: 'started', message: 'Media index running in background' })
+  runMediaIndex().catch((err) => console.error('[API] Media index failed:', err.message))
+})
 
 // POST /api/sync/employees — run only the ABC → GHL employee dropdown sync
 // (no member/contact/opp work). Optional ?slug=medford to scope to one location.

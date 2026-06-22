@@ -994,6 +994,24 @@ export async function uploadRevenueCsv(file) {
   return api('/revenue/upload', { method: 'POST', body: fd })
 }
 
+// Media Search
+export async function searchMedia({ query, location, kind, limit = 40 }) {
+  return api('/media/search', { method: 'POST', body: JSON.stringify({ query, location, kind, limit }) })
+}
+
+export async function reindexMedia() {
+  return api('/media/reindex', { method: 'POST' })
+}
+
+// Fetch a protected thumbnail with the bearer token and return an object URL.
+export async function fetchMediaThumbBlob(driveFileId) {
+  const res = await fetch(API_URL + '/media/thumbnail/' + encodeURIComponent(driveFileId), {
+    headers: authToken ? { Authorization: 'Bearer ' + authToken } : {},
+  })
+  if (!res.ok) throw new Error('thumb ' + res.status)
+  return URL.createObjectURL(await res.blob())
+}
+
 // Drive Folders
 export async function getDriveFolders() {
   return api('/drive-folders')

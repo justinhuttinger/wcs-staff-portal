@@ -15,6 +15,7 @@ import HRView from './components/HRView'
 import HelpCenterView from './components/HelpCenterView'
 import TicketsView from './components/TicketsView'
 import DriveView from './components/DriveView'
+import MediaLibraryView from './components/MediaLibraryView'
 import GlobalProgressBar from './components/GlobalProgressBar'
 import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout } from './lib/api'
 import { logEvent } from './lib/audit'
@@ -55,6 +56,7 @@ export default function App() {
   const [showHelpCenter, setShowHelpCenter] = useState(false)
   const [showTickets, setShowTickets] = useState(false)
   const [showDrive, setShowDrive] = useState(false)
+  const [showMediaLibrary, setShowMediaLibrary] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
   const [locationOverride, setLocationOverride] = useState(() => localStorage.getItem('wcs_location_override') || '')
   const isElectron = !!window.wcsElectron
@@ -377,9 +379,11 @@ export default function App() {
         <MarketingTrackerView onBack={() => setShowMarketingTracker(false)} />
       ) : showInventory ? (
         <InventoryView onBack={() => setShowInventory(false)} location={location} isAdmin={isAdmin} />
+      ) : showMediaLibrary ? (
+        <MediaLibraryView onBack={() => setShowMediaLibrary(false)} userRole={user?.staff?.role} />
       ) : (
         <main className="flex-1 flex items-start pt-1 pb-12">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDrive(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} customReports={user.staff?.custom_reports || []} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDrive(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onMediaLibrary={() => setShowMediaLibrary(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>
