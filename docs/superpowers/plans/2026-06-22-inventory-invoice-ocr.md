@@ -323,7 +323,7 @@ git commit -m "feat(inventory): deterministic invoice-line catalog matcher"
 **Interfaces:**
 - Consumes: `@anthropic-ai/sdk` (dep present); Drive file bytes via the page `file_link`.
 - Produces:
-  - `parseExtractionText(text: string) => { vendor, order_number, invoice_date, total, lines: Array<{ description, upc, quantity, unit_cost, line_total }> }` — pure: parses model output (tolerates ```json fences and surrounding prose), coerces numbers via the existing `num` semantics, derives `unit_cost = line_total/quantity` when unit_cost is missing, drops lines with no description and no quantity. Throws `Error('No JSON object found')` only when there is no `{...}` at all.
+  - `parseExtractionText(text: string) => { vendor, order_number, invoice_date, total, lines: Array<{ vendor_sku, description, upc, quantity, unit_cost, line_total }> }` — pure: parses model output (tolerates ```json fences and surrounding prose), coerces numbers via the existing `num` semantics, derives `unit_cost = line_total/quantity` when unit_cost is missing, drops lines with no description and no quantity, passes through `vendor_sku` (trimmed, else null). Throws `Error('No JSON object found')` only when there is no `{...}` at all. NOTE: filtering to product (Sale) rows and cleaning lot/exp text are the MODEL's job via the system prompt; the parser does not filter by row type.
   - `driveDownloadUrl(fileLink: string) => string|null` — pure: maps a `https://drive.google.com/file/d/<id>/view` link to the API download URL `https://www.googleapis.com/drive/v3/files/<id>?alt=media&supportsAllDrives=true`; returns null if no id.
   - `async extractFromPages(pages: Array<{ file_link, mime_type }>, { token, client }) => parsed` — fetches each page's bytes, builds an Anthropic message with image/document blocks, calls `client.messages.create`, returns `parseExtractionText(resp text)`. `client`/`token` are injected so tests pass a fake client.
   - `getClient() => Anthropic|null` and `EXTRACTION_MODEL = 'claude-sonnet-4-6'`.
@@ -335,14 +335,15 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { parseExtractionText, driveDownloadUrl } = require('./inventoryInvoiceParse')
 
-test('parseExtractionText: parses fenced json and derives unit_cost', () => {
+test('parseExtractionText: parses fenced json, derives unit_cost, keeps vendor_sku', () => {
   const out = parseExtractionText('Here you go:\n```json\n' + JSON.stringify({
     vendor: 'Acme', order_number: 'PO-9', invoice_date: '2026-06-20', total: 50,
-    lines: [{ description: 'Bars', upc: '12', quantity: 5, line_total: 25 }],
+    lines: [{ vendor_sku: 'S1181001', description: 'Bars', upc: '12', quantity: 5, line_total: 25 }],
   }) + '\n```')
   assert.equal(out.vendor, 'Acme')
   assert.equal(out.order_number, 'PO-9')
   assert.equal(out.lines.length, 1)
+  assert.equal(out.lines[0].vendor_sku, 'S1181001')
   assert.equal(out.lines[0].unit_cost, 5) // 25/5
 })
 
@@ -402,6 +403,7 @@ function parseExtractionText(text) {
     let unitCost = toNum(l.unit_cost)
     if (unitCost == null && lineTotal != null && quantity) unitCost = +(lineTotal / quantity).toFixed(4)
     return {
+      vendor_sku: l.vendor_sku ? String(l.vendor_sku).trim().slice(0, 80) || null : null,
       description: l.description ? String(l.description).slice(0, 300) : '',
       upc: l.upc ? String(l.upc).replace(/\D/g, '') || null : null,
       quantity, unit_cost: unitCost, line_total: lineTotal,
@@ -424,12 +426,25 @@ function driveDownloadUrl(fileLink) {
 const SYSTEM = [
   'You read vendor invoices/packing slips for a retail store and return STRICT JSON only.',
   'Schema: {"vendor":string|null,"order_number":string|null,"invoice_date":"YYYY-MM-DD"|null,',
-  '"total":number|null,"lines":[{"description":string,"upc":string|null,"quantity":number,',
-  '"unit_cost":number|null,"line_total":number|null}]}.',
-  'order_number is the order/PO number, usually top-right. Use the per-unit cost for unit_cost;',
-  'if only a line total is shown, leave unit_cost null and set line_total. Do not invent values.',
-  'Return ONLY the JSON object, no prose.',
-].join(' ')
+  '"total":number|null,"lines":[{"vendor_sku":string|null,"description":string,"upc":string|null,',
+  '"quantity":number,"unit_cost":number|null,"line_total":number|null}]}.',
+  'order_number is the order/PO number, usually top-right (e.g. labeled "Order #").',
+  'total is the grand total, which may appear only on the LAST page.',
+  'INCLUDE ONLY purchasable PRODUCT lines. OMIT any subtotal, discount, shipping, tax,',
+  'or summary rows (e.g. rows whose Type is Subtotal/Discount/Shipping).',
+  'vendor_sku is the vendor item/SKU number on the line (e.g. an "Item" column value like S1181001); null if none.',
+  'description is the clean product name only; EXCLUDE trailing lot/expiration text',
+  'such as "4 ea - Lot#: 510731049 ExpDate: Aug 1, 2027".',
+  'Use the per-unit price for unit_cost; if only an extended/line total is shown, leave unit_cost null and set line_total.',
+  'Do not invent values. Return ONLY the JSON object, no prose.',
+  '',
+  'Example: a line shown as',
+  '"1  Sale  S1181001  Top Secret Nutrition Fireball L-Carnitine Liquid w/ Paradoxine 16oz Cherry',
+  ' 4 ea - Lot#: 510731049 ExpDate: Aug 1, 2027   $14.61   4 ea   $58.44"',
+  'becomes {"vendor_sku":"S1181001","description":"Top Secret Nutrition Fireball L-Carnitine Liquid w/ Paradoxine 16oz Cherry",',
+  '"upc":null,"quantity":4,"unit_cost":14.61,"line_total":58.44}.',
+  'A "Subtotal" or "Shipping Charge" row is NOT a product and must be omitted.',
+].join('\n')
 
 async function extractFromPages(pages, { token, client }) {
   const c = client || getClient()
@@ -686,10 +701,11 @@ router.post('/invoices/:id/parse', async (req, res) => {
       return q.order('item_name')
     }
     const catalog = (await fetchAllRows(makeCat)).filter(isSellableItem)
-    const { data: aliases } = await supabaseAdmin
-      .from('inventory_vendor_aliases').select('alias_text,upc,item_id')
+    let aliasQ = supabaseAdmin
+      .from('inventory_vendor_aliases').select('vendor_sku,alias_text,upc,item_id')
       .eq('vendor', String(parsed.vendor || invoice.vendor || '').toLowerCase().trim())
-      .is('club_number', invoice.club_number ? undefined : null)
+    aliasQ = invoice.club_number ? aliasQ.eq('club_number', invoice.club_number) : aliasQ.is('club_number', null)
+    const { data: aliases } = await aliasQ
 
     // Drop existing unreceived lines, keep received ones.
     await supabaseAdmin.from('inventory_invoice_items').delete().eq('invoice_id', invoice.id).eq('received', false)
@@ -697,9 +713,10 @@ router.post('/invoices/:id/parse', async (req, res) => {
     const rows = parsed.lines
       .filter(l => l.quantity && l.quantity > 0)
       .map(l => {
-        const m = matchLine({ description: l.description, upc: l.upc }, { items: catalog, aliases: aliases || [] })
+        const m = matchLine({ description: l.description, upc: l.upc, vendor_sku: l.vendor_sku }, { items: catalog, aliases: aliases || [] })
         return {
           invoice_id: invoice.id, item_id: m.item_id, description: l.description || null, upc: l.upc,
+          vendor_sku: l.vendor_sku || null,
           quantity: l.quantity, unit_cost: l.unit_cost != null ? l.unit_cost : 0,
           match_confidence: m.match_confidence, match_source: m.match_source,
         }
@@ -811,32 +828,38 @@ git commit -m "feat(inventory): add/remove invoice page endpoints"
 - Modify: `auth/src/routes/inventory.js` (the `POST /invoices/:id/receive` loop, ~697-736)
 
 **Interfaces:**
-- Consumes: `normalizeText` from `inventoryMatch` (add to the require).
-- Produces: after a line is received, upsert an `inventory_vendor_aliases` row keyed `(club_number, vendor, alias_text=normalizeText(description))` so future invoices from that vendor auto-match. Skips lines with no description.
+- Consumes: `normalizeText`, `normalizeSku` from `inventoryMatch` (add to the require; `normalizeSku` is added in Task 15).
+- Produces: after a line is received, upsert an `inventory_vendor_aliases` row. When the line has a `vendor_sku`, key on `(club_number, vendor, vendor_sku)` (conflict target `uq_inventory_vendor_aliases_sku`) so future invoices auto-match by SKU; otherwise key on `(club_number, vendor, alias_text=normalizeText(description))` (conflict target `uq_inventory_vendor_aliases_text`). Skips lines with neither a SKU nor a description.
 
 - [ ] **Step 1: Extend the receive require**
 
 Change the matcher require to:
 ```js
-const { matchLine, normalizeText } = require('../utils/inventoryMatch')
+const { matchLine, normalizeText, normalizeSku } = require('../utils/inventoryMatch')
 ```
 
 - [ ] **Step 2: Upsert alias inside the receive loop**
 
 Immediately after the existing `await supabaseAdmin.from('inventory_invoice_items').update({ received: true })...` line, add:
 ```js
+      const vendorNorm = String(invoice.vendor || '').toLowerCase().trim()
+      const skuNorm = normalizeSku(line.vendor_sku)
       const aliasText = normalizeText(line.description)
-      if (aliasText) {
+      if (skuNorm) {
         await supabaseAdmin.from('inventory_vendor_aliases').upsert({
-          club_number: item.club_number,
-          vendor: String(invoice.vendor || '').toLowerCase().trim(),
-          alias_text: aliasText,
-          upc: line.upc || null,
-          item_id: item.id,
-          created_by: req.staff.id,
+          club_number: item.club_number, vendor: vendorNorm,
+          vendor_sku: skuNorm, alias_text: null, upc: line.upc || null,
+          item_id: item.id, created_by: req.staff.id,
+        }, { onConflict: 'club_number,vendor,vendor_sku' }).then(() => {}, () => {})
+      } else if (aliasText) {
+        await supabaseAdmin.from('inventory_vendor_aliases').upsert({
+          club_number: item.club_number, vendor: vendorNorm,
+          vendor_sku: null, alias_text: aliasText, upc: line.upc || null,
+          item_id: item.id, created_by: req.staff.id,
         }, { onConflict: 'club_number,vendor,alias_text' }).then(() => {}, () => {})
       }
 ```
+NOTE: partial-index conflict targets require the upsert's WHERE to be implied by the row values; supabase-js `onConflict` names the index columns. If PostgREST cannot infer the partial index, fall back to a select-then-insert/update for the alias (this write is best-effort and already wrapped to swallow errors, so a miss never blocks receiving).
 
 - [ ] **Step 3: Verify module loads**
 
@@ -1145,6 +1168,143 @@ Confirm in the PR description: requires `ANTHROPIC_API_KEY` on the auth service 
 ```bash
 git add -A
 git commit -m "docs(inventory): mark invoice OCR shipped; note env requirements"
+```
+
+---
+
+## Revision R1 — real-invoice findings (Sportlife S454042, 2026-06-22)
+
+A real vendor invoice showed: no UPCs, a stable vendor **Item SKU** per line, a
+**Type** column (Sale/Subtotal/Discount/Shipping), and grand total on the last
+page only. Tasks 4/6/8 above are already revised inline (vendor_sku capture,
+Sale-only extraction, description cleaning, SKU-keyed aliases). Two new tasks
+add the schema and matcher support. **Execution order:** run Task 14 then Task 15
+BEFORE Task 4 (Task 6 consumes both).
+
+## Task 14: Migration 041 — vendor SKU columns + alias index rework
+
+**Files:**
+- Create: `auth/migrations/041_inventory_vendor_sku.sql`
+
+**Interfaces:**
+- Produces (DB): `inventory_invoice_items.vendor_sku`, `inventory_vendor_aliases.vendor_sku`, `alias_text` made nullable, old table-level UNIQUE replaced by two partial unique indexes.
+
+- [ ] **Step 1: Write the migration SQL**
+
+```sql
+-- 041_inventory_vendor_sku.sql
+-- Real vendor invoices (e.g. Sportlife) carry a stable per-vendor Item SKU but
+-- no UPC. Capture the SKU on invoice lines and make it the primary learned-match
+-- key in inventory_vendor_aliases. See 040_inventory_invoice_ocr.sql.
+
+ALTER TABLE inventory_invoice_items
+  ADD COLUMN IF NOT EXISTS vendor_sku text;
+
+ALTER TABLE inventory_vendor_aliases
+  ADD COLUMN IF NOT EXISTS vendor_sku text;
+
+-- alias_text is now optional (a SKU-only alias has no text key).
+ALTER TABLE inventory_vendor_aliases ALTER COLUMN alias_text DROP NOT NULL;
+
+-- Replace the single table-level UNIQUE with two partial unique indexes:
+-- SKU-keyed when a SKU exists, text-keyed otherwise.
+ALTER TABLE inventory_vendor_aliases
+  DROP CONSTRAINT IF EXISTS inventory_vendor_aliases_club_number_vendor_alias_text_key;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_vendor_aliases_sku
+  ON inventory_vendor_aliases(club_number, vendor, vendor_sku) WHERE vendor_sku IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_vendor_aliases_text
+  ON inventory_vendor_aliases(club_number, vendor, alias_text)
+  WHERE vendor_sku IS NULL AND alias_text IS NOT NULL;
+```
+
+- [ ] **Step 2: Commit** (controller applies the migration to Supabase separately)
+
+```bash
+git add auth/migrations/041_inventory_vendor_sku.sql
+git commit -m "feat(inventory): migration 041 - vendor SKU columns + alias index rework"
+```
+
+---
+
+## Task 15: Matcher — vendor SKU as primary key
+
+**Files:**
+- Modify: `auth/src/utils/inventoryMatch.js`
+- Modify: `auth/src/utils/inventoryMatch.test.js`
+
+**Interfaces:**
+- Produces: `normalizeSku(s) => string|null` (uppercase, trim, collapse whitespace, strip surrounding non-alphanumerics; null when empty). `matchLine` now accepts `line.vendor_sku` and aliases carry `vendor_sku`; new resolution order: **SKU alias → UPC exact → text alias → fuzzy → unmatched**, with `match_source` adding `'sku'`. Existing behaviors and confidences are unchanged for lines without a SKU.
+
+- [ ] **Step 1: Add failing tests** (append to `inventoryMatch.test.js`)
+
+```js
+const { normalizeSku } = require('./inventoryMatch')
+
+test('normalizeSku: uppercases and trims, null on empty', () => {
+  assert.equal(normalizeSku(' s1181001 '), 'S1181001')
+  assert.equal(normalizeSku(''), null)
+  assert.equal(normalizeSku(null), null)
+})
+
+test('matchLine: vendor SKU alias wins over fuzzy', () => {
+  const skuAliases = [{ vendor_sku: 'S1181001', alias_text: null, upc: null, item_id: 'i-shaker' }]
+  // description deliberately does NOT fuzzy-match the shaker
+  const r = matchLine(
+    { description: 'fireball lcarnitine cherry', upc: null, vendor_sku: 's1181001' },
+    { items, aliases: skuAliases })
+  assert.deepEqual(r, { item_id: 'i-shaker', match_source: 'sku', match_confidence: 1 })
+})
+
+test('matchLine: no SKU alias falls through to fuzzy', () => {
+  const r = matchLine(
+    { description: 'shaker bottle wcs black', upc: null, vendor_sku: 'S999' },
+    { items, aliases: [] })
+  assert.equal(r.item_id, 'i-shaker')
+  assert.equal(r.match_source, 'fuzzy')
+})
+```
+
+- [ ] **Step 2: Run tests, confirm the new ones FAIL**
+
+Run: `node --test auth/src/utils/inventoryMatch.test.js`
+Expected: the two new tests fail (`normalizeSku` undefined / `match_source` 'fuzzy' not 'sku').
+
+- [ ] **Step 3: Implement**
+
+Add `normalizeSku` and prepend the SKU-alias branch in `matchLine`:
+```js
+function normalizeSku(s) {
+  const v = String(s == null ? '' : s).replace(/\s+/g, ' ').trim()
+    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '').trim()
+  return v ? v.toUpperCase() : null
+}
+```
+In `matchLine`, immediately after computing `const miss = {...}`, before the UPC step:
+```js
+  // 0. Vendor SKU alias — strongest signal (stable per-vendor, survives name changes).
+  const skuNorm = normalizeSku(line.vendor_sku)
+  if (skuNorm) {
+    for (const a of aliases) {
+      if (a.vendor_sku && normalizeSku(a.vendor_sku) === skuNorm) {
+        return { item_id: a.item_id, match_source: 'sku', match_confidence: 1 }
+      }
+    }
+  }
+```
+Export `normalizeSku` in `module.exports`.
+
+- [ ] **Step 4: Run tests, confirm all pass**
+
+Run: `node --test auth/src/utils/inventoryMatch.test.js`
+Expected: all pass (the 8 existing + 3 new = 11), output pristine.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add auth/src/utils/inventoryMatch.js auth/src/utils/inventoryMatch.test.js
+git commit -m "feat(inventory): vendor SKU as primary matcher key"
 ```
 
 ---

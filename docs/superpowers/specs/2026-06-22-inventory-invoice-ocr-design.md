@@ -52,6 +52,32 @@ matches extracted automatically, then restock after a human confirm.
    **Already-received lines stay received and are never re-applied** — stock is
    never double-counted.
 
+## Real invoice findings (Sportlife S454042, added 2026-06-22)
+
+A real vendor invoice (Sportlife Distribution, 5 pages, 46 rows) confirmed the
+shape and surfaced three things the generic schema missed:
+
+- **Order #** is top-right, literally labeled "Order #" (`S454042`). **Total**
+  (`$1,700.99`) appears only on the LAST page. Vendor, date, unit price, qty,
+  and extended (line) price are all present as expected.
+- **No UPCs anywhere.** Instead each line has the vendor's own **Item SKU**
+  (`S1181001`, `S2741023`, ...). This SKU is stable across orders, so it becomes
+  the **primary learned-match key**: map a SKU to a catalog item once and every
+  future invoice from that vendor auto-matches by SKU. UPC matching still exists
+  for vendors that do print UPCs, but ranks below SKU.
+- **A "Type" column** with `Sale`, `Subtotal`, `Discount`, `Shipping` rows. Only
+  `Sale` rows are products. Subtotal/Discount/Shipping/Tax rows MUST be dropped
+  during extraction or they become bogus line items.
+- Descriptions carry trailing **Lot#/ExpDate** text ("...16oz Cherry / 4 ea -
+  Lot#: 510731049 ExpDate: Aug 1, 2027"); the product name is the leading part,
+  the lot/exp tail is stripped before matching.
+- The same SKU can repeat across lines (different lots); each is its own Sale
+  line and accumulates stock on its catalog item independently.
+
+These drive: a vendor-SKU column on lines + aliases (migration 041), a
+SKU-first matcher, and an extraction prompt that filters to Sale rows and
+cleans descriptions.
+
 ## Architecture
 
 Server: `auth` service (Express), routes in `auth/src/routes/inventory.js`.
@@ -101,16 +127,27 @@ CREATE TABLE inventory_vendor_aliases (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   club_number text,
   vendor      text NOT NULL,           -- normalized (lower, trimmed)
-  alias_text  text NOT NULL,           -- normalized vendor product name/SKU
+  vendor_sku  text,                    -- vendor's item/SKU number (migration 041)
+  alias_text  text,                    -- normalized vendor product name (nullable for SKU-only)
   upc         text,
   item_id     uuid NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
   created_by  uuid,
-  created_at  timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (club_number, vendor, alias_text)
+  created_at  timestamptz NOT NULL DEFAULT now()
 );
+-- A learned mapping is keyed by SKU when present, else by text. Two partial
+-- unique indexes (migration 041) instead of one table-level UNIQUE.
+CREATE UNIQUE INDEX uq_inventory_vendor_aliases_sku
+  ON inventory_vendor_aliases(club_number, vendor, vendor_sku) WHERE vendor_sku IS NOT NULL;
+CREATE UNIQUE INDEX uq_inventory_vendor_aliases_text
+  ON inventory_vendor_aliases(club_number, vendor, alias_text)
+  WHERE vendor_sku IS NULL AND alias_text IS NOT NULL;
 CREATE INDEX idx_inventory_vendor_aliases_lookup
   ON inventory_vendor_aliases(club_number, vendor);
 ```
+
+Migration 040 created this table with `alias_text NOT NULL` and a single
+table-level UNIQUE. Migration 041 adds `vendor_sku`, drops the NOT NULL and the
+old UNIQUE, and creates the two partial unique indexes above.
 
 Column additions:
 
@@ -122,7 +159,8 @@ ALTER TABLE inventory_invoices
 
 ALTER TABLE inventory_invoice_items
   ADD COLUMN match_confidence numeric, -- 0..1; null once user-confirmed
-  ADD COLUMN match_source     text;    -- upc | alias | fuzzy | manual
+  ADD COLUMN match_source     text,    -- sku | upc | alias | fuzzy | manual
+  ADD COLUMN vendor_sku       text;    -- vendor's SKU on the line (migration 041)
 ```
 
 - Order number reuses the existing `inventory_invoices.invoice_number`.
@@ -142,8 +180,9 @@ ALTER TABLE inventory_invoice_items
 - `POST /invoices/:id/items`, `DELETE .../items/:lineId`, `DELETE /invoices/:id`
   — unchanged.
 - `POST /invoices/:id/receive` — unchanged behavior, **plus** for each confirmed,
-  matched line it upserts an `inventory_vendor_aliases` row
-  (vendor + line description/upc → item_id).
+  matched line it upserts an `inventory_vendor_aliases` row: keyed by
+  `vendor_sku` when the line has one (so future invoices auto-match by SKU), else
+  by normalized `alias_text` (vendor + description → item_id).
 
 ## Extraction
 
@@ -156,7 +195,7 @@ One Anthropic `messages.create` call. System prompt instructs strict JSON output
   "invoice_date": "YYYY-MM-DD|null",
   "total": "number|null",
   "lines": [
-    { "description": "string", "upc": "string|null",
+    { "vendor_sku": "string|null", "description": "string", "upc": "string|null",
       "quantity": "number", "unit_cost": "number|null",
       "line_total": "number|null" }
   ]
@@ -164,24 +203,42 @@ One Anthropic `messages.create` call. System prompt instructs strict JSON output
 ```
 
 - Images sent as image content blocks; PDFs as document content blocks.
-- `unit_cost` derived from `line_total / quantity` when only the line total is
-  present.
-- Tolerant of missing fields; never throws on partial data.
+- **Only product rows are returned.** The prompt instructs the model to include
+  ONLY purchasable product lines and to OMIT subtotal, discount, shipping, tax,
+  and any non-product summary rows (the Sportlife invoice has a "Type" column;
+  Subtotal/Discount/Shipping rows must not become line items).
+- **vendor_sku** = the vendor's item/SKU number on the line (Sportlife "Item"
+  column, e.g. `S1181001`). Null if the invoice has none.
+- **description** is the clean product name; trailing lot/expiration text
+  ("N ea - Lot#: ... ExpDate: ...") is excluded.
+- `unit_cost` is the per-unit price; derived from `line_total / quantity` when
+  only the line total is present.
+- Tolerant of missing fields; never throws on partial data. The total may live
+  on the last page only.
+- The extraction prompt carries a condensed few-shot example based on the
+  Sportlife S454042 layout.
 - Parse failures set `parse_status='error'` + `parse_error`; the invoice remains
   fully editable by hand (today's manual flow is the floor — never worse).
 
 ## Matching — `inventoryMatch.js` (pure, unit-tested)
 
-Input: a parsed line + the club's sellable catalog + vendor aliases.
-Resolution order, first hit wins:
+Input: a parsed line (`{ vendor_sku, description, upc }`) + the club's sellable
+catalog + that vendor's aliases. Resolution order, first hit wins:
 
-1. **UPC exact** — line UPC equals a catalog item UPC (with leading-zero variants,
+1. **Vendor SKU alias** — line `vendor_sku` matches an alias row's `vendor_sku`
+   for this (club, vendor). `match_source='sku'`, confidence 1.0. This is the
+   strongest signal for vendors like Sportlife that print stable SKUs but no UPCs.
+2. **UPC exact** — line UPC equals a catalog item UPC (with leading-zero variants,
    matching the existing scanner's lookup). `match_source='upc'`, confidence 1.0.
-2. **Vendor alias** — (club, vendor, normalized description/upc) hit in
-   `inventory_vendor_aliases`. `match_source='alias'`, confidence 1.0.
-3. **Fuzzy name** — normalized token-overlap / trigram similarity vs catalog item
-   names; best score above a threshold. `match_source='fuzzy'`, confidence = score.
-4. **Unmatched** — no `item_id`; surfaced for manual pick.
+3. **Text alias** — normalized description matches an alias row's `alias_text`.
+   `match_source='alias'`, confidence 1.0.
+4. **Fuzzy name** — normalized token-overlap similarity vs catalog item names;
+   best score above threshold 0.6. `match_source='fuzzy'`, confidence = score.
+5. **Unmatched** — no `item_id`; surfaced for manual pick.
+
+On first contact with a new vendor SKU there is no alias yet, so matching falls
+to fuzzy name; once the user confirms and receives, the SKU alias is written and
+all future invoices auto-match by SKU.
 
 Normalization: lowercase, strip punctuation, collapse whitespace.
 
