@@ -794,6 +794,18 @@ export async function addInventoryInvoiceFiles(invoiceId, files) {
   return api('/inventory/invoices/' + invoiceId + '/files', { method: 'POST', body: fd })
 }
 
+export async function previewVendorPriceList(file) {
+  const fd = new FormData(); fd.append('file', file)
+  return api('/inventory/price-list/preview', { method: 'POST', body: fd })
+}
+
+export async function applyVendorPriceList(file, vendor, updateCosts) {
+  const fd = new FormData(); fd.append('file', file)
+  if (vendor) fd.append('vendor', vendor)
+  fd.append('update_costs', updateCosts ? 'true' : 'false')
+  return api('/inventory/price-list/apply', { method: 'POST', body: fd })
+}
+
 export async function deleteInventoryInvoiceFile(invoiceId, fileId) {
   return api('/inventory/invoices/' + invoiceId + '/files/' + fileId, { method: 'DELETE' })
 }
