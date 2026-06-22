@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   getInventoryItems, getInventoryCategories, getInventoryItemMovements,
   adjustInventoryItem, updateInventoryItem, getInventorySummary,
-  getInventoryInvoices, createInventoryInvoice, parseInventoryInvoice, addInventoryInvoiceItem,
+  getInventoryInvoices, createInventoryInvoice, parseInventoryInvoice, addInventoryInvoiceFiles,
+  deleteInventoryInvoiceFile, addInventoryInvoiceItem,
   deleteInventoryInvoiceItem, receiveInventoryInvoice, deleteInventoryInvoice,
   startInventorySync, getInventorySyncStatus, getInventoryAudit,
 } from '../lib/api'
@@ -361,12 +362,49 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
   const [linkedItem, setLinkedItem] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [files, setFiles] = useState(invoice.files || [])
+  const [parsing, setParsing] = useState(false)
 
   useEffect(() => {
     getInventoryItems({ location_slug: invoice.location_slug || '' })
       .then(res => setItems(res.items || []))
       .catch(() => {})
   }, [invoice.id, invoice.location_slug])
+
+  async function reparse() {
+    setParsing(true); setError('')
+    try {
+      const res = await parseInventoryInvoice(invoice.id)
+      setLines(res.invoice.items || [])
+      setFiles(res.invoice.files || [])
+      onChanged()
+    } catch (err) { setError(err.message) } finally { setParsing(false) }
+  }
+
+  async function addPages(fileList) {
+    const list = Array.from(fileList || [])
+    if (!list.length) return
+    setParsing(true); setError('')
+    try {
+      await addInventoryInvoiceFiles(invoice.id, list)
+      await reparse()
+    } catch (err) { setError(err.message); setParsing(false) }
+  }
+
+  async function removePage(fileId) {
+    try { await deleteInventoryInvoiceFile(invoice.id, fileId); setFiles(f => f.filter(x => x.id !== fileId)) }
+    catch (err) { setError(err.message) }
+  }
+
+  async function relink(line, itemId) {
+    try {
+      await deleteInventoryInvoiceItem(invoice.id, line.id)
+      const res = await addInventoryInvoiceItem(invoice.id, {
+        item_id: itemId, description: line.description, quantity: Number(line.quantity), unit_cost: Number(line.unit_cost),
+      })
+      setLines(l => l.map(x => x.id === line.id ? res.item : x)); onChanged()
+    } catch (err) { setError(err.message) }
+  }
 
   async function addLine() {
     const q = parseFloat(qty), c = parseFloat(cost)
@@ -413,6 +451,23 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
         {invoice.file_link && <a href={invoice.file_link} target="_blank" rel="noreferrer" className="text-wcs-red font-semibold hover:underline">View file</a>}
       </div>
 
+      <div className="flex items-center gap-2 flex-wrap mb-4">
+        {files.map((f, i) => (
+          <span key={f.id} className="inline-flex items-center gap-1 text-xs bg-bg border border-border rounded-full px-2 py-1">
+            <a href={f.file_link} target="_blank" rel="noreferrer" className="text-wcs-red font-semibold hover:underline">Page {f.page_no || i + 1}</a>
+            <button onClick={() => removePage(f.id)} className="text-text-muted hover:text-wcs-red" title="Remove page">×</button>
+          </span>
+        ))}
+        <label className="text-xs font-semibold text-wcs-red cursor-pointer hover:underline">
+          + Add page
+          <input type="file" accept="application/pdf,image/*" capture="environment" multiple className="hidden"
+            onChange={e => addPages(e.target.files)} />
+        </label>
+        <button onClick={reparse} disabled={parsing || !files.length} className={btnGhost}>
+          {parsing ? 'Reading...' : 'Re-read invoice'}
+        </button>
+      </div>
+
       {lines.length > 0 && (
         <table className="w-full text-sm mb-4">
           <thead>
@@ -429,6 +484,19 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
                   <span className="font-medium text-text-primary">{l.item_id ? itemName(l.item_id) : (l.description || '—')}</span>
                   {l.item_id && l.description && <span className="text-xs text-text-muted ml-2">{l.description}</span>}
                   {!l.item_id && <span className="ml-2 text-[10px] font-bold uppercase text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">Not linked</span>}
+                  {!l.received && (
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <div className="min-w-[220px]"><ItemPicker items={items} value={l.item_id} onChange={(id) => id && relink(l, id)} /></div>
+                      {l.match_source && (
+                        <span className={`text-[10px] font-bold uppercase rounded-full px-1.5 py-0.5 border ${
+                          l.match_confidence >= 0.85 ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                          : l.match_confidence >= 0.6 ? 'text-amber-700 bg-amber-50 border-amber-200'
+                          : 'text-text-muted bg-bg border-border'}`}>
+                          {l.match_source}{l.match_confidence != null ? ` ${Math.round(l.match_confidence * 100)}%` : ''}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </td>
                 <td className="py-2 pr-3 text-right">{fmtQty(l.quantity)}</td>
                 <td className="py-2 pr-3 text-right">{fmtMoney(l.unit_cost)}</td>
