@@ -7,6 +7,10 @@ const supabase = require('../db/supabase')
 
 const DRIVE_FILES = 'https://www.googleapis.com/drive/v3/files'
 
+// Abort a Drive request that hangs, so it can't block a batch indefinitely.
+const FETCH_TIMEOUT_MS = Number(process.env.MEDIA_FETCH_TIMEOUT_MS || 30000)
+const timeoutSignal = () => AbortSignal.timeout(FETCH_TIMEOUT_MS)
+
 async function getStoredTokens() {
   const { data } = await supabase.from('app_config').select('value').eq('key', 'google_business_tokens').single()
   return data?.value ? JSON.parse(data.value) : null
@@ -94,7 +98,7 @@ async function walkMediaTree(rootId) {
 async function downloadBuffer(fileId) {
   const token = await getAccessToken()
   const r = await fetch(`${DRIVE_FILES}/${fileId}?alt=media&supportsAllDrives=true`, {
-    headers: { Authorization: 'Bearer ' + token },
+    headers: { Authorization: 'Bearer ' + token }, signal: timeoutSignal(),
   })
   if (!r.ok) throw new Error('Drive download failed ' + r.status)
   return Buffer.from(await r.arrayBuffer())
@@ -117,11 +121,11 @@ async function downloadToTemp(fileId) {
 async function fetchThumbnailBuffer(fileId) {
   const token = await getAccessToken()
   const m = await fetch(`${DRIVE_FILES}/${fileId}?fields=thumbnailLink&supportsAllDrives=true`, {
-    headers: { Authorization: 'Bearer ' + token },
+    headers: { Authorization: 'Bearer ' + token }, signal: timeoutSignal(),
   }).then((r) => r.json())
   if (!m.thumbnailLink) throw new Error('no thumbnailLink for ' + fileId)
   const link = m.thumbnailLink.replace(/=s\d+$/, '=s1600')
-  const r = await fetch(link, { headers: { Authorization: 'Bearer ' + token } })
+  const r = await fetch(link, { headers: { Authorization: 'Bearer ' + token }, signal: timeoutSignal() })
   if (!r.ok) throw new Error('thumbnail fetch ' + r.status)
   return Buffer.from(await r.arrayBuffer())
 }
