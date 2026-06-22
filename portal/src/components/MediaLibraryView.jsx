@@ -34,6 +34,7 @@ export default function MediaLibraryView({ onBack, userRole }) {
   }
 
   return (
+    <div className="bg-white min-h-screen">
     <div className="max-w-6xl mx-auto p-4">
       <div className="flex items-center justify-between mb-4">
         <button onClick={onBack} className="text-sm text-tile-sub hover:text-text-primary">&larr; Back</button>
@@ -93,6 +94,7 @@ export default function MediaLibraryView({ onBack, userRole }) {
           </div>
         </div>
       )}
+    </div>
     </div>
   )
 }

@@ -15,6 +15,7 @@ import HRView from './components/HRView'
 import HelpCenterView from './components/HelpCenterView'
 import TicketsView from './components/TicketsView'
 import DriveView from './components/DriveView'
+import DriveHub from './components/DriveHub'
 import MediaLibraryView from './components/MediaLibraryView'
 import GlobalProgressBar from './components/GlobalProgressBar'
 import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout } from './lib/api'
@@ -56,6 +57,7 @@ export default function App() {
   const [showHelpCenter, setShowHelpCenter] = useState(false)
   const [showTickets, setShowTickets] = useState(false)
   const [showDrive, setShowDrive] = useState(false)
+  const [showDriveHub, setShowDriveHub] = useState(false)
   const [showMediaLibrary, setShowMediaLibrary] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
   const [locationOverride, setLocationOverride] = useState(() => localStorage.getItem('wcs_location_override') || '')
@@ -283,7 +285,7 @@ export default function App() {
     )
   }
 
-  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTickets && !showHelpCenter && !showDrive && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTickets && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory
 
   function handleBackToPortal() {
     setShowAdmin(false)
@@ -363,6 +365,13 @@ export default function App() {
         <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={seesAllClubs} />
       ) : showTickets ? (
         <TicketsView onBack={() => setShowTickets(false)} />
+      ) : showDriveHub ? (
+        <DriveHub
+          onBack={() => setShowDriveHub(false)}
+          onDrive={() => { setShowDriveHub(false); setShowDrive(true) }}
+          onMedia={() => { setShowDriveHub(false); setShowMediaLibrary(true) }}
+          canMedia={['corporate', 'marketing', 'admin', 'director'].includes(user?.staff?.role)}
+        />
       ) : showDrive ? (
         <DriveView onBack={() => setShowDrive(false)} />
       ) : showHelpCenter ? (
@@ -383,7 +392,7 @@ export default function App() {
         <MediaLibraryView onBack={() => setShowMediaLibrary(false)} userRole={user?.staff?.role} />
       ) : (
         <main className="flex-1 flex items-start pt-1 pb-12">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDrive(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onMediaLibrary={() => setShowMediaLibrary(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} customReports={user.staff?.custom_reports || []} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>
