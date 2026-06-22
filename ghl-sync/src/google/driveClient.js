@@ -21,8 +21,8 @@ async function refreshAccessToken(refreshToken) {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      client_id: process.env.GOOGLE_BUSINESS_CLIENT_ID,
+      client_secret: process.env.GOOGLE_BUSINESS_CLIENT_SECRET,
       refresh_token: refreshToken,
       grant_type: 'refresh_token',
     }),
@@ -112,19 +112,4 @@ async function downloadToTemp(fileId) {
   return tmp
 }
 
-async function fetchThumbnail(fileId) {
-  const token = await getAccessToken()
-  // Get thumbnailLink, then fetch a resized version.
-  const m = await fetch(`${DRIVE_FILES}/${fileId}?fields=thumbnailLink&supportsAllDrives=true`, {
-    headers: { Authorization: 'Bearer ' + token },
-  }).then((r) => r.json())
-  if (m.thumbnailLink) {
-    const link = m.thumbnailLink.replace(/=s\d+$/, '=s640')
-    const r = await fetch(link, { headers: { Authorization: 'Bearer ' + token } })
-    if (r.ok) return { buffer: Buffer.from(await r.arrayBuffer()), contentType: r.headers.get('content-type') || 'image/jpeg' }
-  }
-  const buf = await downloadBuffer(fileId)
-  return { buffer: buf, contentType: 'image/jpeg' }
-}
-
-module.exports = { getAccessToken, walkMediaTree, downloadBuffer, downloadToTemp, fetchThumbnail }
+module.exports = { getAccessToken, walkMediaTree, downloadBuffer, downloadToTemp }
