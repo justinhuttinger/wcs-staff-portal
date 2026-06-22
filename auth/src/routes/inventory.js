@@ -735,6 +735,47 @@ router.post('/invoices/:id/parse', async (req, res) => {
   }
 })
 
+// POST /invoices/:id/files — attach more page(s) to an existing invoice.
+router.post('/invoices/:id/files', uploadFiles, async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid invoice id' })
+    const files = req.files && req.files.length ? req.files : (req.file ? [req.file] : [])
+    if (!files.length) return res.status(400).json({ error: 'No files provided' })
+    for (const f of files) if (!ALLOWED_MIME.test(f.mimetype || '')) return res.status(400).json({ error: 'Only photo or PDF files are allowed' })
+
+    const { data: invoice } = await supabaseAdmin.from('inventory_invoices').select('*').eq('id', req.params.id).maybeSingle()
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
+
+    const folderId = await getUploadFolderId()
+    if (!folderId) return res.status(400).json({ error: 'Invoice upload folder is not configured yet' })
+    const token = await getAccessToken()
+    const { count } = await supabaseAdmin.from('inventory_invoice_files').select('id', { count: 'exact', head: true }).eq('invoice_id', invoice.id)
+    let pageNo = count || 0
+    for (const f of files) {
+      const up = await uploadBufferToDrive(f.buffer, f.originalname, f.mimetype, token, folderId)
+      pageNo++
+      await supabaseAdmin.from('inventory_invoice_files').insert({
+        invoice_id: invoice.id, file_link: up.fileLink, file_name: up.fileName, page_no: pageNo, mime_type: up.mime,
+      })
+    }
+    const { data: full } = await supabaseAdmin
+      .from('inventory_invoices').select('*, inventory_invoice_items(*), inventory_invoice_files(*)').eq('id', invoice.id).single()
+    res.status(201).json({ invoice: shapeInvoice(full) })
+  } catch (err) { res.status(err.status || 500).json({ error: err.message }) }
+})
+
+// DELETE /invoices/:id/files/:fileId — remove one page.
+router.delete('/invoices/:id/files/:fileId', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.fileId)) return res.status(400).json({ error: 'Invalid file id' })
+    const { data, error } = await supabaseAdmin
+      .from('inventory_invoice_files').delete().eq('id', req.params.fileId).eq('invoice_id', req.params.id).select().maybeSingle()
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Page not found' })
+    res.json({ success: true })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
 // POST /invoices/:id/items — add a line item (qty + unit cost, optionally
 // linked to a catalog item).
 router.post('/invoices/:id/items', async (req, res) => {
