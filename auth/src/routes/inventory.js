@@ -15,7 +15,8 @@ const { SELLABLE_PROFIT_CENTERS, SELLABLE_CATEGORIES, isSellableItem } = require
 const inventorySync = require('../services/inventorySync')
 const { normalizeOrderNumber } = require('../utils/inventoryInvoiceKey')
 const invoiceParse = require('../services/inventoryInvoiceParse')
-const { matchLine, normalizeText, normalizeSku } = require('../utils/inventoryMatch')
+const { matchLine, normalizeText, normalizeSku, upcVariants } = require('../utils/inventoryMatch')
+const { parsePriceListCsv } = require('../services/vendorPriceList')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
 
@@ -78,6 +79,14 @@ async function fetchAllRows(makeQuery, pageSize = 1000) {
     if (batch.length < pageSize) break
   }
   return all
+}
+
+// Returns a Set of all UPC variants across all non-archived catalog items.
+async function catalogUpcVariantSet() {
+  const items = await fetchAllRows(() => supabaseAdmin.from('inventory_items').select('upc').eq('archived', false))
+  const set = new Set()
+  for (const it of items) for (const v of upcVariants(it.upc)) set.add(v)
+  return set
 }
 
 // --- Items -------------------------------------------------------------------
@@ -517,6 +526,112 @@ router.get('/audit', requireRole('admin'), async (req, res) => {
   }
 })
 
+// --- Vendor price-list (admin only) -------------------------------------------
+
+// POST /price-list/preview — parse a CSV and compute coverage vs the catalog.
+// Writes nothing; returns stats + a sample of rows.
+router.post('/price-list/preview', requireRole('admin'), upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
+    const text = req.file.buffer.toString('utf8')
+    let rows, skipped
+    try {
+      ;({ rows, skipped } = parsePriceListCsv(text))
+    } catch (e) {
+      return res.status(400).json({ error: e.message })
+    }
+    const catSet = await catalogUpcVariantSet()
+    let matched = 0
+    const sample = []
+    for (const row of rows) {
+      const isMatched =
+        upcVariants(row.upc).some(v => catSet.has(v)) ||
+        upcVariants(row.unit_upc).some(v => catSet.has(v))
+      if (isMatched) matched++
+      if (sample.length < 30) {
+        sample.push({ sku: row.sku, product_name: row.product_name, pack_size: row.pack_size, unit_cost: row.unit_cost, map_price: row.map_price, matched: isMatched })
+      }
+    }
+    res.json({
+      total: rows.length,
+      skipped,
+      matched,
+      unmatched: rows.length - matched,
+      with_cost: rows.filter(r => r.unit_cost != null).length,
+      sample,
+    })
+  } catch (err) {
+    console.error('[Inventory] price-list preview error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /price-list/apply — upsert rows into vendor_sku_upc; optionally back-fill
+// item costs. Body fields: vendor (string), update_costs ('true'/'false').
+router.post('/price-list/apply', requireRole('admin'), upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
+    const vendor = (req.body.vendor || 'Sportlife Distribution').toLowerCase().trim()
+    let rows
+    try {
+      ;({ rows } = parsePriceListCsv(req.file.buffer.toString('utf8')))
+    } catch (e) {
+      return res.status(400).json({ error: e.message })
+    }
+
+    // Upsert into vendor_sku_upc in chunks of 500.
+    const now = new Date().toISOString()
+    const CHUNK = 500
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const chunk = rows.slice(i, i + CHUNK).map(r => ({
+        vendor,
+        sku: r.sku,
+        product_name: r.product_name,
+        upc: r.upc,
+        unit_upc: r.unit_upc,
+        pack_size: r.pack_size,
+        case_cost: r.case_cost,
+        unit_cost: r.unit_cost,
+        map_price: r.map_price,
+        updated_at: now,
+      }))
+      const { error } = await supabaseAdmin.from('vendor_sku_upc').upsert(chunk, { onConflict: 'vendor,sku' })
+      if (error) throw error
+    }
+
+    let costUpdated = 0
+    if (req.body.update_costs === 'true' || req.body.update_costs === true) {
+      // Build variant -> unit_cost map from price-list rows.
+      const costByVariant = new Map()
+      for (const row of rows) {
+        if (row.unit_cost == null) continue
+        for (const v of upcVariants(row.upc)) costByVariant.set(v, row.unit_cost)
+        for (const v of upcVariants(row.unit_upc)) costByVariant.set(v, row.unit_cost)
+      }
+      if (costByVariant.size > 0) {
+        // Page through all non-archived items, update those whose UPC is in the map.
+        const allItems = await fetchAllRows(() =>
+          supabaseAdmin.from('inventory_items').select('id, upc').eq('archived', false))
+        for (const item of allItems) {
+          const cost = upcVariants(item.upc).map(v => costByVariant.get(v)).find(c => c != null)
+          if (cost == null) continue
+          const { error } = await supabaseAdmin
+            .from('inventory_items')
+            .update({ last_unit_cost: cost, avg_unit_cost: cost })
+            .eq('id', item.id)
+          if (error) throw error
+          costUpdated++
+        }
+      }
+    }
+
+    res.json({ upserted: rows.length, cost_updated_items: costUpdated })
+  } catch (err) {
+    console.error('[Inventory] price-list apply error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // --- Invoices -------------------------------------------------------------------
 
 async function getUploadFolderId() {
@@ -705,6 +820,48 @@ router.post('/invoices/:id/parse', async (req, res) => {
     const receivedItemIds = new Set((receivedLines || []).map(r => r.item_id).filter(Boolean))
 
     await supabaseAdmin.from('inventory_invoice_items').delete().eq('invoice_id', invoice.id).eq('received', false)
+
+    // SKU -> UPC enrichment: lines that carry a vendor_sku but no upc get their
+    // upc filled from vendor_sku_upc so the UPC matcher can resolve them below.
+    const skusNeedingUpc = [...new Set(
+      parsed.lines
+        .filter(l => l.vendor_sku && !l.upc)
+        .map(l => normalizeSku(l.vendor_sku))
+        .filter(Boolean)
+    )]
+    if (skusNeedingUpc.length > 0) {
+      const invoiceVendorNorm = String(parsed.vendor || invoice.vendor || '').toLowerCase().trim()
+      const { data: skuRows } = await supabaseAdmin
+        .from('vendor_sku_upc')
+        .select('sku, upc, unit_upc, vendor')
+        .in('sku', skusNeedingUpc)
+      if (skuRows && skuRows.length > 0) {
+        const catSet = await catalogUpcVariantSet()
+        // Build a map: sku -> best row (prefer vendor match, then any)
+        const skuMap = new Map()
+        for (const row of skuRows) {
+          const existing = skuMap.get(row.sku)
+          const isVendorMatch = row.vendor === invoiceVendorNorm
+          if (!existing || (isVendorMatch && existing.vendor !== invoiceVendorNorm)) {
+            skuMap.set(row.sku, row)
+          }
+        }
+        for (const line of parsed.lines) {
+          if (!line.vendor_sku || line.upc) continue
+          const skuKey = normalizeSku(line.vendor_sku)
+          const pRow = skuKey ? skuMap.get(skuKey) : null
+          if (!pRow) continue
+          // Prefer whichever UPC variant is in the catalog; fall back to case upc.
+          if (pRow.upc && upcVariants(pRow.upc).some(v => catSet.has(v))) {
+            line.upc = pRow.upc
+          } else if (pRow.unit_upc && upcVariants(pRow.unit_upc).some(v => catSet.has(v))) {
+            line.upc = pRow.unit_upc
+          } else if (pRow.upc) {
+            line.upc = pRow.upc
+          }
+        }
+      }
+    }
 
     const rows = parsed.lines
       .filter(l => l.quantity && l.quantity > 0)
