@@ -263,8 +263,15 @@ Camera capture on mobile uses `<input type="file" accept="image/*" capture>`.
 ## Error handling
 
 - Vision unavailable / junk output → `parse_status='error'`; manual entry still works.
-- No order number found → generate a placeholder (e.g. `AUTO-<timestamp>`); user
-  can edit; if edited to collide with an existing invoice, merge.
+- No order number found → `invoice_number` stays null and the upload becomes its
+  own standalone invoice (null order numbers do NOT auto-group, since we cannot
+  prove two unknowns are the same order). Parse later backfills the order number
+  if the model finds one; the user can also type one. (No `AUTO-` placeholder —
+  it added no grouping value over null.)
+- Resolve-or-create identity is **(club_number, vendor, normalized order number)**,
+  matching how aliases are keyed — an order number alone is NOT unique across
+  vendors/clubs in the shared table. Lookup is an exact match (`.eq`), not a
+  `LIKE`/`ilike` (so `%`/`_` in an order number are literal, not wildcards).
 - Re-parse never mutates received lines and never double-applies stock.
 - Re-parse **replaces all unreceived draft lines** (the "fresh parse" semantic).
   Matching re-runs, so alias/UPC hits are restored automatically; a manual pick
@@ -277,7 +284,7 @@ Camera capture on mobile uses `<input type="file" accept="image/*" capture>`.
 Unit:
 - `inventoryMatch`: UPC (incl. leading-zero), alias hit, fuzzy above/below
   threshold, unmatched.
-- Order-number resolve-or-create: new vs existing, placeholder generation.
+- Order-number resolve-or-create: new vs existing, scoped by (club, vendor, order#).
 - Re-parse: preserves received lines, regenerates only unreceived ones, no
   double-count.
 
