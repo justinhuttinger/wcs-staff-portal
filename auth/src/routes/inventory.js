@@ -13,7 +13,7 @@ const { getAccessToken } = require('./googleBusiness')
 const { parseLocationSlugParam, SLUG_CLUB_MAP } = require('../utils/locationSlug')
 const { SELLABLE_PROFIT_CENTERS, SELLABLE_CATEGORIES, isSellableItem } = require('../utils/inventoryProfitCenters')
 const inventorySync = require('../services/inventorySync')
-const { normalizeOrderNumber, generatePlaceholderOrderNumber } = require('../utils/inventoryInvoiceKey')
+const { normalizeOrderNumber } = require('../utils/inventoryInvoiceKey')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
 
@@ -524,16 +524,6 @@ async function getUploadFolderId() {
   return data?.value || null
 }
 
-function uploadSingle(req, res, next) {
-  upload.single('file')(req, res, (err) => {
-    if (err) {
-      const tooBig = err.code === 'LIMIT_FILE_SIZE'
-      return res.status(tooBig ? 413 : 400).json({ error: tooBig ? 'File exceeds the 50 MB limit' : 'Upload failed' })
-    }
-    next()
-  })
-}
-
 async function uploadBufferToDrive(buffer, originalname, mime, token, folderId) {
   const name = (originalname || 'invoice').replace(/[\r\n"]/g, '').slice(0, 200)
   const boundary = '----wcsInventoryUploadBoundary'
@@ -633,6 +623,7 @@ router.post('/invoices', uploadFiles, async (req, res) => {
       const folderId = await getUploadFolderId()
       if (!folderId) return res.status(400).json({ error: 'Invoice upload folder is not configured yet (set app_config key inventory_upload_folder_id or INVENTORY_UPLOAD_FOLDER_ID)' })
       const token = await getAccessToken()
+      // Page numbers continue from the current count; assumes no concurrent uploads for one invoice.
       const { count: existingPages } = await supabaseAdmin
         .from('inventory_invoice_files').select('id', { count: 'exact', head: true }).eq('invoice_id', invoice.id)
       let pageNo = existingPages || 0
@@ -647,7 +638,10 @@ router.post('/invoices', uploadFiles, async (req, res) => {
             await supabaseAdmin.from('inventory_invoices').update({ file_link: up.fileLink, file_name: up.fileName }).eq('id', invoice.id)
             invoice.file_link = up.fileLink
           }
-        } catch (e) { return res.status(e.status || 500).json({ error: e.message }) }
+        } catch (e) {
+          console.error('[Inventory] Drive upload page error:', e.message)
+          return res.status(e.status || 500).json({ error: e.message })
+        }
       }
     }
 
