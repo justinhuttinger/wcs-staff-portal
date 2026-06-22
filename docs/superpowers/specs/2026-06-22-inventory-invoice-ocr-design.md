@@ -50,7 +50,11 @@ matches extracted automatically, then restock after a human confirm.
 5. **Fresh parse on re-upload.** Adding a page (even to a received invoice)
    re-parses all pages and regenerates the **unreceived** draft lines.
    **Already-received lines stay received and are never re-applied** — stock is
-   never double-counted.
+   never double-counted. Concretely, re-parse (a) drops only unreceived draft
+   lines and (b) skips any regenerated line whose matched item is already
+   received on that invoice. Because of this safety, the resolve-or-create on a
+   new upload attaches to the existing invoice for that order number regardless
+   of its received state (one invoice per order number is the invariant).
 
 ## Real invoice findings (Sportlife S454042, added 2026-06-22)
 

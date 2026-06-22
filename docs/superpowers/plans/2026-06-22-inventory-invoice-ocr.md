@@ -707,7 +707,15 @@ router.post('/invoices/:id/parse', async (req, res) => {
     aliasQ = invoice.club_number ? aliasQ.eq('club_number', invoice.club_number) : aliasQ.is('club_number', null)
     const { data: aliases } = await aliasQ
 
-    // Drop existing unreceived lines, keep received ones.
+    // "Fresh parse": drop existing UNRECEIVED lines, keep received ones. Then
+    // regenerate draft lines, but SKIP any parsed line whose matched item is
+    // ALREADY received on this invoice — otherwise re-parsing (or attaching a
+    // page to a partly/fully-received order) would create duplicate draft lines
+    // for products already in stock and double-count them on the next Receive.
+    const { data: receivedLines } = await supabaseAdmin
+      .from('inventory_invoice_items').select('item_id').eq('invoice_id', invoice.id).eq('received', true)
+    const receivedItemIds = new Set((receivedLines || []).map(r => r.item_id).filter(Boolean))
+
     await supabaseAdmin.from('inventory_invoice_items').delete().eq('invoice_id', invoice.id).eq('received', false)
 
     const rows = parsed.lines
@@ -721,6 +729,8 @@ router.post('/invoices/:id/parse', async (req, res) => {
           match_confidence: m.match_confidence, match_source: m.match_source,
         }
       })
+      // Skip products already received on this invoice (avoid double-count).
+      .filter(r => !(r.item_id && receivedItemIds.has(r.item_id)))
     if (rows.length) await supabaseAdmin.from('inventory_invoice_items').insert(rows)
 
     await supabaseAdmin.from('inventory_invoices').update({
