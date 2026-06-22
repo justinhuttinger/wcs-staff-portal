@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { getSpeedToLeadAudit } from '../../lib/api'
 import { exportCSV, exportPDF } from '../../lib/export'
 import { formatMinutes } from '../../lib/kpiMath'
@@ -35,11 +35,24 @@ function quickRange(key) {
 
 const REASON_LABEL = {
   counted: 'Counted',
-  no_human_contact: 'No human contact yet',
+  no_human_contact: 'Awaiting contact',
   not_new_lead: 'Not a new lead',
   contact_before_create: 'Contacted before lead created',
   dnd: 'DND (excluded)',
 }
+
+// Status filter chips. `all` first, then the reason buckets the backend tags.
+// `counted` + `no_human_contact` are the genuine New Leads (counted = a human has
+// reached out; no_human_contact = still awaiting first human outreach). The rest
+// are excluded from the metric and shown for vetting.
+const STATUS_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'counted', label: 'Counted' },
+  { key: 'no_human_contact', label: 'Awaiting contact' },
+  { key: 'not_new_lead', label: 'Not a new lead' },
+  { key: 'contact_before_create', label: 'Contacted before created' },
+  { key: 'dnd', label: 'DND' },
+]
 
 export default function SpeedToLeadAudit() {
   const [loc, setLoc] = useState('all')
@@ -48,7 +61,7 @@ export default function SpeedToLeadAudit() {
   const [meta, setMeta] = useState({ returned: 0, truncated: false })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [onlyCounted, setOnlyCounted] = useState(false)
+  const [statusFilter, setStatusFilter] = useState('all')
 
   function load(r = range) {
     setLoading(true)
@@ -67,8 +80,15 @@ export default function SpeedToLeadAudit() {
 
   useEffect(() => { load() }, []) // initial load
 
-  const shown = onlyCounted ? rows.filter(r => r.included) : rows
-  const countedTotal = rows.filter(r => r.included).length
+  // Per-bucket counts for the filter chips (computed from the returned rows).
+  const counts = useMemo(() => {
+    const c = { all: rows.length }
+    for (const r of rows) c[r.reason] = (c[r.reason] || 0) + 1
+    return c
+  }, [rows])
+
+  const shown = statusFilter === 'all' ? rows : rows.filter(r => r.reason === statusFilter)
+  const countedTotal = counts.counted || 0
 
   function exportRows() {
     return [
@@ -111,10 +131,6 @@ export default function SpeedToLeadAudit() {
           className="text-xs bg-wcs-red text-white rounded-lg px-4 py-1.5 font-medium hover:bg-wcs-red/90 disabled:opacity-50">
           {loading ? 'Loading…' : 'Load'}
         </button>
-        <label className="flex items-center gap-1.5 text-xs text-text-muted ml-2">
-          <input type="checkbox" checked={onlyCounted} onChange={e => setOnlyCounted(e.target.checked)} className="accent-wcs-red" />
-          Counted only
-        </label>
         <div className="flex items-center gap-2 ml-auto">
           <button onClick={() => exportCSV(exportRows(), exportName)} disabled={shown.length === 0}
             className="text-xs border border-border rounded-lg px-3 py-1.5 font-medium text-text-muted hover:text-text-primary hover:border-text-muted disabled:opacity-50">
@@ -135,6 +151,29 @@ export default function SpeedToLeadAudit() {
             {q.label}
           </button>
         ))}
+      </div>
+
+      {/* Status filter — slice the audit by what's counted vs awaiting vs excluded */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {STATUS_FILTERS.map(f => {
+          const n = counts[f.key] || 0
+          const active = statusFilter === f.key
+          const disabled = f.key !== 'all' && n === 0
+          return (
+            <button
+              key={f.key}
+              onClick={() => setStatusFilter(f.key)}
+              disabled={disabled}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${
+                active
+                  ? 'bg-wcs-red text-white border-wcs-red'
+                  : 'bg-bg text-text-muted border-border hover:text-text-primary hover:border-text-muted'
+              } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+            >
+              {f.label} <span className={active ? 'text-white/80' : 'text-text-primary/70'}>{n}</span>
+            </button>
+          )
+        })}
       </div>
 
       {error && <p className="text-xs text-red-500">{error}</p>}
