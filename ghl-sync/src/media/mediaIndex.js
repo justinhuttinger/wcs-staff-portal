@@ -10,8 +10,26 @@ const { deriveLocation, joinFolderPath } = require('./locationPath')
 
 const FRAME_INTERVAL = Number(process.env.MEDIA_VIDEO_FRAME_INTERVAL_SEC || 5)
 const PHOTO_BATCH = 50
+// How many photos to fetch/prep at once. Bounded so the backfill stays a good
+// citizen alongside the other ghl-sync jobs and never fires 50+ concurrent
+// Drive requests at once.
+const PREP_CONCURRENCY = Number(process.env.MEDIA_PREP_CONCURRENCY || 8)
 
 let running = false
+
+// Map fn over items with at most `limit` concurrent workers, preserving order.
+async function mapLimit(items, limit, fn) {
+  const results = new Array(items.length)
+  let next = 0
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++
+      results[i] = await fn(items[i], i)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
+}
 
 async function upsertAsset(file) {
   const row = {
@@ -44,10 +62,10 @@ async function indexPhotos(photos, stats) {
     const batch = photos.slice(i, i + PHOTO_BATCH)
     // Fetch + prep the whole batch concurrently; thumbnails are small so this is
     // far faster than the prior one-at-a-time download of full-res originals.
-    const prepared = await Promise.all(batch.map(async (f) => {
+    const prepared = await mapLimit(batch, PREP_CONCURRENCY, async (f) => {
       try { return { f, prepped: await preparePhoto(f) } }
       catch (e) { stats.errors++; await markError(f, e); return null }
-    }))
+    })
     const ok = prepared.filter(Boolean)
     if (!ok.length) continue
     const vecs = await embedMultimodal(ok.map((o) => o.prepped), 'document')
