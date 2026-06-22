@@ -8,7 +8,7 @@ function buildMultimodalBody(items, inputType) {
     input_type: inputType,
     inputs: items.map((it) => {
       const content = []
-      if (it.imageDataUrl) content.push({ type: 'image_url', image_url: it.imageDataUrl })
+      if (it.imageDataUrl) content.push({ type: 'image_base64', image_base64: it.imageDataUrl })
       if (it.text) content.push({ type: 'text', text: it.text })
       return { content }
     }),
