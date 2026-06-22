@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   getInventoryItems, getInventoryCategories, getInventoryItemMovements,
   adjustInventoryItem, updateInventoryItem, getInventorySummary,
-  getInventoryInvoices, createInventoryInvoice, addInventoryInvoiceItem,
+  getInventoryInvoices, createInventoryInvoice, parseInventoryInvoice, addInventoryInvoiceItem,
   deleteInventoryInvoiceItem, receiveInventoryInvoice, deleteInventoryInvoice,
   startInventorySync, getInventorySyncStatus, getInventoryAudit,
 } from '../lib/api'
@@ -294,7 +294,7 @@ function InvoiceModal({ onClose, onCreated, defaultSlug }) {
   const [total, setTotal] = useState('')
   const [slug, setSlug] = useState(defaultSlug || 'all')
   const [notes, setNotes] = useState('')
-  const [file, setFile] = useState(null)
+  const [files, setFiles] = useState([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -309,8 +309,12 @@ function InvoiceModal({ onClose, onCreated, defaultSlug }) {
         total,
         notes,
         location_slug: slug === 'all' ? '' : slug,
-      }, file)
-      onCreated(res.invoice)
+      }, files)
+      let invoice = res.invoice
+      if (files.length) {
+        try { const p = await parseInventoryInvoice(invoice.id); invoice = p.invoice } catch (_) { /* keep manual entry */ }
+      }
+      onCreated(invoice)
       onClose()
     } catch (err) { setError(err.message) } finally { setSaving(false) }
   }
@@ -331,13 +335,15 @@ function InvoiceModal({ onClose, onCreated, defaultSlug }) {
         </div>
         <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes" rows={2} className={inputCls} />
         <div>
-          <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Invoice file (PDF or photo)</span>
-          <input type="file" accept="application/pdf,image/*" onChange={e => setFile(e.target.files?.[0] || null)} className="text-xs text-text-muted" />
+          <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Invoice pages (PDF or photos — attach all pages)</span>
+          <input type="file" accept="application/pdf,image/*" multiple
+            onChange={e => setFiles(Array.from(e.target.files || []))} className="text-xs text-text-muted" />
+          {files.length > 0 && <p className="text-[11px] text-text-muted mt-1">{files.length} page(s) selected</p>}
         </div>
         {error && <p className="text-xs text-wcs-red">{error}</p>}
         <div className="flex justify-end gap-2">
           <button className={btnGhost} onClick={onClose}>Cancel</button>
-          <button className={btnPrimary} onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Create Invoice'}</button>
+          <button className={btnPrimary} onClick={save} disabled={saving}>{saving ? (files.length ? 'Reading invoice...' : 'Saving...') : 'Create Invoice'}</button>
         </div>
       </div>
     </Modal>
