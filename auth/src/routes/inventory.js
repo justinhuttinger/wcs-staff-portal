@@ -15,7 +15,7 @@ const { SELLABLE_PROFIT_CENTERS, SELLABLE_CATEGORIES, isSellableItem } = require
 const inventorySync = require('../services/inventorySync')
 const { normalizeOrderNumber } = require('../utils/inventoryInvoiceKey')
 const invoiceParse = require('../services/inventoryInvoiceParse')
-const { matchLine } = require('../utils/inventoryMatch')
+const { matchLine, normalizeText, normalizeSku } = require('../utils/inventoryMatch')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
 
@@ -889,6 +889,22 @@ router.post('/invoices/:id/receive', async (req, res) => {
 
       await supabaseAdmin.from('inventory_invoice_items')
         .update({ received: true }).eq('id', line.id)
+      const vendorNorm = String(invoice.vendor || '').toLowerCase().trim()
+      const skuNorm = normalizeSku(line.vendor_sku)
+      const aliasText = normalizeText(line.description)
+      if (skuNorm) {
+        await supabaseAdmin.from('inventory_vendor_aliases').upsert({
+          club_number: item.club_number, vendor: vendorNorm,
+          vendor_sku: skuNorm, alias_text: null, upc: line.upc || null,
+          item_id: item.id, created_by: req.staff.id,
+        }, { onConflict: 'club_number,vendor,vendor_sku' }).then(() => {}, () => {})
+      } else if (aliasText) {
+        await supabaseAdmin.from('inventory_vendor_aliases').upsert({
+          club_number: item.club_number, vendor: vendorNorm,
+          vendor_sku: null, alias_text: aliasText, upc: line.upc || null,
+          item_id: item.id, created_by: req.staff.id,
+        }, { onConflict: 'club_number,vendor,alias_text' }).then(() => {}, () => {})
+      }
       applied++
     }
 
