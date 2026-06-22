@@ -27,29 +27,32 @@ async function upsertAsset(file) {
   return data.id
 }
 
+// Prepare one photo for embedding. Fast path: Drive's rendered JPEG thumbnail
+// (~200KB, format-agnostic — handles HEIC/HEIF, TIFF, CR2 raw without sharp
+// choking). Fall back to the full original only if no thumbnail is available.
+async function preparePhoto(f) {
+  try {
+    return await toEmbedInput(await fetchThumbnailBuffer(f.id))
+  } catch (thumbErr) {
+    return await toEmbedInput(await downloadBuffer(f.id))
+  }
+}
+
 async function indexPhotos(photos, stats) {
   let embedded = 0
   for (let i = 0; i < photos.length; i += PHOTO_BATCH) {
     const batch = photos.slice(i, i + PHOTO_BATCH)
-    const inputs = []
-    const owners = []
-    for (const f of batch) {
-      try {
-        let prepped
-        try {
-          prepped = await toEmbedInput(await downloadBuffer(f.id))
-        } catch (decodeErr) {
-          // sharp can't decode some source formats (HEIC/HEIF, TIFF, CR2 raw).
-          // Fall back to Drive's rendered JPEG thumbnail, which sharp handles.
-          prepped = await toEmbedInput(await fetchThumbnailBuffer(f.id))
-        }
-        inputs.push(prepped); owners.push(f)
-      } catch (e) { stats.errors++; await markError(f, e) }
-    }
-    if (!inputs.length) continue
-    const vecs = await embedMultimodal(inputs, 'document')
-    for (let j = 0; j < owners.length; j++) {
-      const assetId = await upsertAsset(owners[j])
+    // Fetch + prep the whole batch concurrently; thumbnails are small so this is
+    // far faster than the prior one-at-a-time download of full-res originals.
+    const prepared = await Promise.all(batch.map(async (f) => {
+      try { return { f, prepped: await preparePhoto(f) } }
+      catch (e) { stats.errors++; await markError(f, e); return null }
+    }))
+    const ok = prepared.filter(Boolean)
+    if (!ok.length) continue
+    const vecs = await embedMultimodal(ok.map((o) => o.prepped), 'document')
+    for (let j = 0; j < ok.length; j++) {
+      const assetId = await upsertAsset(ok[j].f)
       await supabase.from('media_embeddings').insert({ asset_id: assetId, embedding: vecs[j], frame_time_seconds: null })
       embedded++
     }
