@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import MobileHeader from './MobileHeader'
-import { lookupInventoryUpc, adjustInventoryItem, getInventoryItems, getInventoryItemMovements } from '../../lib/api'
+import {
+  lookupInventoryUpc, adjustInventoryItem, getInventoryItems, getInventoryItemMovements,
+  createInventoryInvoice, parseInventoryInvoice, addInventoryInvoiceFiles, deleteInventoryInvoiceFile,
+  receiveInventoryInvoice, addInventoryInvoiceItem, deleteInventoryInvoiceItem,
+} from '../../lib/api'
 import { LOCATION_OPTIONS } from '../../config/locations'
 
 function fmtMoney(v) {
@@ -162,6 +166,400 @@ function AdjustSheet({ item, onClose, onSaved }) {
   )
 }
 
+// InvoiceCaptureSheet: snap one or more pages, enter vendor, create + parse.
+function InvoiceCaptureSheet({ slug, onClose, onParsed }) {
+  const [vendor, setVendor] = useState('')
+  const [orderNumber, setOrderNumber] = useState('')
+  const [pages, setPages] = useState([]) // File[]
+  const [previews, setPreviews] = useState([]) // { url, name, isImage }[]
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const fileInputRef = useRef(null)
+  const locationLabel = LOCATION_OPTIONS.find(o => o.slug === slug)?.label || slug
+
+  // Revoke object URLs on unmount to avoid memory leaks
+  useEffect(() => {
+    return () => {
+      previews.forEach(p => { if (p.url) URL.revokeObjectURL(p.url) })
+    }
+  }, [previews])
+
+  function addFiles(fileList) {
+    const incoming = Array.from(fileList || [])
+    if (!incoming.length) return
+    const newPreviews = incoming.map(f => {
+      const isImage = f.type.startsWith('image/')
+      return { url: isImage ? URL.createObjectURL(f) : null, name: f.name, isImage }
+    })
+    setPages(prev => [...prev, ...incoming])
+    setPreviews(prev => [...prev, ...newPreviews])
+    // Reset file input so the same file can be re-added if needed
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  function removePage(idx) {
+    setPreviews(prev => {
+      if (prev[idx]?.url) URL.revokeObjectURL(prev[idx].url)
+      return prev.filter((_, i) => i !== idx)
+    })
+    setPages(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  async function readInvoice() {
+    if (!vendor.trim() || !pages.length) return
+    setBusy(true); setError('')
+    try {
+      const res = await createInventoryInvoice(
+        { vendor: vendor.trim(), invoice_number: orderNumber || undefined, location_slug: slug },
+        pages
+      )
+      let inv = res.invoice
+      try {
+        const parsed = await parseInventoryInvoice(inv.id)
+        inv = parsed.invoice
+      } catch {
+        // Keep unparsed invoice so manager can review manually
+      }
+      onParsed(inv)
+    } catch (err) {
+      setError(err.message || 'Failed to create invoice')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={onClose}>
+      <div className="bg-surface rounded-t-2xl w-full p-5 max-h-[85dvh] overflow-y-auto" style={SHEET_PAD} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-base font-bold text-text-primary">Snap Invoice</h3>
+          <button onClick={onClose} className="text-text-muted text-sm px-2 py-1">Cancel</button>
+        </div>
+        <p className="text-xs text-text-muted mb-4">Adding to <span className="font-semibold text-text-primary">{locationLabel}</span></p>
+
+        <input
+          value={vendor} onChange={e => setVendor(e.target.value)}
+          placeholder="Vendor name (required)"
+          className="w-full px-3 py-3 rounded-xl border border-border bg-bg text-sm text-text-primary mb-3"
+        />
+        <input
+          value={orderNumber} onChange={e => setOrderNumber(e.target.value)}
+          placeholder="Order / invoice # (optional)"
+          className="w-full px-3 py-3 rounded-xl border border-border bg-bg text-sm text-text-primary mb-4"
+        />
+
+        {/* Camera capture button */}
+        <label className="block w-full py-4 rounded-2xl border-2 border-dashed border-border bg-bg text-center cursor-pointer mb-3">
+          <span className="flex flex-col items-center gap-1.5 text-text-muted">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-7 h-7">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" />
+            </svg>
+            <span className="text-sm font-semibold">
+              {pages.length === 0 ? 'Take photo / add page' : `Add another page (${pages.length} so far)`}
+            </span>
+          </span>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            capture="environment"
+            multiple
+            className="hidden"
+            onChange={e => addFiles(e.target.files)}
+          />
+        </label>
+
+        {/* Page thumbnails */}
+        {previews.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {previews.map((p, idx) => (
+              <div key={idx} className="relative">
+                {p.isImage ? (
+                  <img src={p.url} alt={`Page ${idx + 1}`} className="w-16 h-16 object-cover rounded-lg border border-border" />
+                ) : (
+                  <div className="w-16 h-16 flex items-center justify-center rounded-lg border border-border bg-bg">
+                    <span className="text-[9px] text-text-muted text-center px-1 break-all leading-tight">{p.name}</span>
+                  </div>
+                )}
+                <button
+                  onClick={() => removePage(idx)}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-wcs-red text-white text-xs flex items-center justify-center leading-none"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {error && <p className="text-xs text-wcs-red mb-3">{error}</p>}
+
+        <button
+          onClick={readInvoice}
+          disabled={busy || !vendor.trim() || pages.length === 0}
+          className="w-full py-3 rounded-xl bg-wcs-red text-white text-sm font-semibold disabled:opacity-50"
+        >
+          {busy ? 'Reading invoice...' : 'Read invoice'}
+        </button>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+// InvoiceReviewSheet: review parsed lines, match items, receive into stock.
+function InvoiceReviewSheet({ slug, invoice, onClose }) {
+  const [lines, setLines] = useState(invoice.items || [])
+  const [files, setFiles] = useState(invoice.files || [])
+  const [parsing, setParsing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [result, setResult] = useState(null) // { applied, skipped }
+  const [pickerLineId, setPickerLineId] = useState(null) // which line's picker is open
+  const [pickerQ, setPickerQ] = useState('')
+  const [pickerResults, setPickerResults] = useState([])
+  const [pickerLoading, setPickerLoading] = useState(false)
+  const fileInputRef = useRef(null)
+
+  // Debounced picker search — mirrors the browse-search pattern in the main component
+  useEffect(() => {
+    if (pickerLineId === null) { setPickerResults([]); setPickerQ(''); return }
+    const term = pickerQ.trim()
+    if (term.length < 2) { setPickerResults([]); return }
+    let cancelled = false
+    setPickerLoading(true)
+    const t = setTimeout(() => {
+      getInventoryItems({ location_slug: slug, q: term })
+        .then(res => { if (!cancelled) setPickerResults((res.items || []).slice(0, 15)) })
+        .catch(() => {})
+        .finally(() => { if (!cancelled) setPickerLoading(false) })
+    }, 300)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [pickerQ, pickerLineId, slug])
+
+  async function reparse() {
+    setParsing(true); setError('')
+    try {
+      const res = await parseInventoryInvoice(invoice.id)
+      setLines(res.invoice.items || [])
+      setFiles(res.invoice.files || [])
+    } catch (err) { setError(err.message || 'Re-read failed') } finally { setParsing(false) }
+  }
+
+  async function addPages(fileList) {
+    const list = Array.from(fileList || [])
+    if (!list.length) return
+    setParsing(true); setError('')
+    try {
+      await addInventoryInvoiceFiles(invoice.id, list)
+      await reparse()
+    } catch (err) { setError(err.message || 'Upload failed'); setParsing(false) }
+    // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  async function relink(line, itemId, itemName) {
+    setError('')
+    try {
+      await deleteInventoryInvoiceItem(invoice.id, line.id)
+      const res = await addInventoryInvoiceItem(invoice.id, {
+        item_id: itemId,
+        description: line.description,
+        quantity: Number(line.quantity),
+        unit_cost: Number(line.unit_cost),
+      })
+      // Attach the matched name to the new item for display before next re-parse
+      const newItem = { ...res.item, _matched_name: itemName }
+      setLines(ls => ls.map(x => x.id === line.id ? newItem : x))
+      setPickerLineId(null)
+      setPickerQ('')
+      setPickerResults([])
+    } catch (err) { setError(err.message || 'Link failed') }
+  }
+
+  async function receive() {
+    setBusy(true); setError(''); setResult(null)
+    try {
+      const r = await receiveInventoryInvoice(invoice.id)
+      setResult(r)
+      setLines(ls => ls.map(x => x.item_id ? { ...x, received: true } : x))
+    } catch (err) { setError(err.message || 'Receive failed') } finally { setBusy(false) }
+  }
+
+  function confidencePill(line) {
+    if (!line.match_source) return null
+    const cls = line.match_confidence >= 0.85
+      ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+      : line.match_confidence >= 0.6
+        ? 'text-amber-700 bg-amber-50 border-amber-200'
+        : 'text-text-muted bg-bg border-border'
+    return (
+      <span className={`text-[10px] font-bold uppercase rounded-full px-1.5 py-0.5 border ${cls}`}>
+        {line.match_source}{line.match_confidence != null ? ` ${Math.round(line.match_confidence * 100)}%` : ''}
+      </span>
+    )
+  }
+
+  const allReceived = lines.length > 0 && lines.every(l => l.received)
+
+  return createPortal(
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={onClose}>
+      <div className="bg-surface rounded-t-2xl w-full p-5 max-h-[85dvh] overflow-y-auto" style={SHEET_PAD} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="flex items-start justify-between mb-1">
+          <div>
+            <h3 className="text-base font-bold text-text-primary">{invoice.vendor}</h3>
+            {invoice.invoice_number && <p className="text-xs text-text-muted">#{invoice.invoice_number}</p>}
+          </div>
+          <button onClick={onClose} className="text-text-muted text-sm px-2 py-1 shrink-0">Close</button>
+        </div>
+        {invoice.total != null && (
+          <p className="text-xs text-text-muted mb-3">Total: <span className="font-semibold text-text-primary">{fmtMoney(invoice.total)}</span></p>
+        )}
+
+        {/* Page strip */}
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          {files.map((f, i) => (
+            <a
+              key={f.id}
+              href={f.file_link}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs font-semibold text-wcs-red border border-wcs-red/30 bg-wcs-red/5 rounded-full px-2.5 py-1"
+            >
+              Page {f.page_no || i + 1}
+            </a>
+          ))}
+          <label className="text-xs font-semibold text-text-muted border border-border rounded-full px-2.5 py-1 cursor-pointer">
+            + Add page
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,application/pdf"
+              capture="environment"
+              multiple
+              className="hidden"
+              onChange={e => addPages(e.target.files)}
+            />
+          </label>
+          <button
+            onClick={reparse}
+            disabled={parsing || files.length === 0}
+            className="text-xs font-semibold text-text-muted border border-border rounded-full px-2.5 py-1 disabled:opacity-40"
+          >
+            {parsing ? 'Reading...' : 'Re-read'}
+          </button>
+        </div>
+
+        {/* Lines */}
+        {lines.length === 0 && !parsing && (
+          <p className="text-sm text-text-muted mb-4">No line items parsed yet. Add pages and tap Re-read.</p>
+        )}
+        {parsing && <p className="text-sm text-text-muted mb-4">Reading invoice...</p>}
+
+        {lines.map(line => (
+          <div key={line.id} className="border border-border rounded-xl p-3 mb-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-text-primary truncate">
+                  {line._matched_name || line.description || '—'}
+                </p>
+                {line._matched_name && line.description && line._matched_name !== line.description && (
+                  <p className="text-xs text-text-muted truncate">{line.description}</p>
+                )}
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-sm font-bold text-text-primary">{fmtQty(line.quantity)} × {fmtMoney(line.unit_cost)}</p>
+              </div>
+            </div>
+
+            {/* Status / confidence */}
+            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+              {line.received ? (
+                <span className="text-[10px] font-bold uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5">
+                  Received
+                </span>
+              ) : (
+                <>
+                  {!line.item_id && (
+                    <span className="text-[10px] font-bold uppercase text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">
+                      Not linked
+                    </span>
+                  )}
+                  {confidencePill(line)}
+                </>
+              )}
+            </div>
+
+            {/* Match picker (unreceived lines only) */}
+            {!line.received && (
+              <div className="mt-2">
+                <button
+                  onClick={() => {
+                    if (pickerLineId === line.id) { setPickerLineId(null); setPickerQ(''); setPickerResults([]) }
+                    else { setPickerLineId(line.id); setPickerQ(''); setPickerResults([]) }
+                  }}
+                  className="text-xs font-semibold text-wcs-red"
+                >
+                  {line.item_id ? 'Change match' : 'Match item'}
+                </button>
+
+                {pickerLineId === line.id && (
+                  <div className="mt-2">
+                    <input
+                      autoFocus
+                      value={pickerQ}
+                      onChange={e => setPickerQ(e.target.value)}
+                      placeholder="Search catalog..."
+                      className="w-full px-3 py-2 rounded-xl border border-border bg-bg text-sm text-text-primary"
+                    />
+                    {pickerLoading && <p className="text-xs text-text-muted mt-1">Searching...</p>}
+                    {!pickerLoading && pickerQ.trim().length >= 2 && pickerResults.length === 0 && (
+                      <p className="text-xs text-text-muted mt-1">No items found.</p>
+                    )}
+                    {pickerResults.map(item => (
+                      <button
+                        key={item.id}
+                        onClick={() => relink(line, item.id, item.item_name)}
+                        className="w-full text-left px-3 py-2 rounded-xl border border-border bg-bg text-sm text-text-primary mt-1"
+                      >
+                        <span className="font-medium">{item.item_name}</span>
+                        {item.upc && <span className="text-xs text-text-muted ml-2">{item.upc}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {/* Result summary */}
+        {result && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 mb-3 text-sm text-emerald-800">
+            {result.applied} line(s) received into stock.
+            {result.skipped > 0 && ` ${result.skipped} skipped (no linked catalog item).`}
+          </div>
+        )}
+
+        {error && <p className="text-xs text-wcs-red mb-3">{error}</p>}
+
+        {/* Receive button */}
+        <button
+          onClick={receive}
+          disabled={busy || parsing || allReceived || lines.length === 0}
+          className="w-full py-3 rounded-xl bg-wcs-red text-white text-sm font-semibold disabled:opacity-50 mt-2"
+        >
+          {busy ? 'Receiving...' : allReceived ? 'All received' : 'Receive into stock'}
+        </button>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 export default function MobileInventory({ user }) {
   const primarySlug = (user?.staff?.locations?.find(l => l.is_primary)?.name || user?.staff?.locations?.[0]?.name || 'Salem').toLowerCase()
   const [slug, setSlug] = useState(LOCATION_OPTIONS.some(o => o.slug === primarySlug) ? primarySlug : 'salem')
@@ -175,6 +573,8 @@ export default function MobileInventory({ user }) {
   const [browse, setBrowse] = useState([])
   const [browseQ, setBrowseQ] = useState('')
   const [browseLoading, setBrowseLoading] = useState(false)
+  const [capturing, setCapturing] = useState(false)
+  const [reviewInvoice, setReviewInvoice] = useState(null)
 
   async function lookup(code) {
     if (!code) return
@@ -283,6 +683,17 @@ export default function MobileInventory({ user }) {
         Scan UPC Barcode
       </button>
 
+      {/* Snap Invoice */}
+      <button
+        onClick={() => setCapturing(true)}
+        className="w-full py-3 rounded-2xl border border-border bg-surface text-text-primary font-semibold text-sm flex items-center justify-center gap-2 mb-4"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+        </svg>
+        Snap Invoice
+      </button>
+
       {/* Manual entry */}
       <form
         onSubmit={e => { e.preventDefault(); lookup(manualCode) }}
@@ -321,6 +732,20 @@ export default function MobileInventory({ user }) {
 
       {scanning && <Scanner onDetected={onScanDetected} onClose={() => setScanning(false)} />}
       {adjusting && <AdjustSheet item={adjusting} onClose={() => setAdjusting(null)} onSaved={onSaved} />}
+      {capturing && (
+        <InvoiceCaptureSheet
+          slug={slug}
+          onClose={() => setCapturing(false)}
+          onParsed={inv => { setCapturing(false); setReviewInvoice(inv) }}
+        />
+      )}
+      {reviewInvoice && (
+        <InvoiceReviewSheet
+          slug={slug}
+          invoice={reviewInvoice}
+          onClose={() => setReviewInvoice(null)}
+        />
+      )}
 
       {history && createPortal(
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={() => setHistory(null)}>
@@ -339,7 +764,8 @@ export default function MobileInventory({ user }) {
               </div>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
