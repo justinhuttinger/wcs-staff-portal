@@ -53,3 +53,28 @@ test('matchLine: unmatched below threshold', () => {
   const r = matchLine({ description: 'garden hose 50ft', upc: null }, { items, aliases: [] })
   assert.deepEqual(r, { item_id: null, match_source: null, match_confidence: null })
 })
+
+const { normalizeSku } = require('./inventoryMatch')
+
+test('normalizeSku: uppercases and trims, null on empty', () => {
+  assert.equal(normalizeSku(' s1181001 '), 'S1181001')
+  assert.equal(normalizeSku(''), null)
+  assert.equal(normalizeSku(null), null)
+})
+
+test('matchLine: vendor SKU alias wins over fuzzy', () => {
+  const skuAliases = [{ vendor_sku: 'S1181001', alias_text: null, upc: null, item_id: 'i-shaker' }]
+  // description deliberately does NOT fuzzy-match the shaker
+  const r = matchLine(
+    { description: 'fireball lcarnitine cherry', upc: null, vendor_sku: 's1181001' },
+    { items, aliases: skuAliases })
+  assert.deepEqual(r, { item_id: 'i-shaker', match_source: 'sku', match_confidence: 1 })
+})
+
+test('matchLine: no SKU alias falls through to fuzzy', () => {
+  const r = matchLine(
+    { description: 'shaker bottle wcs black', upc: null, vendor_sku: 'S999' },
+    { items, aliases: [] })
+  assert.equal(r.item_id, 'i-shaker')
+  assert.equal(r.match_source, 'fuzzy')
+})

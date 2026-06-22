@@ -1,10 +1,16 @@
 // Deterministic invoice-line -> catalog-item matcher. Pure and unit-tested.
-// Resolution order: UPC exact -> learned vendor alias -> fuzzy name -> unmatched.
+// Resolution order: vendor SKU alias -> UPC exact -> learned vendor alias -> fuzzy name -> unmatched.
 
 const FUZZY_THRESHOLD = 0.6
 
 function normalizeText(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function normalizeSku(s) {
+  const v = String(s == null ? '' : s).replace(/\s+/g, ' ').trim()
+    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '').trim()
+  return v ? v.toUpperCase() : null
 }
 
 function upcVariants(upc) {
@@ -27,6 +33,16 @@ function tokenScore(a, b) {
 
 function matchLine(line, { items = [], aliases = [] } = {}) {
   const miss = { item_id: null, match_source: null, match_confidence: null }
+
+  // 0. Vendor SKU alias — strongest signal (stable per-vendor, survives name changes).
+  const skuNorm = normalizeSku(line.vendor_sku)
+  if (skuNorm) {
+    for (const a of aliases) {
+      if (a.vendor_sku && normalizeSku(a.vendor_sku) === skuNorm) {
+        return { item_id: a.item_id, match_source: 'sku', match_confidence: 1 }
+      }
+    }
+  }
 
   // 1. UPC exact (with leading-zero/padded variants on both sides).
   const lineUpcs = new Set(upcVariants(line.upc))
@@ -56,4 +72,4 @@ function matchLine(line, { items = [], aliases = [] } = {}) {
   return bestScore >= FUZZY_THRESHOLD ? best : miss
 }
 
-module.exports = { normalizeText, upcVariants, matchLine, FUZZY_THRESHOLD }
+module.exports = { normalizeText, normalizeSku, upcVariants, matchLine, FUZZY_THRESHOLD }
