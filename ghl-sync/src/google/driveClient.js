@@ -112,4 +112,18 @@ async function downloadToTemp(fileId) {
   return tmp
 }
 
-module.exports = { getAccessToken, walkMediaTree, downloadBuffer, downloadToTemp }
+// Drive-rendered JPEG thumbnail. Used as a fallback for source formats sharp
+// can't decode (HEIC/HEIF, TIFF, Canon CR2 raw) since Drive renders them to JPEG.
+async function fetchThumbnailBuffer(fileId) {
+  const token = await getAccessToken()
+  const m = await fetch(`${DRIVE_FILES}/${fileId}?fields=thumbnailLink&supportsAllDrives=true`, {
+    headers: { Authorization: 'Bearer ' + token },
+  }).then((r) => r.json())
+  if (!m.thumbnailLink) throw new Error('no thumbnailLink for ' + fileId)
+  const link = m.thumbnailLink.replace(/=s\d+$/, '=s1600')
+  const r = await fetch(link, { headers: { Authorization: 'Bearer ' + token } })
+  if (!r.ok) throw new Error('thumbnail fetch ' + r.status)
+  return Buffer.from(await r.arrayBuffer())
+}
+
+module.exports = { getAccessToken, walkMediaTree, downloadBuffer, downloadToTemp, fetchThumbnailBuffer }

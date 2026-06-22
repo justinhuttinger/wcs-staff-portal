@@ -1,7 +1,7 @@
 // ghl-sync/src/media/mediaIndex.js
 const fs = require('fs')
 const supabase = require('../db/supabase')
-const { walkMediaTree, downloadBuffer, downloadToTemp } = require('../google/driveClient')
+const { walkMediaTree, downloadBuffer, downloadToTemp, fetchThumbnailBuffer } = require('../google/driveClient')
 const { embedMultimodal } = require('./voyageClient')
 const { toEmbedInput } = require('./imagePrep')
 const { sampleFrames } = require('./videoFrames')
@@ -35,9 +35,15 @@ async function indexPhotos(photos, stats) {
     const owners = []
     for (const f of batch) {
       try {
-        const buf = await downloadBuffer(f.id)
-        const { imageDataUrl } = await toEmbedInput(buf)
-        inputs.push({ imageDataUrl }); owners.push(f)
+        let prepped
+        try {
+          prepped = await toEmbedInput(await downloadBuffer(f.id))
+        } catch (decodeErr) {
+          // sharp can't decode some source formats (HEIC/HEIF, TIFF, CR2 raw).
+          // Fall back to Drive's rendered JPEG thumbnail, which sharp handles.
+          prepped = await toEmbedInput(await fetchThumbnailBuffer(f.id))
+        }
+        inputs.push(prepped); owners.push(f)
       } catch (e) { stats.errors++; await markError(f, e) }
     }
     if (!inputs.length) continue
@@ -88,7 +94,7 @@ async function runMediaIndex() {
     const root = process.env.MEDIA_ROOT_FOLDER_ID
     if (!root) throw new Error('MEDIA_ROOT_FOLDER_ID not set')
     const drive = await walkMediaTree(root)
-    const { data: dbRows, error } = await supabase.from('media_assets').select('drive_file_id, md5, drive_modified_time')
+    const { data: dbRows, error } = await supabase.from('media_assets').select('drive_file_id, md5, drive_modified_time, status')
     if (error) throw error
     const { toEmbed, toDelete } = diffDriveVsDb(drive, dbRows || [])
 
