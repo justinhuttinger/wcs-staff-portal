@@ -34,6 +34,14 @@ test('matchLine: alias hit when no UPC', () => {
   assert.deepEqual(r, { item_id: 'i-bar', match_source: 'alias', match_confidence: 1 })
 })
 
+test('matchLine: alias UPC matches across zero-padding', () => {
+  const aliasesUpc = [{ alias_text: 'zzz no name match', upc: '0090210', item_id: 'i-bar' }]
+  const r = matchLine({ description: 'totally different text', upc: '90210' }, { items: [], aliases: aliasesUpc })
+  assert.equal(r.item_id, 'i-bar')
+  assert.equal(r.match_source, 'alias')
+  assert.equal(r.match_confidence, 1)
+})
+
 test('matchLine: fuzzy name above threshold', () => {
   const r = matchLine({ description: 'shaker bottle wcs black', upc: null }, { items, aliases: [] })
   assert.equal(r.item_id, 'i-shaker')

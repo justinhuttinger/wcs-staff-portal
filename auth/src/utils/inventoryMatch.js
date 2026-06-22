@@ -42,7 +42,7 @@ function matchLine(line, { items = [], aliases = [] } = {}) {
   const descNorm = normalizeText(line.description)
   for (const a of aliases) {
     if ((a.alias_text && a.alias_text === descNorm) ||
-        (a.upc && lineUpcs.has(String(a.upc).replace(/\D/g, '')))) {
+        (a.upc && upcVariants(a.upc).some(v => lineUpcs.has(v)))) {
       return { item_id: a.item_id, match_source: 'alias', match_confidence: 1 }
     }
   }
