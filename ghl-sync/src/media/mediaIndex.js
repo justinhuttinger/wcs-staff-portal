@@ -27,7 +27,7 @@ async function upsertAsset(file) {
   return data.id
 }
 
-async function indexPhotos(photos) {
+async function indexPhotos(photos, stats) {
   let embedded = 0
   for (let i = 0; i < photos.length; i += PHOTO_BATCH) {
     const batch = photos.slice(i, i + PHOTO_BATCH)
@@ -38,7 +38,7 @@ async function indexPhotos(photos) {
         const buf = await downloadBuffer(f.id)
         const { imageDataUrl } = await toEmbedInput(buf)
         inputs.push({ imageDataUrl }); owners.push(f)
-      } catch (e) { await markError(f, e) }
+      } catch (e) { stats.errors++; await markError(f, e) }
     }
     if (!inputs.length) continue
     const vecs = await embedMultimodal(inputs, 'document')
@@ -96,7 +96,7 @@ async function runMediaIndex() {
     const videos = toEmbed.filter((f) => f.kind === 'video')
     console.log(`[MediaIndex] toEmbed=${toEmbed.length} (img=${photos.length} vid=${videos.length}) toDelete=${toDelete.length}`)
 
-    stats.embedded += await indexPhotos(photos)
+    stats.embedded += await indexPhotos(photos, stats)
     for (const v of videos) {
       try { stats.embedded += await indexVideo(v) } catch (e) { stats.errors++; await markError(v, e) }
     }
