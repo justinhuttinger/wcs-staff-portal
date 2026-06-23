@@ -442,9 +442,12 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
     if (!list.length) return
     setParsing(true); setError('')
     try {
-      await addInventoryInvoiceFiles(invoice.id, list)
+      // Show the new page(s) immediately from the upload response — don't depend
+      // on the OCR re-read succeeding, or a hiccup would hide the added page.
+      const added = await addInventoryInvoiceFiles(invoice.id, list)
+      if (added?.invoice?.files) setFiles(added.invoice.files)
       await reparse()
-    } catch (err) { setError(err.message || 'Upload failed'); setParsing(false) }
+    } catch (err) { setError(err.message || 'Upload failed') } finally { setParsing(false) }
     // Reset input
     if (fileInputRef.current) fileInputRef.current.value = ''
   }

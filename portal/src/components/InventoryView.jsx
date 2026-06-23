@@ -457,9 +457,12 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
     if (!list.length) return
     setParsing(true); setError('')
     try {
-      await addInventoryInvoiceFiles(invoice.id, list)
+      // Show the new page(s) immediately from the upload response so a flaky OCR
+      // re-read can't hide them.
+      const added = await addInventoryInvoiceFiles(invoice.id, list)
+      if (added?.invoice?.files) setFiles(added.invoice.files)
       await reparse()
-    } catch (err) { setError(err.message); setParsing(false) }
+    } catch (err) { setError(err.message) } finally { setParsing(false) }
   }
 
   async function removePage(fileId) {
