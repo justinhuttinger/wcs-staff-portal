@@ -430,12 +430,17 @@ router.get('/summary', requireRole('manager'), async (req, res) => {
     // cost-at-sale (e.g. it sold before the item had any cost). The stamped
     // cost-at-sale always wins so historical COGS stays frozen; this only fills
     // blanks so the Sales tab can still show COGS once a cost exists.
+    // Query in chunks: a single .in('id', [...]) with hundreds of UUIDs makes the
+    // PostgREST request URL exceed the length limit and returns 400 Bad Request.
     const itemIds = [...new Set((data || []).map(r => r.item_id).filter(Boolean))]
     const costByItem = new Map()
-    if (itemIds.length) {
-      const costRows = await fetchAllRows(() =>
-        supabaseAdmin.from('inventory_items').select('id, avg_unit_cost, last_unit_cost').in('id', itemIds).order('id'))
-      for (const it of costRows) {
+    const COST_CHUNK = 100
+    for (let i = 0; i < itemIds.length; i += COST_CHUNK) {
+      const chunk = itemIds.slice(i, i + COST_CHUNK)
+      const { data: costRows, error: cErr2 } = await supabaseAdmin
+        .from('inventory_items').select('id, avg_unit_cost, last_unit_cost').in('id', chunk)
+      if (cErr2) throw cErr2
+      for (const it of costRows || []) {
         const c = num(it.avg_unit_cost) ?? num(it.last_unit_cost)
         if (c != null) costByItem.set(it.id, c)
       }
