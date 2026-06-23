@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   getInventoryItems, getInventoryCategories, getInventoryItemMovements,
-  adjustInventoryItem, updateInventoryItem, getInventorySummary,
+  adjustInventoryItem, updateInventoryItem, getInventorySummary, lookupInventoryUpc,
   getInventoryInvoices, createInventoryInvoice, parseInventoryInvoice, addInventoryInvoiceFiles,
   deleteInventoryInvoiceFile, addInventoryInvoiceItem,
   deleteInventoryInvoiceItem, receiveInventoryInvoice, deleteInventoryInvoice,
@@ -100,6 +100,9 @@ const AUDIT_ISSUES = {
   missing_upc: { label: 'No UPC', cls: 'bg-bg text-text-muted border-border', desc: 'Cannot be scanned on mobile' },
   no_category: { label: 'No Category', cls: 'bg-amber-50 text-amber-700 border-amber-200', desc: 'No ABC category — add one in ABC and it fixes on the next 3am sync' },
 }
+
+// Vendors we buy inventory from. "Other" covers anything one-off.
+const VENDOR_OPTIONS = ['SportLife', 'Coke', 'Other']
 
 const inputCls = 'px-3 py-2 rounded-lg border border-border bg-bg text-sm text-text-primary focus:outline-none focus:border-wcs-red w-full'
 const btnPrimary = 'px-3 py-1.5 rounded-lg bg-wcs-red text-white text-xs font-semibold hover:bg-wcs-red/90 transition-colors disabled:opacity-50'
@@ -313,7 +316,7 @@ function ItemPicker({ items, value, onChange }) {
 }
 
 function InvoiceModal({ onClose, onCreated, defaultSlug }) {
-  const [vendor, setVendor] = useState('')
+  const [vendor, setVendor] = useState('SportLife')
   const [invoiceNumber, setInvoiceNumber] = useState('')
   const [invoiceDate, setInvoiceDate] = useState(toLocalDateStr(new Date()))
   const [total, setTotal] = useState('')
@@ -348,7 +351,12 @@ function InvoiceModal({ onClose, onCreated, defaultSlug }) {
   return (
     <Modal title="New Invoice" onClose={onClose}>
       <div className="space-y-3">
-        <input value={vendor} onChange={e => setVendor(e.target.value)} placeholder="Vendor *" className={inputCls} autoFocus />
+        <div>
+          <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Vendor</span>
+          <select value={vendor} onChange={e => setVendor(e.target.value)} className={inputCls} autoFocus>
+            {VENDOR_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} placeholder="Invoice #" className={inputCls} />
           <input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} className={inputCls} />
@@ -376,8 +384,31 @@ function InvoiceModal({ onClose, onCreated, defaultSlug }) {
   )
 }
 
+// Per-line match controls for the desktop invoice review. A UPC field that a
+// hardware barcode scanner can type into (it sends the digits + Enter), plus the
+// name/UPC catalog search — no camera on desktop.
+function LineMatcher({ line, items, onPickItem, onScanUpc }) {
+  const [upc, setUpc] = useState('')
+  return (
+    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <form
+        onSubmit={e => { e.preventDefault(); const c = upc.trim(); if (c) { onScanUpc(c); setUpc('') } }}
+        className="flex gap-2"
+      >
+        <input
+          value={upc} onChange={e => setUpc(e.target.value)} inputMode="numeric"
+          placeholder="Scan or type UPC" className={inputCls}
+        />
+        <button type="submit" className={btnGhost}>Link</button>
+      </form>
+      <ItemPicker items={items} value={line.item_id} onChange={(id) => id && onPickItem(id)} />
+    </div>
+  )
+}
+
 // Invoice detail: line items + receive-into-stock. Loads its own catalog
-// scoped to the invoice's club (corporate invoices search every club).
+// scoped to the invoice's club (corporate invoices search every club). Styled to
+// mirror the mobile review sheet; the UPC field accepts a hardware scanner.
 function InvoiceDetail({ invoice, onClose, onChanged }) {
   const [items, setItems] = useState([])
   const [lines, setLines] = useState(invoice.items || [])
@@ -389,6 +420,8 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
   const [error, setError] = useState('')
   const [files, setFiles] = useState(invoice.files || [])
   const [parsing, setParsing] = useState(false)
+  const [receiving, setReceiving] = useState(false)
+  const [result, setResult] = useState(null) // { applied, skipped } after receive
 
   useEffect(() => {
     getInventoryItems({ location_slug: invoice.location_slug || '' })
@@ -422,12 +455,26 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
   }
 
   async function relink(line, itemId) {
+    setError('')
     try {
       await deleteInventoryInvoiceItem(invoice.id, line.id)
       const res = await addInventoryInvoiceItem(invoice.id, {
         item_id: itemId, description: line.description, quantity: Number(line.quantity), unit_cost: Number(line.unit_cost),
       })
-      setLines(l => l.map(x => x.id === line.id ? res.item : x)); onChanged()
+      const picked = items.find(i => i.id === itemId)
+      const newItem = { ...res.item, matched_item_name: picked?.item_name || null, matched_item_upc: picked?.upc || null }
+      setLines(l => l.map(x => x.id === line.id ? newItem : x)); onChanged()
+    } catch (err) { setError(err.message) }
+  }
+
+  // Link a line by UPC (hardware scanner or typed). Exact single match links.
+  async function relinkByUpc(line, code) {
+    setError('')
+    try {
+      const res = await lookupInventoryUpc(String(code).trim(), { location_slug: invoice.location_slug || '' })
+      const matches = res.items || []
+      if (matches.length === 0) { setError(`No catalog item for UPC ${code}.`); return }
+      await relink(line, matches[0].id)
     } catch (err) { setError(err.message) }
   }
 
@@ -455,17 +502,46 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
   }
 
   async function receive() {
-    setBusy(true); setError('')
+    setReceiving(true); setError('')
     try {
       const res = await receiveInventoryInvoice(invoice.id)
-      setLines(l => l.map(x => x.item_id ? { ...x, received: true } : x))
       onChanged()
-      if (res.skipped > 0) setError(`${res.applied} line(s) received; ${res.skipped} skipped (no linked catalog item)`)
-    } catch (err) { setError(err.message) } finally { setBusy(false) }
+      setResult(res) // { applied, skipped } → shows the done screen
+    } catch (err) { setError(err.message) } finally { setReceiving(false) }
   }
 
   const itemName = (id) => items.find(i => i.id === id)?.item_name || '—'
   const unreceived = lines.filter(l => !l.received)
+  const readyCount = unreceived.filter(l => l.item_id).length
+
+  // Prominent full-modal loading while receiving — makes it obvious it's working.
+  if (receiving) {
+    return (
+      <Modal title="Receiving…" onClose={() => {}}>
+        <div className="text-center py-12">
+          <div className="mx-auto w-10 h-10 border-4 border-border border-t-wcs-red rounded-full animate-spin mb-4" />
+          <p className="text-sm font-semibold text-text-primary">Receiving into stock…</p>
+          <p className="text-xs text-text-muted mt-1">Updating on-hand counts and item costs.</p>
+        </div>
+      </Modal>
+    )
+  }
+
+  // Done screen with a clear close action.
+  if (result) {
+    return (
+      <Modal title="Received" onClose={onClose}>
+        <div className="text-center py-8">
+          <div className="mx-auto w-14 h-14 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mb-4">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-7 h-7 text-emerald-600"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+          </div>
+          <p className="text-lg font-bold text-text-primary">{result.applied} line(s) received into stock</p>
+          {result.skipped > 0 && <p className="text-sm text-text-muted mt-1">{result.skipped} skipped (no linked catalog item)</p>}
+          <button className={btnPrimary + ' mt-5'} onClick={onClose}>Close</button>
+        </div>
+      </Modal>
+    )
+  }
 
   return (
     <Modal title={`${invoice.vendor}${invoice.invoice_number ? ` #${invoice.invoice_number}` : ''}`} onClose={onClose} wide>
@@ -473,7 +549,6 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
         {invoice.invoice_date && <span>{invoice.invoice_date}</span>}
         {invoice.total != null && <span>Total: <span className="font-semibold text-text-primary">{fmtMoney(invoice.total)}</span></span>}
         {invoice.location_slug && <span className="capitalize">{invoice.location_slug}</span>}
-        {invoice.file_link && <a href={invoice.file_link} target="_blank" rel="noreferrer" className="text-wcs-red font-semibold hover:underline">View file</a>}
       </div>
 
       <div className="flex items-center gap-2 flex-wrap mb-4">
@@ -485,7 +560,7 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
         ))}
         <label className="text-xs font-semibold text-wcs-red cursor-pointer hover:underline">
           + Add page
-          <input type="file" accept="application/pdf,image/*" capture="environment" multiple className="hidden"
+          <input type="file" accept="application/pdf,image/*" multiple className="hidden"
             onChange={e => addPages(e.target.files)} />
         </label>
         <button type="button" onClick={reparse} disabled={parsing || !files.length} className={btnGhost}>
@@ -493,60 +568,58 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
         </button>
       </div>
 
-      {lines.length > 0 && (
-        <table className="w-full text-sm mb-4">
-          <thead>
-            <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border">
-              <th className="py-2 pr-3">Item</th><th className="py-2 pr-3 text-right">Qty</th>
-              <th className="py-2 pr-3 text-right">Unit Cost</th><th className="py-2 pr-3 text-right">Line Total</th>
-              <th className="py-2 pr-3">Status</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map(l => (
-              <tr key={l.id} className="border-b border-border/50">
-                <td className="py-2 pr-3">
-                  <span className="font-medium text-text-primary">{l.item_id ? (l.matched_item_name || itemName(l.item_id)) : (l.description || '—')}</span>
-                  {l.item_id && l.matched_item_upc && <span className="text-xs text-text-muted ml-2">UPC {l.matched_item_upc}</span>}
-                  {l.item_id && l.description && <span className="text-xs text-text-muted ml-2">from “{l.description}”</span>}
-                  {!l.item_id && <span className="ml-2 text-[10px] font-bold uppercase text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">Not linked</span>}
-                  {!l.received && (
-                    <div className="mt-1.5 flex items-center gap-2">
-                      <div className="min-w-[220px]"><ItemPicker items={items} value={l.item_id} onChange={(id) => id && relink(l, id)} /></div>
-                      {l.match_source && (
-                        <span className={`text-[10px] font-bold uppercase rounded-full px-1.5 py-0.5 border ${
-                          l.match_confidence >= 0.85 ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-                          : l.match_confidence >= 0.6 ? 'text-amber-700 bg-amber-50 border-amber-200'
-                          : 'text-text-muted bg-bg border-border'}`}>
-                          {l.match_source}{l.match_confidence != null ? ` ${Math.round(l.match_confidence * 100)}%` : ''}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </td>
-                <td className="py-2 pr-3 text-right">{fmtQty(l.quantity)}</td>
-                <td className="py-2 pr-3 text-right">{fmtMoney(l.unit_cost)}</td>
-                <td className="py-2 pr-3 text-right">{fmtMoney(Number(l.quantity) * Number(l.unit_cost))}</td>
-                <td className="py-2 pr-3">
-                  {l.received
-                    ? <span className="text-[10px] font-bold uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5">Received</span>
-                    : <span className="text-[10px] font-bold uppercase text-text-muted bg-bg border border-border rounded-full px-1.5 py-0.5">Pending</span>}
-                </td>
-                <td className="py-2 text-right">
-                  {!l.received && (
-                    <button onClick={() => removeLine(l.id)} className="text-text-muted hover:text-wcs-red p-1" title="Remove line">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {/* Lines as cards (mirrors the mobile review sheet) */}
+      {lines.length === 0 && !parsing && (
+        <p className="text-sm text-text-muted mb-4">No line items yet. Add a page and Re-read, or add a line below.</p>
       )}
+      {lines.map(l => {
+        const matchedName = l.matched_item_name || (l.item_id ? itemName(l.item_id) : null)
+        return (
+          <div key={l.id} className="border border-border rounded-xl p-3 mb-2">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-text-primary truncate">{matchedName || l.description || '—'}</p>
+                {matchedName && (
+                  <p className="text-xs text-text-muted truncate">
+                    {l.matched_item_upc ? `UPC ${l.matched_item_upc}` : ''}
+                    {l.description && l.description !== matchedName ? `${l.matched_item_upc ? ' · ' : ''}from “${l.description}”` : ''}
+                  </p>
+                )}
+              </div>
+              <div className="text-right shrink-0">
+                <p className="font-bold text-text-primary">{fmtQty(l.quantity)} × {fmtMoney(l.unit_cost)}</p>
+                <p className="text-xs text-text-muted">{fmtMoney(Number(l.quantity) * Number(l.unit_cost))}</p>
+              </div>
+            </div>
 
-      <div className="bg-bg rounded-xl p-3 mb-4">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-2">Add line item</p>
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              {l.received ? (
+                <span className="text-[10px] font-bold uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5">Received</span>
+              ) : (
+                <>
+                  {!l.item_id && <span className="text-[10px] font-bold uppercase text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">Not linked</span>}
+                  {l.match_source && (
+                    <span className={`text-[10px] font-bold uppercase rounded-full px-1.5 py-0.5 border ${
+                      l.match_confidence >= 0.85 ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                      : l.match_confidence >= 0.6 ? 'text-amber-700 bg-amber-50 border-amber-200'
+                      : 'text-text-muted bg-bg border-border'}`}>
+                      {l.match_source}{l.match_confidence != null ? ` ${Math.round(l.match_confidence * 100)}%` : ''}
+                    </span>
+                  )}
+                  <button onClick={() => removeLine(l.id)} className="ml-auto text-xs font-semibold text-text-muted hover:text-wcs-red">Remove</button>
+                </>
+              )}
+            </div>
+
+            {!l.received && (
+              <LineMatcher line={l} items={items} onPickItem={(id) => relink(l, id)} onScanUpc={(code) => relinkByUpc(l, code)} />
+            )}
+          </div>
+        )
+      })}
+
+      <div className="bg-bg rounded-xl p-3 my-4">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-2">Add line item manually</p>
         <div className="space-y-2">
           <ItemPicker items={items} value={linkedItem} onChange={setLinkedItem} />
           <div className="grid grid-cols-3 gap-2">
@@ -563,8 +636,8 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
       {error && <p className="text-xs text-wcs-red mb-3">{error}</p>}
       <div className="flex justify-between items-center">
         <p className="text-xs text-text-muted">Receiving adds each linked line to stock and updates the item's cost.</p>
-        <button className={btnPrimary} onClick={receive} disabled={busy || unreceived.filter(l => l.item_id).length === 0}>
-          {busy ? 'Working...' : `Receive into Stock (${unreceived.filter(l => l.item_id).length})`}
+        <button className={btnPrimary} onClick={receive} disabled={readyCount === 0}>
+          Receive into Stock ({readyCount})
         </button>
       </div>
     </Modal>
@@ -874,6 +947,32 @@ export default function InventoryView({ onBack, location, isAdmin }) {
     return groups
   }, [invoices, slug])
 
+  // Audit rows: on the All-clubs view, consolidate each product (same UPC) into
+  // one row — union its issues, sum on-hand/sold — mirroring the Inventory tab.
+  // Editing a consolidated row applies cost/UPC to every club (apply_all_clubs).
+  const auditRows = useMemo(() => {
+    const list = audit?.items || []
+    if (slug !== 'all') return list.map(i => ({ ...i, _members: [i], _consolidated: false }))
+    const byKey = new Map()
+    for (const i of list) {
+      const key = i.upc ? `upc:${i.upc}` : `id:${i.id}`
+      if (!byKey.has(key)) byKey.set(key, [])
+      byKey.get(key).push(i)
+    }
+    return [...byKey.values()].map(members => {
+      const rep = members[0]
+      return {
+        ...rep,
+        issues: [...new Set(members.flatMap(m => m.issues || []))],
+        qty_on_hand: members.reduce((s, m) => s + (Number(m.qty_on_hand) || 0), 0),
+        sold_units: members.reduce((s, m) => s + (Number(m.sold_units) || 0), 0),
+        _members: members,
+        _consolidated: members.length > 1,
+        _clubCount: members.length,
+      }
+    })
+  }, [audit, slug])
+
   const onItemSaved = (updated) => setItems(list => list.map(i => i.id === updated.id ? { ...i, ...updated } : i))
   const refreshInvoices = () => getInventoryInvoices().then(res => setInvoices(res.invoices || [])).catch(() => {})
 
@@ -1168,7 +1267,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
               <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4">
                 <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
                   <p className="text-sm text-text-primary">
-                    <span className="font-bold">{audit.items.length}</span> of {audit.scanned} items flagged
+                    <span className="font-bold">{auditRows.length}</span> {slug === 'all' ? 'products' : 'items'} flagged
                     <span className="text-text-muted text-xs ml-2">(sales window: last {audit.days} days · margin threshold {audit.min_margin}%)</span>
                   </p>
                 </div>
@@ -1178,7 +1277,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
                     className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${!auditIssueFilter ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
                   >All Issues</button>
                   {Object.entries(AUDIT_ISSUES).map(([key, meta]) => {
-                    const count = audit.items.filter(i => i.issues.includes(key)).length
+                    const count = auditRows.filter(i => i.issues.includes(key)).length
                     if (count === 0) return null
                     return (
                       <button key={key} title={meta.desc}
@@ -1191,7 +1290,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
               </div>
 
               <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
-                {audit.items.length === 0 ? (
+                {auditRows.length === 0 ? (
                   <p className="text-sm text-text-muted p-8 text-center">No pricing or data issues found. Nice and clean.</p>
                 ) : (
                   <div className="overflow-x-auto">
@@ -1211,12 +1310,12 @@ export default function InventoryView({ onBack, location, isAdmin }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {audit.items
+                        {auditRows
                           .filter(i => !auditIssueFilter || i.issues.includes(auditIssueFilter))
                           .map(i => (
                             <tr key={i.id} className="border-b border-border/50 hover:bg-bg/40">
                               <td className="py-2 px-4 font-medium text-text-primary">{i.item_name}</td>
-                              {slug === 'all' && <td className="py-2 px-2 capitalize text-text-muted">{i.location_slug}</td>}
+                              {slug === 'all' && <td className="py-2 px-2 capitalize text-text-muted">{i._consolidated ? `${i._clubCount} clubs` : i.location_slug}</td>}
                               <td className="py-2 px-2">
                                 <div className="flex gap-1 flex-wrap">
                                   {i.issues.map(key => (
@@ -1238,7 +1337,8 @@ export default function InventoryView({ onBack, location, isAdmin }) {
                               <td className="py-2 px-2 text-right">{fmtQty(i.sold_units)}</td>
                               <td className={`py-2 px-2 text-right font-bold ${Number(i.qty_on_hand) < 0 ? 'text-wcs-red' : 'text-text-primary'}`}>{fmtQty(i.qty_on_hand)}</td>
                               <td className="py-2 px-4 text-right whitespace-nowrap">
-                                <button onClick={() => setModal({ history: i })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline">History</button>
+                                <button onClick={() => setModal({ edit: i._members[0], allClubs: i._consolidated })} className="text-xs font-semibold text-wcs-red hover:underline mr-3">Edit Cost</button>
+                                <button onClick={() => setModal({ history: i._members[0] })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline">History</button>
                               </td>
                             </tr>
                           ))}

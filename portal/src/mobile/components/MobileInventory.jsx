@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import MobileHeader from './MobileHeader'
 import {
-  lookupInventoryUpc, adjustInventoryItem, getInventoryItems, getInventoryItemMovements,
+  lookupInventoryUpc, adjustInventoryItem, updateInventoryItem, getInventoryItems, getInventoryItemMovements,
   createInventoryInvoice, parseInventoryInvoice, addInventoryInvoiceFiles, deleteInventoryInvoiceFile,
   receiveInventoryInvoice, addInventoryInvoiceItem, deleteInventoryInvoiceItem,
 } from '../../lib/api'
@@ -23,6 +23,9 @@ function fmtDateTime(iso) {
 }
 
 const MOVEMENT_LABELS = { sale: 'Sale', return: 'Return', received: 'Received', adjustment: 'Adjustment', count: 'Count' }
+
+// Vendors we buy inventory from. "Other" covers anything one-off.
+const VENDOR_OPTIONS = ['SportLife', 'Coke', 'Other']
 
 // Camera barcode scanner using @ericblade/quagga2 — same proven setup as the
 // old portal's restock scanner (rear camera, 1D retail barcode readers).
@@ -166,9 +169,66 @@ function AdjustSheet({ item, onClose, onSaved }) {
   )
 }
 
+// EditCostSheet: admin-only. Set the item's unit COST (price comes from ABC and
+// is read-only). Margin is derived and shown live — never entered directly.
+function EditCostSheet({ item, onClose, onSaved }) {
+  const [cost, setCost] = useState(item.unit_cost != null ? String(item.unit_cost) : '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const price = Number(item.abc_unit_price)
+  const costNum = parseFloat(cost)
+  const margin = Number.isFinite(price) && price > 0 && Number.isFinite(costNum)
+    ? +(((price - costNum) / price) * 100).toFixed(1)
+    : null
+
+  async function save() {
+    if (cost !== '' && (!Number.isFinite(costNum) || costNum < 0)) { setError('Enter a valid cost'); return }
+    setSaving(true); setError('')
+    try {
+      const res = await updateInventoryItem(item.id, { unit_cost: cost === '' ? null : costNum })
+      onSaved(res.item)
+      onClose()
+    } catch (err) { setError(err.message || 'Save failed') } finally { setSaving(false) }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={onClose}>
+      <div className="bg-surface rounded-t-2xl w-full p-5" style={SHEET_PAD} onClick={e => e.stopPropagation()}>
+        <h3 className="text-base font-bold text-text-primary mb-3">{item.item_name}</h3>
+
+        <label className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1">Price (from ABC)</label>
+        <div className="w-full px-3 py-3 rounded-xl border border-border bg-bg/60 text-sm text-text-muted mb-3">{fmtMoney(item.abc_unit_price)}</div>
+
+        <label className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1">Cost (per unit)</label>
+        <input
+          type="number" step="0.01" min="0" inputMode="decimal" autoFocus value={cost}
+          onChange={e => setCost(e.target.value)} placeholder="0.00"
+          className="w-full px-3 py-3 rounded-xl border border-border bg-bg text-base text-text-primary mb-3"
+        />
+
+        <p className="text-xs text-text-muted mb-3">
+          Margin: {margin != null
+            ? <span className={`font-semibold ${margin < 0 ? 'text-wcs-red' : 'text-emerald-600'}`}>{margin}%</span>
+            : <span>—</span>}
+        </p>
+
+        {error && <p className="text-xs text-wcs-red mb-3">{error}</p>}
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-muted">Cancel</button>
+          <button onClick={save} disabled={saving} className="flex-1 py-3 rounded-xl bg-wcs-red text-white text-sm font-semibold disabled:opacity-50">
+            {saving ? 'Saving...' : 'Save cost'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 // InvoiceCaptureSheet: snap one or more pages, enter vendor, create + parse.
 function InvoiceCaptureSheet({ slug, onClose, onParsed }) {
-  const [vendor, setVendor] = useState('')
+  const [vendor, setVendor] = useState('SportLife')
   const [orderNumber, setOrderNumber] = useState('')
   const [pages, setPages] = useState([]) // File[]
   const [previews, setPreviews] = useState([]) // { url, name, isImage }[]
@@ -243,11 +303,12 @@ function InvoiceCaptureSheet({ slug, onClose, onParsed }) {
         </div>
         <p className="text-xs text-text-muted mb-4">Adding to <span className="font-semibold text-text-primary">{locationLabel}</span></p>
 
-        <input
+        <select
           value={vendor} onChange={e => setVendor(e.target.value)}
-          placeholder="Vendor name (required)"
           className="w-full px-3 py-3 rounded-xl border border-border bg-bg text-sm text-text-primary mb-3"
-        />
+        >
+          {VENDOR_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
         <input
           value={orderNumber} onChange={e => setOrderNumber(e.target.value)}
           placeholder="Order / invoice # (optional)"
@@ -328,6 +389,7 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
   const [pickerLoading, setPickerLoading] = useState(false)
   const [scanForLine, setScanForLine] = useState(null) // line whose barcode scanner is open
   const [scanMsg, setScanMsg] = useState('')
+  const [matchChooseLine, setMatchChooseLine] = useState(null) // line showing the scan-vs-search popup
   const fileInputRef = useRef(null)
 
   // Debounced picker search — mirrors the browse-search pattern in the main component
@@ -433,6 +495,37 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
 
   const allReceived = lines.length > 0 && lines.every(l => l.received)
 
+  // Full-page loader while receiving — makes it obvious something is happening.
+  if (busy) {
+    return createPortal(
+      <div className="fixed inset-0 z-[70] bg-surface flex flex-col items-center justify-center px-8 text-center">
+        <div className="w-12 h-12 border-4 border-border border-t-wcs-red rounded-full animate-spin mb-4" />
+        <p className="text-sm font-semibold text-text-primary">Receiving into stock…</p>
+        <p className="text-xs text-text-muted mt-1">Updating on-hand counts and item costs.</p>
+      </div>,
+      document.body
+    )
+  }
+
+  // Done screen with a clear Close action.
+  if (result) {
+    return createPortal(
+      <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={onClose}>
+        <div className="bg-surface rounded-t-2xl w-full p-6 text-center" style={SHEET_PAD} onClick={e => e.stopPropagation()}>
+          <div className="mx-auto w-16 h-16 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mb-4">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-8 h-8 text-emerald-600"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+          </div>
+          <h3 className="text-lg font-bold text-text-primary">Received</h3>
+          <p className="text-sm text-text-muted mt-1">
+            {result.applied} line(s) received into stock{result.skipped > 0 ? `, ${result.skipped} skipped (no linked item)` : ''}.
+          </p>
+          <button onClick={onClose} className="w-full py-3 rounded-xl bg-wcs-red text-white text-sm font-semibold mt-5">Close</button>
+        </div>
+      </div>,
+      document.body
+    )
+  }
+
   return createPortal(
     <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={onClose}>
       <div className="bg-surface rounded-t-2xl w-full p-5 max-h-[85dvh] overflow-y-auto" style={SHEET_PAD} onClick={e => e.stopPropagation()}>
@@ -532,27 +625,12 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
             {/* Match picker (unreceived lines only) */}
             {!line.received && (
               <div className="mt-2">
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => {
-                      setScanMsg('')
-                      if (pickerLineId === line.id) { setPickerLineId(null); setPickerQ(''); setPickerResults([]) }
-                      else { setPickerLineId(line.id); setPickerQ(''); setPickerResults([]) }
-                    }}
-                    className="text-xs font-semibold text-wcs-red"
-                  >
-                    {line.item_id ? 'Change match' : 'Match item'}
-                  </button>
-                  <button
-                    onClick={() => { setScanMsg(''); setScanForLine(line.id) }}
-                    className="text-xs font-semibold text-wcs-red inline-flex items-center gap-1"
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.5v15M7.5 4.5v15M11.25 4.5v15M15 4.5v15M18 4.5v15M20.25 4.5v15" />
-                    </svg>
-                    Scan barcode
-                  </button>
-                </div>
+                <button
+                  onClick={() => { setScanMsg(''); setMatchChooseLine(line.id) }}
+                  className="text-xs font-semibold text-wcs-red"
+                >
+                  {line.item_id ? 'Change match' : 'Match item'}
+                </button>
 
                 {scanMsg && pickerLineId === line.id && (
                   <p className="text-xs text-amber-700 mt-1.5">{scanMsg}</p>
@@ -596,31 +674,53 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
           )
         })}
 
-        {/* Result summary */}
-        {result && (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 mb-3 text-sm text-emerald-800">
-            {result.applied} line(s) received into stock.
-            {result.skipped > 0 && ` ${result.skipped} skipped (no linked catalog item).`}
-          </div>
-        )}
-
         {error && <p className="text-xs text-wcs-red mb-3">{error}</p>}
 
         {/* Receive button */}
         <button
           onClick={receive}
-          disabled={busy || parsing || allReceived || lines.length === 0}
+          disabled={parsing || allReceived || lines.length === 0}
           className="w-full py-3 rounded-xl bg-wcs-red text-white text-sm font-semibold disabled:opacity-50 mt-2"
         >
-          {busy ? 'Receiving...' : allReceived ? 'All received' : 'Receive into stock'}
+          {allReceived ? 'All received' : 'Receive into stock'}
         </button>
       </div>
+
+      {/* Match method popup: scan with the camera, or search by name/UPC */}
+      {matchChooseLine && (
+        <div className="fixed inset-0 z-[70] bg-black/50 flex items-end" onClick={e => { e.stopPropagation(); setMatchChooseLine(null) }}>
+          <div className="bg-surface rounded-t-2xl w-full p-5" style={SHEET_PAD} onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-text-primary mb-1">Match this item</h3>
+            <p className="text-xs text-text-muted mb-4">How do you want to find it?</p>
+            <button
+              onClick={() => { const id = matchChooseLine; setMatchChooseLine(null); setScanMsg(''); setScanForLine(id) }}
+              className="w-full py-3 rounded-xl bg-wcs-red text-white text-sm font-semibold mb-2 flex items-center justify-center gap-2"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.5v15M7.5 4.5v15M11.25 4.5v15M15 4.5v15M18 4.5v15M20.25 4.5v15" />
+              </svg>
+              Scan barcode
+            </button>
+            <button
+              onClick={() => { const id = matchChooseLine; setMatchChooseLine(null); setScanMsg(''); setPickerLineId(id); setPickerQ(''); setPickerResults([]) }}
+              className="w-full py-3 rounded-xl border border-border text-text-primary text-sm font-semibold mb-2 flex items-center justify-center gap-2"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.2-5.2m0 0A7.5 7.5 0 1 0 5.2 5.2a7.5 7.5 0 0 0 10.6 10.6Z" />
+              </svg>
+              Search by name or UPC
+            </button>
+            <button onClick={() => setMatchChooseLine(null)} className="w-full py-2.5 text-text-muted text-sm font-semibold">Cancel</button>
+          </div>
+        </div>
+      )}
     </div>,
     document.body
   )
 }
 
 export default function MobileInventory({ user }) {
+  const isAdmin = user?.staff?.role === 'admin'
   const primarySlug = (user?.staff?.locations?.find(l => l.is_primary)?.name || user?.staff?.locations?.[0]?.name || 'Salem').toLowerCase()
   const [slug, setSlug] = useState(LOCATION_OPTIONS.some(o => o.slug === primarySlug) ? primarySlug : 'salem')
   const [scanning, setScanning] = useState(false)
@@ -629,12 +729,14 @@ export default function MobileInventory({ user }) {
   const [lookupError, setLookupError] = useState('')
   const [results, setResults] = useState([])
   const [adjusting, setAdjusting] = useState(null)
+  const [editing, setEditing] = useState(null) // item whose cost is being edited (admin)
   const [history, setHistory] = useState(null) // { item, movements }
   const [browse, setBrowse] = useState([])
   const [browseQ, setBrowseQ] = useState('')
   const [browseLoading, setBrowseLoading] = useState(false)
   const [capturing, setCapturing] = useState(false)
   const [reviewInvoice, setReviewInvoice] = useState(null)
+  const searchRef = useRef(null)
 
   async function lookup(code) {
     if (!code) return
@@ -710,6 +812,7 @@ export default function MobileInventory({ user }) {
         </div>
         <div className="flex gap-2 mt-3">
           <button onClick={() => setAdjusting(item)} className="flex-1 py-2 rounded-xl bg-wcs-red text-white text-xs font-semibold">Adjust Stock</button>
+          {isAdmin && <button onClick={() => setEditing(item)} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-muted">Edit Cost</button>}
           <button onClick={() => openHistory(item)} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-muted">History</button>
         </div>
       </div>
@@ -731,28 +834,37 @@ export default function MobileInventory({ user }) {
         {LOCATION_OPTIONS.filter(o => o.slug !== 'all').map(o => <option key={o.slug} value={o.slug}>{o.label}</option>)}
       </select>
 
-      {/* Scan */}
-      <button
-        onClick={() => setScanning(true)}
-        className="w-full py-4 rounded-2xl bg-wcs-red text-white font-bold text-sm flex items-center justify-center gap-2 mb-3"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5ZM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 9.375v-4.5Z" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 13.5h1.5v1.5h-1.5zM16.5 13.5H18v1.5h-1.5zM19.5 13.5H21v1.5h-1.5zM13.5 16.5h1.5V18h-1.5zM16.5 16.5H18V18h-1.5zM19.5 16.5H21V18h-1.5zM13.5 19.5h1.5V21h-1.5zM16.5 19.5H18V21h-1.5zM19.5 19.5H21V21h-1.5z" />
-        </svg>
-        Scan UPC Barcode
-      </button>
-
-      {/* Snap Invoice */}
-      <button
-        onClick={() => setCapturing(true)}
-        className="w-full py-3 rounded-2xl border border-border bg-surface text-text-primary font-semibold text-sm flex items-center justify-center gap-2 mb-4"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-        </svg>
-        Snap Invoice
-      </button>
+      {/* Primary actions — three equal-size buttons */}
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <button
+          onClick={() => setScanning(true)}
+          className="py-4 rounded-2xl bg-wcs-red text-white font-bold text-xs flex flex-col items-center justify-center gap-1.5"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5ZM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 9.375v-4.5Z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 13.5h1.5v1.5h-1.5zM16.5 13.5H18v1.5h-1.5zM19.5 13.5H21v1.5h-1.5zM13.5 16.5h1.5V18h-1.5zM16.5 16.5H18V18h-1.5zM19.5 16.5H21V18h-1.5zM13.5 19.5h1.5V21h-1.5zM16.5 19.5H18V21h-1.5zM19.5 19.5H21V21h-1.5z" />
+          </svg>
+          Scan UPC
+        </button>
+        <button
+          onClick={() => setCapturing(true)}
+          className="py-4 rounded-2xl border border-border bg-surface text-text-primary font-semibold text-xs flex flex-col items-center justify-center gap-1.5"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+          </svg>
+          Snap Invoice
+        </button>
+        <button
+          onClick={() => { searchRef.current?.focus(); searchRef.current?.scrollIntoView({ block: 'center' }) }}
+          className="py-4 rounded-2xl border border-border bg-surface text-text-primary font-semibold text-xs flex flex-col items-center justify-center gap-1.5"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.2-5.2m0 0A7.5 7.5 0 1 0 5.2 5.2a7.5 7.5 0 0 0 10.6 10.6Z" />
+          </svg>
+          Search
+        </button>
+      </div>
 
       {/* Manual entry */}
       <form
@@ -780,6 +892,7 @@ export default function MobileInventory({ user }) {
       <div className="mt-2 bg-surface border border-border rounded-2xl p-3">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Search by name</p>
         <input
+          ref={searchRef}
           value={browseQ} onChange={e => setBrowseQ(e.target.value)}
           placeholder="Item name..."
           className="w-full px-3 py-3 rounded-xl border border-border bg-bg text-sm text-text-primary"
@@ -792,6 +905,7 @@ export default function MobileInventory({ user }) {
 
       {scanning && <Scanner onDetected={onScanDetected} onClose={() => setScanning(false)} />}
       {adjusting && <AdjustSheet item={adjusting} onClose={() => setAdjusting(null)} onSaved={onSaved} />}
+      {editing && <EditCostSheet item={editing} onClose={() => setEditing(null)} onSaved={onSaved} />}
       {capturing && (
         <InvoiceCaptureSheet
           slug={slug}

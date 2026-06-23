@@ -17,6 +17,7 @@ const { normalizeOrderNumber } = require('../utils/inventoryInvoiceKey')
 const invoiceParse = require('../services/inventoryInvoiceParse')
 const { matchLine, normalizeText, normalizeSku, upcVariants } = require('../utils/inventoryMatch')
 const { parsePriceListCsv } = require('../services/vendorPriceList')
+const { packUnitize } = require('../utils/inventoryPack')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
 
@@ -831,36 +832,33 @@ router.post('/invoices/:id/parse', async (req, res) => {
 
     await supabaseAdmin.from('inventory_invoice_items').delete().eq('invoice_id', invoice.id).eq('received', false)
 
-    // SKU -> UPC enrichment: lines that carry a vendor_sku but no upc get their
-    // upc filled from vendor_sku_upc so the UPC matcher can resolve them below.
-    const skusNeedingUpc = [...new Set(
-      parsed.lines
-        .filter(l => l.vendor_sku && !l.upc)
-        .map(l => normalizeSku(l.vendor_sku))
-        .filter(Boolean)
-    )]
-    if (skusNeedingUpc.length > 0) {
+    // Look up the vendor price list once for every SKU on the invoice. It is the
+    // authoritative source for both (a) the catalog UPC behind a vendor SKU and
+    // (b) the PACK SIZE — so a case-priced line (e.g. a 12pk at $18.52) gets
+    // normalized to per-individual-unit cost and count before it reaches stock.
+    const allSkus = [...new Set(parsed.lines.map(l => normalizeSku(l.vendor_sku)).filter(Boolean))]
+    const skuMap = new Map()
+    if (allSkus.length > 0) {
       const invoiceVendorNorm = String(parsed.vendor || invoice.vendor || '').toLowerCase().trim()
       const { data: skuRows } = await supabaseAdmin
         .from('vendor_sku_upc')
-        .select('sku, upc, unit_upc, vendor')
-        .in('sku', skusNeedingUpc)
-      if (skuRows && skuRows.length > 0) {
-        const catSet = await catalogUpcVariantSet()
-        // Build a map: sku -> best row (prefer vendor match, then any)
-        const skuMap = new Map()
-        for (const row of skuRows) {
-          const normalized = normalizeSku(row.sku)
-          const existing = skuMap.get(normalized)
-          const isVendorMatch = row.vendor === invoiceVendorNorm
-          if (!existing || (isVendorMatch && existing.vendor !== invoiceVendorNorm)) {
-            skuMap.set(normalized, row)
-          }
+        .select('sku, upc, unit_upc, vendor, pack_size, case_cost, unit_cost')
+        .in('sku', allSkus)
+      // Build a map: sku -> best row (prefer the invoice's vendor, then any).
+      for (const row of skuRows || []) {
+        const normalized = normalizeSku(row.sku)
+        const existing = skuMap.get(normalized)
+        const isVendorMatch = row.vendor === invoiceVendorNorm
+        if (!existing || (isVendorMatch && existing.vendor !== invoiceVendorNorm)) {
+          skuMap.set(normalized, row)
         }
+      }
+      // SKU -> UPC enrichment: lines with a SKU but no UPC borrow the catalog UPC.
+      if (skuMap.size > 0) {
+        const catSet = await catalogUpcVariantSet()
         for (const line of parsed.lines) {
           if (!line.vendor_sku || line.upc) continue
-          const skuKey = normalizeSku(line.vendor_sku)
-          const pRow = skuKey ? skuMap.get(skuKey) : null
+          const pRow = skuMap.get(normalizeSku(line.vendor_sku))
           if (!pRow) continue
           // Prefer whichever UPC variant is in the catalog; fall back to case upc.
           if (pRow.upc && upcVariants(pRow.upc).some(v => catSet.has(v))) {
@@ -877,11 +875,13 @@ router.post('/invoices/:id/parse', async (req, res) => {
     const rows = parsed.lines
       .filter(l => l.quantity && l.quantity > 0)
       .map(l => {
+        // Normalize case-priced packs to per-individual-unit cost + count.
+        const pack = packUnitize(l, skuMap.get(normalizeSku(l.vendor_sku)))
         const m = matchLine({ description: l.description, upc: l.upc, vendor_sku: l.vendor_sku }, { items: catalog, aliases: aliases || [] })
         return {
           invoice_id: invoice.id, item_id: m.item_id, description: l.description || null, upc: l.upc,
           vendor_sku: l.vendor_sku || null,
-          quantity: l.quantity, unit_cost: l.unit_cost != null ? l.unit_cost : 0,
+          quantity: pack.quantity, unit_cost: pack.unit_cost != null ? pack.unit_cost : 0,
           match_confidence: m.match_confidence, match_source: m.match_source,
         }
       })
