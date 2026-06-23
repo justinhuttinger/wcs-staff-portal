@@ -387,7 +387,7 @@ export default function App() {
       ) : showMarketingTracker ? (
         <MarketingTrackerView onBack={() => setShowMarketingTracker(false)} />
       ) : showInventory ? (
-        <InventoryView onBack={() => setShowInventory(false)} location={location} isAdmin={isAdmin} />
+        <InventoryView onBack={() => setShowInventory(false)} location={location} isAdmin={isAdmin} user={user} />
       ) : showMediaLibrary ? (
         <MediaLibraryView onBack={() => setShowMediaLibrary(false)} userRole={user?.staff?.role} />
       ) : (

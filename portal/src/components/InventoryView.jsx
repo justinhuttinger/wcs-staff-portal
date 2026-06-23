@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   getInventoryItems, getInventoryCategories, getInventoryItemMovements,
   adjustInventoryItem, updateInventoryItem, getInventorySummary, lookupInventoryUpc,
-  getInventoryInvoices, createInventoryInvoice, parseInventoryInvoice, addInventoryInvoiceFiles,
+  getInventoryInvoices, getInventoryMovements, createInventoryInvoice, parseInventoryInvoice, addInventoryInvoiceFiles,
   deleteInventoryInvoiceFile, addInventoryInvoiceItem,
   deleteInventoryInvoiceItem, receiveInventoryInvoice, deleteInventoryInvoice,
   startInventorySync, getInventorySyncStatus, getInventoryAudit,
@@ -23,10 +23,6 @@ function fmtQty(v) {
 }
 function fmtDateTime(iso) {
   return iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'
-}
-function clubLabel(inv) {
-  if (!inv.location_slug) return 'Corporate'
-  return LOCATION_OPTIONS.find(o => o.slug === inv.location_slug)?.label || inv.location_slug
 }
 // Summarize an invoice's line state for the Restock list: total/matched/received
 // counts plus a single status label (Pending → Partial → Received, or read state).
@@ -80,6 +76,9 @@ function quickRange(key) {
 const MOVEMENT_LABELS = {
   sale: 'Sale', return: 'Return', received: 'Received', adjustment: 'Stock Added', count: 'Count',
 }
+// Movement kinds split for the item-history Restock vs Sales filter.
+const RESTOCK_KINDS = ['received', 'adjustment', 'count']
+const SALES_KINDS = ['sale', 'return']
 
 // Reorder points by ABC catalog category — an item lands on the To Order list
 // when on-hand drops below the point for its category. Categories without a
@@ -236,36 +235,53 @@ function EditItemModal({ item, allClubs = false, onClose, onSaved }) {
 function HistoryModal({ item, onClose }) {
   const [movements, setMovements] = useState(null)
   const [error, setError] = useState('')
+  const [filter, setFilter] = useState('all') // all | restock | sales
   useEffect(() => {
     getInventoryItemMovements(item.id)
       .then(res => setMovements(res.movements || []))
       .catch(err => setError(err.message))
   }, [item.id])
+  const shown = (movements || []).filter(m =>
+    filter === 'all' ? true
+    : filter === 'restock' ? RESTOCK_KINDS.includes(m.kind)
+    : SALES_KINDS.includes(m.kind))
+  const personOf = (m) => m.created_by_name || m.employee_name || (m.source === 'abc_pos' ? 'ABC POS' : '—')
   return (
     <Modal title={`History — ${item.item_name}`} onClose={onClose} wide>
+      <div className="flex gap-1 bg-bg rounded-lg p-1 mb-3 w-fit">
+        {[{ k: 'all', label: 'All' }, { k: 'restock', label: 'Restock' }, { k: 'sales', label: 'Sales' }].map(f => (
+          <button key={f.k} onClick={() => setFilter(f.k)}
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${filter === f.k ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>
+            {f.label}
+          </button>
+        ))}
+      </div>
       {error && <p className="text-xs text-wcs-red">{error}</p>}
       {!movements && !error && <p className="text-sm text-text-muted">Loading...</p>}
-      {movements && movements.length === 0 && <p className="text-sm text-text-muted">No sales or stock movements yet.</p>}
-      {movements && movements.length > 0 && (
+      {movements && shown.length === 0 && <p className="text-sm text-text-muted">No {filter === 'all' ? 'sales or stock movements' : filter} yet.</p>}
+      {shown.length > 0 && (
         <div className="max-h-[60vh] overflow-y-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-surface">
               <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border">
-                <th className="py-2 pr-3">When</th><th className="py-2 pr-3">Type</th><th className="py-2 pr-3 text-right">Change</th>
-                <th className="py-2 pr-3 text-right">Price</th><th className="py-2 pr-3 text-right">Cost</th><th className="py-2 pr-3">By / Note</th>
+                <th className="py-2 pr-3">When</th><th className="py-2 pr-3">Type</th><th className="py-2 pr-3">Club</th>
+                <th className="py-2 pr-3 text-right">Change</th><th className="py-2 pr-3 text-right">Price</th>
+                <th className="py-2 pr-3 text-right">Cost</th><th className="py-2 pr-3">Person</th><th className="py-2 pr-3">Note</th>
               </tr>
             </thead>
             <tbody>
-              {movements.map(m => (
+              {shown.map(m => (
                 <tr key={m.id} className="border-b border-border/50">
                   <td className="py-2 pr-3 whitespace-nowrap">{fmtDateTime(m.occurred_at)}</td>
                   <td className="py-2 pr-3">{MOVEMENT_LABELS[m.kind] || m.kind}</td>
+                  <td className="py-2 pr-3 capitalize text-text-muted">{m.location_slug || '—'}</td>
                   <td className={`py-2 pr-3 text-right font-semibold ${Number(m.qty_delta) < 0 ? 'text-wcs-red' : 'text-emerald-600'}`}>
                     {Number(m.qty_delta) > 0 ? '+' : ''}{fmtQty(m.qty_delta)}
                   </td>
                   <td className="py-2 pr-3 text-right">{fmtMoney(m.unit_price)}</td>
                   <td className="py-2 pr-3 text-right">{fmtMoney(m.unit_cost)}</td>
-                  <td className="py-2 pr-3 text-text-muted text-xs">{[m.created_by_name || m.employee_name, m.note].filter(Boolean).join(' — ') || (m.source === 'abc_pos' ? 'ABC POS' : '—')}</td>
+                  <td className="py-2 pr-3 text-text-primary">{personOf(m)}</td>
+                  <td className="py-2 pr-3 text-text-muted text-xs">{m.note || '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -315,13 +331,13 @@ function ItemPicker({ items, value, onChange }) {
   )
 }
 
-function InvoiceModal({ onClose, onCreated, defaultSlug }) {
+// New invoice: only Vendor + Location are asked (location shown only when the
+// user can restock into more than one club — invoices are always single-club).
+// The invoice # and total auto-fill from the scanned invoice / its line items.
+function InvoiceModal({ onClose, onCreated, locations = [], defaultSlug }) {
+  const clubs = locations.length ? locations : ['salem']
   const [vendor, setVendor] = useState('SportLife')
-  const [invoiceNumber, setInvoiceNumber] = useState('')
-  const [invoiceDate, setInvoiceDate] = useState(toLocalDateStr(new Date()))
-  const [total, setTotal] = useState('')
-  const [slug, setSlug] = useState(defaultSlug || 'all')
-  const [notes, setNotes] = useState('')
+  const [slug, setSlug] = useState(clubs.includes(defaultSlug) ? defaultSlug : clubs[0])
   const [files, setFiles] = useState([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -330,20 +346,14 @@ function InvoiceModal({ onClose, onCreated, defaultSlug }) {
     if (!vendor.trim()) { setError('Vendor is required'); return }
     setSaving(true); setError('')
     try {
-      const res = await createInventoryInvoice({
-        vendor: vendor.trim(),
-        invoice_number: invoiceNumber,
-        invoice_date: invoiceDate,
-        total,
-        notes,
-        location_slug: slug === 'all' ? '' : slug,
-      }, files)
+      // No invoice #, date, total or notes — those come from the OCR read.
+      const res = await createInventoryInvoice({ vendor: vendor.trim(), location_slug: slug }, files)
       let invoice = res.invoice
       if (files.length) {
         try { const p = await parseInventoryInvoice(invoice.id); invoice = p.invoice } catch (_) { /* keep manual entry */ }
       }
-      // onCreated owns the next step (close, or jump straight to the detail to
-      // review/receive) — calling onClose() here would clobber that transition.
+      // onCreated owns the next step (jump straight to the detail to review/receive)
+      // — calling onClose() here would clobber that transition.
       onCreated(invoice)
     } catch (err) { setError(err.message) } finally { setSaving(false) }
   }
@@ -357,23 +367,21 @@ function InvoiceModal({ onClose, onCreated, defaultSlug }) {
             {VENDOR_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} placeholder="Invoice #" className={inputCls} />
-          <input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} className={inputCls} />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <input type="number" step="0.01" value={total} onChange={e => setTotal(e.target.value)} placeholder="Invoice total ($)" className={inputCls} />
-          <select value={slug} onChange={e => setSlug(e.target.value)} className={inputCls}>
-            {LOCATION_OPTIONS.map(o => <option key={o.slug} value={o.slug}>{o.slug === 'all' ? 'Corporate / Multi-club' : o.label}</option>)}
-          </select>
-        </div>
-        <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes" rows={2} className={inputCls} />
+        {clubs.length > 1 && (
+          <div>
+            <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Location</span>
+            <select value={slug} onChange={e => setSlug(e.target.value)} className={inputCls}>
+              {clubs.map(s => <option key={s} value={s}>{LOCATION_OPTIONS.find(o => o.slug === s)?.label || s}</option>)}
+            </select>
+          </div>
+        )}
         <div>
           <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Invoice pages (PDF or photos — attach all pages)</span>
           <input type="file" accept="application/pdf,image/*" multiple capture="environment"
             onChange={e => setFiles(Array.from(e.target.files || []))} className="text-xs text-text-muted" />
           {files.length > 0 && <p className="text-[11px] text-text-muted mt-1">{files.length} page(s) selected</p>}
         </div>
+        <p className="text-[11px] text-text-muted">The invoice number and total fill in automatically once the invoice is read.</p>
         {error && <p className="text-xs text-wcs-red">{error}</p>}
         <div className="flex justify-end gap-2">
           <button className={btnGhost} onClick={onClose}>Cancel</button>
@@ -513,6 +521,8 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
   const itemName = (id) => items.find(i => i.id === id)?.item_name || '—'
   const unreceived = lines.filter(l => !l.received)
   const readyCount = unreceived.filter(l => l.item_id).length
+  // Total is auto-calculated from the line items (qty × unit cost), not entered.
+  const linesTotal = lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.unit_cost) || 0), 0)
 
   // Prominent full-modal loading while receiving — makes it obvious it's working.
   if (receiving) {
@@ -547,7 +557,7 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
     <Modal title={`${invoice.vendor}${invoice.invoice_number ? ` #${invoice.invoice_number}` : ''}`} onClose={onClose} wide>
       <div className="flex items-center gap-3 text-xs text-text-muted mb-4 flex-wrap">
         {invoice.invoice_date && <span>{invoice.invoice_date}</span>}
-        {invoice.total != null && <span>Total: <span className="font-semibold text-text-primary">{fmtMoney(invoice.total)}</span></span>}
+        {linesTotal > 0 && <span>Total: <span className="font-semibold text-text-primary">{fmtMoney(linesTotal)}</span></span>}
         {invoice.location_slug && <span className="capitalize">{invoice.location_slug}</span>}
       </div>
 
@@ -668,7 +678,18 @@ function SortHeader({ label, col, sort, onSort, align = 'right' }) {
   )
 }
 
-export default function InventoryView({ onBack, location, isAdmin }) {
+export default function InventoryView({ onBack, location, isAdmin, user }) {
+  // Clubs this user may restock into. Admins get every club; everyone else gets
+  // the locations on their staff profile. Invoices are always single-club.
+  const accessibleSlugs = useMemo(() => {
+    const all = LOCATION_OPTIONS.filter(o => o.slug !== 'all').map(o => o.slug)
+    if (isAdmin) return all
+    const mine = (user?.staff?.locations || [])
+      .map(l => String(l.name || '').toLowerCase())
+      .filter(s => all.includes(s))
+    return mine.length ? mine : (all.includes(String(location || '').toLowerCase()) ? [String(location).toLowerCase()] : all)
+  }, [isAdmin, user, location])
+
   const [tab, setTab] = useState('items') // items | profit (Sales) | audit (admin)
   const [slug, setSlug] = useState('all') // default to all clubs; dropdown can narrow
   const [search, setSearch] = useState('')
@@ -678,6 +699,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
   const [itemsLoading, setItemsLoading] = useState(true)
   const [orderItems, setOrderItems] = useState([]) // items carrying sold_in_range over the reorder window, for the To Order tab
   const [invoices, setInvoices] = useState([])
+  const [movements, setMovements] = useState([])
   const [summary, setSummary] = useState([])
   const [from, setFrom] = useState(daysAgoStr(30))
   const [to, setTo] = useState(toLocalDateStr(new Date()))
@@ -733,8 +755,8 @@ export default function InventoryView({ onBack, location, isAdmin }) {
         .finally(() => setLoading(false))
     } else if (tab === 'restock') {
       setLoading(true)
-      getInventoryInvoices()
-        .then(res => setInvoices(res.invoices || []))
+      Promise.all([getInventoryInvoices(), getInventoryMovements()])
+        .then(([inv, mv]) => { setInvoices(inv.invoices || []); setMovements(mv.movements || []) })
         .catch(err => setError(err.message))
         .finally(() => setLoading(false))
     }
@@ -927,25 +949,23 @@ export default function InventoryView({ onBack, location, isAdmin }) {
     return ts.length ? new Date(Math.max(...ts)) : null
   }, [syncStatus])
 
-  // Restock tab: recent invoice uploads filtered to the chosen club, grouped by
-  // who uploaded them (and, within a person, ordered by club then newest first).
-  const restockGroups = useMemo(() => {
-    const visible = invoices.filter(inv => slug === 'all' || inv.location_slug === slug)
-    const byPerson = new Map()
-    for (const inv of visible) {
-      const key = inv.created_by_name || 'Unknown'
-      if (!byPerson.has(key)) byPerson.set(key, [])
-      byPerson.get(key).push(inv)
+  // Restock tab: one date-ordered activity feed combining invoice uploads and
+  // manual stock adjustments, filtered to the chosen club. Person is its own
+  // column (no grouping). Each entry is normalized to a common shape.
+  const restockFeed = useMemo(() => {
+    const entries = []
+    for (const inv of invoices) {
+      if (slug !== 'all' && inv.location_slug !== slug) continue
+      entries.push({ kind: 'invoice', id: `inv:${inv.id}`, at: inv.created_at,
+        person: inv.created_by_name || 'Unknown', location_slug: inv.location_slug, invoice: inv })
     }
-    const groups = [...byPerson.entries()].map(([person, list]) => ({
-      person,
-      invoices: [...list].sort((a, b) =>
-        (a.location_slug || '').localeCompare(b.location_slug || '') ||
-        new Date(b.created_at || 0) - new Date(a.created_at || 0)),
-    }))
-    groups.sort((a, b) => a.person.localeCompare(b.person))
-    return groups
-  }, [invoices, slug])
+    for (const m of movements) {
+      if (slug !== 'all' && m.location_slug !== slug) continue
+      entries.push({ kind: 'adjustment', id: `mv:${m.id}`, at: m.occurred_at,
+        person: m.created_by_name || 'Unknown', location_slug: m.location_slug, movement: m })
+    }
+    return entries.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
+  }, [invoices, movements, slug])
 
   // Audit rows: on the All-clubs view, consolidate each product (same UPC) into
   // one row — union its issues, sum on-hand/sold — mirroring the Inventory tab.
@@ -974,7 +994,10 @@ export default function InventoryView({ onBack, location, isAdmin }) {
   }, [audit, slug])
 
   const onItemSaved = (updated) => setItems(list => list.map(i => i.id === updated.id ? { ...i, ...updated } : i))
-  const refreshInvoices = () => getInventoryInvoices().then(res => setInvoices(res.invoices || [])).catch(() => {})
+  const refreshInvoices = () => {
+    getInventoryInvoices().then(res => setInvoices(res.invoices || [])).catch(() => {})
+    getInventoryMovements().then(res => setMovements(res.movements || [])).catch(() => {})
+  }
 
   return (
     <div className="w-full max-w-6xl mx-auto px-8 py-6">
@@ -1358,72 +1381,80 @@ export default function InventoryView({ onBack, location, isAdmin }) {
           <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4 flex items-center justify-between flex-wrap gap-3">
             <div>
               <p className="text-sm text-text-primary">
-                <span className="font-bold">{restockGroups.reduce((s, g) => s + g.invoices.length, 0)}</span> recent invoice upload(s)
+                <span className="font-bold">{restockFeed.length}</span> recent restock {restockFeed.length === 1 ? 'entry' : 'entries'}
                 {slug !== 'all' && <span className="text-text-muted text-xs ml-2">· this club</span>}
               </p>
-              <p className="text-xs text-text-muted mt-0.5">Snap or upload a vendor invoice, review the matched items, and receive them into stock.</p>
+              <p className="text-xs text-text-muted mt-0.5">Invoice uploads and manual stock adjustments, newest first. Click an invoice to review it.</p>
             </div>
             <button onClick={() => setModal({ newInvoice: true })} className={btnPrimary}>+ New / Snap Invoice</button>
           </div>
 
           {loading && <p className="text-sm text-text-muted bg-surface rounded-xl border border-border p-6 text-center">Loading restocks...</p>}
-          {!loading && restockGroups.length === 0 && (
+          {!loading && restockFeed.length === 0 && (
             <p className="text-sm text-text-muted bg-surface rounded-xl border border-border p-8 text-center">
-              No invoice uploads yet{slug !== 'all' ? ' for this club' : ''}. Tap “New / Snap Invoice” to add one.
+              No restock activity yet{slug !== 'all' ? ' for this club' : ''}. Tap “New / Snap Invoice” to add one.
             </p>
           )}
 
-          {!loading && restockGroups.map(group => (
-            <div key={group.person} className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
-              <div className="px-4 py-2.5 bg-bg/50 border-b border-border flex items-center justify-between">
-                <p className="text-sm font-semibold text-text-primary">{group.person}</p>
-                <span className="text-xs text-text-muted">{group.invoices.length} upload(s)</span>
-              </div>
+          {!loading && restockFeed.length > 0 && (
+            <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/30">
-                      <th className="py-2.5 px-4">Uploaded</th>
+                      <th className="py-2.5 px-4">Date</th>
+                      <th className="py-2.5 px-2">Person</th>
                       <th className="py-2.5 px-2">Club</th>
-                      <th className="py-2.5 px-2">Vendor</th>
-                      <th className="py-2.5 px-2">Pages</th>
-                      <th className="py-2.5 px-2 text-right">Items</th>
-                      <th className="py-2.5 px-2 text-right">Total</th>
+                      <th className="py-2.5 px-2">Type</th>
+                      <th className="py-2.5 px-2">Details</th>
+                      <th className="py-2.5 px-2 text-right">Amount</th>
                       <th className="py-2.5 px-4">Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {group.invoices.map(inv => {
-                      const sum = invoiceLineSummary(inv)
+                    {restockFeed.map(entry => {
+                      const clubName = entry.location_slug
+                        ? (LOCATION_OPTIONS.find(o => o.slug === entry.location_slug)?.label || entry.location_slug)
+                        : 'Corporate'
+                      if (entry.kind === 'invoice') {
+                        const inv = entry.invoice
+                        const sum = invoiceLineSummary(inv)
+                        const total = (inv.items || []).reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.unit_cost) || 0), 0)
+                        return (
+                          <tr key={entry.id} onClick={() => setModal({ invoice: inv })}
+                            className="border-b border-border/50 hover:bg-bg/40 cursor-pointer">
+                            <td className="py-2 px-4 whitespace-nowrap text-text-muted">{fmtDateTime(entry.at)}</td>
+                            <td className="py-2 px-2 text-text-primary">{entry.person}</td>
+                            <td className="py-2 px-2 capitalize">{clubName}</td>
+                            <td className="py-2 px-2"><span className="text-[10px] font-bold uppercase text-wcs-red bg-wcs-red/5 border border-wcs-red/20 rounded-full px-1.5 py-0.5">Invoice</span></td>
+                            <td className="py-2 px-2 font-medium text-text-primary">
+                              {inv.vendor}{inv.invoice_number ? <span className="text-text-muted font-normal"> #{inv.invoice_number}</span> : ''}
+                              <span className="text-xs text-text-muted ml-2">{sum.matched}/{sum.total} items</span>
+                            </td>
+                            <td className="py-2 px-2 text-right whitespace-nowrap">{total > 0 ? fmtMoney(total) : '—'}</td>
+                            <td className="py-2 px-4">
+                              <span className={`text-[10px] font-bold uppercase rounded-full px-1.5 py-0.5 border ${RESTOCK_STATUS_CLS[sum.status] || RESTOCK_STATUS_CLS.Pending}`}>
+                                {sum.status}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      }
+                      const m = entry.movement
                       return (
-                        <tr key={inv.id} onClick={() => setModal({ invoice: inv })}
-                          className="border-b border-border/50 hover:bg-bg/40 cursor-pointer">
-                          <td className="py-2 px-4 whitespace-nowrap text-text-muted">{fmtDateTime(inv.created_at)}</td>
-                          <td className="py-2 px-2 capitalize">{clubLabel(inv)}</td>
-                          <td className="py-2 px-2 font-medium text-text-primary">
-                            {inv.vendor}{inv.invoice_number ? <span className="text-text-muted font-normal"> #{inv.invoice_number}</span> : ''}
+                        <tr key={entry.id} className="border-b border-border/50">
+                          <td className="py-2 px-4 whitespace-nowrap text-text-muted">{fmtDateTime(entry.at)}</td>
+                          <td className="py-2 px-2 text-text-primary">{entry.person}</td>
+                          <td className="py-2 px-2 capitalize">{clubName}</td>
+                          <td className="py-2 px-2"><span className="text-[10px] font-bold uppercase text-text-muted bg-bg border border-border rounded-full px-1.5 py-0.5">{MOVEMENT_LABELS[m.kind] || m.kind}</span></td>
+                          <td className="py-2 px-2 text-text-primary">
+                            {m.item_name || '—'}
+                            {m.note && <span className="text-xs text-text-muted ml-2">{m.note}</span>}
                           </td>
-                          <td className="py-2 px-2">
-                            <div className="flex items-center gap-1 flex-wrap">
-                              {(inv.files || []).length === 0 && <span className="text-xs text-text-muted">—</span>}
-                              {(inv.files || []).map((f, i) => (
-                                <a key={f.id} href={f.file_link} target="_blank" rel="noreferrer"
-                                  onClick={e => e.stopPropagation()}
-                                  className="text-xs font-semibold text-wcs-red border border-wcs-red/30 bg-wcs-red/5 rounded-full px-2 py-0.5 hover:bg-wcs-red/10">
-                                  {f.page_no || i + 1}
-                                </a>
-                              ))}
-                            </div>
+                          <td className={`py-2 px-2 text-right font-semibold whitespace-nowrap ${Number(m.qty_delta) < 0 ? 'text-wcs-red' : 'text-emerald-600'}`}>
+                            {Number(m.qty_delta) > 0 ? '+' : ''}{fmtQty(m.qty_delta)}
                           </td>
-                          <td className="py-2 px-2 text-right whitespace-nowrap text-text-muted">
-                            {sum.matched}/{sum.total}
-                          </td>
-                          <td className="py-2 px-2 text-right">{fmtMoney(inv.total)}</td>
-                          <td className="py-2 px-4">
-                            <span className={`text-[10px] font-bold uppercase rounded-full px-1.5 py-0.5 border ${RESTOCK_STATUS_CLS[sum.status] || RESTOCK_STATUS_CLS.Pending}`}>
-                              {sum.status}
-                            </span>
-                          </td>
+                          <td className="py-2 px-4 text-xs text-text-muted">{m.source === 'mobile' ? 'Mobile' : 'Desktop'}</td>
                         </tr>
                       )
                     })}
@@ -1431,14 +1462,15 @@ export default function InventoryView({ onBack, location, isAdmin }) {
                 </table>
               </div>
             </div>
-          ))}
+          )}
         </div>
       )}
 
       {/* Modals */}
       {modal?.newInvoice && (
         <InvoiceModal
-          defaultSlug={slug}
+          locations={accessibleSlugs}
+          defaultSlug={accessibleSlugs.includes(slug) ? slug : accessibleSlugs[0]}
           onClose={() => setModal(null)}
           onCreated={(inv) => { refreshInvoices(); setModal({ invoice: inv }) }}
         />

@@ -40,6 +40,10 @@ function Scanner({ onDetected, onClose }) {
 
   useEffect(() => {
     let stopped = false
+    // Keep the scanner in portrait so rotating the phone can't reflow or break
+    // the camera feed. Works in the installed PWA / Android Chrome; iOS Safari
+    // doesn't support programmatic lock, so it fails silently (CSS still fills).
+    try { window.screen?.orientation?.lock?.('portrait')?.catch?.(() => {}) } catch { /* unsupported */ }
     async function init() {
       try {
         const Quagga = (await import('@ericblade/quagga2')).default
@@ -75,6 +79,7 @@ function Scanner({ onDetected, onClose }) {
     init()
     return () => {
       stopped = true
+      try { window.screen?.orientation?.unlock?.() } catch { /* unsupported */ }
       if (scannerRef.current) {
         try { scannerRef.current.stop() } catch { /* already stopped */ }
         try { scannerRef.current.offDetected() } catch { /* no listener */ }
@@ -113,6 +118,19 @@ function Scanner({ onDetected, onClose }) {
 // tab bar — inside the app's `relative z-10` content wrapper they'd be
 // trapped underneath it) and pad for the home indicator.
 const SHEET_PAD = { paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))' }
+
+// A dedicated, obvious full-screen loader (its own "page") for long async steps
+// like reading an invoice or receiving into stock.
+function FullScreenLoader({ title, subtitle }) {
+  return createPortal(
+    <div className="fixed inset-0 z-[70] bg-surface flex flex-col items-center justify-center px-8 text-center">
+      <div className="w-12 h-12 border-4 border-border border-t-wcs-red rounded-full animate-spin mb-4" />
+      <p className="text-sm font-semibold text-text-primary">{title}</p>
+      {subtitle && <p className="text-xs text-text-muted mt-1">{subtitle}</p>}
+    </div>,
+    document.body
+  )
+}
 
 function AdjustSheet({ item, onClose, onSaved }) {
   const [mode, setMode] = useState('delta') // delta (add only) | count
@@ -293,6 +311,8 @@ function InvoiceCaptureSheet({ slug, onClose, onParsed }) {
       setBusy(false)
     }
   }
+
+  if (busy) return <FullScreenLoader title="Reading invoice…" subtitle="Pulling vendor, items, and costs from the photo." />
 
   return createPortal(
     <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={onClose}>
@@ -495,17 +515,9 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
 
   const allReceived = lines.length > 0 && lines.every(l => l.received)
 
-  // Full-page loader while receiving — makes it obvious something is happening.
-  if (busy) {
-    return createPortal(
-      <div className="fixed inset-0 z-[70] bg-surface flex flex-col items-center justify-center px-8 text-center">
-        <div className="w-12 h-12 border-4 border-border border-t-wcs-red rounded-full animate-spin mb-4" />
-        <p className="text-sm font-semibold text-text-primary">Receiving into stock…</p>
-        <p className="text-xs text-text-muted mt-1">Updating on-hand counts and item costs.</p>
-      </div>,
-      document.body
-    )
-  }
+  // Dedicated full-page loaders so reading and receiving are obviously working.
+  if (parsing) return <FullScreenLoader title="Reading invoice…" subtitle="Pulling items and costs from the photo." />
+  if (busy) return <FullScreenLoader title="Receiving into stock…" subtitle="Updating on-hand counts and item costs." />
 
   // Done screen with a clear Close action.
   if (result) {
