@@ -5,7 +5,7 @@ import {
   getInventoryInvoices, getInventoryMovements, createInventoryInvoice, parseInventoryInvoice, addInventoryInvoiceFiles,
   deleteInventoryInvoiceFile, addInventoryInvoiceItem,
   deleteInventoryInvoiceItem, receiveInventoryInvoice, deleteInventoryInvoice,
-  startInventorySync, getInventorySyncStatus, getInventoryAudit,
+  startInventorySync, getInventorySyncStatus, getInventoryAudit, getInventoryEmployeeSpend,
 } from '../lib/api'
 import { LOCATION_OPTIONS } from '../config/locations'
 
@@ -722,6 +722,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   const [syncBusy, setSyncBusy] = useState(false)
   const [audit, setAudit] = useState(null) // { items, scanned, min_margin, days }
   const [auditIssueFilter, setAuditIssueFilter] = useState('')
+  const [empSpend, setEmpSpend] = useState(null) // { rows, totals, buyers }
   const [oversoldOnly, setOversoldOnly] = useState(false)
 
   const loadItems = useCallback(() => {
@@ -749,6 +750,12 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
       setLoading(true)
       getInventoryAudit({ location_slug: slug === 'all' ? '' : slug })
         .then(setAudit)
+        .catch(err => setError(err.message))
+        .finally(() => setLoading(false))
+    } else if (tab === 'employee') {
+      setLoading(true)
+      getInventoryEmployeeSpend({ location_slug: slug === 'all' ? '' : slug, from, to })
+        .then(setEmpSpend)
         .catch(err => setError(err.message))
         .finally(() => setLoading(false))
     } else if (tab === 'order') {
@@ -1025,7 +1032,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                 { key: 'order', label: 'To Order' },
                 { key: 'restock', label: 'Restock' },
                 ...(canSeeFinancials ? [{ key: 'profit', label: 'Sales' }] : []),
-                ...(isAdmin ? [{ key: 'audit', label: 'Audit' }] : []),
+                ...(isAdmin ? [{ key: 'audit', label: 'Audit' }, { key: 'employee', label: 'Employee Spend' }] : []),
               ].map(m => (
                 <button key={m.key} onClick={() => setTab(m.key)}
                   className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${tab === m.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>
@@ -1045,7 +1052,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
               {LOCATION_OPTIONS.map(o => <option key={o.slug} value={o.slug}>{o.label}</option>)}
             </select>
           </div>
-          {tab === 'profit' && (
+          {(tab === 'profit' || tab === 'employee') && (
             <>
               <div>
                 <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">From</span>
@@ -1376,6 +1383,73 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                               </td>
                             </tr>
                           ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* === Employee Spend tab (admin) === */}
+      {tab === 'employee' && isAdmin && (
+        <div className="space-y-4">
+          {loading && <p className="text-sm text-text-muted bg-surface rounded-xl border border-border p-6 text-center">Loading employee spend...</p>}
+          {!loading && empSpend && (
+            <>
+              <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+                <p className="text-sm text-text-primary"><span className="font-bold">{empSpend.rows.length}</span> items bought by staff</p>
+                <span className="text-xs text-text-muted">{empSpend.buyers} staff member account(s)</span>
+                <span className="text-[11px] text-text-muted">Employee price = catalog × (1 − discount); margin uses item cost.</span>
+                <span className="ml-auto text-sm text-text-primary">Spend: <span className="font-bold">{fmtMoney(empSpend.totals.spend)}</span></span>
+                <span className="text-sm text-text-primary">Profit: <span className="font-bold">{empSpend.totals.profit != null ? fmtMoney(empSpend.totals.profit) : '—'}</span></span>
+              </div>
+
+              <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
+                {empSpend.rows.length === 0 ? (
+                  <p className="text-sm text-text-muted p-8 text-center">No staff purchases in this date range.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
+                          <th className="py-2.5 px-4">Item</th>
+                          {slug === 'all' && <th className="py-2.5 px-2">Club</th>}
+                          <th className="py-2.5 px-2">Category</th>
+                          <th className="py-2.5 px-2 text-right">Units</th>
+                          <th className="py-2.5 px-2 text-right">Purchases</th>
+                          <th className="py-2.5 px-2 text-right">Catalog</th>
+                          <th className="py-2.5 px-2 text-right">Emp&nbsp;Disc</th>
+                          <th className="py-2.5 px-2 text-right">Emp&nbsp;Price</th>
+                          <th className="py-2.5 px-2 text-right">Cost</th>
+                          <th className="py-2.5 px-2 text-right">Margin</th>
+                          <th className="py-2.5 px-2 text-right">Spend</th>
+                          <th className="py-2.5 px-4 text-right">Profit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {empSpend.rows.map(r => (
+                          <tr key={r.item_id} className="border-b border-border/50 hover:bg-bg/40">
+                            <td className="py-2 px-4 font-medium text-text-primary">{r.item_name}</td>
+                            {slug === 'all' && <td className="py-2 px-2 capitalize text-text-muted">{r.location_slug || '—'}</td>}
+                            <td className="py-2 px-2 text-text-muted">{r.category || '—'}</td>
+                            <td className="py-2 px-2 text-right font-semibold text-text-primary">{fmtQty(r.units)}</td>
+                            <td className="py-2 px-2 text-right text-text-muted">{r.purchases}</td>
+                            <td className="py-2 px-2 text-right">{fmtMoney(r.abc_unit_price)}</td>
+                            <td className="py-2 px-2 text-right text-text-muted">{r.emp_discount_pct}%</td>
+                            <td className="py-2 px-2 text-right">{fmtMoney(r.emp_price)}</td>
+                            <td className="py-2 px-2 text-right">{fmtMoney(r.unit_cost)}</td>
+                            <td className="py-2 px-2 text-right">
+                              {r.margin_pct != null
+                                ? <span className={r.margin_pct < 0 ? 'text-wcs-red font-semibold' : 'text-emerald-600 font-semibold'}>{r.margin_pct}%</span>
+                                : '—'}
+                            </td>
+                            <td className="py-2 px-2 text-right">{fmtMoney(r.emp_spend)}</td>
+                            <td className="py-2 px-4 text-right">{r.profit != null ? fmtMoney(r.profit) : '—'}</td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>

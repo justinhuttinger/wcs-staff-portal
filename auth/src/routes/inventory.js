@@ -603,6 +603,115 @@ router.get('/audit', requireRole('admin'), async (req, res) => {
   }
 })
 
+// --- Employee Spend (admin only) ---------------------------------------------
+
+// Employee discount % by catalog category (Justin's policy). Anything not listed
+// (Tanning, etc.) gets no discount.
+const EMP_DISCOUNT = { Drinks: 0.25, Snacks: 0.25, Supplements: 0.37, Merchandise: 0.40 }
+const empDiscountFor = (category) => EMP_DISCOUNT[category] || 0
+
+// GET /employee-spend?location_slug=&from=&to= — what staff are buying, and the
+// margin after the employee discount is applied to the catalog price. Staff are
+// identified by an Employee/STAFF membership type (codes EMPLOY/COMP). The
+// discounted price is MODELED (catalog × (1 − discount)), not the till price.
+router.get('/employee-spend', requireRole('admin'), async (req, res) => {
+  try {
+    const { clubs, error: cErr } = clubFilter(req)
+    if (cErr) return res.status(400).json({ error: cErr })
+
+    // Staff buyers = members with an Employee/STAFF membership.
+    const staffRows = await fetchAllRows(() =>
+      supabaseAdmin.from('abc_members').select('member_id')
+        .in('membership_type_abc_code', ['EMPLOY', 'COMP']).order('member_id'))
+    const staffIds = [...new Set((staffRows || []).map(r => r.member_id).filter(Boolean))]
+    if (staffIds.length === 0) return res.json({ rows: [], totals: { spend: 0, profit: 0, units: 0 }, buyers: 0 })
+
+    // Staff sale lines over the window. Chunk the member_id IN list so the
+    // PostgREST URL stays under the length limit.
+    const CHUNK = 100
+    const lines = []
+    for (let i = 0; i < staffIds.length; i += CHUNK) {
+      const chunk = staffIds.slice(i, i + CHUNK)
+      const makeQ = () => {
+        let q = supabaseAdmin
+          .from('inventory_transaction_items')
+          .select('item_id, quantity, club_number, transaction_pk, inventory_transactions!inner(member_id, transaction_at, is_return)')
+          .in('profit_center', SELLABLE_PROFIT_CENTERS)
+          .not('item_id', 'is', null)
+          .in('inventory_transactions.member_id', chunk)
+          .order('id')
+        if (clubs) q = q.in('club_number', clubs)
+        if (req.query.from) q = q.gte('inventory_transactions.transaction_at', `${req.query.from}T00:00:00Z`)
+        if (req.query.to) q = q.lte('inventory_transactions.transaction_at', `${req.query.to}T23:59:59Z`)
+        return q
+      }
+      lines.push(...(await fetchAllRows(makeQ)))
+    }
+
+    // Aggregate per item, netting returns, counting distinct purchase occasions.
+    const byItem = new Map()
+    for (const row of lines) {
+      const sign = row.inventory_transactions?.is_return ? -1 : 1
+      const e = byItem.get(row.item_id) || { units: 0, txns: new Set() }
+      e.units += (num(row.quantity) || 0) * sign
+      if (row.transaction_pk) e.txns.add(row.transaction_pk)
+      byItem.set(row.item_id, e)
+    }
+    const itemIds = [...byItem.keys()]
+    if (itemIds.length === 0) return res.json({ rows: [], totals: { spend: 0, profit: 0, units: 0 }, buyers: staffIds.length })
+
+    // Item details (chunked IN).
+    const itemInfo = new Map()
+    for (let i = 0; i < itemIds.length; i += CHUNK) {
+      const { data: items, error } = await supabaseAdmin
+        .from('inventory_items')
+        .select('id, item_name, upc, category, club_number, abc_unit_price, avg_unit_cost, last_unit_cost')
+        .in('id', itemIds.slice(i, i + CHUNK))
+      if (error) throw error
+      for (const it of items || []) itemInfo.set(it.id, it)
+    }
+
+    const rows = []
+    let tSpend = 0, tProfit = 0, tUnits = 0, profitKnown = true
+    for (const [itemId, agg] of byItem) {
+      const it = itemInfo.get(itemId)
+      if (!it) continue
+      const units = +agg.units.toFixed(2)
+      if (units <= 0) continue
+      const disc = empDiscountFor(it.category)
+      const price = num(it.abc_unit_price)
+      const cost = num(it.avg_unit_cost) ?? num(it.last_unit_cost)
+      const empPrice = price != null ? +(price * (1 - disc)).toFixed(2) : null
+      const spend = empPrice != null ? +(empPrice * units).toFixed(2) : null
+      const cogs = cost != null ? +(cost * units).toFixed(2) : null
+      const profit = spend != null && cogs != null ? +(spend - cogs).toFixed(2) : null
+      const marginPct = profit != null && spend > 0 ? +((profit / spend) * 100).toFixed(1) : null
+      if (spend != null) tSpend += spend
+      if (profit != null) tProfit += profit
+      else if (cogs == null) profitKnown = false
+      tUnits += units
+      rows.push({
+        item_id: itemId, item_name: it.item_name, upc: it.upc, category: it.category,
+        location_slug: CLUB_TO_SLUG[it.club_number] || null,
+        units, purchases: agg.txns.size,
+        abc_unit_price: price, unit_cost: cost,
+        emp_discount_pct: +(disc * 100).toFixed(0),
+        emp_price: empPrice, emp_spend: spend, cogs, profit, margin_pct: marginPct,
+      })
+    }
+    rows.sort((a, b) => (b.emp_spend || 0) - (a.emp_spend || 0))
+
+    res.json({
+      rows,
+      totals: { spend: +tSpend.toFixed(2), profit: profitKnown ? +tProfit.toFixed(2) : null, units: +tUnits.toFixed(2) },
+      buyers: staffIds.length,
+    })
+  } catch (err) {
+    console.error('[Inventory] employee-spend error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // --- Vendor price-list (admin only) -------------------------------------------
 
 // POST /price-list/preview — parse a CSV and compute coverage vs the catalog.
