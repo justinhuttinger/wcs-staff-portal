@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Training Program</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Arial', 'Helvetica', sans-serif;
+      color: #000;
+    }
+    
+    .page {
+      position: relative;
+      min-height: 100vh;
+      page-break-after: always;
+    }
+    
+    .page:last-child {
+      page-break-after: auto;
+    }
+    
+    /* Logo aligned with header on left */
+    .logo-image {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 70px;
+      height: 70px;
+      opacity: 1;
+    }
+    
+    /* Header moved right to accommodate logo */
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 20px;
+      margin-left: 90px;
+      padding-bottom: 15px;
+      border-bottom: 4px solid #E31E24;
+      position: relative;
+    }
+    
+    .page-header::before {
+      content: '';
+      position: absolute;
+      bottom: -4px;
+      left: -90px;
+      width: 90px;
+      height: 4px;
+      background-color: #E31E24;
+    }
+    
+    .header-left h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 14px;
+      font-weight: normal;
+      color: #E31E24;
+      margin: 0;
+      letter-spacing: 2px;
+    }
+    
+    .header-left h2 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 42px;
+      font-weight: 900;
+      color: #000;
+      margin: 5px 0 0 0;
+      line-height: 1;
+      text-transform: uppercase;
+      letter-spacing: -1px;
+    }
+    
+    .header-right {
+      text-align: right;
+      padding-top: 10px;
+      font-family: 'Arial', sans-serif;
+    }
+    
+    .header-right p {
+      font-size: 13px;
+      color: #E31E24;
+      margin: 2px 0;
+      font-weight: bold;
+    }
+    
+    .core-concepts {
+      margin-top: 40px;
+      margin-left: 0;
+    }
+    
+    .core-concepts h3 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 36px;
+      font-weight: 900;
+      color: #000;
+      margin-bottom: 30px;
+      text-transform: uppercase;
+    }
+    
+    .core-concepts-content {
+      font-family: 'Arial', sans-serif;
+      font-size: 14px;
+      line-height: 1.8;
+      color: #333;
+    }
+    
+    .core-concepts-content p {
+      margin-bottom: 15px;
+    }
+    
+    .core-concepts-content strong {
+      color: #E31E24;
+      font-weight: bold;
+    }
+    
+    .workout-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 30px;
+      margin-left: 0;
+    }
+    
+    .workout-table td {
+      border: 2px solid #000;
+      padding: 15px;
+      font-family: 'Arial', sans-serif;
+      font-size: 13px;
+      vertical-align: top;
+    }
+    
+    .workout-table td:first-child {
+      width: 60%;
+      font-weight: normal;
+    }
+    
+    .workout-table td:last-child {
+      width: 40%;
+      text-align: left;
+      font-weight: bold;
+    }
+    
+    .workout-table tr {
+      height: 60px;
+    }
+  </style>
+</head>
+<body>
+  {{programContent}}
+</body>
+</html>
