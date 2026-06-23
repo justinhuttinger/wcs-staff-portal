@@ -138,8 +138,8 @@ export default function VendorPriceListAdmin() {
                     <th className="text-left py-2 px-2">SKU</th>
                     <th className="text-left py-2 px-2">Product</th>
                     <th className="text-left py-2 px-2">Pack</th>
+                    <th className="text-right py-2 px-2">EDLP (case)</th>
                     <th className="text-right py-2 px-2">Unit Cost</th>
-                    <th className="text-right py-2 px-2">MAP</th>
                     <th className="text-center py-2 px-2">Match</th>
                   </tr>
                 </thead>
@@ -149,8 +149,8 @@ export default function VendorPriceListAdmin() {
                       <td className="py-1.5 px-2 font-mono">{row.sku}</td>
                       <td className="py-1.5 px-2 max-w-[200px] truncate">{row.product_name}</td>
                       <td className="py-1.5 px-2">{row.pack_size ?? '—'}</td>
+                      <td className="py-1.5 px-2 text-right">{fmtMoney(row.case_cost)}</td>
                       <td className="py-1.5 px-2 text-right">{fmtMoney(row.unit_cost)}</td>
-                      <td className="py-1.5 px-2 text-right">{fmtMoney(row.map_price)}</td>
                       <td className="py-1.5 px-2 text-center">
                         {row.matched
                           ? <span className="inline-block bg-green-100 text-green-700 text-[10px] font-medium px-1.5 py-0.5 rounded-full">matched</span>

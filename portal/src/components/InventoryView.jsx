@@ -24,6 +24,30 @@ function fmtQty(v) {
 function fmtDateTime(iso) {
   return iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'
 }
+function clubLabel(inv) {
+  if (!inv.location_slug) return 'Corporate'
+  return LOCATION_OPTIONS.find(o => o.slug === inv.location_slug)?.label || inv.location_slug
+}
+// Summarize an invoice's line state for the Restock list: total/matched/received
+// counts plus a single status label (Pending → Partial → Received, or read state).
+function invoiceLineSummary(inv) {
+  const lines = inv.items || []
+  const matched = lines.filter(l => l.item_id).length
+  const received = lines.filter(l => l.received).length
+  let status = 'Pending'
+  if (inv.parse_status === 'error') status = 'Read failed'
+  else if (lines.length === 0) status = 'No items'
+  else if (matched > 0 && received >= matched) status = 'Received'
+  else if (received > 0) status = 'Partial'
+  return { total: lines.length, matched, received, status }
+}
+const RESTOCK_STATUS_CLS = {
+  Received: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+  Partial: 'text-amber-700 bg-amber-50 border-amber-200',
+  Pending: 'text-text-muted bg-bg border-border',
+  'No items': 'text-text-muted bg-bg border-border',
+  'Read failed': 'text-red-700 bg-red-50 border-red-200',
+}
 function toLocalDateStr(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -315,8 +339,9 @@ function InvoiceModal({ onClose, onCreated, defaultSlug }) {
       if (files.length) {
         try { const p = await parseInventoryInvoice(invoice.id); invoice = p.invoice } catch (_) { /* keep manual entry */ }
       }
+      // onCreated owns the next step (close, or jump straight to the detail to
+      // review/receive) — calling onClose() here would clobber that transition.
       onCreated(invoice)
-      onClose()
     } catch (err) { setError(err.message) } finally { setSaving(false) }
   }
 
@@ -481,8 +506,9 @@ function InvoiceDetail({ invoice, onClose, onChanged }) {
             {lines.map(l => (
               <tr key={l.id} className="border-b border-border/50">
                 <td className="py-2 pr-3">
-                  <span className="font-medium text-text-primary">{l.item_id ? itemName(l.item_id) : (l.description || '—')}</span>
-                  {l.item_id && l.description && <span className="text-xs text-text-muted ml-2">{l.description}</span>}
+                  <span className="font-medium text-text-primary">{l.item_id ? (l.matched_item_name || itemName(l.item_id)) : (l.description || '—')}</span>
+                  {l.item_id && l.matched_item_upc && <span className="text-xs text-text-muted ml-2">UPC {l.matched_item_upc}</span>}
+                  {l.item_id && l.description && <span className="text-xs text-text-muted ml-2">from “{l.description}”</span>}
                   {!l.item_id && <span className="ml-2 text-[10px] font-bold uppercase text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">Not linked</span>}
                   {!l.received && (
                     <div className="mt-1.5 flex items-center gap-2">
@@ -630,6 +656,12 @@ export default function InventoryView({ onBack, location, isAdmin }) {
         to: toLocalDateStr(new Date()),
       })
         .then(res => setOrderItems(res.items || []))
+        .catch(err => setError(err.message))
+        .finally(() => setLoading(false))
+    } else if (tab === 'restock') {
+      setLoading(true)
+      getInventoryInvoices()
+        .then(res => setInvoices(res.invoices || []))
         .catch(err => setError(err.message))
         .finally(() => setLoading(false))
     }
@@ -822,6 +854,26 @@ export default function InventoryView({ onBack, location, isAdmin }) {
     return ts.length ? new Date(Math.max(...ts)) : null
   }, [syncStatus])
 
+  // Restock tab: recent invoice uploads filtered to the chosen club, grouped by
+  // who uploaded them (and, within a person, ordered by club then newest first).
+  const restockGroups = useMemo(() => {
+    const visible = invoices.filter(inv => slug === 'all' || inv.location_slug === slug)
+    const byPerson = new Map()
+    for (const inv of visible) {
+      const key = inv.created_by_name || 'Unknown'
+      if (!byPerson.has(key)) byPerson.set(key, [])
+      byPerson.get(key).push(inv)
+    }
+    const groups = [...byPerson.entries()].map(([person, list]) => ({
+      person,
+      invoices: [...list].sort((a, b) =>
+        (a.location_slug || '').localeCompare(b.location_slug || '') ||
+        new Date(b.created_at || 0) - new Date(a.created_at || 0)),
+    }))
+    groups.sort((a, b) => a.person.localeCompare(b.person))
+    return groups
+  }, [invoices, slug])
+
   const onItemSaved = (updated) => setItems(list => list.map(i => i.id === updated.id ? { ...i, ...updated } : i))
   const refreshInvoices = () => getInventoryInvoices().then(res => setInvoices(res.invoices || [])).catch(() => {})
 
@@ -840,6 +892,7 @@ export default function InventoryView({ onBack, location, isAdmin }) {
               {[
                 { key: 'items', label: 'Inventory' },
                 { key: 'order', label: 'To Order' },
+                { key: 'restock', label: 'Restock' },
                 { key: 'profit', label: 'Sales' },
                 ...(isAdmin ? [{ key: 'audit', label: 'Audit' }] : []),
               ].map(m => (
@@ -1199,7 +1252,104 @@ export default function InventoryView({ onBack, location, isAdmin }) {
         </div>
       )}
 
+      {/* === Restock tab === */}
+      {tab === 'restock' && (
+        <div className="space-y-4">
+          <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4 flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <p className="text-sm text-text-primary">
+                <span className="font-bold">{restockGroups.reduce((s, g) => s + g.invoices.length, 0)}</span> recent invoice upload(s)
+                {slug !== 'all' && <span className="text-text-muted text-xs ml-2">· this club</span>}
+              </p>
+              <p className="text-xs text-text-muted mt-0.5">Snap or upload a vendor invoice, review the matched items, and receive them into stock.</p>
+            </div>
+            <button onClick={() => setModal({ newInvoice: true })} className={btnPrimary}>+ New / Snap Invoice</button>
+          </div>
+
+          {loading && <p className="text-sm text-text-muted bg-surface rounded-xl border border-border p-6 text-center">Loading restocks...</p>}
+          {!loading && restockGroups.length === 0 && (
+            <p className="text-sm text-text-muted bg-surface rounded-xl border border-border p-8 text-center">
+              No invoice uploads yet{slug !== 'all' ? ' for this club' : ''}. Tap “New / Snap Invoice” to add one.
+            </p>
+          )}
+
+          {!loading && restockGroups.map(group => (
+            <div key={group.person} className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
+              <div className="px-4 py-2.5 bg-bg/50 border-b border-border flex items-center justify-between">
+                <p className="text-sm font-semibold text-text-primary">{group.person}</p>
+                <span className="text-xs text-text-muted">{group.invoices.length} upload(s)</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/30">
+                      <th className="py-2.5 px-4">Uploaded</th>
+                      <th className="py-2.5 px-2">Club</th>
+                      <th className="py-2.5 px-2">Vendor</th>
+                      <th className="py-2.5 px-2">Pages</th>
+                      <th className="py-2.5 px-2 text-right">Items</th>
+                      <th className="py-2.5 px-2 text-right">Total</th>
+                      <th className="py-2.5 px-4">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.invoices.map(inv => {
+                      const sum = invoiceLineSummary(inv)
+                      return (
+                        <tr key={inv.id} onClick={() => setModal({ invoice: inv })}
+                          className="border-b border-border/50 hover:bg-bg/40 cursor-pointer">
+                          <td className="py-2 px-4 whitespace-nowrap text-text-muted">{fmtDateTime(inv.created_at)}</td>
+                          <td className="py-2 px-2 capitalize">{clubLabel(inv)}</td>
+                          <td className="py-2 px-2 font-medium text-text-primary">
+                            {inv.vendor}{inv.invoice_number ? <span className="text-text-muted font-normal"> #{inv.invoice_number}</span> : ''}
+                          </td>
+                          <td className="py-2 px-2">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {(inv.files || []).length === 0 && <span className="text-xs text-text-muted">—</span>}
+                              {(inv.files || []).map((f, i) => (
+                                <a key={f.id} href={f.file_link} target="_blank" rel="noreferrer"
+                                  onClick={e => e.stopPropagation()}
+                                  className="text-xs font-semibold text-wcs-red border border-wcs-red/30 bg-wcs-red/5 rounded-full px-2 py-0.5 hover:bg-wcs-red/10">
+                                  {f.page_no || i + 1}
+                                </a>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="py-2 px-2 text-right whitespace-nowrap text-text-muted">
+                            {sum.matched}/{sum.total}
+                          </td>
+                          <td className="py-2 px-2 text-right">{fmtMoney(inv.total)}</td>
+                          <td className="py-2 px-4">
+                            <span className={`text-[10px] font-bold uppercase rounded-full px-1.5 py-0.5 border ${RESTOCK_STATUS_CLS[sum.status] || RESTOCK_STATUS_CLS.Pending}`}>
+                              {sum.status}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Modals */}
+      {modal?.newInvoice && (
+        <InvoiceModal
+          defaultSlug={slug}
+          onClose={() => setModal(null)}
+          onCreated={(inv) => { refreshInvoices(); setModal({ invoice: inv }) }}
+        />
+      )}
+      {modal?.invoice && (
+        <InvoiceDetail
+          invoice={modal.invoice}
+          onClose={() => setModal(null)}
+          onChanged={refreshInvoices}
+        />
+      )}
       {modal?.adjust && <AdjustModal item={modal.adjust} onClose={() => setModal(null)} onSaved={onItemSaved} />}
       {modal?.edit && (
         <EditItemModal
