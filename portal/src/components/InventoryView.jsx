@@ -1016,8 +1016,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <h2 className="text-xl font-bold text-text-primary">Inventory</h2>
-            <span className="px-2 py-0.5 rounded-full bg-wcs-red/10 text-wcs-red text-[10px] font-bold uppercase tracking-wider border border-wcs-red/20">Experimental</span>
-            {lastSync && <span className="text-[11px] text-text-muted">POS synced {fmtDateTime(lastSync.toISOString())}</span>}
+            {isAdmin && lastSync && <span className="text-[11px] text-text-muted">POS synced {fmtDateTime(lastSync.toISOString())}</span>}
           </div>
           <div className="flex items-center gap-3">
             <div className="flex gap-1 bg-bg rounded-lg p-1">
@@ -1034,7 +1033,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                 </button>
               ))}
             </div>
-            <button onClick={syncNow} disabled={syncBusy} className={btnGhost}>{syncBusy ? 'Starting...' : 'Sync from ABC'}</button>
+            {isAdmin && <button onClick={syncNow} disabled={syncBusy} className={btnGhost}>{syncBusy ? 'Starting...' : 'Sync from ABC'}</button>}
           </div>
         </div>
 
@@ -1118,7 +1117,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
           ) : filteredItems.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-sm text-text-muted mb-2">No items yet{items.length === 0 ? ' — the ABC catalog hasn’t been synced.' : ' for this filter.'}</p>
-              {items.length === 0 && <button onClick={syncNow} disabled={syncBusy} className={btnPrimary}>Run first sync from ABC</button>}
+              {items.length === 0 && isAdmin && <button onClick={syncNow} disabled={syncBusy} className={btnPrimary}>Run first sync from ABC</button>}
             </div>
           ) : (
             <div className="overflow-x-auto">
