@@ -27,6 +27,7 @@ async function update(id, patch) {
 }
 
 const setProgress = (id, status, progress) => update(id, { status, progress })
+const attachContact = (id, contactName, contactEmail) => update(id, { contact_name: contactName || null, contact_email: contactEmail || null })
 const attachProgram = (id, programJson) => update(id, { program_json: programJson })
 const attachPdf = (id, pdfPath) => update(id, { pdf_path: pdfPath })
 const markFlags = (id, { emailed, uploadedAbc }) =>
@@ -57,6 +58,6 @@ async function downloadPdfFromStorage(pdfPath) {
 }
 
 module.exports = {
-  BUCKET, createJob, setProgress, attachProgram, attachPdf, markFlags,
+  BUCKET, createJob, setProgress, attachContact, attachProgram, attachPdf, markFlags,
   markComplete, markError, getLatestForContact, uploadPdfToStorage, downloadPdfFromStorage,
 }

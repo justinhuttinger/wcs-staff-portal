@@ -9,6 +9,7 @@ const { buildProgramPdf } = require('../services/dayOneProgram/pdf')
 const deliver = require('../services/dayOneProgram/deliver')
 const jobs = require('../services/dayOneProgram/jobs')
 const { renderSuccessPage } = require('../services/dayOneProgram/successPage')
+const { supabaseAdmin } = require('../services/supabase')
 
 const router = Router()
 
@@ -31,6 +32,7 @@ async function runPipeline(jobId, contactId, club, formData, abcMemberId) {
   try {
     await jobs.setProgress(jobId, 'generating', 'Fetching client details')
     const contact = await fetchContact(contactId, club)
+    await jobs.attachContact(jobId, contact.name, contact.email)
     await jobs.setProgress(jobId, 'generating', 'Designing your workouts')
 
     const program = await generateProgram(contact, formData)
@@ -142,11 +144,15 @@ router.get('/status/stream', async (req, res) => {
 // GET /day-one-program/pdf/:jobId — stream the finished PDF.
 router.get('/pdf/:jobId', async (req, res) => {
   try {
-    const { data, error } = await require('../services/supabase').supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('pt_programs').select('pdf_path, contact_name').eq('id', req.params.jobId).maybeSingle()
     if (error || !data?.pdf_path) return res.status(404).send('Program PDF not found')
     const buf = await jobs.downloadPdfFromStorage(data.pdf_path)
-    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="Training_Program.pdf"' })
+    const safeName = data.contact_name
+      ? data.contact_name.replace(/[^A-Za-z0-9_-]/g, '_')
+      : null
+    const filename = safeName ? `Training_Program_${safeName}.pdf` : 'Training_Program.pdf'
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${filename}"` })
     res.send(buf)
   } catch (e) {
     res.status(500).send('Error loading PDF')
