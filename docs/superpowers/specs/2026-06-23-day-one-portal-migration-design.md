@@ -8,7 +8,7 @@
 
 Migrate the standalone **Day One PT program generator** (`justinhuttinger/dayone`, deployed at `dayone-xe91.onrender.com`) into the **wcs-staff-portal** `auth/` Express backend (`wcs-auth-api.onrender.com`). The migration:
 
-1. **Consolidates** the 1,085-line single-file `server.js` into a modular webhook route + service modules that reuse the portal's existing infrastructure (Anthropic SDK, GHL client, ABC Financial integration, PDFShift, SendGrid, Supabase, per-location config).
+1. **Consolidates** the 1,085-line single-file `server.js` into a modular webhook route + service modules that reuse the portal's existing infrastructure (Anthropic SDK, GHL client, ABC Financial integration, PDFShift, Supabase, per-location config). Outbound email is the one piece the portal lacks, so `@sendgrid/mail` is added.
 2. **Persists** every generated program in Supabase (table + Storage), replacing the ephemeral on-disk PDF cache and the `lastGeneratedPdf` global variable (which has a race when two trainers submit simultaneously).
 3. **Optimizes for speed** by replacing the single ~10K-token AI call with parallel per-day generation, and replacing the 3-second-polling success page with live SSE progress + fire-on-ready delivery.
 
@@ -50,7 +50,7 @@ Known weaknesses addressed by this migration:
 - **`generate.js`** — orchestrates parallel generation (see below) and assembles the final `program_json` in the exact shape `pdf.js` expects.
 - **`anthropic.js`** — thin Day One Anthropic wrapper (modeled on `src/mastermind/anthropic.js`) exposing a streamed-with-retry call. Reuses `isRetryableStreamError` + `withStreamRetry` logic ported from the current `server.js` (the PR #4 hardening), since each parallel call still needs mid-stream retry. Uses `@anthropic-ai/sdk@^0.97.1` already in the portal.
 - **`pdf.js`** — fills `auth/src/templates/day-one/program-template.html` (+ base64 logo) via `formatProgramHTML`, calls PDFShift with the same `PDFSHIFT_API_KEY` + `fetch` pattern as `hrDocuments.js`. Returns a PDF buffer.
-- **`deliver.js`** — SendGrid email to the client (reusing the portal's SendGrid setup) + ABC Financial document upload (reusing the existing ABC integration pattern). Each step is independently try/caught so one failure never blocks the others (preserves the PR #2 resilience fix).
+- **`deliver.js`** — SendGrid email to the client + ABC Financial document upload (reusing the existing ABC integration pattern). **Note:** the portal currently uses SendGrid only for *inbound* parse webhooks; outbound sending is new, so we add `@sendgrid/mail` to `auth/` and port Day One's working `sendProgramEmail`/`sendErrorNotification` (reusing the existing SendGrid key via `SENDGRID_API_KEY`). Each step is independently try/caught so one failure never blocks the others (preserves the PR #2 resilience fix).
 - **`jobs.js`** — `pt_programs` row lifecycle: `createJob`, `setStatus`, `setProgress`, `attachProgram`, `attachPdf`, `markComplete`, `markError`. Also the SSE pump (poll/emit the row's `status`/`progress` to subscribers).
 
 ### Templates
@@ -135,8 +135,8 @@ Table **`pt_programs`**:
 
 ## Environment variables
 
-Reused (already in the portal env): `ANTHROPIC_API_KEY`, `PDFSHIFT_API_KEY`, GHL per-location keys, ABC `app_id`/`app_key`, Supabase service role, SendGrid key, `FROM_EMAIL`.
-Possibly add: `DAY_ONE_ADMIN_EMAIL` (error notifications; default `justin@westcoaststrength.com`), `DAY_ONE_FROM_EMAIL` (or reuse `FROM_EMAIL`).
+Reused (already in the portal env): `ANTHROPIC_API_KEY`, `PDFSHIFT_API_KEY`, GHL per-location keys, ABC `app_id`/`app_key`, Supabase service role.
+**Add to portal env:** `SENDGRID_API_KEY` (outbound sending is new; reuse the same key the dayone service uses), `FROM_EMAIL` (default `programs@westcoaststrength.com`), and Medford's `GHL_LOCATION_MEDFORD` + `GHL_API_KEY_MEDFORD`. Optional: `DAY_ONE_ADMIN_EMAIL` (error notifications; default `justin@westcoaststrength.com`).
 
 ## Testing
 
