@@ -159,12 +159,13 @@ export default function MobileApp() {
     return <LoginScreen onLogin={handleLogin} />
   }
 
-  // Manager+ only access gate
+  // Lead+ access gate. Leads get a limited app (Inventory, Calendar, Tickets,
+  // Leaderboard); managers and above get everything.
   const ROLE_LEVELS = { team_member: 0, lead: 1, manager: 2, corporate: 3, admin: 4 }
   const userRole = user?.staff?.role || 'team_member'
   const roleIdx = ROLE_LEVELS[userRole] ?? 0
 
-  if (roleIdx < ROLE_LEVELS.manager) {
+  if (roleIdx < ROLE_LEVELS.lead) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center px-6">
         <div className="bg-surface border border-border rounded-2xl p-8 text-center max-w-sm">
@@ -172,7 +173,7 @@ export default function MobileApp() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
           </svg>
           <h2 className="text-lg font-bold text-text-primary mb-1">Access Restricted</h2>
-          <p className="text-sm text-text-muted mb-4">The mobile app is only available to managers and above.</p>
+          <p className="text-sm text-text-muted mb-4">The mobile app is only available to team leads and above.</p>
           <button onClick={handleLogout} className="px-4 py-2 text-sm font-medium text-wcs-red border border-wcs-red rounded-lg">
             Sign Out
           </button>
@@ -509,7 +510,8 @@ export default function MobileApp() {
 
   const tabs = [
     { key: 'home', label: 'Home', Icon: HomeIcon },
-    { key: 'reports', label: 'Reports', Icon: ReportsIcon },
+    // Reports is manager+; leads get Home + Calendar.
+    ...(roleIdx >= ROLE_LEVELS.manager ? [{ key: 'reports', label: 'Reports', Icon: ReportsIcon }] : []),
     { key: 'calendar', label: 'Calendar', Icon: CalendarIcon },
   ]
 

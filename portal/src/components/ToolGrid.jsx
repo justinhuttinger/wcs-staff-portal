@@ -607,8 +607,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {onTrainerAvail && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}
           {/* 6.5. Marketing Tracker — corporate/admin, or anyone with the marketing add-on */}
           {onMarketingTracker && (roleIdx >= ROLE_LEVELS.corporate || marketingAddon) && <SvgTileButton onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />}
-          {/* 6.6. Inventory (experimental) — manager+ */}
-          {onInventory && roleIdx >= ROLE_LEVELS.manager && <SvgTileButton onClick={onInventory} iconPath={TILE_ICONS.inventory} label="Inventory" desc="Stock & Costs" />}
+          {/* 6.6. Inventory (experimental) — lead+ (leads get restock/adjust, no Sales/margin) */}
+          {onInventory && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onInventory} iconPath={TILE_ICONS.inventory} label="Inventory" desc="Stock & Costs" />}
           {/* 7-9. Reporting, Tickets + remaining custom tiles
               (Marketing now lives inside Reporting — no standalone tile) */}
           {toolCustomTiles.filter((tile) => {

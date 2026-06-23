@@ -731,8 +731,12 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
   )
 }
 
+const ROLE_LVL = { team_member: 0, front_desk: 0, personal_trainer: 0, lead: 1, custom: 1, manager: 2, director: 3, corporate: 3, marketing: 3, admin: 4 }
+
 export default function MobileInventory({ user }) {
   const isAdmin = user?.staff?.role === 'admin'
+  // Leads don't see margin (financial view stays manager+).
+  const canSeeFinancials = (ROLE_LVL[user?.staff?.role] ?? 0) >= ROLE_LVL.manager
   const primarySlug = (user?.staff?.locations?.find(l => l.is_primary)?.name || user?.staff?.locations?.[0]?.name || 'Salem').toLowerCase()
   const [slug, setSlug] = useState(LOCATION_OPTIONS.some(o => o.slug === primarySlug) ? primarySlug : 'salem')
   const [scanning, setScanning] = useState(false)
@@ -820,7 +824,7 @@ export default function MobileInventory({ user }) {
         <div className="flex items-center gap-3 mt-2 text-xs text-text-muted">
           <span>Price {fmtMoney(item.abc_unit_price)}</span>
           {item.unit_cost != null && <span>Cost {fmtMoney(item.unit_cost)}</span>}
-          {item.margin_pct != null && <span className={item.margin_pct < 0 ? 'text-wcs-red font-semibold' : 'text-emerald-600 font-semibold'}>{item.margin_pct}% margin</span>}
+          {canSeeFinancials && item.margin_pct != null && <span className={item.margin_pct < 0 ? 'text-wcs-red font-semibold' : 'text-emerald-600 font-semibold'}>{item.margin_pct}% margin</span>}
         </div>
         <div className="flex gap-2 mt-3">
           <button onClick={() => setAdjusting(item)} className="flex-1 py-2 rounded-xl bg-wcs-red text-white text-xs font-semibold">Adjust Stock</button>

@@ -26,7 +26,10 @@ const CLUB_TO_SLUG = Object.fromEntries(Object.entries(SLUG_CLUB_MAP).map(([s, c
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('manager'))
+// Leads can use inventory (restock, adjust, invoices) but NOT the financial
+// views — the Sales (/summary) and POS-transactions endpoints stay manager+,
+// and the Sales tab / margin column are hidden for them in the UI.
+router.use(requireRole('lead'))
 
 // Resolve ?location_slug= into a club_number list. Returns null (= no filter)
 // for 'all', or { error } for unknown slugs.
@@ -371,8 +374,8 @@ router.post('/items/:id/adjust', async (req, res) => {
 // --- Transactions --------------------------------------------------------------
 
 // GET /transactions?location_slug=&from=&to=&limit= — synced POS sales with
-// line items (newest first). from/to are YYYY-MM-DD.
-router.get('/transactions', async (req, res) => {
+// line items (newest first). from/to are YYYY-MM-DD. Financial data → manager+.
+router.get('/transactions', requireRole('manager'), async (req, res) => {
   try {
     const { clubs, error: cErr } = clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
@@ -404,7 +407,8 @@ router.get('/transactions', async (req, res) => {
 })
 
 // GET /summary?location_slug=&from=&to= — per-item revenue, COGS, profit.
-router.get('/summary', async (req, res) => {
+// Financial data (the Sales tab) → manager+ only.
+router.get('/summary', requireRole('manager'), async (req, res) => {
   try {
     const { clubs, error: cErr } = clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
