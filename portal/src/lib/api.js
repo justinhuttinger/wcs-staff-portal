@@ -842,6 +842,10 @@ export async function getInventoryAudit(params = {}) {
   return api('/inventory/audit' + inventoryQs(params))
 }
 
+export async function getInventoryEmployeeSpend(params = {}) {
+  return api('/inventory/employee-spend' + inventoryQs(params))
+}
+
 // Day One Tracker
 export async function getDayOneTrackerAppointments(params = {}) {
   const qs = new URLSearchParams(params).toString()
