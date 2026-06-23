@@ -10,6 +10,23 @@ function getClient() { return apiKey ? new Anthropic({ apiKey }) : null }
 
 const toNum = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null }
 
+// Non-product invoice lines (shipping, fees, taxes, totals) must never count as
+// inventory cost. The model is told to omit them, but a "Processing Fee" or
+// "Shipping Charge" can still slip through — so we also drop them deterministically.
+// High-precision whole-word patterns: real drink/snack/supplement names don't
+// contain these as standalone words (e.g. "coffee" does NOT match \bfee\b).
+const NON_PRODUCT_PATTERNS = [
+  /\bshipping\b/i, /\bfreight\b/i, /\bhandling\b/i, /\bpostage\b/i,
+  /\bsurcharge\b/i, /fuel\s*surcharge/i, /\bs\s*&\s*h\b/i,
+  /\bfee\b/i, /\bfees\b/i,
+  /\bsubtotal\b/i, /sub-total/i, /\bdiscount\b/i,
+  /sales\s*tax/i, /\btax\b/i, /\bgratuity\b/i,
+]
+function isNonProductLine(description) {
+  const d = String(description || '')
+  return NON_PRODUCT_PATTERNS.some(re => re.test(d))
+}
+
 function parseExtractionText(text) {
   const s = String(text || '')
   const fenced = s.match(/```(?:json)?\s*([\s\S]*?)```/)
@@ -30,7 +47,7 @@ function parseExtractionText(text) {
       upc: l.upc ? String(l.upc).replace(/\D/g, '') || null : null,
       quantity, unit_cost: unitCost, line_total: lineTotal,
     }
-  }).filter(l => l.description || l.quantity != null)
+  }).filter(l => (l.description || l.quantity != null) && !isNonProductLine(l.description))
   return {
     vendor: obj.vendor ? String(obj.vendor).slice(0, 200) : null,
     order_number: obj.order_number != null ? String(obj.order_number) : null,
@@ -52,8 +69,9 @@ const SYSTEM = [
   '"quantity":number,"unit_cost":number|null,"line_total":number|null}]}.',
   'order_number is the order/PO number, usually top-right (e.g. labeled "Order #").',
   'total is the grand total, which may appear only on the LAST page.',
-  'INCLUDE ONLY purchasable PRODUCT lines. OMIT any subtotal, discount, shipping, tax,',
-  'or summary rows (e.g. rows whose Type is Subtotal/Discount/Shipping).',
+  'INCLUDE ONLY purchasable PRODUCT lines. OMIT any subtotal, discount, shipping,',
+  'freight, handling, processing fee, service fee, surcharge, tax, or summary rows',
+  '(e.g. rows whose Type is Subtotal/Discount/Shipping, or labeled "Processing Fee").',
   'vendor_sku is the vendor item/SKU number on the line (e.g. an "Item" column value like S1181001); null if none.',
   'description is the clean product name only; EXCLUDE trailing lot/expiration text',
   'such as "4 ea - Lot#: 510731049 ExpDate: Aug 1, 2027".',
@@ -65,7 +83,8 @@ const SYSTEM = [
   ' 4 ea - Lot#: 510731049 ExpDate: Aug 1, 2027   $14.61   4 ea   $58.44"',
   'becomes {"vendor_sku":"S1181001","description":"Top Secret Nutrition Fireball L-Carnitine Liquid w/ Paradoxine 16oz Cherry",',
   '"upc":null,"quantity":4,"unit_cost":14.61,"line_total":58.44}.',
-  'A "Subtotal" or "Shipping Charge" row is NOT a product and must be omitted.',
+  'A "Subtotal", "Shipping Charge", "Processing Fee", or "Handling" row is NOT a',
+  'product and must be omitted entirely.',
 ].join('\n')
 
 async function extractFromPages(pages, { token, client }) {
@@ -97,4 +116,4 @@ async function extractFromPages(pages, { token, client }) {
   return parseExtractionText(text)
 }
 
-module.exports = { parseExtractionText, driveDownloadUrl, extractFromPages, getClient, EXTRACTION_MODEL }
+module.exports = { parseExtractionText, isNonProductLine, driveDownloadUrl, extractFromPages, getClient, EXTRACTION_MODEL }

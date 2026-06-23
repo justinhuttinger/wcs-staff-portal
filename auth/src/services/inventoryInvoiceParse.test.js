@@ -1,6 +1,30 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { parseExtractionText, driveDownloadUrl } = require('./inventoryInvoiceParse')
+const { parseExtractionText, isNonProductLine, driveDownloadUrl } = require('./inventoryInvoiceParse')
+
+test('isNonProductLine: flags fees/shipping/tax, not real products', () => {
+  for (const d of ['Processing Fee', 'Shipping Charge', 'Freight', 'Handling', 'Fuel Surcharge',
+                   'Service Fee', 'Sales Tax', 'Subtotal', 'Discount', 'S & H', 'Postage', 'Gratuity']) {
+    assert.equal(isNonProductLine(d), true, `should flag: ${d}`)
+  }
+  for (const d of ['Bang Coffee 16oz', 'Redline Fuel Pre-Workout', 'Toffee Protein Bar',
+                   'Alani Nu Energy 12pk', 'Quest Bar', 'Mesomorph Grape']) {
+    assert.equal(isNonProductLine(d), false, `should NOT flag: ${d}`)
+  }
+})
+
+test('parseExtractionText: drops fee/shipping lines from the parsed result', () => {
+  const out = parseExtractionText(JSON.stringify({
+    lines: [
+      { vendor_sku: 'S1', description: 'Alani Nu Energy 12pk', quantity: 1, unit_cost: 18.52 },
+      { vendor_sku: null, description: 'Processing Fee', quantity: 1, unit_cost: 3.5 },
+      { vendor_sku: null, description: 'Shipping Charge', quantity: 1, unit_cost: 12 },
+      { vendor_sku: 'S2', description: 'Quest Bar', quantity: 2, unit_cost: 1.8 },
+    ],
+  }))
+  assert.equal(out.lines.length, 2)
+  assert.deepEqual(out.lines.map(l => l.description), ['Alani Nu Energy 12pk', 'Quest Bar'])
+})
 
 test('parseExtractionText: parses fenced json, derives unit_cost, keeps vendor_sku', () => {
   const out = parseExtractionText('Here you go:\n```json\n' + JSON.stringify({
