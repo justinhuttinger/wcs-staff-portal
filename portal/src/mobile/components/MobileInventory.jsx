@@ -40,6 +40,11 @@ function Scanner({ onDetected, onClose }) {
 
   useEffect(() => {
     let stopped = false
+    // Consensus filter: a single decode is sometimes a misread (works "on the
+    // second try"). Require the SAME code on 2 consecutive frames, and reject
+    // high-error decodes, before accepting — this kills the one-off misreads.
+    let voteCode = null, voteCount = 0
+    const REQUIRED_VOTES = 2
     // Keep the scanner in portrait so rotating the phone can't reflow or break
     // the camera feed. Works in the installed PWA / Android Chrome; iOS Safari
     // doesn't support programmatic lock, so it fails silently (CSS still fills).
@@ -67,6 +72,15 @@ function Scanner({ onDetected, onClose }) {
           if (stopped) return
           const code = result?.codeResult?.code
           if (!code) return
+          // Reject low-confidence decodes (high average per-bar error) — these
+          // are the misreads. Good 1D reads are typically well under 0.25.
+          const errs = (result?.codeResult?.decodedCodes || []).map(d => d.error).filter(e => typeof e === 'number')
+          const avgErr = errs.length ? errs.reduce((a, b) => a + b, 0) / errs.length : 0
+          if (avgErr > 0.25) return
+          // Require the same code on consecutive frames before accepting.
+          if (code === voteCode) voteCount++
+          else { voteCode = code; voteCount = 1 }
+          if (voteCount < REQUIRED_VOTES) return
           stopped = true
           Quagga.stop()
           scannerRef.current = null
@@ -837,10 +851,7 @@ export default function MobileInventory({ user }) {
 
   return (
     <div className="pt-4 px-4 pb-24">
-      <MobileHeader
-        title="Inventory"
-        rightAction={<span className="px-2 py-0.5 rounded-full bg-wcs-red/10 text-wcs-red text-[10px] font-bold uppercase tracking-wider border border-wcs-red/20">Beta</span>}
-      />
+      <MobileHeader title="Inventory" />
 
       {/* Club selector */}
       <select
