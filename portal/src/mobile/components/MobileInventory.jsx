@@ -326,6 +326,8 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
   const [pickerQ, setPickerQ] = useState('')
   const [pickerResults, setPickerResults] = useState([])
   const [pickerLoading, setPickerLoading] = useState(false)
+  const [scanForLine, setScanForLine] = useState(null) // line whose barcode scanner is open
+  const [scanMsg, setScanMsg] = useState('')
   const fileInputRef = useRef(null)
 
   // Debounced picker search — mirrors the browse-search pattern in the main component
@@ -382,6 +384,28 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
       setPickerQ('')
       setPickerResults([])
     } catch (err) { setError(err.message || 'Link failed') }
+  }
+
+  // Scan a barcode to resolve a line's catalog item by UPC. Exact single match
+  // links immediately; otherwise we open the picker seeded with the scanned code.
+  async function scanToLink(line, code) {
+    setScanForLine(null)
+    setScanMsg('')
+    const upc = String(code || '').trim()
+    if (!upc) return
+    try {
+      const res = await lookupInventoryUpc(upc, { location_slug: slug })
+      const items = res.items || []
+      if (items.length === 1) { await relink(line, items[0].id, items[0].item_name); return }
+      setPickerLineId(line.id)
+      setPickerResults([])
+      if (items.length === 0) {
+        setPickerQ('')
+        setScanMsg(`No catalog item for UPC ${upc}. Search by name instead.`)
+      } else {
+        setPickerQ(upc) // search-by-UPC surfaces the candidates to choose from
+      }
+    } catch (err) { setPickerLineId(line.id); setScanMsg(err.message || 'UPC lookup failed') }
   }
 
   async function receive() {
@@ -465,16 +489,22 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
         )}
         {parsing && <p className="text-sm text-text-muted mb-4">Reading invoice...</p>}
 
-        {lines.map(line => (
+        {lines.map(line => {
+          const matchedName = line._matched_name || line.matched_item_name
+          const matchedUpc = line.matched_item_upc
+          return (
           <div key={line.id} className="border border-border rounded-xl p-3 mb-2">
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-text-primary truncate">
-                  {line._matched_name || line.description || '—'}
+                  {matchedName || line.description || '—'}
                 </p>
-                {line._matched_name && line.description && line._matched_name !== line.description && (
-                  <p className="text-xs text-text-muted truncate">{line.description}</p>
-                )}
+                {matchedName ? (
+                  <p className="text-xs text-text-muted truncate">
+                    {matchedUpc ? `UPC ${matchedUpc}` : 'Matched'}
+                    {line.description && line.description !== matchedName ? ` · invoice: "${line.description}"` : ''}
+                  </p>
+                ) : null}
               </div>
               <div className="text-right shrink-0">
                 <p className="text-sm font-bold text-text-primary">{fmtQty(line.quantity)} × {fmtMoney(line.unit_cost)}</p>
@@ -502,15 +532,31 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
             {/* Match picker (unreceived lines only) */}
             {!line.received && (
               <div className="mt-2">
-                <button
-                  onClick={() => {
-                    if (pickerLineId === line.id) { setPickerLineId(null); setPickerQ(''); setPickerResults([]) }
-                    else { setPickerLineId(line.id); setPickerQ(''); setPickerResults([]) }
-                  }}
-                  className="text-xs font-semibold text-wcs-red"
-                >
-                  {line.item_id ? 'Change match' : 'Match item'}
-                </button>
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => {
+                      setScanMsg('')
+                      if (pickerLineId === line.id) { setPickerLineId(null); setPickerQ(''); setPickerResults([]) }
+                      else { setPickerLineId(line.id); setPickerQ(''); setPickerResults([]) }
+                    }}
+                    className="text-xs font-semibold text-wcs-red"
+                  >
+                    {line.item_id ? 'Change match' : 'Match item'}
+                  </button>
+                  <button
+                    onClick={() => { setScanMsg(''); setScanForLine(line.id) }}
+                    className="text-xs font-semibold text-wcs-red inline-flex items-center gap-1"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.5v15M7.5 4.5v15M11.25 4.5v15M15 4.5v15M18 4.5v15M20.25 4.5v15" />
+                    </svg>
+                    Scan barcode
+                  </button>
+                </div>
+
+                {scanMsg && pickerLineId === line.id && (
+                  <p className="text-xs text-amber-700 mt-1.5">{scanMsg}</p>
+                )}
 
                 {pickerLineId === line.id && (
                   <div className="mt-2">
@@ -518,7 +564,7 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
                       autoFocus
                       value={pickerQ}
                       onChange={e => setPickerQ(e.target.value)}
-                      placeholder="Search catalog..."
+                      placeholder="Search by name or UPC..."
                       className="w-full px-3 py-2 rounded-xl border border-border bg-bg text-sm text-text-primary"
                     />
                     {pickerLoading && <p className="text-xs text-text-muted mt-1">Searching...</p>}
@@ -537,10 +583,18 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
                     ))}
                   </div>
                 )}
+
+                {scanForLine === line.id && (
+                  <Scanner
+                    onDetected={code => scanToLink(line, code)}
+                    onClose={() => setScanForLine(null)}
+                  />
+                )}
               </div>
             )}
           </div>
-        ))}
+          )
+        })}
 
         {/* Result summary */}
         {result && (

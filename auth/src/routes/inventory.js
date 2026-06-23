@@ -59,7 +59,17 @@ function shapeInvoice(inv) {
   return {
     ...inv,
     location_slug: inv.club_number ? CLUB_TO_SLUG[inv.club_number] || null : null,
-    items: inv.inventory_invoice_items || [],
+    // Surface the matched catalog item's name + UPC on each line (when the line
+    // is linked) so the UI can show WHAT a line matched to, not just a score.
+    items: (inv.inventory_invoice_items || []).map(it => {
+      const matched = it.inventory_items || null
+      return {
+        ...it,
+        matched_item_name: matched?.item_name || null,
+        matched_item_upc: matched?.upc || null,
+        inventory_items: undefined,
+      }
+    }),
     files: (inv.inventory_invoice_files || []).sort((a, b) => (a.page_no || 0) - (b.page_no || 0)),
     inventory_invoice_items: undefined,
     inventory_invoice_files: undefined,
@@ -549,7 +559,7 @@ router.post('/price-list/preview', requireRole('admin'), upload.single('file'), 
         upcVariants(row.unit_upc).some(v => catSet.has(v))
       if (isMatched) matched++
       if (sample.length < 30) {
-        sample.push({ sku: row.sku, product_name: row.product_name, pack_size: row.pack_size, unit_cost: row.unit_cost, map_price: row.map_price, matched: isMatched })
+        sample.push({ sku: row.sku, product_name: row.product_name, pack_size: row.pack_size, case_cost: row.case_cost, unit_cost: row.unit_cost, map_price: row.map_price, matched: isMatched })
       }
     }
     res.json({
@@ -679,7 +689,7 @@ router.get('/invoices', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('inventory_invoices')
-      .select('*, inventory_invoice_items(*), inventory_invoice_files(*)')
+      .select('*, inventory_invoice_items(*, inventory_items(item_name,upc)), inventory_invoice_files(*)')
       .order('created_at', { ascending: false })
       .limit(500)
     if (error) throw error
@@ -766,7 +776,7 @@ router.post('/invoices', uploadFiles, async (req, res) => {
     }
 
     const { data: full } = await supabaseAdmin
-      .from('inventory_invoices').select('*, inventory_invoice_items(*), inventory_invoice_files(*)')
+      .from('inventory_invoices').select('*, inventory_invoice_items(*, inventory_items(item_name,upc)), inventory_invoice_files(*)')
       .eq('id', invoice.id).single()
     res.status(201).json({ invoice: shapeInvoice(full) })
   } catch (err) {
@@ -888,7 +898,7 @@ router.post('/invoices/:id/parse', async (req, res) => {
     }).eq('id', invoice.id)
 
     const { data: full } = await supabaseAdmin
-      .from('inventory_invoices').select('*, inventory_invoice_items(*), inventory_invoice_files(*)').eq('id', invoice.id).single()
+      .from('inventory_invoices').select('*, inventory_invoice_items(*, inventory_items(item_name,upc)), inventory_invoice_files(*)').eq('id', invoice.id).single()
     res.json({ invoice: shapeInvoice(full), parsed_lines: rows.length })
   } catch (err) {
     console.error('[Inventory] parse error:', err.message)
@@ -920,7 +930,7 @@ router.post('/invoices/:id/files', uploadFiles, async (req, res) => {
       })
     }
     const { data: full } = await supabaseAdmin
-      .from('inventory_invoices').select('*, inventory_invoice_items(*), inventory_invoice_files(*)').eq('id', invoice.id).single()
+      .from('inventory_invoices').select('*, inventory_invoice_items(*, inventory_items(item_name,upc)), inventory_invoice_files(*)').eq('id', invoice.id).single()
     res.status(201).json({ invoice: shapeInvoice(full) })
   } catch (err) { res.status(err.status || 500).json({ error: err.message }) }
 })
