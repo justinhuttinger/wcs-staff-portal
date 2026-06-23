@@ -13,6 +13,7 @@
 const cron = require('node-cron')
 const { supabaseAdmin } = require('./supabase')
 const { fetchCatalogItems, fetchPosTransactions, num } = require('./abcInventory')
+const { fetchEmployees, CLUBS: EMP_CLUBS } = require('./abcEmployeeRoster')
 const { ALL_SLUGS, SLUG_CLUB_MAP } = require('../utils/locationSlug')
 const { isSellableProfitCenter } = require('../utils/inventoryProfitCenters')
 
@@ -21,7 +22,7 @@ const { isSellableProfitCenter } = require('../utils/inventoryProfitCenters')
 const FIRST_SYNC_LOOKBACK_DAYS = 30
 const OVERLAP_MS = 60 * 60 * 1000
 
-const running = { catalog: false, pos: false }
+const running = { catalog: false, pos: false, employees: false }
 
 async function setSyncState(clubNumber, kind, fields) {
   await supabaseAdmin.from('inventory_sync_state').upsert(
@@ -300,18 +301,70 @@ async function runPosSync(slugs = ALL_SLUGS) {
   return results
 }
 
+// --- Employees ---------------------------------------------------------------
+
+// Mirror ABC's employee directory (/{club}/employees) into abc_employees so POS
+// sales — which only carry an employeeId GUID — can be attributed to a name.
+async function runEmployeeSync(clubs = EMP_CLUBS) {
+  if (running.employees) return { skipped: true, reason: 'employee sync already running' }
+  running.employees = true
+  let upserted = 0
+  try {
+    for (const club of clubs) {
+      let emps
+      try {
+        emps = await fetchEmployees(club.clubNumber)
+      } catch (err) {
+        console.error(`[InventorySync] employees ${club.slug} failed:`, err.message)
+        continue
+      }
+      const rows = []
+      for (const e of emps || []) {
+        const id = e.employeeId || e.id
+        if (!id) continue
+        const first = (e.personal?.firstName || '').trim()
+        const last = (e.personal?.lastName || '').trim()
+        rows.push({
+          employee_id: id,
+          first_name: first || null,
+          last_name: last || null,
+          full_name: `${first} ${last}`.trim() || null,
+          position: e.employment?.position || e.employment?.jobTitle || null,
+          department: e.employment?.department || null,
+          status: e.employment?.employeeStatus || null,
+          club_number: club.clubNumber,
+          updated_at: new Date().toISOString(),
+        })
+      }
+      for (let i = 0; i < rows.length; i += 500) {
+        const chunk = rows.slice(i, i + 500)
+        const { error } = await supabaseAdmin.from('abc_employees').upsert(chunk, { onConflict: 'employee_id' })
+        if (error) throw error
+        upserted += chunk.length
+      }
+      console.log(`[InventorySync] employees ${club.slug}: ${rows.length}`)
+    }
+  } finally {
+    running.employees = false
+  }
+  return { upserted }
+}
+
 // --- Scheduler ---------------------------------------------------------------
 
 function start() {
   const posMinutes = parseInt(process.env.INVENTORY_POS_SYNC_MINUTES || '30')
-  // Catalog daily at 3:30am PST (11:30 UTC), POS every N minutes.
+  // Employees daily 3:15am PST (11:15 UTC), catalog 3:30am, POS every N minutes.
+  cron.schedule('15 11 * * *', () => {
+    runEmployeeSync().catch(err => console.error('[InventorySync] employee cron failed:', err.message))
+  })
   cron.schedule('30 11 * * *', () => {
     runCatalogSync().catch(err => console.error('[InventorySync] catalog cron failed:', err.message))
   })
   cron.schedule(`*/${posMinutes} * * * *`, () => {
     runPosSync().catch(err => console.error('[InventorySync] pos cron failed:', err.message))
   })
-  console.log(`[InventorySync] scheduled — catalog daily 3:30am PST, POS every ${posMinutes}m`)
+  console.log(`[InventorySync] scheduled — employees + catalog daily ~3:15-3:30am PST, POS every ${posMinutes}m`)
 }
 
-module.exports = { runCatalogSync, runPosSync, start, running }
+module.exports = { runCatalogSync, runPosSync, runEmployeeSync, start, running }

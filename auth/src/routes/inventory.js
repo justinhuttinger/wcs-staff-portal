@@ -205,8 +205,10 @@ router.get('/items/:id/movements', async (req, res) => {
     if (error) throw error
 
     // For POS movements (ref_id = ABC transaction id) resolve the employee who
-    // rang the sale: transaction.employee_id -> name via abc_calendar_events
-    // (the only place ABC employee names live).
+    // rang the sale: transaction.employee_id (a GUID) -> name. The ABC employee
+    // directory (abc_employees, synced from /{club}/employees) is authoritative
+    // and resolves ~94% of POS sales; abc_calendar_events is a fallback for the
+    // few not in the directory.
     const movements = data || []
     const posRefs = [...new Set(movements.filter(m => m.source === 'abc_pos' && m.ref_id).map(m => m.ref_id))]
     if (posRefs.length) {
@@ -216,14 +218,22 @@ router.get('/items/:id/movements', async (req, res) => {
       const empIds = [...new Set((txns || []).map(t => t.employee_id).filter(Boolean))]
       const nameByEmp = new Map()
       if (empIds.length) {
-        const { data: emps } = await supabaseAdmin
-          .from('abc_calendar_events')
-          .select('employee_id, employee_first_name, employee_last_name')
-          .in('employee_id', empIds).limit(5000)
-        for (const e of emps || []) {
-          if (!nameByEmp.has(e.employee_id)) {
-            const nm = `${e.employee_first_name || ''} ${e.employee_last_name || ''}`.trim()
-            if (nm) nameByEmp.set(e.employee_id, nm)
+        // Primary: ABC employee directory.
+        const { data: dir } = await supabaseAdmin
+          .from('abc_employees').select('employee_id, full_name').in('employee_id', empIds)
+        for (const e of dir || []) if (e.full_name) nameByEmp.set(e.employee_id, e.full_name)
+        // Fallback: calendar events for anyone not in the directory.
+        const missing = empIds.filter(id => !nameByEmp.has(id))
+        if (missing.length) {
+          const { data: emps } = await supabaseAdmin
+            .from('abc_calendar_events')
+            .select('employee_id, employee_first_name, employee_last_name')
+            .in('employee_id', missing).limit(5000)
+          for (const e of emps || []) {
+            if (!nameByEmp.has(e.employee_id)) {
+              const nm = `${e.employee_first_name || ''} ${e.employee_last_name || ''}`.trim()
+              if (nm) nameByEmp.set(e.employee_id, nm)
+            }
           }
         }
       }
