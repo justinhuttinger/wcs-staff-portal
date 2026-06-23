@@ -103,7 +103,12 @@ const AUDIT_ISSUES = {
 // Vendors we buy inventory from. "Other" covers anything one-off.
 const VENDOR_OPTIONS = ['SportLife', 'Coke', 'Other']
 
-const inputCls = 'px-3 py-2 rounded-lg border border-border bg-bg text-sm text-text-primary focus:outline-none focus:border-wcs-red w-full'
+// Role tiers (mirrors the backend) — leads get inventory but NOT the financial
+// views (Sales tab + margin column), which stay manager+.
+const ROLE_LVL = { team_member: 0, front_desk: 0, personal_trainer: 0, lead: 1, custom: 1, manager: 2, director: 3, corporate: 3, marketing: 3, admin: 4 }
+const canSeeFinancialsFor = (role) => (ROLE_LVL[role] ?? 0) >= ROLE_LVL.manager
+
+const inputCls ='px-3 py-2 rounded-lg border border-border bg-bg text-sm text-text-primary focus:outline-none focus:border-wcs-red w-full'
 const btnPrimary = 'px-3 py-1.5 rounded-lg bg-wcs-red text-white text-xs font-semibold hover:bg-wcs-red/90 transition-colors disabled:opacity-50'
 const btnGhost = 'px-3 py-1.5 rounded-lg border border-border bg-surface text-xs font-semibold text-text-muted hover:text-text-primary hover:border-text-muted transition-colors disabled:opacity-50'
 
@@ -679,6 +684,8 @@ function SortHeader({ label, col, sort, onSort, align = 'right' }) {
 }
 
 export default function InventoryView({ onBack, location, isAdmin, user }) {
+  // Leads see inventory but not the financial views (Sales tab + margin column).
+  const canSeeFinancials = canSeeFinancialsFor(user?.staff?.role)
   // Clubs this user may restock into. Admins get every club; everyone else gets
   // the locations on their staff profile. Invoices are always single-club.
   const accessibleSlugs = useMemo(() => {
@@ -1015,7 +1022,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                 { key: 'items', label: 'Inventory' },
                 { key: 'order', label: 'To Order' },
                 { key: 'restock', label: 'Restock' },
-                { key: 'profit', label: 'Sales' },
+                ...(canSeeFinancials ? [{ key: 'profit', label: 'Sales' }] : []),
                 ...(isAdmin ? [{ key: 'audit', label: 'Audit' }] : []),
               ].map(m => (
                 <button key={m.key} onClick={() => setTab(m.key)}
@@ -1120,7 +1127,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                     <th className="py-2.5 px-2">UPC</th>
                     <SortHeader label="Price" col="price" sort={sort} onSort={cycleSort} />
                     <SortHeader label="Cost" col="cost" sort={sort} onSort={cycleSort} />
-                    <SortHeader label="Margin" col="margin" sort={sort} onSort={cycleSort} />
+                    {canSeeFinancials && <SortHeader label="Margin" col="margin" sort={sort} onSort={cycleSort} />}
                     <SortHeader label={slug === 'all' ? 'On Hand (all)' : 'On Hand'} col="on_hand" sort={sort} onSort={cycleSort} />
                     <th className="py-2.5 px-4 text-right">Actions</th>
                   </tr>
@@ -1138,11 +1145,13 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                       <td className="py-2 px-2 text-text-muted font-mono text-xs">{i.upc || '—'}</td>
                       <td className="py-2 px-2 text-right">{fmtMoney(i.abc_unit_price)}</td>
                       <td className="py-2 px-2 text-right">{fmtMoney(i.unit_cost)}</td>
-                      <td className="py-2 px-2 text-right">
-                        {i.margin_pct != null
-                          ? <span className={i.margin_pct < 0 ? 'text-wcs-red font-semibold' : 'text-emerald-600 font-semibold'}>{i.margin_pct}%</span>
-                          : '—'}
-                      </td>
+                      {canSeeFinancials && (
+                        <td className="py-2 px-2 text-right">
+                          {i.margin_pct != null
+                            ? <span className={i.margin_pct < 0 ? 'text-wcs-red font-semibold' : 'text-emerald-600 font-semibold'}>{i.margin_pct}%</span>
+                            : '—'}
+                        </td>
+                      )}
                       <td className="py-2 px-2 text-right">
                         {i._oversold ? (
                           <span className="inline-flex items-center gap-1.5">

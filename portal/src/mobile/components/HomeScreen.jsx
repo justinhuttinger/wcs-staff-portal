@@ -153,8 +153,8 @@ export default function HomeScreen({ user, navigate, onLogout }) {
   const marketingAddon = !!staff.marketing_addon
 
   const tiles = allTiles.filter(tile => {
-    // Hide Reports tile for team_member
-    if (tile.label === 'Reports' && role === 'team_member') return false
+    // Reports tile is manager+ (leads get Inventory, Calendar, Tickets, Leaderboard)
+    if (tile.label === 'Reports' && roleIdx < ROLE_LEVELS.manager) return false
     // Tickets tile only for lead+ (matches desktop role gate)
     if (tile.label === 'Tickets' && roleIdx < ROLE_LEVELS.lead) return false
     // HR tile only for manager+
