@@ -123,6 +123,14 @@ router.get('/status/stream', async (req, res) => {
   const startedAt = Date.now()
   const MAX_MS = 2 * 60 * 1000
 
+  // When the trainer re-runs the SAME client, the latest row we first see may be
+  // their PREVIOUS completed run (already has a pdf_path). If we acted on it the
+  // page would instantly open the old program. So: if the first job we observe is
+  // already finished, treat it as a stale baseline and wait for the NEW job (a
+  // different id) created by this submission to finish instead.
+  let baselineChecked = false
+  let staleId = null
+
   const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
 
   async function tick() {
@@ -130,11 +138,21 @@ router.get('/status/stream', async (req, res) => {
     try {
       const row = contactId ? await jobs.getLatestForContact(contactId) : null
       if (row) {
-        send('progress', { status: row.status, progress: row.progress })
-        // PDF is ready the moment it's stored — don't make the user wait for
-        // email/ABC delivery to finish.
-        if (row.pdf_path || row.status === 'complete') { send('done', { jobId: row.id }); return res.end() }
-        if (row.status === 'error') { send('failed', { error: row.error_message }); return res.end() }
+        if (!baselineChecked) {
+          baselineChecked = true
+          // Already-finished latest row at stream open = a prior run for this contact.
+          if (row.pdf_path || row.status === 'complete' || row.status === 'error') {
+            staleId = row.id
+          }
+        }
+        const isStale = staleId && row.id === staleId
+        if (!isStale) {
+          send('progress', { status: row.status, progress: row.progress })
+          // PDF is ready the moment it's stored — don't make the user wait for
+          // email/ABC delivery to finish.
+          if (row.pdf_path || row.status === 'complete') { send('done', { jobId: row.id }); return res.end() }
+          if (row.status === 'error') { send('failed', { error: row.error_message }); return res.end() }
+        }
       }
     } catch (e) {
       // transient read error; keep polling
