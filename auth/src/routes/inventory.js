@@ -233,6 +233,8 @@ router.get('/items/:id/movements', async (req, res) => {
         }
       }
     }
+    // Stamp each movement's club so the history can show where it happened.
+    for (const m of movements) m.location_slug = m.club_number ? CLUB_TO_SLUG[m.club_number] || null : null
     res.json({ movements })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -410,6 +412,21 @@ router.get('/summary', async (req, res) => {
     }
     const data = await fetchAllRows(makeSummaryQuery)
 
+    // Current cost per item, used as a FALLBACK when a sale line has no frozen
+    // cost-at-sale (e.g. it sold before the item had any cost). The stamped
+    // cost-at-sale always wins so historical COGS stays frozen; this only fills
+    // blanks so the Sales tab can still show COGS once a cost exists.
+    const itemIds = [...new Set((data || []).map(r => r.item_id).filter(Boolean))]
+    const costByItem = new Map()
+    if (itemIds.length) {
+      const costRows = await fetchAllRows(() =>
+        supabaseAdmin.from('inventory_items').select('id, avg_unit_cost, last_unit_cost').in('id', itemIds).order('id'))
+      for (const it of costRows) {
+        const c = num(it.avg_unit_cost) ?? num(it.last_unit_cost)
+        if (c != null) costByItem.set(it.id, c)
+      }
+    }
+
     const byItem = new Map()
     for (const row of data || []) {
       const isReturn = row.inventory_transactions?.is_return
@@ -424,7 +441,7 @@ router.get('/summary', async (req, res) => {
       const rev = (num(row.subtotal) ?? (num(row.unit_price) || 0) * (num(row.quantity) || 0)) * sign
       entry.units += qty
       entry.revenue += rev
-      const cost = num(row.unit_cost_at_sale)
+      const cost = num(row.unit_cost_at_sale) ?? (row.item_id ? costByItem.get(row.item_id) : null)
       if (cost != null) entry.cogs += cost * qty
       else if (qty !== 0) entry.cogs_known = false
       byItem.set(key, entry)
@@ -442,6 +459,36 @@ router.get('/summary', async (req, res) => {
     res.json({ summary: rows })
   } catch (err) {
     console.error('[Inventory] summary error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /movements — recent manual/mobile stock adjustments (for the Restock audit
+// feed). POS sales and invoice receipts are excluded; invoices show on their own.
+router.get('/movements', async (req, res) => {
+  try {
+    const { clubs, error: cErr } = clubFilter(req)
+    if (cErr) return res.status(400).json({ error: cErr })
+    let q = supabaseAdmin
+      .from('inventory_movements')
+      .select('id, item_id, club_number, kind, qty_delta, qty_after, source, note, created_by_name, occurred_at, inventory_items(item_name, upc)')
+      .in('source', ['manual', 'mobile'])
+      .order('occurred_at', { ascending: false })
+      .limit(300)
+    if (clubs) q = q.in('club_number', clubs)
+    const { data, error } = await q
+    if (error) throw error
+    res.json({
+      movements: (data || []).map(m => ({
+        id: m.id, item_id: m.item_id, kind: m.kind, qty_delta: m.qty_delta, qty_after: m.qty_after,
+        source: m.source, note: m.note, created_by_name: m.created_by_name, occurred_at: m.occurred_at,
+        location_slug: m.club_number ? CLUB_TO_SLUG[m.club_number] || null : null,
+        item_name: m.inventory_items?.item_name || null,
+        item_upc: m.inventory_items?.upc || null,
+      })),
+    })
+  } catch (err) {
+    console.error('[Inventory] movements error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })

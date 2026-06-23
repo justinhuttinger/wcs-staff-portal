@@ -774,6 +774,10 @@ export async function getInventoryInvoices() {
   return api('/inventory/invoices')
 }
 
+export async function getInventoryMovements() {
+  return api('/inventory/movements')
+}
+
 export async function createInventoryInvoice(fields, files) {
   const fd = new FormData()
   for (const [k, v] of Object.entries(fields)) {
