@@ -497,7 +497,7 @@ export default function MobileApp() {
       case 'hr':
         return <MobileHR user={user} />
       case 'tickets':
-        return <MobileTickets />
+        return <MobileTickets user={user} />
       default:
         return (
           <div className="pt-4 px-4">

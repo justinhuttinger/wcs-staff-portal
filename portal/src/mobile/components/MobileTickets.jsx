@@ -17,6 +17,16 @@ const BOOK_MEETING_TILE = {
   description: 'Calendar',
 }
 
+// Leads get a restricted Tickets/Support surface: status + book a meeting (both
+// built-in) plus only these two request forms. Managers+ see every embed.
+const ROLE_LVL = { team_member: 0, front_desk: 0, personal_trainer: 0, lead: 1, custom: 1, manager: 2, director: 3, corporate: 3, marketing: 3, admin: 4 }
+const LEAD_EMBED_ALLOW = new Set(['add inventory item', 'new feature request'])
+function visibleEmbedsFor(embeds, role) {
+  const isManagerPlus = (ROLE_LVL[role] ?? 0) >= ROLE_LVL.manager
+  if (isManagerPlus) return embeds
+  return embeds.filter(e => LEAD_EMBED_ALLOW.has(String(e.name || '').trim().toLowerCase()))
+}
+
 function StatusIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 text-wcs-red">
@@ -60,10 +70,11 @@ function Tile({ icon, label, description, onClick }) {
   )
 }
 
-export default function MobileTickets() {
+export default function MobileTickets({ user }) {
   const [embeds, setEmbeds] = useState([])
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(true)
+  const visibleEmbeds = visibleEmbedsFor(embeds, user?.staff?.role)
 
   useEffect(() => {
     getTicketEmbeds()
@@ -130,7 +141,7 @@ export default function MobileTickets() {
           description="Calendar"
           onClick={() => setSelected(BOOK_MEETING_TILE)}
         />
-        {!loading && embeds.map(embed => (
+        {!loading && visibleEmbeds.map(embed => (
           <Tile
             key={embed.id}
             icon={<TicketIcon />}

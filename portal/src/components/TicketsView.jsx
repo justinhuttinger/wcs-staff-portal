@@ -2,10 +2,17 @@ import { useState, useEffect } from 'react'
 import { getTicketEmbeds } from '../lib/api'
 import TicketsStatusView from './TicketsStatusView'
 
-export default function TicketsView({ onBack }) {
+// Leads get a restricted Tickets/Support surface: status + book a meeting (both
+// built-in) plus only these two request forms. Managers+ see every embed.
+const ROLE_LVL = { team_member: 0, front_desk: 0, personal_trainer: 0, lead: 1, custom: 1, manager: 2, director: 3, corporate: 3, marketing: 3, admin: 4 }
+const LEAD_EMBED_ALLOW = new Set(['add inventory item', 'new feature request'])
+
+export default function TicketsView({ onBack, user }) {
   const [embeds, setEmbeds] = useState([])
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(true)
+  const isManagerPlus = (ROLE_LVL[user?.staff?.role] ?? 0) >= ROLE_LVL.manager
+  const visibleEmbeds = isManagerPlus ? embeds : embeds.filter(e => LEAD_EMBED_ALLOW.has(String(e.name || '').trim().toLowerCase()))
 
   useEffect(() => {
     getTicketEmbeds()
@@ -99,7 +106,7 @@ export default function TicketsView({ onBack }) {
           <p className="loading-card mx-auto block my-6 col-span-2">Loading...</p>
         )}
 
-        {!loading && embeds.map(embed => (
+        {!loading && visibleEmbeds.map(embed => (
           <button
             key={embed.id}
             onClick={() => setSelected(embed)}
