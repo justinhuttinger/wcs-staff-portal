@@ -1,7 +1,7 @@
 'use strict'
 
 const { resolveDayFocuses } = require('./splits')
-const { generateText: realGenerateText } = require('./anthropic')
+const { generateText: realGenerateText, MODEL_FAST } = require('./anthropic')
 const { buildPreamble, buildDayPrompt, buildOverviewPrompt, buildTerminologyPrompt } = require('./prompts')
 
 // Parse model output that may be wrapped in markdown fences.
@@ -21,11 +21,13 @@ async function generateProgram(contactData, formData, deps = {}) {
   const dayFocuses = resolveDayFocuses(formData)
 
   // Fan out: N day-calls + 1 overview-call, all in parallel.
+  // Exercise selection stays on Sonnet (default model) for quality. Concise
+  // output keeps these fast (latency tracks output length) and one page per day.
   const dayPromises = dayFocuses.map(df =>
-    generateText({ prompt: buildDayPrompt(preamble, df, formData), maxTokens: 3000 })
+    generateText({ prompt: buildDayPrompt(preamble, df, formData), maxTokens: 1500 })
       .then(parseJson)
   )
-  const overviewPromise = generateText({ prompt: buildOverviewPrompt(preamble, dayFocuses), maxTokens: 2000 })
+  const overviewPromise = generateText({ prompt: buildOverviewPrompt(preamble, dayFocuses), maxTokens: 1200 })
     .then(parseJson)
 
   const [workoutsRaw, overview] = await Promise.all([Promise.all(dayPromises), overviewPromise])
@@ -33,8 +35,12 @@ async function generateProgram(contactData, formData, deps = {}) {
   // Keep day order stable.
   const workouts = workoutsRaw.slice().sort((a, b) => (a.day || 0) - (b.day || 0))
 
-  // Terminology AFTER days so it only defines terms actually used.
-  const terminologyRaw = await generateText({ prompt: buildTerminologyPrompt(workouts), maxTokens: 1500 })
+  // Terminology AFTER days so it only defines terms actually used. This is pure
+  // mechanical formatting (define words already present) with no selection
+  // judgment, so it runs on the fast model to minimize the serial tail.
+  const terminologyRaw = await generateText({
+    prompt: buildTerminologyPrompt(workouts), maxTokens: 600, model: MODEL_FAST,
+  })
   const { terminology } = parseJson(terminologyRaw)
 
   return {

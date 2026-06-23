@@ -93,28 +93,29 @@
     }
     
     .core-concepts {
-      margin-top: 40px;
+      margin-top: 12px;
       margin-left: 0;
     }
-    
+
     .core-concepts h3 {
       font-family: 'Bebas Neue', sans-serif;
-      font-size: 36px;
+      font-size: 19px;
       font-weight: 900;
-      color: #000;
-      margin-bottom: 30px;
+      color: #E31E24;
+      margin-bottom: 4px;
       text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
-    
+
     .core-concepts-content {
       font-family: 'Arial', sans-serif;
-      font-size: 14px;
-      line-height: 1.8;
+      font-size: 13px;
+      line-height: 1.45;
       color: #333;
     }
-    
+
     .core-concepts-content p {
-      margin-bottom: 15px;
+      margin-bottom: 10px;
     }
     
     .core-concepts-content strong {
@@ -151,6 +152,11 @@
     .workout-table tr {
       height: 60px;
     }
+
+    /* Keep each exercise row intact; never split a row across pages. */
+    table { page-break-inside: auto; }
+    tr { page-break-inside: avoid; }
+    thead { display: table-header-group; }
   </style>
 </head>
 <body>

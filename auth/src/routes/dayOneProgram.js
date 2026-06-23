@@ -49,15 +49,17 @@ async function runPipeline(jobId, contactId, club, formData, abcMemberId) {
     await jobs.setProgress(jobId, 'rendering', 'Building your PDF')
     const pdfBuffer = await buildProgramPdf(contact, program)
 
-    // Persist PDF (non-fatal).
+    // Persist PDF (non-fatal). Once stored, the success page can show it
+    // immediately (SSE emits 'done' on pdf_path) while email/ABC finish below.
     try {
       const pdfPath = await jobs.uploadPdfToStorage(jobId, pdfBuffer)
       await jobs.attachPdf(jobId, pdfPath)
+      await jobs.setProgress(jobId, 'ready', 'Your program is ready')
     } catch (e) {
       console.warn('[DayOne] PDF storage save failed (continuing):', e.message)
     }
 
-    await jobs.setProgress(jobId, 'delivering', 'Emailing the client')
+    await jobs.setProgress(jobId, 'delivering', 'Sending to the client')
     // Email + ABC are independent: one failing must not block the other.
     try { await deliver.sendProgramEmail(contact, club, pdfBuffer); await jobs.markFlags(jobId, { emailed: true }) }
     catch (e) { console.warn('[DayOne] Email failed:', e.message) }
@@ -129,7 +131,9 @@ router.get('/status/stream', async (req, res) => {
       const row = contactId ? await jobs.getLatestForContact(contactId) : null
       if (row) {
         send('progress', { status: row.status, progress: row.progress })
-        if (row.status === 'complete') { send('done', { jobId: row.id }); return res.end() }
+        // PDF is ready the moment it's stored — don't make the user wait for
+        // email/ABC delivery to finish.
+        if (row.pdf_path || row.status === 'complete') { send('done', { jobId: row.id }); return res.end() }
         if (row.status === 'error') { send('failed', { error: row.error_message }); return res.end() }
       }
     } catch (e) {

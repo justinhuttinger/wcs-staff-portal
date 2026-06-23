@@ -18,12 +18,14 @@ function formatProgramHTML(contactData, programContent) {
     return `<div class="program-text">${programContent.programText || 'Program content'}</div>`
   }
   const name = `${contactData.firstName} ${contactData.lastName}`
+  const coach = (programContent.trainerName || '').trim()
+  const coachLine = coach ? `<p>COACH: ${coach}</p>` : ''
   let html = `
     <div class="page">
       <img src="data:image/png;base64,{{logoBase64}}" class="logo-image" alt="WCS Logo">
       <div class="page-header" style="margin-bottom: 10px;">
         <div class="header-left"><h1>WEST COAST STRENGTH</h1><h2>PROGRAM OVERVIEW</h2></div>
-        <div class="header-right" style="padding-top: 30px;"><p>CLIENT: ${name}</p></div>
+        <div class="header-right" style="padding-top: 30px;"><p>CLIENT: ${name}</p>${coachLine}</div>
       </div>
       <div class="core-concepts" style="margin-top: 5px;">
         <h3 style="margin-bottom: 3px;">BASIC EXPLANATION:</h3>
@@ -46,7 +48,7 @@ function formatProgramHTML(contactData, programContent) {
         <img src="data:image/png;base64,{{logoBase64}}" class="logo-image" alt="WCS Logo">
         <div class="page-header">
           <div class="header-left"><h1>WEST COAST STRENGTH</h1><h2>DAY ${workout.day} - ${String(workout.title || '').toUpperCase()}</h2></div>
-          <div class="header-right" style="padding-top: 30px;"><p>CLIENT: ${name}</p></div>
+          <div class="header-right" style="padding-top: 30px;"><p>CLIENT: ${name}</p>${coachLine}</div>
         </div>
         <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
           <thead><tr>
