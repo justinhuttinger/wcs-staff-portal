@@ -14,35 +14,35 @@ function renderSuccessPage(contactId) {
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700&display=swap');
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    :root { --red: #E31E24; --ink: #0d0d12; --muted: #9aa0aa; }
+    :root { --red: #E31E24; --ink: #1a1d23; --muted: #6b7280; }
     html, body { height: 100%; }
     body {
       font-family: 'Inter', Arial, sans-serif;
-      background: radial-gradient(1200px 600px at 50% -10%, #1c1c24 0%, var(--ink) 55%);
-      color: #fff; display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(1200px 600px at 50% -10%, #ffffff 0%, #f1f3f6 60%);
+      color: var(--ink); display: flex; align-items: center; justify-content: center;
       min-height: 100vh; padding: 24px; overflow: hidden;
     }
     .card {
       width: 100%; max-width: 460px; text-align: center;
-      background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+      background: #ffffff; border: 1px solid #e7e9ee;
       border-radius: 20px; padding: 40px 32px 34px;
-      box-shadow: 0 30px 80px rgba(0,0,0,0.45);
+      box-shadow: 0 24px 60px rgba(16,24,40,0.12);
       animation: rise .5s ease both;
     }
     @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
     .brand { font-family: 'Bebas Neue', sans-serif; letter-spacing: 3px; color: var(--red); font-size: 15px; }
-    h1 { font-family: 'Bebas Neue', sans-serif; font-size: 34px; letter-spacing: 1px; margin: 2px 0 4px; }
+    h1 { font-family: 'Bebas Neue', sans-serif; font-size: 34px; letter-spacing: 1px; margin: 2px 0 4px; color: var(--ink); }
     .sub { color: var(--muted); font-size: 14px; min-height: 20px; transition: opacity .2s; }
 
     /* Animated barbell loader */
     .loader { margin: 26px auto 18px; width: 180px; height: 60px; position: relative; }
-    .bar { position: absolute; top: 28px; left: 10px; right: 10px; height: 5px; border-radius: 4px; background: #2a2a33; }
+    .bar { position: absolute; top: 28px; left: 10px; right: 10px; height: 5px; border-radius: 4px; background: #e3e6ec; }
     .plate { position: absolute; top: 14px; width: 14px; height: 32px; border-radius: 4px; background: var(--red);
-      box-shadow: 0 0 18px rgba(227,30,36,.6); }
-    .plate.l1 { left: 18px; } .plate.l2 { left: 34px; opacity: .8; }
-    .plate.r1 { right: 18px; } .plate.r2 { right: 34px; opacity: .8; }
+      box-shadow: 0 0 16px rgba(227,30,36,.35); }
+    .plate.l1 { left: 18px; } .plate.l2 { left: 34px; opacity: .7; }
+    .plate.r1 { right: 18px; } .plate.r2 { right: 34px; opacity: .7; }
     .spark { position: absolute; top: 24px; left: 0; width: 46px; height: 13px; border-radius: 8px;
-      background: linear-gradient(90deg, transparent, rgba(227,30,36,.9), transparent);
+      background: linear-gradient(90deg, transparent, rgba(227,30,36,.85), transparent);
       filter: blur(2px); animation: slide 1.25s ease-in-out infinite; }
     @keyframes slide { 0% { left: 8%; } 50% { left: 62%; } 100% { left: 8%; } }
 
@@ -51,19 +51,20 @@ function renderSuccessPage(contactId) {
     .steps { margin-top: 24px; display: grid; gap: 10px; text-align: left; }
     .step { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--muted);
       transition: color .25s; }
-    .dot { width: 22px; height: 22px; border-radius: 50%; flex: 0 0 22px; border: 2px solid #3a3a44;
+    .dot { width: 22px; height: 22px; border-radius: 50%; flex: 0 0 22px; border: 2px solid #d3d7df;
       display: flex; align-items: center; justify-content: center; font-size: 12px; transition: all .25s; }
-    .step.active { color: #fff; }
-    .step.active .dot { border-color: var(--red); box-shadow: 0 0 0 4px rgba(227,30,36,.15); }
+    .step.active { color: var(--ink); font-weight: 600; }
+    .step.active .dot { border-color: var(--red); box-shadow: 0 0 0 4px rgba(227,30,36,.12); }
     .step.active .dot::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--red);
       animation: pulse 1s ease-in-out infinite; }
     @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(.6); opacity: .5; } }
-    .step.done { color: #cfd3da; }
+    .step.done { color: #4b5563; }
     .step.done .dot { border-color: #2e7d32; background: #2e7d32; }
     .step.done .dot::after { content: '\\2713'; color: #fff; font-size: 12px; }
 
-    .success-check { width: 64px; height: 64px; border-radius: 50%; background: #1f7a33; margin: 6px auto 14px;
-      display: none; align-items: center; justify-content: center; font-size: 34px; animation: pop .4s ease both; }
+    .success-check { width: 64px; height: 64px; border-radius: 50%; background: #2e7d32; color: #fff; margin: 6px auto 14px;
+      display: none; align-items: center; justify-content: center; font-size: 34px; animation: pop .4s ease both;
+      box-shadow: 0 0 0 6px rgba(46,125,50,.12); }
     @keyframes pop { from { transform: scale(.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     a.btn { display: none; margin-top: 16px; color: #fff; background: var(--red); text-decoration: none;
       padding: 11px 20px; border-radius: 10px; font-weight: 600; font-size: 14px; }
