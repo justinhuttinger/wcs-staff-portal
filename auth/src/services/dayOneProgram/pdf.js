@@ -1,196 +1,101 @@
 'use strict'
 
-const fs = require('fs')
+const fs = require('fs').promises
 const path = require('path')
 
-// Read template and logo at module load time (cached)
-const templatePath = path.join(__dirname, '../../templates/day-one/program-template.html')
-const logoPath = path.join(__dirname, '../../templates/day-one/logo.png')
+const TEMPLATE_DIR = path.join(__dirname, '..', '..', 'templates', 'day-one')
 
-const template = fs.readFileSync(templatePath, 'utf8')
-const logoBuffer = fs.readFileSync(logoPath)
-const logoBase64 = logoBuffer.toString('base64')
+function formatTerminology(text) {
+  if (!text) return ''
+  return text
+    .replace(/([A-Za-z\s]+):/g, '<strong>$1</strong>:')
+    .replace(/([A-Za-z]+)\s*-\s+/g, '<strong>$1</strong> - ')
+}
 
-/**
- * Pure function: render program to HTML for PDF (no network calls).
- * @param {Object} contactData - { firstName, lastName, ... }
- * @param {Object} programContent - { basicExplanation, progressionNotes, terminology, principles, importantNotes, weekTemplate: { workouts: [] } }
- * @returns {string} - HTML ready for PDF conversion
- */
+// Build the inner program HTML (same markup as the standalone service).
 function formatProgramHTML(contactData, programContent) {
-  const {
-    basicExplanation = '',
-    progressionNotes = '',
-    terminology = '',
-    principles = '',
-    importantNotes = '',
-    weekTemplate = { workouts: [] },
-  } = programContent
-
-  const { workouts = [] } = weekTemplate
-
-  // Overview page
-  let html = `
-<div class="page">
-  <img src="data:image/png;base64,${logoBase64}" class="logo-image" alt="Day One Logo">
-  <div class="page-header">
-    <div class="header-left">
-      <h1>TRAINING PROGRAM</h1>
-      <h2>DAY 1</h2>
-    </div>
-    <div class="header-right">
-      <p>${contactData.firstName || ''} ${contactData.lastName || ''}</p>
-    </div>
-  </div>
-
-  <div class="core-concepts">
-    <h3>YOUR PROGRAM</h3>
-    <div class="core-concepts-content">
-      ${basicExplanation ? `<p>${escapeHtml(basicExplanation)}</p>` : ''}
-      ${progressionNotes ? `<p><strong>Progression:</strong> ${escapeHtml(progressionNotes)}</p>` : ''}
-      ${principles ? `<p><strong>Principles:</strong> ${escapeHtml(principles)}</p>` : ''}
-      ${importantNotes ? `<p><strong>Important Notes:</strong> ${escapeHtml(importantNotes)}</p>` : ''}
-    </div>
-  </div>
-</div>
-`
-
-  // Workout pages (one per day)
-  workouts.forEach((workout, idx) => {
-    const dayNum = workout.day || (idx + 1)
-    const title = workout.title || `Day ${dayNum}`
-    const focus = workout.focus || ''
-    const exercises = workout.exercises || []
-
-    html += `
-<div class="page">
-  <img src="data:image/png;base64,${logoBase64}" class="logo-image" alt="Day One Logo">
-  <div class="page-header">
-    <div class="header-left">
-      <h1>${escapeHtml(focus)}</h1>
-      <h2>DAY ${dayNum} - ${escapeHtml(title.toUpperCase())}</h2>
-    </div>
-    <div class="header-right">
-      <p>${contactData.firstName || ''} ${contactData.lastName || ''}</p>
-    </div>
-  </div>
-
-  <table class="workout-table">
-    <tbody>
-`
-
-    exercises.forEach(ex => {
-      const exerciseName = ex.name || ''
-      const sets = ex.sets || ''
-      const reps = ex.reps || ''
-      const notes = ex.notes || ''
-      const variations = ex.variations || ''
-
-      let cellContent = `<strong>${escapeHtml(exerciseName)}</strong>`
-      if (sets || reps) {
-        cellContent += `<br>${escapeHtml(sets)} x ${escapeHtml(reps)}`
-      }
-      if (notes) {
-        cellContent += `<br><em>${escapeHtml(notes)}</em>`
-      }
-      if (variations) {
-        cellContent += `<br>Variations: ${escapeHtml(variations)}`
-      }
-
-      const details = `${sets} x ${reps}${notes ? ` - ${notes}` : ''}`
-
-      html += `
-      <tr>
-        <td>${cellContent}</td>
-        <td>${escapeHtml(details)}</td>
-      </tr>
-`
-    })
-
-    html += `
-    </tbody>
-  </table>
-</div>
-`
-  })
-
-  // Terminology page (if present)
-  if (terminology) {
-    html += `
-<div class="page">
-  <img src="data:image/png;base64,${logoBase64}" class="logo-image" alt="Day One Logo">
-  <div class="page-header">
-    <div class="header-left">
-      <h1>REFERENCE</h1>
-      <h2>TERMINOLOGY</h2>
-    </div>
-    <div class="header-right">
-      <p>${contactData.firstName || ''} ${contactData.lastName || ''}</p>
-    </div>
-  </div>
-
-  <div class="core-concepts">
-    <div class="core-concepts-content">
-      ${escapeHtml(terminology).replace(/\n/g, '<br>')}
-    </div>
-  </div>
-</div>
-`
+  if (!programContent.weekTemplate && !programContent.weeks) {
+    return `<div class="program-text">${programContent.programText || 'Program content'}</div>`
   }
+  const name = `${contactData.firstName} ${contactData.lastName}`
+  let html = `
+    <div class="page">
+      <img src="data:image/png;base64,{{logoBase64}}" class="logo-image" alt="WCS Logo">
+      <div class="page-header" style="margin-bottom: 10px;">
+        <div class="header-left"><h1>WEST COAST STRENGTH</h1><h2>PROGRAM OVERVIEW</h2></div>
+        <div class="header-right" style="padding-top: 30px;"><p>CLIENT: ${name}</p></div>
+      </div>
+      <div class="core-concepts" style="margin-top: 5px;">
+        <h3 style="margin-bottom: 3px;">BASIC EXPLANATION:</h3>
+        <div class="core-concepts-content" style="margin-bottom: 10px;"><p style="margin: 0;">${programContent.basicExplanation || ''}</p></div>
+        <h3 style="margin-bottom: 3px;">PROGRESSION:</h3>
+        <div class="core-concepts-content" style="margin-bottom: 10px;"><p style="margin: 0;">${programContent.progressionNotes || ''}</p></div>
+        <h3 style="margin-bottom: 3px;">TERMINOLOGY:</h3>
+        <div class="core-concepts-content" style="margin-bottom: 10px;"><p style="margin: 0;">${formatTerminology(programContent.terminology) || ''}</p></div>
+        <h3 style="margin-bottom: 3px;">PRINCIPLES:</h3>
+        <div class="core-concepts-content" style="margin-bottom: 10px;"><p style="margin: 0;">${programContent.principles || ''}</p></div>
+        <h3 style="margin-bottom: 3px;">IMPORTANT NOTES:</h3>
+        <div class="core-concepts-content" style="margin-bottom: 10px;"><p style="margin: 0;">${programContent.importantNotes || ''}</p></div>
+      </div>
+    </div>`
 
+  const workouts = programContent.weekTemplate?.workouts || programContent.weeks?.[0]?.workouts || []
+  workouts.forEach(workout => {
+    html += `
+      <div class="page">
+        <img src="data:image/png;base64,{{logoBase64}}" class="logo-image" alt="WCS Logo">
+        <div class="page-header">
+          <div class="header-left"><h1>WEST COAST STRENGTH</h1><h2>DAY ${workout.day} - ${String(workout.title || '').toUpperCase()}</h2></div>
+          <div class="header-right" style="padding-top: 30px;"><p>CLIENT: ${name}</p></div>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
+          <thead><tr>
+            <th style="text-align: left; padding: 8px; border: 1px solid #000;">EXERCISE</th>
+            <th style="text-align: center; padding: 8px; border: 1px solid #000; width: 100px;"></th>
+            <th style="text-align: left; padding: 8px; border: 1px solid #000; width: 180px;">VARIATIONS</th>
+          </tr></thead>
+          <tbody>`
+    ;(workout.exercises || []).forEach(ex => {
+      const setsReps = `${ex.sets} x ${ex.reps}`
+      const notes = ex.notes || ''
+      const variations = ex.variations || ex.variation || ''
+      html += `
+        <tr>
+          <td style="padding: 8px; border: 1px solid #000;"><strong>${ex.name}</strong>${notes ? `<br><span style="font-size: 11px; color: #666;">${notes}</span>` : ''}</td>
+          <td style="text-align: center; padding: 8px; border: 1px solid #000; width: 100px;">${setsReps}</td>
+          <td style="padding: 8px; border: 1px solid #000; width: 180px; font-size: 11px;">${variations}</td>
+        </tr>`
+    })
+    html += `</tbody></table></div>`
+  })
   return html
 }
 
-/**
- * HTML escape helper
- */
-function escapeHtml(text) {
-  if (!text) return ''
-  return String(text)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;')
-}
-
-/**
- * Build PDF via PDFShift API (async).
- * @param {Object} contactData - { firstName, lastName, ... }
- * @param {Object} programContent - program structure
- * @returns {Promise<Buffer>} - PDF binary data
- */
 async function buildProgramPdf(contactData, programContent) {
-  const html = formatProgramHTML(contactData, programContent)
-  const fullHtml = template.replace('{{programContent}}', html)
+  const htmlTemplate = await fs.readFile(path.join(TEMPLATE_DIR, 'program-template.html'), 'utf8')
+  const logoBase64 = (await fs.readFile(path.join(TEMPLATE_DIR, 'logo.png'))).toString('base64')
+
+  let programHTML = formatProgramHTML(contactData, programContent).replace(/{{logoBase64}}/g, logoBase64)
+  const finalHtml = htmlTemplate.replace(/{{programContent}}/g, programHTML)
 
   const apiKey = process.env.PDFSHIFT_API_KEY
-  if (!apiKey) {
-    throw new Error('PDFSHIFT_API_KEY not set')
-  }
+  if (!apiKey) throw new Error('PDFSHIFT_API_KEY not set')
 
-  const credentials = Buffer.from(`api:${apiKey}`).toString('base64')
-
-  const response = await fetch('https://api.pdfshift.io/v3/documents/convert', {
+  const resp = await fetch('https://api.pdfshift.io/v3/convert/pdf', {
     method: 'POST',
     headers: {
-      'Authorization': `Basic ${credentials}`,
+      Authorization: 'Basic ' + Buffer.from('api:' + apiKey).toString('base64'),
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      source: {
-        html: fullHtml,
-      },
-      sandbox: false,
+      source: finalHtml,
+      landscape: false,
+      use_print: true,
+      margin: { top: '0.5in', bottom: '0.5in', left: '0.5in', right: '0.5in' },
     }),
   })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`PDFShift API error ${response.status}: ${errorText}`)
-  }
-
-  return Buffer.from(await response.arrayBuffer())
+  if (!resp.ok) throw new Error(`PDFShift error ${resp.status}: ${await resp.text()}`)
+  return Buffer.from(await resp.arrayBuffer())
 }
 
-module.exports = { formatProgramHTML, buildProgramPdf }
+module.exports = { buildProgramPdf, formatProgramHTML }
