@@ -364,7 +364,7 @@ export default function App() {
       ) : showTrainerAvail ? (
         <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={seesAllClubs} />
       ) : showTickets ? (
-        <TicketsView onBack={() => setShowTickets(false)} />
+        <TicketsView onBack={() => setShowTickets(false)} user={user} />
       ) : showDriveHub ? (
         <DriveHub
           onBack={() => setShowDriveHub(false)}
