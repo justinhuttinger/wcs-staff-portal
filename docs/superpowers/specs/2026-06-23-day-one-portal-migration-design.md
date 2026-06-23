@@ -66,7 +66,8 @@ const club = getLocationById(req.body.location?.id)
 - GHL key: `club.apiKey` (from env, not committed).
 - ABC club number: `club.clubCode`.
 - `fromName`: derived (`West Coast Strength` for Salem-style names, else `West Coast Strength - {name}`), matching current behavior; `fromEmail` from env (`FROM_EMAIL`).
-- If `getLocationById` returns null (unknown/disabled location), reject the webhook with a 400 and send an error notification (today it silently falls back to a default key — we make it explicit).
+- If `getLocationById` returns null (unknown location), reject the webhook with a 400 and send an error notification (today it silently falls back to a default key — we make it explicit).
+- **All 7 locations active, including Medford.** `ghlLocations.js` includes a location only when its `GHL_LOCATION_*` + `GHL_API_KEY_*` env vars are both set, so Medford must have `GHL_LOCATION_MEDFORD` + `GHL_API_KEY_MEDFORD` present in the portal env (Justin is reactivating Medford). No `enabled` flag is carried over from `clubs-config.json`.
 
 ## Speed: parallel per-day generation
 
@@ -152,11 +153,12 @@ Possibly add: `DAY_ONE_ADMIN_EMAIL` (error notifications; default `justin@westco
 3. Manual end-to-end test on the portal URL with a test contact.
 4. Repoint the GHL PT-Intake workflow: webhook → `wcs-auth-api.onrender.com/day-one-program/webhook`; redirect → `.../day-one-program/success?contactId={{contact.id}}`.
 5. Verify a real submission end-to-end.
-6. **Decommission** the old `dayone` Render service; archive the `justinhuttinger/dayone` repo. (Also a security win: the committed `pit-*` GHL keys leave production. Consider rotating those keys since they were in a git history.)
+6. **Decommission** the old `dayone` Render service; archive the `justinhuttinger/dayone` repo.
 
 ## Open questions / decisions captured
 - **Terminology:** kept as a final seeded call (Justin: must stay relatable to content). ✅
 - **Plan step:** removed; focuses come from form fields / default split table. ✅
 - **Target:** wcs-staff-portal `auth/` backend. ✅
 - **contact_id in redirect:** confirmed available. ✅
-- **Security note:** rotate the GHL `pit-*` keys that were committed to the dayone repo (recommended, not strictly required for function).
+- **Medford:** active — all 7 locations supported (Justin reactivating Medford; ensure its portal env keys are set). ✅
+- **Key rotation:** not doing it (Justin's call). ✅
