@@ -71,9 +71,11 @@ DAY: ${dayFocus.day}
 FOCUS: ${dayFocus.focus}
 
 Requirements:
-- 5-8 exercises with specific sets, reps, and form-cue notes.
-- Provide 1-2 alternative variations per exercise.
+- Choose 5-6 specific, well-chosen exercises with sets and reps. Pick the BEST exercises for this focus, experience level, equipment, and any limitations - quality of selection matters.
+- "notes": ONE short coaching cue, max ~12 words. Not a paragraph.
+- "variations": 1-2 alternatives only, comma-separated.
 - EXERCISE ORDER: most demanding compound lifts first (squats, deadlifts, presses, rows), then secondary compounds, then isolation. Complete ALL exercises for one muscle group before moving to the next (e.g. all back, THEN all biceps).
+- Keep it concise: the whole day must fit on ONE printed page. Do not pad.
 ${formData.biggestObstacles ? `- Address their biggest obstacle: ${formData.biggestObstacles}` : ''}
 
 Return ONLY this JSON object:
@@ -82,7 +84,7 @@ Return ONLY this JSON object:
   "title": "Workout name reflecting the focus",
   "focus": "Primary muscle groups / movement patterns",
   "exercises": [
-    { "name": "Exercise name", "sets": "3", "reps": "8-10", "notes": "Form cues / modifications", "variations": "1-2 alternatives, e.g. 'DB Press, Machine Press'" }
+    { "name": "Exercise name", "sets": "3", "reps": "8-10", "notes": "Short cue (max ~12 words)", "variations": "DB Press, Machine Press" }
   ]
 }`
 }
@@ -93,12 +95,14 @@ function buildOverviewPrompt(preamble, dayFocuses) {
 
 This program's training split is: ${split}.
 
+Keep EVERY field concise - the whole overview must fit on ONE printed page. Each field is at most 2 short sentences. Do not pad or repeat.
+
 Return ONLY this JSON object describing the program overview:
 {
-  "basicExplanation": "2-3 sentences: what this program is, the split used, how it helps reach the goal",
-  "progressionNotes": "How to progress week to week - when to add weight/reps, specific protocol",
-  "principles": "Core training principles this program is built on (e.g. progressive overload, compounds first)",
-  "importantNotes": "Safety reminders, warm-up guidance, rest-day recommendations"
+  "basicExplanation": "2 sentences: what this program is, the split used, how it helps reach the goal",
+  "progressionNotes": "1-2 sentences: how to progress week to week (when to add weight/reps)",
+  "principles": "1-2 sentences: the core training principles (e.g. progressive overload, compounds first)",
+  "importantNotes": "1-2 sentences: warm-up, rest days, key safety reminder"
 }`
 }
 
@@ -109,7 +113,10 @@ function buildTerminologyPrompt(workouts) {
 
 ${corpus}
 
-Write a "terminology" glossary string that defines ONLY the training terms that actually appear in the exercise names or notes above (e.g. superset, AMRAP, RPE, tempo, drop set). Do NOT define any term that is not present in the workouts. Format each as "Term: definition" separated by line breaks.
+Write a SHORT "terminology" glossary that defines ONLY the most important training terms that actually appear in the exercise names or notes above (e.g. superset, AMRAP, RPE, tempo, drop set). Rules:
+- At most 5 terms, the ones a client is most likely not to know.
+- Each on ONE line, format "Term: brief definition" with the definition under ~10 words.
+- Do NOT define any term that is not present in the workouts. Do NOT pad. It must fit a small section.
 
 Return ONLY this JSON object:
 { "terminology": "Term: definition\\nTerm: definition" }`

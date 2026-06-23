@@ -4,7 +4,10 @@ const Anthropic = require('@anthropic-ai/sdk').default
   || require('@anthropic-ai/sdk').Anthropic
   || require('@anthropic-ai/sdk')
 
+// Sonnet for anything requiring judgment (exercise selection, program prose).
+// Haiku only for mechanical formatting work (terminology glossary).
 const MODEL = 'claude-sonnet-4-6'
+const MODEL_FAST = 'claude-haiku-4-5-20251001'
 
 const apiKey = process.env.ANTHROPIC_API_KEY
 const client = apiKey
@@ -47,11 +50,12 @@ async function withStreamRetry(fn, maxAttempts = 4) {
 }
 
 // Stream a single completion, returning its text. Throws on truncation.
-async function generateText({ prompt, maxTokens = 4000 }) {
+// `model` defaults to Sonnet; pass MODEL_FAST for mechanical work.
+async function generateText({ prompt, maxTokens = 4000, model = MODEL }) {
   if (!client) throw new Error('Anthropic client not initialized (ANTHROPIC_API_KEY missing)')
   const message = await withStreamRetry(() =>
     client.messages.stream({
-      model: MODEL,
+      model,
       max_tokens: maxTokens,
       messages: [{ role: 'user', content: prompt }],
     }).finalMessage()
@@ -62,4 +66,4 @@ async function generateText({ prompt, maxTokens = 4000 }) {
   return message.content[0].text
 }
 
-module.exports = { MODEL, isRetryableStreamError, withStreamRetry, generateText }
+module.exports = { MODEL, MODEL_FAST, isRetryableStreamError, withStreamRetry, generateText }
