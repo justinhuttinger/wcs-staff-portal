@@ -168,9 +168,18 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     <div className="px-4 pt-6">
       {/* User info — solid white bubble header */}
       <div className="mb-6 bg-surface rounded-2xl border border-border shadow-sm p-4">
-        <h1 className="text-2xl font-bold text-text-primary">
-          Welcome, {displayName}
-        </h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-2xl font-bold text-text-primary">
+            Welcome, {displayName}
+          </h1>
+          <button
+            onClick={onLogout}
+            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-text-muted hover:text-wcs-red hover:border-wcs-red transition-colors [&_svg]:w-4 [&_svg]:h-4"
+          >
+            <LogoutIcon />
+            Log out
+          </button>
+        </div>
         <div className="flex items-center gap-2 mt-1">
           {role && (
             <span className="text-sm text-text-secondary capitalize">{role}</span>
@@ -240,15 +249,6 @@ export default function HomeScreen({ user, navigate, onLogout }) {
           </button>
         ))}
       </div>
-
-      {/* Logout */}
-      <button
-        onClick={onLogout}
-        className="mt-10 mx-auto flex items-center gap-2 text-text-muted text-sm hover:text-text-secondary transition-colors"
-      >
-        <LogoutIcon />
-        Sign out
-      </button>
     </div>
   )
 }
