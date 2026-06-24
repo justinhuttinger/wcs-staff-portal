@@ -351,15 +351,7 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
           {loading && empSpend === null && <p className="text-sm text-text-muted bg-surface rounded-xl border border-border p-6 text-center">Loading employee spend...</p>}
           {empSpend && (
             <>
-              <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4 flex flex-wrap items-center gap-x-5 gap-y-2">
-                <p className="text-sm text-text-primary"><span className="font-bold">{empSpend.rows.length}</span> items bought by staff</p>
-                <span className="text-xs text-text-muted">{empSpend.buyers} staff member account(s)</span>
-                <span className="text-[11px] text-text-muted">Employee price = catalog × (1 − discount); margin uses item cost.</span>
-                <span className="ml-auto text-sm text-text-primary">Spend: <span className="font-bold">{fmtMoney(empSpend.totals.spend)}</span></span>
-                <span className="text-sm text-text-primary">Profit: <span className="font-bold">{empSpend.totals.profit != null ? fmtMoney(empSpend.totals.profit) : '—'}</span></span>
-              </div>
-
-              {empCategoryRollup.length > 0 && <div className="mt-4"><CategoryTable rows={empCategoryRollup} revenueLabel="Spend" /></div>}
+              {empCategoryRollup.length > 0 && <CategoryTable rows={empCategoryRollup} revenueLabel="Spend" />}
 
               <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden mt-4">
                 {empSpend.rows.length === 0 ? (
