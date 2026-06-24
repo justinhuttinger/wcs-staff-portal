@@ -40,13 +40,15 @@ async function runForLocation(locationKey, { publish = true } = {}) {
     await jobs.attachContent(jobId, post)
     await jobs.attachValidation(jobId, report)
 
-    // Photo (non-fatal)
+    // Photo (non-fatal: a pick or download failure must not fail the post)
     let image = null
-    const match = await pickPhoto({ location: locationKey, queryText: `${post.title}. ${topic}` })
-    if (match) {
-      await jobs.attachImage(jobId, { assetId: match.assetId, driveId: match.driveFileId })
-      try { image = await downloadPhoto(match.driveFileId) } catch (e) { console.warn('[Blog] photo download failed:', e.message) }
-    }
+    try {
+      const match = await pickPhoto({ location: locationKey, queryText: `${post.title}. ${topic}` })
+      if (match) {
+        await jobs.attachImage(jobId, { assetId: match.assetId, driveId: match.driveFileId })
+        image = await downloadPhoto(match.driveFileId)
+      }
+    } catch (e) { console.warn('[Blog] photo failed:', e.message) }
 
     if (!publish) { await jobs.setStatus(jobId, 'generating', { error_message: 'test run, not published' }); return { status: 'generated', jobId } }
 
