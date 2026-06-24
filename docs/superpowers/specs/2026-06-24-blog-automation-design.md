@@ -161,14 +161,27 @@ matching the old batch loop.
   tone. Encoded into the generation prompts and enforced by the validation
   rubric.
 
-### Open implementation detail — SEO plugin
+### SEO plugin — Yoast (confirmed 2026-06-24)
 
-The schema must actually render on the live site. The old code wrote **Yoast**
-meta keys (`_yoast_wpseo_metadesc`, `_yoast_wpseo_focuskw`). Before
-implementation, confirm whether the site runs **Yoast or RankMath** (meta keys
-and FAQ/Article schema emission differ). If unclear, detect it from the site
-during planning. As a belt-and-suspenders fallback, the post body itself embeds
-JSON-LD so schema exists regardless of plugin.
+The live site runs **Yoast** (`yoast-schema-graph`, `yoast-seo-wordpress` in
+page markup; no RankMath). Yoast already emits a full JSON-LD `@graph` on every
+page (WebPage, Organization, WebSite, BreadcrumbList, etc.). Implications:
+
+- **Title / meta / focus keyword:** write Yoast meta keys via REST
+  (`_yoast_wpseo_metadesc`, `_yoast_wpseo_focuskw`, and title) as the old code
+  did. Confirm the site exposes these in the `meta` REST field (Yoast must have
+  "Add meta box" / REST registration on; if not, may need an `application/ld`
+  fallback or a small mu-plugin — verify during planning).
+- **Article / Breadcrumb / Organization schema:** **let Yoast own it** — do NOT
+  inject a competing `Article`/`LocalBusiness` graph, or it duplicates Yoast's
+  `@graph`.
+- **FAQ schema (the AEO win Yoast won't auto-build from REST HTML):** Yoast only
+  emits `FAQPage` from its Gutenberg **FAQ block**. Posting raw HTML via REST
+  won't trigger it. Preferred path: emit Yoast FAQ **block markup**
+  (`<!-- wp:yoast/faq-block ... -->`) in the content so Yoast generates the
+  `FAQPage` graph natively. Fallback if that proves unreliable over REST: inject
+  a single self-authored `FAQPage` JSON-LD block (FAQPage only — never duplicate
+  the Article/Org graph Yoast already provides).
 
 ## Portal surface
 
