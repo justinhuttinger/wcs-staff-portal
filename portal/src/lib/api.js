@@ -842,6 +842,12 @@ export async function getInventoryAudit(params = {}) {
   return api('/inventory/audit' + inventoryQs(params))
 }
 
+export async function importInventoryCosts(file) {
+  const fd = new FormData()
+  fd.append('file', file)
+  return api('/inventory/cost-import', { method: 'POST', body: fd })
+}
+
 export async function getInventoryEmployeeSpend(params = {}) {
   return api('/inventory/employee-spend' + inventoryQs(params))
 }

@@ -5,7 +5,7 @@ import {
   getInventoryInvoices, getInventoryMovements, createInventoryInvoice, parseInventoryInvoice, addInventoryInvoiceFiles,
   deleteInventoryInvoiceFile, addInventoryInvoiceItem,
   deleteInventoryInvoiceItem, receiveInventoryInvoice, deleteInventoryInvoice,
-  startInventorySync, getInventorySyncStatus, getInventoryAudit,
+  startInventorySync, getInventorySyncStatus, getInventoryAudit, importInventoryCosts,
 } from '../lib/api'
 import { LOCATION_OPTIONS } from '../config/locations'
 import { exportCSV } from '../lib/export'
@@ -692,6 +692,8 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   const [syncBusy, setSyncBusy] = useState(false)
   const [audit, setAudit] = useState(null) // { items, scanned, min_margin, days }
   const [auditIssueFilter, setAuditIssueFilter] = useState('all_items') // all_items | issues | <issue key>
+  const [costImporting, setCostImporting] = useState(false)
+  const [costImportMsg, setCostImportMsg] = useState('')
   const [oversoldOnly, setOversoldOnly] = useState(false)
 
   const loadItems = useCallback(() => {
@@ -922,6 +924,28 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
     exportCSV(rows, `inventory-audit-${scope}-${slug}-${toLocalDateStr(new Date())}`)
   }
 
+  // Re-upload a filled-in audit CSV to set costs in bulk. Reads item_id + new_cost.
+  async function handleCostImport(e) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-selecting the same file
+    if (!file) return
+    setCostImporting(true); setCostImportMsg(''); setError('')
+    try {
+      const r = await importInventoryCosts(file)
+      const parts = [`Updated ${r.updated} item${r.updated === 1 ? '' : 's'}`]
+      if (r.skipped_blank) parts.push(`${r.skipped_blank} blank skipped`)
+      if (r.invalid) parts.push(`${r.invalid} invalid`)
+      if (r.not_found) parts.push(`${r.not_found} not found`)
+      setCostImportMsg(parts.join(' · '))
+      getInventoryAudit({ location_slug: slug === 'all' ? '' : slug, include_clean: 1 }).then(setAudit).catch(() => {})
+      loadItems()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setCostImporting(false)
+    }
+  }
+
   const onItemSaved = (updated) => setItems(list => list.map(i => i.id === updated.id ? { ...i, ...updated } : i))
   const refreshInvoices = () => {
     getInventoryInvoices().then(res => setInvoices(res.invoices || [])).catch(() => {})
@@ -1137,7 +1161,14 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                     {auditIssueFilter === 'all_items' ? ' total' : ' shown'}
                     <span className="text-text-muted text-xs ml-2">(sales window: last {audit.days} days · margin threshold {audit.min_margin}%)</span>
                   </p>
-                  <button onClick={exportAudit} disabled={filteredAuditRows.length === 0} className={btnGhost}>Export CSV</button>
+                  <div className="flex items-center gap-2">
+                    {costImportMsg && <span className="text-xs text-emerald-700 font-semibold">{costImportMsg}</span>}
+                    <label className={`${btnGhost} cursor-pointer ${costImporting ? 'opacity-60 pointer-events-none' : ''}`}>
+                      {costImporting ? 'Importing...' : 'Import Costs'}
+                      <input type="file" accept=".csv,text/csv" onChange={handleCostImport} className="hidden" />
+                    </label>
+                    <button onClick={exportAudit} disabled={filteredAuditRows.length === 0} className={btnGhost}>Export CSV</button>
+                  </div>
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <button
