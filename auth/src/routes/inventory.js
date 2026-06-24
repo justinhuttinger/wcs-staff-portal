@@ -640,6 +640,9 @@ router.get('/audit', requireRole('admin'), async (req, res) => {
     if (cErr) return res.status(400).json({ error: cErr })
     const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), 365)
     const minMargin = Number.isFinite(parseFloat(req.query.min_margin)) ? parseFloat(req.query.min_margin) : 15
+    // include_clean=1 returns every sellable item (issue or not) so costs can be
+    // edited/exported for the whole catalog, not just flagged items.
+    const includeClean = req.query.include_clean === '1' || req.query.include_clean === 'true'
 
     const makeAuditItemsQuery = () => {
       let iq = supabaseAdmin.from('inventory_items').select('*').eq('archived', false).order('item_name')
@@ -673,7 +676,7 @@ router.get('/audit', requireRole('admin'), async (req, res) => {
       salesByItem.set(row.item_id, e)
     }
 
-    const flagged = []
+    const result = []
     for (const raw of items || []) {
       const it = decorateItem(raw)
       const s = salesByItem.get(it.id)
@@ -697,16 +700,19 @@ router.get('/audit', requireRole('admin'), async (req, res) => {
       if (!it.upc) issues.push('missing_upc')
       if (!raw.category) issues.push('no_category') // fix in ABC so the 3am sync picks it up
 
-      if (issues.length > 0) {
-        flagged.push({ ...it, sold_units: soldUnits, avg_sold_price: avgSoldPrice, issues })
+      if (issues.length > 0 || includeClean) {
+        result.push({ ...it, sold_units: soldUnits, avg_sold_price: avgSoldPrice, issues })
       }
     }
 
-    // Worst offenders first: more issues, then lowest margin.
-    flagged.sort((a, b) =>
-      b.issues.length - a.issues.length || (a.margin_pct ?? 999) - (b.margin_pct ?? 999))
+    // All-items view stays alphabetical (the catalog order) for finding an item to
+    // edit; the flagged-only view leads with the worst offenders.
+    if (!includeClean) {
+      result.sort((a, b) =>
+        b.issues.length - a.issues.length || (a.margin_pct ?? 999) - (b.margin_pct ?? 999))
+    }
 
-    res.json({ items: flagged, days, min_margin: minMargin, scanned: (items || []).length })
+    res.json({ items: result, days, min_margin: minMargin, scanned: (items || []).length, include_clean: includeClean })
   } catch (err) {
     console.error('[Inventory] audit error:', err.message)
     res.status(500).json({ error: err.message })

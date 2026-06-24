@@ -8,6 +8,7 @@ import {
   startInventorySync, getInventorySyncStatus, getInventoryAudit,
 } from '../lib/api'
 import { LOCATION_OPTIONS } from '../config/locations'
+import { exportCSV } from '../lib/export'
 
 // --- helpers ---
 function fmtMoney(v) {
@@ -690,7 +691,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   const [syncStatus, setSyncStatus] = useState(null)
   const [syncBusy, setSyncBusy] = useState(false)
   const [audit, setAudit] = useState(null) // { items, scanned, min_margin, days }
-  const [auditIssueFilter, setAuditIssueFilter] = useState('')
+  const [auditIssueFilter, setAuditIssueFilter] = useState('all_items') // all_items | issues | <issue key>
   const [oversoldOnly, setOversoldOnly] = useState(false)
 
   const loadItems = useCallback(() => {
@@ -710,7 +711,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   useEffect(() => {
     if (tab === 'audit') {
       setLoading(true)
-      getInventoryAudit({ location_slug: slug === 'all' ? '' : slug })
+      getInventoryAudit({ location_slug: slug === 'all' ? '' : slug, include_clean: 1 })
         .then(setAudit)
         .catch(err => setError(err.message))
         .finally(() => setLoading(false))
@@ -894,6 +895,32 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
       }
     })
   }, [audit, slug])
+
+  // Audit rows after the active filter tile (All Items / Issues only / a specific
+  // issue). Shared by the table and the CSV export.
+  const filteredAuditRows = useMemo(() => auditRows.filter(i =>
+    auditIssueFilter === 'all_items' ? true
+      : auditIssueFilter === 'issues' ? (i.issues?.length > 0)
+        : i.issues?.includes(auditIssueFilter)
+  ), [auditRows, auditIssueFilter])
+
+  // Export the filtered audit rows, flattened to one line per club copy so each
+  // carries a real item_id + cost. The blank new_cost column is meant to be
+  // filled in and re-uploaded to set costs in bulk.
+  function exportAudit() {
+    const header = ['item_id', 'item_name', 'upc', 'category', 'club', 'price', 'current_cost', 'new_cost', 'issues']
+    const rows = [header]
+    for (const r of filteredAuditRows) {
+      for (const m of (r._members || [r])) {
+        rows.push([
+          m.id, m.item_name, m.upc || '', m.category || '', m.location_slug || '',
+          m.abc_unit_price ?? '', m.unit_cost ?? '', '', (m.issues || []).join('|'),
+        ])
+      }
+    }
+    const scope = auditIssueFilter === 'all_items' ? 'all' : auditIssueFilter === 'issues' ? 'issues' : auditIssueFilter
+    exportCSV(rows, `inventory-audit-${scope}-${slug}-${toLocalDateStr(new Date())}`)
+  }
 
   const onItemSaved = (updated) => setItems(list => list.map(i => i.id === updated.id ? { ...i, ...updated } : i))
   const refreshInvoices = () => {
@@ -1106,21 +1133,27 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
               <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4">
                 <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
                   <p className="text-sm text-text-primary">
-                    <span className="font-bold">{auditRows.length}</span> {slug === 'all' ? 'products' : 'items'} flagged
+                    <span className="font-bold">{filteredAuditRows.length}</span> {slug === 'all' ? 'products' : 'items'}
+                    {auditIssueFilter === 'all_items' ? ' total' : ' shown'}
                     <span className="text-text-muted text-xs ml-2">(sales window: last {audit.days} days · margin threshold {audit.min_margin}%)</span>
                   </p>
+                  <button onClick={exportAudit} disabled={filteredAuditRows.length === 0} className={btnGhost}>Export CSV</button>
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <button
-                    onClick={() => setAuditIssueFilter('')}
-                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${!auditIssueFilter ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
-                  >All Issues</button>
+                    onClick={() => setAuditIssueFilter('all_items')}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${auditIssueFilter === 'all_items' ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
+                  >All Items · {auditRows.length}</button>
+                  <button
+                    onClick={() => setAuditIssueFilter('issues')}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${auditIssueFilter === 'issues' ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
+                  >All Issues · {auditRows.filter(i => i.issues?.length > 0).length}</button>
                   {Object.entries(AUDIT_ISSUES).map(([key, meta]) => {
                     const count = auditRows.filter(i => i.issues.includes(key)).length
                     if (count === 0) return null
                     return (
                       <button key={key} title={meta.desc}
-                        onClick={() => setAuditIssueFilter(f => f === key ? '' : key)}
+                        onClick={() => setAuditIssueFilter(f => f === key ? 'all_items' : key)}
                         className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${auditIssueFilter === key ? 'bg-wcs-red text-white border-wcs-red' : meta.cls + ' hover:opacity-80'}`}
                       >{meta.label} · {count}</button>
                     )
@@ -1129,8 +1162,8 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
               </div>
 
               <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
-                {auditRows.length === 0 ? (
-                  <p className="text-sm text-text-muted p-8 text-center">No pricing or data issues found. Nice and clean.</p>
+                {filteredAuditRows.length === 0 ? (
+                  <p className="text-sm text-text-muted p-8 text-center">{auditIssueFilter === 'all_items' ? 'No items yet — sync the ABC catalog first.' : 'Nothing here for this filter.'}</p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -1149,14 +1182,14 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {auditRows
-                          .filter(i => !auditIssueFilter || i.issues.includes(auditIssueFilter))
+                        {filteredAuditRows
                           .map(i => (
                             <tr key={i.id} className="border-b border-border/50 hover:bg-bg/40">
                               <td className="py-2 px-4 font-medium text-text-primary">{i.item_name}</td>
                               {slug === 'all' && <td className="py-2 px-2 capitalize text-text-muted">{i._consolidated ? `${i._clubCount} clubs` : i.location_slug}</td>}
                               <td className="py-2 px-2">
                                 <div className="flex gap-1 flex-wrap">
+                                  {i.issues.length === 0 && <span className="text-[11px] text-emerald-600 font-semibold">OK</span>}
                                   {i.issues.map(key => (
                                     <span key={key} title={AUDIT_ISSUES[key]?.desc}
                                       className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${AUDIT_ISSUES[key]?.cls || 'bg-bg text-text-muted border-border'}`}>
@@ -1310,7 +1343,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
             if (modal.allClubs) loadItems()
             else onItemSaved(updated)
             // Cost edits change audit results — refresh if we're on that tab.
-            if (tab === 'audit') getInventoryAudit({ location_slug: slug === 'all' ? '' : slug }).then(setAudit).catch(() => {})
+            if (tab === 'audit') getInventoryAudit({ location_slug: slug === 'all' ? '' : slug, include_clean: 1 }).then(setAudit).catch(() => {})
           }}
         />
       )}
