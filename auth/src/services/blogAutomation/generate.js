@@ -16,7 +16,7 @@ function parseJsonLoose(text) {
   return JSON.parse(s.trim())
 }
 
-// Yoast FAQ Gutenberg block — Yoast emits FAQPage schema from this markup.
+// Yoast FAQ Gutenberg block - Yoast emits FAQPage schema from this markup.
 function buildFaqBlock(faq) {
   const items = (faq || []).map((f, i) => {
     const id = `faq-${i + 1}`
