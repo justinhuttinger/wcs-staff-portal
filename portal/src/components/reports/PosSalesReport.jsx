@@ -31,16 +31,27 @@ function fmtDateTime(iso) {
   return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
-// Sortable column header (desc → asc → none), mirrors the Inventory tables.
+// Sortable column header (desc → asc → none). Every sortable column shows a
+// persistent up/down glyph so it's obvious it can be clicked; the glyph turns
+// red and points the active direction when that column is the sort key.
 function SortHeader({ label, col, sort, onSort, align = 'right' }) {
   const active = sort?.col === col
-  const arrow = !active ? '' : sort.dir === 'desc' ? ' ▾' : ' ▴'
   return (
     <th
       onClick={() => onSort(col)}
-      className={`py-2.5 px-2 cursor-pointer select-none hover:text-text-primary ${align === 'left' ? 'text-left px-4' : 'text-right'} ${active ? 'text-text-primary' : ''}`}
+      title="Click to sort"
+      className={`py-2.5 px-2 cursor-pointer select-none group ${align === 'left' ? 'text-left px-4' : 'text-right'}`}
     >
-      {label}{arrow}
+      <span className={`inline-flex items-center gap-1 ${align === 'left' ? '' : 'justify-end'} ${active ? 'text-wcs-red' : 'text-text-muted group-hover:text-text-primary'}`}>
+        {label}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={`w-3 h-3 flex-shrink-0 ${active ? '' : 'opacity-40 group-hover:opacity-70'}`}>
+          {!active
+            ? <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 15 12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />
+            : sort.dir === 'desc'
+              ? <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+              : <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />}
+        </svg>
+      </span>
     </th>
   )
 }
@@ -131,7 +142,7 @@ function CategoryTable({ rows, revenueLabel = 'Revenue' }) {
 export default function PosSalesReport({ startDate, endDate, locationSlug }) {
   const [subTab, setSubTab] = useState('sales')
   const [search, setSearch] = useState('')
-  const [salesSort, setSalesSort] = useState(null)
+  const [salesSort, setSalesSort] = useState({ col: 'name', dir: 'asc' }) // default: alphabetical by item
 
   const [summary, setSummary] = useState(null)
   const [empSpend, setEmpSpend] = useState(null)
