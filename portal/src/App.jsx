@@ -17,6 +17,7 @@ import TicketsView from './components/TicketsView'
 import DriveView from './components/DriveView'
 import DriveHub from './components/DriveHub'
 import MediaLibraryView from './components/MediaLibraryView'
+import BlogAutomationView from './components/BlogAutomationView'
 import GlobalProgressBar from './components/GlobalProgressBar'
 import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout } from './lib/api'
 import { logEvent } from './lib/audit'
@@ -59,6 +60,7 @@ export default function App() {
   const [showDrive, setShowDrive] = useState(false)
   const [showDriveHub, setShowDriveHub] = useState(false)
   const [showMediaLibrary, setShowMediaLibrary] = useState(false)
+  const [showBlogAutomation, setShowBlogAutomation] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
   const [locationOverride, setLocationOverride] = useState(() => localStorage.getItem('wcs_location_override') || '')
   const isElectron = !!window.wcsElectron
@@ -285,7 +287,7 @@ export default function App() {
     )
   }
 
-  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTickets && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTickets && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showBlogAutomation && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory
 
   function handleBackToPortal() {
     setShowAdmin(false)
@@ -300,6 +302,7 @@ export default function App() {
     setShowHelpCenter(false)
     setShowTickets(false)
     setShowDrive(false)
+    setShowBlogAutomation(false)
     if (window.location.hash) window.location.hash = ''
   }
 
@@ -390,9 +393,11 @@ export default function App() {
         <InventoryView onBack={() => setShowInventory(false)} location={location} isAdmin={isAdmin} user={user} />
       ) : showMediaLibrary ? (
         <MediaLibraryView onBack={() => setShowMediaLibrary(false)} userRole={user?.staff?.role} />
+      ) : showBlogAutomation ? (
+        <BlogAutomationView onBack={() => setShowBlogAutomation(false)} userRole={user?.staff?.role} />
       ) : (
         <main className="flex-1 flex items-start pt-1 pb-12">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} customReports={user.staff?.custom_reports || []} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onBlogAutomation={['corporate', 'marketing', 'admin'].includes(user.staff?.role) ? () => setShowBlogAutomation(true) : undefined} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>

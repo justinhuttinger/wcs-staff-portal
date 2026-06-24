@@ -1353,6 +1353,13 @@ export async function getCustomFields(location) {
   return api('/custom-fields' + qs)
 }
 
+// Blog Automation
+export const blogAutomation = {
+  posts: (location) => api(`/blog-automation/posts${location ? `?location=${encodeURIComponent(location)}` : ''}`),
+  status: () => api('/blog-automation/status'),
+  run: (location, publish) => api('/blog-automation/run', { method: 'POST', body: JSON.stringify({ location, publish }) }),
+}
+
 // Daily Snapshot
 export async function getDailySnapshot({ date, location } = {}) {
   const params = new URLSearchParams()

@@ -93,6 +93,7 @@ app.use('/tickets', require('./routes/tickets'))
 app.use('/abc-sync', require('./routes/abcSync'))
 app.use('/referral-rewards', require('./routes/referralRewards'))
 app.use('/marketing-tracker', require('./routes/marketingTracker'))
+app.use('/blog-automation', require('./routes/blogAutomation'))
 app.use('/inventory', require('./routes/inventory'))
 app.use('/media', require('./routes/media'))
 app.use('/custom-fields', require('./routes/customFields'))
@@ -159,5 +160,12 @@ app.listen(PORT, () => {
     } catch (err) {
       console.error('[inventorySync] failed to start:', err.message)
     }
+  }
+
+  // Blog automation weekly cron — opt-in via BLOG_AUTOMATION_ENABLED=true.
+  try {
+    require('./services/blogAutomation').start()
+  } catch (err) {
+    console.error('[blog] failed to start:', err.message)
   }
 })
