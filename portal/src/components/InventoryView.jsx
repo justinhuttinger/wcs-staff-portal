@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   getInventoryItems, getInventoryCategories, getInventoryItemMovements,
-  adjustInventoryItem, updateInventoryItem, getInventorySummary, lookupInventoryUpc,
+  adjustInventoryItem, updateInventoryItem, lookupInventoryUpc,
   getInventoryInvoices, getInventoryMovements, createInventoryInvoice, parseInventoryInvoice, addInventoryInvoiceFiles,
   deleteInventoryInvoiceFile, addInventoryInvoiceItem,
   deleteInventoryInvoiceItem, receiveInventoryInvoice, deleteInventoryInvoice,
-  startInventorySync, getInventorySyncStatus, getInventoryAudit, getInventoryEmployeeSpend,
+  startInventorySync, getInventorySyncStatus, getInventoryAudit,
 } from '../lib/api'
 import { LOCATION_OPTIONS } from '../config/locations'
 
@@ -53,26 +53,6 @@ function daysAgoStr(n) {
   return toLocalDateStr(d)
 }
 
-const QUICK_RANGES = [
-  { key: 'this_month', label: 'This Month' },
-  { key: 'last_month', label: 'Last Month' },
-  { key: 'last_30', label: 'Last 30 Days' },
-  { key: 'last_90', label: 'Last 90 Days' },
-  { key: 'ytd', label: 'YTD' },
-]
-function quickRange(key) {
-  const now = new Date()
-  const y = now.getFullYear(), m = now.getMonth()
-  switch (key) {
-    case 'this_month': return { from: toLocalDateStr(new Date(y, m, 1)), to: toLocalDateStr(now) }
-    case 'last_month': return { from: toLocalDateStr(new Date(y, m - 1, 1)), to: toLocalDateStr(new Date(y, m, 0)) }
-    case 'last_30': return { from: daysAgoStr(29), to: toLocalDateStr(now) }
-    case 'last_90': return { from: daysAgoStr(89), to: toLocalDateStr(now) }
-    case 'ytd': return { from: toLocalDateStr(new Date(y, 0, 1)), to: toLocalDateStr(now) }
-    default: return { from: daysAgoStr(30), to: toLocalDateStr(now) }
-  }
-}
-
 const MOVEMENT_LABELS = {
   sale: 'Sale', return: 'Return', received: 'Received', adjustment: 'Stock Added', count: 'Count',
 }
@@ -102,11 +82,6 @@ const AUDIT_ISSUES = {
 
 // Vendors we buy inventory from. "Other" covers anything one-off.
 const VENDOR_OPTIONS = ['SportLife', 'Coke', 'Other']
-
-// Role tiers (mirrors the backend) — leads get inventory but NOT the financial
-// views (Sales tab + margin column), which stay manager+.
-const ROLE_LVL = { team_member: 0, front_desk: 0, personal_trainer: 0, lead: 1, custom: 1, manager: 2, director: 3, corporate: 3, marketing: 3, admin: 4 }
-const canSeeFinancialsFor = (role) => (ROLE_LVL[role] ?? 0) >= ROLE_LVL.manager
 
 const inputCls ='px-3 py-2 rounded-lg border border-border bg-bg text-sm text-text-primary focus:outline-none focus:border-wcs-red w-full'
 const btnPrimary = 'px-3 py-1.5 rounded-lg bg-wcs-red text-white text-xs font-semibold hover:bg-wcs-red/90 transition-colors disabled:opacity-50'
@@ -687,8 +662,6 @@ function SortHeader({ label, col, sort, onSort, align = 'right' }) {
 }
 
 export default function InventoryView({ onBack, location, isAdmin, user }) {
-  // Leads see inventory but not the financial views (Sales tab + margin column).
-  const canSeeFinancials = canSeeFinancialsFor(user?.staff?.role)
   // Clubs this user may restock into. Admins get every club; everyone else gets
   // the locations on their staff profile. Invoices are always single-club.
   const accessibleSlugs = useMemo(() => {
@@ -700,7 +673,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
     return mine.length ? mine : (all.includes(String(location || '').toLowerCase()) ? [String(location).toLowerCase()] : all)
   }, [isAdmin, user, location])
 
-  const [tab, setTab] = useState('items') // items | profit (Sales) | audit (admin)
+  const [tab, setTab] = useState('items') // items | order | restock | audit (admin)
   const [slug, setSlug] = useState('all') // default to all clubs; dropdown can narrow
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
@@ -710,11 +683,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   const [orderItems, setOrderItems] = useState([]) // items carrying sold_in_range over the reorder window, for the To Order tab
   const [invoices, setInvoices] = useState([])
   const [movements, setMovements] = useState([])
-  const [summary, setSummary] = useState([])
-  const [from, setFrom] = useState(daysAgoStr(30))
-  const [to, setTo] = useState(toLocalDateStr(new Date()))
   const [sort, setSort] = useState(null) // { col, dir: 'desc' | 'asc' } | null
-  const [salesSort, setSalesSort] = useState(null) // Sales tab sort, same shape
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [modal, setModal] = useState(null) // { adjust } | { history } | { newInvoice } | { invoice }
@@ -722,7 +691,6 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   const [syncBusy, setSyncBusy] = useState(false)
   const [audit, setAudit] = useState(null) // { items, scanned, min_margin, days }
   const [auditIssueFilter, setAuditIssueFilter] = useState('')
-  const [empSpend, setEmpSpend] = useState(null) // { rows, totals, buyers }
   const [oversoldOnly, setOversoldOnly] = useState(false)
 
   const loadItems = useCallback(() => {
@@ -740,22 +708,10 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   }, [])
 
   useEffect(() => {
-    if (tab === 'profit') {
-      setLoading(true)
-      getInventorySummary({ location_slug: slug === 'all' ? '' : slug, from, to })
-        .then(res => setSummary(res.summary || []))
-        .catch(err => setError(err.message))
-        .finally(() => setLoading(false))
-    } else if (tab === 'audit') {
+    if (tab === 'audit') {
       setLoading(true)
       getInventoryAudit({ location_slug: slug === 'all' ? '' : slug })
         .then(setAudit)
-        .catch(err => setError(err.message))
-        .finally(() => setLoading(false))
-    } else if (tab === 'employee') {
-      setLoading(true)
-      getInventoryEmployeeSpend({ location_slug: slug === 'all' ? '' : slug, from, to })
-        .then(setEmpSpend)
         .catch(err => setError(err.message))
         .finally(() => setLoading(false))
     } else if (tab === 'order') {
@@ -777,7 +733,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
         .catch(err => setError(err.message))
         .finally(() => setLoading(false))
     }
-  }, [tab, slug, from, to])
+  }, [tab, slug])
 
   async function syncNow() {
     setSyncBusy(true); setError('')
@@ -795,18 +751,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
       return null
     })
   }
-  function cycleSalesSort(col) {
-    setSalesSort(s => {
-      if (!s || s.col !== col) return { col, dir: 'desc' }
-      if (s.dir === 'desc') return { col, dir: 'asc' }
-      return null
-    })
-  }
-
   const SORT_VALUE = {
-    price: i => Number(i.abc_unit_price),
-    cost: i => Number(i.unit_cost),
-    margin: i => Number(i.margin_pct),
     sold: i => Number(i.sold_in_range),
     on_hand: i => Number(i.qty_on_hand),
   }
@@ -900,66 +845,6 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
       (a.item_name || '').localeCompare(b.item_name || ''))
   }, [orderItems, search])
 
-  // Sales tab: same search box + clickable column sorting as the Items tab.
-  const SALES_SORT_VALUE = {
-    name: r => (r.name || '').toLowerCase(),
-    units: r => Number(r.units),
-    revenue: r => Number(r.revenue),
-    cogs: r => (r.cogs == null ? null : Number(r.cogs)),
-    profit: r => (r.profit == null ? null : Number(r.profit)),
-    margin: r => (r.margin_pct == null ? null : Number(r.margin_pct)),
-  }
-  const displaySummary = useMemo(() => {
-    // All-clubs view consolidates each product (same UPC) into one row: units,
-    // revenue and COGS sum across clubs; COGS is only "known" if every club's
-    // contribution had a cost. Matched-but-no-UPC and unmatched rows group on
-    // their own so nothing collapses incorrectly.
-    let base = summary
-    if (slug === 'all') {
-      const byProduct = new Map()
-      for (const r of summary) {
-        const key = r.upc ? `upc:${r.upc}` : (r.item_id ? `id:${r.item_id}` : `un:${r.name}`)
-        const e = byProduct.get(key) || {
-          item_id: r.item_id, name: r.name, upc: r.upc,
-          units: 0, revenue: 0, cogs: 0, cogsKnown: true,
-        }
-        e.units += Number(r.units) || 0
-        e.revenue += Number(r.revenue) || 0
-        if (r.cogs == null) { if ((Number(r.units) || 0) !== 0) e.cogsKnown = false }
-        else e.cogs += Number(r.cogs)
-        byProduct.set(key, e)
-      }
-      base = [...byProduct.values()].map(e => ({
-        item_id: e.item_id, name: e.name, upc: e.upc,
-        units: +e.units.toFixed(2),
-        revenue: +e.revenue.toFixed(2),
-        cogs: e.cogsKnown ? +e.cogs.toFixed(2) : null,
-        profit: e.cogsKnown ? +(e.revenue - e.cogs).toFixed(2) : null,
-        margin_pct: e.cogsKnown && e.revenue > 0 ? +(((e.revenue - e.cogs) / e.revenue) * 100).toFixed(1) : null,
-      }))
-    }
-    const term = search.trim().toLowerCase()
-    let list = base.filter(r =>
-      !term || (r.name || '').toLowerCase().includes(term) || (r.upc || '').includes(term)
-    )
-    if (salesSort && SALES_SORT_VALUE[salesSort.col]) {
-      const get = SALES_SORT_VALUE[salesSort.col]
-      const dir = salesSort.dir === 'desc' ? -1 : 1
-      const isText = salesSort.col === 'name'
-      list = [...list].sort((a, b) => {
-        const av = get(a), bv = get(b)
-        if (isText) return String(av).localeCompare(String(bv)) * dir
-        const aBad = av == null || !Number.isFinite(av)
-        const bBad = bv == null || !Number.isFinite(bv)
-        if (aBad && bBad) return 0
-        if (aBad) return 1 // missing values sink to the bottom regardless of dir
-        if (bBad) return -1
-        return (av - bv) * dir
-      })
-    }
-    return list
-  }, [summary, search, salesSort, slug])
-
   const lastSync = useMemo(() => {
     const rows = syncStatus?.status || []
     const ts = rows.filter(r => r.kind === 'pos' && r.last_synced_at).map(r => new Date(r.last_synced_at).getTime())
@@ -1031,8 +916,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                 { key: 'items', label: 'Inventory' },
                 { key: 'order', label: 'To Order' },
                 { key: 'restock', label: 'Restock' },
-                ...(canSeeFinancials ? [{ key: 'profit', label: 'Sales' }] : []),
-                ...(isAdmin ? [{ key: 'audit', label: 'Audit' }, { key: 'employee', label: 'Employee Spend' }] : []),
+                ...(isAdmin ? [{ key: 'audit', label: 'Audit' }] : []),
               ].map(m => (
                 <button key={m.key} onClick={() => setTab(m.key)}
                   className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${tab === m.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>
@@ -1052,28 +936,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
               {LOCATION_OPTIONS.map(o => <option key={o.slug} value={o.slug}>{o.label}</option>)}
             </select>
           </div>
-          {(tab === 'profit' || tab === 'employee') && (
-            <>
-              <div>
-                <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">From</span>
-                <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={inputCls} />
-              </div>
-              <div>
-                <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">To</span>
-                <input type="date" value={to} onChange={e => setTo(e.target.value)} className={inputCls} />
-              </div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {QUICK_RANGES.map(q => (
-                  <button key={q.key}
-                    onClick={() => { const r = quickRange(q.key); setFrom(r.from); setTo(r.to) }}
-                    className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-border bg-bg text-text-muted hover:text-text-primary hover:border-text-muted transition-colors">
-                    {q.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          {(tab === 'items' || tab === 'profit' || tab === 'order') && (
+          {(tab === 'items' || tab === 'order') && (
             <div className="flex-1 min-w-[200px]">
               <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Search</span>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or UPC..." className={inputCls} />
@@ -1134,9 +997,6 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                     <th className="py-2.5 px-4">Item</th>
                     <th className="py-2.5 px-2">Category</th>
                     <th className="py-2.5 px-2">UPC</th>
-                    <SortHeader label="Price" col="price" sort={sort} onSort={cycleSort} />
-                    <SortHeader label="Cost" col="cost" sort={sort} onSort={cycleSort} />
-                    {canSeeFinancials && <SortHeader label="Margin" col="margin" sort={sort} onSort={cycleSort} />}
                     <SortHeader label={slug === 'all' ? 'On Hand (all)' : 'On Hand'} col="on_hand" sort={sort} onSort={cycleSort} />
                     <th className="py-2.5 px-4 text-right">Actions</th>
                   </tr>
@@ -1152,15 +1012,6 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                       </td>
                       <td className="py-2 px-2 text-text-muted">{i.category || '—'}</td>
                       <td className="py-2 px-2 text-text-muted font-mono text-xs">{i.upc || '—'}</td>
-                      <td className="py-2 px-2 text-right">{fmtMoney(i.abc_unit_price)}</td>
-                      <td className="py-2 px-2 text-right">{fmtMoney(i.unit_cost)}</td>
-                      {canSeeFinancials && (
-                        <td className="py-2 px-2 text-right">
-                          {i.margin_pct != null
-                            ? <span className={i.margin_pct < 0 ? 'text-wcs-red font-semibold' : 'text-emerald-600 font-semibold'}>{i.margin_pct}%</span>
-                            : '—'}
-                        </td>
-                      )}
                       <td className="py-2 px-2 text-right">
                         {i._oversold ? (
                           <span className="inline-flex items-center gap-1.5">
@@ -1178,9 +1029,6 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                             <button onClick={() => setModal({ history: i._members[0] })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline">History</button>
                           </>
                         )}
-                        {/* Cost is shared across clubs, so Edit only lives on the
-                            All-clubs view (where it applies everywhere). */}
-                        {isAdmin && i._consolidated && <button onClick={() => setModal({ edit: i._members[0], allClubs: true })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline ml-3">Edit</button>}
                       </td>
                     </tr>
                   ))}
@@ -1244,56 +1092,6 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
-      )}
-
-      {/* === Sales tab === */}
-      {tab === 'profit' && (
-        <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
-          {loading ? (
-            <p className="text-sm text-text-muted p-6 text-center">Crunching numbers...</p>
-          ) : summary.length === 0 ? (
-            <p className="text-sm text-text-muted p-6 text-center">No sales in this range yet.</p>
-          ) : displaySummary.length === 0 ? (
-            <p className="text-sm text-text-muted p-6 text-center">No items match your search.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
-                  <SortHeader label="Item" col="name" sort={salesSort} onSort={cycleSalesSort} align="left" />
-                  <SortHeader label="Units" col="units" sort={salesSort} onSort={cycleSalesSort} />
-                  <SortHeader label="Revenue" col="revenue" sort={salesSort} onSort={cycleSalesSort} />
-                  <SortHeader label="COGS" col="cogs" sort={salesSort} onSort={cycleSalesSort} />
-                  <SortHeader label="Profit" col="profit" sort={salesSort} onSort={cycleSalesSort} />
-                  <SortHeader label="Margin" col="margin" sort={salesSort} onSort={cycleSalesSort} />
-                </tr>
-              </thead>
-              <tbody>
-                {displaySummary.map((r, idx) => (
-                  <tr key={r.item_id || idx} className="border-b border-border/50 hover:bg-bg/40">
-                    <td className="py-2 px-4 font-medium text-text-primary">
-                      {r.name}
-                      {!r.item_id && <span className="ml-2 text-[10px] font-bold uppercase text-text-muted">(unmatched)</span>}
-                    </td>
-                    <td className="py-2 px-2 text-right">{fmtQty(r.units)}</td>
-                    <td className="py-2 px-2 text-right">{fmtMoney(r.revenue)}</td>
-                    <td className="py-2 px-2 text-right">{r.cogs != null ? fmtMoney(r.cogs) : <span className="text-text-muted text-xs">no cost data</span>}</td>
-                    <td className="py-2 px-2 text-right font-semibold">{r.profit != null ? fmtMoney(r.profit) : '—'}</td>
-                    <td className="py-2 px-4 text-right">
-                      {r.margin_pct != null
-                        ? <span className={r.margin_pct < 0 ? 'text-wcs-red font-semibold' : 'text-emerald-600 font-semibold'}>{r.margin_pct}%</span>
-                        : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          {!loading && summary.length > 0 && summary.some(r => r.cogs == null) && (
-            <p className="text-xs text-text-muted px-4 py-3 border-t border-border">
-              Items showing "no cost data" need a received invoice to establish their unit cost.
-            </p>
           )}
         </div>
       )}
@@ -1383,73 +1181,6 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                               </td>
                             </tr>
                           ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* === Employee Spend tab (admin) === */}
-      {tab === 'employee' && isAdmin && (
-        <div className="space-y-4">
-          {loading && <p className="text-sm text-text-muted bg-surface rounded-xl border border-border p-6 text-center">Loading employee spend...</p>}
-          {!loading && empSpend && (
-            <>
-              <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4 flex flex-wrap items-center gap-x-5 gap-y-2">
-                <p className="text-sm text-text-primary"><span className="font-bold">{empSpend.rows.length}</span> items bought by staff</p>
-                <span className="text-xs text-text-muted">{empSpend.buyers} staff member account(s)</span>
-                <span className="text-[11px] text-text-muted">Employee price = catalog × (1 − discount); margin uses item cost.</span>
-                <span className="ml-auto text-sm text-text-primary">Spend: <span className="font-bold">{fmtMoney(empSpend.totals.spend)}</span></span>
-                <span className="text-sm text-text-primary">Profit: <span className="font-bold">{empSpend.totals.profit != null ? fmtMoney(empSpend.totals.profit) : '—'}</span></span>
-              </div>
-
-              <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
-                {empSpend.rows.length === 0 ? (
-                  <p className="text-sm text-text-muted p-8 text-center">No staff purchases in this date range.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
-                          <th className="py-2.5 px-4">Item</th>
-                          {slug === 'all' && <th className="py-2.5 px-2">Club</th>}
-                          <th className="py-2.5 px-2">Category</th>
-                          <th className="py-2.5 px-2 text-right">Units</th>
-                          <th className="py-2.5 px-2 text-right">Purchases</th>
-                          <th className="py-2.5 px-2 text-right">Catalog</th>
-                          <th className="py-2.5 px-2 text-right">Emp&nbsp;Disc</th>
-                          <th className="py-2.5 px-2 text-right">Emp&nbsp;Price</th>
-                          <th className="py-2.5 px-2 text-right">Cost</th>
-                          <th className="py-2.5 px-2 text-right">Margin</th>
-                          <th className="py-2.5 px-2 text-right">Spend</th>
-                          <th className="py-2.5 px-4 text-right">Profit</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {empSpend.rows.map(r => (
-                          <tr key={r.item_id} className="border-b border-border/50 hover:bg-bg/40">
-                            <td className="py-2 px-4 font-medium text-text-primary">{r.item_name}</td>
-                            {slug === 'all' && <td className="py-2 px-2 capitalize text-text-muted">{r.location_slug || '—'}</td>}
-                            <td className="py-2 px-2 text-text-muted">{r.category || '—'}</td>
-                            <td className="py-2 px-2 text-right font-semibold text-text-primary">{fmtQty(r.units)}</td>
-                            <td className="py-2 px-2 text-right text-text-muted">{r.purchases}</td>
-                            <td className="py-2 px-2 text-right">{fmtMoney(r.abc_unit_price)}</td>
-                            <td className="py-2 px-2 text-right text-text-muted">{r.emp_discount_pct}%</td>
-                            <td className="py-2 px-2 text-right">{fmtMoney(r.emp_price)}</td>
-                            <td className="py-2 px-2 text-right">{fmtMoney(r.unit_cost)}</td>
-                            <td className="py-2 px-2 text-right">
-                              {r.margin_pct != null
-                                ? <span className={r.margin_pct < 0 ? 'text-wcs-red font-semibold' : 'text-emerald-600 font-semibold'}>{r.margin_pct}%</span>
-                                : '—'}
-                            </td>
-                            <td className="py-2 px-2 text-right">{fmtMoney(r.emp_spend)}</td>
-                            <td className="py-2 px-4 text-right">{r.profit != null ? fmtMoney(r.profit) : '—'}</td>
-                          </tr>
-                        ))}
                       </tbody>
                     </table>
                   </div>

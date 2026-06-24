@@ -482,6 +482,113 @@ router.get('/summary', requireRole('manager'), async (req, res) => {
   }
 })
 
+// GET /shrinkage?location_slug=&from=&to= — physical-count variances. Every time
+// staff "set exact count" on an item we log a kind='count' movement whose
+// qty_delta is the net difference vs. what was on hand (negative = missing /
+// shrink, positive = found extra). This rolls those up by employee / item /
+// location and values each at the item's cost so misplacement and theft can be
+// measured. Financial data → manager+.
+router.get('/shrinkage', requireRole('manager'), async (req, res) => {
+  try {
+    const { clubs, error: cErr } = clubFilter(req)
+    if (cErr) return res.status(400).json({ error: cErr })
+
+    const makeQuery = () => {
+      let q = supabaseAdmin
+        .from('inventory_movements')
+        .select('id, item_id, club_number, qty_delta, qty_after, note, created_by_name, occurred_at, inventory_items(item_name, upc, category, avg_unit_cost, last_unit_cost)')
+        .eq('kind', 'count')
+        .order('occurred_at', { ascending: false })
+      if (clubs) q = q.in('club_number', clubs)
+      if (req.query.from) q = q.gte('occurred_at', `${req.query.from}T00:00:00Z`)
+      if (req.query.to) q = q.lte('occurred_at', `${req.query.to}T23:59:59Z`)
+      return q
+    }
+    const rows = await fetchAllRows(makeQuery)
+
+    const events = (rows || []).map(m => {
+      const item = m.inventory_items || null
+      const delta = num(m.qty_delta) || 0
+      const counted = num(m.qty_after)
+      const unitCost = item ? (num(item.avg_unit_cost) ?? num(item.last_unit_cost)) : null
+      const impact = unitCost != null ? +(delta * unitCost).toFixed(2) : null
+      return {
+        id: m.id,
+        item_id: m.item_id,
+        item_name: item?.item_name || null,
+        item_upc: item?.upc || null,
+        category: item?.category || null,
+        location_slug: m.club_number ? CLUB_TO_SLUG[m.club_number] || null : null,
+        created_by_name: m.created_by_name || null,
+        occurred_at: m.occurred_at,
+        expected: counted != null ? +(counted - delta).toFixed(2) : null,
+        counted,
+        delta: +delta.toFixed(2),
+        unit_cost: unitCost,
+        impact,
+        note: m.note || null,
+      }
+    })
+
+    // Roll up. shrink_value sums negative impact (a negative number), found_value
+    // sums positive impact, net_value sums all impact.
+    const empMap = new Map()
+    const itemMap = new Map()
+    const locMap = new Map()
+    let shrinkValue = 0, foundValue = 0, noCostEvents = 0
+    for (const e of events) {
+      if (e.impact == null) noCostEvents++
+      else if (e.impact < 0) shrinkValue += e.impact
+      else foundValue += e.impact
+
+      const empKey = e.created_by_name || 'Unknown'
+      const emp = empMap.get(empKey) || { name: empKey, events: 0, net_units: 0, shrink_value: 0, found_value: 0, net_value: 0 }
+      emp.events++; emp.net_units += e.delta
+      if (e.impact != null) { emp.net_value += e.impact; if (e.impact < 0) emp.shrink_value += e.impact; else emp.found_value += e.impact }
+      empMap.set(empKey, emp)
+
+      if (e.item_id) {
+        const it = itemMap.get(e.item_id) || { item_id: e.item_id, item_name: e.item_name, location_slug: e.location_slug, events: 0, net_units: 0, net_value: 0 }
+        it.events++; it.net_units += e.delta; if (e.impact != null) it.net_value += e.impact
+        itemMap.set(e.item_id, it)
+      }
+
+      const locKey = e.location_slug || '—'
+      const loc = locMap.get(locKey) || { location_slug: locKey, events: 0, net_units: 0, net_value: 0 }
+      loc.events++; loc.net_units += e.delta; if (e.impact != null) loc.net_value += e.impact
+      locMap.set(locKey, loc)
+    }
+
+    const round = (v) => +Number(v).toFixed(2)
+    const byEmployee = [...empMap.values()].map(e => ({
+      ...e, net_units: round(e.net_units), shrink_value: round(e.shrink_value), found_value: round(e.found_value), net_value: round(e.net_value),
+    })).sort((a, b) => a.shrink_value - b.shrink_value) // biggest loss first
+    const byItem = [...itemMap.values()].map(i => ({
+      ...i, net_units: round(i.net_units), net_value: round(i.net_value),
+    })).sort((a, b) => a.net_value - b.net_value)
+    const byLocation = [...locMap.values()].map(l => ({
+      ...l, net_units: round(l.net_units), net_value: round(l.net_value),
+    })).sort((a, b) => a.net_value - b.net_value)
+
+    res.json({
+      events,
+      by_employee: byEmployee,
+      by_item: byItem,
+      by_location: byLocation,
+      totals: {
+        events: events.length,
+        shrink_value: round(shrinkValue),
+        found_value: round(foundValue),
+        net_value: round(shrinkValue + foundValue),
+        no_cost_events: noCostEvents,
+      },
+    })
+  } catch (err) {
+    console.error('[Inventory] shrinkage error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // GET /movements — recent manual/mobile stock adjustments (for the Restock audit
 // feed). POS sales and invoice receipts are excluded; invoices show on their own.
 router.get('/movements', async (req, res) => {
