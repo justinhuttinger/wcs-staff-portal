@@ -5,7 +5,7 @@ const { requireRole } = require('../middleware/role')
 const jobs = require('../services/blogAutomation/jobs')
 const wp = require('../services/blogAutomation/wordpress')
 const { enabledLocations } = require('../services/blogAutomation/config')
-const { runForLocation } = require('../services/blogAutomation')
+const { runForLocation, runWeekly } = require('../services/blogAutomation')
 
 const router = Router()
 router.use(authenticate)
@@ -34,6 +34,15 @@ router.post('/run', requireRole('admin'), async (req, res) => {
     const result = await runForLocation(location, { publish })
     res.json({ result })
   } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Run every enabled location sequentially (same path as the weekly cron) so the
+// UI never fires N concurrent requests that can OOM the instance. The run takes
+// minutes, so it is fire-and-forget: returns immediately; poll /posts for results.
+router.post('/run-all', requireRole('admin'), (req, res) => {
+  const publish = req.body.publish === true
+  runWeekly({ publish }).catch(e => console.error('[Blog] run-all failed:', e.message))
+  res.json({ started: true, publish, locations: enabledLocations().map(l => l.key) })
 })
 
 module.exports = router

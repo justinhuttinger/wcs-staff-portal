@@ -63,10 +63,13 @@ async function runForLocation(locationKey, { publish = true } = {}) {
   }
 }
 
-async function runWeekly() {
+// Sequential + paced run across all enabled locations (one generation in memory at
+// a time). This is the cron path, and also what the manual "Run all" endpoint uses
+// instead of firing N concurrent requests that can OOM a small instance.
+async function runWeekly({ publish = true } = {}) {
   const results = []
   for (const loc of enabledLocations()) {
-    results.push({ location: loc.key, ...(await runForLocation(loc.key, { publish: true })) })
+    results.push({ location: loc.key, ...(await runForLocation(loc.key, { publish })) })
     await new Promise(r => setTimeout(r, 5000)) // gentle pacing
   }
   console.log('[Blog] weekly run complete', results.map(r => `${r.location}:${r.status}`).join(' '))
@@ -74,6 +77,12 @@ async function runWeekly() {
 }
 
 function start() {
+  // Heal jobs orphaned in `generating` by a previous mid-run restart. Runs on every
+  // boot regardless of the cron flag, since manual runs can orphan jobs too.
+  jobs.sweepStale()
+    .then(swept => { if (swept.length) console.log(`[Blog] swept ${swept.length} stale generating job(s)`) })
+    .catch(e => console.warn('[Blog] stale sweep failed:', e.message))
+
   if (process.env.BLOG_AUTOMATION_ENABLED !== 'true') {
     console.log('[Blog] automation disabled (set BLOG_AUTOMATION_ENABLED=true to enable weekly cron)')
     return
