@@ -16,7 +16,7 @@ const inventorySync = require('../services/inventorySync')
 const { normalizeOrderNumber } = require('../utils/inventoryInvoiceKey')
 const invoiceParse = require('../services/inventoryInvoiceParse')
 const { matchLine, normalizeText, normalizeSku, upcVariants } = require('../utils/inventoryMatch')
-const { parsePriceListCsv } = require('../services/vendorPriceList')
+const { parsePriceListCsv, parseCsv } = require('../services/vendorPriceList')
 const { packUnitize } = require('../utils/inventoryPack')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
@@ -824,6 +824,73 @@ router.get('/employee-spend', requireRole('admin'), async (req, res) => {
     })
   } catch (err) {
     console.error('[Inventory] employee-spend error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /cost-import — bulk-set unit cost from a CSV (the audit export round-trip).
+// CSV must have item_id + new_cost columns (blank new_cost rows are left as-is).
+// A cost is applied to every club's copy of the product (same UPC), matching the
+// Edit Cost modal. Admin only — cost is sensitive.
+router.post('/cost-import', requireRole('admin'), upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
+    const records = parseCsv(req.file.buffer.toString('utf8'))
+    if (!records.length) return res.status(400).json({ error: 'Empty file' })
+
+    const header = records[0].map(h => String(h || '').trim().toLowerCase())
+    const idCol = header.indexOf('item_id')
+    const costCol = header.indexOf('new_cost')
+    const upcCol = header.indexOf('upc')
+    if (idCol === -1 || costCol === -1) {
+      return res.status(400).json({ error: 'CSV must have item_id and new_cost columns' })
+    }
+
+    const updates = []
+    let blank = 0, invalid = 0
+    for (let r = 1; r < records.length; r++) {
+      const row = records[r]
+      const id = String(row[idCol] || '').trim()
+      const rawCost = String(row[costCol] ?? '').trim()
+      if (!id) continue
+      if (rawCost === '') { blank++; continue } // no new cost given — leave it alone
+      const cost = num(rawCost.replace(/[^0-9.]/g, ''))
+      if (!UUID_RE.test(id) || cost == null || cost < 0) { invalid++; continue }
+      updates.push({ item_id: id, cost, upc: upcCol >= 0 ? String(row[upcCol] || '').replace(/\D/g, '') : null })
+    }
+
+    // Resolve each item's UPC so a cost fans out to every club's copy.
+    const ids = [...new Set(updates.map(u => u.item_id))]
+    const upcById = new Map()
+    for (let i = 0; i < ids.length; i += 100) {
+      const { data, error } = await supabaseAdmin
+        .from('inventory_items').select('id, upc').in('id', ids.slice(i, i + 100))
+      if (error) throw error
+      for (const it of data || []) if (it.upc) upcById.set(it.id, it.upc)
+    }
+
+    let updated = 0, notFound = 0
+    const processed = new Set()
+    for (const u of updates) {
+      if (processed.has(u.item_id)) continue
+      const upc = upcById.get(u.item_id) || u.upc || null
+      let targetIds = [u.item_id]
+      if (upc) {
+        const { data: sibs } = await supabaseAdmin.from('inventory_items').select('id').eq('upc', upc)
+        if (sibs && sibs.length) targetIds = [...new Set(sibs.map(s => s.id).concat(u.item_id))]
+      }
+      const { data, error } = await supabaseAdmin
+        .from('inventory_items').update({ last_unit_cost: u.cost, avg_unit_cost: u.cost }).in('id', targetIds).select('id')
+      if (error) throw error
+      if (!data || data.length === 0) { notFound++; continue }
+      updated += data.length
+      data.forEach(d => processed.add(d.id))
+      processed.add(u.item_id)
+    }
+
+    res.json({ updated, rows: updates.length, skipped_blank: blank, invalid, not_found: notFound })
+  } catch (err) {
+    console.error('[Inventory] cost-import error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })
