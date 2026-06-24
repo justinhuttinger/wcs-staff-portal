@@ -90,34 +90,17 @@ const EXPERIMENTAL_TILES = [
 
 const ALL_TILES = [...SETUP_TILES, ...TECHNICAL_TILES, ...EXPERIMENTAL_TILES]
 
-const GROUPS = [
-  { key: 'setup', label: 'Set Up', desc: 'Portal Configuration', icon: 'M11.42 15.17 17.25 21A2.652 2.652 0 0 0 21 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 1 1-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 0 0 4.486-6.336l-3.276 3.277a3.004 3.004 0 0 1-2.25-2.25l3.276-3.276a4.5 4.5 0 0 0-6.336 4.486c.049.58.025 1.193-.14 1.743', tiles: SETUP_TILES },
-  { key: 'technical', label: 'Technical', desc: 'Syncs & Integrations', icon: 'M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5', tiles: TECHNICAL_TILES },
-  { key: 'experimental', label: 'Experimental Tools', desc: 'In-Progress Features', icon: 'M10.5 1.5H8.25A2.25 2.25 0 0 0 6 3.75v16.5a2.25 2.25 0 0 0 2.25 2.25h7.5A2.25 2.25 0 0 0 18 20.25V3.75a2.25 2.25 0 0 0-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3', tiles: EXPERIMENTAL_TILES },
-]
+const EXPERIMENTAL_KEYS = new Set(EXPERIMENTAL_TILES.map(t => t.key))
 
-function TileButton({ tile, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className="group relative flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
-    >
-      <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 text-wcs-red">
-          <path strokeLinecap="round" strokeLinejoin="round" d={tile.icon} />
-        </svg>
-      </div>
-      <div className="text-center">
-        <span className="block text-base font-semibold text-text-primary">{tile.label}</span>
-        <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">{tile.desc}</span>
-      </div>
-    </button>
-  )
-}
+// One flat, alphabetical list of every admin tool. Items that lived under the
+// old "Experimental Tools" group are flagged so the row can show a tag.
+const ADMIN_ITEMS = ALL_TILES
+  .map(t => ({ ...t, experimental: EXPERIMENTAL_KEYS.has(t.key) }))
+  .sort((a, b) => a.label.localeCompare(b.label))
 
 export default function AdminPanel({ onBack, isElectron, onLocationChange, userRole }) {
   const [activeSection, setActiveSection] = useState(null)
-  const [activeGroup, setActiveGroup] = useState(null)
+  const [query, setQuery] = useState('')
 
   // Render active section content
   if (activeSection) {
@@ -179,62 +162,54 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
     )
   }
 
-  // Render group sub-tiles
-  if (activeGroup) {
-    const group = GROUPS.find(g => g.key === activeGroup)
-    return (
-      <div className="w-full px-8 py-6">
-        <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
-          <button
-            onClick={() => setActiveGroup(null)}
-            className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-            Back to Admin
-          </button>
-          <h2 className="text-xl font-bold text-text-primary">{group?.label}</h2>
-        </div>
-        <div className="grid grid-cols-4 gap-4 max-w-5xl mx-auto">
-          {group.tiles.map(tile => (
-            <TileButton key={tile.key} tile={tile} onClick={() => setActiveSection(tile.key)} />
-          ))}
-        </div>
-      </div>
-    )
-  }
+  // Single alphabetical list of every admin tool, filtered by the search box.
+  const q = query.trim().toLowerCase()
+  const visible = q
+    ? ADMIN_ITEMS.filter(t => t.label.toLowerCase().includes(q) || (t.desc || '').toLowerCase().includes(q))
+    : ADMIN_ITEMS
 
-  // Render top-level groups
   return (
     <div className="w-full px-8 py-6">
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
         <h2 className="text-xl font-bold text-text-primary">Admin Panel</h2>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-        {GROUPS.map(group => (
-          <button
-            key={group.key}
-            onClick={() => setActiveGroup(group.key)}
-            className="group relative flex flex-col items-center justify-center gap-4 rounded-[14px] bg-surface border border-border p-10 min-h-[200px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
-          >
-            <div className="flex items-center justify-center w-16 h-16 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-8 h-8 text-wcs-red">
-                <path strokeLinecap="round" strokeLinejoin="round" d={group.icon} />
+      <div className="max-w-3xl mx-auto">
+        <input
+          type="text"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Filter admin tools…"
+          className="w-full mb-4 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-wcs-red/30"
+        />
+
+        <div className="divide-y divide-border rounded-xl border border-border bg-surface overflow-hidden">
+          {visible.map(tile => (
+            <button
+              key={tile.key}
+              onClick={() => setActiveSection(tile.key)}
+              className="group w-full flex items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-bg"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-text-primary">{tile.label}</span>
+                  {tile.experimental && (
+                    <span className="shrink-0 rounded-full bg-wcs-red/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-wcs-red">
+                      Experimental
+                    </span>
+                  )}
+                </div>
+                {tile.desc && <p className="mt-0.5 text-xs text-text-muted">{tile.desc}</p>}
+              </div>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 shrink-0 text-text-muted transition-colors group-hover:text-text-primary">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
               </svg>
-            </div>
-            <div className="text-center">
-              <span className="block text-lg font-semibold text-text-primary">{group.label}</span>
-              <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">{group.desc}</span>
-            </div>
-            <div className="flex flex-wrap justify-center gap-1.5 mt-1">
-              {group.tiles.map(t => (
-                <span key={t.key} className="text-[10px] text-text-muted bg-bg rounded-full px-2 py-0.5">{t.label}</span>
-              ))}
-            </div>
-          </button>
-        ))}
+            </button>
+          ))}
+          {visible.length === 0 && (
+            <p className="px-5 py-6 text-sm text-text-muted">No admin tools match “{query}”.</p>
+          )}
+        </div>
       </div>
     </div>
   )
