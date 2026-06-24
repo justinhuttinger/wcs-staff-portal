@@ -37,6 +37,7 @@ import AuditTogglesAdmin from './admin/AuditTogglesAdmin'
 import SpeedToLeadAudit from './admin/SpeedToLeadAudit'
 import MembershipAuditReport from './reports/MembershipAuditReport'
 import UniversityEnrollAdmin from './admin/UniversityEnrollAdmin'
+import BlogAutomationView from './BlogAutomationView'
 
 const SETUP_TILES = [
   { key: 'staff', label: 'Staff', desc: 'Accounts & Roles', icon: 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z' },
@@ -74,6 +75,7 @@ const TECHNICAL_TILES = [
   { key: 'revenue-backfill', label: 'Revenue Backfill', desc: 'ABC CSV Upload', icon: 'M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3' },
   { key: 'referral-rewards', label: 'Referral Rewards', desc: 'Free-Month Credits', icon: 'M21 11.25v8.25a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 1 0 9.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1 1 14.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z' },
   { key: 'speed-to-lead-audit', label: 'Speed to Lead Audit', desc: 'Vet Lead Response Times', icon: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
+  { key: 'blog', label: 'Blog Automation', desc: 'AI Posts', icon: 'M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 0 1-2.25 2.25M16.5 7.5V18a2.25 2.25 0 0 0 2.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 0 0 2.25 2.25h13.5M6 7.5h3v3H6v-3Z' },
 ]
 
 // Experimental Tools — admin-only sandbox for in-progress features
@@ -113,7 +115,7 @@ function TileButton({ tile, onClick }) {
   )
 }
 
-export default function AdminPanel({ onBack, isElectron, onLocationChange }) {
+export default function AdminPanel({ onBack, isElectron, onLocationChange, userRole }) {
   const [activeSection, setActiveSection] = useState(null)
   const [activeGroup, setActiveGroup] = useState(null)
 
@@ -172,6 +174,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange }) {
         {activeSection === 'vendor-price-list' && <VendorPriceListAdmin />}
         {activeSection === 'trends-12mo' && <Trends12moExportTab />}
         {activeSection === 'mastermind' && <MastermindDashboard />}
+        {activeSection === 'blog' && <BlogAutomationView onBack={() => setActiveSection(null)} userRole={userRole} />}
       </div>
     )
   }

@@ -111,7 +111,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTickets, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onBlogAutomation, userRole, userName, marketingAddon, customReports }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTickets, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, userRole, userName, marketingAddon, customReports }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [showOrdering, setShowOrdering] = useState(false)
@@ -608,8 +608,6 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {onTrainerAvail && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}
           {/* 6.5. Marketing Tracker — corporate/admin, or anyone with the marketing add-on */}
           {onMarketingTracker && (roleIdx >= ROLE_LEVELS.corporate || marketingAddon) && <SvgTileButton onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />}
-          {/* 6.55. Blog Automation — corporate/marketing/admin only */}
-          {onBlogAutomation && roleIdx >= ROLE_LEVELS.corporate && <SvgTileButton onClick={onBlogAutomation} iconPath={TILE_ICONS.blog} label="Blog Automation" desc="AI Posts" />}
           {/* 6.6. Inventory (experimental) — lead+ (leads get restock/adjust, no Sales/margin) */}
           {onInventory && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onInventory} iconPath={TILE_ICONS.inventory} label="Inventory" desc="Stock & Costs" />}
           {/* 7-9. Reporting, Tickets + remaining custom tiles
