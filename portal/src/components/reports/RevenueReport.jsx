@@ -227,7 +227,9 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
     setPcSeries(null)
     setPcLoading(true)
     getRevenueProfitCenterMtdTrend(
-      { end_date: endDate, location_slug: locationSlug, profit_center: pc },
+      // Anchor the MTD trend on the capped end (yesterday) the summary used, so
+      // the drilldown's "This MTD" matches the totals above it.
+      { end_date: data?.period?.end || endDate, location_slug: locationSlug, profit_center: pc },
       { cache: true }
     )
       .then(d => { setPcSeries(d.series); setPcLoading(false) })
@@ -240,14 +242,18 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
       ['Profit Center', 'Total', 'Pct of Total'],
       ...data.by_profit_center.map(p => [p.name, p.total.toFixed(2), (p.pct_of_total * 100).toFixed(2) + '%']),
     ]
-    exportCSV(rows, `revenue-${startDate}_to_${endDate}`)
+    exportCSV(rows, `revenue-${data.period?.start || startDate}_to_${data.period?.end || endDate}`)
   }
 
   if (loading) return <DesktopLoading variant="report" />
   if (error) return <div className="text-red-600">Error: {error.message || String(error)}</div>
   if (!data) return null
 
-  const points = buildPoints(data.by_day, startDate, endDate)
+  // Use the server's effective period — it caps end at yesterday since today's
+  // revenue isn't in yet — so the label and chart match the totals.
+  const periodStart = data.period?.start || startDate
+  const periodEnd = data.period?.end || endDate
+  const points = buildPoints(data.by_day, periodStart, periodEnd)
 
   return (
     <div className="space-y-6">
@@ -255,7 +261,7 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
         <StatCard
           label="Total Revenue"
           value={fmtMoney(data.total)}
-          sub={<>{startDate} → {endDate}</>}
+          sub={<>{periodStart} → {periodEnd}</>}
         />
         <ComparisonCard
           label="vs Last Month"
