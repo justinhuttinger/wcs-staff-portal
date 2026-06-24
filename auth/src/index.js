@@ -160,4 +160,11 @@ app.listen(PORT, () => {
       console.error('[inventorySync] failed to start:', err.message)
     }
   }
+
+  // Blog automation weekly cron — opt-in via BLOG_AUTOMATION_ENABLED=true.
+  try {
+    require('./services/blogAutomation').start()
+  } catch (err) {
+    console.error('[blog] failed to start:', err.message)
+  }
 })
