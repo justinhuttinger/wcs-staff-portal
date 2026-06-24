@@ -53,6 +53,81 @@ const SUB_TABS = [
 
 const moneyClass = (n) => (Number(n) < 0 ? 'text-wcs-red font-semibold' : Number(n) > 0 ? 'text-emerald-600 font-semibold' : 'text-text-primary')
 
+// Roll a list of { category, revenue, cogs } lines up into per-category revenue /
+// COGS / profit / margin. cogs may be null for a line whose item has no cost on
+// file — those lines still count toward revenue but flag the category so we can
+// note that profit is overstated where cost is missing.
+function rollupByCategory(items) {
+  const m = new Map()
+  for (const r of items) {
+    const cat = r.category || 'Uncategorized'
+    const e = m.get(cat) || { category: cat, revenue: 0, cogs: 0, anyNoCost: false }
+    e.revenue += Number(r.revenue) || 0
+    if (r.cogs == null) e.anyNoCost = true
+    else e.cogs += Number(r.cogs) || 0
+    m.set(cat, e)
+  }
+  return [...m.values()].map(e => ({
+    category: e.category,
+    revenue: +e.revenue.toFixed(2),
+    cogs: +e.cogs.toFixed(2),
+    profit: +(e.revenue - e.cogs).toFixed(2),
+    margin_pct: e.revenue > 0 ? +(((e.revenue - e.cogs) / e.revenue) * 100).toFixed(1) : null,
+    anyNoCost: e.anyNoCost,
+  })).sort((a, b) => b.revenue - a.revenue)
+}
+
+// Shared by-category summary table (Product Sales + Employee Spend).
+function CategoryTable({ rows, revenueLabel = 'Revenue' }) {
+  if (!rows.length) return null
+  const tot = rows.reduce((a, r) => ({ revenue: a.revenue + r.revenue, cogs: a.cogs + r.cogs, profit: a.profit + r.profit }), { revenue: 0, cogs: 0, profit: 0 })
+  const totMargin = tot.revenue > 0 ? (tot.profit / tot.revenue) * 100 : null
+  const someNoCost = rows.some(r => r.anyNoCost)
+  return (
+    <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-border bg-bg/40"><p className="text-xs font-bold uppercase tracking-wider text-text-muted">By Category</p></div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
+              <th className="py-2.5 px-4">Category</th>
+              <th className="py-2.5 px-2 text-right">{revenueLabel}</th>
+              <th className="py-2.5 px-2 text-right">COGS</th>
+              <th className="py-2.5 px-2 text-right">Profit</th>
+              <th className="py-2.5 px-4 text-right">Margin</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.category} className="border-b border-border/50 hover:bg-bg/40">
+                <td className="py-2 px-4 font-medium text-text-primary">{r.category}{r.anyNoCost && <span className="ml-1 text-text-muted">*</span>}</td>
+                <td className="py-2 px-2 text-right">{fmtMoney(r.revenue)}</td>
+                <td className="py-2 px-2 text-right">{fmtMoney(r.cogs)}</td>
+                <td className={`py-2 px-2 text-right ${moneyClass(r.profit)}`}>{fmtMoney(r.profit)}</td>
+                <td className="py-2 px-4 text-right">
+                  {r.margin_pct != null ? <span className={r.margin_pct < 0 ? 'text-wcs-red font-semibold' : 'text-emerald-600 font-semibold'}>{r.margin_pct}%</span> : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-border bg-bg/40 font-semibold">
+              <td className="py-2 px-4 text-text-primary">Total</td>
+              <td className="py-2 px-2 text-right">{fmtMoney(tot.revenue)}</td>
+              <td className="py-2 px-2 text-right">{fmtMoney(tot.cogs)}</td>
+              <td className={`py-2 px-2 text-right ${moneyClass(tot.profit)}`}>{fmtMoney(tot.profit)}</td>
+              <td className="py-2 px-4 text-right">{totMargin != null ? `${totMargin.toFixed(1)}%` : '—'}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      {someNoCost && (
+        <p className="text-xs text-text-muted px-4 py-2.5 border-t border-border">* Some items in this category have no cost on file — COGS and profit exclude them, so profit is overstated there.</p>
+      )}
+    </div>
+  )
+}
+
 export default function PosSalesReport({ startDate, endDate, locationSlug }) {
   const [subTab, setSubTab] = useState('sales')
   const [search, setSearch] = useState('')
@@ -94,11 +169,51 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
     setSalesSort(s => (!s || s.col !== col ? { col, dir: 'desc' } : s.dir === 'desc' ? { col, dir: 'asc' } : null))
   }
 
-  // Product Sales: search + sort.
-  const displaySummary = useMemo(() => {
+  // On the All-Clubs view, blend the same product (same UPC) across clubs into a
+  // single line: units / revenue / COGS sum; COGS is only "known" if every club's
+  // contribution had a cost. Single-club view is already one row per item.
+  const consolidatedSummary = useMemo(() => {
     if (!summary) return []
+    if (!allLoc) return summary
+    const byProduct = new Map()
+    for (const r of summary) {
+      const key = r.upc ? `upc:${r.upc}` : (r.item_id ? `id:${r.item_id}` : `un:${r.name}`)
+      const e = byProduct.get(key) || { item_id: r.item_id, name: r.name, upc: r.upc, category: r.category || null, units: 0, revenue: 0, cogs: 0, cogsKnown: true }
+      e.units += Number(r.units) || 0
+      e.revenue += Number(r.revenue) || 0
+      if (r.cogs == null) { if ((Number(r.units) || 0) !== 0) e.cogsKnown = false }
+      else e.cogs += Number(r.cogs)
+      if (!e.category && r.category) e.category = r.category
+      byProduct.set(key, e)
+    }
+    return [...byProduct.values()].map(e => ({
+      item_id: e.item_id, name: e.name, upc: e.upc, category: e.category,
+      units: +e.units.toFixed(2),
+      revenue: +e.revenue.toFixed(2),
+      cogs: e.cogsKnown ? +e.cogs.toFixed(2) : null,
+      profit: e.cogsKnown ? +(e.revenue - e.cogs).toFixed(2) : null,
+      margin_pct: e.cogsKnown && e.revenue > 0 ? +(((e.revenue - e.cogs) / e.revenue) * 100).toFixed(1) : null,
+    }))
+  }, [summary, allLoc])
+
+  // Product Sales by-category rollup (top summary).
+  const salesCategoryRollup = useMemo(() => rollupByCategory(consolidatedSummary), [consolidatedSummary])
+
+  // Employee Spend by-category rollup. Revenue = staff spend; per-row COGS =
+  // spend − profit where profit is known (else the item has no cost on file).
+  const empCategoryRollup = useMemo(() => {
+    if (!empSpend) return []
+    return rollupByCategory(empSpend.rows.map(r => ({
+      category: r.category,
+      revenue: Number(r.emp_spend) || 0,
+      cogs: r.profit != null ? (Number(r.emp_spend) || 0) - Number(r.profit) : null,
+    })))
+  }, [empSpend])
+
+  // Product Sales: search + sort over the consolidated rows.
+  const displaySummary = useMemo(() => {
     const q = search.trim().toLowerCase()
-    let rows = q ? summary.filter(r => (r.name || '').toLowerCase().includes(q) || (r.upc || '').includes(q)) : summary.slice()
+    let rows = q ? consolidatedSummary.filter(r => (r.name || '').toLowerCase().includes(q) || (r.upc || '').includes(q)) : consolidatedSummary.slice()
     if (salesSort) {
       const getters = {
         name: r => (r.name || '').toLowerCase(),
@@ -120,7 +235,7 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
       })
     }
     return rows
-  }, [summary, search, salesSort])
+  }, [consolidatedSummary, search, salesSort])
 
   const rangeLabel = `${startDate}_to_${endDate}`
 
@@ -177,6 +292,8 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
 
       {/* === Product Sales === */}
       {subTab === 'sales' && (
+        <div className="space-y-4">
+        {salesCategoryRollup.length > 0 && <CategoryTable rows={salesCategoryRollup} />}
         <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
           {loading && summary === null ? (
             <p className="text-sm text-text-muted p-6 text-center">Crunching numbers...</p>
@@ -225,6 +342,7 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
             </p>
           )}
         </div>
+        </div>
       )}
 
       {/* === Employee Spend === */}
@@ -240,6 +358,8 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
                 <span className="ml-auto text-sm text-text-primary">Spend: <span className="font-bold">{fmtMoney(empSpend.totals.spend)}</span></span>
                 <span className="text-sm text-text-primary">Profit: <span className="font-bold">{empSpend.totals.profit != null ? fmtMoney(empSpend.totals.profit) : '—'}</span></span>
               </div>
+
+              {empCategoryRollup.length > 0 && <div className="mt-4"><CategoryTable rows={empCategoryRollup} revenueLabel="Spend" /></div>}
 
               <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden mt-4">
                 {empSpend.rows.length === 0 ? (
