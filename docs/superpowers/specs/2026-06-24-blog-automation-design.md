@@ -107,11 +107,16 @@ location) — no separate table needed.
 
 ### Per-location config (`config.js`, static)
 
-For each of the 6 locations: `location` key, `name`, `city`, `wpCategory`,
-`driveFolderId` (the link you give me), `keywords[]`, `landmarks[]`,
+For each of the 6 locations: `location` key (= the `media_assets.location`
+string), `name`, `city`, `wpCategory`, `keywords[]`, `landmarks[]`,
 `neighborhoods[]`, `localContext`, `enabled`. Medford gets fresh SEO context
-(it postdates the old `autoblogger`). The Drive folder ids are committed
-alongside the SEO context. (A portal-editable version is a later enhancement.)
+(it postdates the old `autoblogger`).
+
+**No per-location Drive folder ID is needed.** The Media Library already indexes
+the per-location photo folders and tags each asset with its `location`, so the
+photo picker filters on the location key alone. Confirmed indexed image counts
+(2026-06-24): Salem 1120, Clackamas 1063, Springfield 787, Keizer 640, Eugene
+583, Medford 79. (A portal-editable config is a later enhancement.)
 
 ## Generation flow (weekly cron, per location)
 
