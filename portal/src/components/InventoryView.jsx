@@ -906,19 +906,19 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
         : i.issues?.includes(auditIssueFilter)
   ), [auditRows, auditIssueFilter])
 
-  // Export the filtered audit rows, flattened to one line per club copy so each
-  // carries a real item_id + cost. The blank new_cost column is meant to be
-  // filled in and re-uploaded to set costs in bulk.
+  // Export the filtered audit rows — one line per product (not per club). Cost is
+  // shared across clubs (by UPC), so the import fans a single new_cost out to
+  // every club's copy. Products with no UPC can't be consolidated, so on the
+  // all-clubs view they already appear as their own per-club rows.
   function exportAudit() {
-    const header = ['item_id', 'item_name', 'upc', 'category', 'club', 'price', 'current_cost', 'new_cost', 'issues']
+    const header = ['item_id', 'item_name', 'upc', 'category', 'clubs', 'price', 'current_cost', 'new_cost', 'issues']
     const rows = [header]
     for (const r of filteredAuditRows) {
-      for (const m of (r._members || [r])) {
-        rows.push([
-          m.id, m.item_name, m.upc || '', m.category || '', m.location_slug || '',
-          m.abc_unit_price ?? '', m.unit_cost ?? '', '', (m.issues || []).join('|'),
-        ])
-      }
+      rows.push([
+        r.id, r.item_name, r.upc || '', r.category || '',
+        r._consolidated ? `${r._clubCount} clubs` : (r.location_slug || ''),
+        r.abc_unit_price ?? '', r.unit_cost ?? '', '', (r.issues || []).join('|'),
+      ])
     }
     const scope = auditIssueFilter === 'all_items' ? 'all' : auditIssueFilter === 'issues' ? 'issues' : auditIssueFilter
     exportCSV(rows, `inventory-audit-${scope}-${slug}-${toLocalDateStr(new Date())}`)
