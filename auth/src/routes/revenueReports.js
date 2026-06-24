@@ -3,6 +3,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole, canSeeAllLocations } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { buildMtdMonthWindows } = require('../services/revenueMtdWindows')
+const { capRevenueEndDate } = require('../services/revenueEndCap')
 const { parseLocationSlugParam, intersectWithAllowed } = require('../utils/locationSlug')
 
 const LOCATION_LABELS = {
@@ -112,18 +113,21 @@ router.get('/summary', authenticate, requireRole('manager'), async (req, res) =>
   try {
     const { start_date, end_date } = req.query
     if (!start_date || !end_date) return res.status(400).json({ error: 'start_date and end_date required' })
+    // Revenue data only exists through yesterday (today's email arrives tomorrow).
+    // Cap the end so MTD comparisons line up day-for-day with the prior periods.
+    const effEnd = capRevenueEndDate(end_date)
     const locationFilter = await resolveLocationFilter(req)
-    const priorPeriod = priorEquivalentPeriod(start_date, end_date)
-    const lastMonthPeriod = shiftByMonths(start_date, end_date, 1)
-    const lastYearPeriod = shiftByYears(start_date, end_date, 1)
+    const priorPeriod = priorEquivalentPeriod(start_date, effEnd)
+    const lastMonthPeriod = shiftByMonths(start_date, effEnd, 1)
+    const lastYearPeriod = shiftByYears(start_date, effEnd, 1)
     const [current, prior, lastMonth, lastYear] = await Promise.all([
-      fetchSummary(start_date, end_date, locationFilter),
+      fetchSummary(start_date, effEnd, locationFilter),
       fetchSummary(priorPeriod.start, priorPeriod.end, locationFilter),
       fetchSummary(lastMonthPeriod.start, lastMonthPeriod.end, locationFilter),
       fetchSummary(lastYearPeriod.start, lastYearPeriod.end, locationFilter),
     ])
     res.json({
-      period: { start: start_date, end: end_date },
+      period: { start: start_date, end: effEnd },
       ...current,
       compare: { period: priorPeriod, ...prior },
       compare_last_month: { period: lastMonthPeriod, ...lastMonth },
@@ -150,7 +154,7 @@ router.get('/profit-center-trend', authenticate, requireRole('manager'), async (
       .select('payment_date, payment_amount')
       .eq('profit_center', profit_center)
       .gte('payment_date', start_date)
-      .lte('payment_date', end_date)
+      .lte('payment_date', capRevenueEndDate(end_date))
     if (locationFilter && locationFilter.length > 0) {
       q = q.in('location_slug', locationFilter)
     } else if (locationFilter && locationFilter.length === 0) {
@@ -191,7 +195,9 @@ router.get('/profit-center-mtd-trend', authenticate, requireRole('manager'), asy
     }
 
     const locationFilter = await resolveLocationFilter(req)
-    const months = buildMtdMonthWindows(end_date, 12)
+    // Cap to yesterday so the current month's MTD cutoff matches the data we have
+    // and every prior month is compared at the same day-of-month.
+    const months = buildMtdMonthWindows(capRevenueEndDate(end_date), 12)
 
     if (locationFilter && locationFilter.length === 0) {
       return res.json({ series: months.map(m => ({ ...m, mtd_total: 0 })) })
