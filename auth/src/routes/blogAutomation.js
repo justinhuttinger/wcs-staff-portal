@@ -29,6 +29,7 @@ router.get('/status', async (req, res) => {
 router.post('/run', requireRole('admin'), async (req, res) => {
   try {
     const location = String(req.body.location || '')
+    if (!location) return res.status(400).json({ error: 'location is required' })
     const publish = req.body.publish === true
     const result = await runForLocation(location, { publish })
     res.json({ result })
