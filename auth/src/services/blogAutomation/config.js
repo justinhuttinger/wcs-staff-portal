@@ -84,7 +84,19 @@ const CATEGORIES = [
       'Personal training options at WCS [Location]'] },
 ]
 
+// Verified internal pages (pulled from the live westcoaststrength.com nav) offered to
+// the generator for in-content SEO linking. Only these exact URLs are allowed; any link
+// the model invents is stripped post-generation (see generate.sanitizeInternalLinks).
+const SITE_LINKS = [
+  { url: 'https://westcoaststrength.com/home/training/', topic: 'personal training and 1-on-1 coaching' },
+  { url: 'https://westcoaststrength.com/home/the-gym/', topic: 'the gym, equipment and facilities' },
+  { url: 'https://westcoaststrength.com/home/contact/', topic: 'booking a free trial or consultation' },
+]
+
+// Each location has its own landing page at /{key-lowercased}/ (verified live).
+const locationUrl = (location) => `https://westcoaststrength.com/${String(location.key).toLowerCase()}/`
+
 const getLocation = (key) => LOCATIONS.find(l => l.key === key)
 const enabledLocations = () => LOCATIONS.filter(l => l.enabled)
 
-module.exports = { LOCATIONS, CATEGORIES, getLocation, enabledLocations }
+module.exports = { LOCATIONS, CATEGORIES, SITE_LINKS, locationUrl, getLocation, enabledLocations }
