@@ -53,6 +53,63 @@ test('generatePost clamps an over-long meta description so it passes validation'
   assert.ok(post.metaDescription.length <= 160, `expected <=160, got ${post.metaDescription.length}`)
 })
 
+test('buildLinkCandidates includes location page, site links, and related posts (deduped)', () => {
+  const loc = require('./config').getLocation('Salem')
+  const related = [
+    { title: 'Post A', wp_url: 'https://westcoaststrength.com/post-a/' },
+    { title: 'No URL', wp_url: null },                                  // dropped
+    { title: 'The Gym dup', wp_url: 'https://westcoaststrength.com/home/the-gym/' }, // dedup vs SITE_LINKS
+  ]
+  const urls = g.buildLinkCandidates(loc, related).map(c => c.url)
+  assert.ok(urls.includes('https://westcoaststrength.com/salem/'), 'has location page')
+  assert.ok(urls.includes('https://westcoaststrength.com/home/training/'), 'has training page')
+  assert.ok(urls.includes('https://westcoaststrength.com/post-a/'), 'has related post')
+  assert.ok(!urls.includes(null), 'drops posts with no url')
+  assert.equal(new Set(urls.map(u => u.replace(/\/+$/, ''))).size, urls.length, 'no duplicate urls')
+})
+
+test('sanitizeInternalLinks keeps allow-listed links and strips the rest to text', () => {
+  const allowed = ['https://westcoaststrength.com/home/training/']
+  const html = '<p>Try <a href="https://westcoaststrength.com/home/training/">our coaching</a> ' +
+    'and <a href="https://evil.example.com/spam">this</a> and ' +
+    '<a href="https://westcoaststrength.com/made-up-page">made up</a>.</p>'
+  const out = g.sanitizeInternalLinks(html, allowed)
+  assert.match(out, /<a href="https:\/\/westcoaststrength\.com\/home\/training\/">our coaching<\/a>/)
+  assert.doesNotMatch(out, /evil\.example\.com/)
+  assert.doesNotMatch(out, /made-up-page/)
+  assert.match(out, /and this and/)   // disallowed anchors unwrapped to their text
+  assert.match(out, /made up\./)
+})
+
+test('sanitizeInternalLinks matches regardless of trailing slash', () => {
+  const out = g.sanitizeInternalLinks(
+    '<a href="https://westcoaststrength.com/salem">Salem</a>',
+    ['https://westcoaststrength.com/salem/'])
+  assert.match(out, /<a href=/, 'trailing-slash mismatch should still be allowed')
+})
+
+test('generatePost strips links the model invents but keeps allow-listed ones', async () => {
+  const fakeText = async ({ prompt }) => {
+    if (/outline/i.test(prompt)) return JSON.stringify({
+      title: 'Strength Basics in Salem', metaDescription: 'A practical strength guide for Salem lifters who want real, lasting results from smart training and steady, simple habits that work.',
+      focusKeyword: 'strength Salem', excerpt: 'Build strength.', headings: ['Compounds'],
+      faq: [{ q: 'Q', a: 'A' }], takeaways: ['Lift'],
+    })
+    return JSON.stringify({
+      intro: '<p>Train at <a href="https://westcoaststrength.com/salem/">WCS Salem</a>.</p>',
+      sections: [{ heading: 'Compounds', html: '<p>See <a href="https://random-site.com/x">this guide</a>.</p>' }],
+      ctaHtml: '<p>Book a <a href="https://westcoaststrength.com/home/contact/">free trial</a>.</p>',
+    })
+  }
+  const loc = require('./config').getLocation('Salem')
+  const post = await g.generatePost({ location: loc, category: 'fitness-tips', topic: 'Strength' },
+    { generateText: fakeText })
+  assert.match(post.contentHtml, /href="https:\/\/westcoaststrength\.com\/salem\/"/)
+  assert.match(post.contentHtml, /href="https:\/\/westcoaststrength\.com\/home\/contact\/"/)
+  assert.doesNotMatch(post.contentHtml, /random-site\.com/)
+  assert.match(post.contentHtml, /See this guide\./)  // invented link unwrapped
+})
+
 test('assembleContentHtml includes sections, takeaways, faq, cta in order', () => {
   const html = g.assembleContentHtml({
     intro: '<p>Intro</p>',

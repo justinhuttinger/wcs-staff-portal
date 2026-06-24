@@ -48,6 +48,17 @@ async function recentRows(location, limit) {
 const recentTopics = async (location, limit = 12) => (await recentRows(location, limit)).map(r => r.topic)
 const recentCategories = async (location, limit = 6) => (await recentRows(location, limit)).map(r => r.category)
 
+// Recently published posts for a location, as { title, wp_url } — fed to the generator
+// as real internal-link candidates (related-post interlinking).
+async function recentPublished(location, limit = 5) {
+  const { data, error } = await supabaseAdmin.from(T)
+    .select('title, wp_url')
+    .eq('location', location).eq('status', 'published').not('wp_url', 'is', null)
+    .order('published_at', { ascending: false }).limit(limit)
+  if (error) throw new Error(`recentPublished failed: ${error.message}`)
+  return data || []
+}
+
 async function listRecent({ location, limit = 50 } = {}) {
   let q = supabaseAdmin.from(T).select('*').order('created_at', { ascending: false }).limit(limit)
   if (location) q = q.eq('location', location)
@@ -79,5 +90,5 @@ async function sweepStale(maxAgeMinutes = 15, deps = {}) {
 
 module.exports = {
   createJob, setStatus, attachContent, attachValidation, attachImage,
-  markPublished, markFailed, markSkipped, recentTopics, recentCategories, listRecent, getById, sweepStale,
+  markPublished, markFailed, markSkipped, recentTopics, recentCategories, recentPublished, listRecent, getById, sweepStale,
 }

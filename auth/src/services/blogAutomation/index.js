@@ -21,11 +21,14 @@ async function runForLocation(locationKey, { publish = true } = {}) {
   const category = topics.pickCategory(recentCats)
   const topic = topics.pickTopic(category, recentTops, location.city)
 
+  // Real internal-link candidates (related published posts). Non-fatal: bad fetch => none.
+  const relatedPosts = await jobs.recentPublished(locationKey, 5).catch(() => [])
+
   const { id: jobId } = await jobs.createJob({ location: locationKey, category, topic })
   try {
     let post, report
     for (let attempt = 1; attempt <= 2; attempt++) {
-      post = await generatePost({ location, category, topic })
+      post = await generatePost({ location, category, topic, relatedPosts })
       const v = await validatePost(post, location)
       report = v.report
       if (v.ok) break

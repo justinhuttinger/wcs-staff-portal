@@ -1,6 +1,7 @@
 // auth/src/services/blogAutomation/generate.js
 'use strict'
 const { generateText: realGenerateText, MODEL_FAST } = require('../dayOneProgram/anthropic')
+const { SITE_LINKS, locationUrl } = require('./config')
 
 const BRAND = `Brand voice: friendly, encouraging, knowledgeable, community-focused, practical. Avoid hype and salesy language. Never use em-dashes (use commas or short sentences). Write for humans first.`
 
@@ -28,6 +29,36 @@ function parseJsonLoose(text) {
   const fence = s.match(/```json\s*\n?([\s\S]*?)\n?```/) || s.match(/```\s*\n?([\s\S]*?)\n?```/)
   if (fence) s = fence[1]
   return JSON.parse(s.trim())
+}
+
+// Build the allow-list of internal links the post may use: this location's landing
+// page, the verified site pages, and recently published posts (real WP URLs). Anything
+// outside this list is stripped after generation, so the model can never publish a
+// broken or invented link.
+function buildLinkCandidates(location, relatedPosts = []) {
+  const candidates = [
+    { url: locationUrl(location), hint: `the West Coast Strength ${location.city} gym page` },
+    ...SITE_LINKS.map(s => ({ url: s.url, hint: s.topic })),
+    ...(relatedPosts || [])
+      .filter(p => p && p.wp_url)
+      .slice(0, 5)
+      .map(p => ({ url: p.wp_url, hint: `related post: "${p.title || 'West Coast Strength blog'}"` })),
+  ]
+  // De-dupe by URL (a related post could coincide with a site page).
+  const seen = new Set()
+  return candidates.filter(c => { const k = c.url.replace(/\/+$/, ''); if (seen.has(k)) return false; seen.add(k); return true })
+}
+
+// Strip any <a> whose href is not in the allow-list (unwrap to its text), keeping the
+// approved ones. Trailing slashes are normalised so the compare is forgiving. This also
+// removes any external links the model adds on its own.
+function sanitizeInternalLinks(html, allowedUrls = []) {
+  const allow = new Set((allowedUrls || []).map(u => String(u).replace(/\/+$/, '')))
+  return String(html || '').replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, (full, inner) => {
+    const m = full.match(/href\s*=\s*["']([^"']*)["']/i)
+    const href = m ? m[1].replace(/\/+$/, '') : ''
+    return allow.has(href) ? full : inner
+  })
 }
 
 // Yoast FAQ Gutenberg block - Yoast emits FAQPage schema from this markup.
@@ -59,25 +90,33 @@ function buildOutlinePrompt(location, category, topic) {
     `Return ONLY JSON: {"title": string (50-60 chars, includes the city), "metaDescription": string (150-160 chars), "focusKeyword": string, "excerpt": string (2 sentences), "headings": string[4-6] (each a clear H2, several phrased as questions), "faq": [{"q","a"}] (3-5, concise direct answers), "takeaways": string[3-5]}`
 }
 
-function buildSectionPrompt(location, topic, headings) {
+function buildSectionPrompt(location, topic, headings, linkCandidates = []) {
+  const linksBlock = linkCandidates.length
+    ? `\nInternal links you MAY use for SEO. Use ONLY these exact URLs, never invent or alter a URL. Where it reads naturally (not forced), add 2 to 4 of them as standard <a href="..."> links with descriptive anchor text. The CTA should link to the ${location.city} gym page or the free-trial page:\n` +
+      linkCandidates.map(c => `- ${c.url} (${c.hint})`).join('\n') + '\n'
+    : ''
   return `${BRAND}\n\nWrite the body for a blog post titled around "${topic}" for ${location.name} in ${location.city}, Oregon.\n` +
     `For EACH heading, write 1-2 short scannable paragraphs of genuinely helpful, specific, factual content. Where a heading is a question, answer it directly in the first sentence (AEO). Weave in local references naturally. No em-dashes.\n` +
+    linksBlock +
     `Headings: ${JSON.stringify(headings)}\n\n` +
     `Return ONLY JSON: {"intro": string (HTML, one <p>, opens with a direct value statement), "sections": [{"heading": string (must match an input heading), "html": string (HTML paragraphs)}], "ctaHtml": string (one <p> CTA inviting readers to West Coast Strength ${location.city})}`
 }
 
-async function generatePost({ location, category, topic }, deps = {}) {
+async function generatePost({ location, category, topic, relatedPosts = [] }, deps = {}) {
   const generateText = deps.generateText || realGenerateText
+  const linkCandidates = buildLinkCandidates(location, relatedPosts)
   const outline = parseJsonLoose(await generateText({
     prompt: buildOutlinePrompt(location, category, topic), maxTokens: 1500,
   }))
   const bodyRaw = parseJsonLoose(await generateText({
-    prompt: buildSectionPrompt(location, topic, outline.headings || []), maxTokens: 3000,
+    prompt: buildSectionPrompt(location, topic, outline.headings || [], linkCandidates), maxTokens: 3000,
   }))
-  const contentHtml = assembleContentHtml({
+  const rawHtml = assembleContentHtml({
     intro: bodyRaw.intro, sections: bodyRaw.sections || [],
     takeaways: outline.takeaways || [], faq: outline.faq || [], ctaHtml: bodyRaw.ctaHtml,
   })
+  // Drop any link the model invented or pulled from outside the allow-list.
+  const contentHtml = sanitizeInternalLinks(rawHtml, linkCandidates.map(c => c.url))
   return {
     title: outline.title, slug: slugify(outline.title || topic),
     metaDescription: clampMetaDescription(outline.metaDescription), focusKeyword: outline.focusKeyword,
@@ -87,5 +126,6 @@ async function generatePost({ location, category, topic }, deps = {}) {
 
 module.exports = {
   slugify, clampMetaDescription, parseJsonLoose, buildFaqBlock, assembleContentHtml,
+  buildLinkCandidates, sanitizeInternalLinks,
   buildOutlinePrompt, buildSectionPrompt, generatePost, MODEL_FAST,
 }
