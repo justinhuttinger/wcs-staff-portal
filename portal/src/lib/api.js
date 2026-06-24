@@ -1358,6 +1358,7 @@ export const blogAutomation = {
   posts: (location) => api(`/blog-automation/posts${location ? `?location=${encodeURIComponent(location)}` : ''}`),
   status: () => api('/blog-automation/status'),
   run: (location, publish) => api('/blog-automation/run', { method: 'POST', body: JSON.stringify({ location, publish }) }),
+  runAll: (publish) => api('/blog-automation/run-all', { method: 'POST', body: JSON.stringify({ publish }) }),
 }
 
 // Daily Snapshot

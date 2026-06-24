@@ -37,6 +37,8 @@ export default function BlogAutomationView({ onBack, userRole }) {
 
   // Per-location run state: { [location]: { running, error } }
   const [runState, setRunState] = useState({})
+  // "Run all" state: sequential server-side run (fire-and-forget).
+  const [runAllState, setRunAllState] = useState({ running: false, message: null, error: null })
 
   const loadStatus = useCallback(async () => {
     setLoadingStatus(true)
@@ -79,6 +81,25 @@ export default function BlogAutomationView({ onBack, userRole }) {
       return
     }
     setRunState(prev => ({ ...prev, [location]: { running: false, error: null } }))
+  }
+
+  // Run every location sequentially on the server (one at a time, paced) instead of
+  // firing N concurrent per-location requests. The endpoint is fire-and-forget, so it
+  // returns immediately and results trickle into the Recent Posts table over a few minutes.
+  async function handleRunAll(publish) {
+    setRunAllState({ running: true, message: null, error: null })
+    try {
+      const data = await blogAutomation.runAll(publish)
+      const count = data?.locations?.length || locations.length
+      setRunAllState({
+        running: false,
+        message: `Started ${publish ? 'publishing' : 'a test run'} for ${count} location${count === 1 ? '' : 's'}, one at a time. This runs in the background (~1 min each) — use Refresh to see results.`,
+        error: null,
+      })
+      await loadPosts()
+    } catch (err) {
+      setRunAllState({ running: false, message: null, error: err.message })
+    }
   }
 
   // Derive sorted unique locations from status or posts
@@ -132,6 +153,30 @@ export default function BlogAutomationView({ onBack, userRole }) {
       {isAdmin && locations.length > 0 && (
         <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
           <h3 className="text-sm font-bold text-text-primary mb-3">Manual Run</h3>
+
+          {/* Run all — sequential server-side run (safe under load; one location at a time) */}
+          <div className="flex flex-wrap items-center gap-3 pb-3 mb-3 border-b border-border">
+            <span className="text-sm font-semibold text-text-primary w-28 shrink-0">All locations</span>
+            <button
+              className={btnSecondary}
+              disabled={runAllState.running}
+              onClick={() => handleRunAll(false)}
+            >
+              {runAllState.running ? 'Starting...' : 'Test all (no publish)'}
+            </button>
+            <button
+              className={btnPrimary}
+              disabled={runAllState.running}
+              onClick={() => handleRunAll(true)}
+            >
+              {runAllState.running ? 'Starting...' : 'Publish all now'}
+            </button>
+            {runAllState.error && <span className="text-xs text-wcs-red">{runAllState.error}</span>}
+          </div>
+          {runAllState.message && (
+            <p className="text-xs text-tile-sub mb-3">{runAllState.message}</p>
+          )}
+
           <div className="flex flex-col gap-2">
             {locations.map((loc) => {
               const rs = runState[loc] || {}
