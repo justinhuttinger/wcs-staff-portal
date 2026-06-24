@@ -6,6 +6,7 @@ const { abcSync } = require('./abc/abcSync');
 const { syncPayrollRecurringWindow } = require('./abc/recurringServices');
 const { alertSyncFailed } = require('./alerts');
 const { runMediaIndex } = require('./media/mediaIndex');
+const { checkRevenueGaps } = require('./revenue/gapCheck');
 
 function startScheduler() {
   const intervalMinutes = process.env.SYNC_INTERVAL_MINUTES || 10;
@@ -78,7 +79,18 @@ function startScheduler() {
     runMediaIndex().catch((err) => console.error('[Scheduler] Media index failed:', err.message))
   })
 
+  // Revenue report gap check — daily. ABC's daily "Revenue by Profit Center"
+  // email feeds the Revenue report; a missed email leaves a silent hole (no row
+  // is logged for a no-show). Run late enough that the day's email has surely
+  // arrived (observed latest ~18:00 UTC), then SMS-alert on any gap.
+  const revenueGapCheckHour = Number(process.env.REVENUE_GAP_CHECK_HOUR || 20); // UTC
+  cron.schedule(`0 ${revenueGapCheckHour} * * *`, () => {
+    console.log('[Scheduler] Starting revenue gap check...');
+    checkRevenueGaps().catch((err) => console.error('[Scheduler] Revenue gap check failed:', err.message));
+  });
+
   console.log(`[Scheduler] Delta sync every ${intervalMinutes}m, full sync daily at ${fullSyncHour}:00 PST (${fullSyncHourUTC}:00 UTC)`);
+  console.log(`[Scheduler] Revenue gap check daily at ${revenueGapCheckHour}:00 UTC`);
   console.log(`[Scheduler] Payroll recurring sync daily at ${payrollSyncHour}:00 PST (${payrollSyncHourUTC}:00 UTC)`);
   console.log(`[Scheduler] ABC sync every ${abcIntervalMinutes}m (DRY_RUN=${process.env.DRY_RUN || 'true'})`);
 }
