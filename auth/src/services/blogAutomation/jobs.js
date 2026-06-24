@@ -62,7 +62,22 @@ async function getById(id) {
   return data
 }
 
+// Heal jobs orphaned in `generating` by a mid-run process restart (a single small
+// instance can OOM under concurrent manual runs). Only touches rows with a NULL
+// error_message: a successful dry run is parked in `generating` WITH the
+// 'test run, not published' message, so it must be left alone.
+async function sweepStale(maxAgeMinutes = 15, deps = {}) {
+  const db = deps.supabase || supabaseAdmin
+  const cutoff = new Date(Date.now() - maxAgeMinutes * 60 * 1000).toISOString()
+  const { data, error } = await db.from(T)
+    .update({ status: 'failed', error_message: 'stuck in generating (likely a mid-run restart); auto-swept' })
+    .eq('status', 'generating').is('error_message', null).lt('created_at', cutoff)
+    .select('id')
+  if (error) throw new Error(`sweepStale failed: ${error.message}`)
+  return data || []
+}
+
 module.exports = {
   createJob, setStatus, attachContent, attachValidation, attachImage,
-  markPublished, markFailed, markSkipped, recentTopics, recentCategories, listRecent, getById,
+  markPublished, markFailed, markSkipped, recentTopics, recentCategories, listRecent, getById, sweepStale,
 }
