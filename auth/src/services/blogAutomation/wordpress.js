@@ -28,13 +28,21 @@ async function getOrCreateTerm(kind, name, deps = {}) {
   const match = existing.find(t => t.name.toLowerCase() === name.toLowerCase())
   if (match) return match.id
   const cr = await f(base, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ name }) })
-  if (!cr.ok) throw new Error(`WP ${kind} create ${cr.status}: ${await cr.text()}`)
-  return (await cr.json()).id
+  if (cr.ok) return (await cr.json()).id
+  // The term may already exist even though our search did not surface it (WP search
+  // is fuzzy/paginated). WP rejects the duplicate with term_exists and returns the
+  // existing id - use it instead of failing the whole post.
+  const errBody = await cr.json().catch(() => ({}))
+  if (errBody.code === 'term_exists') {
+    const existingId = errBody.data?.term_id ?? (Array.isArray(errBody.additional_data) ? errBody.additional_data[0] : null)
+    if (existingId) return existingId
+  }
+  throw new Error(`WP ${kind} create ${cr.status}: ${JSON.stringify(errBody)}`)
 }
 const getOrCreateTag = (name, deps) => getOrCreateTerm('tags', name, deps)
 const getOrCreateCategory = (name, deps) => getOrCreateTerm('categories', name, deps)
 
-async function uploadMedia(buffer, meta, slug, deps = {}) {
+async function uploadMedia(buffer, meta, slug, altText, deps = {}) {
   const f = deps.fetch || fetch
   const ext = (meta.mimeType || '').includes('png') ? 'png' : 'jpg'
   const filename = `${(slug || 'blog').replace(/[^a-z0-9-]/gi, '-')}.${ext}`
@@ -45,7 +53,19 @@ async function uploadMedia(buffer, meta, slug, deps = {}) {
     body: buffer,
   })
   if (!res.ok) throw new Error(`WP media upload ${res.status}: ${await res.text()}`)
-  return (await res.json()).id
+  const id = (await res.json()).id
+  // Set alt text for accessibility + image SEO. The media library title is just a
+  // camera filename, so the post title is the best available description. Non-fatal:
+  // the image is already uploaded, so a failure here must not abort the post.
+  if (altText) {
+    try {
+      const ar = await f(`${WP_API_BASE}/media/${id}`, {
+        method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ alt_text: altText }),
+      })
+      if (!ar.ok) console.warn(`[Blog] media alt_text update ${ar.status}`)
+    } catch (e) { console.warn('[Blog] media alt_text update failed (continuing):', e.message) }
+  }
+  return id
 }
 
 async function publishPost({ post, location, image }, deps = {}) {
@@ -54,7 +74,7 @@ async function publishPost({ post, location, image }, deps = {}) {
   const categoryId = await getOrCreateCategory(location.wpCategory, deps)
   let mediaId = null
   if (image && image.buffer) {
-    try { mediaId = await uploadMedia(image.buffer, image, post.slug, deps) }
+    try { mediaId = await uploadMedia(image.buffer, image, post.slug, post.title, deps) }
     catch (e) { console.warn('[Blog] WP media upload failed (continuing):', e.message) }
   }
   const res = await f(`${WP_API_BASE}/posts`, {
