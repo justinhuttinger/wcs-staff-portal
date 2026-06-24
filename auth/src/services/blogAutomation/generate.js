@@ -9,6 +9,20 @@ function slugify(title) {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
+// Models routinely overshoot the Yoast meta-description range by a few characters.
+// Overshoot is mechanically fixable, so clamp to <=max at a word boundary rather than
+// failing the whole post on it (the >160 programmatic check was skipping good posts).
+function clampMetaDescription(md, max = 160) {
+  const s = String(md || '').trim()
+  if (s.length <= max) return s
+  // Leave room for a closing period, then back up to the last whole word.
+  let cut = s.slice(0, max - 1)
+  const lastSpace = cut.lastIndexOf(' ')
+  if (lastSpace > 0) cut = cut.slice(0, lastSpace)
+  cut = cut.replace(/[\s.,;:!?-]+$/, '') // strip trailing punctuation/whitespace
+  return cut + '.'
+}
+
 function parseJsonLoose(text) {
   let s = String(text || '').trim()
   const fence = s.match(/```json\s*\n?([\s\S]*?)\n?```/) || s.match(/```\s*\n?([\s\S]*?)\n?```/)
@@ -66,12 +80,12 @@ async function generatePost({ location, category, topic }, deps = {}) {
   })
   return {
     title: outline.title, slug: slugify(outline.title || topic),
-    metaDescription: outline.metaDescription, focusKeyword: outline.focusKeyword,
+    metaDescription: clampMetaDescription(outline.metaDescription), focusKeyword: outline.focusKeyword,
     excerpt: outline.excerpt, contentHtml, faq: outline.faq || [],
   }
 }
 
 module.exports = {
-  slugify, parseJsonLoose, buildFaqBlock, assembleContentHtml,
+  slugify, clampMetaDescription, parseJsonLoose, buildFaqBlock, assembleContentHtml,
   buildOutlinePrompt, buildSectionPrompt, generatePost, MODEL_FAST,
 }
