@@ -434,15 +434,17 @@ router.get('/summary', requireRole('manager'), async (req, res) => {
     // PostgREST request URL exceed the length limit and returns 400 Bad Request.
     const itemIds = [...new Set((data || []).map(r => r.item_id).filter(Boolean))]
     const costByItem = new Map()
+    const catByItem = new Map()
     const COST_CHUNK = 100
     for (let i = 0; i < itemIds.length; i += COST_CHUNK) {
       const chunk = itemIds.slice(i, i + COST_CHUNK)
       const { data: costRows, error: cErr2 } = await supabaseAdmin
-        .from('inventory_items').select('id, avg_unit_cost, last_unit_cost').in('id', chunk)
+        .from('inventory_items').select('id, avg_unit_cost, last_unit_cost, category').in('id', chunk)
       if (cErr2) throw cErr2
       for (const it of costRows || []) {
         const c = num(it.avg_unit_cost) ?? num(it.last_unit_cost)
         if (c != null) costByItem.set(it.id, c)
+        if (it.category) catByItem.set(it.id, it.category)
       }
     }
 
@@ -453,6 +455,7 @@ router.get('/summary', requireRole('manager'), async (req, res) => {
       const key = row.item_id || `unmatched:${row.name}`
       const entry = byItem.get(key) || {
         item_id: row.item_id, name: row.name, upc: row.upc,
+        category: row.item_id ? catByItem.get(row.item_id) || null : null,
         location_slug: CLUB_TO_SLUG[row.club_number] || null,
         units: 0, revenue: 0, cogs: 0, cogs_known: true,
       }
