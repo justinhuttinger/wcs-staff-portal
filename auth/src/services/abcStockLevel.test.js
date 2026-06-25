@@ -89,3 +89,16 @@ test('putStockLevel: unsendable value → skipped (no fetch call)', async () => 
   assert.strictEqual(r.status, 'skipped')
   assert.strictEqual(called, false)
 })
+
+test('putStockLevel: HTTP error with non-JSON body → failed (not synced)', async () => {
+  const r = await putStockLevel('1234', 'SALE1', { action: 'add', quantity: 5 }, {
+    fetchImpl: async () => ({ ok: false, status: 502, json: async () => { throw new Error('not json') }, text: async () => 'Bad Gateway' }),
+  })
+  assert.strictEqual(r.status, 'failed')
+  assert.ok(/502/.test(r.error || ''), `expected HTTP 502 in error, got ${r.error}`)
+})
+
+test('buildStockBody: skips non-integer override quantity', () => {
+  assert.strictEqual(buildStockBody({ action: 'override', quantity: 5.5 }).ok, false)
+  assert.strictEqual(buildStockBody({ action: 'override', quantity: 3 }).ok, true)
+})

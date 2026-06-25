@@ -27,7 +27,7 @@ function buildStockBody({ action, quantity, unitCost, vendor, reason, notes }) {
     if (!Number.isInteger(q) || q <= 0) return { ok: false, skipReason: 'add quantity must be a positive integer' }
     if (q > 9999) return { ok: false, skipReason: 'add quantity exceeds 4 digits' }
   } else { // override
-    if (q < 0) return { ok: false, skipReason: 'override quantity must be >= 0' }
+    if (!Number.isInteger(q) || q < 0) return { ok: false, skipReason: 'override quantity must be a non-negative integer' }
   }
   const body = { action, quantity: String(Math.trunc(q)) }
   if (Number.isFinite(Number(unitCost))) body.unitCost = Number(unitCost).toFixed(2)
@@ -42,7 +42,7 @@ function buildStockBody({ action, quantity, unitCost, vendor, reason, notes }) {
 // no-op we can treat as already-synced" (override equals current stock).
 function classifyAbcResult(json) {
   const code = json?.status?.messageCode || null
-  if (code && code !== 'API-CLU-ITM-0010' && /-0000$/.test(code)) {
+  if (code && /-0000$/.test(code)) {
     return { ok: true, code, message: json?.status?.message || null, benign: false }
   }
   const errs = Array.isArray(json?.errorMessages) ? json.errorMessages : []
@@ -77,7 +77,12 @@ async function putStockLevel(clubNumber, saleItemId, opts, deps = {}) {
     let json = {}
     try { json = await res.json() } catch { json = {} }
     const c = classifyAbcResult(json)
-    if (c.ok || c.benign) return { status: 'synced', code: c.code, error: null }
+    // benign (override == current) wins even on a 400 envelope. Otherwise a
+    // success classification is only trusted on a 2xx — an HTTP error with a
+    // non-JSON/empty body must NOT be read as success (it would be marked synced
+    // and never retried, losing the stock change).
+    if (c.benign) return { status: 'synced', code: c.code, error: null }
+    if (c.ok && res.ok) return { status: 'synced', code: c.code, error: null }
     return { status: 'failed', code: c.code, error: (c.message || `HTTP ${res.status}`).slice(0, 500) }
   } catch (e) {
     return { status: 'failed', code: null, error: String(e.message || e).slice(0, 500) }
