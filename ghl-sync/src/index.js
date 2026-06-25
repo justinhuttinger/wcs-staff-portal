@@ -14,6 +14,7 @@ const LOCATIONS = require('./config/locations');
 const { startScheduler } = require('./scheduler');
 const supabase = require('./db/supabase');
 const { runMediaIndex } = require('./media/mediaIndex');
+const { syncRecurringPtServices } = require('./abc/recurringPtServices');
 
 const app = express();
 app.use(express.json());
@@ -447,6 +448,16 @@ app.post('/api/sync/abc/:locationSlug', requireSecret, (req, res) => {
 app.post('/api/media/reindex', requireSecret, (req, res) => {
   res.json({ status: 'started', message: 'Media index running in background' })
   runMediaIndex().catch((err) => console.error('[API] Media index failed:', err.message))
+})
+
+// POST /api/sync/recurring-pt — pull active recurring PT agreements into
+// abc_recurring_pt_services (PT Projections report). Heavy scan; runs in the
+// background. Use for the first backfill and ad-hoc refreshes.
+app.post('/api/sync/recurring-pt', requireSecret, (req, res) => {
+  res.json({ status: 'started', message: 'Recurring PT sync running in background' })
+  syncRecurringPtServices()
+    .then((r) => console.log('[API] Recurring PT sync results:', JSON.stringify(r)))
+    .catch((err) => console.error('[API] Recurring PT sync failed:', err.message))
 })
 
 // POST /api/sync/employees — run only the ABC → GHL employee dropdown sync

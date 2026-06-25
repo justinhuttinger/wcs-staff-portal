@@ -132,6 +132,14 @@ export default function PTProjectionsReport({ startDate, endDate, locationSlug }
         </div>
       )}
 
+      {/* Empty state: the recurring PT data is synced nightly, so it is blank
+          until the first sync runs. */}
+      {!data.lastSyncedAt && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-900">
+          No recurring PT data has synced yet. This report updates from a nightly sync; check back after it runs.
+        </div>
+      )}
+
       {/* Summary cards */}
       <div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -146,7 +154,9 @@ export default function PTProjectionsReport({ startDate, endDate, locationSlug }
           </p>
         )}
         {summary.asOf && (
-          <p className="mt-1 text-xs text-text-muted">As of {fmtDate(summary.asOf)}</p>
+          <p className="mt-1 text-xs text-text-muted">
+            As of {fmtDate(summary.asOf)}{data.lastSyncedAt ? ` · data synced ${fmtDate(String(data.lastSyncedAt).slice(0, 10))}` : ''}
+          </p>
         )}
       </div>
 

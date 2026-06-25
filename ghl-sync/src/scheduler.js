@@ -4,6 +4,7 @@ const { deltaSync } = require('./sync/deltaSync');
 const { crossLocCleanup } = require('./sync/crossLocCleanup');
 const { abcSync } = require('./abc/abcSync');
 const { syncPayrollRecurringWindow } = require('./abc/recurringServices');
+const { syncRecurringPtServices } = require('./abc/recurringPtServices');
 const { alertSyncFailed } = require('./alerts');
 const { runMediaIndex } = require('./media/mediaIndex');
 const { checkRevenueGaps } = require('./revenue/gapCheck');
@@ -89,7 +90,23 @@ function startScheduler() {
     checkRevenueGaps().catch((err) => console.error('[Scheduler] Revenue gap check failed:', err.message));
   });
 
+  // Active recurring PT agreements (PT Projections report) — daily. Heavy
+  // 2020->today ABC scan per club; run it in the background so the report just
+  // reads the table. Default 4:30am PST.
+  const recurringPtHour = Number(process.env.RECURRING_PT_SYNC_HOUR || 4); // PST
+  const recurringPtHourUTC = (recurringPtHour + 8) % 24;
+  cron.schedule(`30 ${recurringPtHourUTC} * * *`, async () => {
+    console.log('[Scheduler] Starting recurring PT services sync...');
+    try {
+      await syncRecurringPtServices();
+    } catch (err) {
+      console.error('[Scheduler] Recurring PT sync failed:', err.message);
+      await alertSyncFailed(err).catch(() => {});
+    }
+  });
+
   console.log(`[Scheduler] Delta sync every ${intervalMinutes}m, full sync daily at ${fullSyncHour}:00 PST (${fullSyncHourUTC}:00 UTC)`);
+  console.log(`[Scheduler] Recurring PT sync daily at ${recurringPtHour}:30 PST (${recurringPtHourUTC}:30 UTC)`);
   console.log(`[Scheduler] Revenue gap check daily at ${revenueGapCheckHour}:00 UTC`);
   console.log(`[Scheduler] Payroll recurring sync daily at ${payrollSyncHour}:00 PST (${payrollSyncHourUTC}:00 UTC)`);
   console.log(`[Scheduler] ABC sync every ${abcIntervalMinutes}m (DRY_RUN=${process.env.DRY_RUN || 'true'})`);
