@@ -18,6 +18,7 @@ const invoiceParse = require('../services/inventoryInvoiceParse')
 const { matchLine, normalizeText, normalizeSku, upcVariants } = require('../utils/inventoryMatch')
 const { parsePriceListCsv, parseCsv } = require('../services/vendorPriceList')
 const { packUnitize } = require('../utils/inventoryPack')
+const { pushMovement } = require('../services/abcStockLevel')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
 
@@ -348,7 +349,7 @@ router.post('/items/:id/adjust', async (req, res) => {
     const delta = setQty != null ? setQty - current : qtyDelta
     const after = current + delta
 
-    const { error: mErr } = await supabaseAdmin.from('inventory_movements').insert({
+    const { data: mvRow, error: mErr } = await supabaseAdmin.from('inventory_movements').insert({
       item_id: item.id,
       club_number: item.club_number,
       kind,
@@ -358,13 +359,18 @@ router.post('/items/:id/adjust', async (req, res) => {
       note: typeof req.body.note === 'string' ? req.body.note.slice(0, 500) : null,
       created_by: req.staff.id,
       created_by_name: req.staff.display_name || req.staff.email || null,
-    })
+      abc_push_status: 'pending',
+    }).select('id').single()
     if (mErr) throw mErr
 
     const { data: updated, error: uErr } = await supabaseAdmin
       .from('inventory_items').update({ qty_on_hand: after }).eq('id', item.id).select().single()
     if (uErr) throw uErr
-    res.json({ item: decorateItem(updated) })
+
+    // Best-effort mirror to ABC; never blocks the portal write.
+    let abcPush = { status: 'pending', error: null }
+    try { abcPush = await pushMovement(mvRow.id) } catch (e) { abcPush = { status: 'failed', error: e.message } }
+    res.json({ item: decorateItem(updated), abc_push: { status: abcPush.status, error: abcPush.error || null } })
   } catch (err) {
     console.error('[Inventory] adjust error:', err.message)
     res.status(500).json({ error: err.message })
@@ -1380,6 +1386,7 @@ router.post('/invoices/:id/receive', async (req, res) => {
     }
 
     let applied = 0
+    const pushIds = []
     for (const line of matched) {
       const { data: item } = await supabaseAdmin
         .from('inventory_items').select('*').eq('id', line.item_id).maybeSingle()
@@ -1394,7 +1401,7 @@ router.post('/invoices/:id/receive', async (req, res) => {
         ? (onHand * prevAvg + qty * cost) / (onHand + qty)
         : cost
 
-      const { error: mErr } = await supabaseAdmin.from('inventory_movements').insert({
+      const { data: mvRow, error: mErr } = await supabaseAdmin.from('inventory_movements').insert({
         item_id: item.id,
         club_number: item.club_number,
         kind: 'received',
@@ -1406,8 +1413,10 @@ router.post('/invoices/:id/receive', async (req, res) => {
         note: invoice.vendor + (invoice.invoice_number ? ` #${invoice.invoice_number}` : ''),
         created_by: req.staff.id,
         created_by_name: req.staff.display_name || req.staff.email || null,
-      })
+        abc_push_status: 'pending',
+      }).select('id').single()
       if (mErr) throw mErr
+      pushIds.push(mvRow.id)
 
       const { error: uErr } = await supabaseAdmin.from('inventory_items').update({
         qty_on_hand: (num(item.qty_on_hand) || 0) + qty,
@@ -1440,7 +1449,15 @@ router.post('/invoices/:id/receive', async (req, res) => {
     await supabaseAdmin.from('inventory_invoices')
       .update({ received_at: new Date().toISOString() }).eq('id', invoice.id)
 
-    res.json({ success: true, applied, skipped: (lines || []).length - applied })
+    const abcAgg = { synced: 0, failed: 0, skipped: 0 }
+    for (const id of pushIds) {
+      let r
+      try { r = await pushMovement(id) } catch { r = { status: 'failed' } }
+      if (r.status === 'synced') abcAgg.synced++
+      else if (r.status === 'skipped') abcAgg.skipped++
+      else abcAgg.failed++
+    }
+    res.json({ success: true, applied, skipped: (lines || []).length - applied, abc_push: abcAgg })
   } catch (err) {
     console.error('[Inventory] receive error:', err.message)
     res.status(500).json({ error: err.message })

@@ -243,6 +243,7 @@ async function syncPosForClub(clubNumber) {
           source: 'abc_pos',
           ref_id: String(t.transactionId),
           occurred_at: t.transactionTimestamp,
+          abc_push_status: 'na',
         })
         qtyDeltas.set(match.id, (qtyDeltas.get(match.id) || 0) + delta)
       }
