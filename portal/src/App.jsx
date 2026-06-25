@@ -370,7 +370,7 @@ export default function App() {
           onBack={() => setShowDriveHub(false)}
           onDrive={() => { setShowDriveHub(false); setShowDrive(true) }}
           onMedia={() => { setShowDriveHub(false); setShowMediaLibrary(true) }}
-          canMedia={['corporate', 'marketing', 'admin', 'director'].includes(user?.staff?.role)}
+          canMedia={(user?.visible_tools || []).includes('drive')}
         />
       ) : showDrive ? (
         <DriveView onBack={() => setShowDrive(false)} />

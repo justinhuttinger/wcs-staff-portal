@@ -1,19 +1,22 @@
 // auth/src/routes/media.js
 // Media Library: semantic search over the indexed Drive media folder.
-// Gated to corporate/marketing/admin (requireRole('corporate') covers all three
-// in the role hierarchy). Thumbnails are proxied because the Drive folder is
-// private and <img> can't send a Bearer token directly.
+// Gated to anyone who has the "Shared Drive" tile (requireTile('drive')) — the
+// Media search lives inside the Shared Drive hub, so its access tracks the tile
+// exactly rather than a fixed role tier. Reindex stays admin-only below.
+// Thumbnails are proxied because the Drive folder is private and <img> can't
+// send a Bearer token directly.
 const { Router } = require('express')
 const { Readable } = require('stream')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { requireTile } = require('../middleware/tile')
 const { getAccessToken } = require('./googleBusiness')
 const { embedQuery } = require('../services/voyageQuery')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('corporate'))
+router.use(requireTile('drive'))
 
 const DRIVE_FILES = 'https://www.googleapis.com/drive/v3/files'
 
