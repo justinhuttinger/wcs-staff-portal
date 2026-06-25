@@ -130,6 +130,7 @@ function OutcomeModal({ appointment, locationSlug, onClose, onSubmitted }) {
     try {
       const result = await submitDayOneResult({
         contact_id: appointment.contact_id,
+        appointment_id: appointment.id,
         location_slug: locationSlug,
         show_no_show: showNoShow,
         sale_result: showNoShow === 'Show' ? saleResult : null,
@@ -269,6 +270,14 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
   const [activeModal, setActiveModal] = useState(null) // pending D1 — editable
   const [detailModal, setDetailModal] = useState(null) // completed D1 — read-only
 
+  // Completion gate: lead+ can record any Day One; base team members (front
+  // desk / trainers) can only record the one assigned to them. Everyone still
+  // SEES every Day One — this only governs who can open the outcome form.
+  const BASE_ROLES = ['team_member', 'front_desk', 'personal_trainer']
+  const canCompleteAny = !BASE_ROLES.includes(user?.staff?.role)
+  const userEmail = (user?.staff?.email || '').toLowerCase()
+  const canCompleteApt = (apt) => canCompleteAny || (apt.assigned_user_email || '').toLowerCase() === userEmail
+
   const userLocations = user?.staff?.locations || []
   const primaryLoc = userLocations.find(l => l.is_primary) || userLocations[0]
   const [locationId, setLocationId] = useState(primaryLoc?.id)
@@ -360,6 +369,7 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
             status: getDayOneStatus(apt),
             sale: apt.day_one_sale,
             pending,
+            canComplete: canCompleteApt(apt),
             raw: apt,
           })
         }
@@ -603,7 +613,7 @@ function DayItems({ items, onDayOneClick }) {
   return (
     <div className="space-y-3">
       {items.map(item => {
-        const clickable = item.type === 'dayone' && (item.pending || item.status === 'Completed' || item.status === 'No Show')
+        const clickable = item.type === 'dayone' && (item.status === 'Completed' || item.status === 'No Show' || (item.pending && item.canComplete))
         return (
         <div
           key={item.id}
@@ -654,7 +664,7 @@ function DayItems({ items, onDayOneClick }) {
 }
 
 function CalendarCard({ item, onDayOneClick }) {
-  const clickable = item.type === 'dayone' && (item.pending || item.status === 'Completed' || item.status === 'No Show')
+  const clickable = item.type === 'dayone' && (item.status === 'Completed' || item.status === 'No Show' || (item.pending && item.canComplete))
   const isTour = item.type === 'tour'
   const bgColor = item.pending
     ? 'bg-yellow-50 border-yellow-300 hover:border-yellow-400'

@@ -127,22 +127,10 @@ router.get('/appointments', async (req, res) => {
       console.warn('[DayOneTracker] Could not fetch users:', e.message)
     }
 
-    // Role check: lead+ run the floor and see every Day One at the location
-    // (same as Tours). team_member/trainer/front_desk see only their own —
-    // the Day One assigned to them in GHL — so a trainer's view stays their
-    // personal schedule.
-    const userLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
-    const leadLevel = ROLE_HIERARCHY.indexOf('lead')
-    const seesAll = userLevel >= leadLevel
-    const userEmail = req.staff.email?.toLowerCase()
-
-    if (!seesAll) {
-      allEvents = allEvents.filter(evt => {
-        const assignedId = evt.assignedUserId
-        const assignedUser = userMap[assignedId]
-        return assignedUser?.email === userEmail
-      })
-    }
+    // Visibility: everyone sees every Day One at the location (same as Tours),
+    // so the whole team can see who is coming in. Completion is gated
+    // separately in POST /submit — team members can only record outcomes for
+    // the Day One assigned to them; lead+ can record any.
 
     // Fetch contact names + custom fields from synced data
     const contactIds = [...new Set(allEvents.map(e => e.contactId).filter(Boolean))]
@@ -204,7 +192,7 @@ router.get('/appointments', async (req, res) => {
 
 // POST /day-one-tracker/submit
 router.post('/submit', async (req, res) => {
-  const { contact_id, location_slug, show_no_show, sale_result, pt_sale_type, why_no_sale } = req.body
+  const { contact_id, location_slug, show_no_show, sale_result, pt_sale_type, why_no_sale, appointment_id } = req.body
 
   if (!contact_id || !location_slug || !show_no_show) {
     return res.status(400).json({ error: 'contact_id, location_slug, and show_no_show are required' })
@@ -216,6 +204,33 @@ router.post('/submit', async (req, res) => {
   }
 
   try {
+    // Completion gate: lead+ may record any Day One. team_member / front_desk /
+    // personal_trainer may only record the Day One assigned to them in GHL.
+    // Enforced server-side off the appointment's true assignedUserId so it
+    // cannot be bypassed by a crafted request.
+    const requesterLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
+    const leadLevel = ROLE_HIERARCHY.indexOf('lead')
+    if (requesterLevel < leadLevel) {
+      let assignedEmail = null
+      if (appointment_id) {
+        try {
+          const apptData = await ghlFetch(`/calendars/events/appointments/${appointment_id}`, location.apiKey, { version: CAL_VERSION })
+          const appt = apptData.appointment || apptData.event || apptData
+          const assignedUserId = appt?.assignedUserId || appt?.assignedTo || null
+          if (assignedUserId) {
+            const usersData = await ghlFetch('/users/', location.apiKey, { params: { locationId: location.id } })
+            const match = (usersData.users || []).find(u => u.id === assignedUserId)
+            assignedEmail = (match?.email || '').toLowerCase()
+          }
+        } catch (e) {
+          console.warn('[DayOneTracker] Ownership check failed:', e.message)
+        }
+      }
+      if (!assignedEmail || assignedEmail !== (req.staff.email || '').toLowerCase()) {
+        return res.status(403).json({ error: 'You can only complete Day Ones assigned to you. Ask a lead or manager to record this one.' })
+      }
+    }
+
     const { data: fieldDefs } = await supabaseAdmin
       .from('ghl_custom_field_defs')
       .select('id, field_key')
