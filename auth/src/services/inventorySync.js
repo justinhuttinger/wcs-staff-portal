@@ -16,6 +16,7 @@ const { fetchCatalogItems, fetchPosTransactions, num } = require('./abcInventory
 const { fetchEmployees, CLUBS: EMP_CLUBS } = require('./abcEmployeeRoster')
 const { ALL_SLUGS, SLUG_CLUB_MAP } = require('../utils/locationSlug')
 const { isSellableProfitCenter } = require('../utils/inventoryProfitCenters')
+const { runAbcPushRetry } = require('./abcPushRetry')
 
 // First POS sync looks back this far; later runs resume from the last sync
 // minus a 1h overlap (the unique constraint dedupes the overlap).
@@ -365,7 +366,14 @@ function start() {
   cron.schedule(`*/${posMinutes} * * * *`, () => {
     runPosSync().catch(err => console.error('[InventorySync] pos cron failed:', err.message))
   })
+  // Retry failed/stuck ABC stock pushes every 15 minutes.
+  cron.schedule('*/15 * * * *', () => {
+    runAbcPushRetry().then(
+      (r) => { if (r.attempted) console.log('[Inventory] ABC push retry:', JSON.stringify(r)) },
+      (e) => console.error('[Inventory] ABC push retry failed:', e.message),
+    )
+  })
   console.log(`[InventorySync] scheduled — employees + catalog daily ~3:15-3:30am PST, POS every ${posMinutes}m`)
 }
 
-module.exports = { runCatalogSync, runPosSync, runEmployeeSync, start, running }
+module.exports = { runCatalogSync, runPosSync, runEmployeeSync, runAbcPushRetry, start, running }
