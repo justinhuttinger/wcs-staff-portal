@@ -10,6 +10,9 @@ const { normalizeService, computeProjections } = require('../lib/ptProjections')
 const PT_PROJ_FRESH_MS = 2 * 60 * 1000
 const PT_PROJ_STALE_MS = 15 * 60 * 1000
 const PT_PROFIT_CENTERS = ['TRAINING', 'PERSONAL TRAINING']
+// Rolling forward calendar: show each agreement's next draft out this many days,
+// so the "upcoming billing" view crosses the month boundary into next month.
+const HORIZON_DAYS = 45
 
 const router = Router()
 router.use(authenticate)
@@ -26,6 +29,11 @@ function monthStartIso() {
 function monthEndIso() {
   const d = new Date(); const e = new Date(d.getFullYear(), d.getMonth() + 1, 0)
   return `${e.getFullYear()}-${String(e.getMonth() + 1).padStart(2, '0')}-${String(e.getDate()).padStart(2, '0')}`
+}
+function addDaysIso(iso, days) {
+  const d = new Date(iso + 'T00:00:00')
+  d.setDate(d.getDate() + days)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 async function fetchCollected(slugs, startDate, endDate) {
@@ -57,6 +65,7 @@ async function buildPtProjectionsPayload(query) {
   const start = query.start_date || monthStartIso()
   const end = query.end_date || monthEndIso()
   const today = todayIso()
+  const horizonEnd = addDaysIso(today, HORIZON_DAYS)
 
   const cacheKey = `reports:pt-projections:${slugKey}:${start}:${end}`
   return wrapSWR(cacheKey, PT_PROJ_FRESH_MS, PT_PROJ_STALE_MS, async () => {
@@ -78,8 +87,8 @@ async function buildPtProjectionsPayload(query) {
     const slugs = parsed.all ? null : parsed.slugs
     const collected = await fetchCollected(slugs, start, end)
 
-    // 3. Reconcile.
-    const out = computeProjections({ services, collected, windowStart: start, windowEnd: end, today })
+    // 3. Reconcile (month) + forward calendar (rolling horizon).
+    const out = computeProjections({ services, collected, windowStart: start, windowEnd: end, today, horizonEnd })
     if (errors.length) out.errors = errors
     return out
   })

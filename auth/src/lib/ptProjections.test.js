@@ -20,6 +20,16 @@ test('normalizeService maps raw ABC fields', () => {
   assert.equal(n.amount, 120)
 })
 
+test('normalizeService slices ABC timestamp dates to YYYY-MM-DD', () => {
+  const n = normalizeService({
+    memberId: '1', invoiceTotal: '50',
+    recurringServiceDates: { nextBillingDate: '2026-07-05 00:00:00.0' },
+  }, 'salem')
+  assert.equal(n.nextBillingDate, '2026-07-05')
+  const empty = normalizeService({ memberId: '2', invoiceTotal: '0', recurringServiceDates: {} }, 'salem')
+  assert.equal(empty.nextBillingDate, null)
+})
+
 test('reconciliation splits collected, outstanding, past-due without double counting', () => {
   const today = '2026-06-25'
   const services = [
@@ -41,17 +51,22 @@ test('reconciliation splits collected, outstanding, past-due without double coun
   assert.equal(r.summary.asOf, today)
 })
 
-test('byDay lists only upcoming drafts in [today, end], ascending', () => {
+test('byDay forward calendar spans [today, horizonEnd], crossing the month boundary', () => {
   const r = computeProjections({
     services: [
-      svc('1', 'A', 'salem', '2026-06-28', 100),
-      svc('2', 'A', 'salem', '2026-06-28', 50),
+      svc('1', 'A', 'salem', '2026-06-28', 100), // this month, upcoming
+      svc('2', 'A', 'salem', '2026-06-28', 50),  // same day
       svc('3', 'A', 'salem', '2026-06-10', 200), // past-due, excluded from byDay
-      svc('4', 'A', 'salem', '2026-07-09', 80),  // beyond window end, excluded
+      svc('4', 'A', 'salem', '2026-07-09', 80),  // next month, within horizon -> INCLUDED
+      svc('5', 'A', 'salem', '2026-09-01', 70),  // beyond horizon -> excluded
     ],
-    collected: [], windowStart: '2026-06-01', windowEnd: '2026-06-30', today: '2026-06-25',
+    collected: [], windowStart: '2026-06-01', windowEnd: '2026-06-30',
+    today: '2026-06-25', horizonEnd: '2026-08-09',
   })
-  assert.deepEqual(r.byDay, [{ date: '2026-06-28', amount: 150, count: 2 }])
+  assert.deepEqual(r.byDay, [
+    { date: '2026-06-28', amount: 150, count: 2 },
+    { date: '2026-07-09', amount: 80, count: 1 },
+  ])
 })
 
 test('byLocation aggregates each bucket per slug', () => {
@@ -87,24 +102,27 @@ test('byTrainer attributes collected via member->trainer map from services', () 
   assert.equal(other.projected, 40)  // collected only, no services
 })
 
-test('member status classification', () => {
+test('member status uses the horizon for upcoming; beyond-horizon is future', () => {
   const r = computeProjections({
     services: [
-      svc('1', 'A', 'salem', '2026-06-28', 100),  // upcoming
+      svc('1', 'A', 'salem', '2026-06-28', 100),  // upcoming (this month)
       svc('2', 'A', 'salem', '2026-06-10', 200),  // pastdue (no collected row)
-      svc('3', 'A', 'salem', '2026-07-09', 80),   // future
+      svc('3', 'A', 'salem', '2026-07-09', 80),   // next month, within horizon -> upcoming
+      svc('6', 'A', 'salem', '2026-09-01', 70),   // beyond horizon -> future
     ],
     collected: [{ memberNumber: '4', location: 'salem', amount: 50 }],
-    windowStart: '2026-06-01', windowEnd: '2026-06-30', today: '2026-06-25',
+    windowStart: '2026-06-01', windowEnd: '2026-06-30',
+    today: '2026-06-25', horizonEnd: '2026-08-09',
   })
   const byId = Object.fromEntries(r.members.map(m => [m.memberId, m.status]))
   assert.equal(byId['1'], 'upcoming')
   assert.equal(byId['2'], 'pastdue')
-  assert.equal(byId['3'], 'future')
+  assert.equal(byId['3'], 'upcoming')
+  assert.equal(byId['6'], 'future')
 })
 
 test('empty input yields zero summary, no crash', () => {
   const r = computeProjections({ services: [], collected: [], windowStart: '2026-06-01', windowEnd: '2026-06-30', today: '2026-06-25' })
-  assert.deepEqual(r.summary, { projected: 0, collected: 0, outstanding: 0, pastDue: 0, window: { start: '2026-06-01', end: '2026-06-30' }, asOf: '2026-06-25' })
+  assert.deepEqual(r.summary, { projected: 0, collected: 0, outstanding: 0, pastDue: 0, window: { start: '2026-06-01', end: '2026-06-30' }, asOf: '2026-06-25', horizonEnd: '2026-06-30' })
   assert.deepEqual(r.byDay, [])
 })
