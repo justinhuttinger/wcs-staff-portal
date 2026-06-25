@@ -19,8 +19,43 @@ const ROLE_ALIASES = {
 //    is kept only so any pre-migration rows still resolve sanely.
 const ROLE_HIERARCHY = ['team_member', 'lead', 'custom', 'manager', 'corporate', 'marketing', 'admin']
 
+// In-memory map of admin-created (non-builtin) role name -> canonical base tier.
+// This is what lets the SYNCHRONOUS gates below (roleLevel/requireRole/
+// canSeeAllLocations/canAccessReport) resolve a custom role the same way the
+// async permission compute does. Built-in roles are deliberately NOT loaded
+// here — their behavior stays exactly as before (identity or alias), so the
+// built-in 'custom' role keeps resolving to 'custom' (its own tier), not to its
+// 'lead' base_tier. Empty until refreshCustomRoleTiers() runs at startup; an
+// unknown custom role therefore resolves to tier -1 (blocked) — fail closed.
+let _customRoleTiers = {}
+
+// Test/seam hook: set the map directly without touching the database.
+function setCustomRoleTiers(map) {
+  _customRoleTiers = map && typeof map === 'object' ? { ...map } : {}
+}
+
+// Load every non-builtin role's base_tier into the in-memory map. Call at
+// startup and after any role create/rename/delete so the sync gates see custom
+// roles. Lazy-requires supabase (it throws at import time without env).
+async function refreshCustomRoleTiers() {
+  const { supabaseAdmin } = require('../services/supabase')
+  const { data, error } = await supabaseAdmin
+    .from('roles').select('name, base_tier').eq('is_builtin', false)
+  if (error) throw error
+  const map = {}
+  for (const r of (data || [])) {
+    if (r.name && ROLE_HIERARCHY.includes(r.base_tier)) map[r.name] = r.base_tier
+  }
+  _customRoleTiers = map
+  return map
+}
+
 function resolveRole(role) {
-  return ROLE_ALIASES[role] || role
+  // Aliases first (front_desk -> team_member, …) so a pathological custom role
+  // sharing an alias name can never shadow the canonical alias mapping.
+  if (ROLE_ALIASES[role]) return ROLE_ALIASES[role]
+  if (_customRoleTiers[role]) return _customRoleTiers[role]
+  return role
 }
 
 function roleLevel(role) {
@@ -146,4 +181,5 @@ module.exports = {
   requireRole, requireReportAccess, resolveRole, roleLevel, ROLE_HIERARCHY, ROLE_ALIASES,
   REPORT_ACCESS, canAccessReport, canSeeAllLocations, ALL_LOCATION_ROLES,
   isFullMarketing, hasMarketingAddon, canUseMarketing, marketingScope, requireMarketing,
+  refreshCustomRoleTiers, setCustomRoleTiers,
 }

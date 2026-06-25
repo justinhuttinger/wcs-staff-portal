@@ -1,7 +1,7 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { requireRole, refreshCustomRoleTiers } = require('../middleware/role')
 const { validateRoleName, buildPermissionGrid, TIERS } = require('../services/rolesAdmin')
 
 const router = Router()
@@ -321,6 +321,8 @@ router.post('/roles', requireRole('admin'), async (req, res) => {
       await supabaseAdmin.from('role_tool_visibility')
         .upsert(baseRows.map(r => ({ role: role.name, tool_key: r.tool_key, visible: r.visible })), { onConflict: 'role,tool_key' })
     }
+    // Make the new role resolvable by the synchronous auth gates immediately.
+    await refreshCustomRoleTiers().catch(() => {})
     res.status(201).json({ role })
   } catch (err) {
     res.status(500).json({ error: 'Failed to create role' })
@@ -345,6 +347,9 @@ router.patch('/roles/:id', requireRole('admin'), async (req, res) => {
     const { data: updated, error } = await supabaseAdmin
       .rpc('rename_role', { p_id: req.params.id, p_new_name: newName })
     if (error) return res.status(500).json({ error: 'Failed to rename role' })
+    // The role name changed; refresh the sync gate map (and any assigned staff
+    // now carry the new name via the rename_role cascade).
+    await refreshCustomRoleTiers().catch(() => {})
     res.json({ role: Array.isArray(updated) ? updated[0] : updated })
   } catch (err) {
     res.status(500).json({ error: 'Failed to rename role' })
@@ -361,6 +366,7 @@ router.delete('/roles/:id', requireRole('admin'), async (req, res) => {
     if (count && count > 0) return res.status(409).json({ error: `Reassign ${count} member(s) before deleting this role` })
     await supabaseAdmin.from('role_tool_visibility').delete().eq('role', role.name)
     await supabaseAdmin.from('roles').delete().eq('id', req.params.id)
+    await refreshCustomRoleTiers().catch(() => {})
     res.json({ ok: true })
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete role' })
