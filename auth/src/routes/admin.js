@@ -2,6 +2,10 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
+const { getBaseTier } = require('../services/roles')
+const { roleBaseKeys, loadCatalog } = require('../services/permissions')
+const { buildPermissionGrid, planOverrideWrites } = require('../services/rolesAdmin')
+const memoryCache = require('../services/memoryCache')
 
 const router = Router()
 
@@ -123,6 +127,75 @@ router.get('/staff', requireRole('manager'), async (req, res) => {
     res.json({ staff: staffWithLocs })
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch staff' })
+  }
+})
+
+// GET /admin/staff/:id/overrides — admin: data for the per-person override
+// editor. Returns the member's role + canonical base tier, the full permission
+// grid (Apps/Tools/Reports), the role's inherited baseline (perms on by
+// default), and the member's current overrides. The UI renders a three-state
+// control (Inherit/Force on/Force off) per row, locking rows above the ceiling.
+router.get('/staff/:id/overrides', requireRole('admin'), async (req, res) => {
+  try {
+    const { data: member } = await supabaseAdmin
+      .from('staff').select('id, role, custom_tiles').eq('id', req.params.id).maybeSingle()
+    if (!member) return res.status(404).json({ error: 'Staff not found' })
+
+    const [{ data: catalog }, { data: tiles }, { data: overrides }] = await Promise.all([
+      supabaseAdmin.from('permission_catalog').select('perm_key, label, category, min_tier'),
+      supabaseAdmin.from('custom_tiles').select('id, label'),
+      supabaseAdmin.from('staff_permission_overrides').select('perm_key, visible').eq('staff_id', member.id),
+    ])
+    const tileLabels = {}
+    for (const t of (tiles || [])) tileLabels['tile:' + t.id] = { label: t.label }
+
+    const [baseTier, baseKeys] = await Promise.all([getBaseTier(member.role), roleBaseKeys(member)])
+
+    res.json({
+      rbac_v2_enabled: process.env.RBAC_V2_ENABLED === 'true',
+      role: member.role,
+      base_tier: baseTier,
+      grid: buildPermissionGrid(catalog || [], tileLabels),
+      base_keys: baseKeys, // inherited-on baseline (before overrides)
+      overrides: overrides || [], // [{ perm_key, visible }]
+    })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load overrides' })
+  }
+})
+
+// PUT /admin/staff/:id/overrides — admin: set per-person overrides.
+// Body: { items: [{ perm_key, state: 'inherit' | 'on' | 'off' }] }. 'inherit'
+// deletes the row (follow the role); 'on'/'off' upsert visible true/false. A
+// force-on above the member's tier ceiling (or an uncatalogued report key) is
+// dropped here, matching the compute in applyOverrides — never grant past tier.
+router.put('/staff/:id/overrides', requireRole('admin'), async (req, res) => {
+  const items = Array.isArray(req.body?.items) ? req.body.items : null
+  if (!items) return res.status(400).json({ error: 'items array is required' })
+  try {
+    const { data: member } = await supabaseAdmin
+      .from('staff').select('id, role').eq('id', req.params.id).maybeSingle()
+    if (!member) return res.status(404).json({ error: 'Staff not found' })
+
+    const [catalog, baseTier] = await Promise.all([loadCatalog(), getBaseTier(member.role)])
+    // Plan the writes (with the tier-ceiling clamp) in a pure, tested helper.
+    const { toDelete, toUpsert } = planOverrideWrites(items, member.id, catalog, baseTier, ROLE_HIERARCHY)
+
+    if (toDelete.length) {
+      const { error } = await supabaseAdmin.from('staff_permission_overrides')
+        .delete().eq('staff_id', member.id).in('perm_key', toDelete)
+      if (error) return res.status(500).json({ error: 'Failed to clear overrides' })
+    }
+    if (toUpsert.length) {
+      const { error } = await supabaseAdmin.from('staff_permission_overrides')
+        .upsert(toUpsert, { onConflict: 'staff_id,perm_key' })
+      if (error) return res.status(500).json({ error: 'Failed to save overrides' })
+    }
+    // Invalidate the cached overrides so /me and tile gates reflect immediately.
+    memoryCache.del('staff_overrides:' + member.id)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save overrides' })
   }
 })
 
