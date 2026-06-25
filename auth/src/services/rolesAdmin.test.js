@@ -1,6 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert')
 const { validateRoleName, buildPermissionGrid, TIERS, planOverrideWrites } = require('./rolesAdmin')
+const { ROLE_HIERARCHY } = require('../middleware/role')
 
 const HIER = ['team_member', 'lead', 'manager', 'corporate', 'admin']
 const CATALOG = { 'report:payroll': 'manager', 'report:membership': 'lead' }
@@ -77,4 +78,23 @@ test('planOverrideWrites: malformed items are skipped', () => {
   ], SID, CATALOG, 'admin', HIER)
   assert.deepStrictEqual(toDelete, [])
   assert.deepStrictEqual(toUpsert, [])
+})
+
+test('planOverrideWrites: a clamped force-on is also deleted, not left as a stale row', () => {
+  // payroll needs manager; a lead force-on must be dropped AND its existing row removed.
+  const { toDelete, toUpsert } = planOverrideWrites(
+    [{ perm_key: 'report:payroll', state: 'on' }], SID, CATALOG, 'lead', HIER)
+  assert.deepStrictEqual(toUpsert, [])
+  assert.deepStrictEqual(toDelete, ['report:payroll'])
+})
+
+test('planOverrideWrites: clamp is correct against the real ROLE_HIERARCHY (custom/marketing present)', () => {
+  // corporate-gated report force-on for a manager-tier member must be dropped,
+  // even though 'custom' sits between lead and manager and 'marketing' between
+  // corporate and admin in the real hierarchy.
+  const catalog = { 'report:meta-ads': 'corporate', 'report:membership': 'lead' }
+  const drop = planOverrideWrites([{ perm_key: 'report:meta-ads', state: 'on' }], SID, catalog, 'manager', ROLE_HIERARCHY)
+  assert.deepStrictEqual(drop.toUpsert, [])
+  const keep = planOverrideWrites([{ perm_key: 'report:membership', state: 'on' }], SID, catalog, 'manager', ROLE_HIERARCHY)
+  assert.deepStrictEqual(keep.toUpsert, [{ staff_id: SID, perm_key: 'report:membership', visible: true }])
 })

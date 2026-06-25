@@ -47,8 +47,13 @@ function planOverrideWrites(items, staffId, catalog, baseTier, hier) {
     if (it.state !== 'on' && it.state !== 'off') continue
     if (it.state === 'on') {
       const minTier = catalog[key]
-      if (minTier && hier.indexOf(minTier) > tierIdx) continue
-      if (!minTier && key.startsWith('report:')) continue
+      // A force-on above the member's ceiling (or an uncatalogued report: key)
+      // is not granted — and we delete any existing row for it rather than
+      // leave a stale above-ceiling override lingering. Mirrors applyOverrides.
+      if ((minTier && hier.indexOf(minTier) > tierIdx) || (!minTier && key.startsWith('report:'))) {
+        toDelete.push(key)
+        continue
+      }
     }
     toUpsert.push({ staff_id: staffId, perm_key: key, visible: it.state === 'on' })
   }

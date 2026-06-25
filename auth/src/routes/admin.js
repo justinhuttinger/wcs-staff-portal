@@ -172,6 +172,9 @@ router.get('/staff/:id/overrides', requireRole('admin'), async (req, res) => {
 router.put('/staff/:id/overrides', requireRole('admin'), async (req, res) => {
   const items = Array.isArray(req.body?.items) ? req.body.items : null
   if (!items) return res.status(400).json({ error: 'items array is required' })
+  // The grid has a few dozen rows; cap well above that to bound the delete/upsert
+  // payloads (and keep the .in(...) filter inside PostgREST URL limits).
+  if (items.length > 500) return res.status(400).json({ error: 'Too many items' })
   try {
     const { data: member } = await supabaseAdmin
       .from('staff').select('id, role').eq('id', req.params.id).maybeSingle()

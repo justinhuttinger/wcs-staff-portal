@@ -1,8 +1,13 @@
 import { useState, useEffect } from 'react'
 import { getStaffOverrides, updateStaffOverrides } from '../lib/api'
 
-const TIERS = ['team_member', 'lead', 'manager', 'corporate', 'admin']
-const TIER_LABEL = { team_member: 'Team Member', lead: 'Lead', manager: 'Manager', corporate: 'Corporate', admin: 'Admin' }
+// Mirror the server's ROLE_HIERARCHY order exactly so lock math (min_tier vs
+// base_tier index) matches the server and no valid tier resolves to -1.
+const TIERS = ['team_member', 'lead', 'custom', 'manager', 'corporate', 'marketing', 'admin']
+const TIER_LABEL = {
+  team_member: 'Team Member', lead: 'Lead', custom: 'Custom', manager: 'Manager',
+  corporate: 'Corporate', marketing: 'Marketing', admin: 'Admin',
+}
 const CATEGORIES = ['Apps', 'Tools', 'Reports', 'Actions']
 const STATES = [
   { key: 'inherit', label: 'Inherit' },
