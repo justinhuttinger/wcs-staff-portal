@@ -127,13 +127,16 @@ router.get('/appointments', async (req, res) => {
       console.warn('[DayOneTracker] Could not fetch users:', e.message)
     }
 
-    // Role check: managers see all, others see only their own
+    // Role check: lead+ run the floor and see every Day One at the location
+    // (same as Tours). team_member/trainer/front_desk see only their own —
+    // the Day One assigned to them in GHL — so a trainer's view stays their
+    // personal schedule.
     const userLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
-    const managerLevel = ROLE_HIERARCHY.indexOf('manager')
-    const isManager = userLevel >= managerLevel
+    const leadLevel = ROLE_HIERARCHY.indexOf('lead')
+    const seesAll = userLevel >= leadLevel
     const userEmail = req.staff.email?.toLowerCase()
 
-    if (!isManager) {
+    if (!seesAll) {
       allEvents = allEvents.filter(evt => {
         const assignedId = evt.assignedUserId
         const assignedUser = userMap[assignedId]
