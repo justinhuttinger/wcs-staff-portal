@@ -339,12 +339,13 @@ router.patch('/roles/:id', requireRole('admin'), async (req, res) => {
     const v = validateRoleName(name, (existing || []).map(r => r.name))
     if (!v.ok) return res.status(400).json({ error: v.error })
     const newName = name.trim()
+    // Atomic rename: the roles row plus the cascade to role_tool_visibility and
+    // staff all happen in one transaction (rename_role RPC), so a partial
+    // failure can't strand assigned staff on the old name while we return 200.
     const { data: updated, error } = await supabaseAdmin
-      .from('roles').update({ name: newName, updated_at: new Date().toISOString() }).eq('id', req.params.id).select('id, name, base_tier, is_builtin').single()
+      .rpc('rename_role', { p_id: req.params.id, p_new_name: newName })
     if (error) return res.status(500).json({ error: 'Failed to rename role' })
-    await supabaseAdmin.from('role_tool_visibility').update({ role: newName }).eq('role', role.name)
-    await supabaseAdmin.from('staff').update({ role: newName }).eq('role', role.name)
-    res.json({ role: updated })
+    res.json({ role: Array.isArray(updated) ? updated[0] : updated })
   } catch (err) {
     res.status(500).json({ error: 'Failed to rename role' })
   }
