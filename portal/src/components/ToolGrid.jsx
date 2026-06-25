@@ -604,8 +604,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {/* 4.9. Tickets — lead+ */}
           {onTickets && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTickets} iconPath={TILE_ICONS.tickets} label="Tickets/Support" desc="Help Desk" />}
           {/* (Day One Tracking merged into Calendar) */}
-          {/* 6. Trainer Availability */}
-          {onTrainerAvail && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}
+          {/* 6. Trainer Availability — manager+ only (leads cannot see it) */}
+          {onTrainerAvail && roleIdx >= ROLE_LEVELS.manager && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}
           {/* 6.5. Marketing Tracker — corporate/admin, or anyone with the marketing add-on */}
           {onMarketingTracker && (roleIdx >= ROLE_LEVELS.corporate || marketingAddon) && <SvgTileButton onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />}
           {/* 6.6. Inventory (experimental) — lead+ (leads get restock/adjust, no Sales/margin) */}
@@ -616,8 +616,16 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
             const tileLabel = (tile.label || '').toLowerCase()
             // Skip Cancel — already rendered above
             if (['cancel', 'cancel tool'].includes(tileLabel)) return false
-            // Hide Reporting tile for team_member (and legacy aliases)
-            if (tileLabel === 'reporting' && roleIdx === ROLE_LEVELS.team_member) return false
+            // Reporting honors its per-role Tool Visibility toggle. team_member is
+            // hidden outright; for every other role, hide it whenever the role's
+            // visible_tools is configured but does not include this tile's key.
+            // This makes the Admin > Roles toggle authoritative even in the edge
+            // case where the role has no other custom-tile keys (which otherwise
+            // trips the "show all tiles" fallback in visibleCustomTiles).
+            if (tileLabel === 'reporting') {
+              if (roleIdx === ROLE_LEVELS.team_member) return false
+              if (visibleTools && visibleTools.length > 0 && !visibleTools.includes('tile:' + tile.id)) return false
+            }
             // Marketing moved into Reporting — hide the standalone tile everywhere
             if (tileLabel === 'marketing') return false
             // Tickets: now a built-in tile — skip custom tile version
