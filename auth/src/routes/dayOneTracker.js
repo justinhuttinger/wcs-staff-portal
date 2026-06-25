@@ -204,13 +204,13 @@ router.post('/submit', async (req, res) => {
   }
 
   try {
-    // Completion gate: lead+ may record any Day One. team_member / front_desk /
-    // personal_trainer may only record the Day One assigned to them in GHL.
-    // Enforced server-side off the appointment's true assignedUserId so it
+    // Completion gate: manager+ may record any Day One. Everyone below manager
+    // (team members and leads) may only record the Day One assigned to them in
+    // GHL. Enforced server-side off the appointment's true assignedUserId so it
     // cannot be bypassed by a crafted request.
     const requesterLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
-    const leadLevel = ROLE_HIERARCHY.indexOf('lead')
-    if (requesterLevel < leadLevel) {
+    const managerLevel = ROLE_HIERARCHY.indexOf('manager')
+    if (requesterLevel < managerLevel) {
       let assignedEmail = null
       if (appointment_id) {
         try {
@@ -227,7 +227,7 @@ router.post('/submit', async (req, res) => {
         }
       }
       if (!assignedEmail || assignedEmail !== (req.staff.email || '').toLowerCase()) {
-        return res.status(403).json({ error: 'You can only complete Day Ones assigned to you. Ask a lead or manager to record this one.' })
+        return res.status(403).json({ error: 'You can only complete Day Ones assigned to you. Ask a manager to record this one.' })
       }
     }
 

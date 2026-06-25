@@ -270,11 +270,11 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
   const [activeModal, setActiveModal] = useState(null) // pending D1 — editable
   const [detailModal, setDetailModal] = useState(null) // completed D1 — read-only
 
-  // Completion gate: lead+ can record any Day One; base team members (front
-  // desk / trainers) can only record the one assigned to them. Everyone still
-  // SEES every Day One — this only governs who can open the outcome form.
-  const BASE_ROLES = ['team_member', 'front_desk', 'personal_trainer']
-  const canCompleteAny = !BASE_ROLES.includes(user?.staff?.role)
+  // Completion gate: only manager+ can record a Day One that isn't assigned to
+  // them. Everyone below manager (team members and leads) can record only their
+  // own. Everyone still SEES every Day One — this only governs the outcome form.
+  const COMPLETE_ANY_ROLES = ['manager', 'corporate', 'director', 'marketing', 'admin']
+  const canCompleteAny = COMPLETE_ANY_ROLES.includes(user?.staff?.role)
   const userEmail = (user?.staff?.email || '').toLowerCase()
   const canCompleteApt = (apt) => canCompleteAny || (apt.assigned_user_email || '').toLowerCase() === userEmail
 
