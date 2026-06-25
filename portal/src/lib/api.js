@@ -488,10 +488,6 @@ export async function createKioskLink(data) {
 }
 
 // Config - Role Visibility
-export async function getRoleVisibility() {
-  return api('/config/role-visibility')
-}
-
 export async function updateRoleVisibility(updates) {
   return api('/config/role-visibility', {
     method: 'PUT',
