@@ -38,3 +38,8 @@ test('below-tier role without the grant is blocked', async () => {
   const mw = requireReportAccess('manager', ['kpis'])
   assert.strictEqual(await run(mw, { role: 'lead', __perms: [] }), 403)
 })
+
+test('missing req.staff is rejected with 401 (does not hang)', async () => {
+  const mw = requireReportAccess('manager', ['kpis'])
+  assert.strictEqual(await run(mw, undefined), 401)
+})

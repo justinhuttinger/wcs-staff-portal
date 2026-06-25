@@ -30,3 +30,10 @@ test('force-on for a key absent from the catalog is allowed (no ceiling on uncat
   const out = applyOverrides([], [{ perm_key: 'tile:custom', visible: true }], CATALOG, 'team_member', HIER)
   assert.deepStrictEqual(out, ['tile:custom'])
 })
+
+test('force-on for an uncatalogued report: key is dropped (fail closed)', () => {
+  // A report grant not present in the catalog must never be addable via an
+  // override, since report endpoints honor report:<key> grants directly.
+  const out = applyOverrides([], [{ perm_key: 'report:not-in-catalog', visible: true }], CATALOG, 'admin', HIER)
+  assert.deepStrictEqual(out, [])
+})

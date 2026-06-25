@@ -15,7 +15,14 @@ function applyOverrides(baseKeys, overrides, catalog, baseTier, hier) {
   for (const o of (overrides || [])) {
     if (o.visible) {
       const minTier = catalog[o.perm_key]
-      if (minTier && hier.indexOf(minTier) > tierIdx) continue // above ceiling
+      if (minTier) {
+        if (hier.indexOf(minTier) > tierIdx) continue // above ceiling
+      } else if (o.perm_key.startsWith('report:')) {
+        // Fail closed: a report grant absent from the catalog has no known
+        // ceiling, and report endpoints honor report:<key> grants directly, so
+        // an uncatalogued report key must never be addable via an override.
+        continue
+      }
       set.add(o.perm_key)
     } else {
       set.delete(o.perm_key)

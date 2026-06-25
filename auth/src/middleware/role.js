@@ -112,6 +112,10 @@ function requireReportAccess(minRole, grantKeys = []) {
   if (minLevel === -1) throw new Error('Invalid role: ' + minRole)
   const grants = Array.isArray(grantKeys) ? grantKeys : [grantKeys]
   return async (req, res, next) => {
+    // This middleware is async; an uncaught throw here would hang the request
+    // under Express 4 rather than reach the error handler. Guard the missing
+    // staff case explicitly (callers mount authenticate first, but be safe).
+    if (!req.staff) return res.status(401).json({ error: 'Authentication required' })
     if (roleLevel(req.staff.role) >= minLevel) return next()
     // Legacy custom-role grant path (still honored).
     if (resolveRole(req.staff.role) === 'custom') {
