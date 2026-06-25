@@ -467,6 +467,10 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
   const [scanForLine, setScanForLine] = useState(null) // line whose barcode scanner is open
   const [scanMsg, setScanMsg] = useState('')
   const [matchChooseLine, setMatchChooseLine] = useState(null) // line showing the scan-vs-search popup
+  const [editLineId, setEditLineId] = useState(null) // line whose qty/cost is being edited
+  const [editQty, setEditQty] = useState('')
+  const [editCost, setEditCost] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
   const fileInputRef = useRef(null)
 
   // Debounced picker search — mirrors the browse-search pattern in the main component
@@ -573,6 +577,42 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
       setResult(r)
       setLines(ls => ls.map(x => x.item_id ? { ...x, received: true } : x))
     } catch (err) { setError(err.message || 'Receive failed') } finally { setBusy(false) }
+  }
+
+  function startEdit(line) {
+    setEditLineId(line.id)
+    setEditQty(line.quantity != null ? String(line.quantity) : '')
+    setEditCost(line.unit_cost != null ? String(line.unit_cost) : '')
+    setError('')
+  }
+
+  // Edit a parsed line's quantity and/or unit cost. There's no PATCH endpoint
+  // for invoice lines, so (like relink) we delete + re-add, carrying over the
+  // existing item match, description, and UPC so the line stays linked.
+  async function saveLineEdit(line) {
+    const q = parseFloat(editQty)
+    const c = parseFloat(editCost)
+    if (!Number.isFinite(q) || q <= 0) { setError('Quantity must be positive'); return }
+    if (!Number.isFinite(c) || c < 0) { setError('Enter a valid unit cost'); return }
+    setEditSaving(true); setError('')
+    try {
+      await deleteInventoryInvoiceItem(invoice.id, line.id)
+      const res = await addInventoryInvoiceItem(invoice.id, {
+        item_id: line.item_id || undefined,
+        description: line.description,
+        upc: line.upc || undefined,
+        quantity: q,
+        unit_cost: c,
+      })
+      const updated = {
+        ...res.item,
+        matched_item_name: line.matched_item_name,
+        matched_item_upc: line.matched_item_upc,
+        _matched_name: line._matched_name,
+      }
+      setLines(ls => ls.map(x => x.id === line.id ? updated : x))
+      setEditLineId(null)
+    } catch (err) { setError(err.message || 'Could not save changes') } finally { setEditSaving(false) }
   }
 
   function confidencePill(line) {
@@ -688,9 +728,49 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
                 ) : null}
               </div>
               <div className="text-right shrink-0">
-                <p className="text-sm font-bold text-text-primary">{fmtQty(line.quantity)} × {fmtMoney(line.unit_cost)}</p>
+                {line.received ? (
+                  <p className="text-sm font-bold text-text-primary">{fmtQty(line.quantity)} × {fmtMoney(line.unit_cost)}</p>
+                ) : (
+                  <button
+                    onClick={() => editLineId === line.id ? setEditLineId(null) : startEdit(line)}
+                    className="text-sm font-bold text-text-primary inline-flex items-center gap-1"
+                  >
+                    {fmtQty(line.quantity)} × {fmtMoney(line.unit_cost)}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5 text-wcs-red">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" />
+                    </svg>
+                  </button>
+                )}
               </div>
             </div>
+
+            {/* Inline quantity / unit-cost editor */}
+            {editLineId === line.id && !line.received && (
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1">Quantity</span>
+                  <input
+                    type="number" step="any" min="0" inputMode="decimal" autoFocus value={editQty}
+                    onChange={e => setEditQty(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-bg text-sm text-text-primary"
+                  />
+                </label>
+                <label className="block">
+                  <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1">Unit cost</span>
+                  <input
+                    type="number" step="0.01" min="0" inputMode="decimal" value={editCost}
+                    onChange={e => setEditCost(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-bg text-sm text-text-primary"
+                  />
+                </label>
+                <div className="col-span-2 flex gap-2">
+                  <button onClick={() => setEditLineId(null)} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-muted">Cancel</button>
+                  <button onClick={() => saveLineEdit(line)} disabled={editSaving} className="flex-1 py-2 rounded-xl bg-wcs-red text-white text-xs font-semibold disabled:opacity-50">
+                    {editSaving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Status / confidence */}
             <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
@@ -935,29 +1015,29 @@ export default function MobileInventory({ user }) {
 
       {/* Mode chooser — the new front door: pick what you're here to do */}
       {view === 'choose' && (
-        <div className="mt-2 space-y-3">
+        <div className="mt-2 space-y-4">
           <button
             onClick={() => { setView('restock'); setResults([]); setLookupError(''); setManualCode('') }}
-            className="w-full p-5 rounded-2xl bg-wcs-red text-white flex items-center gap-4 text-left"
+            className="w-full p-7 rounded-3xl border border-border bg-surface text-text-primary flex items-center gap-5 text-left active:scale-[0.99] transition-transform"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-8 h-8 shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-12 h-12 shrink-0 text-wcs-red">
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
             </svg>
             <span>
-              <span className="block text-base font-bold">Restock</span>
-              <span className="block text-xs text-white/80">Received a shipment</span>
+              <span className="block text-xl font-bold">Restock</span>
+              <span className="block text-sm text-text-muted mt-0.5">Received a shipment</span>
             </span>
           </button>
           <button
             onClick={() => { setView('count'); setResults([]); setLookupError(''); setManualCode('') }}
-            className="w-full p-5 rounded-2xl border border-border bg-surface text-text-primary flex items-center gap-4 text-left"
+            className="w-full p-7 rounded-3xl border border-border bg-surface text-text-primary flex items-center gap-5 text-left active:scale-[0.99] transition-transform"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-8 h-8 shrink-0 text-wcs-red">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-12 h-12 shrink-0 text-wcs-red">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z" />
             </svg>
             <span>
-              <span className="block text-base font-bold">Count Inventory</span>
-              <span className="block text-xs text-text-muted">Counting all items</span>
+              <span className="block text-xl font-bold">Count Inventory</span>
+              <span className="block text-sm text-text-muted mt-0.5">Counting all items</span>
             </span>
           </button>
         </div>
@@ -968,48 +1048,49 @@ export default function MobileInventory({ user }) {
       {/* Back to the mode chooser */}
       <button
         onClick={() => { setView('choose'); setResults([]); setLookupError(''); setManualCode('') }}
-        className="text-xs font-semibold text-wcs-red mb-3 inline-flex items-center gap-1"
+        className="inline-flex items-center gap-1.5 text-sm font-bold text-text-primary bg-surface border border-border rounded-xl px-3.5 py-2.5 mb-4"
       >
-        ← Inventory
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-4 h-4">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+        </svg>
+        Inventory
       </button>
 
-      {/* Restock only: receive a shipment by snapping its invoice (no invoice in Count mode) */}
-      {view === 'restock' && (
-        <button
-          onClick={() => setCapturing(true)}
-          className="w-full py-4 rounded-2xl bg-wcs-red text-white font-bold text-sm flex items-center justify-center gap-2 mb-3"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-          </svg>
-          Snap Invoice
-        </button>
-      )}
-
-      {/* Find an item to act on */}
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">
-        {view === 'restock' ? 'Or add stock by item' : 'Scan or search to count'}
-      </p>
-      <div className="grid grid-cols-2 gap-2 mb-3">
-        <button
-          onClick={() => setScanning(true)}
-          className="py-4 rounded-2xl bg-wcs-red text-white font-bold text-xs flex flex-col items-center justify-center gap-1.5"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5ZM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 9.375v-4.5Z" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 13.5h1.5v1.5h-1.5zM16.5 13.5H18v1.5h-1.5zM19.5 13.5H21v1.5h-1.5zM13.5 16.5h1.5V18h-1.5zM16.5 16.5H18V18h-1.5zM19.5 16.5H21V18h-1.5zM13.5 19.5h1.5V21h-1.5zM16.5 19.5H18V21h-1.5zM19.5 19.5H21V21h-1.5z" />
-          </svg>
-          Scan UPC
-        </button>
-        <button
-          onClick={() => { searchRef.current?.focus(); searchRef.current?.scrollIntoView({ block: 'center' }) }}
-          className="py-4 rounded-2xl border border-border bg-surface text-text-primary font-semibold text-xs flex flex-col items-center justify-center gap-1.5"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.2-5.2m0 0A7.5 7.5 0 1 0 5.2 5.2a7.5 7.5 0 0 0 10.6 10.6Z" />
-          </svg>
-          Search
-        </button>
+      {/* Action buttons — tight, uniform group so there's no odd gap between them.
+          Snap Invoice (Restock only) sits above Scan / Search. All white. */}
+      <div className="flex flex-col gap-2 mb-4">
+        {view === 'restock' && (
+          <button
+            onClick={() => setCapturing(true)}
+            className="w-full py-4 rounded-2xl border border-border bg-surface text-text-primary font-bold text-sm flex items-center justify-center gap-2"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6 text-wcs-red">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+            </svg>
+            Snap Invoice
+          </button>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => setScanning(true)}
+            className="py-4 rounded-2xl border border-border bg-surface text-text-primary font-semibold text-xs flex flex-col items-center justify-center gap-1.5"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6 text-wcs-red">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5ZM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 9.375v-4.5Z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 13.5h1.5v1.5h-1.5zM16.5 13.5H18v1.5h-1.5zM19.5 13.5H21v1.5h-1.5zM13.5 16.5h1.5V18h-1.5zM16.5 16.5H18V18h-1.5zM19.5 16.5H21V18h-1.5zM13.5 19.5h1.5V21h-1.5zM16.5 19.5H18V21h-1.5zM19.5 19.5H21V21h-1.5z" />
+            </svg>
+            Scan UPC
+          </button>
+          <button
+            onClick={() => { searchRef.current?.focus(); searchRef.current?.scrollIntoView({ block: 'center' }) }}
+            className="py-4 rounded-2xl border border-border bg-surface text-text-primary font-semibold text-xs flex flex-col items-center justify-center gap-1.5"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6 text-wcs-red">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.2-5.2m0 0A7.5 7.5 0 1 0 5.2 5.2a7.5 7.5 0 0 0 10.6 10.6Z" />
+            </svg>
+            Search
+          </button>
+        </div>
       </div>
 
       {/* Manual entry */}
