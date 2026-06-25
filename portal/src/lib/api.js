@@ -516,6 +516,18 @@ export async function deleteRole(id) {
   return api('/config/roles/' + id, { method: 'DELETE' })
 }
 
+// RBAC v2 — per-person permission overrides
+export async function getStaffOverrides(id) {
+  return api('/admin/staff/' + id + '/overrides')
+}
+
+export async function updateStaffOverrides(id, items) {
+  return api('/admin/staff/' + id + '/overrides', {
+    method: 'PUT',
+    body: JSON.stringify({ items }),
+  })
+}
+
 // Appointments
 export async function getAppointments(params = {}) {
   const qs = new URLSearchParams(params).toString()

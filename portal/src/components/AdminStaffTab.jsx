@@ -3,6 +3,7 @@ import { getStaff, createStaff, updateStaff, deleteStaff, setStaffActive, getLoc
 import { LOCATION_NAMES } from '../config/locations'
 import { MARKETING_TYPES } from '../config/marketingTypes'
 import { PORTAL_TILE_CATALOG, CUSTOM_REPORT_CATALOG } from '../config/portalTiles'
+import AdminStaffOverrides from './AdminStaffOverrides'
 
 // 'marketing' is no longer a base role — it's an add-on toggle below. 'custom'
 // lets an admin hand-pick tiles + reports for one person.
@@ -50,10 +51,13 @@ function StaffModal({ member, locations, onClose, onSaved }) {
   // assignable. Append non-builtin roles to the built-in list; fall back to the
   // built-ins if the fetch fails. (Assignment is enforced server-side too.)
   const [roleOptions, setRoleOptions] = useState(ROLES)
+  const [rbacEnabled, setRbacEnabled] = useState(false)
+  const [showOverrides, setShowOverrides] = useState(false)
   useEffect(() => {
     getRolesAdmin().then(r => {
       const custom = (r?.roles || []).filter(x => !x.is_builtin).map(x => x.name)
       if (custom.length) setRoleOptions([...ROLES, ...custom])
+      setRbacEnabled(!!r?.rbac_v2_enabled)
     }).catch(() => {})
   }, [])
 
@@ -174,6 +178,26 @@ function StaffModal({ member, locations, onClose, onSaved }) {
               ))}
             </select>
           </div>
+
+          {/* Per-person permission overrides (RBAC v2). Existing members only —
+              overrides key off the saved staff id. Save the member first to add. */}
+          {rbacEnabled && !isNew && (
+            <div className="rounded-lg border border-border bg-bg">
+              <button
+                type="button"
+                onClick={() => setShowOverrides(v => !v)}
+                className="w-full flex items-center justify-between px-3 py-2 text-left"
+              >
+                <span className="text-xs font-semibold text-text-primary">Permission overrides (Beta)</span>
+                <span className="text-xs text-text-muted">{showOverrides ? 'Hide' : 'Edit'}</span>
+              </button>
+              {showOverrides && (
+                <div className="px-3 pb-3 max-h-80 overflow-y-auto">
+                  <AdminStaffOverrides staffId={member.id} />
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-xs text-text-muted mb-1">{isNew ? 'Temporary Password' : 'Reset Password (optional)'}</label>

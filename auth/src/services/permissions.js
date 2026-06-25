@@ -66,12 +66,19 @@ async function overridesForStaff(staffId) {
   })
 }
 
+// The inherited baseline for a staff member: their role's own toggles, BEFORE
+// per-person overrides. The built-in 'custom' role still reads its legacy
+// per-person custom_tiles; every other role reads its role_tool_visibility grid.
+async function roleBaseKeys(staff) {
+  if (!staff) return []
+  if (staff.role === 'custom') return Array.isArray(staff.custom_tiles) ? staff.custom_tiles : []
+  return tilesForRole(staff.role)
+}
+
 async function getEffectivePermissions(staff) {
   if (!staff) return []
-  const baseKeys = staff.role === 'custom'
-    ? (Array.isArray(staff.custom_tiles) ? staff.custom_tiles : [])
-    : await tilesForRole(staff.role)
-  const [overrides, catalog, baseTier] = await Promise.all([
+  const [baseKeys, overrides, catalog, baseTier] = await Promise.all([
+    roleBaseKeys(staff),
     overridesForStaff(staff.id),
     loadCatalog(),
     getBaseTier(staff.role),
@@ -79,4 +86,4 @@ async function getEffectivePermissions(staff) {
   return applyOverrides(baseKeys, overrides, catalog, baseTier, ROLE_HIERARCHY)
 }
 
-module.exports = { getEffectivePermissions, applyOverrides }
+module.exports = { getEffectivePermissions, applyOverrides, roleBaseKeys, loadCatalog }
