@@ -82,7 +82,7 @@ export default function AdminRolesV2Tab() {
   }
 
   return (
-    <div className="p-4 flex gap-6">
+    <div className="bg-surface rounded-xl border border-border p-4 flex gap-6">
       {/* Roles list */}
       <div className="w-64 shrink-0">
         <div className="flex items-center justify-between mb-2">
@@ -94,8 +94,8 @@ export default function AdminRolesV2Tab() {
         {canManageRoles && creating && (
           <div className="mb-3 p-3 rounded-lg border border-border bg-surface space-y-2">
             <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Role name"
-              className="w-full px-2 py-1.5 rounded border border-border text-sm" />
-            <select value={newTier} onChange={e => setNewTier(e.target.value)} className="w-full px-2 py-1.5 rounded border border-border text-sm">
+              className="w-full px-2 py-1.5 rounded border border-border text-sm bg-bg text-text-primary" />
+            <select value={newTier} onChange={e => setNewTier(e.target.value)} className="w-full px-2 py-1.5 rounded border border-border text-sm bg-bg text-text-primary">
               {TIERS.map(t => <option key={t} value={t}>{TIER_LABEL[t]} tier</option>)}
             </select>
             <button onClick={handleCreate} className="w-full py-1.5 rounded bg-wcs-red text-white text-sm font-semibold">Create</button>
