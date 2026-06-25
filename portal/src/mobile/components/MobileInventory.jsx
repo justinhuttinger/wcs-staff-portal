@@ -147,11 +147,13 @@ function FullScreenLoader({ title, subtitle }) {
 }
 
 function AdjustSheet({ item, onClose, onSaved }) {
-  const [mode, setMode] = useState('delta') // delta (add only) | count
+  // Two-step flow: first pick the action (restock vs set count), then the amount.
+  const [mode, setMode] = useState(null) // null (choose) | 'delta' (restock) | 'count'
   const [value, setValue] = useState('')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [done, setDone] = useState(null) // the updated item, shown on the success screen
 
   async function save() {
     const n = parseFloat(value)
@@ -163,38 +165,75 @@ function AdjustSheet({ item, onClose, onSaved }) {
       const body = mode === 'count' ? { set_qty: n, note, source: 'mobile' } : { qty_delta: n, note, source: 'mobile' }
       const res = await adjustInventoryItem(item.id, body)
       onSaved(res.item)
-      onClose()
-    } catch (err) { setError(err.message) } finally { setSaving(false) }
+      setSaving(false)
+      setDone(res.item)
+    } catch (err) { setError(err.message); setSaving(false) }
+  }
+
+  // Obvious full-screen loader while the restock saves (mirrors the invoice flow).
+  if (saving) return <FullScreenLoader title="Updating stock…" subtitle={mode === 'count' ? 'Setting the exact count.' : 'Adding to on-hand stock.'} />
+
+  // Done screen — makes a successful restock unmistakable.
+  if (done) {
+    return createPortal(
+      <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={onClose}>
+        <div className="bg-surface rounded-t-2xl w-full p-6 text-center" style={SHEET_PAD} onClick={e => e.stopPropagation()}>
+          <div className="mx-auto w-16 h-16 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mb-4">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-8 h-8 text-emerald-600"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+          </div>
+          <h3 className="text-lg font-bold text-text-primary">Stock updated</h3>
+          <p className="text-sm text-text-muted mt-1">{done.item_name}</p>
+          <p className="text-sm text-text-muted mt-1">On hand: <span className="font-bold text-text-primary">{fmtQty(done.qty_on_hand)}</span></p>
+          <button onClick={onClose} className="w-full py-3 rounded-xl bg-wcs-red text-white text-sm font-semibold mt-5">Done</button>
+        </div>
+      </div>,
+      document.body
+    )
   }
 
   return createPortal(
     <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={onClose}>
       <div className="bg-surface rounded-t-2xl w-full p-5 max-h-[85dvh] overflow-y-auto" style={SHEET_PAD} onClick={e => e.stopPropagation()}>
         <h3 className="text-base font-bold text-text-primary mb-1">{item.item_name}</h3>
-        <p className="text-xs text-text-muted mb-3">On hand: <span className="font-bold text-text-primary">{fmtQty(item.qty_on_hand)}</span></p>
-        <div className="flex gap-1 bg-bg rounded-lg p-1 mb-3">
-          {[{ key: 'delta', label: 'Add stock' }, { key: 'count', label: 'Set exact count' }].map(m => (
-            <button key={m.key} onClick={() => setMode(m.key)}
-              className={`flex-1 px-3 py-2 rounded-md text-xs font-medium ${mode === m.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted'}`}>
-              {m.label}
+        <p className="text-xs text-text-muted mb-4">On hand: <span className="font-bold text-text-primary">{fmtQty(item.qty_on_hand)}</span></p>
+
+        {mode === null ? (
+          /* Step 1 — choose the action */
+          <>
+            <p className="text-xs text-text-muted mb-2">What do you want to do?</p>
+            <button onClick={() => { setMode('delta'); setValue(''); setError('') }}
+              className="w-full py-3 rounded-xl bg-wcs-red text-white text-sm font-semibold mb-2">
+              Restock (add stock)
             </button>
-          ))}
-        </div>
-        <input
-          type="number" step="any" min="0" inputMode="decimal" autoFocus value={value} onChange={e => setValue(e.target.value)}
-          placeholder={mode === 'count' ? 'Counted quantity' : 'Amount to add (e.g. 12)'}
-          className="w-full px-3 py-3 rounded-xl border border-border bg-bg text-base text-text-primary mb-3"
-        />
-        <input value={note} onChange={e => setNote(e.target.value)} placeholder="Note (optional)"
-          className="w-full px-3 py-3 rounded-xl border border-border bg-bg text-sm text-text-primary mb-3" />
-        <p className="text-[11px] text-text-muted mb-3">Removals aren't done here — sales and write-offs go through ABC POS.</p>
-        {error && <p className="text-xs text-wcs-red mb-3">{error}</p>}
-        <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-muted">Cancel</button>
-          <button onClick={save} disabled={saving} className="flex-1 py-3 rounded-xl bg-wcs-red text-white text-sm font-semibold disabled:opacity-50">
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-        </div>
+            <button onClick={() => { setMode('count'); setValue(''); setError('') }}
+              className="w-full py-3 rounded-xl border border-border text-text-primary text-sm font-semibold mb-2">
+              Set exact count
+            </button>
+            <button onClick={onClose} className="w-full py-2.5 text-text-muted text-sm font-semibold">Cancel</button>
+          </>
+        ) : (
+          /* Step 2 — enter the amount for the chosen action */
+          <>
+            <button onClick={() => { setMode(null); setError('') }} className="text-xs font-semibold text-wcs-red mb-3">
+              ← Change action
+            </button>
+            <input
+              type="number" step="any" min="0" inputMode="decimal" autoFocus value={value} onChange={e => setValue(e.target.value)}
+              placeholder={mode === 'count' ? 'Counted quantity' : 'Amount to add (e.g. 12)'}
+              className="w-full px-3 py-3 rounded-xl border border-border bg-bg text-base text-text-primary mb-3"
+            />
+            <input value={note} onChange={e => setNote(e.target.value)} placeholder="Note (optional)"
+              className="w-full px-3 py-3 rounded-xl border border-border bg-bg text-sm text-text-primary mb-3" />
+            <p className="text-[11px] text-text-muted mb-3">Removals aren't done here. Sales and write-offs go through ABC POS.</p>
+            {error && <p className="text-xs text-wcs-red mb-3">{error}</p>}
+            <div className="flex gap-2">
+              <button onClick={onClose} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-muted">Cancel</button>
+              <button onClick={save} className="flex-1 py-3 rounded-xl bg-wcs-red text-white text-sm font-semibold">
+                {mode === 'count' ? 'Save count' : 'Add stock'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>,
     document.body
@@ -485,6 +524,22 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
     } catch (err) { setError(err.message || 'Link failed') }
   }
 
+  // No match: the line is a new item not in the catalog yet. Clear its match so
+  // it is omitted from the receive (lines with no linked item are skipped), but
+  // keep it visible so the user can see it was set aside on purpose.
+  async function unmatch(line) {
+    setError(''); setMatchChooseLine(null); setPickerLineId(null)
+    try {
+      await deleteInventoryInvoiceItem(invoice.id, line.id)
+      const res = await addInventoryInvoiceItem(invoice.id, {
+        description: line.description,
+        quantity: Number(line.quantity),
+        unit_cost: Number(line.unit_cost),
+      })
+      setLines(ls => ls.map(x => x.id === line.id ? { ...res.item, _matched_name: null, _omitted: true } : x))
+    } catch (err) { setError(err.message || 'Could not omit line') }
+  }
+
   // Scan a barcode to resolve a line's catalog item by UPC. Exact single match
   // links immediately; otherwise we open the picker seeded with the scanned code.
   async function scanToLink(line, code) {
@@ -643,7 +698,7 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
                 <>
                   {!line.item_id && (
                     <span className="text-[10px] font-bold uppercase text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">
-                      Not linked
+                      {line._omitted ? 'Omitted (new item)' : 'Not linked'}
                     </span>
                   )}
                   {confidencePill(line)}
@@ -720,7 +775,7 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
         <div className="fixed inset-0 z-[70] bg-black/50 flex items-end" onClick={e => { e.stopPropagation(); setMatchChooseLine(null) }}>
           <div className="bg-surface rounded-t-2xl w-full p-5" style={SHEET_PAD} onClick={e => e.stopPropagation()}>
             <h3 className="text-base font-bold text-text-primary mb-1">Match this item</h3>
-            <p className="text-xs text-text-muted mb-4">How do you want to find it?</p>
+            <p className="text-xs text-text-muted mb-4">Find it in the catalog, or mark it as a new item to skip for now.</p>
             <button
               onClick={() => { const id = matchChooseLine; setMatchChooseLine(null); setScanMsg(''); setScanForLine(id) }}
               className="w-full py-3 rounded-xl bg-wcs-red text-white text-sm font-semibold mb-2 flex items-center justify-center gap-2"
@@ -738,6 +793,15 @@ function InvoiceReviewSheet({ slug, invoice, onClose }) {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.2-5.2m0 0A7.5 7.5 0 1 0 5.2 5.2a7.5 7.5 0 0 0 10.6 10.6Z" />
               </svg>
               Search by name or UPC
+            </button>
+            <button
+              onClick={() => { const ln = lines.find(l => l.id === matchChooseLine); if (ln) unmatch(ln) }}
+              className="w-full py-3 rounded-xl border border-border text-text-muted text-sm font-semibold mb-2 flex items-center justify-center gap-2"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+              </svg>
+              No match (new item)
             </button>
             <button onClick={() => setMatchChooseLine(null)} className="w-full py-2.5 text-text-muted text-sm font-semibold">Cancel</button>
           </div>
@@ -844,7 +908,7 @@ export default function MobileInventory({ user }) {
           {canSeeFinancials && item.margin_pct != null && <span className={item.margin_pct < 0 ? 'text-wcs-red font-semibold' : 'text-emerald-600 font-semibold'}>{item.margin_pct}% margin</span>}
         </div>
         <div className="flex gap-2 mt-3">
-          <button onClick={() => setAdjusting(item)} className="flex-1 py-2 rounded-xl bg-wcs-red text-white text-xs font-semibold">Adjust Stock</button>
+          <button onClick={() => setAdjusting(item)} className="flex-1 py-2 rounded-xl bg-wcs-red text-white text-xs font-semibold">Restock</button>
           {isAdmin && <button onClick={() => setEditing(item)} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-muted">Edit Cost</button>}
           <button onClick={() => openHistory(item)} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-muted">History</button>
         </div>
