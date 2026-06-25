@@ -98,6 +98,39 @@ const REPORT_INFO = {
     ],
   },
 
+  'pt-projections': {
+    title: 'PT Projections',
+    sections: [
+      {
+        heading: 'What this is',
+        body:
+          'A forward look at recurring personal training revenue. For each active PT agreement it shows the next expected draft date and amount, totals the expected revenue per day, and compares the projection to PT revenue actually collected in the period.',
+      },
+      {
+        heading: 'How the numbers split',
+        body: [
+          'Collected, the PT revenue already drafted in the date range.',
+          'Outstanding, recurring drafts still scheduled to hit between today and the end of the range.',
+          'Past-due, drafts whose scheduled date has already passed but have not been collected, a sign the payment may have declined or lapsed.',
+          'Projected, the sum of collected plus outstanding plus past-due.',
+        ],
+      },
+      {
+        heading: 'How filters work',
+        body: [
+          'Date range, defaults to the current month. Outstanding and past-due are split relative to today.',
+          'Location, one club or all clubs you have access to.',
+        ],
+      },
+    ],
+    notes: [
+      'This is a point-in-time snapshot, refreshed every few minutes.',
+      'Projected amounts come from each agreement\'s scheduled draft and may include tax or fees, so treat them as estimates.',
+      'Collected dollars are matched to a member, not to a specific draft, so per-member Collected means the member has a training payment in the range.',
+      'A member can show as Collected in the detail list while still counting toward Past-due in the summary if their next bill date has not advanced yet, for example a same-day draft or sync lag.',
+    ],
+  },
+
   'pt-roster': {
     title: 'PT Roster',
     sections: [

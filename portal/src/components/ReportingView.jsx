@@ -11,6 +11,7 @@ import PTNewClientsReport from './reports/PTNewClientsReport'
 import SessionFrequencyReport from './reports/SessionFrequencyReport'
 import DeactivatedPTReport from './reports/DeactivatedPTReport'
 import PTHealthReport from './reports/PTHealthReport'
+import PTProjectionsReport from './reports/PTProjectionsReport'
 import PayrollReport from './reports/PayrollReport'
 import RevenueReport from './reports/RevenueReport'
 import PosSalesReport from './reports/PosSalesReport'
@@ -34,6 +35,7 @@ const REPORT_ICONS = {
   'pt-new-clients': 'M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z',
   'session-frequency': 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z',
   'deactivated-pt': 'M18.364 18.364A9 9 0 0 0 5.636 5.636m12.728 12.728A9 9 0 0 1 5.636 5.636m12.728 12.728L5.636 5.636',
+  'pt-projections': 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5',
   'pt-health': 'M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z',
   payroll: 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z',
   revenue: 'M2.25 18 9 11.25l4.306 4.307a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941',
@@ -56,6 +58,7 @@ const ALL_REPORT_TILES = [
   { key: 'pt-new-clients', label: 'New Clients', desc: 'New + Resign Sales' },
   { key: 'session-frequency', label: 'Session Frequency', desc: 'Sessions / Member / Week' },
   { key: 'deactivated-pt', label: 'Deactivated PT', desc: 'Cancels + Burned PIFs' },
+  { key: 'pt-projections', label: 'PT Projections', desc: 'Expected vs Collected' },
   { key: 'pt-health', label: 'PT Health', desc: 'Overview Dashboard' },
   { key: 'payroll', label: 'Payroll', desc: 'Monthly Commissions' },
   { key: 'revenue', label: 'Revenue', desc: 'Dollars & Profit Centers' },
@@ -87,7 +90,7 @@ const REPORT_GROUPS = [
     label: 'Training',
     desc: 'PT Reports',
     iconPath: REPORT_ICONS['pt-roster'],
-    reports: ['pt-health', 'pt', 'pt-roster', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt'],
+    reports: ['pt-health', 'pt', 'pt-roster', 'pt-projections', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt'],
   },
   {
     key: 'marketing',
@@ -538,6 +541,9 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           )}
           {activeReport === 'pt-roster' && (
             <PTRosterReport locationSlug={locationSlug} />
+          )}
+          {activeReport === 'pt-projections' && (
+            <PTProjectionsReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
           )}
           {activeReport === 'checkins' && (
             <CheckinsReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />

@@ -559,6 +559,11 @@ export async function getPTRoster(params = {}, options = {}) {
   return api('/reports/pt-roster' + (qs ? '?' + qs : ''), options)
 }
 
+export async function getPTProjections(params = {}, options = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/pt-projections' + (qs ? '?' + qs : ''), options)
+}
+
 export async function getPTNewClients(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/reports/pt-new-clients' + (qs ? '?' + qs : ''), options)

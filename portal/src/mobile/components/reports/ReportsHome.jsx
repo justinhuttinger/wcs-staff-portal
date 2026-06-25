@@ -144,6 +144,16 @@ const REPORT_TILES = [
     ),
   },
   {
+    key: 'pt-projections',
+    label: 'PT Projections',
+    description: 'Projected vs collected PT revenue',
+    icon: (
+      <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.307a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" />
+      </svg>
+    ),
+  },
+  {
     key: 'payroll',
     label: 'Payroll',
     description: 'Monthly commissions',
@@ -192,7 +202,7 @@ function getTilesForRole(role) {
     case 'lead':
       return REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health'].includes(t.key))
     case 'manager':
-      return REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'operations', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'revenue'].includes(t.key))
+      return REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'operations', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'pt-projections', 'payroll', 'revenue'].includes(t.key))
     case 'marketing':
       // Marketing sees everything except the corp-only experimental reports.
       return REPORT_TILES.filter(t => t.key !== 'kpis' && t.key !== 'audits')
@@ -229,7 +239,7 @@ const REPORT_GROUPS = [
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z" />
       </svg>
     ),
-    reports: ['pt-health', 'pt', 'pt-roster', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt'],
+    reports: ['pt-health', 'pt', 'pt-roster', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-projections'],
   },
   {
     key: 'marketing-group',

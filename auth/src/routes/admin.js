@@ -49,7 +49,7 @@ const CUSTOM_TILE_KEYS = new Set([
 // CUSTOM_REPORT_CATALOG.
 const CUSTOM_REPORT_KEYS = new Set([
   'club-health', 'membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions',
-  'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health',
+  'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'pt-projections',
   'kpis', 'meta-ads', 'google-marketing',
 ])
 
