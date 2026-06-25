@@ -111,11 +111,20 @@ function requireReportAccess(minRole, grantKeys = []) {
   const minLevel = ROLE_HIERARCHY.indexOf(minRole)
   if (minLevel === -1) throw new Error('Invalid role: ' + minRole)
   const grants = Array.isArray(grantKeys) ? grantKeys : [grantKeys]
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (roleLevel(req.staff.role) >= minLevel) return next()
+    // Legacy custom-role grant path (still honored).
     if (resolveRole(req.staff.role) === 'custom') {
       const granted = req.staff.custom_reports
       if (Array.isArray(granted) && grants.some(k => granted.includes(k))) return next()
+    }
+    // RBAC v2: an effective report:<key> permission (role toggle or override).
+    try {
+      const { getEffectivePermissions } = require('../services/permissions')
+      const perms = await getEffectivePermissions(req.staff)
+      if (grants.some(k => perms.includes('report:' + k))) return next()
+    } catch (err) {
+      console.error('[requireReportAccess] effective-perm check failed:', err.message)
     }
     return res.status(403).json({ error: 'Insufficient role. Requires: ' + minRole })
   }
