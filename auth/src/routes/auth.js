@@ -1,6 +1,7 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
+const { getVisibleTools } = require('../services/visibleTools')
 const { createClient } = require('@supabase/supabase-js')
 const rateLimit = require('express-rate-limit')
 
@@ -293,18 +294,7 @@ router.get('/me', authenticate, async (req, res) => {
     can_view_reports: sl.can_view_reports,
   }))
 
-  let visible_tools
-  if (req.staff.role === 'custom') {
-    // Custom-role members get exactly the tiles an admin granted them.
-    visible_tools = Array.isArray(req.staff.custom_tiles) ? req.staff.custom_tiles : []
-  } else {
-    const { data: visibility } = await supabaseAdmin
-      .from('role_tool_visibility')
-      .select('tool_key')
-      .eq('role', req.staff.role)
-      .eq('visible', true)
-    visible_tools = (visibility || []).map(v => v.tool_key)
-  }
+  const visible_tools = await getVisibleTools(req.staff)
 
   res.json({
     staff: {
