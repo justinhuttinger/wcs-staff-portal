@@ -35,9 +35,11 @@ export default function AdminRolesV2Tab() {
   }, [data, selected])
 
   if (!data) return <div className="p-6 text-sm text-text-muted">{error || 'Loading roles...'}</div>
-  if (!data.rbac_v2_enabled) {
-    return <div className="p-6 text-sm text-text-muted">Custom roles are not enabled yet. Set RBAC_V2_ENABLED to turn this on.</div>
-  }
+
+  // Tool-visibility editing of existing roles is always available (this is the
+  // single roles admin page). Creating/renaming/deleting custom roles is gated
+  // behind RBAC_V2_ENABLED until the full custom-role system is switched on.
+  const canManageRoles = !!data.rbac_v2_enabled
 
   const tierIdx = (t) => TIERS.indexOf(t)
   const baseIdx = tierIdx(selectedRole?.base_tier || 'team_member')
@@ -85,9 +87,11 @@ export default function AdminRolesV2Tab() {
       <div className="w-64 shrink-0">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-bold text-text-primary">Roles</h3>
-          <button onClick={() => setCreating(c => !c)} className="text-xs font-semibold text-wcs-red">+ New role</button>
+          {canManageRoles && (
+            <button onClick={() => setCreating(c => !c)} className="text-xs font-semibold text-wcs-red">+ New role</button>
+          )}
         </div>
-        {creating && (
+        {canManageRoles && creating && (
           <div className="mb-3 p-3 rounded-lg border border-border bg-surface space-y-2">
             <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Role name"
               className="w-full px-2 py-1.5 rounded border border-border text-sm" />
@@ -119,8 +123,8 @@ export default function AdminRolesV2Tab() {
                 <p className="text-xs text-text-muted">{TIER_LABEL[selectedRole.base_tier]} tier ceiling</p>
               </div>
               <div className="flex items-center gap-2">
-                {!selectedRole.is_builtin && <button onClick={() => handleRename(selectedRole)} className="text-xs font-semibold text-text-muted">Rename</button>}
-                {!selectedRole.is_builtin && <button onClick={() => handleDelete(selectedRole)} className="text-xs font-semibold text-wcs-red">Delete</button>}
+                {canManageRoles && !selectedRole.is_builtin && <button onClick={() => handleRename(selectedRole)} className="text-xs font-semibold text-text-muted">Rename</button>}
+                {canManageRoles && !selectedRole.is_builtin && <button onClick={() => handleDelete(selectedRole)} className="text-xs font-semibold text-wcs-red">Delete</button>}
                 <button onClick={saveGrid} disabled={saving} className="px-3 py-1.5 rounded-lg bg-wcs-red text-white text-xs font-semibold disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
               </div>
             </div>
