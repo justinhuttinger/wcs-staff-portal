@@ -59,4 +59,70 @@ function classifyAbcResult(json) {
   }
 }
 
-module.exports = { buildStockBody, sanitizeNotes, classifyAbcResult, ABC_BASE_URL, ABC_APP_ID, ABC_APP_KEY }
+function abcHeaders() {
+  return { app_id: ABC_APP_ID || '', app_key: ABC_APP_KEY || '', Accept: 'application/json', 'Content-Type': 'application/json' }
+}
+
+async function putStockLevel(clubNumber, saleItemId, opts, deps = {}) {
+  const fetchImpl = deps.fetchImpl || fetch
+  const built = buildStockBody(opts)
+  if (!built.ok) return { status: 'skipped', code: null, error: built.skipReason }
+  if (!clubNumber || !saleItemId) return { status: 'skipped', code: null, error: 'missing club or saleItemId' }
+  const url = `${ABC_BASE_URL}/${clubNumber}/club/items/${saleItemId}`
+  try {
+    const res = await fetchImpl(url, {
+      method: 'PUT', headers: abcHeaders(), body: JSON.stringify(built.body),
+      signal: AbortSignal.timeout(30000),
+    })
+    let json = {}
+    try { json = await res.json() } catch { json = {} }
+    const c = classifyAbcResult(json)
+    if (c.ok || c.benign) return { status: 'synced', code: c.code, error: null }
+    return { status: 'failed', code: c.code, error: (c.message || `HTTP ${res.status}`).slice(0, 500) }
+  } catch (e) {
+    return { status: 'failed', code: null, error: String(e.message || e).slice(0, 500) }
+  }
+}
+
+// Map a movement kind to an ABC action. count = absolute set = override;
+// adjustment/received = add. Anything else is not pushed.
+function actionForKind(kind) {
+  if (kind === 'count') return 'override'
+  if (kind === 'adjustment' || kind === 'received') return 'add'
+  return null
+}
+
+async function pushMovement(movementId, deps = {}) {
+  const { supabaseAdmin } = require('./supabase')
+  const db = deps.db || supabaseAdmin
+  const sendCost = process.env.ABC_STOCK_PUSH_SEND_COST === '1'
+  const { data: mv } = await db.from('inventory_movements').select('*').eq('id', movementId).maybeSingle()
+  if (!mv) return { status: 'skipped', code: null, error: 'movement not found' }
+  const action = actionForKind(mv.kind)
+  if (!action) return { status: 'skipped', code: null, error: `kind ${mv.kind} not pushable` }
+
+  const { data: item } = await db.from('inventory_items').select('sale_item_id, avg_unit_cost, last_unit_cost').eq('id', mv.item_id).maybeSingle()
+  const saleItemId = item?.sale_item_id || null
+
+  const quantity = action === 'override' ? mv.qty_after : mv.qty_delta
+  const unitCost = sendCost ? (item?.avg_unit_cost ?? item?.last_unit_cost) : undefined
+  let result
+  if (!saleItemId) {
+    result = { status: 'skipped', code: null, error: 'item has no ABC sale_item_id' }
+  } else {
+    result = await putStockLevel(mv.club_number, saleItemId, {
+      action, quantity, unitCost, notes: mv.note || null,
+    }, deps)
+  }
+
+  await db.from('inventory_movements').update({
+    abc_push_status: result.status,
+    abc_action: action,
+    abc_push_error: result.error || null,
+    abc_push_attempts: (mv.abc_push_attempts || 0) + 1,
+    abc_pushed_at: new Date().toISOString(),
+  }).eq('id', movementId)
+  return result
+}
+
+module.exports = { buildStockBody, sanitizeNotes, classifyAbcResult, putStockLevel, pushMovement, actionForKind, ABC_BASE_URL, ABC_APP_ID, ABC_APP_KEY }

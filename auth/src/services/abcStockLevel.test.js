@@ -52,3 +52,40 @@ test('classifyAbcResult: real error is not benign', () => {
   assert.strictEqual(r.benign, false)
   assert.strictEqual(r.code, 'API-CLU-ITM-0005')
 })
+
+const { putStockLevel } = require('./abcStockLevel')
+
+function fakeFetch(responseJson, ok = true) {
+  return async () => ({ ok, status: ok ? 200 : 400, json: async () => responseJson, text: async () => JSON.stringify(responseJson) })
+}
+
+test('putStockLevel: success → synced', async () => {
+  const r = await putStockLevel('1234', 'SALE1', { action: 'add', quantity: 5 }, {
+    fetchImpl: fakeFetch({ status: { message: 'Sale Item updated successfully.', messageCode: 'API-CLU-ITM-0000' } }),
+  })
+  assert.strictEqual(r.status, 'synced')
+})
+
+test('putStockLevel: benign override → synced', async () => {
+  const r = await putStockLevel('1234', 'SALE1', { action: 'override', quantity: 2 }, {
+    fetchImpl: fakeFetch({ status: { messageCode: 'API-CLU-ITM-0010' }, errorMessages: [{ messageCode: 'API-CLU-ITM-0007', message: 'same as in stock' }] }, false),
+  })
+  assert.strictEqual(r.status, 'synced')
+})
+
+test('putStockLevel: real error → failed with code', async () => {
+  const r = await putStockLevel('1234', 'SALE1', { action: 'add', quantity: 5 }, {
+    fetchImpl: fakeFetch({ status: { messageCode: 'API-CLU-ITM-0010' }, errorMessages: [{ messageCode: 'API-CLU-ITM-0005', message: 'The unit cost is incorrect.' }] }, false),
+  })
+  assert.strictEqual(r.status, 'failed')
+  assert.strictEqual(r.code, 'API-CLU-ITM-0005')
+})
+
+test('putStockLevel: unsendable value → skipped (no fetch call)', async () => {
+  let called = false
+  const r = await putStockLevel('1234', 'SALE1', { action: 'add', quantity: 0 }, {
+    fetchImpl: async () => { called = true; return { ok: true, json: async () => ({}) } },
+  })
+  assert.strictEqual(r.status, 'skipped')
+  assert.strictEqual(called, false)
+})
