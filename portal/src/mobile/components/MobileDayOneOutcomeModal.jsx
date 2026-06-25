@@ -56,6 +56,7 @@ export default function MobileDayOneOutcomeModal({ apt, locationSlug, onClose, o
     try {
       const result = await submitDayOneResult({
         contact_id: apt.contact_id,
+        appointment_id: apt.id,
         location_slug: locationSlug,
         show_no_show: showOrNoShow,
         sale_result: showOrNoShow === 'Show' ? saleOrNoSale : null,

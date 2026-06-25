@@ -81,6 +81,7 @@ function OutcomeModal({ appointment, locationSlug, onClose, onSubmitted }) {
     try {
       const result = await submitDayOneResult({
         contact_id: appointment.contact_id,
+        appointment_id: appointment.id,
         location_slug: locationSlug,
         show_no_show: showNoShow,
         sale_result: showNoShow === 'Show' ? saleResult : null,
@@ -267,6 +268,13 @@ export default function DayOneTrackerView({ user, onBack, location, isAdmin }) {
   const [activeModal, setActiveModal] = useState(null)
   const [tab, setTab] = useState('pending')
 
+  // Completion gate: lead+ can record any Day One; base team members can only
+  // record the one assigned to them. Everyone still sees every row.
+  const BASE_ROLES = ['team_member', 'front_desk', 'personal_trainer']
+  const canCompleteAny = !BASE_ROLES.includes(user?.staff?.role)
+  const userEmail = (user?.staff?.email || '').toLowerCase()
+  const canCompleteApt = (apt) => canCompleteAny || (apt.assigned_user_email || '').toLowerCase() === userEmail
+
   useEffect(() => { loadAppointments() }, [locationSlug])
 
   async function loadAppointments() {
@@ -364,11 +372,16 @@ export default function DayOneTrackerView({ user, onBack, location, isAdmin }) {
 
       {!loading && (
         <div className="flex flex-col gap-2">
-          {visibleList.map(apt => (
+          {visibleList.map(apt => {
+            const clickable = canCompleteApt(apt)
+            return (
             <button
               key={apt.id}
-              onClick={() => setActiveModal(apt)}
-              className="w-full flex items-center justify-between p-4 rounded-xl bg-surface border border-border hover:border-wcs-red/50 transition-colors text-left"
+              onClick={clickable ? () => setActiveModal(apt) : undefined}
+              disabled={!clickable}
+              className={`w-full flex items-center justify-between p-4 rounded-xl bg-surface border border-border text-left transition-colors ${
+                clickable ? 'hover:border-wcs-red/50 cursor-pointer' : 'cursor-default'
+              }`}
             >
               <div>
                 <p className="font-medium text-text-primary">{capitalize(apt.contact_name)}</p>
@@ -379,7 +392,8 @@ export default function DayOneTrackerView({ user, onBack, location, isAdmin }) {
               </div>
               <StatusBadge appointment={apt} />
             </button>
-          ))}
+            )
+          })}
           {visibleList.length === 0 && (
             <p className="empty-card mx-auto block my-6">
               {tab === 'pending' ? 'No pending Day Ones' : 'No completed Day Ones'} for this period

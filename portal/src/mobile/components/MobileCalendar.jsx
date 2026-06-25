@@ -59,6 +59,13 @@ export default function MobileCalendar({ user }) {
   const [selectedDayOne, setSelectedDayOne] = useState(null)
   const requestRef = useRef(0)
 
+  // Completion gate: lead+ can record any Day One; base team members (front
+  // desk / trainers) can only record the one assigned to them. Everyone still
+  // SEES every Day One — this only governs who can open the outcome form.
+  const BASE_ROLES = ['team_member', 'front_desk', 'personal_trainer']
+  const canCompleteAny = !BASE_ROLES.includes(user?.staff?.role)
+  const userEmail = (user?.staff?.email || '').toLowerCase()
+
   const userLocations = user?.staff?.locations || []
   const [selectedLocation, setSelectedLocation] = useState(
     userLocations.find(l => l.is_primary)?.name || userLocations[0]?.name || 'Salem'
@@ -102,6 +109,7 @@ export default function MobileCalendar({ user }) {
         status: normalizeStatus(a),
         sale: getSaleLabel(a),
         pending: !a.day_one_status || a.day_one_status === 'Scheduled',
+        canComplete: canCompleteAny || (a.assigned_user_email || '').toLowerCase() === userEmail,
         raw: a,
       }))
 
@@ -222,7 +230,9 @@ export default function MobileCalendar({ user }) {
             {filtered.map(item => {
               const isTour = item.type === 'tour'
               const isCompletedD1 = !isTour && (item.status === 'Completed' || item.status === 'No Show')
-              const clickable = !isTour && (item.pending || isCompletedD1)
+              // Completed Day Ones open read-only for everyone; pending ones are
+              // only tappable by someone allowed to record the outcome.
+              const clickable = !isTour && (isCompletedD1 || (item.pending && item.canComplete))
               return (
                 <div
                   key={item.id}
@@ -276,6 +286,7 @@ export default function MobileCalendar({ user }) {
         <MobileDayOneOutcomeModal
           apt={selectedDayOne.raw}
           locationSlug={locationSlug}
+          readOnly={!selectedDayOne.canComplete}
           onClose={() => setSelectedDayOne(null)}
           onSubmitted={confirmed => {
             // Merge confirmed outcome into the local item so the calendar reflects it without a refetch
