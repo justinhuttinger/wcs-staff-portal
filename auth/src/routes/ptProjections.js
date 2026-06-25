@@ -1,6 +1,6 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { requireReportAccess } = require('../middleware/role')
 const { wrapSWR } = require('../services/memoryCache')
 const { supabaseAdmin } = require('../services/supabase')
 const { parseLocationSlugParam, locationCacheKey } = require('../utils/locationSlug')
@@ -13,7 +13,7 @@ const PT_PROFIT_CENTERS = ['TRAINING', 'PERSONAL TRAINING']
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('manager'))
+router.use(requireReportAccess('manager', ['pt-projections']))
 
 function todayIso() {
   const d = new Date()

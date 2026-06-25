@@ -127,6 +127,7 @@ const REPORT_INFO = {
       'This is a point-in-time snapshot, refreshed every few minutes.',
       'Projected amounts come from each agreement\'s scheduled draft and may include tax or fees, so treat them as estimates.',
       'Collected dollars are matched to a member, not to a specific draft, so per-member Collected means the member has a training payment in the range.',
+      'A member can show as Collected in the detail list while still counting toward Past-due in the summary if their next bill date has not advanced yet, for example a same-day draft or sync lag.',
     ],
   },
 
