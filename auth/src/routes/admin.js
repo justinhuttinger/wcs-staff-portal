@@ -14,8 +14,10 @@ router.use(authenticate)
 // returns { ok, status, error, requestedLevel } so the caller can respond.
 async function resolveAssignableRole(role) {
   try {
-    const { data: roleRow } = await supabaseAdmin
+    const { data: roleRow, error } = await supabaseAdmin
       .from('roles').select('base_tier').eq('name', role).maybeSingle()
+    // A backend/RLS error must read as a 500, not be misreported as bad input.
+    if (error) return { ok: false, status: 500, error: 'Role validation failed' }
     if (!roleRow) return { ok: false, status: 400, error: 'Invalid role' }
     return { ok: true, requestedLevel: ROLE_HIERARCHY.indexOf(roleRow.base_tier) }
   } catch (err) {
