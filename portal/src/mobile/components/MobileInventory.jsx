@@ -146,9 +146,11 @@ function FullScreenLoader({ title, subtitle }) {
   )
 }
 
-function AdjustSheet({ item, onClose, onSaved }) {
+function AdjustSheet({ item, onClose, onSaved, lockedMode = null }) {
   // Two-step flow: first pick the action (restock vs set count), then the amount.
-  const [mode, setMode] = useState(null) // null (choose) | 'delta' (restock) | 'count'
+  // When opened from a mode-specific flow (Restock / Count), lockedMode fixes the
+  // action up front so we skip the chooser and the "Change action" link.
+  const [mode, setMode] = useState(lockedMode) // null (choose) | 'delta' (restock) | 'count'
   const [value, setValue] = useState('')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
@@ -214,9 +216,11 @@ function AdjustSheet({ item, onClose, onSaved }) {
         ) : (
           /* Step 2 — enter the amount for the chosen action */
           <>
-            <button onClick={() => { setMode(null); setError('') }} className="text-xs font-semibold text-wcs-red mb-3">
-              ← Change action
-            </button>
+            {!lockedMode && (
+              <button onClick={() => { setMode(null); setError('') }} className="text-xs font-semibold text-wcs-red mb-3">
+                ← Change action
+              </button>
+            )}
             <input
               type="number" step="any" min="0" inputMode="decimal" autoFocus value={value} onChange={e => setValue(e.target.value)}
               placeholder={mode === 'count' ? 'Counted quantity' : 'Amount to add (e.g. 12)'}
@@ -833,6 +837,7 @@ export default function MobileInventory({ user }) {
   const [browseLoading, setBrowseLoading] = useState(false)
   const [capturing, setCapturing] = useState(false)
   const [reviewInvoice, setReviewInvoice] = useState(null)
+  const [view, setView] = useState('choose') // 'choose' | 'restock' (received shipment) | 'count' (counting all items)
   const searchRef = useRef(null)
 
   async function lookup(code) {
@@ -908,8 +913,8 @@ export default function MobileInventory({ user }) {
           {canSeeFinancials && item.margin_pct != null && <span className={item.margin_pct < 0 ? 'text-wcs-red font-semibold' : 'text-emerald-600 font-semibold'}>{item.margin_pct}% margin</span>}
         </div>
         <div className="flex gap-2 mt-3">
-          <button onClick={() => setAdjusting(item)} className="flex-1 py-2 rounded-xl bg-wcs-red text-white text-xs font-semibold">Restock</button>
-          {isAdmin && <button onClick={() => setEditing(item)} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-muted">Edit Cost</button>}
+          <button onClick={() => setAdjusting(item)} className="flex-1 py-2 rounded-xl bg-wcs-red text-white text-xs font-semibold">{view === 'count' ? 'Set count' : 'Add stock'}</button>
+          {isAdmin && view === 'restock' && <button onClick={() => setEditing(item)} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-muted">Edit Cost</button>}
           <button onClick={() => openHistory(item)} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-muted">History</button>
         </div>
       </div>
@@ -928,8 +933,64 @@ export default function MobileInventory({ user }) {
         {LOCATION_OPTIONS.filter(o => o.slug !== 'all').map(o => <option key={o.slug} value={o.slug}>{o.label}</option>)}
       </select>
 
-      {/* Primary actions — three equal-size buttons */}
-      <div className="grid grid-cols-3 gap-2 mb-3">
+      {/* Mode chooser — the new front door: pick what you're here to do */}
+      {view === 'choose' && (
+        <div className="mt-2 space-y-3">
+          <button
+            onClick={() => { setView('restock'); setResults([]); setLookupError(''); setManualCode('') }}
+            className="w-full p-5 rounded-2xl bg-wcs-red text-white flex items-center gap-4 text-left"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-8 h-8 shrink-0">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+            </svg>
+            <span>
+              <span className="block text-base font-bold">Restock</span>
+              <span className="block text-xs text-white/80">Received a shipment</span>
+            </span>
+          </button>
+          <button
+            onClick={() => { setView('count'); setResults([]); setLookupError(''); setManualCode('') }}
+            className="w-full p-5 rounded-2xl border border-border bg-surface text-text-primary flex items-center gap-4 text-left"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-8 h-8 shrink-0 text-wcs-red">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z" />
+            </svg>
+            <span>
+              <span className="block text-base font-bold">Count Inventory</span>
+              <span className="block text-xs text-text-muted">Counting all items</span>
+            </span>
+          </button>
+        </div>
+      )}
+
+      {view !== 'choose' && (
+      <>
+      {/* Back to the mode chooser */}
+      <button
+        onClick={() => { setView('choose'); setResults([]); setLookupError(''); setManualCode('') }}
+        className="text-xs font-semibold text-wcs-red mb-3 inline-flex items-center gap-1"
+      >
+        ← Inventory
+      </button>
+
+      {/* Restock only: receive a shipment by snapping its invoice (no invoice in Count mode) */}
+      {view === 'restock' && (
+        <button
+          onClick={() => setCapturing(true)}
+          className="w-full py-4 rounded-2xl bg-wcs-red text-white font-bold text-sm flex items-center justify-center gap-2 mb-3"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+          </svg>
+          Snap Invoice
+        </button>
+      )}
+
+      {/* Find an item to act on */}
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">
+        {view === 'restock' ? 'Or add stock by item' : 'Scan or search to count'}
+      </p>
+      <div className="grid grid-cols-2 gap-2 mb-3">
         <button
           onClick={() => setScanning(true)}
           className="py-4 rounded-2xl bg-wcs-red text-white font-bold text-xs flex flex-col items-center justify-center gap-1.5"
@@ -939,15 +1000,6 @@ export default function MobileInventory({ user }) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 13.5h1.5v1.5h-1.5zM16.5 13.5H18v1.5h-1.5zM19.5 13.5H21v1.5h-1.5zM13.5 16.5h1.5V18h-1.5zM16.5 16.5H18V18h-1.5zM19.5 16.5H21V18h-1.5zM13.5 19.5h1.5V21h-1.5zM16.5 19.5H18V21h-1.5zM19.5 19.5H21V21h-1.5z" />
           </svg>
           Scan UPC
-        </button>
-        <button
-          onClick={() => setCapturing(true)}
-          className="py-4 rounded-2xl border border-border bg-surface text-text-primary font-semibold text-xs flex flex-col items-center justify-center gap-1.5"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-          </svg>
-          Snap Invoice
         </button>
         <button
           onClick={() => { searchRef.current?.focus(); searchRef.current?.scrollIntoView({ block: 'center' }) }}
@@ -996,9 +1048,11 @@ export default function MobileInventory({ user }) {
       <div className="mt-3">
         {browse.map(item => <ItemCard key={item.id} item={item} />)}
       </div>
+      </>
+      )}
 
       {scanning && <Scanner onDetected={onScanDetected} onClose={() => setScanning(false)} />}
-      {adjusting && <AdjustSheet item={adjusting} onClose={() => setAdjusting(null)} onSaved={onSaved} />}
+      {adjusting && <AdjustSheet item={adjusting} lockedMode={view === 'count' ? 'count' : 'delta'} onClose={() => setAdjusting(null)} onSaved={onSaved} />}
       {editing && <EditCostSheet item={editing} onClose={() => setEditing(null)} onSaved={onSaved} />}
       {capturing && (
         <InvoiceCaptureSheet
