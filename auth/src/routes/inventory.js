@@ -598,6 +598,95 @@ router.get('/shrinkage', requireRole('manager'), async (req, res) => {
   }
 })
 
+// GET /compliance?location_slug=&overdue_days=30 — per-club "how long since we
+// last counted / restocked" scoreboard so managers can see which teams are
+// letting physical counts slip. Status keys off COUNT age (the discipline being
+// measured); restock is context only. Manager+.
+router.get('/compliance', requireRole('manager'), async (req, res) => {
+  try {
+    const { clubs, error: cErr } = clubFilter(req)
+    if (cErr) return res.status(400).json({ error: cErr })
+    const overdueDays = Math.min(Math.max(parseInt(req.query.overdue_days) || 30, 1), 365)
+
+    // Sellable tracked items per club (for tracked + never-counted scope).
+    const makeItems = () => {
+      let q = supabaseAdmin.from('inventory_items').select('id, club_number, category, profit_center, upc, is_tracked').eq('archived', false)
+      if (clubs) q = q.in('club_number', clubs)
+      return q
+    }
+    const items = (await fetchAllRows(makeItems)).filter(isSellableItem)
+
+    // Latest count + restock timestamp per (club). One pass over count/restock
+    // movements ordered newest-first; first seen per club wins.
+    const makeMoves = () => {
+      let q = supabaseAdmin.from('inventory_movements')
+        .select('club_number, kind, occurred_at, item_id')
+        .in('kind', ['count', 'received', 'adjustment'])
+        .order('occurred_at', { ascending: false })
+      if (clubs) q = q.in('club_number', clubs)
+      return q
+    }
+    const moves = await fetchAllRows(makeMoves)
+    const lastCount = new Map()   // club -> iso
+    const lastRestock = new Map() // club -> iso
+    const countedItems = new Set() // `${club}:${item_id}` ever counted
+    for (const m of moves) {
+      if (m.kind === 'count') {
+        if (!lastCount.has(m.club_number)) lastCount.set(m.club_number, m.occurred_at)
+        if (m.item_id) countedItems.add(`${m.club_number}:${m.item_id}`)
+      } else if (!lastRestock.has(m.club_number)) {
+        lastRestock.set(m.club_number, m.occurred_at)
+      }
+    }
+
+    // Which clubs to report: the filtered set, or all 7 when unfiltered, so an
+    // untouched club still shows as "never".
+    const clubNumbers = clubs || [...new Set(Object.values(SLUG_CLUB_MAP))]
+    const trackedByClub = new Map()
+    const neverByClub = new Map()
+    for (const it of items) {
+      trackedByClub.set(it.club_number, (trackedByClub.get(it.club_number) || 0) + 1)
+      if (!countedItems.has(`${it.club_number}:${it.id}`)) {
+        neverByClub.set(it.club_number, (neverByClub.get(it.club_number) || 0) + 1)
+      }
+    }
+
+    const now = Date.now()
+    const daysSince = (iso) => iso ? Math.floor((now - new Date(iso).getTime()) / 86400000) : null
+    const rows = clubNumbers.map((club) => {
+      const lc = lastCount.get(club) || null
+      const dsc = daysSince(lc)
+      const status = lc == null ? 'never' : (dsc > overdueDays ? 'overdue' : 'ok')
+      return {
+        location_slug: CLUB_TO_SLUG[club] || null,
+        club_number: club,
+        last_count_at: lc,
+        days_since_count: dsc,
+        last_restock_at: lastRestock.get(club) || null,
+        days_since_restock: daysSince(lastRestock.get(club) || null),
+        tracked_items: trackedByClub.get(club) || 0,
+        never_counted_items: neverByClub.get(club) || 0,
+        status,
+      }
+    }).sort((a, b) => {
+      // Worst discipline first: never, then most-overdue.
+      const rank = (s) => (s === 'never' ? 2 : s === 'overdue' ? 1 : 0)
+      return rank(b.status) - rank(a.status) || (b.days_since_count ?? -1) - (a.days_since_count ?? -1)
+    })
+
+    const rollup = {
+      clubs: rows.length,
+      overdue: rows.filter(r => r.status === 'overdue').length,
+      never: rows.filter(r => r.status === 'never').length,
+      ok: rows.filter(r => r.status === 'ok').length,
+    }
+    res.json({ overdue_days: overdueDays, clubs: rows, rollup })
+  } catch (err) {
+    console.error('[Inventory] compliance error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // GET /movements — recent manual/mobile stock adjustments (for the Restock audit
 // feed). POS sales and invoice receipts are excluded; invoices show on their own.
 router.get('/movements', async (req, res) => {
