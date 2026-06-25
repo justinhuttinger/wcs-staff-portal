@@ -4,8 +4,7 @@ const { requireReportAccess } = require('../middleware/role')
 const { wrapSWR } = require('../services/memoryCache')
 const { supabaseAdmin } = require('../services/supabase')
 const { parseLocationSlugParam, locationCacheKey } = require('../utils/locationSlug')
-const { CLUBS, fetchActiveRecurringPTServices } = require('../services/abcRecurring')
-const { normalizeService, computeProjections } = require('../lib/ptProjections')
+const { computeProjections } = require('../lib/ptProjections')
 
 const PT_PROJ_FRESH_MS = 2 * 60 * 1000
 const PT_PROJ_STALE_MS = 15 * 60 * 1000
@@ -56,10 +55,40 @@ async function fetchCollected(slugs, startDate, endDate) {
   return rows.map(r => ({ memberNumber: String(r.member_number), location: r.location_slug, amount: Number(r.payment_amount) || 0 }))
 }
 
+// Active recurring PT agreements, read from the table ghl-sync keeps fresh
+// (abc_recurring_pt_services). Replaces the old live ABC scan, which was slow
+// and timed out for the oldest club.
+async function fetchActiveServices(slugs) {
+  let q = supabaseAdmin
+    .from('abc_recurring_pt_services')
+    .select('member_id, member_name, trainer_name, location_slug, next_billing_date, invoice_total, synced_at')
+  if (slugs && slugs.length) q = q.in('location_slug', slugs)
+  const rows = []
+  const PAGE = 1000
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await q.range(from, from + PAGE - 1)
+    if (error) throw new Error(`recurring PT query failed: ${error.message}`)
+    rows.push(...(data || []))
+    if (!data || data.length < PAGE) break
+  }
+  let lastSyncedAt = null
+  const services = rows.map(r => {
+    if (r.synced_at && (!lastSyncedAt || r.synced_at > lastSyncedAt)) lastSyncedAt = r.synced_at
+    return {
+      memberId: String(r.member_id || ''),
+      name: r.member_name || 'Unknown',
+      trainer: r.trainer_name || 'Unassigned',
+      location: r.location_slug,
+      nextBillingDate: r.next_billing_date ? String(r.next_billing_date).slice(0, 10) : null,
+      amount: Number(r.invoice_total) || 0,
+    }
+  })
+  return { services, lastSyncedAt }
+}
+
 async function buildPtProjectionsPayload(query) {
   const parsed = parseLocationSlugParam(query.location_slug)
   if (parsed.invalid) { const e = new Error(`Unknown location: ${parsed.invalid}`); e.status = 400; throw e }
-  const targetClubs = parsed.all ? CLUBS : CLUBS.filter(c => parsed.slugs.includes(c.slug))
   const slugKey = locationCacheKey(parsed)
 
   const start = query.start_date || monthStartIso()
@@ -69,27 +98,17 @@ async function buildPtProjectionsPayload(query) {
 
   const cacheKey = `reports:pt-projections:${slugKey}:${start}:${end}`
   return wrapSWR(cacheKey, PT_PROJ_FRESH_MS, PT_PROJ_STALE_MS, async () => {
-    // 1. Active recurring PT services across target clubs.
-    const results = await Promise.allSettled(
-      targetClubs.map(async club => {
-        const raw = await fetchActiveRecurringPTServices(club.clubNumber)
-        return raw.map(s => normalizeService(s, club.slug))
-      })
-    )
-    const services = []
-    const errors = []
-    results.forEach((r, i) => {
-      if (r.status === 'fulfilled') services.push(...r.value)
-      else errors.push({ club: targetClubs[i].name, error: r.reason?.message || 'Unknown error' })
-    })
-
-    // 2. Collected TRAINING revenue in window.
     const slugs = parsed.all ? null : parsed.slugs
-    const collected = await fetchCollected(slugs, start, end)
+    // 1. Active recurring PT agreements (from the synced table) + collected
+    //    TRAINING revenue in window. Both are fast DB reads.
+    const [{ services, lastSyncedAt }, collected] = await Promise.all([
+      fetchActiveServices(slugs),
+      fetchCollected(slugs, start, end),
+    ])
 
-    // 3. Reconcile (month) + forward calendar (rolling horizon).
+    // 2. Reconcile (month) + forward calendar (rolling horizon).
     const out = computeProjections({ services, collected, windowStart: start, windowEnd: end, today, horizonEnd })
-    if (errors.length) out.errors = errors
+    out.lastSyncedAt = lastSyncedAt
     return out
   })
 }
