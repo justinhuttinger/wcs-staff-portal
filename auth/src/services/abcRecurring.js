@@ -1,5 +1,7 @@
 'use strict'
 
+const memoryCache = require('./memoryCache')
+
 const ABC_BASE_URL = process.env.ABC_BASE_URL || 'https://api.abcfinancial.com/rest'
 const ABC_APP_ID = process.env.ABC_APP_ID
 const ABC_APP_KEY = process.env.ABC_APP_KEY
@@ -100,13 +102,19 @@ async function fetchRecurring(clubNumber) {
 }
 
 // Active, non-PIF, PT-only recurring services for one club.
+// The underlying ABC scan (2020->today over two timestamp filters) is heavy, and
+// the result does not depend on any report date window, so cache it per club for
+// 10 minutes. This keeps date-range changes and repeat report loads off the API.
+const ACTIVE_PT_TTL_MS = 10 * 60 * 1000
 async function fetchActiveRecurringPTServices(clubNumber) {
-  const all = await fetchRecurring(clubNumber)
-  return all.filter(
-    s => s.recurringServiceStatus === 'active' &&
-      !((s.recurringTypeDesc || '').includes('Paid in Full')) &&
-      isPT(s.serviceItem)
-  )
+  return memoryCache.wrap(`abc:active-recurring-pt:${clubNumber}`, ACTIVE_PT_TTL_MS, async () => {
+    const all = await fetchRecurring(clubNumber)
+    return all.filter(
+      s => s.recurringServiceStatus === 'active' &&
+        !((s.recurringTypeDesc || '').includes('Paid in Full')) &&
+        isPT(s.serviceItem)
+    )
+  })
 }
 
 module.exports = {

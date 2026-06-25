@@ -153,7 +153,7 @@ export default function PTProjectionsReport({ startDate, endDate, locationSlug }
       {/* Upcoming drafts by day */}
       {data.byDay?.length > 0 && (
         <section>
-          <h3 className="text-sm font-semibold text-text-primary mb-2">Upcoming Drafts by Day</h3>
+          <h3 className="text-sm font-semibold text-text-primary mb-2">Upcoming Drafts by Day (next 45 days)</h3>
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

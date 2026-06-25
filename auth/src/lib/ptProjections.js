@@ -11,16 +11,19 @@ function normalizeService(raw, clubSlug) {
     name,
     trainer,
     location: clubSlug,
-    nextBillingDate: raw.recurringServiceDates?.nextBillingDate || null,
+    // ABC returns recurringServiceDates.* as timestamps ("YYYY-MM-DD HH:MM:SS"),
+    // so slice to the date so it compares/buckets as a plain YYYY-MM-DD.
+    nextBillingDate: String(raw.recurringServiceDates?.nextBillingDate || '').slice(0, 10) || null,
     amount: round2(parseFloat(raw.invoiceTotal || '0') || 0),
   }
 }
 
-// Classify one service's next draft relative to the window/today.
-//  upcoming: today <= date <= end
-//  pastdue:  start <= date <  today
-//  future:   date > end
-//  other:    date < start, or no date  (ignored from projection buckets)
+// Classify a draft for the MONTH reconciliation (summary / by-location /
+// by-trainer money buckets):
+//  upcoming: today <= date <= windowEnd   (still to draft this period)
+//  pastdue:  windowStart <= date < today  (should have drafted, hasn't)
+//  future:   date > windowEnd             (a later period)
+//  other:    date < windowStart, or no date
 function classify(date, windowStart, windowEnd, today) {
   if (!date) return 'other'
   if (date >= today && date <= windowEnd) return 'upcoming'
@@ -29,9 +32,25 @@ function classify(date, windowStart, windowEnd, today) {
   return 'other'
 }
 
-function computeProjections({ services, collected, windowStart, windowEnd, today }) {
+// Status shown on a member row. "upcoming" uses the rolling forward HORIZON
+// (not the month) so next month's drafts within the horizon read as upcoming
+// rather than disappearing into "future".
+function memberStatus(date, windowStart, today, horizonEnd, isCollected) {
+  if (isCollected) return 'collected'
+  if (!date) return 'other'
+  if (date < today) return date >= windowStart ? 'pastdue' : 'other'
+  if (date <= horizonEnd) return 'upcoming'
+  return 'future'
+}
+
+// windowStart/windowEnd/today drive the current-period (month) reconciliation.
+// horizonEnd drives the rolling forward calendar (byDay) and member "upcoming"
+// status, so the calendar shows every agreement's next draft even when it falls
+// in the following month. Defaults to windowEnd when omitted (legacy behavior).
+function computeProjections({ services, collected, windowStart, windowEnd, today, horizonEnd }) {
   services = services || []
   collected = collected || []
+  horizonEnd = horizonEnd || windowEnd
 
   // member -> trainer/location, for attributing collected revenue.
   const memberMap = {}
@@ -56,25 +75,30 @@ function computeProjections({ services, collected, windowStart, windowEnd, today
     ensureTrn(tName, tLoc).collected += amt
   }
 
-  // Recurring agreements -> outstanding / past-due buckets.
+  // Recurring agreements -> month reconciliation buckets + forward calendar.
   const members = []
   for (const s of services) {
-    const cls = classify(s.nextBillingDate, windowStart, windowEnd, today)
+    const d = s.nextBillingDate
+    const cls = classify(d, windowStart, windowEnd, today)   // month buckets
     const lrec = ensureLoc(s.location)
     const trec = ensureTrn(s.trainer, s.location)
     if (cls === 'upcoming') {
-      outstanding += s.amount; lrec.outstanding += s.amount; trec.count += 1
-      byDayMap[s.nextBillingDate] = byDayMap[s.nextBillingDate] || { date: s.nextBillingDate, amount: 0, count: 0 }
-      byDayMap[s.nextBillingDate].amount = round2(byDayMap[s.nextBillingDate].amount + s.amount)
-      byDayMap[s.nextBillingDate].count += 1
+      outstanding += s.amount; lrec.outstanding += s.amount
     } else if (cls === 'pastdue') {
       pastDue += s.amount; lrec.pastDue += s.amount
     }
-    // member row status: collected payment this window wins, else its classification
-    const status = collectedMembers.has(s.memberId) ? 'collected' : cls
+    // Forward calendar + trainer upcoming count: rolling [today, horizonEnd],
+    // independent of the month so next month's drafts are visible.
+    if (d && d >= today && d <= horizonEnd) {
+      trec.count += 1
+      byDayMap[d] = byDayMap[d] || { date: d, amount: 0, count: 0 }
+      byDayMap[d].amount = round2(byDayMap[d].amount + s.amount)
+      byDayMap[d].count += 1
+    }
+    const status = memberStatus(d, windowStart, today, horizonEnd, collectedMembers.has(s.memberId))
     members.push({
       memberId: s.memberId, name: s.name, trainer: s.trainer, location: s.location,
-      nextBillingDate: s.nextBillingDate, amount: s.amount, status,
+      nextBillingDate: d, amount: s.amount, status,
     })
   }
 
@@ -99,7 +123,7 @@ function computeProjections({ services, collected, windowStart, windowEnd, today
     summary: {
       projected: round2(collectedTotal + outstanding + pastDue),
       collected: collectedTotal, outstanding, pastDue,
-      window: { start: windowStart, end: windowEnd }, asOf: today,
+      window: { start: windowStart, end: windowEnd }, asOf: today, horizonEnd,
     },
     byDay: Object.values(byDayMap).sort((a, b) => a.date.localeCompare(b.date)),
     byLocation: Object.values(loc).sort((a, b) => b.projected - a.projected),
