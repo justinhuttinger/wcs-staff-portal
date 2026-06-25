@@ -1,0 +1,30 @@
+// Pure helpers for the admin roles manager. No I/O here so they are unit
+// testable; the route layer in config.js does the DB work.
+const TIERS = ['team_member', 'lead', 'manager', 'corporate', 'admin']
+const CATEGORY_ORDER = { Apps: 0, Tools: 1, Reports: 2, Actions: 3 }
+
+function validateRoleName(name, existingNames) {
+  const trimmed = (name || '').trim()
+  if (!trimmed) return { ok: false, error: 'Role name is required' }
+  if (trimmed.length > 40) return { ok: false, error: 'Role name must be 40 characters or fewer' }
+  const lower = trimmed.toLowerCase()
+  if ((existingNames || []).some(n => String(n).toLowerCase() === lower)) {
+    return { ok: false, error: 'A role with that name already exists' }
+  }
+  return { ok: true }
+}
+
+function buildPermissionGrid(catalog, tileLabels) {
+  const rows = [...(catalog || [])]
+  for (const [perm_key, meta] of Object.entries(tileLabels || {})) {
+    rows.push({ perm_key, label: meta.label || perm_key, category: 'Tools', min_tier: 'team_member' })
+  }
+  rows.sort((a, b) => {
+    const c = (CATEGORY_ORDER[a.category] ?? 9) - (CATEGORY_ORDER[b.category] ?? 9)
+    if (c !== 0) return c
+    return String(a.label).localeCompare(String(b.label))
+  })
+  return rows
+}
+
+module.exports = { TIERS, validateRoleName, buildPermissionGrid }

@@ -2,6 +2,7 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { validateRoleName, buildPermissionGrid, TIERS } = require('../services/rolesAdmin')
 
 const router = Router()
 
@@ -270,6 +271,99 @@ router.put('/role-visibility', requireRole('admin'), async (req, res) => {
     res.json({ message: 'Visibility updated' })
   } catch (err) {
     res.status(500).json({ error: 'Failed to update visibility' })
+  }
+})
+
+// --- RBAC v2: custom roles manager ---
+
+// GET /config/roles — admin: all roles, the permission grid (catalog + tiles),
+// current per-role visibility, and the RBAC v2 flag.
+router.get('/roles', requireRole('admin'), async (req, res) => {
+  try {
+    const [{ data: roles }, { data: catalog }, { data: tiles }, { data: visibility }] = await Promise.all([
+      supabaseAdmin.from('roles').select('id, name, base_tier, is_builtin').order('is_builtin', { ascending: false }).order('name'),
+      supabaseAdmin.from('permission_catalog').select('perm_key, label, category, min_tier'),
+      supabaseAdmin.from('custom_tiles').select('id, label'),
+      supabaseAdmin.from('role_tool_visibility').select('role, tool_key, visible'),
+    ])
+    const tileLabels = {}
+    for (const t of (tiles || [])) tileLabels['tile:' + t.id] = { label: t.label }
+    const { data: staffRows } = await supabaseAdmin.from('staff').select('role')
+    const counts = {}
+    for (const s of (staffRows || [])) counts[s.role] = (counts[s.role] || 0) + 1
+    const rolesOut = (roles || []).map(r => ({ ...r, assigned_count: counts[r.name] || 0 }))
+    res.json({
+      rbac_v2_enabled: process.env.RBAC_V2_ENABLED === 'true',
+      roles: rolesOut,
+      grid: buildPermissionGrid(catalog || [], tileLabels),
+      visibility: visibility || [],
+    })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load roles' })
+  }
+})
+
+// POST /config/roles — admin: create a named role anchored to a base tier.
+router.post('/roles', requireRole('admin'), async (req, res) => {
+  const { name, base_tier } = req.body || {}
+  if (!TIERS.includes(base_tier)) return res.status(400).json({ error: 'Invalid base tier' })
+  try {
+    const { data: existing } = await supabaseAdmin.from('roles').select('name')
+    const v = validateRoleName(name, (existing || []).map(r => r.name))
+    if (!v.ok) return res.status(400).json({ error: v.error })
+    const { data: role, error } = await supabaseAdmin
+      .from('roles').insert({ name: name.trim(), base_tier, is_builtin: false }).select('id, name, base_tier, is_builtin').single()
+    if (error) return res.status(500).json({ error: 'Failed to create role' })
+    // Seed the new role's toggles from its base tier so it starts sensible.
+    const { data: baseRows } = await supabaseAdmin
+      .from('role_tool_visibility').select('tool_key, visible').eq('role', base_tier)
+    if (baseRows && baseRows.length) {
+      await supabaseAdmin.from('role_tool_visibility')
+        .upsert(baseRows.map(r => ({ role: role.name, tool_key: r.tool_key, visible: r.visible })), { onConflict: 'role,tool_key' })
+    }
+    res.status(201).json({ role })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create role' })
+  }
+})
+
+// PATCH /config/roles/:id — admin: rename a non-builtin role; cascade the new
+// name to its visibility rows and any staff assigned to it.
+router.patch('/roles/:id', requireRole('admin'), async (req, res) => {
+  const { name } = req.body || {}
+  try {
+    const { data: role } = await supabaseAdmin.from('roles').select('id, name, is_builtin').eq('id', req.params.id).single()
+    if (!role) return res.status(404).json({ error: 'Role not found' })
+    if (role.is_builtin) return res.status(400).json({ error: 'Built-in roles cannot be renamed' })
+    const { data: existing } = await supabaseAdmin.from('roles').select('name').neq('id', req.params.id)
+    const v = validateRoleName(name, (existing || []).map(r => r.name))
+    if (!v.ok) return res.status(400).json({ error: v.error })
+    const newName = name.trim()
+    // Atomic rename: the roles row plus the cascade to role_tool_visibility and
+    // staff all happen in one transaction (rename_role RPC), so a partial
+    // failure can't strand assigned staff on the old name while we return 200.
+    const { data: updated, error } = await supabaseAdmin
+      .rpc('rename_role', { p_id: req.params.id, p_new_name: newName })
+    if (error) return res.status(500).json({ error: 'Failed to rename role' })
+    res.json({ role: Array.isArray(updated) ? updated[0] : updated })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to rename role' })
+  }
+})
+
+// DELETE /config/roles/:id — admin: delete a non-builtin role with no members.
+router.delete('/roles/:id', requireRole('admin'), async (req, res) => {
+  try {
+    const { data: role } = await supabaseAdmin.from('roles').select('id, name, is_builtin').eq('id', req.params.id).single()
+    if (!role) return res.status(404).json({ error: 'Role not found' })
+    if (role.is_builtin) return res.status(400).json({ error: 'Built-in roles cannot be deleted' })
+    const { count } = await supabaseAdmin.from('staff').select('id', { count: 'exact', head: true }).eq('role', role.name)
+    if (count && count > 0) return res.status(409).json({ error: `Reassign ${count} member(s) before deleting this role` })
+    await supabaseAdmin.from('role_tool_visibility').delete().eq('role', role.name)
+    await supabaseAdmin.from('roles').delete().eq('id', req.params.id)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete role' })
   }
 })
 
