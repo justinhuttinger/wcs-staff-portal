@@ -499,6 +499,23 @@ export async function updateRoleVisibility(updates) {
   })
 }
 
+// Config - RBAC v2 custom roles
+export async function getRolesAdmin() {
+  return api('/config/roles')
+}
+
+export async function createRole(body) {
+  return api('/config/roles', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export async function renameRole(id, name) {
+  return api('/config/roles/' + id, { method: 'PATCH', body: JSON.stringify({ name }) })
+}
+
+export async function deleteRole(id) {
+  return api('/config/roles/' + id, { method: 'DELETE' })
+}
+
 // Appointments
 export async function getAppointments(params = {}) {
   const qs = new URLSearchParams(params).toString()
