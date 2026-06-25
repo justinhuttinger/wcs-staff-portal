@@ -856,6 +856,10 @@ export async function getInventoryShrinkage(params = {}) {
   return api('/inventory/shrinkage' + inventoryQs(params))
 }
 
+export async function getInventoryCompliance(params = {}) {
+  return api('/inventory/compliance' + inventoryQs(params))
+}
+
 // Day One Tracker
 export async function getDayOneTrackerAppointments(params = {}) {
   const qs = new URLSearchParams(params).toString()

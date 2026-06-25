@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { getInventorySummary, getInventoryEmployeeSpend, getInventoryShrinkage } from '../../lib/api'
+import { getInventorySummary, getInventoryEmployeeSpend, getInventoryShrinkage, getInventoryCompliance } from '../../lib/api'
 import { exportCSV } from '../../lib/export'
 
 // POS Sales report — the financial views that used to live on the Inventory page.
@@ -60,6 +60,7 @@ const SUB_TABS = [
   { key: 'sales', label: 'Product Sales' },
   { key: 'employee', label: 'Employee Spend' },
   { key: 'shrinkage', label: 'Shrinkage' },
+  { key: 'compliance', label: 'Compliance' },
 ]
 
 const moneyClass = (n) => (Number(n) < 0 ? 'text-wcs-red font-semibold' : Number(n) > 0 ? 'text-emerald-600 font-semibold' : 'text-text-primary')
@@ -147,6 +148,8 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
   const [summary, setSummary] = useState(null)
   const [empSpend, setEmpSpend] = useState(null)
   const [shrinkage, setShrinkage] = useState(null)
+  const [compliance, setCompliance] = useState(null)
+  const [overdueDays, setOverdueDays] = useState(30)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -158,23 +161,27 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
 
   // Invalidate cached tab data whenever the date range / location changes so a
   // stale tab doesn't flash old numbers when revisited.
-  useEffect(() => { setSummary(null); setEmpSpend(null); setShrinkage(null) }, [params])
+  useEffect(() => { setSummary(null); setEmpSpend(null); setShrinkage(null); setCompliance(null) }, [params])
+
+  useEffect(() => { setCompliance(null) }, [overdueDays])
 
   useEffect(() => {
     let ignore = false
     const need =
       (subTab === 'sales' && summary === null) ||
       (subTab === 'employee' && empSpend === null) ||
-      (subTab === 'shrinkage' && shrinkage === null)
+      (subTab === 'shrinkage' && shrinkage === null) ||
+      (subTab === 'compliance' && compliance === null)
     if (!need) return
     setLoading(true); setError('')
     const fetcher =
       subTab === 'sales' ? getInventorySummary(params).then(r => { if (!ignore) setSummary(r.summary || []) })
       : subTab === 'employee' ? getInventoryEmployeeSpend(params).then(r => { if (!ignore) setEmpSpend(r) })
+      : subTab === 'compliance' ? getInventoryCompliance({ location_slug: params.location_slug, overdue_days: overdueDays }).then(r => { if (!ignore) setCompliance(r) })
       : getInventoryShrinkage(params).then(r => { if (!ignore) setShrinkage(r) })
     fetcher.catch(err => { if (!ignore) setError(err.message) }).finally(() => { if (!ignore) setLoading(false) })
     return () => { ignore = true }
-  }, [subTab, params, summary, empSpend, shrinkage])
+  }, [subTab, params, summary, empSpend, shrinkage, compliance, overdueDays])
 
   function cycleSalesSort(col) {
     setSalesSort(s => (!s || s.col !== col ? { col, dir: 'desc' } : s.dir === 'desc' ? { col, dir: 'asc' } : null))
@@ -416,6 +423,63 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
           )}
         </>
       )}
+
+      {/* === Compliance === */}
+      {subTab === 'compliance' && (
+  <div className="space-y-3">
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <label className="text-text-muted">Overdue after</label>
+      <input type="number" min="1" max="365" value={overdueDays}
+        onChange={(e) => setOverdueDays(Math.max(1, Math.min(365, Number(e.target.value) || 30)))}
+        className="w-20 px-2 py-1 rounded border border-border bg-surface text-right" />
+      <span className="text-text-muted">days without a count</span>
+      {compliance && (
+        <span className="ml-auto text-xs text-text-muted">
+          {compliance.rollup.overdue} overdue &middot; {compliance.rollup.never} never counted &middot; {compliance.rollup.ok} on track
+        </span>
+      )}
+    </div>
+    <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
+              <th className="py-2.5 px-4">Club</th>
+              <th className="py-2.5 px-2 text-right">Last count</th>
+              <th className="py-2.5 px-2 text-right">Days since</th>
+              <th className="py-2.5 px-2 text-right">Last restock</th>
+              <th className="py-2.5 px-2 text-right">Tracked</th>
+              <th className="py-2.5 px-2 text-right">Never counted</th>
+              <th className="py-2.5 px-4 text-right">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(compliance?.clubs || []).map((c) => {
+              const badge = c.status === 'overdue' ? 'bg-red-100 text-wcs-red'
+                : c.status === 'never' ? 'bg-bg text-text-muted'
+                : 'bg-emerald-100 text-emerald-700'
+              const label = c.status === 'overdue' ? 'Overdue' : c.status === 'never' ? 'Never' : 'OK'
+              return (
+                <tr key={c.club_number} className="border-b border-border/50 hover:bg-bg/40">
+                  <td className="py-2 px-4 font-medium text-text-primary capitalize">{c.location_slug || c.club_number}</td>
+                  <td className="py-2 px-2 text-right">{fmtDateTime(c.last_count_at)}</td>
+                  <td className={`py-2 px-2 text-right ${c.status === 'overdue' ? 'text-wcs-red font-semibold' : ''}`}>{c.days_since_count == null ? '—' : c.days_since_count}</td>
+                  <td className="py-2 px-2 text-right">{fmtDateTime(c.last_restock_at)}</td>
+                  <td className="py-2 px-2 text-right">{c.tracked_items}</td>
+                  <td className="py-2 px-2 text-right">{c.never_counted_items}</td>
+                  <td className="py-2 px-4 text-right"><span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${badge}`}>{label}</span></td>
+                </tr>
+              )
+            })}
+            {compliance && compliance.clubs.length === 0 && (
+              <tr><td colSpan="7" className="py-6 text-center text-text-muted">No data</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* === Shrinkage === */}
       {subTab === 'shrinkage' && (
