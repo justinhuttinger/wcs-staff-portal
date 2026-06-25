@@ -2,6 +2,7 @@ import { useState } from 'react'
 import AdminStaffTab from './AdminStaffTab'
 import AdminTilesTab from './AdminTilesTab'
 import AdminRolesTab from './AdminRolesTab'
+import AdminRolesV2Tab from './AdminRolesV2Tab'
 import AdminReferencesTab from './AdminReferencesTab'
 import AdminConfig from './AdminConfig'
 import SyncStatusTile from './SyncStatusTile'
@@ -86,6 +87,7 @@ const EXPERIMENTAL_TILES = [
   { key: 'mastermind', label: 'Marketing Mastermind', desc: 'ClickUp-driven marketing AI (Beta)', icon: 'M12 18v-5.25m0 0a6.01 6.01 0 0 0 1.5-.189m-1.5.189a6.01 6.01 0 0 1-1.5-.189m3.75 7.478a12.06 12.06 0 0 1-4.5 0m3.75 2.383a14.406 14.406 0 0 1-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 1 0-7.517 0c.85.493 1.509 1.333 1.509 2.316V18' },
   { key: 'membership-audit', label: 'Membership Audit', desc: 'Dues & Leaks (Beta)', icon: 'M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z M6 6h.008v.008H6V6Z' },
   { key: 'university-enroll', label: 'University Enrollment', desc: 'Enroll Trainees (Beta)', icon: 'M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342M6.75 15a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm0 0v-3.675A55.378 55.378 0 0 1 12 8.443m-7.007 11.55A5.981 5.981 0 0 0 6.75 15.75v-1.5' },
+  { key: 'roles-v2', label: 'Roles & Permissions', desc: 'Custom Roles (Beta)', icon: 'M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z' },
 ]
 
 const ALL_TILES = [...SETUP_TILES, ...TECHNICAL_TILES, ...EXPERIMENTAL_TILES]
@@ -151,6 +153,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'speed-to-lead-audit' && <SpeedToLeadAudit />}
         {activeSection === 'membership-audit' && <MembershipAuditReport />}
         {activeSection === 'university-enroll' && <UniversityEnrollAdmin />}
+        {activeSection === 'roles-v2' && <AdminRolesV2Tab />}
         {activeSection === 'daily-snapshot' && <DailySnapshotReport />}
         {activeSection === 'paychex-training' && <PaychexTrainingAdmin />}
         {activeSection === 'revenue-backfill' && <RevenueBackfillTile />}
