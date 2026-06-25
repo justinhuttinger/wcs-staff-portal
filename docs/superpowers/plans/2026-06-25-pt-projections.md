@@ -231,9 +231,11 @@ test('byTrainer attributes collected via member->trainer map from services', () 
   })
   const pat = r.byTrainer.find(t => t.trainer === 'Pat Lee')
   assert.equal(pat.collected, 100)
-  assert.equal(pat.outstanding === undefined ? pat.projected >= 100 : true, true)
+  assert.equal(pat.projected, 200)   // collected 100 + own upcoming 100
+  assert.equal(pat.count, 1)
   const other = r.byTrainer.find(t => t.trainer === 'Other')
   assert.equal(other.collected, 40)
+  assert.equal(other.projected, 40)  // collected only, no services
 })
 
 test('member status classification', () => {
