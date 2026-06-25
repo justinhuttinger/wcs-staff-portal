@@ -102,3 +102,19 @@ test('buildStockBody: skips non-integer override quantity', () => {
   assert.strictEqual(buildStockBody({ action: 'override', quantity: 5.5 }).ok, false)
   assert.strictEqual(buildStockBody({ action: 'override', quantity: 3 }).ok, true)
 })
+
+test('putStockLevel: uses the plural clubs/items path (singular 400s at ABC gateway)', async () => {
+  let calledUrl = ''
+  await putStockLevel('31598', 'SALE1', { action: 'add', quantity: 1 }, {
+    fetchImpl: async (url) => { calledUrl = url; return { ok: true, status: 200, text: async () => JSON.stringify({ status: { messageCode: 'API-CLU-ITM-0000' } }) } },
+  })
+  assert.ok(/\/31598\/clubs\/items\/SALE1$/.test(calledUrl), `expected plural clubs/items path, got ${calledUrl}`)
+})
+
+test('putStockLevel: gateway 400 with top-level message surfaces it in error', async () => {
+  const r = await putStockLevel('31598', 'SALE1', { action: 'add', quantity: 1 }, {
+    fetchImpl: async () => ({ ok: false, status: 400, text: async () => JSON.stringify({ message: 'No routing rule is matching path', http_status_code: 400 }) }),
+  })
+  assert.strictEqual(r.status, 'failed')
+  assert.ok(/No routing rule/.test(r.error || ''), `expected gateway message in error, got ${r.error}`)
+})

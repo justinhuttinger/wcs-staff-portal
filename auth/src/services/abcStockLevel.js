@@ -68,14 +68,19 @@ async function putStockLevel(clubNumber, saleItemId, opts, deps = {}) {
   const built = buildStockBody(opts)
   if (!built.ok) return { status: 'skipped', code: null, error: built.skipReason }
   if (!clubNumber || !saleItemId) return { status: 'skipped', code: null, error: 'missing club or saleItemId' }
-  const url = `${ABC_BASE_URL}/${clubNumber}/club/items/${saleItemId}`
+  // ABC's REST host routes the PLURAL collection `clubs/items/{id}` (same as the
+  // catalog GET). The release-notes PDF documents the PUT path as singular
+  // `club/items`, but that 400s at the gateway ("No routing rule is matching
+  // path") — the singular form is a doc error.
+  const url = `${ABC_BASE_URL}/${clubNumber}/clubs/items/${saleItemId}`
   try {
     const res = await fetchImpl(url, {
       method: 'PUT', headers: abcHeaders(), body: JSON.stringify(built.body),
       signal: AbortSignal.timeout(30000),
     })
+    const text = await res.text().catch(() => '')
     let json = {}
-    try { json = await res.json() } catch { json = {} }
+    try { json = text ? JSON.parse(text) : {} } catch { json = {} }
     const c = classifyAbcResult(json)
     // benign (override == current) wins even on a 400 envelope. Otherwise a
     // success classification is only trusted on a 2xx — an HTTP error with a
@@ -83,7 +88,11 @@ async function putStockLevel(clubNumber, saleItemId, opts, deps = {}) {
     // and never retried, losing the stock change).
     if (c.benign) return { status: 'synced', code: c.code, error: null }
     if (c.ok && res.ok) return { status: 'synced', code: c.code, error: null }
-    return { status: 'failed', code: c.code, error: (c.message || `HTTP ${res.status}`).slice(0, 500) }
+    // Surface the most specific reason available so abc_push_error is actionable:
+    // the ABC envelope message, else a top-level gateway `message` (e.g. routing
+    // errors), else a raw body snippet, else just the status.
+    const reason = c.message || json?.message || (text ? text.slice(0, 300) : '') || `HTTP ${res.status}`
+    return { status: 'failed', code: c.code, error: `HTTP ${res.status}: ${reason}`.slice(0, 500) }
   } catch (e) {
     return { status: 'failed', code: null, error: String(e.message || e).slice(0, 500) }
   }
