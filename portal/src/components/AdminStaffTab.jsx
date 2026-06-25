@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { getStaff, createStaff, updateStaff, deleteStaff, setStaffActive, getLocations } from '../lib/api'
+import { getStaff, createStaff, updateStaff, deleteStaff, setStaffActive, getLocations, getRolesAdmin } from '../lib/api'
 import { LOCATION_NAMES } from '../config/locations'
 import { MARKETING_TYPES } from '../config/marketingTypes'
 import { PORTAL_TILE_CATALOG, CUSTOM_REPORT_CATALOG } from '../config/portalTiles'
@@ -46,6 +46,18 @@ function StaffModal({ member, locations, onClose, onSaved }) {
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // Source role options from the roles table so admin-created custom roles are
+  // assignable. Fall back to the built-in list if the fetch fails.
+  const [roleOptions, setRoleOptions] = useState(ROLES)
+  useEffect(() => {
+    getRolesAdmin().then(r => {
+      // Keep the built-in dropdown as-is and append admin-created custom roles
+      // (non-builtin). Legacy alias roles (front_desk, marketing, ...) stay
+      // hidden, matching the existing dropdown.
+      const custom = (r?.roles || []).filter(x => !x.is_builtin).map(x => x.name)
+      if (custom.length) setRoleOptions([...ROLES, ...custom])
+    }).catch(() => {})
+  }, [])
 
   function toggleLocation(locId) {
     setForm(prev => {
@@ -159,7 +171,7 @@ function StaffModal({ member, locations, onClose, onSaved }) {
               onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
               className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red capitalize"
             >
-              {ROLES.map(r => (
+              {roleOptions.map(r => (
                 <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>
               ))}
             </select>
