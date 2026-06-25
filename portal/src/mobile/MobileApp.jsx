@@ -498,6 +498,13 @@ export default function MobileApp() {
         return <MobileHR user={user} />
       case 'tickets':
         return <MobileTickets user={user} />
+      case 'reports/pt-projections':
+        return (
+          <div className="pt-4 px-4">
+            <MobileHeader title="PT Projections" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
+            <div className="mt-16 text-center text-text-muted">This report is best viewed on desktop.</div>
+          </div>
+        )
       default:
         return (
           <div className="pt-4 px-4">
