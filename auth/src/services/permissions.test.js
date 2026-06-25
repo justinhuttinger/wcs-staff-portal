@@ -37,3 +37,20 @@ test('force-on for an uncatalogued report: key is dropped (fail closed)', () => 
   const out = applyOverrides([], [{ perm_key: 'report:not-in-catalog', visible: true }], CATALOG, 'admin', HIER)
   assert.deepStrictEqual(out, [])
 })
+
+test('a base toggle above the role ceiling is clamped out (not just overrides)', () => {
+  // A lead-tier custom role whose grid holds report:payroll (needs manager)
+  // must not yield that grant from its own base set.
+  const out = applyOverrides(['tile:a', 'report:payroll'], [], CATALOG, 'lead', HIER)
+  assert.deepStrictEqual(out.sort(), ['tile:a'])
+})
+
+test('a base toggle within the role ceiling survives', () => {
+  const out = applyOverrides(['report:membership'], [], CATALOG, 'manager', HIER)
+  assert.deepStrictEqual(out, ['report:membership'])
+})
+
+test('an uncatalogued base report: key is clamped out (fail closed)', () => {
+  const out = applyOverrides(['tile:a', 'report:mystery'], [], CATALOG, 'admin', HIER)
+  assert.deepStrictEqual(out, ['tile:a'])
+})

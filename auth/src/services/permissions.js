@@ -9,20 +9,27 @@ const { ROLE_HIERARCHY } = require('../middleware/role')
 const OVERRIDES_TTL_MS = 60 * 1000
 const CATALOG_TTL_MS = 5 * 60 * 1000
 
+// A perm key is within a role's tier ceiling when either it carries no catalog
+// min_tier (plain tiles/apps), or its min_tier is at or below the role's tier.
+// Uncatalogued report:<key> grants fail closed — report endpoints honor them
+// directly, so an unknown ceiling must never resolve to "allowed".
+function withinCeiling(permKey, catalog, tierIdx, hier) {
+  const minTier = catalog[permKey]
+  if (minTier) return hier.indexOf(minTier) <= tierIdx
+  if (permKey.startsWith('report:')) return false
+  return true
+}
+
 function applyOverrides(baseKeys, overrides, catalog, baseTier, hier) {
   const tierIdx = hier.indexOf(baseTier)
-  const set = new Set(baseKeys)
+  // Clamp the role's own toggles to its tier ceiling, not just overrides. A
+  // custom role's grid could otherwise hold a report grant above its tier and
+  // requireReportAccess would honor it. (No-op for built-in roles today, whose
+  // toggles carry no report keys, so parity is preserved.)
+  const set = new Set((baseKeys || []).filter(k => withinCeiling(k, catalog, tierIdx, hier)))
   for (const o of (overrides || [])) {
     if (o.visible) {
-      const minTier = catalog[o.perm_key]
-      if (minTier) {
-        if (hier.indexOf(minTier) > tierIdx) continue // above ceiling
-      } else if (o.perm_key.startsWith('report:')) {
-        // Fail closed: a report grant absent from the catalog has no known
-        // ceiling, and report endpoints honor report:<key> grants directly, so
-        // an uncatalogued report key must never be addable via an override.
-        continue
-      }
+      if (!withinCeiling(o.perm_key, catalog, tierIdx, hier)) continue
       set.add(o.perm_key)
     } else {
       set.delete(o.perm_key)
