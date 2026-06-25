@@ -168,4 +168,17 @@ app.listen(PORT, () => {
   } catch (err) {
     console.error('[blog] failed to start:', err.message)
   }
+
+  // RBAC v2: load admin-created role -> base-tier map so the synchronous auth
+  // gates can resolve custom roles. Refresh periodically as a safety net for
+  // roles created on another server instance (CRUD also refreshes in-process).
+  try {
+    const { refreshCustomRoleTiers } = require('./middleware/role')
+    refreshCustomRoleTiers().catch(err => console.error('[rbac] role-tier load failed:', err.message))
+    setInterval(() => {
+      refreshCustomRoleTiers().catch(err => console.error('[rbac] role-tier refresh failed:', err.message))
+    }, 5 * 60 * 1000).unref()
+  } catch (err) {
+    console.error('[rbac] role-tier startup failed:', err.message)
+  }
 })

@@ -7,6 +7,24 @@ const router = Router()
 
 router.use(authenticate)
 
+// Validate a role for assignment. A role is assignable if it exists in the
+// roles table — built-in, alias (front_desk/director/…), or admin-created
+// custom. Its escalation level is its canonical base_tier, so a custom role can
+// never be used to assign above the role's real trust tier. Never throws —
+// returns { ok, status, error, requestedLevel } so the caller can respond.
+async function resolveAssignableRole(role) {
+  try {
+    const { data: roleRow, error } = await supabaseAdmin
+      .from('roles').select('base_tier').eq('name', role).maybeSingle()
+    // A backend/RLS error must read as a 500, not be misreported as bad input.
+    if (error) return { ok: false, status: 500, error: 'Role validation failed' }
+    if (!roleRow) return { ok: false, status: 400, error: 'Invalid role' }
+    return { ok: true, requestedLevel: ROLE_HIERARCHY.indexOf(roleRow.base_tier) }
+  } catch (err) {
+    return { ok: false, status: 500, error: 'Role validation failed' }
+  }
+}
+
 // --- Per-staff permission fields (marketing add-on + custom role) ----------
 // Keep these allow-lists in sync with portal/src/config/portalTiles.js,
 // portal/src/config/locations.js and portal/src/config/marketingTypes.js.
@@ -116,13 +134,12 @@ router.post('/staff', requireRole('admin'), async (req, res) => {
     return res.status(400).json({ error: 'email, role, location_ids, and temp_password are required' })
   }
 
-  // Validate role exists and prevent privilege escalation
-  if (!ROLE_HIERARCHY.includes(role)) {
-    return res.status(400).json({ error: 'Invalid role. Must be one of: ' + ROLE_HIERARCHY.join(', ') })
-  }
+  // Validate role exists (built-in, alias, or custom) and prevent privilege
+  // escalation using the role's canonical base tier.
+  const roleCheck = await resolveAssignableRole(role)
+  if (!roleCheck.ok) return res.status(roleCheck.status).json({ error: roleCheck.error })
   const callerLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
-  const requestedLevel = ROLE_HIERARCHY.indexOf(role)
-  if (requestedLevel > callerLevel) {
+  if (roleCheck.requestedLevel > callerLevel) {
     return res.status(403).json({ error: 'Cannot assign a role higher than your own' })
   }
 
@@ -188,13 +205,13 @@ router.put('/staff/:id', requireRole('admin'), async (req, res) => {
   const { role, location_ids, display_name, first_name, last_name, email, temp_password } = req.body
   const staffId = req.params.id
 
-  // Validate role if being changed
+  // Validate role if being changed (built-in, alias, or custom) and prevent
+  // privilege escalation using the role's canonical base tier.
   if (role) {
-    if (!ROLE_HIERARCHY.includes(role)) {
-      return res.status(400).json({ error: 'Invalid role. Must be one of: ' + ROLE_HIERARCHY.join(', ') })
-    }
+    const roleCheck = await resolveAssignableRole(role)
+    if (!roleCheck.ok) return res.status(roleCheck.status).json({ error: roleCheck.error })
     const callerLevel = ROLE_HIERARCHY.indexOf(resolveRole(req.staff.role))
-    if (ROLE_HIERARCHY.indexOf(role) > callerLevel) {
+    if (roleCheck.requestedLevel > callerLevel) {
       return res.status(403).json({ error: 'Cannot assign a role higher than your own' })
     }
   }
