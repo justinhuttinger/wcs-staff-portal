@@ -137,6 +137,39 @@ function marketingScope(staff) {
   return { locations, types }
 }
 
+// RBAC v2: marketing decomposed into role-grantable capabilities plus per-type
+// grants. A role/override may grant marketing:tracker / marketing:needs /
+// marketing:research and any subset of marketing_type:<slug>. Legacy access
+// (corporate+ tier or the marketing_addon flag) still grants all three
+// capabilities and preserves the member's existing club/type scope.
+const MARKETING_CAPS = ['tracker', 'needs', 'research']
+
+async function marketingContext(staff) {
+  // Fast path: corporate+ is unconditionally full marketing (all caps, all
+  // types). Skip the effective-permission query entirely — this is the common
+  // case and the tracker polls frequently.
+  if (isFullMarketing(staff)) {
+    return { capabilities: new Set(MARKETING_CAPS), types: [] }
+  }
+  const caps = new Set()
+  if (hasMarketingAddon(staff)) for (const c of MARKETING_CAPS) caps.add(c)
+  let permTypes = null
+  try {
+    const { getEffectivePermissions } = require('../services/permissions')
+    const perms = await getEffectivePermissions(staff)
+    for (const c of MARKETING_CAPS) if (perms.includes('marketing:' + c)) caps.add(c)
+    const t = perms.filter(p => p.startsWith('marketing_type:')).map(p => p.slice('marketing_type:'.length))
+    if (t.length) permTypes = t
+  } catch (err) {
+    console.error('[marketingContext] effective-perm check failed:', err.message)
+  }
+  // Effort-type scope: explicitly granted types win; else the member's legacy
+  // type scope ([] means unrestricted, handled by marketingScope()).
+  const types = permTypes || (Array.isArray(staff?.marketing_types) && staff.marketing_types.length
+    ? staff.marketing_types.map(String) : [])
+  return { capabilities: caps, types }
+}
+
 // Router/route middleware: allow a member through if their role tier already
 // meets `minRole`, OR if they are a custom-role member who has been granted one
 // of `grantKeys` in their custom_reports. This is what lets an admin hand a
@@ -170,17 +203,44 @@ function requireReportAccess(minRole, grantKeys = []) {
   }
 }
 
-// Router/route middleware: allow only members with marketing access.
-function requireMarketing(req, res, next) {
-  if (!canUseMarketing(req.staff)) {
-    return res.status(403).json({ error: 'Marketing access required' })
+// Router middleware: gate the Marketing Tracker on having ANY marketing
+// capability (legacy access or a role/override grant), and stash the resolved
+// capabilities + effort-type scope so downstream gates and the existing sync
+// scope machinery (marketingScope on req.staff) operate on the effective values.
+async function requireMarketing(req, res, next) {
+  try {
+    if (!req.staff) return res.status(401).json({ error: 'Authentication required' })
+    const ctx = await marketingContext(req.staff)
+    if (ctx.capabilities.size === 0) {
+      return res.status(403).json({ error: 'Marketing access required' })
+    }
+    req.marketingCaps = ctx.capabilities
+    // Enrich the per-request staff so the sync marketingScope() reflects the
+    // effective granted types. Full-marketing (corporate+) stays unrestricted
+    // inside marketingScope regardless of this value.
+    req.staff.marketing_types = ctx.types
+    next()
+  } catch (err) {
+    console.error('[requireMarketing] failed:', err.message)
+    return res.status(500).json({ error: 'Marketing check failed' })
   }
-  next()
+}
+
+// Route middleware: require a specific marketing capability (tracker / needs /
+// research). Must be mounted after requireMarketing (reads req.marketingCaps).
+function requireMarketingCapability(cap) {
+  return (req, res, next) => {
+    if (!req.marketingCaps || !req.marketingCaps.has(cap)) {
+      return res.status(403).json({ error: 'Marketing access required' })
+    }
+    next()
+  }
 }
 
 module.exports = {
   requireRole, requireReportAccess, resolveRole, roleLevel, ROLE_HIERARCHY, ROLE_ALIASES,
   REPORT_ACCESS, canAccessReport, canSeeAllLocations, ALL_LOCATION_ROLES,
-  isFullMarketing, hasMarketingAddon, canUseMarketing, marketingScope, requireMarketing,
+  isFullMarketing, hasMarketingAddon, canUseMarketing, marketingScope,
+  marketingContext, requireMarketing, requireMarketingCapability,
   refreshCustomRoleTiers, setCustomRoleTiers,
 }

@@ -1,14 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getStaffOverrides, updateStaffOverrides } from '../lib/api'
 
-// Mirror the server's ROLE_HIERARCHY order exactly so lock math (min_tier vs
-// base_tier index) matches the server and no valid tier resolves to -1.
-const TIERS = ['team_member', 'lead', 'custom', 'manager', 'corporate', 'marketing', 'admin']
-const TIER_LABEL = {
-  team_member: 'Team Member', lead: 'Lead', custom: 'Custom', manager: 'Manager',
-  corporate: 'Corporate', marketing: 'Marketing', admin: 'Admin',
-}
-const CATEGORIES = ['Apps', 'Tools', 'Reports', 'Actions']
+const CATEGORIES = ['Apps', 'Tools', 'Reports', 'Marketing', 'Marketing Types', 'Actions']
 const STATES = [
   { key: 'inherit', label: 'Inherit' },
   { key: 'on', label: 'On' },
@@ -46,7 +39,6 @@ export default function AdminStaffOverrides({ staffId }) {
     return <p className="text-sm text-text-muted">Custom permissions are not enabled yet.</p>
   }
 
-  const baseIdx = TIERS.indexOf(data.base_tier)
   const baseSet = new Set(data.base_keys || [])
 
   function setStateFor(key, val) {
@@ -66,8 +58,8 @@ export default function AdminStaffOverrides({ staffId }) {
   return (
     <div className="space-y-4">
       <p className="text-xs text-text-muted">
-        Overrides apply on top of the <span className="font-semibold capitalize">{(data.role || '').replace(/_/g, ' ')}</span> role
-        ({TIER_LABEL[data.base_tier] || data.base_tier} tier ceiling). Inherit follows the role; Force on / Force off override it.
+        Overrides apply on top of the <span className="font-semibold capitalize">{(data.role || '').replace(/_/g, ' ')}</span> role.
+        Inherit follows the role; Force on / Force off override it for this person.
       </p>
       {CATEGORIES.map(cat => {
         const rows = (data.grid || []).filter(r => r.category === cat)
@@ -77,33 +69,26 @@ export default function AdminStaffOverrides({ staffId }) {
             <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-1">{cat}</p>
             <div className="rounded-lg border border-border divide-y divide-border bg-surface">
               {rows.map(row => {
-                const locked = TIERS.indexOf(row.min_tier) > baseIdx
                 const inheritOn = baseSet.has(row.perm_key)
                 const cur = states[row.perm_key] || 'inherit'
                 return (
                   <div key={row.perm_key} className="flex items-center justify-between gap-3 px-3 py-2">
                     <div className="min-w-0">
                       <span className="block text-sm text-text-primary truncate">{row.label}</span>
-                      {locked
-                        ? <span className="text-[11px] text-text-muted">Locked, needs {TIER_LABEL[row.min_tier] || row.min_tier} tier</span>
-                        : <span className="text-[11px] text-text-muted">Inherits: {inheritOn ? 'On' : 'Off'}</span>}
+                      <span className="text-[11px] text-text-muted">Inherits: {inheritOn ? 'On' : 'Off'}</span>
                     </div>
-                    {locked ? (
-                      <span className="text-[11px] text-text-muted shrink-0">—</span>
-                    ) : (
-                      <div className="flex rounded-md border border-border overflow-hidden shrink-0">
-                        {STATES.map(s => (
-                          <button
-                            key={s.key}
-                            type="button"
-                            onClick={() => setStateFor(row.perm_key, s.key)}
-                            className={`px-2.5 py-1 text-xs font-medium ${cur === s.key
-                              ? (s.key === 'on' ? 'bg-green-600 text-white' : s.key === 'off' ? 'bg-wcs-red text-white' : 'bg-text-muted/20 text-text-primary')
-                              : 'bg-bg text-text-muted hover:bg-surface'}`}
-                          >{s.label}</button>
-                        ))}
-                      </div>
-                    )}
+                    <div className="flex rounded-md border border-border overflow-hidden shrink-0">
+                      {STATES.map(s => (
+                        <button
+                          key={s.key}
+                          type="button"
+                          onClick={() => setStateFor(row.perm_key, s.key)}
+                          className={`px-2.5 py-1 text-xs font-medium ${cur === s.key
+                            ? (s.key === 'on' ? 'bg-green-600 text-white' : s.key === 'off' ? 'bg-wcs-red text-white' : 'bg-text-muted/20 text-text-primary')
+                            : 'bg-bg text-text-muted hover:bg-surface'}`}
+                        >{s.label}</button>
+                      ))}
+                    </div>
                   </div>
                 )
               })}

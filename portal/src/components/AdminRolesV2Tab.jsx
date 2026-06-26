@@ -3,7 +3,7 @@ import { getRolesAdmin, createRole, renameRole, deleteRole, updateRoleVisibility
 
 const TIERS = ['team_member', 'lead', 'manager', 'corporate', 'admin']
 const TIER_LABEL = { team_member: 'Team Member', lead: 'Lead', manager: 'Manager', corporate: 'Corporate', admin: 'Admin' }
-const CATEGORIES = ['Apps', 'Tools', 'Reports', 'Actions']
+const CATEGORIES = ['Apps', 'Tools', 'Reports', 'Marketing', 'Marketing Types', 'Actions']
 
 export default function AdminRolesV2Tab() {
   const [data, setData] = useState(null)
@@ -41,11 +41,7 @@ export default function AdminRolesV2Tab() {
   // behind RBAC_V2_ENABLED until the full custom-role system is switched on.
   const canManageRoles = !!data.rbac_v2_enabled
 
-  const tierIdx = (t) => TIERS.indexOf(t)
-  const baseIdx = tierIdx(selectedRole?.base_tier || 'team_member')
-
-  function toggle(permKey, locked) {
-    if (locked) return
+  function toggle(permKey) {
     setLocalVis(prev => ({ ...prev, [permKey]: !prev[permKey] }))
   }
 
@@ -82,7 +78,7 @@ export default function AdminRolesV2Tab() {
   }
 
   return (
-    <div className="p-4 flex gap-6">
+    <div className="bg-surface rounded-xl border border-border p-4 flex gap-6">
       {/* Roles list */}
       <div className="w-64 shrink-0">
         <div className="flex items-center justify-between mb-2">
@@ -94,8 +90,8 @@ export default function AdminRolesV2Tab() {
         {canManageRoles && creating && (
           <div className="mb-3 p-3 rounded-lg border border-border bg-surface space-y-2">
             <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Role name"
-              className="w-full px-2 py-1.5 rounded border border-border text-sm" />
-            <select value={newTier} onChange={e => setNewTier(e.target.value)} className="w-full px-2 py-1.5 rounded border border-border text-sm">
+              className="w-full px-2 py-1.5 rounded border border-border text-sm bg-bg text-text-primary" />
+            <select value={newTier} onChange={e => setNewTier(e.target.value)} className="w-full px-2 py-1.5 rounded border border-border text-sm bg-bg text-text-primary">
               {TIERS.map(t => <option key={t} value={t}>{TIER_LABEL[t]} tier</option>)}
             </select>
             <button onClick={handleCreate} className="w-full py-1.5 rounded bg-wcs-red text-white text-sm font-semibold">Create</button>
@@ -120,7 +116,7 @@ export default function AdminRolesV2Tab() {
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h3 className="text-base font-bold text-text-primary">{selectedRole.name}</h3>
-                <p className="text-xs text-text-muted">{TIER_LABEL[selectedRole.base_tier]} tier ceiling</p>
+                <p className="text-xs text-text-muted">Toggle exactly what this role can see and do</p>
               </div>
               <div className="flex items-center gap-2">
                 {canManageRoles && !selectedRole.is_builtin && <button onClick={() => handleRename(selectedRole)} className="text-xs font-semibold text-text-muted">Rename</button>}
@@ -136,13 +132,11 @@ export default function AdminRolesV2Tab() {
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-1">{cat}</p>
                   <div className="rounded-lg border border-border divide-y divide-border bg-surface">
                     {rows.map(row => {
-                      const locked = tierIdx(row.min_tier) > baseIdx
                       const on = !!localVis[row.perm_key]
                       return (
-                        <label key={row.perm_key} className={`flex items-center justify-between px-3 py-2 text-sm ${locked ? 'opacity-50' : 'cursor-pointer'}`}
-                          title={locked ? `Requires ${TIER_LABEL[row.min_tier]} tier or higher` : ''}>
+                        <label key={row.perm_key} className="flex items-center justify-between px-3 py-2 text-sm cursor-pointer">
                           <span className="text-text-primary">{row.label}</span>
-                          <input type="checkbox" checked={on && !locked} disabled={locked} onChange={() => toggle(row.perm_key, locked)} />
+                          <input type="checkbox" checked={on} onChange={() => toggle(row.perm_key)} />
                         </label>
                       )
                     })}

@@ -2,7 +2,7 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, refreshCustomRoleTiers } = require('../middleware/role')
-const { validateRoleName, buildPermissionGrid, TIERS } = require('../services/rolesAdmin')
+const { validateRoleName, buildPermissionGrid, tileLabelsFromRows, TIERS } = require('../services/rolesAdmin')
 
 const router = Router()
 
@@ -283,11 +283,10 @@ router.get('/roles', requireRole('admin'), async (req, res) => {
     const [{ data: roles }, { data: catalog }, { data: tiles }, { data: visibility }] = await Promise.all([
       supabaseAdmin.from('roles').select('id, name, base_tier, is_builtin').order('is_builtin', { ascending: false }).order('name'),
       supabaseAdmin.from('permission_catalog').select('perm_key, label, category, min_tier'),
-      supabaseAdmin.from('custom_tiles').select('id, label'),
+      supabaseAdmin.from('custom_tiles').select('id, label, parent_id'),
       supabaseAdmin.from('role_tool_visibility').select('role, tool_key, visible'),
     ])
-    const tileLabels = {}
-    for (const t of (tiles || [])) tileLabels['tile:' + t.id] = { label: t.label }
+    const tileLabels = tileLabelsFromRows(tiles)
     const { data: staffRows } = await supabaseAdmin.from('staff').select('role')
     const counts = {}
     for (const s of (staffRows || [])) counts[s.role] = (counts[s.role] || 0) + 1

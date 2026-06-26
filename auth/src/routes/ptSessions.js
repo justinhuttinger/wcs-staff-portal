@@ -1,7 +1,7 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole, canSeeAllLocations } = require('../middleware/role')
+const { requireReportAccess, canSeeAllLocations } = require('../middleware/role')
 const { wrapSWR } = require('../services/memoryCache')
 const { parseLocationSlugParam, locationCacheKey, intersectWithAllowed } = require('../utils/locationSlug')
 
@@ -11,7 +11,7 @@ const PT_SESSIONS_STALE_MS = 15 * 60 * 1000
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('lead'))
+router.use(requireReportAccess('lead', ['pt-sessions']))
 
 const SLUG_CLUB_MAP = {
   salem: '30935',

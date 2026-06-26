@@ -1,10 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { validateRoleName, buildPermissionGrid, TIERS, planOverrideWrites } = require('./rolesAdmin')
-const { ROLE_HIERARCHY } = require('../middleware/role')
+const { validateRoleName, buildPermissionGrid, TIERS, planOverrideWrites, tileLabelsFromRows, tileCategoryForParent } = require('./rolesAdmin')
 
-const HIER = ['team_member', 'lead', 'manager', 'corporate', 'admin']
-const CATALOG = { 'report:payroll': 'manager', 'report:membership': 'lead' }
 const SID = 'staff-1'
 
 test('TIERS is the five canonical tiers', () => {
@@ -34,12 +31,37 @@ test('buildPermissionGrid merges catalog rows and dynamic tiles, sorted by categ
   assert.strictEqual(grid.find(r => r.perm_key === 'tile:abc').min_tier, 'team_member')
 })
 
+test('tileCategoryForParent groups by parent into existing catalog categories', () => {
+  assert.strictEqual(tileCategoryForParent('Reporting'), 'Reports')
+  assert.strictEqual(tileCategoryForParent('Marketing'), 'Marketing')
+  assert.strictEqual(tileCategoryForParent('Whatever'), 'Tools')
+  assert.strictEqual(tileCategoryForParent(null), 'Tools')
+})
+
+test('tileLabelsFromRows nests child tiles under their parent category', () => {
+  const rows = [
+    { id: 'rep', label: 'Reporting', parent_id: null },
+    { id: 'mem', label: 'Membership', parent_id: 'rep' },
+    { id: 'mkt', label: 'Marketing', parent_id: null },
+    { id: 'fb', label: 'Facebook', parent_id: 'mkt' },
+    { id: 'ind', label: 'Indeed', parent_id: null },
+  ]
+  const out = tileLabelsFromRows(rows)
+  assert.strictEqual(out['tile:rep'].category, 'Tools')   // parent group launcher
+  assert.strictEqual(out['tile:mem'].category, 'Reports') // child of Reporting
+  assert.strictEqual(out['tile:fb'].category, 'Marketing')// child of Marketing
+  assert.strictEqual(out['tile:ind'].category, 'Tools')   // standalone
+  assert.strictEqual(out['tile:mem'].label, 'Membership')
+})
+
+// planOverrideWrites: no tier ceiling — grants exactly what's stated.
+
 test('planOverrideWrites: inherit deletes, on/off upsert visible true/false', () => {
   const { toDelete, toUpsert } = planOverrideWrites([
     { perm_key: 'tile:a', state: 'inherit' },
     { perm_key: 'tile:b', state: 'on' },
     { perm_key: 'tile:c', state: 'off' },
-  ], SID, CATALOG, 'lead', HIER)
+  ], SID)
   assert.deepStrictEqual(toDelete, ['tile:a'])
   assert.deepStrictEqual(toUpsert, [
     { staff_id: SID, perm_key: 'tile:b', visible: true },
@@ -47,54 +69,20 @@ test('planOverrideWrites: inherit deletes, on/off upsert visible true/false', ()
   ])
 })
 
-test('planOverrideWrites: force-on within ceiling kept, above ceiling dropped', () => {
-  assert.deepStrictEqual(
-    planOverrideWrites([{ perm_key: 'report:membership', state: 'on' }], SID, CATALOG, 'lead', HIER).toUpsert,
-    [{ staff_id: SID, perm_key: 'report:membership', visible: true }])
-  // payroll needs manager; a lead member cannot be force-on'd into it.
-  assert.deepStrictEqual(
-    planOverrideWrites([{ perm_key: 'report:payroll', state: 'on' }], SID, CATALOG, 'lead', HIER).toUpsert,
-    [])
+test('planOverrideWrites: any report force-on is upserted, no ceiling', () => {
+  const { toUpsert } = planOverrideWrites([{ perm_key: 'report:payroll', state: 'on' }], SID)
+  assert.deepStrictEqual(toUpsert, [{ staff_id: SID, perm_key: 'report:payroll', visible: true }])
 })
 
-test('planOverrideWrites: force-OFF above ceiling is still recorded (removal always allowed)', () => {
-  assert.deepStrictEqual(
-    planOverrideWrites([{ perm_key: 'report:payroll', state: 'off' }], SID, CATALOG, 'lead', HIER).toUpsert,
-    [{ staff_id: SID, perm_key: 'report:payroll', visible: false }])
-})
-
-test('planOverrideWrites: uncatalogued report: force-on dropped (fail closed); tile force-on allowed', () => {
-  assert.deepStrictEqual(
-    planOverrideWrites([{ perm_key: 'report:mystery', state: 'on' }], SID, CATALOG, 'admin', HIER).toUpsert,
-    [])
-  assert.deepStrictEqual(
-    planOverrideWrites([{ perm_key: 'tile:x', state: 'on' }], SID, CATALOG, 'team_member', HIER).toUpsert,
-    [{ staff_id: SID, perm_key: 'tile:x', visible: true }])
+test('planOverrideWrites: force-off is recorded', () => {
+  const { toUpsert } = planOverrideWrites([{ perm_key: 'report:payroll', state: 'off' }], SID)
+  assert.deepStrictEqual(toUpsert, [{ staff_id: SID, perm_key: 'report:payroll', visible: false }])
 })
 
 test('planOverrideWrites: malformed items are skipped', () => {
   const { toDelete, toUpsert } = planOverrideWrites([
     null, {}, { perm_key: '' }, { perm_key: 'tile:a', state: 'bogus' },
-  ], SID, CATALOG, 'admin', HIER)
+  ], SID)
   assert.deepStrictEqual(toDelete, [])
   assert.deepStrictEqual(toUpsert, [])
-})
-
-test('planOverrideWrites: a clamped force-on is also deleted, not left as a stale row', () => {
-  // payroll needs manager; a lead force-on must be dropped AND its existing row removed.
-  const { toDelete, toUpsert } = planOverrideWrites(
-    [{ perm_key: 'report:payroll', state: 'on' }], SID, CATALOG, 'lead', HIER)
-  assert.deepStrictEqual(toUpsert, [])
-  assert.deepStrictEqual(toDelete, ['report:payroll'])
-})
-
-test('planOverrideWrites: clamp is correct against the real ROLE_HIERARCHY (custom/marketing present)', () => {
-  // corporate-gated report force-on for a manager-tier member must be dropped,
-  // even though 'custom' sits between lead and manager and 'marketing' between
-  // corporate and admin in the real hierarchy.
-  const catalog = { 'report:meta-ads': 'corporate', 'report:membership': 'lead' }
-  const drop = planOverrideWrites([{ perm_key: 'report:meta-ads', state: 'on' }], SID, catalog, 'manager', ROLE_HIERARCHY)
-  assert.deepStrictEqual(drop.toUpsert, [])
-  const keep = planOverrideWrites([{ perm_key: 'report:membership', state: 'on' }], SID, catalog, 'manager', ROLE_HIERARCHY)
-  assert.deepStrictEqual(keep.toUpsert, [{ staff_id: SID, perm_key: 'report:membership', visible: true }])
 })

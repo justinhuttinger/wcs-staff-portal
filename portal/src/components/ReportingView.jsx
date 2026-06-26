@@ -101,26 +101,32 @@ const REPORT_GROUPS = [
   },
 ]
 
-function getReportTilesForRole(role, customReports) {
-  // Custom-role members see exactly the reports an admin granted them.
-  if (role === 'custom') {
-    const set = new Set(customReports || [])
-    return ALL_REPORT_TILES.filter(t => set.has(t.key))
-  }
+// Reports the role sees by default (the historical tier defaults). Reports an
+// admin grants via the roles grid (visible_tools `report:<key>`) are unioned on
+// top, so a fully customizable role can be given any report regardless of tier.
+function defaultReportKeysForRole(role, customReports) {
+  if (role === 'custom') return customReports || []
   switch (role) {
     case 'team_member':
       return []
     case 'lead':
-      return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health'].includes(t.key))
+      return ['membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health']
     case 'manager':
-      return ALL_REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'operations', 'revenue', 'pos-sales', 'kpis', 'audits'].includes(t.key))
+      return ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'operations', 'revenue', 'pos-sales', 'kpis', 'audits']
     case 'marketing':
-      // Marketing: marketing tiles + broader reports per REPORT_ACCESS, minus
-      // the experimental reports (corp+admin only).
-      return ALL_REPORT_TILES.filter(t => t.key !== 'kpis' && t.key !== 'audits')
+      return ALL_REPORT_TILES.map(t => t.key).filter(k => k !== 'kpis' && k !== 'audits')
     default: // corporate, admin, director
-      return ALL_REPORT_TILES
+      return ALL_REPORT_TILES.map(t => t.key)
   }
+}
+
+function getReportTilesForRole(role, customReports, visibleTools) {
+  const allowed = new Set(defaultReportKeysForRole(role, customReports))
+  // Union in reports granted through the roles grid / per-person overrides.
+  for (const key of (visibleTools || [])) {
+    if (typeof key === 'string' && key.startsWith('report:')) allowed.add(key.slice('report:'.length))
+  }
+  return ALL_REPORT_TILES.filter(t => allowed.has(t.key))
 }
 
 // Find the group a report belongs to, if any.
@@ -189,7 +195,7 @@ function parseHash() {
 
 export default function ReportingView({ user, onBack, location, isAdmin }) {
   const userRole = user?.staff?.role || 'team_member'
-  const REPORT_TILES = getReportTilesForRole(userRole, user?.staff?.custom_reports)
+  const REPORT_TILES = getReportTilesForRole(userRole, user?.staff?.custom_reports, user?.visible_tools)
   const VISIBLE_REPORT_KEYS = new Set(REPORT_TILES.map(t => t.key))
 
   // Only show groups that contain at least one report the user can see.

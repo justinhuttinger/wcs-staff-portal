@@ -1,7 +1,7 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole, canSeeAllLocations } = require('../middleware/role')
+const { requireReportAccess, canSeeAllLocations } = require('../middleware/role')
 const { parseLocationSlugParam, intersectWithAllowed } = require('../utils/locationSlug')
 
 // PT Session Frequency report — per-member completed-session counts for the
@@ -12,7 +12,7 @@ const { parseLocationSlugParam, intersectWithAllowed } = require('../utils/locat
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('lead'))
+router.use(requireReportAccess('lead', ['session-frequency']))
 
 const SLUG_CLUB_MAP = {
   salem: '30935',

@@ -33,6 +33,7 @@ import MobileInventory from './components/MobileInventory'
 import KpiReport from '../components/reports/KpiReport'
 import AuditsReport from '../components/reports/AuditsReport'
 import { getReportInfo } from '../lib/reportInfo'
+import { marketingAccess } from '../config/marketingAccess'
 
 // Icons for bottom tab bar (Heroicons outline)
 function HomeIcon({ active }) {
@@ -487,7 +488,7 @@ export default function MobileApp() {
       case 'dayone':
         return <MobileCalendar user={user} />
       case 'marketing-tracker':
-        return <MobileMarketingTracker />
+        return <MobileMarketingTracker access={marketingAccess(user)} />
       case 'inventory':
         return <MobileInventory user={user} />
       case 'leaderboard':

@@ -28,7 +28,7 @@ function locationsLabel(slugs) {
   return slugs.map(s => bySlug[s] || s).join(', ')
 }
 
-export default function MobileMarketingTracker() {
+export default function MobileMarketingTracker({ access }) {
   const [efforts, setEfforts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -36,7 +36,12 @@ export default function MobileMarketingTracker() {
   const [locationValue, setLocationValue] = useState('all')
   const [modal, setModal] = useState(null) // { view } | { effort } | { date } | null
 
-  const TYPE_OPTIONS = useMemo(() => MARKETING_TYPES.map(t => ({ slug: t.slug, label: t.label })), [])
+  // Type filter limited to the member's granted effort types; null = all.
+  const allowedTypes = Array.isArray(access?.types) ? access.types : null
+  const TYPE_OPTIONS = useMemo(() => {
+    const allowed = allowedTypes ? new Set(allowedTypes) : null
+    return MARKETING_TYPES.filter(t => !allowed || allowed.has(t.slug)).map(t => ({ slug: t.slug, label: t.label }))
+  }, [allowedTypes])
 
   function load() {
     setLoading(true)

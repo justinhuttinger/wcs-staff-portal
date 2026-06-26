@@ -1,7 +1,7 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { requireReportAccess } = require('../middleware/role')
 const { recombineTotals } = require('../lib/membershipAuditTotals')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { countVipsByTeamMember: _countVipsByTeamMember } = require('../utils/vipsByTeamMember')
@@ -10,7 +10,7 @@ const { resolveScopedSlugs } = require('../services/locationScope')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('lead'))
+router.use(requireReportAccess('lead', ['membership', 'pt', 'club-health', 'cancels']))
 
 // ---------------------------------------------------------------------------
 // Helper: resolve location filter from query params

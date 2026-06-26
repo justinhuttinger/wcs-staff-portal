@@ -6,6 +6,7 @@ import SaveCredentialToast from './components/SaveCredentialToast'
 import CalendarView from './components/CalendarView'
 import ReportingView from './components/ReportingView'
 import MarketingTrackerView from './components/MarketingTrackerView'
+import { marketingAccess } from './config/marketingAccess'
 import InventoryView from './components/InventoryView'
 import DayOneTrackerView from './components/DayOneTrackerView'
 import TrainerAvailabilityView from './components/TrainerAvailabilityView'
@@ -65,6 +66,8 @@ export default function App() {
   const isAdmin = user?.staff?.role === 'admin'
   // corporate sees all clubs portal-wide (same as Drive/report gating)
   const seesAllClubs = ['admin', 'corporate'].includes(user?.staff?.role)
+  // Effective Marketing Tracker capabilities (tile + tabs + type scope).
+  const mAccess = marketingAccess(user)
 
   useEffect(() => {
     document.title = 'WCS Staff Portal'
@@ -385,14 +388,14 @@ export default function App() {
       ) : showReporting ? (
         <ReportingView user={user} onBack={() => { window.location.hash = ''; setShowReporting(false) }} location={location} isAdmin={isAdmin} />
       ) : showMarketingTracker ? (
-        <MarketingTrackerView onBack={() => setShowMarketingTracker(false)} />
+        <MarketingTrackerView access={mAccess} onBack={() => setShowMarketingTracker(false)} />
       ) : showInventory ? (
         <InventoryView onBack={() => setShowInventory(false)} location={location} isAdmin={isAdmin} user={user} />
       ) : showMediaLibrary ? (
         <MediaLibraryView onBack={() => setShowMediaLibrary(false)} userRole={user?.staff?.role} />
       ) : (
         <main className="flex-1 flex items-start pt-1 pb-12">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} customReports={user.staff?.custom_reports || []} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>
