@@ -45,8 +45,11 @@ router.use('/needs', requireMarketingCapability('needs'))
 router.use('/research', requireMarketingCapability('research'))
 // Everything else under this router is the efforts tracker itself, which needs
 // the 'tracker' capability. (req.path here is relative to the router mount.)
+// Match on a segment boundary, not a bare prefix, so a future sibling route
+// like /needs-export can't slip past both this gate and the /needs cap gate.
+const NEEDS_OR_RESEARCH = /^\/(needs|research)(\/|$)/
 router.use((req, res, next) => {
-  if (req.path.startsWith('/needs') || req.path.startsWith('/research')) return next()
+  if (NEEDS_OR_RESEARCH.test(req.path)) return next()
   return requireMarketingCapability('tracker')(req, res, next)
 })
 
