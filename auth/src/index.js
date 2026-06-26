@@ -28,6 +28,12 @@ app.use(cors({
 
 // Raw body parser for staff import MUST be registered before express.json()
 app.use('/admin/staff/import', express.raw({ type: '*/*', limit: '10mb' }))
+
+// The tour-intake webhook carries a base64 profile photo, which can exceed the
+// global express.json() 100kb default. Register a higher-limit JSON parser for
+// just this path BEFORE the global one — whichever parser consumes the stream
+// first wins, so the global parser skips an already-parsed body.
+app.use('/webhooks/tour-intake', express.json({ limit: '6mb' }))
 app.use(express.json({
   verify: (req, _res, buf) => {
     // ClickUp signs the raw body. Capture it for the mastermind webhook so HMAC verifies.
@@ -52,6 +58,7 @@ app.use('/webhooks', require('./routes/metaCapi'))
 app.use('/webhooks', require('./routes/mastermind'))
 app.use('/appointments', require('./routes/appointments'))
 app.use('/tours', require('./routes/tours'))
+app.use('/tour-intake', require('./routes/tourIntake'))
 app.use('/oidc', require('./routes/oidc'))
 
 // OIDC discovery at root level (some providers look here)

@@ -913,6 +913,19 @@ export async function getDayOneFieldOptions(params = {}) {
   return api('/day-one-tracker/field-options' + (qs ? '?' + qs : ''))
 }
 
+// Tour Intake (front-desk gym-tour queue)
+export async function getTourIntakes(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/tour-intake' + (qs ? '?' + qs : ''))
+}
+
+export async function updateTourIntake(id, data) {
+  return api('/tour-intake/' + id, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
 // Trainer Availability
 export async function getTrainerAvailability(params = {}) {
   const qs = new URLSearchParams(params).toString()
