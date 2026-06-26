@@ -542,6 +542,11 @@ export async function getMembershipReport(params = {}, options = {}) {
   return api('/reports/membership' + (qs ? '?' + qs : ''), options)
 }
 
+// When the sync last refreshed report data (for an "Updated X ago" header stamp).
+export async function getDataFreshness(options = {}) {
+  return api('/reports/data-freshness', options)
+}
+
 export async function getSpeedToLead(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/reports/speed-to-lead' + (qs ? '?' + qs : ''), options)
