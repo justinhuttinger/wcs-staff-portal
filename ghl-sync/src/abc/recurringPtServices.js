@@ -95,6 +95,14 @@ async function fetchActiveForClub(clubNumber) {
 async function syncClub(club, runStartIso) {
   const svcs = await fetchActiveForClub(club.clubNumber);
   const rows = svcs.map((s) => toRow(s, club));
+  // Stamp synced_at on every upserted row to THIS run's start. The column's
+  // DEFAULT now() only fires on INSERT, not on the ON CONFLICT UPDATE path, so
+  // without this an existing row keeps its original (stale) synced_at — and the
+  // delete-stale step below (synced_at < runStartIso) then wipes the entire
+  // active set on every run after the first. Stamping = runStartIso means rows
+  // touched this run survive (not < runStartIso) and only genuinely-stale rows
+  // (no longer active, never refreshed) are deleted.
+  for (const r of rows) r.synced_at = runStartIso;
   if (rows.length) {
     // Upsert in chunks to stay well under payload limits.
     for (let i = 0; i < rows.length; i += 500) {
