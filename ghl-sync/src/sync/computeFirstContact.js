@@ -11,8 +11,11 @@ const RETRY_WINDOW_DAYS = 30;
 // Personal Training / Swim / VIP. Overridable via env.
 const PIPELINE_PATTERN = process.env.SPEED_TO_LEAD_PIPELINE_PATTERN || '%member%';
 const PER_RUN_CAP = parseInt(process.env.SPEED_TO_LEAD_CAP || '300', 10);
-// Throttle between per-contact conversation fetches to respect GHL rate limits.
-const CONTACT_DELAY_MS = parseInt(process.env.SPEED_TO_LEAD_DELAY_MS || '250', 10);
+// Extra delay between per-contact conversation fetches. Defaults to 0 because the
+// GHL client now paces every call via a per-key token bucket (src/ghl/client.js) —
+// this manual sleep would be a redundant second throttle on the delta hot path.
+// Set SPEED_TO_LEAD_DELAY_MS > 0 to reintroduce spacing if ever needed.
+const CONTACT_DELAY_MS = parseInt(process.env.SPEED_TO_LEAD_DELAY_MS || '0', 10);
 // Don't re-check the same unresolved lead more often than this (cuts churn).
 const RECHECK_COOLDOWN_MS = parseInt(process.env.SPEED_TO_LEAD_RECHECK_MS || '3600000', 10); // 1h
 
@@ -87,8 +90,8 @@ async function computeFirstContact(location, pipelineIds) {
     } catch (err) {
       errors.push({ id: opp.id, error: err.message });
     }
-    // Throttle to stay under GHL rate limits, especially during backfill.
-    await sleep(CONTACT_DELAY_MS);
+    // Optional extra spacing; pacing is otherwise handled by the client token bucket.
+    if (CONTACT_DELAY_MS > 0) await sleep(CONTACT_DELAY_MS);
   }
   return { checked: candidates.length, resolved: resolvedCount, errors };
 }
@@ -176,7 +179,7 @@ async function backfillFirstContact(windowDays = 180, progress = {}, opts = {}) 
         } catch (err) {
           progress.errors.push({ id: opp.id, error: err.message });
         }
-        await sleep(CONTACT_DELAY_MS);
+        if (CONTACT_DELAY_MS > 0) await sleep(CONTACT_DELAY_MS);
       }
     } catch (err) {
       progress.errors.push({ location: location.name, error: err.message });
