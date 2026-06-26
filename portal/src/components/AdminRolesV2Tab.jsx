@@ -41,11 +41,7 @@ export default function AdminRolesV2Tab() {
   // behind RBAC_V2_ENABLED until the full custom-role system is switched on.
   const canManageRoles = !!data.rbac_v2_enabled
 
-  const tierIdx = (t) => TIERS.indexOf(t)
-  const baseIdx = tierIdx(selectedRole?.base_tier || 'team_member')
-
-  function toggle(permKey, locked) {
-    if (locked) return
+  function toggle(permKey) {
     setLocalVis(prev => ({ ...prev, [permKey]: !prev[permKey] }))
   }
 
@@ -120,7 +116,7 @@ export default function AdminRolesV2Tab() {
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h3 className="text-base font-bold text-text-primary">{selectedRole.name}</h3>
-                <p className="text-xs text-text-muted">{TIER_LABEL[selectedRole.base_tier]} tier ceiling</p>
+                <p className="text-xs text-text-muted">Toggle exactly what this role can see and do</p>
               </div>
               <div className="flex items-center gap-2">
                 {canManageRoles && !selectedRole.is_builtin && <button onClick={() => handleRename(selectedRole)} className="text-xs font-semibold text-text-muted">Rename</button>}
@@ -136,13 +132,11 @@ export default function AdminRolesV2Tab() {
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-1">{cat}</p>
                   <div className="rounded-lg border border-border divide-y divide-border bg-surface">
                     {rows.map(row => {
-                      const locked = tierIdx(row.min_tier) > baseIdx
                       const on = !!localVis[row.perm_key]
                       return (
-                        <label key={row.perm_key} className={`flex items-center justify-between px-3 py-2 text-sm ${locked ? 'opacity-50' : 'cursor-pointer'}`}
-                          title={locked ? `Requires ${TIER_LABEL[row.min_tier]} tier or higher` : ''}>
+                        <label key={row.perm_key} className="flex items-center justify-between px-3 py-2 text-sm cursor-pointer">
                           <span className="text-text-primary">{row.label}</span>
-                          <input type="checkbox" checked={on && !locked} disabled={locked} onChange={() => toggle(row.perm_key, locked)} />
+                          <input type="checkbox" checked={on} onChange={() => toggle(row.perm_key)} />
                         </label>
                       )
                     })}

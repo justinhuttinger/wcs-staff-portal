@@ -3,7 +3,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
 const { getBaseTier } = require('../services/roles')
-const { roleBaseKeys, loadCatalog } = require('../services/permissions')
+const { roleBaseKeys } = require('../services/permissions')
 const { buildPermissionGrid, planOverrideWrites } = require('../services/rolesAdmin')
 const memoryCache = require('../services/memoryCache')
 
@@ -166,9 +166,8 @@ router.get('/staff/:id/overrides', requireRole('admin'), async (req, res) => {
 
 // PUT /admin/staff/:id/overrides — admin: set per-person overrides.
 // Body: { items: [{ perm_key, state: 'inherit' | 'on' | 'off' }] }. 'inherit'
-// deletes the row (follow the role); 'on'/'off' upsert visible true/false. A
-// force-on above the member's tier ceiling (or an uncatalogued report key) is
-// dropped here, matching the compute in applyOverrides — never grant past tier.
+// deletes the row (follow the role); 'on'/'off' upsert visible true/false.
+// No tier ceiling — an override grants exactly what it states.
 router.put('/staff/:id/overrides', requireRole('admin'), async (req, res) => {
   const items = Array.isArray(req.body?.items) ? req.body.items : null
   if (!items) return res.status(400).json({ error: 'items array is required' })
@@ -180,9 +179,8 @@ router.put('/staff/:id/overrides', requireRole('admin'), async (req, res) => {
       .from('staff').select('id, role').eq('id', req.params.id).maybeSingle()
     if (!member) return res.status(404).json({ error: 'Staff not found' })
 
-    const [catalog, baseTier] = await Promise.all([loadCatalog(), getBaseTier(member.role)])
-    // Plan the writes (with the tier-ceiling clamp) in a pure, tested helper.
-    const { toDelete, toUpsert } = planOverrideWrites(items, member.id, catalog, baseTier, ROLE_HIERARCHY)
+    // Plan the writes in a pure, tested helper (no tier ceiling).
+    const { toDelete, toUpsert } = planOverrideWrites(items, member.id)
 
     if (toDelete.length) {
       const { error } = await supabaseAdmin.from('staff_permission_overrides')

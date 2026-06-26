@@ -2,55 +2,40 @@ const test = require('node:test')
 const assert = require('node:assert')
 const { applyOverrides } = require('./permissions')
 
-const HIER = ['team_member', 'lead', 'manager', 'corporate', 'admin']
-const CATALOG = { 'report:payroll': 'manager', 'report:membership': 'lead' }
+// Roles are fully customizable: applyOverrides grants exactly what the base set
+// plus overrides list, with NO tier ceiling.
 
-test('no overrides returns the base set unchanged (parity)', () => {
-  const out = applyOverrides(['tile:a', 'grow'], [], CATALOG, 'lead', HIER)
+test('no overrides returns the base set unchanged', () => {
+  const out = applyOverrides(['tile:a', 'grow'], [])
   assert.deepStrictEqual(out.sort(), ['grow', 'tile:a'])
 })
 
-test('force-on within ceiling is added', () => {
-  const out = applyOverrides(['tile:a'], [{ perm_key: 'report:membership', visible: true }], CATALOG, 'lead', HIER)
+test('force-on adds a key', () => {
+  const out = applyOverrides(['tile:a'], [{ perm_key: 'report:membership', visible: true }])
   assert.ok(out.includes('report:membership'))
 })
 
-test('force-on above ceiling is dropped', () => {
-  // payroll needs manager; a lead override cannot add it.
-  const out = applyOverrides(['tile:a'], [{ perm_key: 'report:payroll', visible: true }], CATALOG, 'lead', HIER)
-  assert.ok(!out.includes('report:payroll'))
-})
-
 test('force-off removes a base key', () => {
-  const out = applyOverrides(['tile:a', 'tile:b'], [{ perm_key: 'tile:b', visible: false }], CATALOG, 'lead', HIER)
+  const out = applyOverrides(['tile:a', 'tile:b'], [{ perm_key: 'tile:b', visible: false }])
   assert.deepStrictEqual(out.sort(), ['tile:a'])
 })
 
-test('force-on for a key absent from the catalog is allowed (no ceiling on uncatalogued tiles)', () => {
-  const out = applyOverrides([], [{ perm_key: 'tile:custom', visible: true }], CATALOG, 'team_member', HIER)
-  assert.deepStrictEqual(out, ['tile:custom'])
+test('any report grant is honored regardless of tier (no ceiling)', () => {
+  // payroll would previously have been clamped for a low role; now it is granted.
+  const out = applyOverrides([], [{ perm_key: 'report:payroll', visible: true }])
+  assert.deepStrictEqual(out, ['report:payroll'])
 })
 
-test('force-on for an uncatalogued report: key is dropped (fail closed)', () => {
-  // A report grant not present in the catalog must never be addable via an
-  // override, since report endpoints honor report:<key> grants directly.
-  const out = applyOverrides([], [{ perm_key: 'report:not-in-catalog', visible: true }], CATALOG, 'admin', HIER)
+test('a base report toggle is kept as-is (no clamp)', () => {
+  const out = applyOverrides(['report:payroll', 'tile:a'], [])
+  assert.deepStrictEqual(out.sort(), ['report:payroll', 'tile:a'])
+})
+
+test('force-off wins over a base key even when also force-on elsewhere', () => {
+  const out = applyOverrides(['x'], [{ perm_key: 'x', visible: true }, { perm_key: 'x', visible: false }])
   assert.deepStrictEqual(out, [])
 })
 
-test('a base toggle above the role ceiling is clamped out (not just overrides)', () => {
-  // A lead-tier custom role whose grid holds report:payroll (needs manager)
-  // must not yield that grant from its own base set.
-  const out = applyOverrides(['tile:a', 'report:payroll'], [], CATALOG, 'lead', HIER)
-  assert.deepStrictEqual(out.sort(), ['tile:a'])
-})
-
-test('a base toggle within the role ceiling survives', () => {
-  const out = applyOverrides(['report:membership'], [], CATALOG, 'manager', HIER)
-  assert.deepStrictEqual(out, ['report:membership'])
-})
-
-test('an uncatalogued base report: key is clamped out (fail closed)', () => {
-  const out = applyOverrides(['tile:a', 'report:mystery'], [], CATALOG, 'admin', HIER)
-  assert.deepStrictEqual(out, ['tile:a'])
+test('null inputs are safe', () => {
+  assert.deepStrictEqual(applyOverrides(null, null), [])
 })

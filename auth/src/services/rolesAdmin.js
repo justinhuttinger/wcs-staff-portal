@@ -30,14 +30,9 @@ function buildPermissionGrid(catalog, tileLabels) {
 // Turn a per-person override editor payload into the DB writes for
 // staff_permission_overrides. `items` is [{ perm_key, state }] where state is
 // 'inherit' | 'on' | 'off'. Returns { toDelete: [perm_key], toUpsert:
-// [{ staff_id, perm_key, visible }] }.
-//
-// Security: a force-on ('on') above the member's tier ceiling is dropped, and an
-// uncatalogued report:<key> force-on is dropped (fail closed) — both mirror
-// applyOverrides so an override can never grant past the member's tier.
-// `catalog` is perm_key -> min_tier; `hier` is the tier hierarchy array.
-function planOverrideWrites(items, staffId, catalog, baseTier, hier) {
-  const tierIdx = hier.indexOf(baseTier)
+// [{ staff_id, perm_key, visible }] }. No tier ceiling — an override grants
+// exactly what it states (roles are fully customizable).
+function planOverrideWrites(items, staffId) {
   const toDelete = []
   const toUpsert = []
   for (const it of (items || [])) {
@@ -45,16 +40,6 @@ function planOverrideWrites(items, staffId, catalog, baseTier, hier) {
     if (!key) continue
     if (it.state === 'inherit') { toDelete.push(key); continue }
     if (it.state !== 'on' && it.state !== 'off') continue
-    if (it.state === 'on') {
-      const minTier = catalog[key]
-      // A force-on above the member's ceiling (or an uncatalogued report: key)
-      // is not granted — and we delete any existing row for it rather than
-      // leave a stale above-ceiling override lingering. Mirrors applyOverrides.
-      if ((minTier && hier.indexOf(minTier) > tierIdx) || (!minTier && key.startsWith('report:'))) {
-        toDelete.push(key)
-        continue
-      }
-    }
     toUpsert.push({ staff_id: staffId, perm_key: key, visible: it.state === 'on' })
   }
   return { toDelete, toUpsert }

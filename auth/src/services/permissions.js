@@ -1,39 +1,21 @@
-// Effective permission compute: base role toggles, plus per-person overrides.
-// Force-on additions are clamped to the role's tier ceiling (a key whose
-// catalog min_tier is above the staff member's base_tier cannot be added by an
-// override). Force-off removes. Keys absent from the catalog have no ceiling.
+// Effective permission compute: a role's base toggles, plus per-person
+// overrides (force-on adds, force-off removes). Fully role-driven with no tier
+// ceiling — a role/override grants exactly what it lists.
 const memoryCache = require('./memoryCache')
-const { getBaseTier } = require('./roles')
-const { ROLE_HIERARCHY } = require('../middleware/role')
 
 const OVERRIDES_TTL_MS = 60 * 1000
 const CATALOG_TTL_MS = 5 * 60 * 1000
 
-// A perm key is within a role's tier ceiling when either it carries no catalog
-// min_tier (plain tiles/apps), or its min_tier is at or below the role's tier.
-// Uncatalogued report:<key> grants fail closed — report endpoints honor them
-// directly, so an unknown ceiling must never resolve to "allowed".
-function withinCeiling(permKey, catalog, tierIdx, hier) {
-  const minTier = catalog[permKey]
-  if (minTier) return hier.indexOf(minTier) <= tierIdx
-  if (permKey.startsWith('report:')) return false
-  return true
-}
-
-function applyOverrides(baseKeys, overrides, catalog, baseTier, hier) {
-  const tierIdx = hier.indexOf(baseTier)
-  // Clamp the role's own toggles to its tier ceiling, not just overrides. A
-  // custom role's grid could otherwise hold a report grant above its tier and
-  // requireReportAccess would honor it. (No-op for built-in roles today, whose
-  // toggles carry no report keys, so parity is preserved.)
-  const set = new Set((baseKeys || []).filter(k => withinCeiling(k, catalog, tierIdx, hier)))
+// Effective permissions are fully role-driven: a role's toggles plus per-person
+// overrides grant exactly what they list, with NO tier ceiling. Admins have
+// full control over which permissions each role carries. (Hard tier gates on
+// sensitive action endpoints still apply independently via requireRole; this
+// governs tile/report/marketing VISIBILITY and grant-based report access.)
+function applyOverrides(baseKeys, overrides) {
+  const set = new Set(baseKeys || [])
   for (const o of (overrides || [])) {
-    if (o.visible) {
-      if (!withinCeiling(o.perm_key, catalog, tierIdx, hier)) continue
-      set.add(o.perm_key)
-    } else {
-      set.delete(o.perm_key)
-    }
+    if (o.visible) set.add(o.perm_key)
+    else set.delete(o.perm_key)
   }
   return [...set]
 }
@@ -77,13 +59,11 @@ async function roleBaseKeys(staff) {
 
 async function getEffectivePermissions(staff) {
   if (!staff) return []
-  const [baseKeys, overrides, catalog, baseTier] = await Promise.all([
+  const [baseKeys, overrides] = await Promise.all([
     roleBaseKeys(staff),
     overridesForStaff(staff.id),
-    loadCatalog(),
-    getBaseTier(staff.role),
   ])
-  return applyOverrides(baseKeys, overrides, catalog, baseTier, ROLE_HIERARCHY)
+  return applyOverrides(baseKeys, overrides)
 }
 
 module.exports = { getEffectivePermissions, applyOverrides, roleBaseKeys, loadCatalog }
