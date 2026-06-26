@@ -44,6 +44,31 @@ async function resolveLocationFilter(req) {
 }
 
 // ---------------------------------------------------------------------------
+// Data freshness: when the sync last refreshed the data these reports read.
+// Reports read upsert-maintained tables (ghl_opportunities_v2, abc_members) and
+// the ghl_contacts_report view, so a mid-sync read is never empty — it's just
+// "as of the last completed sync". This surfaces that timestamp for a header
+// stamp. Delta runs ~every 10 min, so this is normally a few minutes old.
+// ---------------------------------------------------------------------------
+router.get('/data-freshness', async (req, res) => {
+  try {
+    // Most recent sync-log entry in the last 2 days (bounds the scan). started_at
+    // is when that entity's sync began; good enough for an "updated X ago" cue.
+    const since = new Date(Date.now() - 2 * 86400000).toISOString()
+    const { data, error } = await supabaseAdmin
+      .from('ghl_sync_log')
+      .select('completed_at, sync_type')
+      .gte('completed_at', since)
+      .order('completed_at', { ascending: false })
+      .limit(1)
+    if (error) return res.status(500).json({ error: error.message })
+    res.json({ last_sync_at: data?.[0]?.completed_at || null, sync_type: data?.[0]?.sync_type || null })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
 // Helper: convert YYYY-MM-DD date strings to millisecond timestamp strings
 // GHL custom field dates are stored as midnight UTC but displayed on the client
 // in Pacific time (UTC-7 PDT). Without offset, a date shown as "April 11" in

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getMembershipReport, getAppSettings, getSpeedToLead, getCancelsReport, getOperandioRange, getOperandioQaReports, getOperandioQaReport } from '../../lib/api'
+import { getMembershipReport, getAppSettings, getSpeedToLead, getCancelsReport, getOperandioRange, getOperandioQaReports, getOperandioQaReport, getDataFreshness } from '../../lib/api'
 import { openAuditReport } from '../../lib/qaReportHtml'
 import { pct, gapInfo, monthRangesBetween, median, mean, formatMinutes } from '../../lib/kpiMath'
 import { LOCATION_NAMES } from '../../config/locations'
@@ -232,6 +232,34 @@ function fmtDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// "Updated 6 min ago" relative label for the data-freshness stamp.
+function fmtAgo(iso) {
+  if (!iso) return null
+  const ms = Date.now() - new Date(iso).getTime()
+  const min = Math.floor(ms / 60000)
+  if (min < 1) return 'just now'
+  if (min < 60) return `${min} min ago`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr} hour${hr === 1 ? '' : 's'} ago`
+  const d = Math.floor(hr / 24)
+  return `${d} day${d === 1 ? '' : 's'} ago`
+}
+
+// Small header cue: when the sync last refreshed the data. Reassures users that a
+// mid-sync read is "old but real" data, not broken. Empty span keeps layout when
+// freshness hasn't loaded.
+function DataFreshnessStamp({ freshness }) {
+  const ago = fmtAgo(freshness?.last_sync_at)
+  if (!ago) return <span />
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted"
+      title={`Last sync completed ${new Date(freshness.last_sync_at).toLocaleString()}`}>
+      <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
+      Data updated {ago}
+    </span>
+  )
+}
+
 // Parse a 'YYYY-MM-DD' string as a LOCAL date (avoids the UTC shift that
 // `new Date(str)` applies to date-only strings).
 function parseLocalDate(s) {
@@ -457,6 +485,9 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
   const [trendLoading, setTrendLoading] = useState(false)
   // perClub: { [slug]: { [source]: response } } for the current period (multi-club view).
   const [perClub, setPerClub] = useState(null)
+  // last_sync_at stamp for the header; reloadTick lets a "Retry" re-run the load.
+  const [freshness, setFreshness] = useState(null)
+  const [reloadTick, setReloadTick] = useState(0)
   const trendSigRef = useRef(null)
   const fetchToken = useRef(0)
 
@@ -503,7 +534,14 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
       }
     })()
     return () => { cancelled = true }
-  }, [startDate, endDate, locationSlug])
+  }, [startDate, endDate, locationSlug, reloadTick])
+
+  // Data-freshness stamp — refreshed alongside the main load (incl. Retry).
+  useEffect(() => {
+    let cancelled = false
+    getDataFreshness().then(r => { if (!cancelled) setFreshness(r) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [startDate, endDate, locationSlug, reloadTick])
 
   // Per-club current-period data — only when more than one club is selected.
   // Fetched eagerly so the collapsed tiles can show an "on goal" count.
@@ -583,14 +621,38 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
   // KPIs turned off for every selected club disappear from the report.
   const visibleDefs = KPI_DEFS.filter(def => clubs.some(s => !offFor(goals, def, s)))
 
+  // A source's combined fetch failed when its plan key resolved to null (the
+  // .catch above stores null; a successful response is always a truthy object).
+  // Distinguishing this from a real value avoids rendering a failed endpoint as
+  // a misleading "0%"/"n/a".
+  function planFailed(def) {
+    const plan = planFor(goals, def, clubs, locationSlug)
+    return !!dataByPlan && (plan.key in dataByPlan) && dataByPlan[plan.key] == null
+  }
+  const anyFailed = !!dataByPlan && visibleDefs.some(planFailed)
+
   return (
     <div className="space-y-3">
-      {/* Compact comparison-range pill — only meaningful in single-club trend mode. */}
-      {!isMulti && (
-        <div className="flex justify-end">
-          <ComparisonPill comp={comp} setComp={setComp} />
+      {/* Header: data-freshness stamp (left) + a Retry when a source failed to
+          load, and the comparison-range pill (single-club trend mode only). */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-3">
+          <DataFreshnessStamp freshness={freshness} />
+          {anyFailed && (
+            <button
+              type="button"
+              onClick={() => setReloadTick(t => t + 1)}
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-wcs-red hover:text-wcs-red/80"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992V4.356M3 12a9 9 0 0 1 15.357-6.357L21 9m0 0V4.5M21 9H16.5" />
+              </svg>
+              Some data couldn't load — Retry
+            </button>
+          )}
         </div>
-      )}
+        {!isMulti && <ComparisonPill comp={comp} setComp={setComp} />}
+      </div>
 
       {visibleDefs.length === 0 && (
         <div className="bg-surface rounded-xl border border-border p-8 text-center text-text-muted">
@@ -604,7 +666,10 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
       {visibleDefs.map(def => {
         const plan = planFor(goals, def, clubs, locationSlug)
         const planData = dataByPlan?.[plan.key]
-        const value = def.derive(planData)
+        // Fetch failed (null response) vs a real value — render honestly, never
+        // let a down endpoint masquerade as "0%"/"n/a".
+        const failed = !!dataByPlan && (plan.key in dataByPlan) && planData == null
+        const value = failed ? null : def.derive(planData)
         const singleGoal = !isMulti ? goalForSlug(def, goals, clubs[0]) : null
         const gap = !isMulti ? gapFor(def, value, singleGoal) : null
         const open = openKey === def.key
@@ -657,12 +722,21 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
               </div>
               <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-6 w-full sm:w-auto sm:ml-auto sm:flex-shrink-0">
                 <div className="text-right">
-                  <p className="text-xl sm:text-2xl font-bold text-text-primary leading-none">
-                    {formatValue(def, value)}
-                  </p>
-                  <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">
-                    {def.timeless ? (isMulti ? 'Avg of latest' : 'Latest') : (isMulti ? 'Combined' : 'Actual')}
-                  </p>
+                  {failed ? (
+                    <>
+                      <p className="text-xl sm:text-2xl font-bold text-text-muted leading-none">—</p>
+                      <p className="text-[11px] text-amber-600 mt-1 uppercase tracking-wide">Unavailable</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xl sm:text-2xl font-bold text-text-primary leading-none">
+                        {formatValue(def, value)}
+                      </p>
+                      <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">
+                        {def.timeless ? (isMulti ? 'Avg of latest' : 'Latest') : (isMulti ? 'Combined' : 'Actual')}
+                      </p>
+                    </>
+                  )}
                 </div>
                 {!isMulti && (
                   <div className="text-right">
@@ -671,7 +745,9 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                   </div>
                 )}
                 <div className="w-auto sm:w-40 text-right">
-                  {isMulti ? (
+                  {failed ? (
+                    <span className="text-sm text-text-muted">—</span>
+                  ) : isMulti ? (
                     !perClubReady ? (
                       <span className="text-sm text-text-muted">Loading clubs…</span>
                     ) : withGoal === 0 ? (
