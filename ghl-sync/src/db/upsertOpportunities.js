@@ -1,4 +1,5 @@
 const supabase = require('./supabase');
+const { decidePrune } = require('./pruneDecision');
 
 const BATCH_SIZE = 500;
 
@@ -44,4 +45,43 @@ async function upsertOpportunities(opportunities) {
   return { upserted, errors };
 }
 
-module.exports = { upsertOpportunities };
+// Remove opportunities that GHL no longer returns for a location ("zombies").
+//
+// fetchAllOpportunities pulls GHL's COMPLETE authoritative opp set for a location
+// (no status/date filter), and the upsert above stamps every fetched row's
+// synced_at to `runStartIso`. So after a full sync, any row for this location with
+// synced_at < runStartIso is one GHL did NOT return this run — i.e. it was deleted
+// or merged in GHL. Pure-upsert never removed these, so they accumulated and kept
+// their last-known stage/status forever, inflating every stage-based count (e.g. a
+// trial-conversion denominator counting opps long gone from GHL's "Trial Started").
+//
+// SAFETY FLOOR: a transient partial fetch (mid-pagination 429/timeout) must never
+// be allowed to mass-delete a location's opps. Only prune when the freshly-stamped
+// ("alive") set is a healthy fraction of what's on disk. A >50% single-run drop is
+// almost certainly a fetch problem, not that half the opps were really deleted.
+async function pruneStaleOpportunities(locationId, runStartIso) {
+  const base = () => supabase
+    .from('ghl_opportunities_v2')
+    .select('*', { count: 'exact', head: true })
+    .eq('location_id', locationId);
+
+  const { count: total, error: totalErr } = await base();
+  if (totalErr) return { pruned: 0, skipped: true, reason: `count: ${totalErr.message}` };
+
+  const { count: alive, error: aliveErr } = await base().gte('synced_at', runStartIso);
+  if (aliveErr) return { pruned: 0, skipped: true, reason: `count-alive: ${aliveErr.message}` };
+
+  const decision = decidePrune(total, alive);
+  if (!decision.prune) return { pruned: 0, skipped: true, reason: decision.reason };
+
+  const { error: delErr, count } = await supabase
+    .from('ghl_opportunities_v2')
+    .delete({ count: 'exact' })
+    .eq('location_id', locationId)
+    .lt('synced_at', runStartIso);
+  if (delErr) return { pruned: 0, skipped: true, reason: `delete: ${delErr.message}` };
+
+  return { pruned: count || 0, skipped: false };
+}
+
+module.exports = { upsertOpportunities, pruneStaleOpportunities };

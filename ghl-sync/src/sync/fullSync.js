@@ -5,7 +5,7 @@ const { fetchPipelines } = require('../ghl/pipelines');
 const { fetchAllContacts, transformContact } = require('../ghl/contacts');
 const { fetchAllOpportunities, transformOpportunity } = require('../ghl/opportunities');
 const { upsertContacts } = require('../db/upsertContacts');
-const { upsertOpportunities } = require('../db/upsertOpportunities');
+const { upsertOpportunities, pruneStaleOpportunities } = require('../db/upsertOpportunities');
 const { upsertPipelines } = require('../db/upsertPipelines');
 const { upsertCustomFields } = require('../db/upsertCustomFields');
 const { syncCalendarEventsRange } = require('../abc/calendarEvents');
@@ -73,9 +73,19 @@ async function syncLocation(location, syncType) {
   // 5. Opportunities
   let opStart = new Date().toISOString();
   try {
+    // Stamp every fetched row's synced_at to one fixed run boundary so the prune
+    // below can delete exactly the rows GHL did NOT return this run (zombies).
+    // Captured BEFORE the fetch so freshly-upserted rows are always >= it.
+    const oppRunStart = new Date().toISOString();
     const rawOpps = await fetchAllOpportunities(location.id, location.apiKey);
     const opps = rawOpps.map(o => transformOpportunity(o, location.id));
+    for (const o of opps) o.synced_at = oppRunStart;
     const opResult = await upsertOpportunities(opps);
+    // Prune opps deleted/merged in GHL (full sync only — it pulls the complete,
+    // authoritative set; guarded by a safety floor inside the helper).
+    const pruneResult = await pruneStaleOpportunities(location.id, oppRunStart);
+    if (pruneResult.pruned > 0) console.log(`[Sync] ${location.name}: pruned ${pruneResult.pruned} stale opportunities (gone from GHL)`);
+    else if (pruneResult.skipped) console.warn(`[Sync] ${location.name}: opportunity prune skipped — ${pruneResult.reason}`);
     console.log(`[Sync] ${location.name}: ${rawOpps.length} opportunities fetched, ${opResult.upserted} upserted`);
     await writeSyncLog({ syncType, entity: 'opportunities', locationId: location.id, recordsFetched: rawOpps.length, recordsUpserted: opResult.upserted, errors: opResult.errors, startedAt: opStart });
   } catch (err) {
