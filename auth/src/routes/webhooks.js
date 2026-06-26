@@ -222,4 +222,119 @@ router.post(
   }
 )
 
+// --- Tour intake (front-desk gym-tour queue) ----------------------------
+//
+// A Go High Level form fires this when a prospect arrives for a gym tour. GHL
+// sends the SAME flat payload it sends to prospects-documents/ABC, so this is
+// just an additional webhook target on the existing workflow — contact_id at
+// the top level, the GHL location as `location.id`, and form/contact fields as
+// top-level keys by label. We resolve the location, capture name/email/phone
+// (from the payload, falling back to a GHL contact lookup) plus an optional
+// base64 profile photo, and insert a `ready` row the iPad queue polls for.
+//
+// NOTE: the higher-limit JSON body parser for this path is registered in
+// index.js (the base64 photo can exceed the global 100kb json limit).
+
+// Pull the first non-empty value across a list of candidate keys.
+function pickKey(body, keys) {
+  for (const k of keys) {
+    const v = body[k]
+    if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim()
+  }
+  return ''
+}
+
+// Normalize a profile photo into a data URL. GHL may send a bare base64 string
+// or an already-formed data URL; anything that isn't base64-ish is dropped.
+function normalizePhoto(raw) {
+  const v = (raw || '').trim()
+  if (!v) return null
+  if (v.startsWith('data:image/')) return v
+  // Bare base64 (no data-URL prefix) — assume jpeg, the GHL default.
+  if (/^[A-Za-z0-9+/=\s]+$/.test(v) && v.length > 100) {
+    return 'data:image/jpeg;base64,' + v.replace(/\s+/g, '')
+  }
+  return null
+}
+
+router.post('/tour-intake', verifyWebhookSecret, async (req, res) => {
+  const body = req.body
+  if (!body || typeof body !== 'object') {
+    return res.status(400).json({ error: 'invalid body' })
+  }
+
+  const contactId = pickKey(body, ['contact_id', 'contactId']) || body.contact?.id || ''
+  const ghlLocationId = body.location?.id || pickKey(body, ['location_id', 'locationId'])
+
+  // Resolve our location row from the GHL location id.
+  let locationRow = null
+  if (ghlLocationId) {
+    const { data } = await supabaseAdmin
+      .from('locations')
+      .select('id, name, ghl_api_key')
+      .eq('ghl_location_id', ghlLocationId)
+      .maybeSingle()
+    locationRow = data || null
+  }
+
+  // Name / email / phone come straight off the flat payload when present
+  // (they do for the ABC-bound webhook). Fall back to a GHL contact lookup.
+  const first = pickKey(body, ['first_name', 'firstName', 'First Name', 'contact.first_name'])
+  const last = pickKey(body, ['last_name', 'lastName', 'Last Name', 'contact.last_name'])
+  let name = pickKey(body, ['full_name', 'fullName', 'name', 'Full Name', 'contact.full_name']) ||
+    [first, last].filter(Boolean).join(' ').trim()
+  let email = pickKey(body, ['email', 'Email', 'contact.email'])
+  let phone = pickKey(body, ['phone', 'Phone', 'contact.phone'])
+
+  if ((!name || !email || !phone) && contactId && locationRow?.ghl_api_key) {
+    try {
+      const cRes = await fetch('https://services.leadconnectorhq.com/contacts/' + contactId, {
+        headers: { 'Authorization': 'Bearer ' + locationRow.ghl_api_key, 'Version': '2021-04-15' },
+      })
+      if (cRes.ok) {
+        const cData = await cRes.json()
+        const c = cData.contact || cData
+        const ghlName = [c.firstName, c.lastName].filter(Boolean).join(' ').trim()
+        name = name || ghlName || c.name || ''
+        email = email || c.email || ''
+        phone = phone || c.phone || ''
+      }
+    } catch (err) {
+      // Non-fatal — fall through with whatever the payload gave us.
+      console.error('[tour-intake] GHL contact fetch failed:', err.message)
+    }
+  }
+
+  const photo = normalizePhoto(
+    pickKey(body, ['photo_base64', 'photo', 'Photo', 'Profile Photo', 'profile_photo', 'image', 'Image'])
+  )
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('tour_intakes')
+      .insert({
+        ghl_contact_id: contactId || null,
+        contact_name: name || null,
+        contact_email: email || null,
+        contact_phone: phone || null,
+        photo_base64: photo,
+        location_id: locationRow?.id || null,
+        status: 'ready',
+        raw: body,
+      })
+      .select('id')
+      .single()
+
+    if (error) {
+      console.error('[tour-intake] persist failed:', error.message)
+      return res.status(500).json({ error: 'failed to persist intake' })
+    }
+
+    res.json({ success: true, id: data.id })
+  } catch (err) {
+    console.error('[tour-intake] error:', err.message)
+    res.status(500).json({ error: 'internal error' })
+  }
+})
+
 module.exports = router
