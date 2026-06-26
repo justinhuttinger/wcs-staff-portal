@@ -10,6 +10,7 @@ const { upsertPipelines } = require('../db/upsertPipelines');
 const { upsertCustomFields } = require('../db/upsertCustomFields');
 const { syncCalendarEventsRange } = require('../abc/calendarEvents');
 const { writeSyncLog } = require('./syncLog');
+const { mapSettled } = require('../util/mapSettled');
 
 // PT sessions are marked Completed / Canceled-Charge LATE — trainers often
 // check a session off weeks after it happened. The 10-min delta only re-pulls
@@ -106,16 +107,23 @@ async function fullSync() {
   const start = Date.now();
   ghlSyncAbort = false;
 
-  for (const location of LOCATIONS) {
-    if (ghlSyncAbort) {
-      console.log('[Sync] Full sync aborted by user');
-      break;
-    }
-    await syncLocation(location, 'full');
+  const LIMIT = parseInt(process.env.LOCATION_CONCURRENCY || '4', 10);
 
-    // Wide calendar-events reconcile: recapture sessions that were marked
-    // Completed / Canceled-Charge after the 7-day delta window had moved past.
-    if (location.clubNumber) {
+  // Phase 1 — per-location GHL sync (location upsert, custom fields, pipelines,
+  // contacts, opportunities), fanned out across independent api keys. mapSettled
+  // isolates failures so one location can't abort the rest. LOCATION_CONCURRENCY
+  // also bounds peak memory (each location pulls its full contact set).
+  await mapSettled(LOCATIONS, LIMIT, async (location) => {
+    if (isGhlSyncAborted()) return;
+    await syncLocation(location, 'full');
+  });
+
+  // Phase 2 — wide ABC calendar reconcile per club. SEQUENTIAL: ABC is a single
+  // shared rate bucket. Recaptures sessions marked Completed / Canceled-Charge
+  // after the 7-day delta window moved past. Logic + logging unchanged.
+  if (!isGhlSyncAborted()) {
+    for (const location of LOCATIONS) {
+      if (!location.clubNumber) continue;
       const calStart = new Date().toISOString();
       try {
         const now = new Date();
