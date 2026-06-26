@@ -1,13 +1,16 @@
 import { useState, useEffect, useMemo } from 'react'
 import { getStaff, createStaff, updateStaff, deleteStaff, setStaffActive, getLocations, getRolesAdmin } from '../lib/api'
-import { LOCATION_NAMES } from '../config/locations'
-import { MARKETING_TYPES } from '../config/marketingTypes'
 import { PORTAL_TILE_CATALOG, CUSTOM_REPORT_CATALOG } from '../config/portalTiles'
 import AdminStaffOverrides from './AdminStaffOverrides'
 
-// 'marketing' is no longer a base role — it's an add-on toggle below. 'custom'
-// lets an admin hand-pick tiles + reports for one person.
+// Fallback role list if the roles table can't be fetched. The live dropdown is
+// sourced from the roles table (all built-ins + admin-created custom roles) so
+// every assignable role shows. 'custom' lets an admin hand-pick tiles + reports.
 const ROLES = ['team_member', 'lead', 'manager', 'custom', 'corporate', 'admin']
+
+// Preferred display order for built-in roles; anything not listed sorts last,
+// then custom roles follow alphabetically.
+const BUILTIN_ROLE_ORDER = ['team_member', 'front_desk', 'personal_trainer', 'lead', 'custom', 'manager', 'director', 'corporate', 'marketing', 'admin']
 
 const emptyForm = {
   email: '',
@@ -55,8 +58,12 @@ function StaffModal({ member, locations, onClose, onSaved }) {
   const [showOverrides, setShowOverrides] = useState(false)
   useEffect(() => {
     getRolesAdmin().then(r => {
-      const custom = (r?.roles || []).filter(x => !x.is_builtin).map(x => x.name)
-      if (custom.length) setRoleOptions([...ROLES, ...custom])
+      const all = r?.roles || []
+      const rank = (n) => { const i = BUILTIN_ROLE_ORDER.indexOf(n); return i === -1 ? 99 : i }
+      const builtins = all.filter(x => x.is_builtin).map(x => x.name).sort((a, b) => rank(a) - rank(b))
+      const customs = all.filter(x => !x.is_builtin).map(x => x.name).sort()
+      const opts = [...builtins, ...customs]
+      if (opts.length) setRoleOptions(opts)
       setRbacEnabled(!!r?.rbac_v2_enabled)
     }).catch(() => {})
   }, [])
@@ -266,61 +273,10 @@ function StaffModal({ member, locations, onClose, onSaved }) {
             )}
           </div>
 
-          {/* Marketing add-on — layers on top of any base role */}
-          <div className="rounded-lg border border-border p-3">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.marketing_addon}
-                onChange={() => setForm(f => ({ ...f, marketing_addon: !f.marketing_addon }))}
-                className="rounded border-border text-wcs-red focus:ring-wcs-red"
-              />
-              <span className="text-sm font-medium text-text-primary">Marketing add-on</span>
-              <span className="text-xs text-text-muted">— grants the Marketing Tracker</span>
-            </label>
-
-            {form.marketing_addon && (
-              <div className="mt-3 space-y-3">
-                <div>
-                  <p className="text-xs text-text-muted font-medium mb-1.5">
-                    Clubs they can see <span className="text-text-muted/70">(none = all clubs)</span>
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {LOCATION_NAMES.map(name => {
-                      const slug = name.toLowerCase()
-                      const on = form.marketing_locations.includes(slug)
-                      return (
-                        <button
-                          key={slug}
-                          type="button"
-                          onClick={() => toggleInList('marketing_locations', slug)}
-                          className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${on ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
-                        >{name}</button>
-                      )
-                    })}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs text-text-muted font-medium mb-1.5">
-                    Content types they can see <span className="text-text-muted/70">(none = all types)</span>
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {MARKETING_TYPES.map(t => {
-                      const on = form.marketing_types.includes(t.slug)
-                      return (
-                        <button
-                          key={t.slug}
-                          type="button"
-                          onClick={() => toggleInList('marketing_types', t.slug)}
-                          className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${on ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
-                        >{t.label}</button>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          {/* Marketing is no longer a per-staff add-on — it's a role capability
+              (marketing:tracker/needs/research + per-type grants) managed on the
+              Roles page, or per person via the Permission overrides above. Any
+              legacy marketing_addon value on this member is preserved on save. */}
 
           {/* Custom role — hand-pick tiles + reports (clubs come from Locations above) */}
           {form.role === 'custom' && (
