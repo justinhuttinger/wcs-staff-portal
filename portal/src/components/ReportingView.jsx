@@ -21,7 +21,9 @@ import KpiReport from './reports/KpiReport'
 import AuditsReport from './reports/AuditsReport'
 import ReportInfoButton from './ReportInfoButton'
 import DataFreshnessStamp from './reports/DataFreshnessStamp'
+import ReportDetailView from './reports/ReportDetailView'
 import { getReportInfo } from '../lib/reportInfo'
+import { hasReportDetail } from '../lib/reportDetail'
 
 // SVG path data for each reporting tile (outline style, matches main page tiles via ToolButton)
 const REPORT_ICONS = {
@@ -232,6 +234,15 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
   const [activeQuick, setActiveQuick] = useState('this_month')
   // Cancels report: All / Membership / Insurance plan-type filter
   const [cancelsPlanType, setCancelsPlanType] = useState('all')
+  // Summary vs. line-by-line "See Detail" view for the active report.
+  const [detailView, setDetailView] = useState(false)
+  const reportHasDetail = hasReportDetail(activeReport)
+
+  // Always land on the summary when switching reports; not every report has a
+  // detail tab, and the detail grid is report-specific.
+  useEffect(() => {
+    setDetailView(false)
+  }, [activeReport])
 
   // Audits is strictly per-club (no All pill) — snap to the first club when
   // arriving on it with the all-locations selection.
@@ -414,6 +425,32 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
                 {activeReport && (
                   <ReportInfoButton info={getReportInfo(activeReport)} />
                 )}
+                {/* Summary vs. line-by-line detail toggle (only for reports
+                    that carry row-level records). */}
+                {reportHasDetail && (
+                  <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-bg border border-border">
+                    {[
+                      { key: false, label: 'Summary' },
+                      { key: true, label: 'See Detail' },
+                    ].map(opt => {
+                      const active = detailView === opt.key
+                      return (
+                        <button
+                          key={opt.label}
+                          type="button"
+                          onClick={() => setDetailView(opt.key)}
+                          className={`px-3 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
+                            active
+                              ? 'bg-wcs-red text-white'
+                              : 'text-text-muted hover:text-text-primary'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
                 {/* Data-freshness stamp, in line with the title (readable here,
                     unlike buried in the KPI body on a dark surface). */}
                 {activeReport === 'kpis' && (
@@ -539,6 +576,17 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
             No reports available for your role.
           </div>
         )}
+        {/* Line-by-line detail view — replaces the summary body when toggled. */}
+        {activeReport && reportHasDetail && detailView && (
+          <ReportDetailView
+            reportKey={activeReport}
+            startDate={startDate}
+            endDate={endDate}
+            locationSlug={locationSlug}
+          />
+        )}
+        {!(reportHasDetail && detailView) && (
+        <>
         {activeReport === 'club-health' && (
             <ClubHealthReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
           )}
@@ -600,6 +648,8 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
             <AuditsReport locationSlug={locationSlug} />
           )}
         </>
+        )}
+      </>
       </div>
     </div>
   )
