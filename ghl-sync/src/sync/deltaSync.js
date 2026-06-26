@@ -8,7 +8,8 @@ const { writeSyncLog } = require('./syncLog');
 const { isGhlSyncAborted } = require('./fullSync');
 const { refreshCurrentHourCheckins } = require('../abc/checkins');
 const { syncCalendarEventsForClub } = require('../abc/calendarEvents');
-const { computeFirstContact } = require('./computeFirstContact');
+const { computeFirstContact, resolveMembershipPipelineIds } = require('./computeFirstContact');
+const { mapSettled } = require('../util/mapSettled');
 
 async function getLastDeltaSync() {
   const { data } = await supabase
@@ -30,6 +31,59 @@ async function updateLastDeltaSync(timestamp) {
     }, { onConflict: 'key' });
 }
 
+// One location's GHL delta work: contacts, opportunities, first-contact.
+// Uses the location's OWN api key (independent rate bucket), so this is safe to
+// run concurrently across locations. Returns { ok } where ok=true if contacts or
+// opportunities synced — that gates the shared last_delta_sync cursor.
+async function syncLocationDelta(location, syncSince, pipelineIds) {
+  let ok = false;
+
+  // Contacts delta
+  let ctStart = new Date().toISOString();
+  try {
+    const rawContacts = await fetchContactsDelta(location.id, syncSince, location.apiKey);
+    if (rawContacts.length > 0) {
+      const contacts = rawContacts.map(c => transformContact(c, location.id));
+      const result = await upsertContacts(contacts);
+      console.log(`[Delta] ${location.name}: ${rawContacts.length} contacts updated, ${result.upserted} upserted`);
+      await writeSyncLog({ syncType: 'delta', entity: 'contacts', locationId: location.id, recordsFetched: rawContacts.length, recordsUpserted: result.upserted, errors: result.errors, startedAt: ctStart });
+      ok = true;
+    }
+  } catch (err) {
+    console.error(`[Delta] ${location.name} contacts failed:`, err.message);
+    await writeSyncLog({ syncType: 'delta', entity: 'contacts', locationId: location.id, recordsFetched: 0, recordsUpserted: 0, errors: [{ error: err.message }], startedAt: ctStart });
+  }
+
+  // Opportunities delta
+  let opStart = new Date().toISOString();
+  try {
+    const rawOpps = await fetchOpportunitiesDelta(location.id, syncSince, location.apiKey);
+    if (rawOpps.length > 0) {
+      const opps = rawOpps.map(o => transformOpportunity(o, location.id));
+      const result = await upsertOpportunities(opps);
+      console.log(`[Delta] ${location.name}: ${rawOpps.length} opportunities updated, ${result.upserted} upserted`);
+      await writeSyncLog({ syncType: 'delta', entity: 'opportunities', locationId: location.id, recordsFetched: rawOpps.length, recordsUpserted: result.upserted, errors: result.errors, startedAt: opStart });
+      ok = true;
+    }
+  } catch (err) {
+    console.error(`[Delta] ${location.name} opportunities failed:`, err.message);
+    await writeSyncLog({ syncType: 'delta', entity: 'opportunities', locationId: location.id, recordsFetched: 0, recordsUpserted: 0, errors: [{ error: err.message }], startedAt: opStart });
+  }
+
+  // Speed to Lead: first human contact for Membership-pipeline opps.
+  let fcStart = new Date().toISOString();
+  try {
+    const fc = await computeFirstContact(location, pipelineIds);
+    console.log(`[Delta] ${location.name}: first-contact checked ${fc.checked}, resolved ${fc.resolved}`);
+    await writeSyncLog({ syncType: 'delta', entity: 'first_contact', locationId: location.id, recordsFetched: fc.checked, recordsUpserted: fc.resolved, errors: fc.errors, startedAt: fcStart });
+  } catch (err) {
+    console.error(`[Delta] ${location.name} first-contact failed:`, err.message);
+    await writeSyncLog({ syncType: 'delta', entity: 'first_contact', locationId: location.id, recordsFetched: 0, recordsUpserted: 0, errors: [{ error: err.message }], startedAt: fcStart });
+  }
+
+  return { ok };
+}
+
 async function deltaSync() {
   const lastSync = await getLastDeltaSync();
 
@@ -41,61 +95,31 @@ async function deltaSync() {
   }
   const start = Date.now();
   const syncTimestamp = new Date().toISOString();
-  let anySuccess = false;
+  const LIMIT = parseInt(process.env.LOCATION_CONCURRENCY || '4', 10);
 
-  for (const location of LOCATIONS) {
-    if (isGhlSyncAborted()) {
-      console.log('[Delta] Delta sync aborted by user');
-      break;
-    }
-    // Contacts delta
-    let ctStart = new Date().toISOString();
-    try {
-      const rawContacts = await fetchContactsDelta(location.id, syncSince, location.apiKey);
-      if (rawContacts.length > 0) {
-        const contacts = rawContacts.map(c => transformContact(c, location.id));
-        const result = await upsertContacts(contacts);
-        console.log(`[Delta] ${location.name}: ${rawContacts.length} contacts updated, ${result.upserted} upserted`);
-        await writeSyncLog({ syncType: 'delta', entity: 'contacts', locationId: location.id, recordsFetched: rawContacts.length, recordsUpserted: result.upserted, errors: result.errors, startedAt: ctStart });
-        anySuccess = true;
-      }
-    } catch (err) {
-      console.error(`[Delta] ${location.name} contacts failed:`, err.message);
-      await writeSyncLog({ syncType: 'delta', entity: 'contacts', locationId: location.id, recordsFetched: 0, recordsUpserted: 0, errors: [{ error: err.message }], startedAt: ctStart });
-    }
+  // Resolve membership pipeline IDs once, shared by every location's first-contact pass.
+  let pipelineIds = [];
+  try {
+    pipelineIds = await resolveMembershipPipelineIds();
+  } catch (err) {
+    console.error('[Delta] Failed to resolve membership pipelines:', err.message);
+  }
 
-    // Opportunities delta
-    let opStart = new Date().toISOString();
-    try {
-      const rawOpps = await fetchOpportunitiesDelta(location.id, syncSince, location.apiKey);
-      if (rawOpps.length > 0) {
-        const opps = rawOpps.map(o => transformOpportunity(o, location.id));
-        const result = await upsertOpportunities(opps);
-        console.log(`[Delta] ${location.name}: ${rawOpps.length} opportunities updated, ${result.upserted} upserted`);
-        await writeSyncLog({ syncType: 'delta', entity: 'opportunities', locationId: location.id, recordsFetched: rawOpps.length, recordsUpserted: result.upserted, errors: result.errors, startedAt: opStart });
-        anySuccess = true;
-      }
-    } catch (err) {
-      console.error(`[Delta] ${location.name} opportunities failed:`, err.message);
-      await writeSyncLog({ syncType: 'delta', entity: 'opportunities', locationId: location.id, recordsFetched: 0, recordsUpserted: 0, errors: [{ error: err.message }], startedAt: opStart });
-    }
+  // Phase 1 — GHL work, fanned out. Each location uses its own api key (independent
+  // rate bucket), so concurrency adds no rate pressure. mapSettled isolates failures:
+  // one location erroring never aborts the others.
+  const settled = await mapSettled(LOCATIONS, LIMIT, async (location) => {
+    if (isGhlSyncAborted()) return { ok: false };
+    return syncLocationDelta(location, syncSince, pipelineIds);
+  });
+  const anySuccess = settled.some(r => r.status === 'fulfilled' && r.value && r.value.ok);
 
-    // Speed to Lead: first human contact for Membership-pipeline opps.
-    let fcStart = new Date().toISOString();
-    try {
-      const fc = await computeFirstContact(location);
-      console.log(`[Delta] ${location.name}: first-contact checked ${fc.checked}, resolved ${fc.resolved}`);
-      await writeSyncLog({ syncType: 'delta', entity: 'first_contact', locationId: location.id, recordsFetched: fc.checked, recordsUpserted: fc.resolved, errors: fc.errors, startedAt: fcStart });
-    } catch (err) {
-      console.error(`[Delta] ${location.name} first-contact failed:`, err.message);
-      await writeSyncLog({ syncType: 'delta', entity: 'first_contact', locationId: location.id, recordsFetched: 0, recordsUpserted: 0, errors: [{ error: err.message }], startedAt: fcStart });
-    }
-
-    // Calendar events delta — last 14 days through end-of-tomorrow.
-    // Catches newly-completed sessions and Pending->Completed/Canceled-Charge
-    // flips. The daily full sync reconciles a much wider window (75d) for
-    // sessions checked off even later than this.
-    if (location.clubNumber) {
+  // Phase 2 — ABC calendar events per club. SEQUENTIAL: ABC uses a single shared
+  // app_id/app_key (one rate bucket), so these must not fan out. Window + logging
+  // are unchanged from the prior per-location loop.
+  if (!isGhlSyncAborted()) {
+    for (const location of LOCATIONS) {
+      if (!location.clubNumber) continue;
       const calStart = new Date().toISOString();
       try {
         const now = new Date();
@@ -106,7 +130,6 @@ async function deltaSync() {
           console.log(`[Delta] ${location.name}: ${upserted} calendar events upserted`);
         }
         await writeSyncLog({ syncType: 'delta', entity: 'calendar_events', locationId: location.id, recordsFetched: upserted, recordsUpserted: upserted, errors: [], startedAt: calStart });
-        anySuccess = true;
       } catch (err) {
         console.error(`[Delta] ${location.name} calendar events failed:`, err.message);
         await writeSyncLog({ syncType: 'delta', entity: 'calendar_events', locationId: location.id, recordsFetched: 0, recordsUpserted: 0, errors: [{ error: err.message }], startedAt: calStart });

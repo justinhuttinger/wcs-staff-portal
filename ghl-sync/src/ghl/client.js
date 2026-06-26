@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { RateLimiter, parseRetryAfter } = require('../util/rateLimiter');
 
 const BASE_URL = process.env.GHL_BASE_URL || 'https://services.leadconnectorhq.com';
 
@@ -7,11 +8,30 @@ function sleep(ms) {
 }
 
 const MAX_RETRIES = 5;
-const BACKOFF = [5000, 10000, 20000, 30000, 60000]; // exponential-ish backoff
+const BACKOFF = [5000, 10000, 20000, 30000, 60000]; // exponential-ish backoff fallback
+
+// One limiter, bucketed by api key. GHL's documented v2 limit is ~100 req / 10s
+// burst per key; default to a conservative 10/s (capacity 10) and let env tune it.
+// Each location key is an independent bucket, so fanning out locations adds no
+// rate pressure. The single shared ABC key is NOT routed here.
+const limiter = new RateLimiter({
+  capacity: parseInt(process.env.GHL_RL_CAPACITY || '10', 10),
+  refillPerSec: parseInt(process.env.GHL_RL_REFILL || '10', 10),
+});
+
+// On a 429, prefer the server's Retry-After; otherwise fall back to BACKOFF.
+// Also penalize the key's bucket so concurrent in-flight calls back off too.
+function rate429Delay(err, attempt, apiKey) {
+  const ra = parseRetryAfter(err.response?.headers?.['retry-after']);
+  const delay = ra != null ? ra : (BACKOFF[attempt - 1] || 60000);
+  limiter.penalize(apiKey, delay);
+  return delay;
+}
 
 async function get(path, params = {}, apiKey) {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
+      await limiter.acquire(apiKey);
       const res = await axios.get(`${BASE_URL}${path}`, {
         params,
         headers: {
@@ -24,7 +44,7 @@ async function get(path, params = {}, apiKey) {
       return res.data;
     } catch (err) {
       if (err.response?.status === 429 && attempt < MAX_RETRIES) {
-        const delay = BACKOFF[attempt - 1] || 60000;
+        const delay = rate429Delay(err, attempt, apiKey);
         console.warn(`[GHL] Rate limited on ${path}, retrying in ${delay / 1000}s (attempt ${attempt}/${MAX_RETRIES})`);
         await sleep(delay);
         continue;
@@ -37,6 +57,7 @@ async function get(path, params = {}, apiKey) {
 async function post(path, body = {}, apiKey) {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
+      await limiter.acquire(apiKey);
       const res = await axios.post(`${BASE_URL}${path}`, body, {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -48,7 +69,7 @@ async function post(path, body = {}, apiKey) {
       return res.data;
     } catch (err) {
       if (err.response?.status === 429 && attempt < MAX_RETRIES) {
-        const delay = BACKOFF[attempt - 1] || 60000;
+        const delay = rate429Delay(err, attempt, apiKey);
         console.warn(`[GHL] Rate limited on POST ${path}, retrying in ${delay / 1000}s (attempt ${attempt}/${MAX_RETRIES})`);
         await sleep(delay);
         continue;
@@ -118,8 +139,7 @@ async function getPaginated(path, baseParams, itemsKey, options = {}, apiKey) {
     } else {
       offset += limit;
     }
-
-    await sleep(300); // Rate limit for reads: ~200 req/min (writes use 650ms separately)
+    // Pacing is handled by the per-key token bucket inside get(); no fixed sleep.
   }
 
   return allItems;
@@ -128,6 +148,7 @@ async function getPaginated(path, baseParams, itemsKey, options = {}, apiKey) {
 async function put(path, body = {}, apiKey) {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
+      await limiter.acquire(apiKey);
       const res = await axios.put(`${BASE_URL}${path}`, body, {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -139,7 +160,7 @@ async function put(path, body = {}, apiKey) {
       return res.data;
     } catch (err) {
       if (err.response?.status === 429 && attempt < MAX_RETRIES) {
-        const delay = BACKOFF[attempt - 1] || 60000;
+        const delay = rate429Delay(err, attempt, apiKey);
         console.warn(`[GHL] Rate limited on PUT ${path}, retrying in ${delay / 1000}s (attempt ${attempt}/${MAX_RETRIES})`);
         await sleep(delay);
         continue;
