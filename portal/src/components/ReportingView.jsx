@@ -20,6 +20,7 @@ import GoogleMarketingView from './GoogleMarketingView'
 import KpiReport from './reports/KpiReport'
 import AuditsReport from './reports/AuditsReport'
 import ReportInfoButton from './ReportInfoButton'
+import DataFreshnessStamp from './reports/DataFreshnessStamp'
 import { getReportInfo } from '../lib/reportInfo'
 
 // SVG path data for each reporting tile (outline style, matches main page tiles via ToolButton)
@@ -412,6 +413,11 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
                 </h2>
                 {activeReport && (
                   <ReportInfoButton info={getReportInfo(activeReport)} />
+                )}
+                {/* Data-freshness stamp, in line with the title (readable here,
+                    unlike buried in the KPI body on a dark surface). */}
+                {activeReport === 'kpis' && (
+                  <DataFreshnessStamp refreshKey={`${locationSlug}|${startDate}|${endDate}`} />
                 )}
                 {/* Cancels: All / Membership / Insurance plan-type pills */}
                 {activeReport === 'cancels' && (

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getMembershipReport, getAppSettings, getSpeedToLead, getCancelsReport, getOperandioRange, getOperandioQaReports, getOperandioQaReport, getDataFreshness } from '../../lib/api'
+import { getMembershipReport, getAppSettings, getSpeedToLead, getCancelsReport, getOperandioRange, getOperandioQaReports, getOperandioQaReport } from '../../lib/api'
 import { openAuditReport } from '../../lib/qaReportHtml'
 import { pct, gapInfo, monthRangesBetween, median, mean, formatMinutes } from '../../lib/kpiMath'
 import { LOCATION_NAMES } from '../../config/locations'
@@ -232,34 +232,6 @@ function fmtDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-// "Updated 6 min ago" relative label for the data-freshness stamp.
-function fmtAgo(iso) {
-  if (!iso) return null
-  const ms = Date.now() - new Date(iso).getTime()
-  const min = Math.floor(ms / 60000)
-  if (min < 1) return 'just now'
-  if (min < 60) return `${min} min ago`
-  const hr = Math.floor(min / 60)
-  if (hr < 24) return `${hr} hour${hr === 1 ? '' : 's'} ago`
-  const d = Math.floor(hr / 24)
-  return `${d} day${d === 1 ? '' : 's'} ago`
-}
-
-// Small header cue: when the sync last refreshed the data. Reassures users that a
-// mid-sync read is "old but real" data, not broken. Empty span keeps layout when
-// freshness hasn't loaded.
-function DataFreshnessStamp({ freshness }) {
-  const ago = fmtAgo(freshness?.last_sync_at)
-  if (!ago) return <span />
-  return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted"
-      title={`Last sync completed ${new Date(freshness.last_sync_at).toLocaleString()}`}>
-      <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
-      Data updated {ago}
-    </span>
-  )
-}
-
 // Parse a 'YYYY-MM-DD' string as a LOCAL date (avoids the UTC shift that
 // `new Date(str)` applies to date-only strings).
 function parseLocalDate(s) {
@@ -485,8 +457,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
   const [trendLoading, setTrendLoading] = useState(false)
   // perClub: { [slug]: { [source]: response } } for the current period (multi-club view).
   const [perClub, setPerClub] = useState(null)
-  // last_sync_at stamp for the header; reloadTick lets a "Retry" re-run the load.
-  const [freshness, setFreshness] = useState(null)
+  // reloadTick lets a "Retry" re-run the load after a failed source.
   const [reloadTick, setReloadTick] = useState(0)
   const trendSigRef = useRef(null)
   const fetchToken = useRef(0)
@@ -533,13 +504,6 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
         if (!cancelled) setLoading(false)
       }
     })()
-    return () => { cancelled = true }
-  }, [startDate, endDate, locationSlug, reloadTick])
-
-  // Data-freshness stamp — refreshed alongside the main load (incl. Retry).
-  useEffect(() => {
-    let cancelled = false
-    getDataFreshness().then(r => { if (!cancelled) setFreshness(r) }).catch(() => {})
     return () => { cancelled = true }
   }, [startDate, endDate, locationSlug, reloadTick])
 
@@ -633,26 +597,28 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
 
   return (
     <div className="space-y-3">
-      {/* Header: data-freshness stamp (left) + a Retry when a source failed to
-          load, and the comparison-range pill (single-club trend mode only). */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-3">
-          <DataFreshnessStamp freshness={freshness} />
-          {anyFailed && (
-            <button
-              type="button"
-              onClick={() => setReloadTick(t => t + 1)}
-              className="inline-flex items-center gap-1 text-[11px] font-semibold text-wcs-red hover:text-wcs-red/80"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992V4.356M3 12a9 9 0 0 1 15.357-6.357L21 9m0 0V4.5M21 9H16.5" />
-              </svg>
-              Some data couldn't load — Retry
-            </button>
-          )}
+      {/* Header: a Retry when a source failed to load, plus the comparison-range
+          pill (single-club trend mode only). The "data updated" stamp lives up in
+          the report title row (ReportingView). */}
+      {(anyFailed || !isMulti) && (
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-3">
+            {anyFailed && (
+              <button
+                type="button"
+                onClick={() => setReloadTick(t => t + 1)}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-wcs-red hover:text-wcs-red/80"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992V4.356M3 12a9 9 0 0 1 15.357-6.357L21 9m0 0V4.5M21 9H16.5" />
+                </svg>
+                Some data couldn't load — Retry
+              </button>
+            )}
+          </div>
+          {!isMulti && <ComparisonPill comp={comp} setComp={setComp} />}
         </div>
-        {!isMulti && <ComparisonPill comp={comp} setComp={setComp} />}
-      </div>
+      )}
 
       {visibleDefs.length === 0 && (
         <div className="bg-surface rounded-xl border border-border p-8 text-center text-text-muted">
