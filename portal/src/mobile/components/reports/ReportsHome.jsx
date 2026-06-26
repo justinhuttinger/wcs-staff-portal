@@ -195,20 +195,29 @@ const REPORT_TILES = [
   },
 ]
 
-function getTilesForRole(role) {
+function defaultTileKeysForRole(role) {
   switch (role) {
     case 'team_member':
       return []
     case 'lead':
-      return REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health'].includes(t.key))
+      return ['membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health']
     case 'manager':
-      return REPORT_TILES.filter(t => ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'operations', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'pt-projections', 'payroll', 'revenue'].includes(t.key))
+      return ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'operations', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'pt-projections', 'payroll', 'revenue']
     case 'marketing':
-      // Marketing sees everything except the corp-only experimental reports.
-      return REPORT_TILES.filter(t => t.key !== 'kpis' && t.key !== 'audits')
+      return REPORT_TILES.map(t => t.key).filter(k => k !== 'kpis' && k !== 'audits')
     default: // corporate, admin, director
-      return REPORT_TILES
+      return REPORT_TILES.map(t => t.key)
   }
+}
+
+// Role defaults plus any report granted via the roles grid (report:<key> in
+// visible_tools), so a fully customizable role can be given any report.
+function getTilesForRole(role, visibleTools) {
+  const allowed = new Set(defaultTileKeysForRole(role))
+  for (const key of (visibleTools || [])) {
+    if (typeof key === 'string' && key.startsWith('report:')) allowed.add(key.slice('report:'.length))
+  }
+  return REPORT_TILES.filter(t => allowed.has(t.key))
 }
 
 // Reports shown as a standalone full-width tile above the group sections
@@ -254,8 +263,8 @@ const REPORT_GROUPS = [
   },
 ]
 
-function getVisibleGroups(role) {
-  const visibleSet = new Set(getTilesForRole(role).map(t => t.key))
+function getVisibleGroups(role, visibleTools) {
+  const visibleSet = new Set(getTilesForRole(role, visibleTools).map(t => t.key))
   return REPORT_GROUPS
     .map(g => ({ ...g, reports: g.reports.filter(k => visibleSet.has(k)) }))
     .filter(g => g.reports.length > 0)
@@ -263,7 +272,7 @@ function getVisibleGroups(role) {
 
 export default function ReportsHome({ onNavigate, user, activeGroup, onSelectGroup }) {
   const role = user?.staff?.role || 'team_member'
-  const visibleGroups = getVisibleGroups(role)
+  const visibleGroups = getVisibleGroups(role, user?.visible_tools)
 
   if (visibleGroups.length === 0) {
     return (

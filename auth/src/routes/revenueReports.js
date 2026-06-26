@@ -1,6 +1,6 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
-const { requireRole, canSeeAllLocations } = require('../middleware/role')
+const { requireRole, requireReportAccess, canSeeAllLocations } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { buildMtdMonthWindows } = require('../services/revenueMtdWindows')
 const { capRevenueEndDate } = require('../services/revenueEndCap')
@@ -109,7 +109,7 @@ async function fetchSummary(startDate, endDate, locationFilter) {
 // ---------------------------------------------------------------------------
 // GET /reports/revenue/summary
 // ---------------------------------------------------------------------------
-router.get('/summary', authenticate, requireRole('manager'), async (req, res) => {
+router.get('/summary', authenticate, requireReportAccess('manager', ['revenue']), async (req, res) => {
   try {
     const { start_date, end_date } = req.query
     if (!start_date || !end_date) return res.status(400).json({ error: 'start_date and end_date required' })
@@ -142,7 +142,7 @@ router.get('/summary', authenticate, requireRole('manager'), async (req, res) =>
 // ---------------------------------------------------------------------------
 // GET /reports/revenue/profit-center-trend
 // ---------------------------------------------------------------------------
-router.get('/profit-center-trend', authenticate, requireRole('manager'), async (req, res) => {
+router.get('/profit-center-trend', authenticate, requireReportAccess('manager', ['revenue']), async (req, res) => {
   try {
     const { start_date, end_date, profit_center } = req.query
     if (!start_date || !end_date || !profit_center) {
@@ -184,7 +184,7 @@ router.get('/profit-center-trend', authenticate, requireRole('manager'), async (
 // is 2026-05-15, every monthly bucket is "days 1–15 of that month" (capped to
 // each month's last day where shorter).
 // ---------------------------------------------------------------------------
-router.get('/profit-center-mtd-trend', authenticate, requireRole('manager'), async (req, res) => {
+router.get('/profit-center-mtd-trend', authenticate, requireReportAccess('manager', ['revenue']), async (req, res) => {
   try {
     const { profit_center, end_date } = req.query
     if (!profit_center || !end_date) {

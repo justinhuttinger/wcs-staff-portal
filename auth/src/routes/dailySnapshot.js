@@ -11,7 +11,7 @@
 
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
-const { requireRole, resolveRole } = require('../middleware/role')
+const { requireReportAccess, resolveRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { LOCATIONS, getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
@@ -20,7 +20,7 @@ const { getSkipList } = require('../utils/membershipSkipList')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('manager'))
+router.use(requireReportAccess('manager', ['daily-snapshot']))
 
 const CAL_VERSION = '2021-04-15'
 const PT_PROFIT_CENTERS = ['PERSONAL TRAINING', 'TRAINING']

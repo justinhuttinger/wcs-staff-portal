@@ -1,12 +1,12 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole, canSeeAllLocations } = require('../middleware/role')
+const { requireReportAccess, canSeeAllLocations } = require('../middleware/role')
 const { parseLocationSlugParam, intersectWithAllowed } = require('../utils/locationSlug')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('manager'))
+router.use(requireReportAccess('manager', ['payroll']))
 
 const ABC_BASE_URL = process.env.ABC_BASE_URL || 'https://api.abcfinancial.com/rest'
 const ABC_APP_ID = process.env.ABC_APP_ID

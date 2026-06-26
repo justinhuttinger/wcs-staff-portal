@@ -1,6 +1,6 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { requireReportAccess } = require('../middleware/role')
 const { wrapSWR } = require('../services/memoryCache')
 const { parseLocationSlugParam, locationCacheKey } = require('../utils/locationSlug')
 
@@ -33,7 +33,7 @@ const CLUBS = [
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('lead'))
+router.use(requireReportAccess('lead', ['pt-new-clients']))
 
 function isPT(name) {
   const n = (name || '').toUpperCase()

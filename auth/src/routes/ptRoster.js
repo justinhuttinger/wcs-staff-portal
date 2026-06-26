@@ -1,6 +1,6 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { requireReportAccess } = require('../middleware/role')
 const { wrapSWR } = require('../services/memoryCache')
 const { parseLocationSlugParam, locationCacheKey } = require('../utils/locationSlug')
 const { CLUBS, isPT, normSvc, abcGet, fetchRecurring } = require('../services/abcRecurring')
@@ -14,7 +14,7 @@ const ABC_APP_KEY = process.env.ABC_APP_KEY
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('lead'))
+router.use(requireReportAccess('lead', ['pt-roster']))
 
 // Parse the per-week frequency out of a plan name like "GROUP TRAINING 1XWEEK"
 // or "PT 60MIN 3X/WEEK" → "1x/Week" / "3x/Week". Returns null if no match.
