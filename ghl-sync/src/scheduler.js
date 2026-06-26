@@ -17,12 +17,22 @@ function startScheduler() {
 
   const abcIntervalMinutes = process.env.ABC_SYNC_INTERVAL_MINUTES || 30;
 
+  // Run-locks: node-cron does not prevent overlapping runs, so a slow run could
+  // otherwise start a second concurrent pass and double-touch the shared cursor.
+  let deltaRunning = false;
+  let fullRunning = false;
+
   // Delta sync every N minutes. Cross-location lead cleanup piggybacks
   // on the delta cycle — it needs the freshly synced contact data to
   // detect new drift (people who just got the `sale` tag at a sister
   // club). Failures on either step are logged but never bring the cron
   // down.
   cron.schedule(`*/${intervalMinutes} * * * *`, async () => {
+    if (deltaRunning) {
+      console.warn('[Scheduler] Previous delta sync still running — skipping this tick');
+      return;
+    }
+    deltaRunning = true;
     console.log('[Scheduler] Starting delta sync...');
     let deltaOk = false;
     try {
@@ -38,12 +48,24 @@ function startScheduler() {
         console.error('[Scheduler] Cross-loc cleanup failed:', err.message);
       }
     }
+    deltaRunning = false;
   });
 
   // Full re-sync daily
-  cron.schedule(`0 ${fullSyncHourUTC} * * *`, () => {
+  cron.schedule(`0 ${fullSyncHourUTC} * * *`, async () => {
+    if (fullRunning) {
+      console.warn('[Scheduler] Previous full sync still running — skipping');
+      return;
+    }
+    fullRunning = true;
     console.log('[Scheduler] Starting daily full sync...');
-    fullSync().catch(err => console.error('[Scheduler] Full sync failed:', err.message));
+    try {
+      await fullSync();
+    } catch (err) {
+      console.error('[Scheduler] Full sync failed:', err.message);
+    } finally {
+      fullRunning = false;
+    }
   });
 
   // ABC sync every N minutes (default 30)
