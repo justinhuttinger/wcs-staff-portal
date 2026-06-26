@@ -252,7 +252,16 @@ function changePhrase(effort, c) {
 
 // --- Main view ---
 
-export default function MarketingTrackerView({ onBack }) {
+export default function MarketingTrackerView({ onBack, access }) {
+  // Effective capabilities from marketingAccess(); default to full when the
+  // prop is absent (e.g. legacy callers) so nothing regresses.
+  const caps = access || { tracker: true, needs: true, research: true, types: null }
+  const TABS = useMemo(() => [
+    { key: 'tracker', label: 'Tracker', show: caps.tracker !== false },
+    { key: 'needs', label: 'Needs List', show: !!caps.needs },
+    { key: 'research', label: 'Research', show: !!caps.research },
+  ].filter(t => t.show), [caps.tracker, caps.needs, caps.research])
+
   const [efforts, setEfforts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -261,9 +270,21 @@ export default function MarketingTrackerView({ onBack }) {
   const [currentDate, setCurrentDate] = useState(todayStr())
   const [typeValue, setTypeValue] = useState('all')
   const [locationValue, setLocationValue] = useState('all')
-  const [tab, setTab] = useState('tracker')              // 'tracker' | 'needs' | 'research'
+  const [tab, setTab] = useState(() => (caps.tracker !== false ? 'tracker' : (caps.needs ? 'needs' : 'research')))
 
-  const TYPE_OPTIONS = useMemo(() => MARKETING_TYPES.map(t => ({ slug: t.slug, label: t.label })), [])
+  // Keep the active tab within the granted set (e.g. a member with only the
+  // Needs section should never land on a hidden Tracker tab).
+  useEffect(() => {
+    if (!TABS.some(t => t.key === tab)) setTab(TABS[0]?.key || 'tracker')
+  }, [TABS, tab])
+
+  // Type filter is limited to the member's granted effort types; null = all.
+  const TYPE_OPTIONS = useMemo(() => {
+    const allowed = Array.isArray(caps.types) ? new Set(caps.types) : null
+    return MARKETING_TYPES
+      .filter(t => !allowed || allowed.has(t.slug))
+      .map(t => ({ slug: t.slug, label: t.label }))
+  }, [caps.types])
   const [modal, setModal] = useState(null)               // { view } | { effort } | { date } | null
 
   function load() {
@@ -366,11 +387,7 @@ export default function MarketingTrackerView({ onBack }) {
             </div>
             {/* Tab nav — inline with the title */}
             <div className="flex gap-1 bg-bg rounded-lg p-1">
-              {[
-                { key: 'tracker', label: 'Tracker' },
-                { key: 'needs', label: 'Needs List' },
-                { key: 'research', label: 'Research' },
-              ].map(t => (
+              {TABS.map(t => (
                 <button
                   key={t.key}
                   onClick={() => setTab(t.key)}

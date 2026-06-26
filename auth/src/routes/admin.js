@@ -4,7 +4,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole, resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
 const { getBaseTier } = require('../services/roles')
 const { roleBaseKeys } = require('../services/permissions')
-const { buildPermissionGrid, planOverrideWrites } = require('../services/rolesAdmin')
+const { buildPermissionGrid, planOverrideWrites, tileLabelsFromRows } = require('../services/rolesAdmin')
 const memoryCache = require('../services/memoryCache')
 
 const router = Router()
@@ -143,11 +143,10 @@ router.get('/staff/:id/overrides', requireRole('admin'), async (req, res) => {
 
     const [{ data: catalog }, { data: tiles }, { data: overrides }] = await Promise.all([
       supabaseAdmin.from('permission_catalog').select('perm_key, label, category, min_tier'),
-      supabaseAdmin.from('custom_tiles').select('id, label'),
+      supabaseAdmin.from('custom_tiles').select('id, label, parent_id'),
       supabaseAdmin.from('staff_permission_overrides').select('perm_key, visible').eq('staff_id', member.id),
     ])
-    const tileLabels = {}
-    for (const t of (tiles || [])) tileLabels['tile:' + t.id] = { label: t.label }
+    const tileLabels = tileLabelsFromRows(tiles)
 
     const [baseTier, baseKeys] = await Promise.all([getBaseTier(member.role), roleBaseKeys(member)])
 

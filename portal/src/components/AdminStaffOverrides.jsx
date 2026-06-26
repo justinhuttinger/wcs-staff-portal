@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getStaffOverrides, updateStaffOverrides } from '../lib/api'
 
-const CATEGORIES = ['Apps', 'Tools', 'Reports', 'Marketing', 'Actions']
+const CATEGORIES = ['Apps', 'Tools', 'Reports', 'Marketing', 'Marketing Types', 'Actions']
 const STATES = [
   { key: 'inherit', label: 'Inherit' },
   { key: 'on', label: 'On' },

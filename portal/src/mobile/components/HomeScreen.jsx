@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { getLeaderboard } from '../../lib/api'
+import { marketingAccess } from '../../config/marketingAccess'
 
 // Tile icons (Heroicons outline, inline SVG)
 function BarChartIcon() {
@@ -150,7 +151,7 @@ export default function HomeScreen({ user, navigate, onLogout }) {
 
   const ROLE_LEVELS = { team_member: 0, lead: 1, manager: 2, corporate: 3, admin: 4 }
   const roleIdx = ROLE_LEVELS[role] ?? 0
-  const marketingAddon = !!staff.marketing_addon
+  const canMarketing = marketingAccess(user).tracker
 
   const tiles = allTiles.filter(tile => {
     // Reports tile is manager+ (leads get Inventory, Calendar, Tickets, Leaderboard)
@@ -159,8 +160,9 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     if (tile.label === 'Tickets' && roleIdx < ROLE_LEVELS.lead) return false
     // HR tile only for manager+
     if (tile.label === 'HR' && roleIdx < ROLE_LEVELS.manager) return false
-    // Marketing Tracker: corporate/admin, or anyone with the marketing add-on
-    if (tile.label === 'Marketing' && roleIdx < ROLE_LEVELS.corporate && !marketingAddon) return false
+    // Marketing Tracker: effective tracker capability (corporate/admin, add-on,
+    // or a role grant of marketing:tracker).
+    if (tile.label === 'Marketing' && !canMarketing) return false
     return true
   })
 

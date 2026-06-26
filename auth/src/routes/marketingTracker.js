@@ -3,7 +3,7 @@ const { Router } = require('express')
 const multer = require('multer')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireMarketing, marketingScope } = require('../middleware/role')
+const { requireMarketing, requireMarketingCapability, marketingScope } = require('../middleware/role')
 const { getAccessToken } = require('./googleBusiness')
 const { researchLocalEvents } = require('../services/marketingResearch')
 const memoryCache = require('../services/memoryCache')
@@ -37,6 +37,18 @@ router.use(authenticate)
 // open the tracker. Add-on members may be scoped to specific clubs/types —
 // that scoping is enforced per-request below via marketingScope().
 router.use(requireMarketing)
+// Per-capability gates: the three tracker sections are independently grantable
+// per role. The bare tracker (efforts) requires 'tracker'; the Needs List and
+// Research tabs require their own capability. Mounted as path-prefix middleware
+// so they run before any matching route handler below.
+router.use('/needs', requireMarketingCapability('needs'))
+router.use('/research', requireMarketingCapability('research'))
+// Everything else under this router is the efforts tracker itself, which needs
+// the 'tracker' capability. (req.path here is relative to the router mount.)
+router.use((req, res, next) => {
+  if (req.path.startsWith('/needs') || req.path.startsWith('/research')) return next()
+  return requireMarketingCapability('tracker')(req, res, next)
+})
 
 // Verify an existing effort falls within the caller's marketing scope before
 // they can read its comments or mutate/delete it. Returns { effort } when in

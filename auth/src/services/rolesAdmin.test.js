@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { validateRoleName, buildPermissionGrid, TIERS, planOverrideWrites } = require('./rolesAdmin')
+const { validateRoleName, buildPermissionGrid, TIERS, planOverrideWrites, tileLabelsFromRows, tileCategoryForParent } = require('./rolesAdmin')
 
 const SID = 'staff-1'
 
@@ -29,6 +29,29 @@ test('buildPermissionGrid merges catalog rows and dynamic tiles, sorted by categ
   assert.deepStrictEqual(grid.map(r => r.perm_key), ['grow', 'tile:abc', 'report:payroll'])
   assert.strictEqual(grid.find(r => r.perm_key === 'tile:abc').category, 'Tools')
   assert.strictEqual(grid.find(r => r.perm_key === 'tile:abc').min_tier, 'team_member')
+})
+
+test('tileCategoryForParent groups by parent into existing catalog categories', () => {
+  assert.strictEqual(tileCategoryForParent('Reporting'), 'Reports')
+  assert.strictEqual(tileCategoryForParent('Marketing'), 'Marketing')
+  assert.strictEqual(tileCategoryForParent('Whatever'), 'Tools')
+  assert.strictEqual(tileCategoryForParent(null), 'Tools')
+})
+
+test('tileLabelsFromRows nests child tiles under their parent category', () => {
+  const rows = [
+    { id: 'rep', label: 'Reporting', parent_id: null },
+    { id: 'mem', label: 'Membership', parent_id: 'rep' },
+    { id: 'mkt', label: 'Marketing', parent_id: null },
+    { id: 'fb', label: 'Facebook', parent_id: 'mkt' },
+    { id: 'ind', label: 'Indeed', parent_id: null },
+  ]
+  const out = tileLabelsFromRows(rows)
+  assert.strictEqual(out['tile:rep'].category, 'Tools')   // parent group launcher
+  assert.strictEqual(out['tile:mem'].category, 'Reports') // child of Reporting
+  assert.strictEqual(out['tile:fb'].category, 'Marketing')// child of Marketing
+  assert.strictEqual(out['tile:ind'].category, 'Tools')   // standalone
+  assert.strictEqual(out['tile:mem'].label, 'Membership')
 })
 
 // planOverrideWrites: no tier ceiling — grants exactly what's stated.

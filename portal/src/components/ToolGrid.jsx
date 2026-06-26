@@ -111,7 +111,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTickets, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, userRole, userName, marketingAddon, customReports }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTickets, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [showOrdering, setShowOrdering] = useState(false)
@@ -263,7 +263,9 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   // the Marketing Tracker tile regardless of the custom tile list.
   if (userRole === 'custom') {
     const granted = new Set(visibleTools || [])
-    const showMarketingTracker = marketingAddon
+    // Marketing Tracker rides on the effective capability (add-on OR a role
+    // grant of marketing:tracker), computed in App via marketingAccess().
+    const showMarketingTracker = canMarketingTracker ?? (marketingAddon || granted.has('marketing:tracker'))
     // Surface Reporting whenever any report is granted, even if the tile itself
     // wasn't explicitly checked — otherwise granted reports would be unreachable.
     const showReporting = granted.has('reporting') || (customReports && customReports.length > 0)
@@ -607,7 +609,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {/* 6. Trainer Availability — manager+ only (leads cannot see it) */}
           {onTrainerAvail && roleIdx >= ROLE_LEVELS.manager && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}
           {/* 6.5. Marketing Tracker — corporate/admin, or anyone with the marketing add-on */}
-          {onMarketingTracker && (roleIdx >= ROLE_LEVELS.corporate || marketingAddon) && <SvgTileButton onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />}
+          {onMarketingTracker && (canMarketingTracker ?? (roleIdx >= ROLE_LEVELS.corporate || marketingAddon)) && <SvgTileButton onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />}
           {/* 6.6. Inventory (experimental) — lead+ (leads get restock/adjust, no Sales/margin) */}
           {onInventory && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onInventory} iconPath={TILE_ICONS.inventory} label="Inventory" desc="Stock & Costs" />}
           {/* 7-9. Reporting, Tickets + remaining custom tiles

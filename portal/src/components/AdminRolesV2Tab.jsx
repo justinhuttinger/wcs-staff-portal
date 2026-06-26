@@ -3,7 +3,7 @@ import { getRolesAdmin, createRole, renameRole, deleteRole, updateRoleVisibility
 
 const TIERS = ['team_member', 'lead', 'manager', 'corporate', 'admin']
 const TIER_LABEL = { team_member: 'Team Member', lead: 'Lead', manager: 'Manager', corporate: 'Corporate', admin: 'Admin' }
-const CATEGORIES = ['Apps', 'Tools', 'Reports', 'Actions']
+const CATEGORIES = ['Apps', 'Tools', 'Reports', 'Marketing', 'Marketing Types', 'Actions']
 
 export default function AdminRolesV2Tab() {
   const [data, setData] = useState(null)
