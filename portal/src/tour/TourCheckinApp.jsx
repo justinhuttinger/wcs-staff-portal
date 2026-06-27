@@ -5,6 +5,17 @@ import { buildDayOneUrl } from '../lib/dayOnePrefill'
 const OUTCOMES = ['Membership Sale', 'Started Trial', 'Started VIP Pass', 'Only Tour']
 const REFRESH_MS = 2000   // poll fast so a new arrival shows within ~2s (only while the app is open)
 
+// Same per-location photo backgrounds as the mobile app (keyed by lowercase name).
+const LOCATION_BACKGROUNDS = {
+  salem: '/bg-salem.jpg',
+  keizer: '/bg-keizer.jpg',
+  eugene: '/bg-eugene.jpg',
+  springfield: '/bg-springfield.jpg',
+  clackamas: '/bg-clackamas.jpg',
+  milwaukie: '/bg-milwaukie.jpg',
+  medford: '/bg-medford.jpg',
+}
+
 function capitalize(s) {
   if (!s) return ''
   return s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
@@ -171,9 +182,14 @@ export default function TourCheckinApp({ token }) {
 
   const showNotifyPrompt = PUSH_SUPPORTED && data.vapid_public_key && permission !== 'granted'
   const list = data.ready
+  const bg = LOCATION_BACKGROUNDS[(data.location_name || '').trim().toLowerCase()]
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen relative">
+      {/* Location photo background (same as the mobile app); header + tiles stay white. */}
+      <div className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
+        style={bg ? { backgroundImage: `url(${bg})` } : { backgroundColor: '#f9fafb' }} />
+      <div className="relative z-10">
       {/* Light header bar with dark text (fixes unreadable-on-dark title). */}
       <div className="bg-white border-b border-gray-200 px-5 py-4 sticky top-0 z-10">
         <h1 className="text-2xl font-bold text-gray-900">Tour Check-In</h1>
@@ -247,6 +263,7 @@ export default function TourCheckinApp({ token }) {
           onSaved={() => { setSelected(null); load({ silent: true }) }}
         />
       )}
+      </div>
     </div>
   )
 }
@@ -259,6 +276,7 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
   const [showDayOne, setShowDayOne] = useState(false)
   const [iframeFailed, setIframeFailed] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -274,10 +292,27 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
     setSaving(true); setError('')
     try {
       await publicTour.saveOutcome(token, intake.id, { tour_member: tourMember, outcome, notes, status: 'completed' })
-      onSaved()
+      // Show the success animation briefly, then close + refresh the queue.
+      setSaved(true)
+      try { navigator.vibrate?.(80) } catch (e) { /* best-effort */ }
+      setTimeout(() => onSaved(), 1300)
     } catch (e) {
       setError(e.message || 'Failed to save'); setSaving(false)
     }
+  }
+
+  if (saved) {
+    return (
+      <div className="fixed inset-0 z-[70] bg-white flex flex-col items-center justify-center gap-5">
+        <div className="animate-tour-pop w-28 h-28 rounded-full bg-green-500 flex items-center justify-center shadow-lg">
+          <svg viewBox="0 0 52 52" className="w-16 h-16" fill="none" stroke="white" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round">
+            <path className="tour-check-path" d="M14 27 l8 8 l16 -18" />
+          </svg>
+        </div>
+        <p className="animate-tour-pop text-2xl font-bold text-gray-900">Saved!</p>
+        <p className="text-sm text-gray-500">{capitalize(intake.contact_name) || 'Tour'} · {outcome}</p>
+      </div>
+    )
   }
 
   return (
