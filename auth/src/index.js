@@ -11,26 +11,6 @@ const app = express()
 // errors on every request.
 app.set('trust proxy', 1)
 
-// Survey-origin CORS for the tour-intake webhooks. MUST be registered BEFORE the
-// global cors() below: the global cors answers every OPTIONS preflight itself and,
-// for a non-portal origin, ends it 204 with no Access-Control-Allow-Origin — which
-// would block the survey-page browser POSTs. We echo the matched survey origin and
-// answer the preflight here (before any secret check; preflight carries no secret).
-const { SURVEY_ORIGINS } = require('./config/surveyOrigins')
-function surveyCors(req, res, next) {
-  res.set('Vary', 'Origin') // response varies by origin whether or not it matches
-  const origin = req.headers.origin
-  if (origin && SURVEY_ORIGINS.has(origin)) {
-    res.set('Access-Control-Allow-Origin', origin) // not '*': a secret rides in the URL
-    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS')
-    res.set('Access-Control-Allow-Headers', 'Content-Type')
-  }
-  if (req.method === 'OPTIONS') return res.sendStatus(204)
-  next()
-}
-// Prefix-matches both /webhooks/tour-intake and /webhooks/tour-intake-photo.
-app.use('/webhooks/tour-intake', surveyCors)
-
 // CORS: whitelist known origins
 const ALLOWED_ORIGINS = [
   process.env.PORTAL_URL || 'https://portal.wcstrength.com',
@@ -53,10 +33,6 @@ app.use('/admin/staff/import', express.raw({ type: '*/*', limit: '10mb' }))
 // global express.json() 100kb default. Register a higher-limit JSON parser for
 // just this path BEFORE the global one — whichever parser consumes the stream
 // first wins, so the global parser skips an already-parsed body.
-// The photo endpoint carries a multi-MB base64 image — give it a higher limit,
-// registered BEFORE the 6mb tour-intake parser (which prefix-matches this path)
-// so this parser consumes the larger body first.
-app.use('/webhooks/tour-intake-photo', express.json({ limit: '10mb' }))
 app.use('/webhooks/tour-intake', express.json({ limit: '6mb' }))
 app.use(express.json({
   verify: (req, _res, buf) => {
