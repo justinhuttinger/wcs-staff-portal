@@ -946,6 +946,11 @@ export const publicTour = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+  subscribe: (token, subscription) =>
+    publicFetch(`/public/tour/${token}/subscribe`, {
+      method: 'POST',
+      body: JSON.stringify({ subscription }),
+    }),
 }
 
 // --- Tour Check-In admin (authed) ---
