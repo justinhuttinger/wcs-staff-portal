@@ -926,6 +926,37 @@ export async function updateTourIntake(id, data) {
   })
 }
 
+// --- Standalone Tour Check-In: PUBLIC endpoints (no auth token) ---
+async function publicFetch(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) }
+  const res = await fetch(API_URL + path, { ...options, headers })
+  if (!res.ok) {
+    let msg = 'Request failed'
+    try { msg = (await res.json()).error || msg } catch {}
+    throw new Error(msg)
+  }
+  return res.json()
+}
+
+export const publicTour = {
+  get: (token) => publicFetch(`/public/tour/${token}`),
+  employees: (token) => publicFetch(`/public/tour/${token}/employees`),
+  saveOutcome: (token, id, body) =>
+    publicFetch(`/public/tour/${token}/intake/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+}
+
+// --- Tour Check-In admin (authed) ---
+export const tourAdmin = {
+  list: () => api('/admin/tour-locations'),
+  update: (locationId, body) =>
+    api('/admin/tour-locations/' + locationId, { method: 'PUT', body: JSON.stringify(body) }),
+  regenerate: (locationId) =>
+    api('/admin/tour-locations/' + locationId + '/regenerate-token', { method: 'POST' }),
+}
+
 // Trainer Availability
 export async function getTrainerAvailability(params = {}) {
   const qs = new URLSearchParams(params).toString()
