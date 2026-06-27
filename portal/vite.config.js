@@ -11,6 +11,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         mobile: resolve(__dirname, 'mobile.html'),
+        tour: resolve(__dirname, 'tour.html'),
       },
     },
   },
