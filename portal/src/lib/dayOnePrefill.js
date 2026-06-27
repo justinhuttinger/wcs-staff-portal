@@ -1,6 +1,9 @@
 // Append GHL booking-widget prefill params to a location's Day One base link.
 // GHL honors first_name/last_name/email/phone, plus the Day One custom field
-// `contact.day_one_booking_team_member` for the tour member who ran the tour.
+// for the tour member who ran the tour. The GHL booking widget prefills the
+// custom field by its key WITHOUT the `contact.` prefix (verified live: the
+// `contact.`-prefixed param does not fill; the bare `day_one_booking_team_member`
+// does).
 export function buildDayOneUrl(baseUrl, { name, email, phone, tourMember } = {}) {
   if (!baseUrl) return ''
   let url
@@ -17,6 +20,6 @@ export function buildDayOneUrl(baseUrl, { name, email, phone, tourMember } = {})
   set('last_name', last)
   set('email', email)
   set('phone', phone)
-  set('contact.day_one_booking_team_member', tourMember)
+  set('day_one_booking_team_member', tourMember)
   return url.toString()
 }
