@@ -99,6 +99,7 @@ router.get('/:token', async (req, res) => {
     res.json({
       location_name: ctx.location.name,
       day_one_base_url: ctx.cfg.day_one_base_url || null,
+      vapid_public_key: process.env.VAPID_PUBLIC_KEY || null,
       ready: ready || [],
     })
   } catch (err) {
@@ -187,6 +188,42 @@ router.patch('/:token/intake/:id', async (req, res) => {
     res.json({ success: true })
   } catch (err) {
     console.error('[public-tour] patch error:', err.message)
+    res.status(500).json({ error: 'internal error' })
+  }
+})
+
+// POST /public/tour/:token/subscribe -> register this iPad's Web Push subscription
+// for the token's location. Idempotent on endpoint (re-subscribing updates keys
+// and can move a device to a new location).
+router.post('/:token/subscribe', async (req, res) => {
+  try {
+    const ctx = await resolveToken(req.params.token)
+    if (!ctx) return res.status(404).json({ error: 'not found' })
+
+    const sub = (req.body && req.body.subscription) || req.body || {}
+    const endpoint = sub.endpoint
+    const p256dh = sub.keys && sub.keys.p256dh
+    const auth = sub.keys && sub.keys.auth
+    if (!endpoint || !p256dh || !auth) {
+      return res.status(400).json({ error: 'invalid subscription' })
+    }
+
+    const { error } = await supabaseAdmin
+      .from('tour_push_subscriptions')
+      .upsert({
+        location_id: ctx.location.id,
+        endpoint,
+        p256dh,
+        auth,
+        last_seen: new Date().toISOString(),
+      }, { onConflict: 'endpoint' })
+    if (error) {
+      console.error('[public-tour] subscribe failed:', error.message)
+      return res.status(500).json({ error: 'failed to subscribe' })
+    }
+    res.json({ success: true })
+  } catch (err) {
+    console.error('[public-tour] subscribe error:', err.message)
     res.status(500).json({ error: 'internal error' })
   }
 })

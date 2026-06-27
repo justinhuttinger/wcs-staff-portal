@@ -3,6 +3,7 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const { syncCancelReasonToGhl } = require('../services/click2saveGhlSync')
 const { parseWebsiteFormBody } = require('../services/websiteFormParser')
+const { sendTourArrival } = require('../lib/tourPush')
 
 const router = Router()
 
@@ -331,6 +332,13 @@ router.post('/tour-intake', verifyWebhookSecret, async (req, res) => {
     }
 
     res.json({ success: true, id: data.id })
+
+    // Fire-and-forget: push "new tour" to the location's installed iPad(s).
+    // Never blocks or fails the webhook response.
+    if (locationRow?.id) {
+      sendTourArrival(locationRow.id, { id: data.id, contact_name: name })
+        .catch(e => console.error('[tour-intake] push failed:', e.message))
+    }
   } catch (err) {
     console.error('[tour-intake] error:', err.message)
     res.status(500).json({ error: 'internal error' })

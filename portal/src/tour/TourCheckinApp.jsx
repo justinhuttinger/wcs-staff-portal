@@ -36,17 +36,64 @@ function Avatar({ name, photo, size = 'w-16 h-16' }) {
   return <div className={`${size} rounded-full flex items-center justify-center font-bold text-xl ${avatarColor(name)}`}>{initials(name)}</div>
 }
 
+const PUSH_SUPPORTED =
+  typeof navigator !== 'undefined' && 'serviceWorker' in navigator &&
+  typeof window !== 'undefined' && 'PushManager' in window && 'Notification' in window
+
+// True once the app is running as an installed/standalone app (required for push on iOS).
+function isStandalone() {
+  return (typeof window !== 'undefined' &&
+    (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true))
+}
+
+// VAPID public key (base64url) -> Uint8Array for pushManager.subscribe.
+function urlB64ToUint8Array(base64) {
+  const padding = '='.repeat((4 - (base64.length % 4)) % 4)
+  const b64 = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(b64)
+  const out = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i)
+  return out
+}
+
+// Short in-app chime + vibrate when a tour arrives while the app is open
+// (best-effort; browsers may gate audio without a prior user gesture).
+function chime() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext
+    if (Ctx) {
+      const ctx = new Ctx()
+      const o = ctx.createOscillator(); const g = ctx.createGain()
+      o.connect(g); g.connect(ctx.destination)
+      o.type = 'sine'; o.frequency.value = 880
+      g.gain.setValueAtTime(0.001, ctx.currentTime)
+      g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.02)
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45)
+      o.start(); o.stop(ctx.currentTime + 0.45)
+    }
+  } catch (e) { /* best-effort */ }
+  try { navigator.vibrate?.(200) } catch (e) { /* best-effort */ }
+}
+
 export default function TourCheckinApp({ token }) {
-  const [data, setData] = useState({ location_name: '', day_one_base_url: null, ready: [] })
+  const [data, setData] = useState({ location_name: '', day_one_base_url: null, vapid_public_key: null, ready: [] })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState(null)
+  const [permission, setPermission] = useState(PUSH_SUPPORTED ? Notification.permission : 'denied')
+  const [notifyError, setNotifyError] = useState('')
+  const knownIds = useRef(null) // null until first load; then a Set of ready ids
 
   const load = useCallback(async (opts = {}) => {
     if (!opts.silent) setLoading(true)
     setError('')
     try {
-      setData(await publicTour.get(token))
+      const d = await publicTour.get(token)
+      setData(d)
+      // Chime on a newly-arrived tour (skip the first load so we don't chime on open).
+      const ids = new Set((d.ready || []).map(r => r.id))
+      if (knownIds.current && [...ids].some(id => !knownIds.current.has(id))) chime()
+      knownIds.current = ids
     } catch (e) {
       setError(e.message || 'Failed to load')
     } finally {
@@ -61,6 +108,34 @@ export default function TourCheckinApp({ token }) {
     return () => clearInterval(id)
   }, [])
 
+  // If alerts are already granted, re-register this device's subscription on open
+  // (keeps it fresh and re-adds it if the server lost it).
+  useEffect(() => {
+    if (!PUSH_SUPPORTED || permission !== 'granted' || !data.vapid_public_key) return
+    navigator.serviceWorker.ready
+      .then(reg => reg.pushManager.getSubscription())
+      .then(sub => { if (sub) publicTour.subscribe(token, sub.toJSON()).catch(() => {}) })
+      .catch(() => {})
+  }, [token, data.vapid_public_key, permission])
+
+  async function enableNotifications() {
+    setNotifyError('')
+    try {
+      const perm = await Notification.requestPermission()
+      setPermission(perm)
+      if (perm !== 'granted') return
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8Array(data.vapid_public_key),
+      })
+      await publicTour.subscribe(token, sub.toJSON())
+    } catch (e) {
+      setNotifyError('Could not enable alerts. Make sure the app was added to the Home Screen and opened from there.')
+    }
+  }
+
+  const showNotifyPrompt = PUSH_SUPPORTED && data.vapid_public_key && permission !== 'granted'
   const list = data.ready
 
   return (
@@ -74,6 +149,24 @@ export default function TourCheckinApp({ token }) {
       </div>
 
       <div className="px-5 py-5 max-w-2xl mx-auto">
+        {showNotifyPrompt && (
+          <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
+            {isStandalone() ? (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-amber-900">Get an alert when a tour checks in.</span>
+                <button onClick={enableNotifications}
+                  className="shrink-0 px-3 py-2 rounded-lg bg-amber-600 text-white font-medium active:scale-95">
+                  Enable alerts
+                </button>
+              </div>
+            ) : (
+              <span className="text-amber-900">
+                To get tour alerts on this iPad: tap the Share icon, choose <strong>Add to Home Screen</strong>, then open Tour Check-In from the new icon.
+              </span>
+            )}
+            {notifyError && <p className="text-red-600 mt-2">{notifyError}</p>}
+          </div>
+        )}
         {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
         {loading && <p className="text-center text-gray-400 py-10">Loading…</p>}
 
