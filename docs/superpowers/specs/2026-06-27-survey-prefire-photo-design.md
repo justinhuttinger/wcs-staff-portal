@@ -102,9 +102,10 @@ Browser photo: `{ email, phone, photo_base64, ... }` (tolerant of variants).
 
 ## Database
 
-- Migration: `CREATE INDEX ... ON tour_intakes (lower(contact_email))` for the
-  per-webhook dedup lookup. No new columns; no status-model change.
-- Apply via Supabase MCP `apply_migration`.
+- No schema change. The dedup lookup matches email case-insensitively with
+  `ILIKE`; delete-on-complete keeps `tour_intakes` small (only the live queue),
+  so the per-webhook lookup is a cheap scan and needs no index. No new columns;
+  no status-model change.
 
 ## Gates (defense-in-depth, not strong auth — by necessity)
 
