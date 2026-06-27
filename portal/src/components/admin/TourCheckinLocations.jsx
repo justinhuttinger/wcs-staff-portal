@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { tourAdmin } from '../../lib/api'
 
 function checkinUrl(token) {
-  return token ? `${window.location.origin}/tour/${token}` : ''
+  return token ? `${window.location.origin}/tour.html?token=${token}` : ''
 }
 
 export default function TourCheckinLocations() {
