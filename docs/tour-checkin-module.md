@@ -119,7 +119,7 @@ as top-level keys by label). It is tolerant of field-name variants:
 | name         | `full_name`, `name`, `Full Name`, else `first_name`+`last_name` variants     | GHL contact lookup |
 | email        | `email`, `Email`, `contact.email`                                           | GHL contact lookup |
 | phone        | `phone`, `Phone`, `contact.phone`                                           | GHL contact lookup |
-| photo        | `photo_base64`, `photo`, `Photo`, `Profile Photo`, `profile_photo`, `image`, `Image` | none (card shows initials) |
+| photo        | `Member Profile Photo` (confirmed live), `photo_base64`, `photo`, `Photo`, `Profile Photo`, `profile_photo`, `image`, `Image` | none (card shows initials) |
 
 If name/email/phone are missing from the payload, the handler falls back to a
 GHL **contacts API** lookup using the location's `ghl_api_key` (same approach as
@@ -132,11 +132,11 @@ bare base64 string (assumed JPEG) or a full `data:image/...;base64,...` data URL
 and stores it in `photo_base64`. The card renders it directly; when absent it
 shows a colored circle with the prospect's initials.
 
-> ⚠️ **Confirm the real field name.** I guessed the photo's field label from the
-> list above. Pull one real payload (see "Finding a real payload" below) and, if
-> the photo key differs, add it to the `pickKey([...])` list for the photo in
-> `auth/src/routes/webhooks.js` (`/tour-intake` handler). Same goes for
-> confirming the name/email/phone keys.
+> ✅ **Photo field confirmed.** A real GHL payload sends the photo under the key
+> **`Member Profile Photo`** as a bare base64 JPEG. That key is now first in the
+> `pickKey([...])` list for the photo in `auth/src/routes/webhooks.js`
+> (`/tour-intake` handler). The name/email/phone keys still match the verified
+> flat payload as listed above.
 
 > ⚠️ **Body size.** Base64 photos can exceed Express's default 100 kb JSON
 > limit. `auth/src/index.js` registers a `6mb` JSON parser for the
@@ -185,8 +185,8 @@ Two ways, since there is **no Render MCP** connected to the Claude session:
 
 ## Open follow-ups
 
-- [ ] **Confirm the photo field name** (and name/email/phone keys) against a real
-      payload, then tighten `pickKey([...])` in the webhook handler.
+- [x] **Confirm the photo field name** — done. Live payload uses
+      `Member Profile Photo`; added to the webhook handler's `pickKey([...])`.
 - [ ] **"Book a Day One"** is currently just an outcome *label*. If you want the
       button to actually create the Day One appointment (via the existing Day One
       flow) instead of only recording that it happened, that's a follow-up.
