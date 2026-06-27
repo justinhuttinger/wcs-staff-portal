@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import TourCheckinApp from './tour/TourCheckinApp'
 import ToolGrid from './components/ToolGrid'
 import LoginScreen from './components/LoginScreen'
 import AdminPanel from './components/AdminPanel'
@@ -95,6 +96,7 @@ export default function App() {
   // Auto-login from stored token (for new tabs like Reporting)
   // Or kiosk auto-login with shared secret
   useEffect(() => {
+    if (window.location.pathname.startsWith('/tour/')) return
     if (kioskMode === 'dayone' && kioskKey && !user) {
       api('/auth/kiosk', { method: 'POST', body: JSON.stringify({ key: kioskKey }) })
         .then(data => {
@@ -265,6 +267,13 @@ export default function App() {
   }, [location])
 
   const bgImage = LOCATION_BACKGROUNDS[location.toLowerCase()]
+
+  // Public, login-free Tour Check-In app: /tour/:token. Must short-circuit before
+  // the auth gate so it never requires a logged-in staffer.
+  const tourMatch = window.location.pathname.match(/^\/tour\/([^/]+)\/?$/)
+  if (tourMatch) {
+    return <TourCheckinApp token={tourMatch[1]} />
+  }
 
   if (!user) {
     if (kioskMode === 'dayone') {
