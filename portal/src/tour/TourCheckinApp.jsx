@@ -56,23 +56,27 @@ function urlB64ToUint8Array(base64) {
   return out
 }
 
-// Short in-app chime + vibrate when a tour arrives while the app is open
-// (best-effort; browsers may gate audio without a prior user gesture).
-function chime() {
+// Loud two-tone chime (played twice) when a tour arrives while the app is open.
+// iOS blocks audio unless the AudioContext was first resumed inside a user
+// gesture, so the caller passes a context that was unlocked on first touch.
+function playChime(ctx) {
   try {
-    const Ctx = window.AudioContext || window.webkitAudioContext
-    if (Ctx) {
-      const ctx = new Ctx()
+    if (!ctx) return
+    if (ctx.state === 'suspended') ctx.resume()
+    const now = ctx.currentTime
+    const beep = (start, freq) => {
       const o = ctx.createOscillator(); const g = ctx.createGain()
       o.connect(g); g.connect(ctx.destination)
-      o.type = 'sine'; o.frequency.value = 880
-      g.gain.setValueAtTime(0.001, ctx.currentTime)
-      g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.02)
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45)
-      o.start(); o.stop(ctx.currentTime + 0.45)
+      o.type = 'sine'; o.frequency.value = freq
+      g.gain.setValueAtTime(0.0001, start)
+      g.gain.exponentialRampToValueAtTime(0.6, start + 0.02)
+      g.gain.exponentialRampToValueAtTime(0.0001, start + 0.5)
+      o.start(start); o.stop(start + 0.55)
     }
+    beep(now, 880); beep(now + 0.28, 1175)
+    beep(now + 0.75, 880); beep(now + 1.03, 1175)
   } catch (e) { /* best-effort */ }
-  try { navigator.vibrate?.(200) } catch (e) { /* best-effort */ }
+  try { navigator.vibrate?.([200, 100, 200]) } catch (e) { /* best-effort */ }
 }
 
 export default function TourCheckinApp({ token }) {
@@ -82,7 +86,27 @@ export default function TourCheckinApp({ token }) {
   const [selected, setSelected] = useState(null)
   const [permission, setPermission] = useState(PUSH_SUPPORTED ? Notification.permission : 'denied')
   const [notifyError, setNotifyError] = useState('')
+  const [flash, setFlash] = useState('') // name shown in the big arrival banner
   const knownIds = useRef(null) // null until first load; then a Set of ready ids
+  const audioCtxRef = useRef(null)
+  const flashTimer = useRef(null)
+
+  // Unlock audio on the first touch so the chime can play later (iOS requirement).
+  useEffect(() => {
+    const unlock = () => {
+      try {
+        const Ctx = window.AudioContext || window.webkitAudioContext
+        if (Ctx && !audioCtxRef.current) audioCtxRef.current = new Ctx()
+        if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume()
+      } catch (e) { /* best-effort */ }
+    }
+    window.addEventListener('pointerdown', unlock)
+    window.addEventListener('touchstart', unlock)
+    return () => {
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('touchstart', unlock)
+    }
+  }, [])
 
   const load = useCallback(async (opts = {}) => {
     if (!opts.silent) setLoading(true)
@@ -90,9 +114,18 @@ export default function TourCheckinApp({ token }) {
     try {
       const d = await publicTour.get(token)
       setData(d)
-      // Chime on a newly-arrived tour (skip the first load so we don't chime on open).
-      const ids = new Set((d.ready || []).map(r => r.id))
-      if (knownIds.current && [...ids].some(id => !knownIds.current.has(id))) chime()
+      // Alert on a newly-arrived tour (skip the first load so we don't alert on open).
+      const ready = d.ready || []
+      const ids = new Set(ready.map(r => r.id))
+      if (knownIds.current) {
+        const arrived = ready.find(r => !knownIds.current.has(r.id))
+        if (arrived) {
+          playChime(audioCtxRef.current)
+          setFlash(capitalize(arrived.contact_name) || 'New tour')
+          clearTimeout(flashTimer.current)
+          flashTimer.current = setTimeout(() => setFlash(''), 6000)
+        }
+      }
       knownIds.current = ids
     } catch (e) {
       setError(e.message || 'Failed to load')
@@ -101,6 +134,7 @@ export default function TourCheckinApp({ token }) {
     }
   }, [token])
 
+  useEffect(() => () => clearTimeout(flashTimer.current), [])
   useEffect(() => { load() }, [load])
   const ref = useRef(load); ref.current = load
   useEffect(() => {
@@ -147,6 +181,13 @@ export default function TourCheckinApp({ token }) {
           {data.location_name || 'Front desk'}{list.length ? ` · ${list.length} waiting` : ''}
         </p>
       </div>
+
+      {flash && (
+        <button onClick={() => setFlash('')}
+          className="w-full bg-red-600 text-white px-5 py-4 text-center font-bold text-lg sticky top-[68px] z-20 animate-pulse active:opacity-90">
+          🔔 {flash} just checked in — tap to dismiss
+        </button>
+      )}
 
       <div className="px-5 py-5 max-w-2xl mx-auto">
         {showNotifyPrompt && (
