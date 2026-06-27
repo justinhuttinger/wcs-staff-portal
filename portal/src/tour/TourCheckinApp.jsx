@@ -37,8 +37,7 @@ function Avatar({ name, photo, size = 'w-16 h-16' }) {
 }
 
 export default function TourCheckinApp({ token }) {
-  const [data, setData] = useState({ location_name: '', day_one_base_url: null, ready: [], completed: [] })
-  const [tab, setTab] = useState('ready')
+  const [data, setData] = useState({ location_name: '', day_one_base_url: null, ready: [] })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState(null)
@@ -62,32 +61,25 @@ export default function TourCheckinApp({ token }) {
     return () => clearInterval(id)
   }, [])
 
-  const list = tab === 'ready' ? data.ready : data.completed
+  const list = data.ready
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Light header bar with dark text (fixes unreadable-on-dark title). */}
       <div className="bg-white border-b border-gray-200 px-5 py-4 sticky top-0 z-10">
         <h1 className="text-2xl font-bold text-gray-900">Tour Check-In</h1>
-        <p className="text-sm text-gray-500">{data.location_name || 'Front desk'}</p>
+        <p className="text-sm text-gray-500">
+          {data.location_name || 'Front desk'}{list.length ? ` · ${list.length} waiting` : ''}
+        </p>
       </div>
 
       <div className="px-5 py-5 max-w-2xl mx-auto">
-        <div className="flex gap-1 bg-gray-200 rounded-lg p-1 mb-5">
-          {['ready', 'completed'].map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              className={`flex-1 px-3 py-2.5 rounded-md text-base font-medium capitalize transition-colors ${tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
-              {t}{t === 'ready' && data.ready.length ? ` (${data.ready.length})` : ''}
-            </button>
-          ))}
-        </div>
-
         {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
         {loading && <p className="text-center text-gray-400 py-10">Loading…</p>}
 
         {!loading && list.length === 0 && (
           <div className="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-400">
-            {tab === 'ready' ? 'No one waiting for a tour right now.' : 'No completed tours yet.'}
+            No one waiting for a tour right now.
           </div>
         )}
 
@@ -103,9 +95,7 @@ export default function TourCheckinApp({ token }) {
                   {intake.contact_email && <p className="text-sm text-gray-500 truncate">{intake.contact_email}</p>}
                 </div>
                 <div className="shrink-0 text-right">
-                  {tab === 'ready'
-                    ? <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">Ready for a tour</span>
-                    : intake.outcome && <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-gray-50 text-gray-700 border border-gray-200">{intake.outcome}</span>}
+                  <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">Ready for a tour</span>
                   <p className="text-xs text-gray-400 mt-1">{timeAgo(intake.received_at)}</p>
                 </div>
               </button>
@@ -119,7 +109,6 @@ export default function TourCheckinApp({ token }) {
           token={token}
           intake={selected}
           dayOneBaseUrl={data.day_one_base_url}
-          readOnly={tab === 'completed'}
           onClose={() => setSelected(null)}
           onSaved={() => { setSelected(null); load({ silent: true }) }}
         />
@@ -128,7 +117,7 @@ export default function TourCheckinApp({ token }) {
   )
 }
 
-function OutcomeModal({ token, intake, dayOneBaseUrl, readOnly, onClose, onSaved }) {
+function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
   const [employees, setEmployees] = useState([])
   const [tourMember, setTourMember] = useState('')        // asked every tour
   const [outcome, setOutcome] = useState(intake.outcome || '')
@@ -139,9 +128,8 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, readOnly, onClose, onSaved
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (readOnly) return
     publicTour.employees(token).then(r => setEmployees(r.employees || [])).catch(() => {})
-  }, [token, readOnly])
+  }, [token])
 
   const dayOneUrl = buildDayOneUrl(dayOneBaseUrl, {
     name: intake.contact_name, email: intake.contact_email,
@@ -172,30 +160,28 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, readOnly, onClose, onSaved
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-6 space-y-6 max-w-2xl mx-auto w-full">
-        {!readOnly && (
-          <div>
-            <label className="block text-sm font-semibold text-gray-900 mb-2">Tour member</label>
-            <select value={tourMember} onChange={e => setTourMember(e.target.value)}
-              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base text-gray-900 focus:outline-none focus:border-red-500">
-              <option value="">Select who gave the tour…</option>
-              {employees.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
-            </select>
-          </div>
-        )}
+        <div>
+          <label className="block text-sm font-semibold text-gray-900 mb-2">Tour member</label>
+          <select value={tourMember} onChange={e => setTourMember(e.target.value)}
+            className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base text-gray-900 focus:outline-none focus:border-red-500">
+            <option value="">Select who gave the tour…</option>
+            {employees.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
+          </select>
+        </div>
 
         <div>
           <label className="block text-sm font-semibold text-gray-900 mb-2">Tour outcome</label>
           <div className="grid grid-cols-2 gap-2">
             {OUTCOMES.map(o => (
-              <button key={o} disabled={readOnly} onClick={() => setOutcome(o)}
-                className={`px-3 py-3 rounded-xl text-sm font-medium border transition-colors ${outcome === o ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-700 border-gray-300'} ${readOnly ? 'opacity-70' : 'active:scale-95'}`}>
+              <button key={o} onClick={() => setOutcome(o)}
+                className={`px-3 py-3 rounded-xl text-sm font-medium border transition-colors active:scale-95 ${outcome === o ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-700 border-gray-300'}`}>
                 {o}
               </button>
             ))}
           </div>
         </div>
 
-        {!readOnly && dayOneBaseUrl && (
+        {dayOneBaseUrl && (
           <div>
             <label className="block text-sm font-semibold text-gray-900 mb-2">Book Day One</label>
             <button onClick={() => { setShowDayOne(true); setIframeFailed(false) }}
@@ -207,7 +193,7 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, readOnly, onClose, onSaved
 
         <div>
           <label className="block text-sm font-semibold text-gray-900 mb-2">Notes</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} readOnly={readOnly} rows={5}
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={5}
             placeholder="Questions they had, follow-ups, anything worth remembering…"
             className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-base text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-red-500" />
         </div>
@@ -215,14 +201,12 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, readOnly, onClose, onSaved
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
 
-      {!readOnly && (
-        <div className="border-t border-gray-200 p-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}>
-          <button onClick={save} disabled={saving || !outcome}
-            className="w-full py-3.5 rounded-xl bg-red-600 text-white font-semibold disabled:opacity-50 active:scale-[0.99]">
-            {saving ? 'Saving…' : 'Save & complete tour'}
-          </button>
-        </div>
-      )}
+      <div className="border-t border-gray-200 p-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}>
+        <button onClick={save} disabled={saving || !outcome}
+          className="w-full py-3.5 rounded-xl bg-red-600 text-white font-semibold disabled:opacity-50 active:scale-[0.99]">
+          {saving ? 'Saving…' : 'Save & complete tour'}
+        </button>
+      </div>
 
       {showDayOne && (
         <div className="fixed inset-0 bg-black/40 z-[70] flex flex-col justify-end">

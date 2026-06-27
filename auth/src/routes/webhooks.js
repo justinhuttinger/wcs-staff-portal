@@ -3,6 +3,7 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const { syncCancelReasonToGhl } = require('../services/click2saveGhlSync')
 const { parseWebsiteFormBody } = require('../services/websiteFormParser')
+const { slugForOrigin } = require('../config/surveyOrigins')
 
 const router = Router()
 
@@ -257,6 +258,62 @@ function normalizePhoto(raw) {
   return null
 }
 
+function normEmail(e) { return (e || '').trim().toLowerCase() || null }
+function normPhone(p) { const d = (p || '').replace(/\D/g, ''); return d || null }
+
+// Resolve our locations row. The GHL "Survey Submitted" webhook carries
+// location.id; the early browser prefire/photo carry only the survey page Origin
+// (https://wcssalem.app -> slug 'salem' -> locations.name 'Salem').
+async function resolveLocationRow(body, req) {
+  const ghlLocationId = body?.location?.id || pickKey(body || {}, ['location_id', 'locationId'])
+  if (ghlLocationId) {
+    const { data } = await supabaseAdmin
+      .from('locations').select('id, name, ghl_api_key')
+      .eq('ghl_location_id', ghlLocationId).maybeSingle()
+    if (data) return data
+  }
+  const slug = slugForOrigin(req.headers.origin || req.headers.referer)
+  if (slug) {
+    const { data } = await supabaseAdmin
+      .from('locations').select('id, name, ghl_api_key')
+      .ilike('name', slug).maybeSingle()
+    if (data) return data
+  }
+  return null
+}
+
+// Find the open (ready) intake for this person within 24h, by normalized email
+// then digits-only phone. This merges the early browser prefire, the early photo,
+// and the later GHL submit into ONE row instead of duplicating. Email is the
+// reliable key (present at the survey step that fires these); phone is the
+// fallback. We pull the (small, transient) live queue and match in JS so the
+// comparison normalizes BOTH sides — the stored phone is raw/formatted and the
+// stored email may be mixed-case, so a DB-side .eq/.ilike would miss or, with an
+// address containing _/% , wrong-match.
+async function findOpenIntake(email, phone) {
+  if (!email && !phone) return null
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const { data } = await supabaseAdmin
+    .from('tour_intakes')
+    .select('id, photo_base64, location_id, contact_email, contact_phone')
+    .eq('status', 'ready').gte('received_at', since)
+    .order('received_at', { ascending: false }).limit(200)
+  if (!data || !data.length) return null
+  if (email) {
+    const m = data.find(r => normEmail(r.contact_email) === email)
+    if (m) return m
+  }
+  if (phone) {
+    const m = data.find(r => normPhone(r.contact_phone) === phone)
+    if (m) return m
+  }
+  return null
+}
+
+// POST /webhooks/tour-intake — early browser prefire AND the GHL "Survey
+// Submitted" webhook both hit this. We upsert by email->phone so the prospect
+// lands in the iPad queue the moment the survey prefires (speed-to-lead), and the
+// later GHL submit merges into the same row rather than creating a duplicate.
 router.post('/tour-intake', verifyWebhookSecret, async (req, res) => {
   const body = req.body
   if (!body || typeof body !== 'object') {
@@ -264,21 +321,10 @@ router.post('/tour-intake', verifyWebhookSecret, async (req, res) => {
   }
 
   const contactId = pickKey(body, ['contact_id', 'contactId']) || body.contact?.id || ''
-  const ghlLocationId = body.location?.id || pickKey(body, ['location_id', 'locationId'])
+  const locationRow = await resolveLocationRow(body, req)
 
-  // Resolve our location row from the GHL location id.
-  let locationRow = null
-  if (ghlLocationId) {
-    const { data } = await supabaseAdmin
-      .from('locations')
-      .select('id, name, ghl_api_key')
-      .eq('ghl_location_id', ghlLocationId)
-      .maybeSingle()
-    locationRow = data || null
-  }
-
-  // Name / email / phone come straight off the flat payload when present
-  // (they do for the ABC-bound webhook). Fall back to a GHL contact lookup.
+  // Name / email / phone come straight off the flat payload when present.
+  // Fall back to a GHL contact lookup (GHL submit path).
   const first = pickKey(body, ['first_name', 'firstName', 'First Name', 'contact.first_name'])
   const last = pickKey(body, ['last_name', 'lastName', 'Last Name', 'contact.last_name'])
   let name = pickKey(body, ['full_name', 'fullName', 'name', 'Full Name', 'contact.full_name']) ||
@@ -310,6 +356,27 @@ router.post('/tour-intake', verifyWebhookSecret, async (req, res) => {
   )
 
   try {
+    const existing = await findOpenIntake(normEmail(email), normPhone(phone))
+
+    if (existing) {
+      // Merge into the open row. Never disturb status/outcome/tour_member/notes
+      // (a staffer may already be working it) and never overwrite a non-empty photo.
+      const patch = {}
+      if (name) patch.contact_name = name
+      if (email) patch.contact_email = email
+      if (phone) patch.contact_phone = phone
+      if (contactId) patch.ghl_contact_id = contactId
+      if (!existing.location_id && locationRow?.id) patch.location_id = locationRow.id
+      if (photo && !existing.photo_base64) patch.photo_base64 = photo
+      if (Object.keys(patch).length) {
+        await supabaseAdmin.from('tour_intakes').update(patch).eq('id', existing.id)
+      }
+      return res.json({ success: true, id: existing.id, merged: true })
+    }
+
+    // New prospect -> create the live queue row immediately (speed-to-lead).
+    // TODO: kick off speed-to-lead first-touch here (Twilio first text / GHL
+    // workflow) so outreach starts the instant the survey prefires.
     const { data, error } = await supabaseAdmin
       .from('tour_intakes')
       .insert({
@@ -333,6 +400,59 @@ router.post('/tour-intake', verifyWebhookSecret, async (req, res) => {
     res.json({ success: true, id: data.id })
   } catch (err) {
     console.error('[tour-intake] error:', err.message)
+    res.status(500).json({ error: 'internal error' })
+  }
+})
+
+// POST /webhooks/tour-intake-photo — the survey page sends the base64 profile
+// photo early (separately from the text prefire). Attach it to the open intake
+// (matched by email->phone); if the photo beats the text, create a minimal row so
+// the later text/submit merges into it. Stored as a data URL in photo_base64.
+router.post('/tour-intake-photo', verifyWebhookSecret, async (req, res) => {
+  const body = req.body
+  if (!body || typeof body !== 'object') {
+    return res.status(400).json({ error: 'invalid body' })
+  }
+
+  const email = pickKey(body, ['email', 'Email', 'contact.email'])
+  const phone = pickKey(body, ['phone', 'Phone', 'contact.phone'])
+  const photo = normalizePhoto(
+    pickKey(body, ['photo_base64', 'photo', 'Member Profile Photo', 'Photo', 'image', 'Image'])
+  )
+  if (!photo) return res.status(400).json({ error: 'no photo' })
+
+  try {
+    const existing = await findOpenIntake(normEmail(email), normPhone(phone))
+    if (existing) {
+      if (!existing.photo_base64) {
+        await supabaseAdmin.from('tour_intakes').update({ photo_base64: photo }).eq('id', existing.id)
+      }
+      return res.json({ success: true, id: existing.id })
+    }
+
+    // Photo arrived before the text prefire — create a minimal row so the later
+    // text/submit reconciles into it by email.
+    const locationRow = await resolveLocationRow(body, req)
+    const { data, error } = await supabaseAdmin
+      .from('tour_intakes')
+      .insert({
+        contact_email: email || null,
+        contact_phone: phone || null,
+        photo_base64: photo,
+        location_id: locationRow?.id || null,
+        status: 'ready',
+        raw: { source: 'tour-intake-photo' },
+      })
+      .select('id')
+      .single()
+
+    if (error) {
+      console.error('[tour-intake-photo] persist failed:', error.message)
+      return res.status(500).json({ error: 'failed to persist photo' })
+    }
+    res.json({ success: true, id: data.id })
+  } catch (err) {
+    console.error('[tour-intake-photo] error:', err.message)
     res.status(500).json({ error: 'internal error' })
   }
 })
