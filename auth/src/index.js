@@ -59,6 +59,7 @@ app.use('/webhooks', require('./routes/mastermind'))
 app.use('/appointments', require('./routes/appointments'))
 app.use('/tours', require('./routes/tours'))
 app.use('/tour-intake', require('./routes/tourIntake'))
+app.use('/public/tour', require('./routes/publicTour'))
 app.use('/oidc', require('./routes/oidc'))
 
 // OIDC discovery at root level (some providers look here)
