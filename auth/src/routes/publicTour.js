@@ -78,7 +78,7 @@ router.get('/:token/employees', async (req, res) => {
       .from('abc_employees')
       .select('employee_id, full_name, first_name, last_name')
       .eq('club_number', club)
-      .eq('status', 'active')
+      .ilike('status', 'active') // case-insensitive: ABC status is lowercase today but not guaranteed
     const employees = (data || [])
       .map(e => ({
         id: e.employee_id,
