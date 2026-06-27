@@ -86,19 +86,13 @@ router.get('/:token', async (req, res) => {
     const ctx = await resolveToken(req.params.token)
     if (!ctx) return res.status(404).json({ error: 'not found' })
 
-    const base = supabaseAdmin
+    // Only the live queue. Completed tours are deleted on outcome-save (the
+    // outbound webhook is the record on the way out), so there is no completed list.
+    const { data: ready } = await supabaseAdmin
       .from('tour_intakes')
       .select(SELECT_COLS)
       .eq('location_id', ctx.location.id)
-      .order('received_at', { ascending: false })
-      .limit(200)
-
-    const { data: ready } = await base.eq('status', 'ready')
-    const { data: completed } = await supabaseAdmin
-      .from('tour_intakes')
-      .select(SELECT_COLS)
-      .eq('location_id', ctx.location.id)
-      .eq('status', 'completed')
+      .eq('status', 'ready')
       .order('received_at', { ascending: false })
       .limit(200)
 
@@ -106,7 +100,6 @@ router.get('/:token', async (req, res) => {
       location_name: ctx.location.name,
       day_one_base_url: ctx.cfg.day_one_base_url || null,
       ready: ready || [],
-      completed: completed || [],
     })
   } catch (err) {
     console.error('[public-tour] list failed:', err.message)
@@ -149,42 +142,32 @@ router.patch('/:token/intake/:id', async (req, res) => {
     if (!ctx) return res.status(404).json({ error: 'not found' })
 
     const { tour_member, outcome, notes, status } = req.body || {}
-    const newStatus = status === 'cancelled' ? 'cancelled' : 'completed'
-    if (newStatus === 'completed' && !ALLOWED_OUTCOMES.includes(outcome)) {
+    const cancelled = status === 'cancelled'
+    if (!cancelled && !ALLOWED_OUTCOMES.includes(outcome)) {
       return res.status(400).json({ error: 'invalid outcome' })
     }
 
     // Confirm the intake belongs to this token's location before mutating.
     const { data: existing } = await supabaseAdmin
       .from('tour_intakes')
-      .select('id, location_id')
+      .select(SELECT_COLS)
       .eq('id', req.params.id)
       .maybeSingle()
     if (!existing || existing.location_id !== ctx.location.id) {
       return res.status(404).json({ error: 'not found' })
     }
 
-    const updates = {
-      status: newStatus,
-      tour_member: tour_member || null,
-      outcome: newStatus === 'completed' ? outcome : null,
-      notes: notes || null,
-      completed_at: new Date().toISOString(),
-    }
-    const { data: updated, error } = await supabaseAdmin
-      .from('tour_intakes')
-      .update(updates)
-      .eq('id', req.params.id)
-      .select(SELECT_COLS)
-      .single()
-    if (error) {
-      console.error('[public-tour] update failed:', error.message)
-      return res.status(500).json({ error: 'failed to save' })
-    }
-
-    // Fire the per-location webhook if configured (non-fatal, fire-and-forget).
-    if (ctx.cfg.webhook_url && newStatus === 'completed') {
-      const payload = buildTourWebhookPayload(ctx.location, updated)
+    // Fire the outbound per-location webhook with the final outcome (it carries
+    // everything downstream needs), THEN delete the row. The iPad is a transient
+    // queue: completed tours are not retained and there is no Completed tab.
+    if (ctx.cfg.webhook_url && !cancelled) {
+      const payload = buildTourWebhookPayload(ctx.location, {
+        ...existing,
+        tour_member: tour_member || null,
+        outcome,
+        notes: notes || null,
+        completed_at: new Date().toISOString(),
+      })
       fetch(ctx.cfg.webhook_url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -192,7 +175,16 @@ router.patch('/:token/intake/:id', async (req, res) => {
       }).catch(e => console.error('[public-tour] webhook post failed:', e.message))
     }
 
-    res.json({ tour_intake: updated })
+    const { error } = await supabaseAdmin
+      .from('tour_intakes')
+      .delete()
+      .eq('id', req.params.id)
+    if (error) {
+      console.error('[public-tour] delete failed:', error.message)
+      return res.status(500).json({ error: 'failed to save' })
+    }
+
+    res.json({ success: true })
   } catch (err) {
     console.error('[public-tour] patch error:', err.message)
     res.status(500).json({ error: 'internal error' })

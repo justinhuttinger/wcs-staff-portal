@@ -4,6 +4,7 @@ function buildTourWebhookPayload(location, intake) {
     location_id: location.id,
     location_name: location.name,
     intake_id: intake.id,
+    contact_id: intake.ghl_contact_id || null,
     contact_name: intake.contact_name || null,
     contact_email: intake.contact_email || null,
     contact_phone: intake.contact_phone || null,
