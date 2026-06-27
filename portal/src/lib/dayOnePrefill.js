@@ -1,8 +1,6 @@
 // Append GHL booking-widget prefill params to a location's Day One base link.
-// GHL reliably honors first_name/last_name/email/phone. The team-member param
-// name is unconfirmed across calendars, so we pass a best-effort `team_member`
-// AND the raw tour member as a query hint; harmless if ignored. Verify against a
-// real Day One link once one is entered in the admin page (see plan known-unknowns).
+// GHL honors first_name/last_name/email/phone, plus the Day One custom field
+// `contact.day_one_booking_team_member` for the tour member who ran the tour.
 export function buildDayOneUrl(baseUrl, { name, email, phone, tourMember } = {}) {
   if (!baseUrl) return ''
   let url
@@ -19,6 +17,6 @@ export function buildDayOneUrl(baseUrl, { name, email, phone, tourMember } = {})
   set('last_name', last)
   set('email', email)
   set('phone', phone)
-  set('team_member', tourMember)
+  set('contact.day_one_booking_team_member', tourMember)
   return url.toString()
 }
