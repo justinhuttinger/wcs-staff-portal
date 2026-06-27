@@ -40,7 +40,8 @@ async function sendTourArrival(locationId, intake) {
   const payload = JSON.stringify({
     title: 'New tour checked in',
     body: `${name} is waiting for a tour.`,
-    tag: 'tour-arrival',
+    // Per-intake tag so two near-simultaneous arrivals both surface (don't collapse).
+    tag: intake && intake.id ? `tour-${intake.id}` : 'tour-arrival',
     intake_id: intake && intake.id,
   })
 
