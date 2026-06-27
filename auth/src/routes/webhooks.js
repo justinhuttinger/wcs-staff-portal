@@ -285,26 +285,27 @@ async function resolveLocationRow(body, req) {
 // Find the open (ready) intake for this person within 24h, by normalized email
 // then digits-only phone. This merges the early browser prefire, the early photo,
 // and the later GHL submit into ONE row instead of duplicating. Email is the
-// reliable key (present at the survey step that fires these); phone is a
-// best-effort fallback matched against the stored value.
+// reliable key (present at the survey step that fires these); phone is the
+// fallback. We pull the (small, transient) live queue and match in JS so the
+// comparison normalizes BOTH sides — the stored phone is raw/formatted and the
+// stored email may be mixed-case, so a DB-side .eq/.ilike would miss or, with an
+// address containing _/% , wrong-match.
 async function findOpenIntake(email, phone) {
+  if (!email && !phone) return null
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-  const cols = 'id, photo_base64, location_id'
+  const { data } = await supabaseAdmin
+    .from('tour_intakes')
+    .select('id, photo_base64, location_id, contact_email, contact_phone')
+    .eq('status', 'ready').gte('received_at', since)
+    .order('received_at', { ascending: false }).limit(200)
+  if (!data || !data.length) return null
   if (email) {
-    const { data } = await supabaseAdmin
-      .from('tour_intakes').select(cols)
-      .eq('status', 'ready').gte('received_at', since)
-      .ilike('contact_email', email)
-      .order('received_at', { ascending: false }).limit(1)
-    if (data && data[0]) return data[0]
+    const m = data.find(r => normEmail(r.contact_email) === email)
+    if (m) return m
   }
   if (phone) {
-    const { data } = await supabaseAdmin
-      .from('tour_intakes').select(cols)
-      .eq('status', 'ready').gte('received_at', since)
-      .eq('contact_phone', phone)
-      .order('received_at', { ascending: false }).limit(1)
-    if (data && data[0]) return data[0]
+    const m = data.find(r => normPhone(r.contact_phone) === phone)
+    if (m) return m
   }
   return null
 }

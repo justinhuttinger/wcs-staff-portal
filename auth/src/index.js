@@ -18,10 +18,10 @@ app.set('trust proxy', 1)
 // answer the preflight here (before any secret check; preflight carries no secret).
 const { SURVEY_ORIGINS } = require('./config/surveyOrigins')
 function surveyCors(req, res, next) {
+  res.set('Vary', 'Origin') // response varies by origin whether or not it matches
   const origin = req.headers.origin
   if (origin && SURVEY_ORIGINS.has(origin)) {
     res.set('Access-Control-Allow-Origin', origin) // not '*': a secret rides in the URL
-    res.set('Vary', 'Origin')
     res.set('Access-Control-Allow-Methods', 'POST, OPTIONS')
     res.set('Access-Control-Allow-Headers', 'Content-Type')
   }
