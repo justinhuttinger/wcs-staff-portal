@@ -306,7 +306,7 @@ router.post('/tour-intake', verifyWebhookSecret, async (req, res) => {
   }
 
   const photo = normalizePhoto(
-    pickKey(body, ['photo_base64', 'photo', 'Photo', 'Profile Photo', 'profile_photo', 'image', 'Image'])
+    pickKey(body, ['Member Profile Photo', 'photo_base64', 'photo', 'Photo', 'Profile Photo', 'profile_photo', 'image', 'Image'])
   )
 
   try {
