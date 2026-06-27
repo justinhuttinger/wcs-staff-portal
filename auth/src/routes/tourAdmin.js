@@ -50,18 +50,24 @@ router.put('/:locationId', async (req, res) => {
       active: active !== false,
       updated_at: new Date().toISOString(),
     }
-    // Ensure a token exists for upsert (a location added after migration 068).
+    // public_token is NOT NULL with no default, and Postgres validates NOT NULL
+    // on the candidate insert row even for ON CONFLICT DO UPDATE. So always carry
+    // a token in the upsert: reuse the existing one (a no-op update) or mint one
+    // for a location added after migration 068. Omitting it 500s the save.
     const { data: existing } = await supabaseAdmin
       .from('tour_location_config')
       .select('public_token')
       .eq('location_id', req.params.locationId)
       .maybeSingle()
-    if (!existing) patch.public_token = newToken()
+    patch.public_token = existing?.public_token || newToken()
 
     const { error } = await supabaseAdmin
       .from('tour_location_config')
       .upsert(patch, { onConflict: 'location_id' })
-    if (error) return res.status(500).json({ error: 'Failed to save' })
+    if (error) {
+      console.error('[tour-admin] save failed:', error.message)
+      return res.status(500).json({ error: 'Failed to save' })
+    }
     res.json({ message: 'Saved' })
   } catch (err) {
     console.error('[tour-admin] save failed:', err.message)
