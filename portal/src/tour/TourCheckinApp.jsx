@@ -3,7 +3,7 @@ import { publicTour } from '../lib/api'
 import { buildDayOneUrl } from '../lib/dayOnePrefill'
 
 const OUTCOMES = ['Membership Sale', 'Started Trial', 'Started VIP Pass', 'Only Tour']
-const REFRESH_MS = 5000   // poll fast so a prefired prospect shows within ~5s
+const REFRESH_MS = 2000   // poll fast so a new arrival shows within ~2s (only while the app is open)
 
 function capitalize(s) {
   if (!s) return ''
