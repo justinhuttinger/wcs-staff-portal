@@ -40,8 +40,10 @@ router.get('/reconciliation', async (req, res) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to))
       return res.status(400).json({ error: 'from and to (YYYY-MM-DD) are required' })
 
-    // FIX 5: cap to 366 days to prevent runaway queries.
+    // FIX 5: reject reversed ranges and cap to 366 days to prevent runaway queries.
     const spanDays = (new Date(to) - new Date(from)) / 86400000
+    if (spanDays < 0)
+      return res.status(400).json({ error: 'from must be on or before to.' })
     if (spanDays > 366)
       return res.status(400).json({ error: 'Date range too large (max 366 days).' })
 
