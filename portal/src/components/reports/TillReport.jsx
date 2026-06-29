@@ -120,7 +120,7 @@ export default function TillReport({ startDate, endDate, locationSlug }) {
         </div>
         <button onClick={exportDaily}
           className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-border bg-bg text-text-muted hover:text-text-primary transition-colors">
-          Export CSV
+          Export Daily CSV
         </button>
       </div>
 
