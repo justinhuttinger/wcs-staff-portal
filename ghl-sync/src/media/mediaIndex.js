@@ -15,6 +15,15 @@ const PHOTO_BATCH = Number(process.env.MEDIA_PHOTO_BATCH || 25)
 // How many photos to fetch/prep at once. Bounded so the backfill stays a good
 // citizen alongside the other ghl-sync jobs and keeps peak memory low.
 const PREP_CONCURRENCY = Number(process.env.MEDIA_PREP_CONCURRENCY || 4)
+// Cap how many files a single run embeds. A large backlog (e.g. a fresh folder
+// or a big drop) otherwise keeps the run grinding for ~an hour, holding an
+// elevated resident-memory plateau the whole time. On the 512MB starter
+// instance that plateau erases the headroom the :00/:30 delta + ABC sync bursts
+// need, and the combination OOM-kills the service. Bounding the run keeps each
+// pass short and low-memory; the remainder is picked up by the next daily run
+// (toEmbed is recomputed from the Drive-vs-DB diff, so embedded files don't
+// recur). Set to 0 to disable the cap.
+const MAX_PER_RUN = Number(process.env.MEDIA_MAX_PER_RUN || 800)
 
 let running = false
 
@@ -112,32 +121,46 @@ async function markError(file, e) {
   )
 }
 
+// Walk Drive + diff against the DB to decide what needs (re)embedding and what
+// to prune. Kept in its own scope so the full Drive tree and the entire
+// media_assets row set become garbage-collectable before the long embedding
+// loop runs — they're only needed to compute the diff, not to embed.
+async function planMediaIndex() {
+  const root = process.env.MEDIA_ROOT_FOLDER_ID
+  if (!root) throw new Error('MEDIA_ROOT_FOLDER_ID not set')
+  const drive = await walkMediaTree(root)
+  const { data: dbRows, error } = await supabase.from('media_assets').select('drive_file_id, md5, drive_modified_time, status')
+  if (error) throw error
+  return diffDriveVsDb(drive, dbRows || [])
+}
+
 async function runMediaIndex() {
   if (running) return { skipped: true }
   running = true
   const stats = { embedded: 0, deleted: 0, errors: 0 }
   try {
-    const root = process.env.MEDIA_ROOT_FOLDER_ID
-    if (!root) throw new Error('MEDIA_ROOT_FOLDER_ID not set')
-    const drive = await walkMediaTree(root)
-    const { data: dbRows, error } = await supabase.from('media_assets').select('drive_file_id, md5, drive_modified_time, status')
-    if (error) throw error
-    const { toEmbed, toDelete } = diffDriveVsDb(drive, dbRows || [])
+    const { toEmbed, toDelete } = await planMediaIndex()
 
-    const photos = toEmbed.filter((f) => f.kind === 'image')
-    const videos = toEmbed.filter((f) => f.kind === 'video')
-    console.log(`[MediaIndex] toEmbed=${toEmbed.length} (img=${photos.length} vid=${videos.length}) toDelete=${toDelete.length}`)
-
-    stats.embedded += await indexPhotos(photos, stats)
-    for (const v of videos) {
-      try { stats.embedded += await indexVideo(v) } catch (e) { stats.errors++; await markError(v, e) }
-    }
+    // Process deletes first (cheap — just IDs) and always in full, so prunes
+    // never get starved by the embed cap.
     if (toDelete.length) {
       const ids = toDelete.map((r) => r.drive_file_id)
       await supabase.from('media_assets').delete().in('drive_file_id', ids)
       stats.deleted = ids.length
     }
-    console.log('[MediaIndex] done', stats)
+
+    const capped = MAX_PER_RUN > 0 && toEmbed.length > MAX_PER_RUN
+    const batch = capped ? toEmbed.slice(0, MAX_PER_RUN) : toEmbed
+    const photos = batch.filter((f) => f.kind === 'image')
+    const videos = batch.filter((f) => f.kind === 'video')
+    const deferred = toEmbed.length - batch.length
+    console.log(`[MediaIndex] toEmbed=${toEmbed.length} (img=${photos.length} vid=${videos.length}) toDelete=${toDelete.length}${deferred ? ` deferred=${deferred} (cap ${MAX_PER_RUN}/run)` : ''}`)
+
+    stats.embedded += await indexPhotos(photos, stats)
+    for (const v of videos) {
+      try { stats.embedded += await indexVideo(v) } catch (e) { stats.errors++; await markError(v, e) }
+    }
+    console.log('[MediaIndex] done', { ...stats, deferred })
     return stats
   } finally {
     running = false
