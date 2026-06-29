@@ -38,6 +38,8 @@ import SpeedToLeadAudit from './admin/SpeedToLeadAudit'
 import MembershipAuditReport from './reports/MembershipAuditReport'
 import UniversityEnrollAdmin from './admin/UniversityEnrollAdmin'
 import BlogAutomationView from './BlogAutomationView'
+import AdminPrintDevicesTab from './admin/AdminPrintDevicesTab'
+import AdminPrintAutomationsTab from './admin/AdminPrintAutomationsTab'
 
 const SETUP_TILES = [
   { key: 'staff', label: 'Staff', desc: 'Accounts & Roles', icon: 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z' },
@@ -56,6 +58,8 @@ const SETUP_TILES = [
   { key: 'kpi-goals', label: 'KPI Goals', desc: 'Report Targets', icon: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z' },
   { key: 'audit-toggles', label: 'Audits', desc: 'Per-Club Audit Toggles', icon: 'M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V19.5a2.25 2.25 0 0 0 2.25 2.25h7.5a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08M15.75 18.75h-7.5m7.5-3h-7.5m-4.5-9v12.75c0 .621.504 1.125 1.125 1.125h.375' },
   { key: 'vendor-price-list', label: 'Vendor Price List', desc: 'SKU↔UPC & Cost Import', icon: 'M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3' },
+  { key: 'print-devices', label: 'Print Devices', desc: 'Receipt Printers per Gym', icon: 'M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m10.5 0a48.536 48.536 0 0 0-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5Zm-3 0h.008v.008H15V10.5Z' },
+  { key: 'print-automations', label: 'Print Automations', desc: 'Till-Close Print Triggers', icon: 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z' },
 ]
 
 const TECHNICAL_TILES = [
@@ -141,6 +145,8 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'shared-credentials' && <SharedCredentialsAdmin />}
         {activeSection === 'launcher-version' && <LauncherVersionAdmin />}
         {activeSection === 'kiosk-installs' && <LauncherInstallsAdmin />}
+        {activeSection === 'print-devices' && <AdminPrintDevicesTab />}
+        {activeSection === 'print-automations' && <AdminPrintAutomationsTab />}
         {activeSection === 'portal-refresh' && <PortalRefreshAdmin />}
         {activeSection === 'audit-log' && <AuditLogAdmin />}
         {activeSection === 'pt-scheduler' && <PtSchedulerView />}

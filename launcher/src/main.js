@@ -15,6 +15,7 @@ const { createTray } = require('./tray')
 const auth = require('./auth')
 const versionCheck = require('./version-check')
 const heartbeat = require('./heartbeat')
+const printPoller = require('./print-poller')
 const deepLink = require('./deep-link')
 
 // Register wcsportal:// so a clicked one-time link launches/focuses us with the
@@ -251,6 +252,10 @@ app.on('ready', async () => {
   heartbeat.setLogger(log)
   deepLink.setLogger(log)
   heartbeat.start(applyLocationConfig)
+
+  // Till-close receipt printing — poll for print jobs and silent-print them to
+  // the admin-selected local printer. See Admin Panel > Print Devices.
+  printPoller.start({ getWindow: () => mainWindow, logger: log })
 
   // Deep link that cold-started the app: Windows passes it in argv; macOS may
   // have stashed it from an early open-url.
