@@ -826,6 +826,19 @@ export async function getInventorySummary(params = {}) {
   return api('/inventory/summary' + inventoryQs(params))
 }
 
+// Till / cash drawer reconciliation (manager+): counted vs expected per club/day.
+// params: { location_slug, from, to } (location_slug '' = all the caller may see).
+export async function getTillReconciliation(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/till/reconciliation' + (qs ? '?' + qs : ''))
+}
+
+// Email Marketing report — GHL email campaign sends + stats (from email_stats).
+export async function getEmailMarketingCampaigns(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/email-marketing/campaigns' + (qs ? '?' + qs : ''))
+}
+
 export async function getInventoryInvoices() {
   return api('/inventory/invoices')
 }
@@ -932,6 +945,55 @@ export async function submitDayOneResult(data) {
 export async function getDayOneFieldOptions(params = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/day-one-tracker/field-options' + (qs ? '?' + qs : ''))
+}
+
+// Tour Intake (front-desk gym-tour queue)
+export async function getTourIntakes(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/tour-intake' + (qs ? '?' + qs : ''))
+}
+
+export async function updateTourIntake(id, data) {
+  return api('/tour-intake/' + id, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+// --- Standalone Tour Check-In: PUBLIC endpoints (no auth token) ---
+async function publicFetch(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) }
+  const res = await fetch(API_URL + path, { ...options, headers })
+  if (!res.ok) {
+    let msg = 'Request failed'
+    try { msg = (await res.json()).error || msg } catch {}
+    throw new Error(msg)
+  }
+  return res.json()
+}
+
+export const publicTour = {
+  get: (token) => publicFetch(`/public/tour/${token}`),
+  employees: (token) => publicFetch(`/public/tour/${token}/employees`),
+  saveOutcome: (token, id, body) =>
+    publicFetch(`/public/tour/${token}/intake/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  subscribe: (token, subscription) =>
+    publicFetch(`/public/tour/${token}/subscribe`, {
+      method: 'POST',
+      body: JSON.stringify({ subscription }),
+    }),
+}
+
+// --- Tour Check-In admin (authed) ---
+export const tourAdmin = {
+  list: () => api('/admin/tour-locations'),
+  update: (locationId, body) =>
+    api('/admin/tour-locations/' + locationId, { method: 'PUT', body: JSON.stringify(body) }),
+  regenerate: (locationId) =>
+    api('/admin/tour-locations/' + locationId + '/regenerate-token', { method: 'POST' }),
 }
 
 // Trainer Availability

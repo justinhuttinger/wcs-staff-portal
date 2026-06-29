@@ -25,6 +25,7 @@ import PortalRefreshAdmin from './admin/PortalRefreshAdmin'
 import AuditLogAdmin from './admin/AuditLogAdmin'
 import PtSchedulerView from './admin/PtSchedulerView'
 import OnlineJoinAdmin from './admin/OnlineJoinAdmin'
+import TourCheckinLocations from './admin/TourCheckinLocations'
 import DailySnapshotReport from './reports/DailySnapshotReport'
 import PaychexTrainingAdmin from './admin/PaychexTrainingAdmin'
 import RevenueBackfillTile from './admin/RevenueBackfillTile'
@@ -55,6 +56,7 @@ const SETUP_TILES = [
   { key: 'action-links', label: 'Action Links', desc: 'Day One & VIP URLs', icon: 'M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m9.86-4.939a4.5 4.5 0 0 0-1.242-7.244l4.5-4.5a4.5 4.5 0 0 1 6.364 6.364l-1.757 1.757' },
   { key: 'membership-skip', label: 'Excluded Types', desc: 'Membership Filter', icon: 'M3 4.5h13.5m-13.5 7.5H21m-7.5 7.5h-9M9 4.5l3 3m0-3-3 3' },
   { key: 'online-join', label: 'Online Join', desc: 'Membership Signup Admin', icon: 'M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z' },
+  { key: 'tour-checkin', label: 'Tour Check-In', desc: 'Check-In App per Location', icon: 'M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z' },
   { key: 'kpi-goals', label: 'KPI Goals', desc: 'Report Targets', icon: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z' },
   { key: 'audit-toggles', label: 'Audits', desc: 'Per-Club Audit Toggles', icon: 'M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V19.5a2.25 2.25 0 0 0 2.25 2.25h7.5a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08M15.75 18.75h-7.5m7.5-3h-7.5m-4.5-9v12.75c0 .621.504 1.125 1.125 1.125h.375' },
   { key: 'vendor-price-list', label: 'Vendor Price List', desc: 'SKU↔UPC & Cost Import', icon: 'M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3' },
@@ -151,6 +153,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'audit-log' && <AuditLogAdmin />}
         {activeSection === 'pt-scheduler' && <PtSchedulerView />}
         {activeSection === 'online-join' && <OnlineJoinAdmin />}
+        {activeSection === 'tour-checkin' && <TourCheckinLocations />}
         {activeSection === 'kpi-goals' && <KpiGoalsAdmin />}
         {activeSection === 'audit-toggles' && <AuditTogglesAdmin />}
         {activeSection === 'speed-to-lead-audit' && <SpeedToLeadAudit />}

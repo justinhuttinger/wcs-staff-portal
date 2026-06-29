@@ -54,4 +54,5 @@ export const CUSTOM_REPORT_CATALOG = [
   { key: 'kpis',              label: 'KPIs' },
   { key: 'meta-ads',          label: 'Meta Ads' },
   { key: 'google-marketing',  label: 'Google' },
+  { key: 'email-marketing',   label: 'Email Marketing' },
 ]

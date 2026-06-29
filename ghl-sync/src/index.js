@@ -15,6 +15,7 @@ const { startScheduler } = require('./scheduler');
 const supabase = require('./db/supabase');
 const { runMediaIndex } = require('./media/mediaIndex');
 const { syncRecurringPtServices } = require('./abc/recurringPtServices');
+const { emailStatsSync, emailStatsSyncForSlug } = require('./sync/emailStatsSync');
 
 const app = express();
 app.use(express.json());
@@ -105,6 +106,19 @@ app.post('/api/sync/delta', requireSecret, (req, res) => {
   deltaSync()
     .catch(err => console.error('[API] Delta sync failed:', err.message))
     .finally(() => { syncRunning = false; });
+});
+
+// POST /api/sync/email-stats — all locations (independent of contact sync flag)
+app.post('/api/sync/email-stats', requireSecret, (req, res) => {
+  res.json({ status: 'started', message: 'Email stats sync running in background' });
+  emailStatsSync().catch(err => console.error('[API] Email stats sync failed:', err.message));
+});
+
+// POST /api/sync/email-stats/:locationSlug — single location
+app.post('/api/sync/email-stats/:locationSlug', requireSecret, (req, res) => {
+  res.json({ status: 'started', message: `Email stats sync for ${req.params.locationSlug} running` });
+  emailStatsSyncForSlug(req.params.locationSlug)
+    .catch(err => console.error(`[API] Email stats sync for ${req.params.locationSlug} failed:`, err.message));
 });
 
 // POST /api/sync/full/:locationSlug

@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Tour check-in: success "pop" + checkmark draw when an outcome is saved. */
+@keyframes tour-pop {
+  0%   { transform: scale(0);    opacity: 0; }
+  60%  { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1);    opacity: 1; }
+}
+.animate-tour-pop { animation: tour-pop 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes tour-check-draw { from { stroke-dashoffset: 48; } to { stroke-dashoffset: 0; } }
+.tour-check-path { stroke-dasharray: 48; animation: tour-check-draw 0.4s 0.2s ease-out both; }
+
 /* Empty-state message: white card, no spinner */
 .empty-card,
 .loading-card {

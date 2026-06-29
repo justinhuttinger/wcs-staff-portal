@@ -5,6 +5,31 @@ import { onlineJoin } from '../../lib/api'
 // We iframe it with ?location= so the same file ships to Elementor + lives here.
 const PROSPECTS_BASE = import.meta.env.VITE_PROSPECTS_API_URL || 'https://prospects-documents.onrender.com'
 
+// Copy-to-clipboard button with the standard "Copied!" confirmation animation.
+function CopyButton({ text, label = 'Copy', className = '' }) {
+  const [copied, setCopied] = useState(false)
+  function handleCopy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }).catch(() => {})
+  }
+  return (
+    <button
+      onClick={handleCopy}
+      className={`relative px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${className} ${copied ? 'bg-green-100 text-green-700 border-green-300' : 'bg-wcs-red text-white border-wcs-red'}`}
+    >
+      <span className={copied ? 'opacity-0' : 'opacity-100'}>{label}</span>
+      {copied && (
+        <span className="absolute inset-0 flex items-center justify-center gap-1 text-green-700">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+          Copied!
+        </span>
+      )}
+    </button>
+  )
+}
+
 export default function OnlineJoinPreview() {
   const [locations, setLocations] = useState([])
   const [locationId, setLocationId] = useState('')
@@ -39,6 +64,16 @@ export default function OnlineJoinPreview() {
   }, [locationId, bust])
 
   const selectedLocation = locations.find(l => l.wcs_location_id === locationId)
+
+  // Production embed for pasting onto a website (Elementor HTML widget, etc.).
+  // Same URL as the preview but without the cache-bust param, and with a stable
+  // responsive iframe wrapper that matches how the widget renders here.
+  const embedUrl = locationId
+    ? `${PROSPECTS_BASE}/widget/online-join?location=${encodeURIComponent(locationId)}`
+    : null
+  const embedCode = embedUrl
+    ? `<iframe src="${embedUrl}" title="Join West Coast Strength${selectedLocation ? ` — ${selectedLocation.display_name}` : ''}" style="width:100%;min-height:760px;border:none;display:block" loading="lazy"></iframe>`
+    : ''
 
   return (
     <div className="space-y-3">
@@ -104,9 +139,27 @@ export default function OnlineJoinPreview() {
         </div>
       )}
 
-      <p className="text-[11px] text-text-muted">
-        Tip: paste-into-Elementor source is at <code className="font-mono">join-flow-widget.html</code> in the <span className="font-mono">prospects---documents</span> repo. The Elementor copy and this preview always render the same file (served from <code className="font-mono">/widget/online-join</code>).
-      </p>
+      {embedUrl && (
+        <div className="bg-surface border border-border rounded-xl p-4 space-y-3">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">Embed on a website</h3>
+              <p className="text-xs text-text-muted mt-0.5">
+                Paste this into an Elementor HTML widget (or any page) to embed the Join flow for{' '}
+                <span className="font-semibold text-text-primary">{selectedLocation?.display_name || 'this location'}</span>.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <CopyButton text={embedUrl} label="Copy link" className="!bg-transparent !text-text-muted !border-border hover:!text-text-primary" />
+              <CopyButton text={embedCode} label="Copy embed code" />
+            </div>
+          </div>
+          <pre className="bg-bg border border-border rounded-lg p-3 text-[11px] font-mono text-text-primary whitespace-pre-wrap break-all select-all">{embedCode}</pre>
+          <p className="text-[11px] text-text-muted">
+            The embed and this preview render the same file (served from <code className="font-mono">/widget/online-join</code> in <span className="font-mono">prospects---documents</span>), so edits in these admin tabs apply to the embedded widget automatically.
+          </p>
+        </div>
+      )}
     </div>
   )
 }

@@ -14,6 +14,8 @@ const EMPTY_TYPE = {
   promo_code: '',
   promo_starts_at: '',
   promo_ends_at: '',
+  promo_callout: '',
+  promo_callout_enabled: false,
   allow_secondary_members: false,
   active: true,
 }
@@ -89,6 +91,8 @@ function TypeEditor({ type, locations, ageRules, onClose, onSaved }) {
         promo_code: draft.promo_code || null,
         promo_starts_at: toIso(draft.promo_starts_at),
         promo_ends_at: toIso(draft.promo_ends_at),
+        promo_callout: (draft.promo_callout || '').trim() || null,
+        promo_callout_enabled: !!draft.promo_callout_enabled,
         allow_secondary_members: !!draft.allow_secondary_members,
         active: !!draft.active,
       }
@@ -248,6 +252,33 @@ function TypeEditor({ type, locations, ageRules, onClose, onSaved }) {
                   </label>
                 </div>
               </>
+            )}
+          </section>
+
+          <section>
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={!!draft.promo_callout_enabled}
+                onChange={e => update('promo_callout_enabled', e.target.checked)}
+                className="w-4 h-4 mt-0.5"
+              />
+              <span className="text-sm text-text-primary">
+                Show a promo callout on the card
+                <span className="block text-[10px] text-text-muted">
+                  A red highlight box under the price on this membership card (e.g. "HALF OFF AND NO ENROLLMENT").
+                </span>
+              </span>
+            </label>
+            {draft.promo_callout_enabled && (
+              <div className="mt-2">
+                <Field
+                  label="Callout text"
+                  value={draft.promo_callout}
+                  onChange={v => update('promo_callout', v)}
+                  placeholder="HALF OFF AND NO ENROLLMENT"
+                />
+              </div>
             )}
           </section>
 

@@ -109,8 +109,11 @@ function Modal({ title, onClose, children, wide }) {
 
 // Adjust stock modal: add stock or set an exact counted quantity. Removals
 // happen in ABC POS only, so the delta path accepts positive numbers.
-function AdjustModal({ item, onClose, onSaved }) {
-  const [mode, setMode] = useState('delta') // delta (add) | count
+// lockedMode ('delta' | 'count') fixes the action and hides the toggle — used
+// by the Restock tab, where the Restock/Count banner already chose the mode
+// (mirrors the mobile AdjustSheet lockedMode flow).
+function AdjustModal({ item, onClose, onSaved, lockedMode = null }) {
+  const [mode, setMode] = useState(lockedMode || 'delta') // delta (add) | count
   const [value, setValue] = useState('')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
@@ -130,17 +133,23 @@ function AdjustModal({ item, onClose, onSaved }) {
     } catch (err) { setError(err.message) } finally { setSaving(false) }
   }
 
+  const title = lockedMode === 'count' ? `Set count — ${item.item_name}`
+    : lockedMode === 'delta' ? `Add stock — ${item.item_name}`
+    : `Adjust — ${item.item_name}`
+
   return (
-    <Modal title={`Adjust — ${item.item_name}`} onClose={onClose}>
+    <Modal title={title} onClose={onClose}>
       <p className="text-xs text-text-muted mb-3">Current on hand: <span className="font-bold text-text-primary">{fmtQty(item.qty_on_hand)}</span></p>
-      <div className="flex gap-1 bg-bg rounded-lg p-1 mb-3">
-        {[{ key: 'delta', label: 'Add stock' }, { key: 'count', label: 'Set exact count' }].map(m => (
-          <button key={m.key} onClick={() => setMode(m.key)}
-            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${mode === m.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>
-            {m.label}
-          </button>
-        ))}
-      </div>
+      {!lockedMode && (
+        <div className="flex gap-1 bg-bg rounded-lg p-1 mb-3">
+          {[{ key: 'delta', label: 'Add stock' }, { key: 'count', label: 'Set exact count' }].map(m => (
+            <button key={m.key} onClick={() => setMode(m.key)}
+              className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${mode === m.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
       <input
         type="number" step="any" min="0" autoFocus value={value} onChange={e => setValue(e.target.value)}
         placeholder={mode === 'count' ? 'Counted quantity' : 'Amount to add (e.g. 12)'}
@@ -695,6 +704,12 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   const [costImporting, setCostImporting] = useState(false)
   const [costImportMsg, setCostImportMsg] = useState('')
   const [oversoldOnly, setOversoldOnly] = useState(false)
+  // Restock tab: are we receiving a shipment (add stock + invoices) or counting
+  // (set exact on-hand)? Mirrors the mobile front-door chooser. The picker below
+  // searches the catalog and adjusts one item at a time in the chosen mode.
+  const [restockMode, setRestockMode] = useState('restock') // 'restock' | 'count'
+  const [restockSearch, setRestockSearch] = useState('')
+  const [restockHistoryOpen, setRestockHistoryOpen] = useState(false) // collapsed history dropdown
 
   const loadItems = useCallback(() => {
     setItemsLoading(true)
@@ -871,6 +886,18 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
     }
     return entries.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
   }, [invoices, movements, slug])
+
+  // Restock-tab item picker: search the catalog (name or UPC) for the one item
+  // to add stock to / count. These are raw per-club rows (directly adjustable),
+  // so on the all-clubs view a product appears once per club — the club column
+  // disambiguates. Needs a search term so we never dump the whole catalog.
+  const restockPickerItems = useMemo(() => {
+    const term = restockSearch.trim().toLowerCase()
+    if (term.length < 2) return []
+    return items.filter(i =>
+      (i.item_name || '').toLowerCase().includes(term) || (i.upc || '').toLowerCase().includes(term)
+    ).slice(0, 25)
+  }, [items, restockSearch])
 
   // Audit rows: on the All-clubs view, consolidate each product (same UPC) into
   // one row — union its issues, sum on-hand/sold — mirroring the Inventory tab.
@@ -1075,10 +1102,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                       </td>
                       <td className="py-2 px-4 text-right whitespace-nowrap">
                         {!i._consolidated && (
-                          <>
-                            <button onClick={() => setModal({ adjust: i._members[0] })} className="text-xs font-semibold text-wcs-red hover:underline mr-3">Adjust</button>
-                            <button onClick={() => setModal({ history: i._members[0] })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline">History</button>
-                          </>
+                          <button onClick={() => setModal({ history: i._members[0] })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline">History</button>
                         )}
                       </td>
                     </tr>
@@ -1258,28 +1282,96 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
       {/* === Restock tab === */}
       {tab === 'restock' && (
         <div className="space-y-4">
-          <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4 flex items-center justify-between flex-wrap gap-3">
-            <div>
-              <p className="text-sm text-text-primary">
-                <span className="font-bold">{restockFeed.length}</span> recent restock {restockFeed.length === 1 ? 'entry' : 'entries'}
-                {slug !== 'all' && <span className="text-text-muted text-xs ml-2">· this club</span>}
-              </p>
-              <p className="text-xs text-text-muted mt-0.5">Invoice uploads and manual stock adjustments, newest first. Click an invoice to review it.</p>
-            </div>
-            <button onClick={() => setModal({ newInvoice: true })} className={btnPrimary}>+ New / Snap Invoice</button>
+          {/* Mode banner — Restock (received a shipment) vs Count (set exact
+              on-hand). Mirrors the mobile front-door chooser; gates the invoice
+              option and the picker's adjust action. */}
+          <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-2 flex gap-2">
+            {[
+              { key: 'restock', label: 'Restock', desc: 'Received a shipment' },
+              { key: 'count', label: 'Count Inventory', desc: 'Set exact on-hand counts' },
+            ].map(m => (
+              <button key={m.key} onClick={() => { setRestockMode(m.key); setRestockSearch('') }}
+                className={`flex-1 text-left px-4 py-3 rounded-lg border transition-colors ${restockMode === m.key ? 'bg-wcs-red/5 border-wcs-red' : 'bg-bg border-border hover:border-text-muted'}`}>
+                <span className={`block text-sm font-bold ${restockMode === m.key ? 'text-wcs-red' : 'text-text-primary'}`}>{m.label}</span>
+                <span className="block text-xs text-text-muted mt-0.5">{m.desc}</span>
+              </button>
+            ))}
           </div>
 
-          {loading && <p className="text-sm text-text-muted bg-surface rounded-xl border border-border p-6 text-center">Loading restocks...</p>}
-          {!loading && restockFeed.length === 0 && (
-            <p className="text-sm text-text-muted bg-surface rounded-xl border border-border p-8 text-center">
-              No restock activity yet{slug !== 'all' ? ' for this club' : ''}. Tap “New / Snap Invoice” to add one.
-            </p>
-          )}
+          {/* Picker — find an item, then add stock / set its count. Invoice
+              capture lives here too, but only when restocking. */}
+          <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4 space-y-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p className="text-sm font-semibold text-text-primary">{restockMode === 'count' ? 'Count inventory' : 'Add received stock'}</p>
+                <p className="text-xs text-text-muted mt-0.5">
+                  Search for an item, then {restockMode === 'count' ? 'set its exact counted quantity' : 'add the quantity you received'}.
+                  {slug === 'all' && <span className="ml-1">Pick a club above to narrow results.</span>}
+                </p>
+              </div>
+              {restockMode === 'restock' && (
+                <button onClick={() => setModal({ newInvoice: true })} className={btnPrimary}>+ New / Snap Invoice</button>
+              )}
+            </div>
+            <input
+              value={restockSearch} onChange={e => setRestockSearch(e.target.value)}
+              placeholder="Search item name or UPC..." className={inputCls}
+            />
+            {restockSearch.trim().length >= 2 && (
+              restockPickerItems.length === 0 ? (
+                <p className="text-xs text-text-muted px-1 py-1">No items match “{restockSearch.trim()}”{slug !== 'all' ? ' at this club' : ''}.</p>
+              ) : (
+                <div className="border border-border rounded-lg divide-y divide-border/60 overflow-hidden">
+                  {restockPickerItems.map(i => (
+                    <div key={i.id} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-bg/40">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-text-primary truncate">{i.item_name}</p>
+                        <p className="text-[11px] text-text-muted truncate">
+                          {[i.upc, slug === 'all' ? (LOCATION_OPTIONS.find(o => o.slug === i.location_slug)?.label || i.location_slug) : null].filter(Boolean).join(' · ') || '—'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className={`text-sm font-bold ${Number(i.qty_on_hand) < 0 ? 'text-wcs-red' : Number(i.qty_on_hand) === 0 ? 'text-text-muted' : 'text-text-primary'}`}>{fmtQty(i.qty_on_hand)}</span>
+                        <button
+                          onClick={() => setModal({ adjust: i, adjustMode: restockMode === 'count' ? 'count' : 'delta' })}
+                          className="text-xs font-semibold text-white bg-wcs-red rounded-md px-3 py-1.5">
+                          {restockMode === 'count' ? 'Set count' : 'Add stock'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+          </div>
 
-          {!loading && restockFeed.length > 0 && (
-            <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+          {/* Restock History — collapsed by default; click to expand the feed of
+              invoice uploads and manual stock adjustments. */}
+          <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
+            <button
+              onClick={() => setRestockHistoryOpen(o => !o)}
+              className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-bg/40 transition-colors"
+            >
+              <span className="text-sm font-semibold text-text-primary">
+                Restock History
+                <span className="ml-2 text-xs font-normal text-text-muted">{restockFeed.length} {restockFeed.length === 1 ? 'entry' : 'entries'}{slug !== 'all' ? ' · this club' : ''}</span>
+              </span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`w-4 h-4 text-text-muted shrink-0 transition-transform ${restockHistoryOpen ? 'rotate-180' : ''}`}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+              </svg>
+            </button>
+
+            {restockHistoryOpen && (
+              <div className="border-t border-border">
+                {loading && <p className="text-sm text-text-muted p-6 text-center">Loading restocks...</p>}
+                {!loading && restockFeed.length === 0 && (
+                  <p className="text-sm text-text-muted p-8 text-center">
+                    No restock activity yet{slug !== 'all' ? ' for this club' : ''}. Tap “New / Snap Invoice” to add one.
+                  </p>
+                )}
+                {!loading && restockFeed.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/30">
                       <th className="py-2.5 px-4">Date</th>
@@ -1341,8 +1433,10 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1362,7 +1456,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
           onChanged={refreshInvoices}
         />
       )}
-      {modal?.adjust && <AdjustModal item={modal.adjust} onClose={() => setModal(null)} onSaved={onItemSaved} />}
+      {modal?.adjust && <AdjustModal item={modal.adjust} lockedMode={modal.adjustMode || null} onClose={() => setModal(null)} onSaved={(it) => { onItemSaved(it); refreshInvoices() }} />}
       {modal?.edit && (
         <EditItemModal
           item={modal.edit}

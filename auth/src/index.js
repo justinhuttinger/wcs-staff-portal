@@ -28,6 +28,12 @@ app.use(cors({
 
 // Raw body parser for staff import MUST be registered before express.json()
 app.use('/admin/staff/import', express.raw({ type: '*/*', limit: '10mb' }))
+
+// The tour-intake webhook carries a base64 profile photo, which can exceed the
+// global express.json() 100kb default. Register a higher-limit JSON parser for
+// just this path BEFORE the global one — whichever parser consumes the stream
+// first wins, so the global parser skips an already-parsed body.
+app.use('/webhooks/tour-intake', express.json({ limit: '6mb' }))
 app.use(express.json({
   verify: (req, _res, buf) => {
     // ClickUp signs the raw body. Capture it for the mastermind webhook so HMAC verifies.
@@ -45,6 +51,7 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }))
 app.use('/auth', require('./routes/auth'))
 app.use('/vault', require('./routes/vault'))
 app.use('/admin', require('./routes/admin'))
+app.use('/admin/tour-locations', require('./routes/tourAdmin'))
 app.use('/config', require('./routes/config'))
 app.use('/launcher', require('./routes/launcher'))
 app.use('/webhooks', require('./routes/webhooks'))
@@ -52,6 +59,8 @@ app.use('/webhooks', require('./routes/metaCapi'))
 app.use('/webhooks', require('./routes/mastermind'))
 app.use('/appointments', require('./routes/appointments'))
 app.use('/tours', require('./routes/tours'))
+app.use('/tour-intake', require('./routes/tourIntake'))
+app.use('/public/tour', require('./routes/publicTour'))
 app.use('/oidc', require('./routes/oidc'))
 
 // OIDC discovery at root level (some providers look here)
@@ -79,6 +88,7 @@ app.use('/day-one-tracker', require('./routes/dayOneTracker'))
 app.use('/trainer-availability', require('./routes/trainerAvailability'))
 app.use('/sms-history', require('./routes/smsHistory'))
 app.use('/meta-ads', require('./routes/metaAds'))
+app.use('/email-marketing', require('./routes/emailMarketing'))
 app.use('/abc-scheduler', require('./routes/abcScheduler'))
 app.use('/google-business', require('./routes/googleBusiness'))
 app.use('/google-sheets', require('./routes/googleSheetsAuth'))
@@ -97,6 +107,7 @@ app.use('/referral-rewards', require('./routes/referralRewards'))
 app.use('/marketing-tracker', require('./routes/marketingTracker'))
 app.use('/blog-automation', require('./routes/blogAutomation'))
 app.use('/inventory', require('./routes/inventory'))
+app.use('/till', require('./routes/till'))
 app.use('/media', require('./routes/media'))
 app.use('/custom-fields', require('./routes/customFields'))
 app.use('/admin/shared-credentials', require('./routes/sharedCredentials'))
