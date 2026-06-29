@@ -709,6 +709,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   // searches the catalog and adjusts one item at a time in the chosen mode.
   const [restockMode, setRestockMode] = useState('restock') // 'restock' | 'count'
   const [restockSearch, setRestockSearch] = useState('')
+  const [restockHistoryOpen, setRestockHistoryOpen] = useState(false) // collapsed history dropdown
 
   const loadItems = useCallback(() => {
     setItemsLoading(true)
@@ -1344,26 +1345,33 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
             )}
           </div>
 
-          {/* Activity feed */}
-          <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4">
-            <p className="text-sm text-text-primary">
-              <span className="font-bold">{restockFeed.length}</span> recent restock {restockFeed.length === 1 ? 'entry' : 'entries'}
-              {slug !== 'all' && <span className="text-text-muted text-xs ml-2">· this club</span>}
-            </p>
-            <p className="text-xs text-text-muted mt-0.5">Invoice uploads and manual stock adjustments, newest first. Click an invoice to review it.</p>
-          </div>
+          {/* Restock History — collapsed by default; click to expand the feed of
+              invoice uploads and manual stock adjustments. */}
+          <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
+            <button
+              onClick={() => setRestockHistoryOpen(o => !o)}
+              className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-bg/40 transition-colors"
+            >
+              <span className="text-sm font-semibold text-text-primary">
+                Restock History
+                <span className="ml-2 text-xs font-normal text-text-muted">{restockFeed.length} {restockFeed.length === 1 ? 'entry' : 'entries'}{slug !== 'all' ? ' · this club' : ''}</span>
+              </span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`w-4 h-4 text-text-muted shrink-0 transition-transform ${restockHistoryOpen ? 'rotate-180' : ''}`}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+              </svg>
+            </button>
 
-          {loading && <p className="text-sm text-text-muted bg-surface rounded-xl border border-border p-6 text-center">Loading restocks...</p>}
-          {!loading && restockFeed.length === 0 && (
-            <p className="text-sm text-text-muted bg-surface rounded-xl border border-border p-8 text-center">
-              No restock activity yet{slug !== 'all' ? ' for this club' : ''}. Tap “New / Snap Invoice” to add one.
-            </p>
-          )}
-
-          {!loading && restockFeed.length > 0 && (
-            <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+            {restockHistoryOpen && (
+              <div className="border-t border-border">
+                {loading && <p className="text-sm text-text-muted p-6 text-center">Loading restocks...</p>}
+                {!loading && restockFeed.length === 0 && (
+                  <p className="text-sm text-text-muted p-8 text-center">
+                    No restock activity yet{slug !== 'all' ? ' for this club' : ''}. Tap “New / Snap Invoice” to add one.
+                  </p>
+                )}
+                {!loading && restockFeed.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/30">
                       <th className="py-2.5 px-4">Date</th>
@@ -1425,8 +1433,10 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
