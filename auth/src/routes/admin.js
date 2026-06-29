@@ -54,7 +54,7 @@ const CUSTOM_TILE_KEYS = new Set([
 const CUSTOM_REPORT_KEYS = new Set([
   'club-health', 'membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions',
   'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'pt-projections',
-  'kpis', 'meta-ads', 'google-marketing',
+  'kpis', 'meta-ads', 'google-marketing', 'email-marketing',
 ])
 
 // Filter an incoming array down to allowed values. `null`/non-array → null

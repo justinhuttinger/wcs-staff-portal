@@ -805,6 +805,12 @@ export async function getInventorySummary(params = {}) {
   return api('/inventory/summary' + inventoryQs(params))
 }
 
+// Email Marketing report — GHL email campaign sends + stats (from email_stats).
+export async function getEmailMarketingCampaigns(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/email-marketing/campaigns' + (qs ? '?' + qs : ''))
+}
+
 export async function getInventoryInvoices() {
   return api('/inventory/invoices')
 }
