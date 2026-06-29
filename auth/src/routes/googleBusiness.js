@@ -296,6 +296,7 @@ router.get('/performance', authenticate, requireReportAccess('corporate', ['goog
           (() => {
             const params = new URLSearchParams()
             params.append('dailyMetrics', 'BUSINESS_IMPRESSIONS_DESKTOP_MAPS')
+            params.append('dailyMetrics', 'BUSINESS_IMPRESSIONS_MOBILE_MAPS')
             params.append('dailyMetrics', 'WEBSITE_CLICKS')
             params.append('dailyMetrics', 'CALL_CLICKS')
             params.append('dailyMetrics', 'BUSINESS_DIRECTION_REQUESTS')
@@ -310,15 +311,21 @@ router.get('/performance', authenticate, requireReportAccess('corporate', ['goog
           token
         )
 
-        // Sum up daily values for each metric
+        // Sum up daily values for each metric. The API nests the per-metric
+        // series one level under each multiDailyMetricTimeSeries entry, in a
+        // `dailyMetricTimeSeries` array — reading dailyMetric/timeSeries off the
+        // outer object yields undefined (the old bug that zeroed every metric).
+        // "Map Impressions" = desktop + mobile maps (mobile dominates).
         const totals = { location: locName, title: locationTitles[locName] || locName, city: locationCities[locName] || '', searches: 0, website_clicks: 0, calls: 0, directions: 0 }
-        for (const series of (data.multiDailyMetricTimeSeries || [])) {
-          const metric = series.dailyMetric
-          const total = (series.timeSeries?.datedValues || []).reduce((sum, dv) => sum + (parseInt(dv.value) || 0), 0)
-          if (metric === 'BUSINESS_IMPRESSIONS_DESKTOP_MAPS') totals.searches = total
-          if (metric === 'WEBSITE_CLICKS') totals.website_clicks = total
-          if (metric === 'CALL_CLICKS') totals.calls = total
-          if (metric === 'BUSINESS_DIRECTION_REQUESTS') totals.directions = total
+        for (const group of (data.multiDailyMetricTimeSeries || [])) {
+          for (const series of (group.dailyMetricTimeSeries || [])) {
+            const metric = series.dailyMetric
+            const total = (series.timeSeries?.datedValues || []).reduce((sum, dv) => sum + (parseInt(dv.value) || 0), 0)
+            if (metric === 'BUSINESS_IMPRESSIONS_DESKTOP_MAPS' || metric === 'BUSINESS_IMPRESSIONS_MOBILE_MAPS') totals.searches += total
+            else if (metric === 'WEBSITE_CLICKS') totals.website_clicks = total
+            else if (metric === 'CALL_CLICKS') totals.calls = total
+            else if (metric === 'BUSINESS_DIRECTION_REQUESTS') totals.directions = total
+          }
         }
         metrics.push(totals)
       } catch (e) {
