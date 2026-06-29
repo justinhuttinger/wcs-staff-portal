@@ -132,6 +132,7 @@ async function fetchPosTransactions(clubNumber, fromUtc, toUtc = new Date()) {
             unitPrice: num(it.unitPrice),
             subtotal: num(it.subtotal),
             tax: num(it.tax),
+            payments: it.payments || null,   // raw; flattened at persist time
           })),
           raw: t,
         })
