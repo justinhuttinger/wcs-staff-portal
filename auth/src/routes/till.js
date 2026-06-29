@@ -3,8 +3,8 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
-const { parseLocationSlugParam, SLUG_CLUB_MAP } = require('../utils/locationSlug')
+const { requireRole, canSeeAllLocations } = require('../middleware/role')
+const { parseLocationSlugParam, SLUG_CLUB_MAP, intersectWithAllowed } = require('../utils/locationSlug')
 const { reconcileDay } = require('../lib/tillReconcile')
 const { aggregateCashByDay } = require('../lib/tillCashMovements')
 
@@ -13,13 +13,22 @@ const router = Router()
 router.use(authenticate)
 router.use(requireRole('manager'))
 
-// Parse YYYY-MM-DD as a Pacific-day boundary window. We widen by a day on each
-// side in UTC terms so the cash query captures the full Pacific days, then bucket
-// precisely by pacificDate inside aggregateCashByDay.
+// Convert a location name to a slug (same as payroll/checkinsReport).
+function locSlugFromName(name) {
+  return (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+}
+
+// Parse YYYY-MM-DD as a wide UTC window that safely covers any Pacific day in the
+// range regardless of DST offset. We widen by one calendar day on each side; the
+// aggregateCashByDay call buckets precisely by pacificDate, and the per-row date
+// filter below trims any spill to exactly [from, to].
 function utcWindow(fromStr, toStr) {
-  const from = new Date(`${fromStr}T00:00:00-08:00`)
-  const to = new Date(`${toStr}T23:59:59-07:00`)
-  return { from, to }
+  // Shift start back 1 day and end forward 1 day to cover both UTC-8 and UTC-7.
+  const fromDate = new Date(`${fromStr}T00:00:00-08:00`)
+  fromDate.setUTCDate(fromDate.getUTCDate() - 1)
+  const toDate = new Date(`${toStr}T23:59:59-07:00`)
+  toDate.setUTCDate(toDate.getUTCDate() + 1)
+  return { from: fromDate, to: toDate }
 }
 
 router.get('/reconciliation', async (req, res) => {
@@ -31,7 +40,30 @@ router.get('/reconciliation', async (req, res) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to))
       return res.status(400).json({ error: 'from and to (YYYY-MM-DD) are required' })
 
-    const clubs = parsed.slugs.map(s => SLUG_CLUB_MAP[s]).filter(Boolean)
+    // FIX 5: cap to 366 days to prevent runaway queries.
+    const spanDays = (new Date(to) - new Date(from)) / 86400000
+    if (spanDays > 366)
+      return res.status(400).json({ error: 'Date range too large (max 366 days).' })
+
+    // FIX 1: manager-scoped location narrowing (mirrors payroll.js pattern).
+    let slugs = parsed.slugs
+    if (!canSeeAllLocations(req.staff.role)) {
+      if (parsed.all)
+        return res.status(403).json({ error: 'Specify a location_slug; you do not have access to all locations.' })
+      const allowedIds = req.staff.report_location_ids || []
+      let allowedSlugs = []
+      if (allowedIds.length > 0) {
+        const { data: allowedLocs } = await supabaseAdmin
+          .from('locations').select('name').in('id', allowedIds)
+        allowedSlugs = (allowedLocs || []).map(l => locSlugFromName(l.name))
+      }
+      const narrowed = intersectWithAllowed(parsed, allowedSlugs)
+      if (narrowed.invalid)
+        return res.status(403).json({ error: `Not authorized to view this location: ${narrowed.invalid}` })
+      slugs = narrowed.slugs
+    }
+
+    const clubs = slugs.map(s => SLUG_CLUB_MAP[s]).filter(Boolean)
     const { from: fromUtc, to: toUtc } = utcWindow(from, to)
 
     // Settings (float + drop UPC sentinel) per club.
@@ -62,6 +94,9 @@ router.get('/reconciliation', async (req, res) => {
       const days = new Set(byDay.keys())
       counts.filter(c => c.club_number === club).forEach(c => days.add(c.business_date))
       for (const date of [...days].sort()) {
+        // FIX 2: trim days that fell outside the requested range due to the wide
+        // UTC window (the window is intentionally wider than the range for DST safety).
+        if (date < from || date > to) continue
         const cash = byDay.get(date) || { cashSales: 0, cashRefunds: 0, cashDrops: 0 }
         const open = countMap.get(countKey(club, date, 'open'))
         const close = countMap.get(countKey(club, date, 'close'))

@@ -20,3 +20,9 @@ test('card sale ignored', () => {
   assert.deepEqual(classifyCashLine({ tender_category: 'card', is_return: false, upc: '810113510286', amount: 5 }, DROP),
     { sales: 0, refunds: 0, drops: 0 })
 })
+test('cash refund stored negative (ABC real-world shape)', () => {
+  // ABC stores cash refund payment_amount as a negative value (e.g. -10.00).
+  // classifyCashLine must return a positive magnitude so reconcileDay subtracts correctly.
+  assert.deepEqual(classifyCashLine({ tender_category: 'cash', is_return: true, upc: '810113510286', amount: -10 }, DROP),
+    { sales: 0, refunds: 10, drops: 0 })
+})

@@ -22,7 +22,9 @@ function classifyCashLine({ tender_category, is_return, upc, amount }, dropUpc) 
   if (dropUpc && upc && String(upc).trim() === String(dropUpc).trim()) {
     out.drops = amt          // cash physically pulled from the drawer
   } else if (is_return) {
-    out.refunds = amt
+    // ABC stores refund cash as a NEGATIVE payment_amount (e.g. -10.00). Use
+    // Math.abs so refunds is a positive magnitude that reconcileDay subtracts correctly.
+    out.refunds = Math.abs(amt)
   } else {
     out.sales = amt
   }
@@ -58,7 +60,8 @@ async function aggregateCashByDay(supabaseAdmin, { clubNumber, fromUtc, toUtc, d
     .eq('club_number', clubNumber)
     .eq('tender_category', 'cash')
     .gte('inventory_transactions.transaction_at', fromUtc.toISOString())
-    .lte('inventory_transactions.transaction_at', toUtc.toISOString()), 'cash aggregate')
+    .lte('inventory_transactions.transaction_at', toUtc.toISOString())
+    .order('id'), 'cash aggregate')
   if (pays.length === 0) return new Map()
 
   // 2) UPCs for those transactions' lines, keyed (transaction_pk|line_no). Each
@@ -70,7 +73,8 @@ async function aggregateCashByDay(supabaseAdmin, { clubNumber, fromUtc, toUtc, d
     const items = await fetchAll(() => supabaseAdmin
       .from('inventory_transaction_items')
       .select('transaction_pk, line_no, upc')
-      .in('transaction_pk', batch), 'cash aggregate line lookup')
+      .in('transaction_pk', batch)
+      .order('transaction_pk').order('line_no'), 'cash aggregate line lookup')
     for (const it of items) upcByLine.set(`${it.transaction_pk}|${it.line_no}`, it.upc)
   }
 
