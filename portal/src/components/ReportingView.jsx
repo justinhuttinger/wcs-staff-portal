@@ -93,7 +93,7 @@ const REPORT_GROUPS = [
     label: 'Training',
     desc: 'PT Reports',
     iconPath: REPORT_ICONS['pt-roster'],
-    reports: ['pt-health', 'pt', 'pt-roster', 'pt-projections', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt'],
+    reports: ['pt-health', 'pt', 'pt-roster', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt'],
   },
   {
     key: 'marketing',
