@@ -805,6 +805,13 @@ export async function getInventorySummary(params = {}) {
   return api('/inventory/summary' + inventoryQs(params))
 }
 
+// Till / cash drawer reconciliation (manager+): counted vs expected per club/day.
+// params: { location_slug, from, to } (location_slug '' = all the caller may see).
+export async function getTillReconciliation(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/till/reconciliation' + (qs ? '?' + qs : ''))
+}
+
 // Email Marketing report — GHL email campaign sends + stats (from email_stats).
 export async function getEmailMarketingCampaigns(params = {}) {
   const qs = new URLSearchParams(params).toString()

@@ -13,6 +13,7 @@
 const cron = require('node-cron')
 const { supabaseAdmin } = require('./supabase')
 const { fetchCatalogItems, fetchPosTransactions, num } = require('./abcInventory')
+const { extractItemPayments } = require('../lib/posPayments')
 const { fetchEmployees, CLUBS: EMP_CLUBS } = require('./abcEmployeeRoster')
 const { ALL_SLUGS, SLUG_CLUB_MAP } = require('../utils/locationSlug')
 const { isSellableProfitCenter } = require('../utils/inventoryProfitCenters')
@@ -207,6 +208,7 @@ async function syncPosForClub(clubNumber) {
     const txnPk = inserted[0].id
 
     const lineRows = []
+    const paymentRows = []
     const movementRows = []
     t.items.forEach((it, idx) => {
       const match = (it.itemId && bySaleItemId.get(String(it.itemId))) || (it.upc && byUpc.get(it.upc)) || null
@@ -227,6 +229,18 @@ async function syncPosForClub(clubNumber) {
         tax: it.tax,
         item_id: match?.id || null,
         unit_cost_at_sale: unitCost,
+      })
+      extractItemPayments(it).forEach((pay, pIdx) => {
+        paymentRows.push({
+          transaction_pk: txnPk,
+          club_number: clubNumber,
+          line_no: idx,
+          pay_no: pIdx,
+          payment_type: pay.payment_type,
+          payment_amount: pay.payment_amount,
+          payment_tax: pay.payment_tax,
+          tender_category: pay.tender_category,
+        })
       })
       // Only sellable retail lines move stock — dues, fees, passes, training,
       // etc. share the catalog but are not physical inventory. Their lines are
@@ -253,6 +267,11 @@ async function syncPosForClub(clubNumber) {
     if (lineRows.length) {
       const { error: liErr } = await supabaseAdmin.from('inventory_transaction_items').insert(lineRows)
       if (liErr) throw new Error('line items insert failed: ' + liErr.message)
+    }
+    if (paymentRows.length) {
+      const { error: payErr } = await supabaseAdmin
+        .from('inventory_transaction_payments').insert(paymentRows)
+      if (payErr) throw new Error('payments insert failed: ' + payErr.message)
     }
     if (movementRows.length) {
       const { error: mvErr } = await supabaseAdmin.from('inventory_movements').insert(movementRows)
