@@ -15,7 +15,7 @@
 - **Admin API gating:** `router.use(authenticate)` then `requireRole('admin')` per route. `authenticate` = `require('../middleware/auth')`; `requireRole` = `require('../middleware/role').requireRole`.
 - **Device API auth:** launcher endpoints authenticate with header `x-launcher-key` matching `process.env.LAUNCHER_KEY` (server) which equals the launcher's `WCS_LAUNCHER_KEY`. Same trust model as `/launcher/heartbeat`.
 - **Frontend API calls** go through `import { api } from '../lib/api'` (or `'../../lib/api'` from `components/admin/`): `api(path)` for GET, `api(path, { method, body: JSON.stringify(obj) })` for writes.
-- **Migration numbering:** master is at `066`. The `feat/till-cash-tracking` branch adds `070–071`. This feature is `072_print_system.sql`. **This branch must be rebased onto master AFTER `feat/till-cash-tracking` merges** (it consumes the till reconciliation — see Task 7).
+- **Migration numbering:** master is at `066`, so this feature is `067_print_system.sql`. Tasks 1-6 and 8-12 are decoupled from the till work and ship to master now (dark). **Only Task 7** (the Operandio hook + `loadReconciliation`) consumes the till reconciliation; it stays unmerged until `feat/till-cash-tracking` lands, then this branch is rebased and Task 7 added.
 - **No em-dashes** in any user-facing copy (receipt text, labels). Use commas/hyphens.
 - Migrations are applied through the project's existing Supabase migration process (Supabase SQL editor or `mcp__supabase__apply_migration`), same as prior numbered migrations.
 
@@ -24,7 +24,7 @@
 ## File Structure
 
 **Backend (`auth/`)**
-- Create `auth/migrations/072_print_system.sql` — `print_devices`, `print_jobs`, `print_automations`.
+- Create `auth/migrations/067_print_system.sql` — `print_devices`, `print_jobs`, `print_automations`.
 - Create `auth/src/services/printing/printJobs.js` — pure helpers: `dedupeKey`, `buildTillReceiptPayload`, `matchAutomation`.
 - Create `auth/src/services/printing/printJobs.test.js`.
 - Create `auth/src/services/printing/receiptTemplate.js` — `renderReceiptHtml(payload)` pure.
@@ -51,7 +51,7 @@
 ## Task 1: Migration — print system tables
 
 **Files:**
-- Create: `auth/migrations/072_print_system.sql`
+- Create: `auth/migrations/067_print_system.sql`
 
 **Interfaces:**
 - Produces tables `print_devices`, `print_jobs`, `print_automations` consumed by every later backend task.
@@ -59,7 +59,7 @@
 - [ ] **Step 1: Write the migration**
 
 ```sql
--- 072_print_system.sql — Till-close auto-print: device registry, job queue, triggers.
+-- 067_print_system.sql — Till-close auto-print: device registry, job queue, triggers.
 
 -- A desktop launcher install that can print. One row per install_id.
 CREATE TABLE IF NOT EXISTS print_devices (
@@ -114,7 +114,7 @@ ALTER TABLE print_automations ENABLE ROW LEVEL SECURITY;
 
 - [ ] **Step 2: Apply the migration**
 
-Apply `auth/migrations/072_print_system.sql` via the Supabase migration process (SQL editor or `mcp__supabase__apply_migration` with name `print_system`).
+Apply `auth/migrations/067_print_system.sql` via the Supabase migration process (SQL editor or `mcp__supabase__apply_migration` with name `print_system`).
 Expected: three tables created, no error.
 
 - [ ] **Step 3: Verify tables exist**
@@ -129,7 +129,7 @@ Expected: 3 rows.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add auth/migrations/072_print_system.sql
+git add auth/migrations/067_print_system.sql
 git commit -m "feat(print): add print_devices/print_jobs/print_automations tables"
 ```
 
@@ -1049,7 +1049,7 @@ In `launcher/package.json`, set `"version": "1.7.0"`.
 
 - [ ] **Step 4: Manual end-to-end (the real validation)**
 
-1. Apply migration 072. Set `LAUNCHER_KEY` on the API and `WCS_LAUNCHER_KEY` (same value) for the launcher; set `PUBLIC_API_URL` on the API.
+1. Apply migration 067. Set `LAUNCHER_KEY` on the API and `WCS_LAUNCHER_KEY` (same value) for the launcher; set `PUBLIC_API_URL` on the API.
 2. Run the launcher locally (`npm run launcher:dev`). It should appear in the admin **Print Devices** list (Task 11) with its printers.
 3. In admin, select "Microsoft Print to PDF", enable the device, click **Test Print**.
 4. Within ~30s the launcher prints the test receipt (a PDF save dialog or file confirms the silent-print path fired).
@@ -1350,7 +1350,7 @@ Expected: all PASS.
 
 - [ ] **Step 3: Full manual end-to-end**
 
-With `feat/till-cash-tracking` merged + migration 072 applied + launcher v1.7.0 running at a pilot gym:
+With `feat/till-cash-tracking` merged + migration 067 applied + launcher v1.7.0 running at a pilot gym:
 1. Enable the device + select its printer in Print Devices.
 2. Enable the automation for that location in Print Automations.
 3. Submit a real "Drawer Close Count" in Operandio for that gym.
