@@ -256,6 +256,8 @@ router.post('/webhook', upload.any(), async (req, res) => {
     const attachments = await storeAttachments(req.files)
     const rawId = await captureRawEmail({ subject, text, html, from, reason: 'till_count', attachments })
     if (!clubNumber) {
+      // Retain the raw email (above) for debugging the unmapped slug; we
+      // intentionally do NOT write a till_counts row we can't key to a club.
       console.warn('[Operandio] Till count for unmapped location:', till.location_slug)
       return res.status(200).json({ ignored: true, reason: 'Till count location not mapped to a club' })
     }
