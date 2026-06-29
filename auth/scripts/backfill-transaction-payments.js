@@ -11,7 +11,11 @@ const PAGE = 500
 
 function itemsOf(raw) {
   const it = raw && raw.items && raw.items.item
-  return Array.isArray(it) ? it : (it ? [it] : [])
+  // Mirror the live sync mapper (abcInventory.fetchPosTransactions), which does
+  // `(Array.isArray(rawItems) ? rawItems : [rawItems]).filter(Boolean)` before
+  // assigning line_no. Both paths must index identically or the
+  // payments->items join on (transaction_pk, line_no) misattributes lines.
+  return (Array.isArray(it) ? it : (it ? [it] : [])).filter(Boolean)
 }
 
 async function main() {
