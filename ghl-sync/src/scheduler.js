@@ -8,6 +8,7 @@ const { syncRecurringPtServices } = require('./abc/recurringPtServices');
 const { alertSyncFailed } = require('./alerts');
 const { runMediaIndex } = require('./media/mediaIndex');
 const { checkRevenueGaps } = require('./revenue/gapCheck');
+const { emailStatsSync } = require('./sync/emailStatsSync');
 
 function startScheduler() {
   const intervalMinutes = process.env.SYNC_INTERVAL_MINUTES || 10;
@@ -127,7 +128,20 @@ function startScheduler() {
     }
   });
 
+  // GHL email campaign stats — every N minutes (default 30; stats don't need to
+  // be fresher than the other syncs). Logged-and-skipped on failure, never fatal.
+  const emailStatsIntervalMinutes = process.env.EMAIL_STATS_INTERVAL_MINUTES || 30;
+  cron.schedule(`*/${emailStatsIntervalMinutes} * * * *`, async () => {
+    console.log('[Scheduler] Starting email stats sync...');
+    try {
+      await emailStatsSync();
+    } catch (err) {
+      console.error('[Scheduler] Email stats sync failed:', err.message);
+    }
+  });
+
   console.log(`[Scheduler] Delta sync every ${intervalMinutes}m, full sync daily at ${fullSyncHour}:00 PST (${fullSyncHourUTC}:00 UTC)`);
+  console.log(`[Scheduler] Email stats sync every ${emailStatsIntervalMinutes}m`);
   console.log(`[Scheduler] Recurring PT sync daily at ${recurringPtHour}:30 PST (${recurringPtHourUTC}:30 UTC)`);
   console.log(`[Scheduler] Revenue gap check daily at ${revenueGapCheckHour}:00 UTC`);
   console.log(`[Scheduler] Payroll recurring sync daily at ${payrollSyncHour}:00 PST (${payrollSyncHourUTC}:00 UTC)`);
