@@ -4,8 +4,10 @@ const authenticate = require('../middleware/auth')
 const { requireRole, requireReportAccess } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { classifyJobEmail, persistJobEmail } = require('../lib/operandioJobs')
+const { classifyTillCount } = require('../lib/tillCountParse')
 const { parseQaItems } = require('../lib/operandioEmailAudit')
 const { resolveScopedSlugs } = require('../services/locationScope')
+const { SLUG_CLUB_MAP } = require('../utils/locationSlug')
 
 const router = Router()
 // In-memory upload: SendGrid Inbound Parse posts email attachments as
@@ -241,6 +243,39 @@ router.post('/webhook', upload.any(), async (req, res) => {
     }
     console.log('[Operandio] Audit stored:', audit.locationSlug, '-', audit.jobName, '-', `${auditScore.pct}%`)
     return res.json({ audit: true, location: audit.locationSlug, department: audit.department, score_pct: auditScore.pct })
+  }
+
+  // Till drawer counts ("Drawer Open/Close Count submitted at <Loc>"). These are
+  // denomination-breakdown submissions; we sum count*denomination into till_counts
+  // for the reconciliation report. Detected before the generic job parse so a
+  // drawer count does not also land as a generic checklist. The raw email is
+  // retained (reason 'till_count') as a real sample for verification.
+  const till = classifyTillCount({ subject, html, receivedAt: new Date().toISOString() })
+  if (till) {
+    const clubNumber = SLUG_CLUB_MAP[till.location_slug]
+    const attachments = await storeAttachments(req.files)
+    const rawId = await captureRawEmail({ subject, text, html, from, reason: 'till_count', attachments })
+    if (!clubNumber) {
+      console.warn('[Operandio] Till count for unmapped location:', till.location_slug)
+      return res.status(200).json({ ignored: true, reason: 'Till count location not mapped to a club' })
+    }
+    const { error: tcErr } = await supabaseAdmin.from('till_counts').upsert({
+      club_number: clubNumber,
+      location_slug: till.location_slug,
+      business_date: till.business_date,
+      count_type: till.count_type,
+      counted_amount: till.counted_amount,
+      denominations: till.denominations,
+      employee_name: till.employee_name,
+      counted_at: till.counted_at,
+      raw_email_id: rawId,
+    }, { onConflict: 'club_number,business_date,count_type' })
+    if (tcErr) {
+      console.error('[Operandio] till_counts upsert failed:', tcErr.message)
+      return res.status(500).json({ error: 'till_counts upsert failed' })
+    }
+    console.log('[Operandio] Till count stored:', till.location_slug, till.count_type, '$' + till.counted_amount)
+    return res.json({ tillCount: true, location: till.location_slug, count_type: till.count_type, counted_amount: till.counted_amount })
   }
 
   // Per-job submission / overdue events (Phase 2). A checklist submission

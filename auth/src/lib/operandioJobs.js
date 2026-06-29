@@ -92,10 +92,15 @@ function parseSubmissionItems(html) {
     // Status cell follows the task cell.
     const after = block.slice(cell.index + cell[0].length)
     let status = 'done'
+    let value = null
     if (/Skipped/i.test(after)) status = 'skipped'
     else if (/✓|&#10003;|&#x2713;|#18CE99/.test(after)) status = 'done'
-    else if (/<span[^>]*>\s*\d{1,3}\s*<\/span>/.test(after)) status = 'value'
-    items.push({ n: parseInt(num[1], 10), task, by: by || null, at, at_iso: parseStamp(at), status })
+    else {
+      // A numeric answer (e.g. a denomination count) renders as <span>N</span>.
+      const vm = after.match(/<span[^>]*>\s*(\d{1,3})\s*<\/span>/)
+      if (vm) { status = 'value'; value = parseInt(vm[1], 10) }
+    }
+    items.push({ n: parseInt(num[1], 10), task, by: by || null, at, at_iso: parseStamp(at), status, value })
   }
   return items.length ? items : null
 }
