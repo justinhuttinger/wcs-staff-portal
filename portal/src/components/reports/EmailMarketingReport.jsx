@@ -104,7 +104,6 @@ export default function EmailMarketingReport({ startDate, endDate, locationSlug 
       open_rate: r => Number(r.open_rate),
       click_rate: r => Number(r.click_rate),
       clicked: r => Number(r.clicked),
-      replied: r => Number(r.replied),
       unsubscribed: r => Number(r.unsubscribed),
       bounced: r => Number(r.bounced),
     }
@@ -120,11 +119,11 @@ export default function EmailMarketingReport({ startDate, endDate, locationSlug 
 
   function exportRows() {
     exportCSV(
-      [['Sent', 'Campaign', 'Subject', 'Type', allLoc ? 'Club' : null, 'Status', 'Sent #', 'Delivered', 'Opened', 'Open %', 'Clicked', 'Click %', 'Replied', 'Unsub', 'Bounced'].filter(Boolean),
+      [['Sent', 'Campaign', 'Subject', 'Type', allLoc ? 'Club' : null, 'Status', 'Sent #', 'Delivered', 'Opened', 'Open %', 'Clicked', 'Click %', 'Unsub', 'Bounced'].filter(Boolean),
         ...sortedCampaigns.map(r => [
           fmtDate(r.completed_at), r.name || '', r.subject || '', sourceLabel(r.source),
           ...(allLoc ? [r.location || ''] : []),
-          r.status || '', r.sent, r.delivered, r.opened, r.open_rate, r.clicked, r.click_rate, r.replied, r.unsubscribed, r.bounced,
+          r.status || '', r.sent, r.delivered, r.opened, r.open_rate, r.clicked, r.click_rate, r.unsubscribed, r.bounced,
         ])],
       `email-marketing-${startDate}_to_${endDate}`
     )
@@ -136,12 +135,11 @@ export default function EmailMarketingReport({ startDate, endDate, locationSlug 
 
       {/* Summary cards */}
       {totals && (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label="Sends" value={fmtInt(totals.sends)} sub={`${fmtInt(totals.sent)} recipients`} />
           <StatCard label="Delivered" value={fmtInt(totals.delivered)} sub={totals.bounced > 0 ? `${fmtInt(totals.bounced)} bounced` : null} />
           <StatCard label="Open Rate" value={fmtPct(totals.open_rate)} sub={`${fmtInt(totals.opened)} opened`} />
           <StatCard label="Click Rate" value={fmtPct(totals.click_rate)} sub={`${fmtInt(totals.clicked)} clicked`} />
-          <StatCard label="Replies" value={fmtInt(totals.replied)} sub={fmtPct(totals.reply_rate)} />
         </div>
       )}
 
@@ -173,7 +171,6 @@ export default function EmailMarketingReport({ startDate, endDate, locationSlug 
                   <SortHeader label="Delivered" col="delivered" sort={sort} onSort={cycleSort} />
                   <SortHeader label="Open %" col="open_rate" sort={sort} onSort={cycleSort} />
                   <SortHeader label="Click %" col="click_rate" sort={sort} onSort={cycleSort} />
-                  <SortHeader label="Replied" col="replied" sort={sort} onSort={cycleSort} />
                   <SortHeader label="Unsub" col="unsubscribed" sort={sort} onSort={cycleSort} />
                   <SortHeader label="Bounced" col="bounced" sort={sort} onSort={cycleSort} />
                 </tr>
@@ -198,7 +195,6 @@ export default function EmailMarketingReport({ startDate, endDate, locationSlug 
                       <span className="font-semibold text-text-primary">{fmtPct(r.click_rate)}</span>
                       <span className="text-text-muted text-xs"> ({fmtInt(r.clicked)})</span>
                     </td>
-                    <td className="py-2 px-2 text-right">{r.replied > 0 ? <span className="text-emerald-600 font-semibold">{fmtInt(r.replied)}</span> : '—'}</td>
                     <td className="py-2 px-2 text-right">{r.unsubscribed > 0 ? fmtInt(r.unsubscribed) : '—'}</td>
                     <td className="py-2 px-4 text-right">{r.bounced > 0 ? <span className="text-wcs-red">{fmtInt(r.bounced)}</span> : '—'}</td>
                   </tr>
@@ -210,7 +206,7 @@ export default function EmailMarketingReport({ startDate, endDate, locationSlug 
       </div>
 
       <p className="text-xs text-text-muted px-1">
-        Open / click / reply rates are GoHighLevel's own figures (calculated over delivered). Bounces combine permanent and temporary failures.
+        Open and click rates are GoHighLevel's own figures (calculated over delivered). Bounces combine permanent and temporary failures.
       </p>
     </div>
   )
