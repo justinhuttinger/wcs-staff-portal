@@ -104,15 +104,16 @@ without it.
 ### Phase 2 — Reconciliation engine
 
 - **`till_settings` table** `(club_number PK, standard_float numeric default 100,
-  drop_profit_center text, active boolean)`. Seed all 7 clubs at $100.
+  drop_upc text default 'XXXCASHDROPXXX', active boolean)`. Seed all 7 clubs at $100.
 - **Physical-register classification** + cash extraction helper (server-side),
   reading `inventory_transaction_payments` joined to transactions/items.
-- **Cash Drop POS item:** Justin creates it in ABC by hand. **Verification step:**
-  Justin rings one test bag-drop at a register; we inspect the exact JSON payload
-  to confirm sign/tender (note a `"Write Off"` non-sale tender already exists in
-  data, so ABC supports non-sale tenders). Finalize the classification rule
-  (match by item name / profit center; treat its cash amount as a drawer
-  reduction, not a sale).
+- **Cash Drop POS item (DONE, verified 2026-06-29):** the item exists and was test
+  rung at Salem. Payload: `name="Cash Drop"`, `upc="XXXCASHDROPXXX"` (catalog
+  "Company" → same UPC all clubs), `profitCenter="MISC. ITEMS"` (shared bucket,
+  NOT a usable key), `sale="true"`, POSITIVE cash tender. So the classification
+  rule keys on the **UPC sentinel** and subtracts the line's cash amount as a
+  drawer reduction. Drops are rare, so the resulting (small) inflation of the
+  Revenue/POS Sales reports is accepted for now (no report exclusion this phase).
 - **Endpoint** `GET /till/reconciliation?location=&from=&to=` (manager+), returns
   the per-club-per-day reconciliation rows using the formula above. Computed on
   read. Pacific day boundaries (reuse existing date helpers).
@@ -176,6 +177,6 @@ in `origin/master` before assuming it shipped.
 
 - Validate `employee_id IS NOT NULL AND station_name <> 'ABC Transaction'` cleanly
   separates physical-register sales from auto-billing across all 7 clubs.
-- Confirm the Cash Drop payload shape via Justin's test ring before finalizing the
-  drop classification rule.
+- ~~Confirm the Cash Drop payload shape via Justin's test ring.~~ DONE 2026-06-29:
+  drop keyed on UPC sentinel `XXXCASHDROPXXX`, positive cash tender, subtract.
 - Confirm the drawer-count Operandio `templateId`s once the jobs are created.

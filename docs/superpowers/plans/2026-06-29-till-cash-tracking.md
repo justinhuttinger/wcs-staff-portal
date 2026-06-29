@@ -423,12 +423,15 @@ Pure daily reconciliation + a manager+ endpoint computing it on read. Branch:
 ```sql
 -- auth/migrations/071_till_settings.sql
 -- Per-club till configuration. standard_float is the par the drawer resets to
--- each night; drop_profit_center names the ABC POS item used for cash drops so
--- the reconciler can treat it as a drawer reduction instead of a sale.
+-- each night; drop_upc is the UPC sentinel of the ABC "Cash Drop" POS item so
+-- the reconciler can treat that line as a drawer reduction instead of a sale.
+-- VERIFIED 2026-06-29 test ring: the Cash Drop item carries upc 'XXXCASHDROPXXX'
+-- (catalog "Company", so the same UPC appears at all 7 clubs) under the shared
+-- 'MISC. ITEMS' profit center — hence we key on UPC, NOT profit center.
 CREATE TABLE IF NOT EXISTS till_settings (
   club_number       text PRIMARY KEY,
   standard_float    numeric(12,2) NOT NULL DEFAULT 100,
-  drop_profit_center text,            -- e.g. 'CASH DROP' (set after the ABC item exists)
+  drop_upc          text NOT NULL DEFAULT 'XXXCASHDROPXXX',
   active            boolean NOT NULL DEFAULT true,
   updated_at        timestamptz NOT NULL DEFAULT now()
 );
@@ -581,9 +584,15 @@ git commit -m "feat(till): pure daily reconciliation function"
 - Test: `auth/src/lib/tillCashMovements.test.js`
 
 **Interfaces:**
-- Consumes: `supabaseAdmin`, `till_settings.drop_profit_center`
-- Produces: `aggregateCashByDay(supabaseAdmin, { clubNumber, fromUtc, toUtc, dropProfitCenter }) -> Map<businessDate, { cashSales, cashRefunds, cashDrops }>`
-- Also exports pure `classifyCashLine({ tender_category, is_return, profit_center, amount }, dropProfitCenter) -> { sales, refunds, drops }` for unit testing the bucketing.
+- Consumes: `supabaseAdmin`, `till_settings.drop_upc`
+- Produces: `aggregateCashByDay(supabaseAdmin, { clubNumber, fromUtc, toUtc, dropUpc }) -> Map<businessDate, { cashSales, cashRefunds, cashDrops }>`
+- Also exports pure `classifyCashLine({ tender_category, is_return, upc, amount }, dropUpc) -> { sales, refunds, drops }` for unit testing the bucketing.
+
+> **Drop keying (verified against the 2026-06-29 test ring):** a cash drop comes
+> through as a POSITIVE cash tender on a `sale=true` line, identical to a cash sale
+> except its UPC is the sentinel `XXXCASHDROPXXX` (the item sits under the shared
+> `MISC. ITEMS` profit center, so profit center is NOT a usable key). Match drops
+> by UPC and subtract them.
 
 - [ ] **Step 1: Write the failing test (pure classifier only)**
 
@@ -593,21 +602,21 @@ const { test } = require('node:test')
 const assert = require('node:assert')
 const { classifyCashLine } = require('./tillCashMovements')
 
-const DROP = 'CASH DROP'
+const DROP = 'XXXCASHDROPXXX'
 test('cash sale', () => {
-  assert.deepEqual(classifyCashLine({ tender_category: 'cash', is_return: false, profit_center: 'WCS Drinks', amount: 5 }, DROP),
+  assert.deepEqual(classifyCashLine({ tender_category: 'cash', is_return: false, upc: '810113510286', amount: 5 }, DROP),
     { sales: 5, refunds: 0, drops: 0 })
 })
 test('cash refund', () => {
-  assert.deepEqual(classifyCashLine({ tender_category: 'cash', is_return: true, profit_center: 'WCS Drinks', amount: 5 }, DROP),
+  assert.deepEqual(classifyCashLine({ tender_category: 'cash', is_return: true, upc: '810113510286', amount: 5 }, DROP),
     { sales: 0, refunds: 5, drops: 0 })
 })
-test('cash drop item', () => {
-  assert.deepEqual(classifyCashLine({ tender_category: 'cash', is_return: false, profit_center: 'CASH DROP', amount: 200 }, DROP),
+test('cash drop item (matched by UPC sentinel)', () => {
+  assert.deepEqual(classifyCashLine({ tender_category: 'cash', is_return: false, upc: 'XXXCASHDROPXXX', amount: 200 }, DROP),
     { sales: 0, refunds: 0, drops: 200 })
 })
 test('card sale ignored', () => {
-  assert.deepEqual(classifyCashLine({ tender_category: 'card', is_return: false, profit_center: 'WCS Drinks', amount: 5 }, DROP),
+  assert.deepEqual(classifyCashLine({ tender_category: 'card', is_return: false, upc: '810113510286', amount: 5 }, DROP),
     { sales: 0, refunds: 0, drops: 0 })
 })
 ```
@@ -622,18 +631,22 @@ Expected: FAIL — module not found.
 ```js
 // auth/src/lib/tillCashMovements.js
 // Aggregate physical-register CASH movements per Pacific business day for a club.
-// Reads inventory_transaction_payments joined to its transaction + line. Only
-// cash tenders matter to a drawer. A line whose profit center matches the club's
-// configured drop item is a drawer reduction, not a sale.
-const PHYS_FILTER = "employee_id is not null"  // station_name handled below
+// Only cash tenders matter to a drawer. A line whose UPC is the club's configured
+// drop sentinel is a drawer reduction (cash pulled), not a sale.
+//
+// inventory_transaction_payments has a real FK to inventory_transactions but NOT
+// to inventory_transaction_items (both key on transaction_pk; the line link is the
+// composite (transaction_pk, line_no), which PostgREST cannot embed). So we pull
+// the cash payment rows with their parent transaction in one query, then fetch the
+// line UPCs for those transactions in a second query and join in JS by
+// (transaction_pk, line_no).
 
-function classifyCashLine({ tender_category, is_return, profit_center, amount }, dropProfitCenter) {
+function classifyCashLine({ tender_category, is_return, upc, amount }, dropUpc) {
   const out = { sales: 0, refunds: 0, drops: 0 }
   if (tender_category !== 'cash') return out
   const amt = Number(amount) || 0
-  if (dropProfitCenter && profit_center &&
-      profit_center.trim().toLowerCase() === String(dropProfitCenter).trim().toLowerCase()) {
-    out.drops = amt
+  if (dropUpc && upc && String(upc).trim() === String(dropUpc).trim()) {
+    out.drops = amt          // cash physically pulled from the drawer
   } else if (is_return) {
     out.refunds = amt
   } else {
@@ -645,29 +658,42 @@ function classifyCashLine({ tender_category, is_return, profit_center, amount },
 // pacificDate reused from operandioJobs to keep day-bucketing consistent.
 const { pacificDate } = require('./operandioJobs')
 
-async function aggregateCashByDay(supabaseAdmin, { clubNumber, fromUtc, toUtc, dropProfitCenter }) {
-  // Join via an RPC-free select: pull cash payment rows + parent txn fields.
-  // Supabase nested select resolves the FK from inventory_transaction_payments.
-  const { data, error } = await supabaseAdmin
+async function aggregateCashByDay(supabaseAdmin, { clubNumber, fromUtc, toUtc, dropUpc }) {
+  // 1) Cash payment rows + parent transaction (real FK embed).
+  const { data: pays, error } = await supabaseAdmin
     .from('inventory_transaction_payments')
-    .select('payment_amount, tender_category, inventory_transactions!inner(transaction_at, employee_id, station_name, is_return), inventory_transaction_items!inner(line_no, profit_center)')
+    .select('transaction_pk, line_no, payment_amount, tender_category, inventory_transactions!inner(transaction_at, employee_id, station_name, is_return)')
     .eq('club_number', clubNumber)
     .eq('tender_category', 'cash')
     .gte('inventory_transactions.transaction_at', fromUtc.toISOString())
     .lte('inventory_transactions.transaction_at', toUtc.toISOString())
   if (error) throw new Error('cash aggregate failed: ' + error.message)
+  if (!pays || pays.length === 0) return new Map()
 
+  // 2) UPCs for those transactions' lines, keyed (transaction_pk|line_no).
+  const txnPks = [...new Set(pays.map(p => p.transaction_pk))]
+  const upcByLine = new Map()
+  for (let i = 0; i < txnPks.length; i += 200) {
+    const { data: items, error: iErr } = await supabaseAdmin
+      .from('inventory_transaction_items')
+      .select('transaction_pk, line_no, upc')
+      .in('transaction_pk', txnPks.slice(i, i + 200))
+    if (iErr) throw new Error('cash aggregate line lookup failed: ' + iErr.message)
+    for (const it of items || []) upcByLine.set(`${it.transaction_pk}|${it.line_no}`, it.upc)
+  }
+
+  // 3) Classify + bucket by Pacific day.
   const byDay = new Map()
-  for (const row of data || []) {
-    const txn = row.inventory_transactions
+  for (const p of pays) {
+    const txn = p.inventory_transactions
     if (!txn || !txn.employee_id || txn.station_name === 'ABC Transaction') continue // physical register only
     const day = pacificDate(txn.transaction_at)
     if (!day) continue
     const c = classifyCashLine({
-      tender_category: row.tender_category, is_return: txn.is_return,
-      profit_center: row.inventory_transaction_items?.profit_center,
-      amount: row.payment_amount,
-    }, dropProfitCenter)
+      tender_category: p.tender_category, is_return: txn.is_return,
+      upc: upcByLine.get(`${p.transaction_pk}|${p.line_no}`),
+      amount: p.payment_amount,
+    }, dropUpc)
     const cur = byDay.get(day) || { cashSales: 0, cashRefunds: 0, cashDrops: 0 }
     cur.cashSales += c.sales; cur.cashRefunds += c.refunds; cur.cashDrops += c.drops
     byDay.set(day, cur)
@@ -675,10 +701,8 @@ async function aggregateCashByDay(supabaseAdmin, { clubNumber, fromUtc, toUtc, d
   return byDay
 }
 
-module.exports = { classifyCashLine, aggregateCashByDay, PHYS_FILTER }
+module.exports = { classifyCashLine, aggregateCashByDay }
 ```
-
-> NOTE for implementer: the nested `inventory_transaction_items!inner(...)` join matches the payment's `line_no` to the line — confirm the FK/relationship name Supabase exposes (`inventory_transaction_items` has `transaction_pk` but payments key on `transaction_pk,line_no`). If PostgREST can't express the composite join, fall back to: select payments + transactions, and separately fetch line `profit_center` by `(transaction_pk,line_no)` in a batched map. Validate against real data in Step 4.
 
 - [ ] **Step 4: Run unit test + a live spot check**
 
@@ -704,36 +728,31 @@ git add auth/src/lib/tillCashMovements.js auth/src/lib/tillCashMovements.test.js
 git commit -m "feat(till): cash-movement aggregation per club/day"
 ```
 
-### Task 2.4: Create ABC Cash Drop item + verify payload (manual + config)
+### Task 2.4: Cash Drop item — DONE (verified 2026-06-29)
 
-**Files:** none (config + verification). Updates `till_settings.drop_profit_center`.
+The ABC "Cash Drop" POS item already exists and was test-rung at Salem on
+2026-06-29. Verified payload: `name="Cash Drop"`, `upc="XXXCASHDROPXXX"`,
+`catalog="Company"` (so the same UPC at all 7 clubs), `profitCenter="MISC. ITEMS"`
+(shared bucket — NOT a usable key), `sale="true"`, and a POSITIVE
+`payments:[{paymentType:"Cash", paymentAmount:"1.00"}]`. The sentinel UPC
+`XXXCASHDROPXXX` maps to exactly one item ("Cash Drop") and nothing else.
 
-- [ ] **Step 1 (Justin):** In ABC, create a non-inventory POS item "Cash Drop / Bag Drop" under a dedicated profit center (e.g. `CASH DROP`), the same way catalog items exist today.
+No work here: `drop_upc` already defaults to `'XXXCASHDROPXXX'` in the migration
+(Task 2.1), so no config UPDATE is needed. The reconciler subtracts these lines
+(Task 2.3 `classifyCashLine`).
 
-- [ ] **Step 2 (Justin):** Ring ONE test bag-drop at a physical register, paying it out as cash.
-
-- [ ] **Step 3: Inspect the payload** after the next POS sync (or trigger `POST /api/.../sync` per existing inventory sync route). Run:
+- [ ] **Step 1: Confirm the sentinel is still unique** (sanity, Supabase MCP):
 ```sql
-SELECT t.transaction_at, t.station_name, t.employee_id,
-       i.profit_center, i.name, i.unit_price,
-       p.payment_type, p.payment_amount, p.tender_category
-FROM inventory_transactions t
-JOIN inventory_transaction_items i ON i.transaction_pk = t.id
-LEFT JOIN inventory_transaction_payments p ON p.transaction_pk = t.id AND p.line_no = i.line_no
-WHERE t.transaction_at >= now() - interval '1 day'
-ORDER BY t.transaction_at DESC LIMIT 20;
+SELECT upc, count(DISTINCT name) AS names FROM inventory_transaction_items
+WHERE upc='XXXCASHDROPXXX' GROUP BY upc;
 ```
-Confirm: the drop appears with the `CASH DROP` profit center, `tender_category='cash'`, and a positive `payment_amount`. Note the exact `profit_center` string.
+Expected: one row, `names = 1`.
 
-- [ ] **Step 4: Set the config** (Supabase MCP `execute_sql`), using the exact profit-center string observed:
-```sql
-UPDATE till_settings SET drop_profit_center = 'CASH DROP', updated_at = now();
-```
-(If a club uses a different string, set per club.)
-
-- [ ] **Step 5:** No commit (data/config only). Record the confirmed profit-center string in the PR description.
-
-> If the test ring shows the drop coming through with a NEGATIVE amount or a non-cash tender, adjust `classifyCashLine` (Task 2.3) accordingly and re-run its test before proceeding.
+> Note: the test ring's payment row is NULL in prod today only because prod runs
+> pre-Phase-1 sync code. Once Phase 1 (PR #396) deploys, drops capture the cash
+> tender automatically; the raw payload already proves the shape. Drops are rare
+> (Justin), so the parallel fact that they inflate Revenue/POS Sales reports by the
+> drop amount is accepted for now (no report exclusion in this phase).
 
 ### Task 2.5: /till/reconciliation endpoint
 
@@ -784,9 +803,9 @@ router.get('/reconciliation', async (req, res) => {
     const clubs = parsed.slugs.map(s => SLUG_CLUB_MAP[s]).filter(Boolean)
     const { from: fromUtc, to: toUtc } = utcWindow(from, to)
 
-    // Settings (float + drop center) per club.
+    // Settings (float + drop UPC sentinel) per club.
     const { data: settings } = await supabaseAdmin
-      .from('till_settings').select('club_number, standard_float, drop_profit_center')
+      .from('till_settings').select('club_number, standard_float, drop_upc')
       .in('club_number', clubs)
     const settingByClub = new Map((settings || []).map(s => [s.club_number, s]))
 
@@ -804,9 +823,9 @@ router.get('/reconciliation', async (req, res) => {
 
     const rows = []
     for (const club of clubs) {
-      const setting = settingByClub.get(club) || { standard_float: 100, drop_profit_center: null }
+      const setting = settingByClub.get(club) || { standard_float: 100, drop_upc: 'XXXCASHDROPXXX' }
       const byDay = await aggregateCashByDay(supabaseAdmin, {
-        clubNumber: club, fromUtc, toUtc, dropProfitCenter: setting.drop_profit_center,
+        clubNumber: club, fromUtc, toUtc, dropUpc: setting.drop_upc,
       })
       // Union of days that have cash activity OR a count submission.
       const days = new Set(byDay.keys())
