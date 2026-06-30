@@ -119,7 +119,7 @@ export default function BusinessHoursSpeedToLead() {
     <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 space-y-4">
       <div>
         <h3 className="text-sm font-bold text-text-primary">Business-Hours Speed to Lead <span className="ml-1 text-[10px] uppercase tracking-wide text-wcs-red font-bold">Beta</span></h3>
-        <p className="text-xs text-text-muted mt-1">Two numbers per lead. <span className="text-text-primary font-medium">Raw</span> = wall-clock from lead creation to first manual human SMS/call. <span className="text-text-primary font-medium">Business-hours</span> = the same span with after-hours and weekend time clamped out (staffed window 8:00am-8:00pm, every day). Raw exposes after-hours coverage gaps; business-hours coaches staff responsiveness.</p>
+        <p className="text-xs text-text-muted mt-1">Two numbers per lead. <span className="text-text-primary font-medium">Raw</span> = wall-clock from lead creation to first manual human SMS/call. <span className="text-text-primary font-medium">Business-hours</span> = the same span with after-hours and weekend time clamped out (staffed window 11:00am-7:30pm, every day). Raw exposes after-hours coverage gaps; business-hours coaches staff responsiveness.</p>
       </div>
 
       {/* Median cards */}
