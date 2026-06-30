@@ -98,11 +98,42 @@ const ALL_TILES = [...SETUP_TILES, ...TECHNICAL_TILES, ...EXPERIMENTAL_TILES]
 
 const EXPERIMENTAL_KEYS = new Set(EXPERIMENTAL_TILES.map(t => t.key))
 
-// One flat, alphabetical list of every admin tool. Items that lived under the
-// old "Experimental Tools" group are flagged so the row can show a tag.
-const ADMIN_ITEMS = ALL_TILES
-  .map(t => ({ ...t, experimental: EXPERIMENTAL_KEYS.has(t.key) }))
-  .sort((a, b) => a.label.localeCompare(b.label))
+const TILE_BY_KEY = Object.fromEntries(ALL_TILES.map(t => [t.key, t]))
+
+// ABC-style grouped layout: a handful of category columns, each with a header
+// and its list of tools — no more one long scrolling list.
+const CATEGORIES = [
+  { title: 'Staff & HR', keys: ['staff', 'import', 'employee-roster', 'roles-v2', 'paychex', 'paychex-training'] },
+  { title: 'Portal Setup', keys: ['tiles', 'layouts', 'config', 'drive-folders', 'action-links', 'references', 'tickets', 'portal-refresh'] },
+  { title: 'Reports & KPIs', keys: ['kpi-goals', 'trends-12mo', 'daily-snapshot', 'membership-audit', 'speed-to-lead-audit', 'revenue-backfill'] },
+  { title: 'Members & Sales', keys: ['online-join', 'tour-checkin', 'membership-skip', 'referral-rewards', 'audit-toggles', 'vendor-price-list'] },
+  { title: 'Integrations & Sync', keys: ['sync', 'abc-sync', 'custom-fields', 'google-connections', 'shared-credentials'] },
+  { title: 'Logs & Messaging', keys: ['webhooks', 'sms', 'audit-log'] },
+  { title: 'Kiosk & Devices', keys: ['kiosk-installs', 'launcher-version', 'print-devices', 'print-automations'] },
+  { title: 'Automation & AI', keys: ['blog', 'day-one-programs', 'university-enroll', 'pt-scheduler'] },
+]
+
+// Build each category's tiles from the lookup, flagging experimental ones. Any
+// tile not assigned to a category above falls into a catch-all so nothing is
+// ever silently dropped when new admin tools are added.
+const ASSIGNED_KEYS = new Set(CATEGORIES.flatMap(c => c.keys))
+const CATEGORY_GROUPS = [
+  ...CATEGORIES.map(c => ({
+    title: c.title,
+    tiles: c.keys
+      .map(k => TILE_BY_KEY[k])
+      .filter(Boolean)
+      .map(t => ({ ...t, experimental: EXPERIMENTAL_KEYS.has(t.key) })),
+  })),
+  ...(ALL_TILES.some(t => !ASSIGNED_KEYS.has(t.key))
+    ? [{
+        title: 'Other',
+        tiles: ALL_TILES
+          .filter(t => !ASSIGNED_KEYS.has(t.key))
+          .map(t => ({ ...t, experimental: EXPERIMENTAL_KEYS.has(t.key) })),
+      }]
+    : []),
+].filter(g => g.tiles.length > 0)
 
 export default function AdminPanel({ onBack, isElectron, onLocationChange, userRole }) {
   const [activeSection, setActiveSection] = useState(null)
@@ -171,11 +202,18 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
     )
   }
 
-  // Single alphabetical list of every admin tool, filtered by the search box.
+  // Filter the grouped tools by the search box, dropping empty categories.
   const q = query.trim().toLowerCase()
-  const visible = q
-    ? ADMIN_ITEMS.filter(t => t.label.toLowerCase().includes(q) || (t.desc || '').toLowerCase().includes(q))
-    : ADMIN_ITEMS
+  const groups = q
+    ? CATEGORY_GROUPS
+        .map(g => ({
+          ...g,
+          tiles: g.tiles.filter(t =>
+            t.label.toLowerCase().includes(q) || (t.desc || '').toLowerCase().includes(q)
+          ),
+        }))
+        .filter(g => g.tiles.length > 0)
+    : CATEGORY_GROUPS
 
   return (
     <div className="w-full px-8 py-6">
@@ -183,42 +221,48 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         <h2 className="text-xl font-bold text-text-primary">Admin Panel</h2>
       </div>
 
-      <div className="max-w-3xl mx-auto">
+      <div className="bg-surface rounded-xl border border-border p-6">
         <input
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Filter admin tools…"
-          className="w-full mb-4 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-wcs-red/30"
+          className="w-full max-w-md mb-6 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-wcs-red/30"
         />
 
-        <div className="divide-y divide-border rounded-xl border border-border bg-surface overflow-hidden">
-          {visible.map(tile => (
-            <button
-              key={tile.key}
-              onClick={() => setActiveSection(tile.key)}
-              className="group w-full flex items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-bg"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-text-primary">{tile.label}</span>
-                  {tile.experimental && (
-                    <span className="shrink-0 rounded-full bg-wcs-red/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-wcs-red">
-                      Experimental
-                    </span>
-                  )}
-                </div>
-                {tile.desc && <p className="mt-0.5 text-xs text-text-muted">{tile.desc}</p>}
+        {groups.length === 0 ? (
+          <p className="text-sm text-text-muted">No admin tools match “{query}”.</p>
+        ) : (
+          <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-8 [column-fill:balance]">
+            {groups.map(group => (
+              <div key={group.title} className="mb-7 break-inside-avoid">
+                <h3 className="mb-2 pb-1.5 border-b border-border text-sm font-bold uppercase tracking-wide text-wcs-red">
+                  {group.title}
+                </h3>
+                <ul className="space-y-0.5">
+                  {group.tiles.map(tile => (
+                    <li key={tile.key}>
+                      <button
+                        onClick={() => setActiveSection(tile.key)}
+                        title={tile.desc || ''}
+                        className="group flex w-full items-center gap-1.5 rounded-md py-1 px-1.5 -mx-1.5 text-left transition-colors hover:bg-bg"
+                      >
+                        <span className="truncate text-sm text-text-primary group-hover:text-wcs-red transition-colors">
+                          {tile.label}
+                        </span>
+                        {tile.experimental && (
+                          <span className="shrink-0 rounded-full bg-wcs-red/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-wcs-red">
+                            Beta
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 shrink-0 text-text-muted transition-colors group-hover:text-text-primary">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-              </svg>
-            </button>
-          ))}
-          {visible.length === 0 && (
-            <p className="px-5 py-6 text-sm text-text-muted">No admin tools match “{query}”.</p>
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
