@@ -45,7 +45,7 @@ function ConfigRow({ cfg, onSaved }) {
   async function handleSave() {
     setSaving(true); setSaveError(null); setSavedFlash(false)
     try {
-      await vipReferrals.updateConfig(cfg.slug, { webhook_url: webhookUrl, enabled })
+      await vipReferrals.updateConfig(cfg.location_slug, { webhook_url: webhookUrl, enabled })
       setSavedFlash(true)
       setTimeout(() => setSavedFlash(false), 2000)
       if (onSaved) onSaved()
@@ -61,8 +61,8 @@ function ConfigRow({ cfg, onSaved }) {
       {/* Location header + enabled toggle */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="font-semibold text-text-primary text-sm">{cfg.display_name || cfg.slug}</div>
-          <div className="text-xs text-text-muted font-mono">{cfg.slug}</div>
+          <div className="font-semibold text-text-primary text-sm">{cfg.location_slug.charAt(0).toUpperCase() + cfg.location_slug.slice(1)}</div>
+          <div className="text-xs text-text-muted font-mono">{cfg.location_slug}</div>
         </div>
         <label className="flex items-center gap-2 text-xs text-text-muted cursor-pointer select-none">
           <span>Enabled</span>
@@ -116,10 +116,10 @@ function ConfigRow({ cfg, onSaved }) {
           <div key={audience} className="space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-text-primary capitalize">{audience} widget</span>
-              <CopyButton text={embedSnippet(cfg.slug, audience)} />
+              <CopyButton text={embedSnippet(cfg.location_slug, audience)} />
             </div>
             <pre className="bg-bg border border-border rounded-lg px-3 py-2 text-[10px] font-mono overflow-x-auto text-text-muted whitespace-pre-wrap break-all">
-              {embedSnippet(cfg.slug, audience)}
+              {embedSnippet(cfg.location_slug, audience)}
             </pre>
           </div>
         ))}
@@ -154,7 +154,7 @@ export default function VipReferralsConfig() {
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">{error}</div>
       )}
       {configs.map(cfg => (
-        <ConfigRow key={cfg.slug} cfg={cfg} onSaved={load} />
+        <ConfigRow key={cfg.location_slug} cfg={cfg} onSaved={load} />
       ))}
       {!loading && !error && configs.length === 0 && (
         <p className="text-sm text-text-muted text-center py-8">No locations configured yet.</p>

@@ -210,8 +210,8 @@ function VipSubmissions() {
       if (filters.start_date) params.start_date = filters.start_date
       if (filters.end_date)   params.end_date   = filters.end_date
       const r = await vipReferrals.listSubmissions(params)
-      setSubmissions(r.submissions || [])
-      setTotal(r.total || 0)
+      setSubmissions(r.rows || [])
+      setTotal(r.counts?.submissions ?? (r.rows ? r.rows.length : 0))
       if (r.counts) setCounts(r.counts)
     } catch (e) {
       setError(e.message || 'Failed to load submissions')
