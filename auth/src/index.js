@@ -34,6 +34,10 @@ app.use('/admin/staff/import', express.raw({ type: '*/*', limit: '10mb' }))
 // just this path BEFORE the global one — whichever parser consumes the stream
 // first wins, so the global parser skips an already-parsed body.
 app.use('/webhooks/tour-intake', express.json({ limit: '6mb' }))
+// The Day One PT-intake webhook carries the full GHL contact + every intake
+// field; a large submission (long notes, many custom fields) can exceed the
+// 100kb default and 413. The old standalone service hit this. Give it room.
+app.use('/day-one-program', express.json({ limit: '2mb' }))
 app.use(express.json())
 app.use(cookieParser())
 
