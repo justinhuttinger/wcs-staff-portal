@@ -487,6 +487,14 @@ export async function updatePrintAutomation(slug, data) {
   })
 }
 
+// Day One PT program generator — admin monitor (pt_programs)
+export async function getDayOnePrograms(params = {}) {
+  const qs = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v !== '' && v != null)
+  ).toString()
+  return api('/admin/day-one-programs' + (qs ? '?' + qs : ''))
+}
+
 // Launcher installs (kiosk registry) + one-time location deep links
 export async function getKioskInstalls() {
   return api('/launcher/installs')
