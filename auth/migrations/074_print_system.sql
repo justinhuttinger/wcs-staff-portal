@@ -1,4 +1,4 @@
--- 072_print_system.sql — Till-close auto-print: device registry, job queue, triggers.
+-- 074_print_system.sql — Till-close auto-print: device registry, job queue, triggers.
 
 -- A desktop launcher install that can print. One row per install_id.
 CREATE TABLE IF NOT EXISTS print_devices (
