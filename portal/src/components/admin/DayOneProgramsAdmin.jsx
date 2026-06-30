@@ -198,7 +198,7 @@ export default function DayOneProgramsAdmin() {
       {error && <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
 
       {/* Table */}
-      <div className="border border-border rounded-xl overflow-hidden overflow-x-auto">
+      <div className="bg-surface border border-border rounded-xl overflow-hidden overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-bg text-left text-text-muted">
@@ -250,7 +250,7 @@ export default function DayOneProgramsAdmin() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm text-text-muted">
+        <div className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-2 text-sm text-text-muted">
           <span>{total} total · page {page} of {totalPages}</span>
           <div className="flex gap-2">
             <button
