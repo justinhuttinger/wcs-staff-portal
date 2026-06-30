@@ -281,6 +281,20 @@ export const onlineJoin = {
   invalidateCache: () => prospectsApi('/api/admin/online-join/cache/invalidate', { method: 'POST' }),
 }
 
+// ---- VIP Referrals admin (prospects-documents) ---------------------------
+export const vipReferrals = {
+  listSubmissions: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v != null && v !== '')
+    ).toString()
+    return prospectsApi('/api/admin/vip-referrals/submissions' + (qs ? `?${qs}` : ''))
+  },
+  getSubmission: (id) => prospectsApi(`/api/admin/vip-referrals/submissions/${id}`),
+  retryRecipient: (id) => prospectsApi(`/api/admin/vip-referrals/recipients/${id}/retry`, { method: 'POST' }),
+  listConfig: () => prospectsApi('/api/admin/vip-referrals/config'),
+  updateConfig: (slug, body) => prospectsApi(`/api/admin/vip-referrals/config/${encodeURIComponent(slug)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+}
+
 // ---- Paychex Training admin (prospects-documents) ------------------------
 export const paychexTraining = {
   summary: () => prospectsApi('/api/admin/paychex-training/summary'),
