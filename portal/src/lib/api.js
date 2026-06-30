@@ -600,6 +600,12 @@ export async function getSpeedToLeadAudit(params = {}, options = {}) {
   return api('/reports/speed-to-lead/audit' + (qs ? '?' + qs : ''), options)
 }
 
+// Experimental: raw + business-hours speed per lead, plus both medians.
+export async function getSpeedToLeadBusinessAudit(params = {}, options = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/speed-to-lead/business-audit' + (qs ? '?' + qs : ''), options)
+}
+
 export async function getMembershipAudit(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/reports/membership-audit' + (qs ? '?' + qs : ''), options)

@@ -1305,6 +1305,153 @@ router.get('/speed-to-lead/audit', async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
+// GET /reports/speed-to-lead/business-audit
+// Experimental business-hours variant of the speed-to-lead audit. Returns BOTH
+// raw and business-hours speed per lead, plus both medians. Business-hours speed
+// clamps the span to the staffed contactable window (Postgres business_seconds);
+// the same New-Lead / DND / contact-before-create filtering as the raw audit is
+// applied here in JS so the two metrics count the exact same leads.
+// Query: start_date, end_date, location_slug, limit (default 1000, max 5000).
+// ---------------------------------------------------------------------------
+router.get('/speed-to-lead/business-audit', async (req, res) => {
+  const { start_date, end_date } = req.query
+  const limit = Math.min(parseInt(req.query.limit || '1000', 10) || 1000, 5000)
+  try {
+    const locationFilter = await resolveLocationFilter(req)
+    const startISO = start_date ? start_date + 'T00:00:00.000Z' : null
+    const endISO = end_date ? end_date + 'T23:59:59.999Z' : null
+
+    let locationIds = []
+    if (locationFilter) {
+      if (locationFilter.column === 'location_id') {
+        locationIds = locationFilter.values
+      } else if (locationFilter.column === 'location_slug') {
+        const orClauses = locationFilter.values.map(s => `name.ilike.%${s}%`).join(',')
+        const { data: locs } = await supabaseAdmin.from('ghl_locations').select('id').or(orClauses)
+        locationIds = (locs || []).map(l => l.id)
+      }
+    }
+
+    // Postgres owns the clock: raw + business seconds per opportunity, already
+    // date/location filtered, newest first, capped.
+    const { data, error } = await supabaseAdmin.rpc('speed_to_lead_business', {
+      p_location_ids: locationIds.length > 0 ? locationIds : null,
+      p_start: startISO,
+      p_end: endISO,
+      p_limit: limit,
+    })
+    if (error) return res.status(500).json({ error: 'Failed to fetch business-hours speed-to-lead', detail: error.message })
+    const rows = data || []
+
+    // New Lead stage ids (entry stage, position 0)
+    const { data: stageRows } = await supabaseAdmin
+      .from('ghl_pipeline_stages').select('id').ilike('name', 'New Lead')
+    const newLeadStageIds = new Set((stageRows || []).map(s => s.id))
+
+    // Batch-fetch opps, contacts, locations for the rows (same as the raw audit).
+    const oppIds = [...new Set(rows.map(r => r.opportunity_id))]
+    const contactIds = [...new Set(rows.map(r => r.contact_id).filter(Boolean))]
+    const locIds = [...new Set(rows.map(r => r.location_id).filter(Boolean))]
+    const oppById = new Map(), contactById = new Map(), clubById = new Map()
+    for (let i = 0; i < oppIds.length; i += 500) {
+      const { data: opps } = await supabaseAdmin
+        .from('ghl_opportunities_v2')
+        .select('id, stage_id, created_at_ghl, last_stage_change_at, updated_at_ghl')
+        .in('id', oppIds.slice(i, i + 500))
+      for (const o of (opps || [])) oppById.set(o.id, o)
+    }
+    for (let i = 0; i < contactIds.length; i += 500) {
+      const { data: cs } = await supabaseAdmin
+        .from('ghl_contacts_v2')
+        .select('id, full_name, first_name, last_name, dnd')
+        .in('id', contactIds.slice(i, i + 500))
+      for (const c of (cs || [])) contactById.set(c.id, c)
+    }
+    if (locIds.length) {
+      const { data: locs } = await supabaseAdmin.from('ghl_locations').select('id, name').in('id', locIds)
+      for (const l of (locs || [])) clubById.set(l.id, l.name)
+    }
+
+    const MOVED_EPSILON_MS = 2000
+    function isNewLead(opp) {
+      if (!opp) return false
+      if (newLeadStageIds.has(opp.stage_id)) return true
+      const movedRef = opp.last_stage_change_at || opp.updated_at_ghl
+      if (movedRef && opp.created_at_ghl) {
+        return (new Date(movedRef).getTime() - new Date(opp.created_at_ghl).getTime()) > MOVED_EPSILON_MS
+      }
+      return false
+    }
+
+    const rawMinutes = []
+    const bizMinutes = []
+    let countedCount = 0, uncontactedCount = 0
+    let excludedNotNewLead = 0, excludedDnd = 0, excludedContactBefore = 0
+
+    const out = rows.map(r => {
+      const opp = oppById.get(r.opportunity_id)
+      const c = contactById.get(r.contact_id)
+      const name = (c && (c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim())) || '(unknown)'
+      let included = false, reason, raw_minutes = null, business_minutes = null
+      if (c && c.dnd === true) {
+        reason = 'dnd'; excludedDnd++
+      } else if (!isNewLead(opp)) {
+        reason = 'not_new_lead'; excludedNotNewLead++
+      } else if (r.raw_seconds == null) {
+        reason = 'no_human_contact'; uncontactedCount++
+      } else if (r.raw_seconds < 0) {
+        reason = 'contact_before_create'; excludedContactBefore++
+      } else {
+        included = true
+        reason = 'counted'
+        countedCount++
+        raw_minutes = Math.round(r.raw_seconds / 60)
+        business_minutes = Math.round((r.business_seconds ?? 0) / 60)
+        rawMinutes.push(raw_minutes)
+        bizMinutes.push(business_minutes)
+      }
+      return {
+        contact_name: name,
+        club: clubById.get(r.location_id) || r.location_id,
+        opportunity_created_at: r.opportunity_created_at,
+        first_human_contact_at: r.first_human_contact_at,
+        first_contact_kind: r.first_contact_kind,
+        raw_minutes,
+        business_minutes,
+        included,
+        reason,
+      }
+    })
+
+    function median(xs) {
+      if (xs.length === 0) return null
+      const sorted = [...xs].sort((a, b) => a - b)
+      const mid = Math.floor(sorted.length / 2)
+      return sorted.length % 2 === 1
+        ? Math.round(sorted[mid])
+        : Math.round((sorted[mid - 1] + sorted[mid]) / 2)
+    }
+
+    res.json({
+      rows: out,
+      returned: out.length,
+      truncated: rows.length >= limit,
+      summary: {
+        raw_median_minutes: median(rawMinutes),
+        business_median_minutes: median(bizMinutes),
+        counted_count: countedCount,
+        uncontacted_count: uncontactedCount,
+        excluded_not_new_lead: excludedNotNewLead,
+        excluded_dnd: excludedDnd,
+        excluded_contact_before_create: excludedContactBefore,
+      },
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
 // GET /reports/membership-audit
 // Current-state snapshot of active members from abc_members: per-type dues +
 // tenure aggregates, recombined totals, and the dues-leak list. No date range.

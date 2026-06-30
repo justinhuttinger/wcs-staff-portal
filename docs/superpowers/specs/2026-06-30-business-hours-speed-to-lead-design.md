@@ -60,8 +60,10 @@ resolves local wall-clock boundaries per date automatically.
 
 ### `business_seconds(start_ts, end_ts, tz, win_start, win_end, active_days) → bigint`
 
-`LANGUAGE sql STABLE`. Walks each local calendar day the span touches via
-`generate_series`, and for each active day sums the overlap of `[start, end]`
+`LANGUAGE sql STABLE`. Walks each local calendar day the span touches via integer
+day offsets (so the loop variable is unambiguously a `date` — a `generate_series`
+over `date` bounds resolves to the `timestamptz` overload and would invert the
+`AT TIME ZONE` direction), and for each active day sums the overlap of `[start, end]`
 with `[day + win_start, day + win_end]` (both converted to instants via
 `AT TIME ZONE tz`). `least`/`greatest` normalize a reversed span; `greatest(0,…)`
 per day guards partial/zero overlaps. Days whose `dow` is not in `active_days`
