@@ -4,15 +4,6 @@ function dedupeKey(type, locationSlug, businessDate) {
   return `${type}:${String(locationSlug).toLowerCase()}:${businessDate}`
 }
 
-// Translate an ILIKE pattern (only % wildcards used) to a case-insensitive test.
-function matchAutomation(automation, jobName) {
-  if (!automation || !automation.enabled) return false
-  const pat = String(automation.job_name_match || '')
-    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')   // escape regex specials
-    .replace(/%/g, '.*')                        // % -> .*
-  return new RegExp(`^${pat}$`, 'i').test(String(jobName || ''))
-}
-
 function buildTillReceiptPayload(recon) {
   return {
     type: 'till_close',
@@ -31,4 +22,4 @@ function buildTillReceiptPayload(recon) {
   }
 }
 
-module.exports = { dedupeKey, matchAutomation, buildTillReceiptPayload }
+module.exports = { dedupeKey, buildTillReceiptPayload }

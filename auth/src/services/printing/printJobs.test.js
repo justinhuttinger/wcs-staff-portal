@@ -1,16 +1,9 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { dedupeKey, matchAutomation, buildTillReceiptPayload } = require('./printJobs')
+const { dedupeKey, buildTillReceiptPayload } = require('./printJobs')
 
 test('dedupeKey is stable and namespaced', () => {
   assert.equal(dedupeKey('till_close', 'Salem', '2026-06-29'), 'till_close:salem:2026-06-29')
-})
-
-test('matchAutomation honors enabled flag and ILIKE-ish pattern', () => {
-  const a = { enabled: true, job_name_match: '%drawer close%' }
-  assert.equal(matchAutomation(a, 'Drawer Close Count (Jun 29)'), true)
-  assert.equal(matchAutomation(a, 'AM Open Count'), false)
-  assert.equal(matchAutomation({ ...a, enabled: false }, 'Drawer Close Count'), false)
 })
 
 test('buildTillReceiptPayload maps reconciliation to template fields', () => {

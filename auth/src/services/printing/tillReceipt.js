@@ -1,20 +1,23 @@
-// Glue: an Operandio drawer-close submission -> a print_jobs row.
+// Glue: a recorded Operandio drawer CLOSE count -> a print_jobs row.
+// Called from the operandio webhook's till-count branch (which already
+// classified the email as a close count), so there is no job-name matching
+// here — the per-location automation is just an on/off switch.
+//
 // Best-effort. Never throws to the caller (the Operandio webhook must not break).
 
-const { dedupeKey, matchAutomation, buildTillReceiptPayload } = require('./printJobs')
+const { dedupeKey, buildTillReceiptPayload } = require('./printJobs')
 
-async function maybeEnqueueTillReceipt({ supabase, event, loadReconciliation }) {
+async function maybeEnqueueTillReceipt({ supabase, locationSlug, businessDate, loadReconciliation }) {
   try {
-    const slug = String(event.location_slug || '').toLowerCase()
-    const businessDate = event.job_date
+    const slug = String(locationSlug || '').toLowerCase()
 
-    // 1. Is there an enabled till_close automation for this location?
+    // 1. Is the till_close automation enabled for this location?
     const { data: automation } = await supabase
       .from('print_automations')
-      .select('enabled, job_name_match, print_type')
+      .select('enabled')
       .eq('location_slug', slug)
       .maybeSingle()
-    if (!matchAutomation(automation, event.job_name)) {
+    if (!automation || !automation.enabled) {
       return { enqueued: false, reason: 'no_automation' }
     }
 
