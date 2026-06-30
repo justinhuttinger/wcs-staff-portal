@@ -143,6 +143,7 @@ function CategoryTable({ rows, revenueLabel = 'Revenue' }) {
 export default function PosSalesReport({ startDate, endDate, locationSlug }) {
   const [subTab, setSubTab] = useState('sales')
   const [search, setSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('') // '' = all categories
   const [salesSort, setSalesSort] = useState({ col: 'name', dir: 'asc' }) // default: alphabetical by item
 
   const [summary, setSummary] = useState(null)
@@ -161,7 +162,7 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
 
   // Invalidate cached tab data whenever the date range / location changes so a
   // stale tab doesn't flash old numbers when revisited.
-  useEffect(() => { setSummary(null); setEmpSpend(null); setShrinkage(null); setCompliance(null) }, [params])
+  useEffect(() => { setSummary(null); setEmpSpend(null); setShrinkage(null); setCompliance(null); setCategoryFilter('') }, [params])
 
   useEffect(() => { setCompliance(null) }, [overdueDays])
 
@@ -217,6 +218,14 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
   // Product Sales by-category rollup (top summary).
   const salesCategoryRollup = useMemo(() => rollupByCategory(consolidatedSummary), [consolidatedSummary])
 
+  // Distinct categories present in the current range, alphabetical, for the
+  // Product Sales filter dropdown. Null categories collapse to 'Uncategorized'
+  // to match the rollup labeling.
+  const categoryOptions = useMemo(
+    () => [...new Set(consolidatedSummary.map(r => r.category || 'Uncategorized'))].sort((a, b) => a.localeCompare(b)),
+    [consolidatedSummary]
+  )
+
   // Employee Spend by-category rollup. Revenue = staff spend; per-row COGS =
   // spend − profit where profit is known (else the item has no cost on file).
   const empCategoryRollup = useMemo(() => {
@@ -228,10 +237,12 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
     })))
   }, [empSpend])
 
-  // Product Sales: search + sort over the consolidated rows.
+  // Product Sales: category filter + search + sort over the consolidated rows.
   const displaySummary = useMemo(() => {
     const q = search.trim().toLowerCase()
-    let rows = q ? consolidatedSummary.filter(r => (r.name || '').toLowerCase().includes(q) || (r.upc || '').includes(q)) : consolidatedSummary.slice()
+    let rows = consolidatedSummary.slice()
+    if (categoryFilter) rows = rows.filter(r => (r.category || 'Uncategorized') === categoryFilter)
+    if (q) rows = rows.filter(r => (r.name || '').toLowerCase().includes(q) || (r.upc || '').includes(q))
     if (salesSort) {
       const getters = {
         name: r => (r.name || '').toLowerCase(),
@@ -253,7 +264,7 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
       })
     }
     return rows
-  }, [consolidatedSummary, search, salesSort])
+  }, [consolidatedSummary, categoryFilter, search, salesSort])
 
   const rangeLabel = `${startDate}_to_${endDate}`
 
@@ -295,8 +306,15 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
         </div>
         <div className="flex items-center gap-2">
           {subTab === 'sales' && (
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or UPC..."
-              className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red w-48" />
+            <>
+              <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
+                className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red max-w-[12rem]">
+                <option value="">All categories</option>
+                {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or UPC..."
+                className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red w-48" />
+            </>
           )}
           <button
             onClick={subTab === 'sales' ? exportSales : subTab === 'employee' ? exportEmployee : exportShrinkage}
@@ -318,7 +336,7 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
           ) : !summary || summary.length === 0 ? (
             <p className="text-sm text-text-muted p-6 text-center">No sales in this range yet.</p>
           ) : displaySummary.length === 0 ? (
-            <p className="text-sm text-text-muted p-6 text-center">No items match your search.</p>
+            <p className="text-sm text-text-muted p-6 text-center">No items match your filters.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
