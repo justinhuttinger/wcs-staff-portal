@@ -27,6 +27,24 @@ const MOVEMENT_LABELS = { sale: 'Sale', return: 'Return', received: 'Received', 
 // Vendors we buy inventory from. "Other" covers anything one-off.
 const VENDOR_OPTIONS = ['SportLife', 'Coke', 'Other']
 
+// A valid UPC-A (12) / EAN-13 (13) / EAN-8 (8) barcode carries a self-check
+// (mod-10) digit, so a misread almost never produces a valid one. Validating it
+// lets us trust the FIRST decode instead of waiting for repeated consensus reads
+// (the old 2-consecutive-frames rule stalled real scans for 10-30s). Codes
+// without a standard check digit (Code 39/128) return false and fall back to the
+// consensus path in the caller.
+function hasValidCheckDigit(raw) {
+  const s = String(raw || '').replace(/\D/g, '')
+  if (![8, 12, 13].includes(s.length)) return false
+  const digits = s.split('').map(Number)
+  const check = digits.pop()
+  // EAN-13 weights the LAST data digit by 3; UPC-A/EAN-8 weight the FIRST by 3.
+  // Walking right-to-left over the data digits (×3, ×1, ×3, …) covers all three.
+  let sum = 0
+  for (let i = digits.length - 1, w = 3; i >= 0; i--, w = w === 3 ? 1 : 3) sum += digits[i] * w
+  return (10 - (sum % 10)) % 10 === check
+}
+
 // Camera barcode scanner using @ericblade/quagga2 — same proven setup as the
 // old portal's restock scanner (rear camera, 1D retail barcode readers).
 function Scanner({ onDetected, onClose }) {
@@ -40,9 +58,9 @@ function Scanner({ onDetected, onClose }) {
 
   useEffect(() => {
     let stopped = false
-    // Consensus filter: a single decode is sometimes a misread (works "on the
-    // second try"). Require the SAME code on 2 consecutive frames, and reject
-    // high-error decodes, before accepting — this kills the one-off misreads.
+    // Anti-misread: a barcode with a valid check digit (UPC-A/EAN) is accepted on
+    // the FIRST decode — the check digit IS the consensus. Symbologies without one
+    // (Code 39/128) fall back to requiring the same code on 2 consecutive frames.
     let voteCode = null, voteCount = 0
     const REQUIRED_VOTES = 2
     // Keep the scanner in portrait so rotating the phone can't reflow or break
@@ -56,6 +74,10 @@ function Scanner({ onDetected, onClose }) {
           inputStream: {
             name: 'Live', type: 'LiveStream', target: videoRef.current,
             constraints: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+            // Only decode a centered band (matches the on-screen red guide line).
+            // Quagga then processes far fewer pixels per frame, so decodes land in
+            // a second or two instead of grinding, and stray off-target reads drop.
+            area: { top: '30%', right: '8%', bottom: '30%', left: '8%' },
           },
           decoder: {
             readers: ['upc_reader', 'upc_e_reader', 'ean_reader', 'ean_8_reader', 'code_128_reader', 'code_39_reader'],
@@ -72,19 +94,25 @@ function Scanner({ onDetected, onClose }) {
           if (stopped) return
           const code = result?.codeResult?.code
           if (!code) return
-          // Reject low-confidence decodes (high average per-bar error) — these
-          // are the misreads. Good 1D reads are typically well under 0.25.
+          // Reject obviously garbage decodes (very high average per-bar error).
+          // Good 1D reads sit well under this; the gate is loose so it never
+          // blocks a real barcode that the check digit will validate anyway.
           const errs = (result?.codeResult?.decodedCodes || []).map(d => d.error).filter(e => typeof e === 'number')
           const avgErr = errs.length ? errs.reduce((a, b) => a + b, 0) / errs.length : 0
-          if (avgErr > 0.25) return
-          // Require the same code on consecutive frames before accepting.
+          if (avgErr > 0.35) return
+          // Trust a valid UPC/EAN check digit immediately; otherwise (Code 39/128,
+          // no standard check digit) require the same code on consecutive frames.
+          const accept = () => {
+            stopped = true
+            Quagga.stop()
+            scannerRef.current = null
+            onDetectedRef.current(code)
+          }
+          if (hasValidCheckDigit(code)) { accept(); return }
           if (code === voteCode) voteCount++
           else { voteCode = code; voteCount = 1 }
           if (voteCount < REQUIRED_VOTES) return
-          stopped = true
-          Quagga.stop()
-          scannerRef.current = null
-          onDetectedRef.current(code)
+          accept()
         })
       } catch {
         if (!stopped) setFailed(true)
