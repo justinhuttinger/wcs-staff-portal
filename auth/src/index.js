@@ -34,14 +34,7 @@ app.use('/admin/staff/import', express.raw({ type: '*/*', limit: '10mb' }))
 // just this path BEFORE the global one — whichever parser consumes the stream
 // first wins, so the global parser skips an already-parsed body.
 app.use('/webhooks/tour-intake', express.json({ limit: '6mb' }))
-app.use(express.json({
-  verify: (req, _res, buf) => {
-    // ClickUp signs the raw body. Capture it for the mastermind webhook so HMAC verifies.
-    if (req.path === '/webhooks/mastermind') {
-      req.rawBody = buf.toString('utf8')
-    }
-  },
-}))
+app.use(express.json())
 app.use(cookieParser())
 
 // Health check
@@ -56,7 +49,6 @@ app.use('/config', require('./routes/config'))
 app.use('/launcher', require('./routes/launcher'))
 app.use('/webhooks', require('./routes/webhooks'))
 app.use('/webhooks', require('./routes/metaCapi'))
-app.use('/webhooks', require('./routes/mastermind'))
 app.use('/appointments', require('./routes/appointments'))
 app.use('/tours', require('./routes/tours'))
 app.use('/tour-intake', require('./routes/tourIntake'))
@@ -113,7 +105,6 @@ app.use('/custom-fields', require('./routes/customFields'))
 app.use('/admin/shared-credentials', require('./routes/sharedCredentials'))
 app.use('/admin/cache', require('./routes/cacheAdmin'))
 app.use('/admin/exports', require('./routes/exports'))
-app.use('/admin/mastermind', require('./routes/mastermindStats'))
 app.use('/audit-log', require('./routes/auditLog'))
 
 // WCS University (voice roleplay training) — ships dark behind a flag until the
@@ -157,13 +148,6 @@ app.listen(PORT, () => {
     } catch (err) {
       console.error('[cacheWarmer] failed to start:', err.message)
     }
-  }
-
-  // Marketing Mastermind processor — no-op if MASTERMIND_ENABLED != 'true'
-  try {
-    require('./mastermind').start()
-  } catch (err) {
-    console.error('[mastermind] failed to start:', err.message)
   }
 
   // Inventory ABC sync (catalog daily, POS every 30m). Opt out via env.
