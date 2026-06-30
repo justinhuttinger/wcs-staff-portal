@@ -656,4 +656,63 @@ router.post('/staff/import', requireRole('admin'), async (req, res) => {
   }
 })
 
+// GET /admin/day-one-programs — admin-gated monitor for the Day One PT program
+// generator. Lists pt_programs rows (newest first) with optional filters, plus
+// aggregate counts so the page can show how many were created / completed /
+// emailed / uploaded to ABC / errored.
+router.get('/day-one-programs', requireRole('admin'), async (req, res) => {
+  try {
+    const { status, search, start_date, end_date } = req.query
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1)
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50))
+    const offset = (page - 1) * limit
+
+    // Shared filter builder so the list and the counts stay in sync.
+    const applyFilters = (q) => {
+      if (status) q = q.eq('status', status)
+      if (start_date) q = q.gte('created_at', start_date + 'T00:00:00Z')
+      if (end_date) q = q.lte('created_at', end_date + 'T23:59:59Z')
+      if (search) {
+        const s = String(search).replace(/[%,]/g, ' ').trim()
+        if (s) q = q.or(`contact_name.ilike.%${s}%,contact_email.ilike.%${s}%,trainer_name.ilike.%${s}%`)
+      }
+      return q
+    }
+
+    // Page of rows for the table (program_json omitted — it's large and unused here).
+    const cols = 'id, created_at, completed_at, contact_name, contact_email, trainer_name, club_code, location_id, status, progress, emailed, uploaded_abc, abc_member_id, error_message'
+    let listQuery = supabaseAdmin
+      .from('pt_programs')
+      .select(cols, { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+    const { data, count, error } = await applyFilters(listQuery)
+    if (error) throw error
+
+    // Aggregate counts over the full filtered set (head:true = count only, no rows).
+    const countOf = async (build) => {
+      const { count, error } = await build(applyFilters(
+        supabaseAdmin.from('pt_programs').select('id', { count: 'exact', head: true })
+      ))
+      if (error) throw error
+      return count || 0
+    }
+    const [completed, errored, emailed, uploadedAbc] = await Promise.all([
+      countOf((q) => q.eq('status', 'complete')),
+      countOf((q) => q.eq('status', 'error')),
+      countOf((q) => q.eq('emailed', true)),
+      countOf((q) => q.eq('uploaded_abc', true)),
+    ])
+
+    res.json({
+      programs: data || [],
+      total: count || 0,
+      stats: { total: count || 0, completed, errored, emailed, uploadedAbc },
+    })
+  } catch (err) {
+    console.error('[Admin] day-one-programs error:', err.message)
+    res.status(500).json({ error: 'Failed to fetch Day One programs' })
+  }
+})
+
 module.exports = router
