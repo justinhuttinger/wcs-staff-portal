@@ -25,18 +25,20 @@ export default function AdminPrintAutomationsTab() {
     finally { setBusy('') }
   }
 
-  if (loading) return <div className="p-4 text-text-muted">Loading...</div>
+  if (loading) {
+    return <div className="bg-surface border border-border rounded-xl p-4 text-text-muted">Loading...</div>
+  }
 
   return (
-    <div className="p-4 space-y-3">
+    <div className="bg-surface border border-border rounded-xl p-4 space-y-3">
       <p className="text-sm text-text-muted">Print a till-close receipt automatically when the PM drawer close is submitted in Operandio. Requires an enabled device with a printer for that location.</p>
       {rows.map(r => (
-        <div key={r.location_slug} className="bg-surface border border-border rounded-lg p-3 flex items-center justify-between gap-4">
+        <div key={r.location_slug} className="bg-bg border border-border rounded-lg p-3 flex items-center justify-between gap-4">
           <div>
             <div className="font-semibold text-text-primary">{r.label}</div>
             <div className="text-xs text-text-muted">Prints when the drawer close count is submitted</div>
           </div>
-          <label className="flex items-center gap-2 text-sm whitespace-nowrap">
+          <label className="flex items-center gap-2 text-sm text-text-primary whitespace-nowrap">
             <input type="checkbox" checked={r.enabled} disabled={busy === r.location_slug}
               onChange={e => save(r.location_slug, { enabled: e.target.checked })} />
             Print on close
