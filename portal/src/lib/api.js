@@ -466,6 +466,27 @@ export async function getLocations() {
   return api('/config/locations')
 }
 
+// --- Till-close auto-print -------------------------------------------------
+export async function getPrintDevices() {
+  return api('/print/devices')
+}
+export async function updatePrintDevice(installId, data) {
+  return api('/print/devices/' + encodeURIComponent(installId), {
+    method: 'PUT', body: JSON.stringify(data),
+  })
+}
+export async function testPrintDevice(installId) {
+  return api('/print/devices/' + encodeURIComponent(installId) + '/test', { method: 'POST' })
+}
+export async function getPrintAutomations() {
+  return api('/print/automations')
+}
+export async function updatePrintAutomation(slug, data) {
+  return api('/print/automations/' + encodeURIComponent(slug), {
+    method: 'PUT', body: JSON.stringify(data),
+  })
+}
+
 // Launcher installs (kiosk registry) + one-time location deep links
 export async function getKioskInstalls() {
   return api('/launcher/installs')

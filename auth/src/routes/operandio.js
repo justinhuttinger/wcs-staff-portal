@@ -8,6 +8,8 @@ const { classifyTillCount } = require('../lib/tillCountParse')
 const { parseQaItems } = require('../lib/operandioEmailAudit')
 const { resolveScopedSlugs } = require('../services/locationScope')
 const { SLUG_CLUB_MAP } = require('../utils/locationSlug')
+const { maybeEnqueueTillReceipt } = require('../services/printing/tillReceipt')
+const { loadReconciliation } = require('../services/printing/loadReconciliation')
 
 const router = Router()
 // In-memory upload: SendGrid Inbound Parse posts email attachments as
@@ -277,6 +279,20 @@ router.post('/webhook', upload.any(), async (req, res) => {
       return res.status(500).json({ error: 'till_counts upsert failed' })
     }
     console.log('[Operandio] Till count stored:', till.location_slug, till.count_type, '$' + till.counted_amount)
+    // Fire-and-forget till-close auto-print on a CLOSE count. The close row was
+    // just upserted above, so loadReconciliation can read it. Must never break
+    // ingestion (best-effort, swallows its own errors).
+    if (till.count_type === 'close') {
+      maybeEnqueueTillReceipt({
+        supabase: supabaseAdmin,
+        locationSlug: till.location_slug,
+        businessDate: till.business_date,
+        loadReconciliation,
+      }).then(r => {
+        if (r.enqueued) console.log('[print] till receipt queued', r.jobId)
+        else if (r.reason && r.reason !== 'no_automation') console.log('[print] till receipt skipped:', r.reason)
+      }).catch(e => console.error('[print] enqueue error:', e.message))
+    }
     return res.json({ tillCount: true, location: till.location_slug, count_type: till.count_type, counted_amount: till.counted_amount })
   }
 
