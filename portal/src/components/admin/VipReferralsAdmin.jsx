@@ -108,7 +108,7 @@ function SubmissionDetail({ id, onClose }) {
               <section className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-xl font-bold text-text-primary">
-                    {sub.referrer_name || '(no name)'}
+                    {(`${sub.referrer_first_name || ''} ${sub.referrer_last_name || ''}`).trim() || '(no name)'}
                   </div>
                   <div className="text-xs text-text-muted">
                     {sub.referrer_email || ''}{sub.referrer_phone ? ` - ${sub.referrer_phone}` : ''}
@@ -120,10 +120,10 @@ function SubmissionDetail({ id, onClose }) {
               {/* Meta grid */}
               <section className="grid grid-cols-2 gap-3 text-xs">
                 <div><span className="text-text-muted">Location:</span>{' '}
-                  <span className="font-semibold">{sub.location || '-'}</span>
+                  <span className="font-semibold">{sub.location_slug || '-'}</span>
                 </div>
                 <div><span className="text-text-muted">Employee:</span>{' '}
-                  <span>{sub.employee || '-'}</span>
+                  <span>{sub.employee_name || '-'}</span>
                 </div>
                 <div><span className="text-text-muted">VIPs referred:</span>{' '}
                   <span className="font-semibold">{sub.vip_count ?? '-'}</span>
@@ -154,16 +154,16 @@ function SubmissionDetail({ id, onClose }) {
                       <tbody>
                         {recipients.map(r => (
                           <tr key={r.id} className="border-b border-border last:border-0">
-                            <td className="px-3 py-2 font-medium text-text-primary">{r.name || '-'}</td>
+                            <td className="px-3 py-2 font-medium text-text-primary">{(`${r.first_name || ''} ${r.last_name || ''}`).trim() || '-'}</td>
                             <td className="px-3 py-2 font-mono text-text-muted">{r.phone || '-'}</td>
                             <td className="px-3 py-2">
-                              <RecBadge status={r.status} />
+                              <RecBadge status={r.fanout_status} />
                               {r.error_detail && (
                                 <div className="text-[10px] text-red-600 mt-0.5">{r.error_detail}</div>
                               )}
                             </td>
                             <td className="px-3 py-2 text-right">
-                              {r.status === 'failed' && (
+                              {r.fanout_status === 'failed' && (
                                 <button
                                   onClick={() => onRetry(r.id)}
                                   disabled={retrying === r.id}
@@ -231,12 +231,20 @@ function VipSubmissions() {
       <div className="bg-surface border border-border rounded-xl p-3 flex flex-wrap items-end gap-3">
         <label className="text-xs">
           <span className="block text-text-muted mb-0.5">Location</span>
-          <input
+          <select
             value={filters.location}
             onChange={e => { setPage(1); setFilters(f => ({ ...f, location: e.target.value })) }}
-            placeholder="All"
             className="px-2.5 py-1 bg-bg border border-border rounded-lg text-xs focus:outline-none focus:border-wcs-red"
-          />
+          >
+            <option value="">All locations</option>
+            <option value="salem">salem</option>
+            <option value="keizer">keizer</option>
+            <option value="eugene">eugene</option>
+            <option value="milwaukie">milwaukie</option>
+            <option value="clackamas">clackamas</option>
+            <option value="springfield">springfield</option>
+            <option value="medford">medford</option>
+          </select>
         </label>
         <label className="text-xs">
           <span className="block text-text-muted mb-0.5">Status</span>
@@ -333,9 +341,9 @@ function VipSubmissions() {
                 onClick={() => setDetailId(s.id)}
               >
                 <td className="px-3 py-2 text-xs text-text-muted whitespace-nowrap">{fmt(s.created_at)}</td>
-                <td className="px-3 py-2 text-xs font-semibold text-text-primary">{s.referrer_name || '-'}</td>
-                <td className="px-3 py-2 text-xs">{s.location || '-'}</td>
-                <td className="px-3 py-2 text-xs text-text-muted">{s.employee || '-'}</td>
+                <td className="px-3 py-2 text-xs font-semibold text-text-primary">{(`${s.referrer_first_name || ''} ${s.referrer_last_name || ''}`).trim() || '-'}</td>
+                <td className="px-3 py-2 text-xs">{s.location_slug || '-'}</td>
+                <td className="px-3 py-2 text-xs text-text-muted">{s.employee_name || '-'}</td>
                 <td className="px-3 py-2 text-xs font-mono">{s.vip_count ?? '-'}</td>
                 <td className="px-3 py-2"><SubBadge status={s.status} /></td>
                 <td className="px-3 py-2 text-right">
