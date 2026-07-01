@@ -1529,3 +1529,14 @@ export async function getDailySnapshot({ date, location } = {}) {
   const qs = params.toString()
   return api('/reports/daily-snapshot' + (qs ? '?' + qs : ''))
 }
+
+// Monthly POS sales-commission CSV upload (Admin → Payroll Commissions).
+export async function previewSalesCommissions(file) {
+  const fd = new FormData(); fd.append('file', file)
+  return api('/reports/payroll/sales-commissions/preview', { method: 'POST', body: fd })
+}
+
+export async function applySalesCommissions(file, period) {
+  const fd = new FormData(); fd.append('file', file); fd.append('period', period)
+  return api('/reports/payroll/sales-commissions/apply', { method: 'POST', body: fd })
+}

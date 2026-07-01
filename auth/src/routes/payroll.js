@@ -1,12 +1,16 @@
 const { Router } = require('express')
+const multer = require('multer')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireReportAccess, canSeeAllLocations } = require('../middleware/role')
+const { requireReportAccess, requireRole, canSeeAllLocations } = require('../middleware/role')
 const { parseLocationSlugParam, intersectWithAllowed } = require('../utils/locationSlug')
 
 const router = Router()
 router.use(authenticate)
 router.use(requireReportAccess('manager', ['payroll']))
+
+// CSV upload for the monthly ABC POS sales-commission load (admin-only).
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
 const ABC_BASE_URL = process.env.ABC_BASE_URL || 'https://api.abcfinancial.com/rest'
 const ABC_APP_ID = process.env.ABC_APP_ID
@@ -529,6 +533,178 @@ router.post('/export-sheet', async (req, res) => {
       return res.status(412).json({ error: 'google_not_connected', message: err.message })
     }
     res.status(err.status || 500).json({ error: err.message || 'Export failed' })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Monthly POS sales-commission CSV upload
+//
+// ABC emails a CSV each month with columns:
+//   "Club Nbr","Sales Person (first last)","Profit Center","Commission"
+// We load it into payroll_sales_commissions, excluding TRAINING rows (always
+// $0 placeholders — PT commission comes from the ABC recurring-services sync
+// into payroll_recurring_commissions instead). Upsert is keyed on
+// (period, club_number, employee_name, profit_center) so re-uploading the same
+// month is idempotent. This replaces the old manual scripts/REST load.
+// ---------------------------------------------------------------------------
+
+const COMMISSION_HEADERS = ['Club Nbr', 'Sales Person (first last)', 'Profit Center', 'Commission']
+
+// Split one CSV line honoring double-quoted fields (with "" escapes).
+function splitCsvLine(line) {
+  const out = []
+  let cur = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++ }
+        else inQuotes = false
+      } else cur += ch
+    } else if (ch === '"') {
+      inQuotes = true
+    } else if (ch === ',') {
+      out.push(cur); cur = ''
+    } else cur += ch
+  }
+  out.push(cur)
+  return out
+}
+
+// Parse the ABC commission CSV. Returns { rows, dropped_training } where rows
+// are the non-TRAINING commission records ready to upsert. Throws on a header
+// mismatch so a wrong file is rejected loudly rather than loaded silently.
+function parseCommissionCsv(text) {
+  const clean = text.replace(/^﻿/, '')
+  const lines = clean.split(/\r?\n/).filter((l) => l.trim().length > 0)
+  if (lines.length === 0) throw new Error('File is empty')
+
+  const header = splitCsvLine(lines[0]).map((h) => h.trim())
+  const ok = COMMISSION_HEADERS.every((h, i) => (header[i] || '').toLowerCase() === h.toLowerCase())
+  if (!ok) {
+    throw new Error(
+      `Unexpected columns. Expected: ${COMMISSION_HEADERS.join(', ')}. Got: ${header.join(', ')}`
+    )
+  }
+
+  const rows = []
+  let droppedTraining = 0
+  for (let i = 1; i < lines.length; i++) {
+    const c = splitCsvLine(lines[i]).map((v) => v.trim())
+    const club_number = c[0]
+    const employee_name = c[1]
+    const profit_center = c[2]
+    const commission = Number(c[3] || 0)
+    if (!club_number || !employee_name || !profit_center) continue
+    if (profit_center.toUpperCase() === 'TRAINING') { droppedTraining++; continue }
+    rows.push({
+      club_number,
+      employee_name,
+      profit_center,
+      commission: Number.isFinite(commission) ? commission : 0,
+    })
+  }
+  return { rows, dropped_training: droppedTraining }
+}
+
+function round2(n) { return Math.round(n * 100) / 100 }
+
+// Build the preview/summary payload shared by both endpoints.
+function summarizeCommissionRows(rows) {
+  const byClub = {}
+  const byProfitCenter = {}
+  const dupCounts = new Map()
+  let total = 0
+  for (const r of rows) {
+    total += r.commission
+    byClub[r.club_number] = round2((byClub[r.club_number] || 0) + r.commission)
+    byProfitCenter[r.profit_center] = round2((byProfitCenter[r.profit_center] || 0) + r.commission)
+    const k = `${r.club_number}|${r.employee_name}|${r.profit_center}`
+    dupCounts.set(k, (dupCounts.get(k) || 0) + 1)
+  }
+  const duplicates = [...dupCounts.entries()].filter(([, n]) => n > 1).length
+  return {
+    rows_to_load: rows.length,
+    total_commission: round2(total),
+    clubs: Object.keys(byClub).length,
+    duplicates,
+    by_club: Object.fromEntries(Object.entries(byClub).sort()),
+    by_profit_center: Object.fromEntries(Object.entries(byProfitCenter).sort()),
+  }
+}
+
+// POST /reports/payroll/sales-commissions/preview  (multipart: file)
+// Parses the CSV and returns a summary WITHOUT writing anything.
+router.post('/sales-commissions/preview', requireRole('admin'), upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
+    let parsed
+    try {
+      parsed = parseCommissionCsv(req.file.buffer.toString('utf8'))
+    } catch (e) {
+      return res.status(400).json({ error: e.message })
+    }
+    res.json({
+      total_rows: parsed.rows.length + parsed.dropped_training,
+      dropped_training: parsed.dropped_training,
+      ...summarizeCommissionRows(parsed.rows),
+    })
+  } catch (err) {
+    console.error('[Payroll] commission preview error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /reports/payroll/sales-commissions/apply  (multipart: file, period=YYYY-MM)
+// Upserts the parsed rows into payroll_sales_commissions for the given month.
+router.post('/sales-commissions/apply', requireRole('admin'), upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
+    const period = parsePeriod(req.body.period)
+    if (!period) return res.status(400).json({ error: 'period is required, format YYYY-MM (e.g. 2026-06)' })
+
+    let parsed
+    try {
+      parsed = parseCommissionCsv(req.file.buffer.toString('utf8'))
+    } catch (e) {
+      return res.status(400).json({ error: e.message })
+    }
+    if (parsed.rows.length === 0) {
+      return res.status(400).json({ error: 'No commission rows to load (every row was empty or TRAINING).' })
+    }
+
+    const uploadedBy = req.staff?.email || req.staff?.id || null
+    const records = parsed.rows.map((r) => ({
+      period: period.period,
+      club_number: r.club_number,
+      employee_name: r.employee_name,
+      profit_center: r.profit_center,
+      commission: r.commission,
+      source: 'csv_upload',
+      uploaded_by: uploadedBy,
+      uploaded_at: new Date().toISOString(),
+    }))
+
+    const CHUNK = 500
+    for (let i = 0; i < records.length; i += CHUNK) {
+      const { error } = await supabaseAdmin
+        .from('payroll_sales_commissions')
+        .upsert(records.slice(i, i + CHUNK), {
+          onConflict: 'period,club_number,employee_name,profit_center',
+        })
+      if (error) throw new Error(error.message)
+    }
+
+    res.json({
+      period: period.period,
+      upserted: records.length,
+      dropped_training: parsed.dropped_training,
+      ...summarizeCommissionRows(parsed.rows),
+    })
+  } catch (err) {
+    console.error('[Payroll] commission apply error:', err.message)
+    res.status(500).json({ error: err.message })
   }
 })
 
