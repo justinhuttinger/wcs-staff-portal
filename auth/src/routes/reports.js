@@ -176,9 +176,10 @@ router.get('/membership', async (req, res) => {
     let clubNumbers = []
     if (locationFilter && locationFilter.column === 'location_slug') {
       clubNumbers = locationFilter.values.map(s => SLUG_CLUB_MAP[s]).filter(Boolean)
-      if (clubNumbers.length > 0) {
-        abcQuery = abcQuery.in('club_number', clubNumbers)
-      }
+      // A slug scope that maps to zero clubs (e.g. a restricted user narrowed to
+      // no-access) must return NOTHING — not silently drop the filter and leak
+      // every club. Apply an impossible club_number in that case.
+      abcQuery = abcQuery.in('club_number', clubNumbers.length ? clubNumbers : ['__none__'])
     }
 
     // Paginate past 1000 limit
@@ -510,6 +511,9 @@ router.get('/club-health', async (req, res) => {
     let clubNumbers2 = []
     if (locationFilter && locationFilter.column === 'location_slug') {
       clubNumbers2 = locationFilter.values.map(s => SLUG_CLUB_MAP[s]).filter(Boolean)
+      // Scoped-but-maps-to-zero (no-access) → sentinel so every club_number
+      // filter below returns nothing instead of leaking all clubs.
+      if (clubNumbers2.length === 0) clubNumbers2 = ['__none__']
     }
 
     let abcQuery = supabaseAdmin
@@ -794,6 +798,9 @@ router.get('/cancels', async (req, res) => {
     let clubNumbersC = []
     if (locationFilter && locationFilter.column === 'location_slug') {
       clubNumbersC = locationFilter.values.map(s => SLUG_CLUB_MAP[s]).filter(Boolean)
+      // Scoped-but-maps-to-zero (no-access) → sentinel so every club_number
+      // filter below returns nothing instead of leaking all clubs.
+      if (clubNumbersC.length === 0) clubNumbersC = ['__none__']
     }
 
     const skipTypes = await getSkipList()
@@ -1463,6 +1470,10 @@ router.get('/membership-audit', async (req, res) => {
     let clubNumbers = []
     if (locationFilter) {
       clubNumbers = locationFilter.values.map(s => SLUG_CLUB_MAP[s]).filter(Boolean)
+      // Slug scope mapping to zero clubs (no-access) must return nothing, not all.
+      if (locationFilter.column === 'location_slug' && clubNumbers.length === 0) {
+        clubNumbers = ['__none__']
+      }
     }
     const pClubs = clubNumbers.length > 0 ? clubNumbers : null
     const includeAnomalies = req.query.include_anomalies !== 'false'

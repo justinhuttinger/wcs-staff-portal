@@ -235,7 +235,14 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
   // Build the list of locations this user can view reports for
   const reportLocations = (user?.staff?.locations || []).filter(l => l.can_view_reports !== false)
   const hasMultipleReportLocations = isAdmin || reportLocations.length > 1
-  const defaultSlug = hasMultipleReportLocations ? 'all' : (location || 'Salem').toLowerCase()
+  // A restricted (single report-club) user MUST default to a club they can
+  // actually see. The global `location` can be a stale location override or the
+  // 'Salem' fallback; if that isn't one of their clubs, the backend silently
+  // narrows it to no-access and every slug-keyed report reads empty/0. Anchor to
+  // their own report location instead of `location`.
+  const defaultSlug = hasMultipleReportLocations
+    ? 'all'
+    : (reportLocations[0]?.name?.toLowerCase() || (location || 'Salem').toLowerCase())
   const [locationSlug, setLocationSlug] = useState(defaultSlug)
   const [activeQuick, setActiveQuick] = useState('this_month')
   // Cancels report: All / Membership / Insurance plan-type filter
