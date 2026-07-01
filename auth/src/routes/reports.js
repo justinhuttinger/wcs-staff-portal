@@ -1,7 +1,7 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireReportAccess } = require('../middleware/role')
+const { requireReportAccess, requireRole } = require('../middleware/role')
 const { recombineTotals } = require('../lib/membershipAuditTotals')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { countVipsByTeamMember: _countVipsByTeamMember } = require('../utils/vipsByTeamMember')
@@ -1512,6 +1512,53 @@ router.get('/membership-audit', async (req, res) => {
     })
   } catch (err) {
     return res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /reports/kpi-history — frozen end-of-day KPI snapshots for a date range.
+// Query: start_date, end_date (YYYY-MM-DD), optional kpi_key, location_slug.
+// Rows carry the MTD-as-of-day `value`, the `goal` in effect that day, and the
+// raw numerator/denominator/sample_size. Scoped to the caller's clubs.
+// ---------------------------------------------------------------------------
+router.get('/kpi-history', requireReportAccess('manager', ['kpis']), async (req, res) => {
+  try {
+    const { start_date, end_date, kpi_key } = req.query
+    let q = supabaseAdmin
+      .from('kpi_daily_snapshots')
+      .select('snapshot_date, location_slug, kpi_key, value, goal, numerator, denominator, sample_size')
+      .order('snapshot_date', { ascending: true })
+    if (start_date) q = q.gte('snapshot_date', start_date)
+    if (end_date) q = q.lte('snapshot_date', end_date)
+    if (kpi_key) q = q.eq('kpi_key', kpi_key)
+    // Lock lead/manager to their assigned clubs (corp/admin see all).
+    const scoped = await resolveScopedSlugs(req)
+    if (scoped.slugs) {
+      q = scoped.slugs.length === 1 ? q.eq('location_slug', scoped.slugs[0]) : q.in('location_slug', scoped.slugs)
+    }
+    const { data, error } = await q
+    if (error) throw error
+    res.json({ rows: data || [] })
+  } catch (err) {
+    console.error('[reports] /kpi-history error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// POST /reports/kpi-snapshot/run — manually compute + store a day's snapshot.
+// Admin only. Optional `date` (YYYY-MM-DD, Pacific; defaults to today). The
+// nightly cron does this automatically; this is for testing / one-off captures.
+// ---------------------------------------------------------------------------
+router.post('/kpi-snapshot/run', requireRole('admin'), async (req, res) => {
+  try {
+    const date = (req.body && req.body.date) || req.query.date
+    const { runSnapshot } = require('../services/kpiSnapshot')
+    const result = await runSnapshot(date || undefined)
+    res.json({ ok: true, ...result })
+  } catch (err) {
+    console.error('[reports] /kpi-snapshot/run error:', err.message)
+    res.status(500).json({ error: err.message })
   }
 })
 
