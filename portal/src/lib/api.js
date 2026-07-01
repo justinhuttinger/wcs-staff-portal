@@ -1300,6 +1300,25 @@ export async function getOperandioQaReport(id, options = {}) {
   return api('/operandio/qa-reports/' + id, options)
 }
 
+// Frozen end-of-day KPI snapshots (History view). params: start_date, end_date,
+// optional location_slug, kpi_key.
+export async function getKpiHistory(params = {}, options = {}) {
+  const cleaned = {}
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') cleaned[k] = v
+  }
+  const qs = new URLSearchParams(cleaned).toString()
+  return api('/reports/kpi-history' + (qs ? '?' + qs : ''), options)
+}
+
+// Admin-only: manually compute + store a day's KPI snapshot (default today PT).
+export async function runKpiSnapshot(date) {
+  return api('/reports/kpi-snapshot/run', {
+    method: 'POST',
+    body: JSON.stringify(date ? { date } : {}),
+  })
+}
+
 // QA-Cleaning audit submissions (Cleanliness - Quality Assessment KPI)
 export async function getOperandioQaReports(params = {}, options = {}) {
   const cleaned = {}

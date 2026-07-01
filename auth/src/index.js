@@ -170,6 +170,14 @@ app.listen(PORT, () => {
     console.error('[blog] failed to start:', err.message)
   }
 
+  // Nightly KPI snapshot — freezes end-of-day KPIs for the History view.
+  // Opt out via KPI_SNAPSHOT_DISABLED=1 (checked inside start()).
+  try {
+    require('./services/kpiSnapshot').start()
+  } catch (err) {
+    console.error('[kpiSnapshot] failed to start:', err.message)
+  }
+
   // RBAC v2: load admin-created role -> base-tier map so the synchronous auth
   // gates can resolve custom roles. Refresh periodically as a safety net for
   // roles created on another server instance (CRUD also refreshes in-process).
