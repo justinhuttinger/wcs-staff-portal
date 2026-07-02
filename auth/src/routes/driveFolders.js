@@ -30,6 +30,44 @@ function withEditFlag(file) {
   return { ...rest, anyoneCanEdit: anyoneCanEdit(permissions) }
 }
 
+// Compute the configured Drive roots this user may access, honoring each
+// root's min_role and per-location restrictions. Returns [] when the user
+// can see none. Shared by every endpoint that touches Drive contents so they
+// all enforce access identically — previously only /list did, leaving
+// /file-content, /file and /search open to any authenticated staffer.
+async function getVisibleRoots(req) {
+  const userRole = resolveRole(req.staff.role)
+  const userLevel = ROLE_HIERARCHY.indexOf(userRole)
+  const userLocationIds = req.staff.location_ids || []
+
+  const { data: folders } = await supabaseAdmin
+    .from('drive_folders')
+    .select('id, folder_id, min_role')
+    .eq('is_active', true)
+
+  const accessibleRoots = (folders || []).filter(f => {
+    const minLevel = ROLE_HIERARCHY.indexOf(resolveRole(f.min_role || 'team_member'))
+    return userLevel >= minLevel
+  })
+
+  const rootIds = accessibleRoots.map(f => f.id)
+  const { data: locRows } = rootIds.length
+    ? await supabaseAdmin.from('drive_folder_locations').select('folder_id, location_id').in('folder_id', rootIds)
+    : { data: [] }
+  const locsByFolder = {}
+  for (const r of (locRows || [])) {
+    if (!locsByFolder[r.folder_id]) locsByFolder[r.folder_id] = []
+    locsByFolder[r.folder_id].push(r.location_id)
+  }
+  const seesAll = ['admin', 'corporate'].includes(userRole)
+  return accessibleRoots.filter(f => {
+    const restrictions = locsByFolder[f.id]
+    if (!restrictions || restrictions.length === 0) return true
+    if (seesAll) return true
+    return restrictions.some(locId => userLocationIds.includes(locId))
+  })
+}
+
 // Extract a Google Drive folder ID from various URL formats
 // Accepts: raw ID, /folders/<id>, /drive/folders/<id>, ?id=<id>
 function extractFolderId(input) {
@@ -206,41 +244,8 @@ router.get('/list', async (req, res) => {
   if (!folder_id) return res.status(400).json({ error: 'folder_id required' })
 
   try {
-    // Verify the user has access to a configured root that owns this folder.
-    // For simplicity v1: allow listing if folder_id matches ANY configured folder
-    // OR if the user has access to at least one root folder (descendants are OK).
-    const userRole = resolveRole(req.staff.role)
-    const userLevel = ROLE_HIERARCHY.indexOf(userRole)
-    const userLocationIds = req.staff.location_ids || []
-
-    const { data: folders } = await supabaseAdmin
-      .from('drive_folders')
-      .select('id, folder_id, min_role')
-      .eq('is_active', true)
-
-    const accessibleRoots = (folders || []).filter(f => {
-      const minLevel = ROLE_HIERARCHY.indexOf(resolveRole(f.min_role || 'team_member'))
-      return userLevel >= minLevel
-    })
-
-    // Per-location check
-    const rootIds = accessibleRoots.map(f => f.id)
-    const { data: locRows } = rootIds.length
-      ? await supabaseAdmin.from('drive_folder_locations').select('folder_id, location_id').in('folder_id', rootIds)
-      : { data: [] }
-    const locsByFolder = {}
-    for (const r of (locRows || [])) {
-      if (!locsByFolder[r.folder_id]) locsByFolder[r.folder_id] = []
-      locsByFolder[r.folder_id].push(r.location_id)
-    }
-    const seesAll = ['admin', 'corporate'].includes(userRole)
-    const visibleRoots = accessibleRoots.filter(f => {
-      const restrictions = locsByFolder[f.id]
-      if (!restrictions || restrictions.length === 0) return true
-      if (seesAll) return true
-      return restrictions.some(locId => userLocationIds.includes(locId))
-    })
-
+    // Verify the user has access to at least one configured root folder.
+    const visibleRoots = await getVisibleRoots(req)
     if (visibleRoots.length === 0) {
       return res.status(403).json({ error: 'No accessible drive folders for this user' })
     }
@@ -290,6 +295,12 @@ router.get('/search', async (req, res) => {
   if (q.length < 2) return res.json({ files: [] })
 
   try {
+    // Only allow searching under a configured root the caller can actually see.
+    const visibleRoots = await getVisibleRoots(req)
+    if (!visibleRoots.some(r => r.folder_id === root_id)) {
+      return res.status(403).json({ error: 'No access to this drive folder' })
+    }
+
     const token = await getAccessToken()
 
     // 1) BFS descendants
@@ -368,6 +379,11 @@ router.get('/file-content', async (req, res) => {
   if (!file_id) return res.status(400).json({ error: 'file_id required' })
 
   try {
+    const visibleRoots = await getVisibleRoots(req)
+    if (visibleRoots.length === 0) {
+      return res.status(403).json({ error: 'No accessible drive folders for this user' })
+    }
+
     const token = await getAccessToken()
 
     // 1) metadata to determine type
@@ -414,6 +430,10 @@ router.get('/file', async (req, res) => {
   const { file_id } = req.query
   if (!file_id) return res.status(400).json({ error: 'file_id required' })
   try {
+    const visibleRoots = await getVisibleRoots(req)
+    if (visibleRoots.length === 0) {
+      return res.status(403).json({ error: 'No accessible drive folders for this user' })
+    }
     const token = await getAccessToken()
     const params = new URLSearchParams({
       fields: 'id,name,mimeType,parents',
