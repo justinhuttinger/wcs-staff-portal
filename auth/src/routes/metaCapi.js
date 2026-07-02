@@ -3,9 +3,14 @@ const crypto = require('crypto')
 
 const router = Router()
 
+// Fail closed: an unset secret must reject, not accept anonymous CAPI events
+// that would be forged with the server's Meta access token.
 function verifyWebhookSecret(req, res, next) {
   const secret = process.env.GHL_WEBHOOK_SECRET
-  if (!secret) return next()
+  if (!secret) {
+    console.error('[metaCapi] GHL_WEBHOOK_SECRET not configured')
+    return res.status(503).json({ error: 'webhook not configured' })
+  }
   const provided = req.headers['x-webhook-secret'] || req.query.secret
   if (provided !== secret) {
     return res.status(401).json({ error: 'Invalid webhook secret' })
