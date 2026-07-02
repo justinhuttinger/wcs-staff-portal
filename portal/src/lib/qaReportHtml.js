@@ -354,6 +354,32 @@ export function buildQaReportHtml(report, clubLabel) {
 // Operandio app link. `fetchReport` is injected (the api helper) to avoid an
 // import cycle with api.js consumers.
 export async function openAuditReport(row, fetchReport, clubLabel) {
+  // In the kiosk launcher, render the report as a proper in-app tab (with a
+  // real tab title, no floating OS popup) via the preload bridge. Requires
+  // launcher >= 1.7.2; older launchers/browsers fall through to the blank-
+  // window + document.write path below.
+  const openReportTab = typeof window !== 'undefined'
+    && window.wcsElectron && typeof window.wcsElectron.openReportTab === 'function'
+    ? window.wcsElectron.openReportTab
+    : null
+  if (openReportTab) {
+    const title = `${clubLabel || ''} Audit Report`.trim()
+    try {
+      const full = await fetchReport(row.id)
+      if (full?.items?.length) {
+        openReportTab(buildQaReportHtml(full, clubLabel), title)
+        return
+      }
+      const url = full?.report_url || row.report_url
+      if (url) window.open(url, '_blank') // launcher routes real URLs into a tab
+    } catch {
+      if (row.report_url) window.open(row.report_url, '_blank')
+    }
+    return
+  }
+
+  // Browser (or launcher < 1.7.2): open a blank tab synchronously so popup
+  // blockers don't eat it, then fill it once the breakdown arrives.
   const w = window.open('', '_blank')
   if (!w) return
   w.document.write('<title>Loading report…</title><p style="font-family:sans-serif;color:#666;padding:24px">Loading report…</p>')
