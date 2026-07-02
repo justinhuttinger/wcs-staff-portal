@@ -316,15 +316,30 @@ router.get('/membership', async (req, res) => {
       })
     }
 
-    // Attribute VIPs to each salesperson via the vip_team_member field.
-    // Match by case-insensitive trimmed name so "John Smith" and "john smith" align.
-    const lowerSpKeys = Object.fromEntries(Object.keys(bySalesperson).map(k => [k.toLowerCase().trim(), k]))
-    for (const [name, count] of Object.entries(vipsByPerson)) {
-      const key = lowerSpKeys[name.toLowerCase().trim()] || name
-      if (!bySalesperson[key]) {
-        bySalesperson[key] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0, members: [] }
+    // ABC stores rep names with irregular internal spacing (e.g. the sales
+    // names come back as "Hailey  Reynolds" with a double space), while GHL's
+    // day-one/VIP team-member names are single-spaced ("Hailey Reynolds").
+    // Match on a normalized key (lowercased, internal whitespace collapsed) so
+    // the same rep isn't split into two rows — one carrying sales, the other
+    // carrying day-ones/VIPs. resolveSpKey returns the existing sales-row key
+    // when a rep already exists, otherwise registers a new row for reps who
+    // only booked day-ones/VIPs with no sales this period.
+    const normName = s => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+    const canonicalByNorm = {}
+    for (const k of Object.keys(bySalesperson)) canonicalByNorm[normName(k)] = k
+    const resolveSpKey = (name) => {
+      const norm = normName(name)
+      if (canonicalByNorm[norm]) return canonicalByNorm[norm]
+      canonicalByNorm[norm] = name
+      if (!bySalesperson[name]) {
+        bySalesperson[name] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0, members: [] }
       }
-      bySalesperson[key].vips += count
+      return name
+    }
+
+    // Attribute VIPs to each salesperson via the vip_team_member field.
+    for (const [name, count] of Object.entries(vipsByPerson)) {
+      bySalesperson[resolveSpKey(name)].vips += count
     }
 
     // Add day one booking dates to the chart
@@ -337,12 +352,9 @@ router.get('/membership', async (req, res) => {
       }
     }
 
-    // Merge day one counts into salesperson data
+    // Merge day one counts into salesperson data (normalized key match).
     for (const [person, count] of Object.entries(dayOneByPerson)) {
-      if (!bySalesperson[person]) {
-        bySalesperson[person] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0, members: [] }
-      }
-      bySalesperson[person].day_one_booked = count
+      bySalesperson[resolveSpKey(person)].day_one_booked = count
     }
 
     const byDateArr = Object.entries(byDate)
