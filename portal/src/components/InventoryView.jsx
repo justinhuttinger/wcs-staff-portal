@@ -672,19 +672,32 @@ function SortHeader({ label, col, sort, onSort, align = 'right' }) {
 }
 
 export default function InventoryView({ onBack, location, isAdmin, user }) {
-  // Clubs this user may restock into. Admins get every club; everyone else gets
-  // the locations on their staff profile. Invoices are always single-club.
+  // All-location roles see every club; everyone else is locked to the locations
+  // on their staff profile (matches the backend scoping in routes/inventory.js).
+  const canSeeAllClubs = isAdmin || ['corporate', 'marketing'].includes(user?.staff?.role)
+  // Clubs this user may view/restock into. Invoices are always single-club.
   const accessibleSlugs = useMemo(() => {
     const all = LOCATION_OPTIONS.filter(o => o.slug !== 'all').map(o => o.slug)
-    if (isAdmin) return all
+    if (canSeeAllClubs) return all
     const mine = (user?.staff?.locations || [])
       .map(l => String(l.name || '').toLowerCase())
       .filter(s => all.includes(s))
     return mine.length ? mine : (all.includes(String(location || '').toLowerCase()) ? [String(location).toLowerCase()] : all)
-  }, [isAdmin, user, location])
+  }, [canSeeAllClubs, user, location])
+
+  // Club filter dropdown: restricted roles only get their own clubs (plus an
+  // "All My Clubs" rollup when assigned more than one — the backend narrows
+  // 'all' to their clubs anyway).
+  const clubOptions = useMemo(() => {
+    if (canSeeAllClubs) return LOCATION_OPTIONS
+    const mine = LOCATION_OPTIONS.filter(o => accessibleSlugs.includes(o.slug))
+    return mine.length > 1 ? [{ slug: 'all', label: 'All My Clubs' }, ...mine] : mine
+  }, [canSeeAllClubs, accessibleSlugs])
 
   const [tab, setTab] = useState('items') // items | order | restock | audit (admin)
-  const [slug, setSlug] = useState('all') // default to all clubs; dropdown can narrow
+  // Default to the widest view the user can see; single-club users land on their club.
+  const [slug, setSlug] = useState(() =>
+    canSeeAllClubs || accessibleSlugs.length > 1 ? 'all' : (accessibleSlugs[0] || 'all'))
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
   const [categories, setCategories] = useState([])
@@ -1011,7 +1024,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
           <div>
             <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Club</span>
             <select value={slug} onChange={e => setSlug(e.target.value)} className={inputCls + ' w-44'}>
-              {LOCATION_OPTIONS.map(o => <option key={o.slug} value={o.slug}>{o.label}</option>)}
+              {clubOptions.map(o => <option key={o.slug} value={o.slug}>{o.label}</option>)}
             </select>
           </div>
           {(tab === 'items' || tab === 'order') && (

@@ -8,9 +8,10 @@ const { Router } = require('express')
 const multer = require('multer')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole, resolveRole } = require('../middleware/role')
+const { requireRole, resolveRole, canSeeAllLocations } = require('../middleware/role')
 const { getAccessToken } = require('./googleBusiness')
 const { parseLocationSlugParam, SLUG_CLUB_MAP } = require('../utils/locationSlug')
+const { resolveScopedSlugs, getUserAllowedSlugs } = require('../services/locationScope')
 const { SELLABLE_PROFIT_CENTERS, SELLABLE_CATEGORIES, isSellableItem } = require('../utils/inventoryProfitCenters')
 const inventorySync = require('../services/inventorySync')
 const { normalizeOrderNumber } = require('../utils/inventoryInvoiceKey')
@@ -32,13 +33,39 @@ router.use(authenticate)
 // and the Sales tab / margin column are hidden for them in the UI.
 router.use(requireRole('lead'))
 
-// Resolve ?location_slug= into a club_number list. Returns null (= no filter)
-// for 'all', or { error } for unknown slugs.
-function clubFilter(req) {
-  const parsed = parseLocationSlugParam(req.query.location_slug)
-  if (parsed.invalid) return { error: `Unknown location: ${parsed.invalid}` }
-  if (parsed.all) return { clubs: null }
-  return { clubs: parsed.slugs.map(s => SLUG_CLUB_MAP[s]) }
+// Resolve ?location_slug= into a club_number list, scoped to the caller's
+// assigned clubs (services/locationScope — same pattern as the report
+// endpoints). Restricted roles (lead/manager/custom) are locked to
+// req.staff.location_ids: "all" silently narrows to their clubs, and no
+// assigned clubs = no rows. Returns { clubs: null } (= no filter) only for
+// all-location roles (corporate/marketing/admin), or { error } for unknown slugs.
+async function clubFilter(req) {
+  let scoped
+  try {
+    scoped = await resolveScopedSlugs(req)
+  } catch (e) {
+    return { error: e.message }
+  }
+  if (scoped.all) return { clubs: null }
+  // NO_ACCESS_SLUG (no assigned clubs) maps to a club number matching no rows.
+  return { clubs: scoped.slugs.map(s => SLUG_CLUB_MAP[s] || '__none__') }
+}
+
+// Club numbers the caller may touch, or null = unrestricted. For per-row guards
+// on the /items/:id and /invoices/:id routes, where the query filter above
+// can't help (the row is addressed by id, not by club).
+async function allowedClubSet(req) {
+  if (canSeeAllLocations(req.staff?.role)) return null
+  const slugs = await getUserAllowedSlugs(req)
+  return new Set(slugs.map(s => SLUG_CLUB_MAP[s]).filter(Boolean))
+}
+
+// Whether the caller's scope covers a row's club. Club-less rows (corporate
+// invoices with no location) are visible to unrestricted callers only.
+async function clubInScope(req, clubNumber) {
+  const allowed = await allowedClubSet(req)
+  if (!allowed) return true
+  return clubNumber != null && allowed.has(clubNumber)
 }
 
 const num = (v) => {
@@ -111,7 +138,7 @@ async function catalogUpcVariantSet() {
 // gets sold_in_range — net units sold over that window (returns subtract).
 router.get('/items', async (req, res) => {
   try {
-    const { clubs, error: cErr } = clubFilter(req)
+    const { clubs, error: cErr } = await clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
 
     const makeItemsQuery = () => {
@@ -165,9 +192,13 @@ router.get('/items', async (req, res) => {
 // GET /items/categories — distinct categories for the filter dropdown.
 router.get('/items/categories', async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin
+    const { clubs, error: cErr } = await clubFilter(req)
+    if (cErr) return res.status(400).json({ error: cErr })
+    let q = supabaseAdmin
       .from('inventory_items').select('category').eq('archived', false)
       .in('category', SELLABLE_CATEGORIES)
+    if (clubs) q = q.in('club_number', clubs)
+    const { data, error } = await q
     if (error) throw error
     res.json({ categories: [...new Set((data || []).map(r => r.category))].sort() })
   } catch (err) {
@@ -181,7 +212,7 @@ router.get('/upc/:code', async (req, res) => {
   try {
     const code = String(req.params.code || '').replace(/\D/g, '')
     if (!code) return res.status(400).json({ error: 'Invalid UPC' })
-    const { clubs, error: cErr } = clubFilter(req)
+    const { clubs, error: cErr } = await clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
 
     const candidates = [...new Set([code, code.replace(/^0+/, ''), '0' + code, '00' + code])]
@@ -201,6 +232,11 @@ router.get('/upc/:code', async (req, res) => {
 router.get('/items/:id/movements', async (req, res) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid item id' })
+    const { data: ledgerItem } = await supabaseAdmin
+      .from('inventory_items').select('club_number').eq('id', req.params.id).maybeSingle()
+    if (!ledgerItem || !(await clubInScope(req, ledgerItem.club_number))) {
+      return res.status(404).json({ error: 'Item not found' })
+    }
     const { data, error } = await supabaseAdmin
       .from('inventory_movements').select('*')
       .eq('item_id', req.params.id)
@@ -265,6 +301,11 @@ router.get('/items/:id/movements', async (req, res) => {
 router.patch('/items/:id', async (req, res) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid item id' })
+    const { data: patchTarget } = await supabaseAdmin
+      .from('inventory_items').select('club_number').eq('id', req.params.id).maybeSingle()
+    if (!patchTarget || !(await clubInScope(req, patchTarget.club_number))) {
+      return res.status(404).json({ error: 'Item not found' })
+    }
     const isAdmin = resolveRole(req.staff.role) === 'admin'
     const patch = {}
 
@@ -343,6 +384,9 @@ router.post('/items/:id/adjust', async (req, res) => {
       .from('inventory_items').select('*').eq('id', req.params.id).maybeSingle()
     if (iErr) throw iErr
     if (!item) return res.status(404).json({ error: 'Item not found' })
+    if (!(await clubInScope(req, item.club_number))) {
+      return res.status(404).json({ error: 'Item not found' })
+    }
 
     const current = num(item.qty_on_hand) || 0
     const kind = setQty != null ? 'count' : 'adjustment'
@@ -383,7 +427,7 @@ router.post('/items/:id/adjust', async (req, res) => {
 // line items (newest first). from/to are YYYY-MM-DD. Financial data → manager+.
 router.get('/transactions', requireRole('manager'), async (req, res) => {
   try {
-    const { clubs, error: cErr } = clubFilter(req)
+    const { clubs, error: cErr } = await clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
     const limit = Math.min(parseInt(req.query.limit) || 200, 1000)
 
@@ -416,7 +460,7 @@ router.get('/transactions', requireRole('manager'), async (req, res) => {
 // Financial data (the Sales tab) → manager+ only.
 router.get('/summary', requireRole('manager'), async (req, res) => {
   try {
-    const { clubs, error: cErr } = clubFilter(req)
+    const { clubs, error: cErr } = await clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
 
     const makeSummaryQuery = () => {
@@ -499,7 +543,7 @@ router.get('/summary', requireRole('manager'), async (req, res) => {
 // measured. Financial data → manager+.
 router.get('/shrinkage', requireRole('manager'), async (req, res) => {
   try {
-    const { clubs, error: cErr } = clubFilter(req)
+    const { clubs, error: cErr } = await clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
 
     const makeQuery = () => {
@@ -604,7 +648,7 @@ router.get('/shrinkage', requireRole('manager'), async (req, res) => {
 // measured); restock is context only. Manager+.
 router.get('/compliance', requireRole('manager'), async (req, res) => {
   try {
-    const { clubs, error: cErr } = clubFilter(req)
+    const { clubs, error: cErr } = await clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
     const overdueDays = Math.min(Math.max(parseInt(req.query.overdue_days) || 30, 1), 365)
 
@@ -691,7 +735,7 @@ router.get('/compliance', requireRole('manager'), async (req, res) => {
 // feed). POS sales and invoice receipts are excluded; invoices show on their own.
 router.get('/movements', async (req, res) => {
   try {
-    const { clubs, error: cErr } = clubFilter(req)
+    const { clubs, error: cErr } = await clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
     let q = supabaseAdmin
       .from('inventory_movements')
@@ -731,7 +775,7 @@ router.get('/movements', async (req, res) => {
 //   no_category         no ABC category — add one in ABC so the 3am sync fixes it
 router.get('/audit', requireRole('admin'), async (req, res) => {
   try {
-    const { clubs, error: cErr } = clubFilter(req)
+    const { clubs, error: cErr } = await clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
     const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), 365)
     const minMargin = Number.isFinite(parseFloat(req.query.min_margin)) ? parseFloat(req.query.min_margin) : 15
@@ -827,7 +871,7 @@ const empDiscountFor = (category) => EMP_DISCOUNT[category] || 0
 // discounted price is MODELED (catalog × (1 − discount)), not the till price.
 router.get('/employee-spend', requireRole('admin'), async (req, res) => {
   try {
-    const { clubs, error: cErr } = clubFilter(req)
+    const { clubs, error: cErr } = await clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
 
     // Staff buyers = members with an Employee/STAFF membership.
@@ -1138,14 +1182,20 @@ function uploadFiles(req, res, next) {
   })
 }
 
-// GET /invoices — list with line items and file pages.
+// GET /invoices — list with line items and file pages. Restricted roles only
+// see invoices for their assigned clubs (club-less corporate invoices stay
+// visible to all-location roles only).
 router.get('/invoices', async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin
+    const { clubs, error: cErr } = await clubFilter(req)
+    if (cErr) return res.status(400).json({ error: cErr })
+    let q = supabaseAdmin
       .from('inventory_invoices')
       .select('*, inventory_invoice_items(*, inventory_items(item_name,upc)), inventory_invoice_files(*)')
       .order('created_at', { ascending: false })
       .limit(500)
+    if (clubs) q = q.in('club_number', clubs)
+    const { data, error } = await q
     if (error) throw error
     res.json({ invoices: (data || []).map(shapeInvoice) })
   } catch (err) {
@@ -1167,6 +1217,11 @@ router.post('/invoices', uploadFiles, async (req, res) => {
     if (req.body.location_slug && req.body.location_slug !== 'all') {
       clubNumber = SLUG_CLUB_MAP[String(req.body.location_slug).toLowerCase()]
       if (!clubNumber) return res.status(400).json({ error: 'Unknown location' })
+    }
+    // Restricted roles can only create invoices for their own clubs (a club-less
+    // invoice would be visible portal-wide, so it needs an all-location role).
+    if (!(await clubInScope(req, clubNumber))) {
+      return res.status(403).json({ error: 'You can only create invoices for your assigned clubs' })
     }
 
     const files = req.files && req.files.length ? req.files : (req.file ? [req.file] : [])
@@ -1248,7 +1303,9 @@ router.post('/invoices/:id/parse', async (req, res) => {
 
     const { data: invoice } = await supabaseAdmin
       .from('inventory_invoices').select('*, inventory_invoice_files(*)').eq('id', req.params.id).maybeSingle()
-    if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
+    if (!invoice || !(await clubInScope(req, invoice.club_number))) {
+      return res.status(404).json({ error: 'Invoice not found' })
+    }
     const pages = (invoice.inventory_invoice_files || []).sort((a, b) => (a.page_no || 0) - (b.page_no || 0))
     if (!pages.length) return res.status(400).json({ error: 'No pages to parse — upload a photo or PDF first' })
 
@@ -1368,7 +1425,9 @@ router.post('/invoices/:id/files', uploadFiles, async (req, res) => {
     for (const f of files) if (!ALLOWED_MIME.test(f.mimetype || '')) return res.status(400).json({ error: 'Only photo or PDF files are allowed' })
 
     const { data: invoice } = await supabaseAdmin.from('inventory_invoices').select('*').eq('id', req.params.id).maybeSingle()
-    if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
+    if (!invoice || !(await clubInScope(req, invoice.club_number))) {
+      return res.status(404).json({ error: 'Invoice not found' })
+    }
 
     const folderId = await getUploadFolderId()
     if (!folderId) return res.status(400).json({ error: 'Invoice upload folder is not configured yet' })
@@ -1391,7 +1450,13 @@ router.post('/invoices/:id/files', uploadFiles, async (req, res) => {
 // DELETE /invoices/:id/files/:fileId — remove one page.
 router.delete('/invoices/:id/files/:fileId', async (req, res) => {
   try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid invoice id' })
     if (!UUID_RE.test(req.params.fileId)) return res.status(400).json({ error: 'Invalid file id' })
+    const { data: inv } = await supabaseAdmin
+      .from('inventory_invoices').select('club_number').eq('id', req.params.id).maybeSingle()
+    if (!inv || !(await clubInScope(req, inv.club_number))) {
+      return res.status(404).json({ error: 'Invoice not found' })
+    }
     const { data, error } = await supabaseAdmin
       .from('inventory_invoice_files').delete().eq('id', req.params.fileId).eq('invoice_id', req.params.id).select().maybeSingle()
     if (error) throw error
@@ -1410,6 +1475,12 @@ router.post('/invoices/:id/items', async (req, res) => {
     if (!quantity || quantity <= 0) return res.status(400).json({ error: 'Quantity must be positive' })
     if (unitCost == null || unitCost < 0) return res.status(400).json({ error: 'Unit cost is required' })
     if (req.body.item_id && !UUID_RE.test(req.body.item_id)) return res.status(400).json({ error: 'Invalid item id' })
+
+    const { data: inv } = await supabaseAdmin
+      .from('inventory_invoices').select('club_number').eq('id', req.params.id).maybeSingle()
+    if (!inv || !(await clubInScope(req, inv.club_number))) {
+      return res.status(404).json({ error: 'Invoice not found' })
+    }
 
     const { data, error } = await supabaseAdmin
       .from('inventory_invoice_items')
@@ -1436,7 +1507,13 @@ router.post('/invoices/:id/items', async (req, res) => {
 // DELETE /invoices/:id/items/:lineId — remove an unreceived line.
 router.delete('/invoices/:id/items/:lineId', async (req, res) => {
   try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid invoice id' })
     if (!UUID_RE.test(req.params.lineId)) return res.status(400).json({ error: 'Invalid line id' })
+    const { data: inv } = await supabaseAdmin
+      .from('inventory_invoices').select('club_number').eq('id', req.params.id).maybeSingle()
+    if (!inv || !(await clubInScope(req, inv.club_number))) {
+      return res.status(404).json({ error: 'Invoice not found' })
+    }
     const { data, error } = await supabaseAdmin
       .from('inventory_invoice_items')
       .delete()
@@ -1462,7 +1539,9 @@ router.post('/invoices/:id/receive', async (req, res) => {
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from('inventory_invoices').select('*').eq('id', req.params.id).maybeSingle()
     if (iErr) throw iErr
-    if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
+    if (!invoice || !(await clubInScope(req, invoice.club_number))) {
+      return res.status(404).json({ error: 'Invoice not found' })
+    }
 
     const { data: lines, error: lErr } = await supabaseAdmin
       .from('inventory_invoice_items').select('*')
@@ -1557,6 +1636,11 @@ router.post('/invoices/:id/receive', async (req, res) => {
 router.delete('/invoices/:id', async (req, res) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid invoice id' })
+    const { data: inv } = await supabaseAdmin
+      .from('inventory_invoices').select('club_number').eq('id', req.params.id).maybeSingle()
+    if (!inv || !(await clubInScope(req, inv.club_number))) {
+      return res.status(404).json({ error: 'Invoice not found' })
+    }
     const { count } = await supabaseAdmin
       .from('inventory_invoice_items')
       .select('id', { count: 'exact', head: true })
@@ -1582,6 +1666,12 @@ router.post('/sync', async (req, res) => {
     const kind = String(req.body.kind || 'all')
     const parsed = parseLocationSlugParam(req.body.location_slug)
     if (parsed.invalid) return res.status(400).json({ error: `Unknown location: ${parsed.invalid}` })
+    // Restricted roles can only sync their own clubs ("all" narrows silently).
+    if (!canSeeAllLocations(req.staff?.role)) {
+      const allowedSlugs = await getUserAllowedSlugs(req)
+      parsed.slugs = parsed.slugs.filter(s => allowedSlugs.includes(s))
+      if (!parsed.slugs.length) return res.status(403).json({ error: 'No access to the requested clubs' })
+    }
 
     if (kind !== 'catalog' && kind !== 'pos' && kind !== 'all') {
       return res.status(400).json({ error: 'kind must be catalog, pos, or all' })
@@ -1610,8 +1700,11 @@ router.get('/sync-status', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin.from('inventory_sync_state').select('*')
     if (error) throw error
+    const allowed = await allowedClubSet(req)
     res.json({
-      status: (data || []).map(r => ({ ...r, location_slug: CLUB_TO_SLUG[r.club_number] || null })),
+      status: (data || [])
+        .filter(r => !allowed || allowed.has(r.club_number))
+        .map(r => ({ ...r, location_slug: CLUB_TO_SLUG[r.club_number] || null })),
       running: inventorySync.running,
     })
   } catch (err) {

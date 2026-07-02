@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import MobileHeader from './MobileHeader'
 import {
@@ -926,8 +926,21 @@ export default function MobileInventory({ user }) {
   const isAdmin = user?.staff?.role === 'admin'
   // Leads don't see margin (financial view stays manager+).
   const canSeeFinancials = (ROLE_LVL[user?.staff?.role] ?? 0) >= ROLE_LVL.manager
+  // All-location roles pick any club; everyone else only their assigned clubs
+  // (matches the backend scoping in routes/inventory.js).
+  const canSeeAllClubs = ['corporate', 'marketing', 'admin'].includes(user?.staff?.role)
+  const clubOptions = useMemo(() => {
+    const all = LOCATION_OPTIONS.filter(o => o.slug !== 'all')
+    if (canSeeAllClubs) return all
+    const mineNames = (user?.staff?.locations || []).map(l => String(l.name || '').toLowerCase())
+    const mine = all.filter(o => mineNames.includes(o.slug))
+    return mine.length ? mine : all
+  }, [canSeeAllClubs, user])
   const primarySlug = (user?.staff?.locations?.find(l => l.is_primary)?.name || user?.staff?.locations?.[0]?.name || 'Salem').toLowerCase()
-  const [slug, setSlug] = useState(LOCATION_OPTIONS.some(o => o.slug === primarySlug) ? primarySlug : 'salem')
+  const [slug, setSlug] = useState(() => {
+    if (clubOptions.some(o => o.slug === primarySlug)) return primarySlug
+    return clubOptions[0]?.slug || 'salem'
+  })
   const [scanning, setScanning] = useState(false)
   const [manualCode, setManualCode] = useState('')
   const [lookupLoading, setLookupLoading] = useState(false)
@@ -1034,7 +1047,7 @@ export default function MobileInventory({ user }) {
         value={slug} onChange={e => { setSlug(e.target.value); setResults([]); setLookupError('') }}
         className="w-full mt-3 mb-4 px-3 py-3 rounded-xl border border-border bg-surface text-sm text-text-primary"
       >
-        {LOCATION_OPTIONS.filter(o => o.slug !== 'all').map(o => <option key={o.slug} value={o.slug}>{o.label}</option>)}
+        {clubOptions.map(o => <option key={o.slug} value={o.slug}>{o.label}</option>)}
       </select>
 
       {/* Mode chooser — the new front door: pick what you're here to do */}
