@@ -14,6 +14,7 @@
 const axios = require('axios');
 const supabase = require('../db/supabase');
 const { isActivePT, toRow } = require('./recurringPtRow');
+const { decidePrune } = require('../db/pruneDecision');
 
 const ABC_BASE_URL = process.env.ABC_BASE_URL || 'https://api.abcfinancial.com/rest';
 const ABC_APP_ID = process.env.ABC_APP_ID;
@@ -74,8 +75,9 @@ async function fetchActiveForClub(clubNumber) {
   const out = [];
   for (const paramName of ['saleTimestampRange', 'lastModifiedTimestampRange']) {
     for (const range of dateRanges()) {
+      const MAX_PAGES = 15;
       let page = 1;
-      while (page <= 15) {
+      while (page <= MAX_PAGES) {
         const svcs = await abcGet(`/${clubNumber}/members/recurringservices`, {
           [paramName]: range, size: PAGE_SIZE, page,
         });
@@ -86,6 +88,11 @@ async function fetchActiveForClub(clubNumber) {
         }
         if (svcs.length < PAGE_SIZE) break;
         page++;
+        // A full page on the last allowed page means the range was truncated;
+        // surface it so a silently-incomplete pull doesn't look successful.
+        if (page > MAX_PAGES) {
+          console.warn(`[RecurringPT] club ${clubNumber} hit page cap (${MAX_PAGES}) for ${paramName} range ${range} — results may be truncated`);
+        }
       }
     }
   }
@@ -113,6 +120,23 @@ async function syncClub(club, runStartIso) {
       if (error) throw new Error(`upsert: ${error.message}`);
     }
   }
+  // Safety floor: never let a transient empty/partial ABC fetch wipe the
+  // club's live set. ABC's scan can return an empty 200 (documented failure
+  // mode) or truncate at the page cap; either way `rows` collapses and the
+  // unconditional stale-delete below would delete every row for the club.
+  // Compare rows refreshed this run (alive) against the total on disk and
+  // skip the delete when alive is zero or has dropped below the floor ratio.
+  const { count: total, error: countErr } = await supabase
+    .from('abc_recurring_pt_services')
+    .select('*', { count: 'exact', head: true })
+    .eq('club_number', club.clubNumber);
+  if (countErr) throw new Error(`count: ${countErr.message}`);
+  const decision = decidePrune(total || 0, rows.length);
+  if (!decision.prune) {
+    console.warn(`[RecurringPT] ${club.name}: skipping stale-delete — ${decision.reason}`);
+    return rows.length;
+  }
+
   // Delete rows for this club not refreshed this run (no longer active).
   const { error: delErr } = await supabase
     .from('abc_recurring_pt_services')
