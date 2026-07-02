@@ -400,6 +400,21 @@ app.on('ready', async () => {
     if (tabManager.onNewWindow) tabManager.onNewWindow(url)
   })
 
+  // Open a self-contained HTML report (from the portal's "View Report") as a
+  // new in-app tab with a real title. The HTML is rendered from a data: URL so
+  // it needs no server round-trip; no preload/node access is granted to it.
+  ipcMain.on('open-report-tab', (e, payload) => {
+    try {
+      const html = payload && typeof payload.html === 'string' ? payload.html : ''
+      if (!html) return
+      const title = (payload.title && String(payload.title).trim().slice(0, 60)) || 'Report'
+      const dataUrl = 'data:text/html;charset=utf-8;base64,' + Buffer.from(html, 'utf8').toString('base64')
+      tabManager.createTab(dataUrl, title)
+    } catch (err) {
+      console.error('[open-report-tab]', err.message)
+    }
+  })
+
   // Window controls
   ipcMain.on('window-refresh', () => {
     const active = tabManager.tabs.get(tabManager.activeTabId)
