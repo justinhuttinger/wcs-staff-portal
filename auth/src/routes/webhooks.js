@@ -8,9 +8,15 @@ const { sendTourArrival } = require('../lib/tourPush')
 const router = Router()
 
 // Webhook secret verification middleware
+// Fail closed: if the secret env var is unset, reject rather than accept
+// anonymous writes (matches the /website-form handler). An unconfigured
+// webhook secret must never mean "allow everyone".
 function verifyWebhookSecret(req, res, next) {
   const secret = process.env.GHL_WEBHOOK_SECRET
-  if (!secret) return next() // no secret configured, allow (backward compat)
+  if (!secret) {
+    console.error('[webhooks] GHL_WEBHOOK_SECRET not configured')
+    return res.status(503).json({ error: 'webhook not configured' })
+  }
   const provided = req.headers['x-webhook-secret'] || req.query.secret
   if (provided !== secret) {
     return res.status(401).json({ error: 'Invalid webhook secret' })
@@ -18,11 +24,14 @@ function verifyWebhookSecret(req, res, next) {
   next()
 }
 
-// Click2Save events use their own optional shared secret so they don't have
-// to share a key with the GHL webhooks.
+// Click2Save events use their own shared secret so they don't have to share a
+// key with the GHL webhooks. Also fail closed when unset.
 function verifyClick2SaveSecret(req, res, next) {
   const secret = process.env.CLICK2SAVE_WEBHOOK_SECRET
-  if (!secret) return next()
+  if (!secret) {
+    console.error('[webhooks] CLICK2SAVE_WEBHOOK_SECRET not configured')
+    return res.status(503).json({ error: 'webhook not configured' })
+  }
   const provided = req.headers['x-webhook-secret'] || req.query.secret
   if (provided !== secret) {
     return res.status(401).json({ error: 'Invalid webhook secret' })
