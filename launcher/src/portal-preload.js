@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld('wcsElectron', {
   // Kiosk config
   getConfig: () => ipcRenderer.invoke('get-kiosk-config'),
   setConfig: (config) => ipcRenderer.invoke('set-kiosk-config', config),
+  // Open a self-contained HTML report (QA/Audit "View Report") as a new
+  // in-app tab with a proper title, instead of a floating popup window.
+  openReportTab: (html, title) => ipcRenderer.send('open-report-tab', { html, title }),
   // Credential save prompt
   onSavePrompt: (callback) => {
     const { ipcRenderer: ipc } = require('electron')
