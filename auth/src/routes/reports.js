@@ -3,6 +3,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireReportAccess, requireRole } = require('../middleware/role')
 const { recombineTotals } = require('../lib/membershipAuditTotals')
+const { fetchAll } = require('../lib/supabaseFetchAll')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { countVipsByTeamMember: _countVipsByTeamMember } = require('../utils/vipsByTeamMember')
 const { parseLocationSlugParam } = require('../utils/locationSlug')
@@ -228,8 +229,7 @@ router.get('/membership', async (req, res) => {
     dayOneQ = applyLocationFilter(dayOneQ, locationFilter)
     dayOneQ = applyDateRange(dayOneQ, 'day_one_booking_date', startMs, endMs)
 
-    const { data: dayOneData } = await dayOneQ
-    const dayOnes = dayOneData || []
+    const dayOnes = await fetchAll(dayOneQ)
     const totalDayOneBooked = dayOnes.length
 
     const dayOneByPerson = {}
@@ -263,8 +263,12 @@ router.get('/membership', async (req, res) => {
     if (start_date) oppQuery = oppQuery.gte('created_at_ghl', startISO)
     if (end_date) oppQuery = oppQuery.lte('created_at_ghl', endISO)
 
-    const { data: opps, error: oppsError } = await oppQuery
-    if (oppsError) return res.status(500).json({ error: 'Failed to fetch trial data', detail: oppsError.message })
+    let opps
+    try {
+      opps = await fetchAll(oppQuery)
+    } catch (e) {
+      return res.status(500).json({ error: 'Failed to fetch trial data', detail: e.message })
+    }
 
     let trialStarted = 0
     let trialWon = 0
@@ -412,10 +416,12 @@ router.get('/pt', async (req, res) => {
     q = applyLocationFilter(q, locationFilter)
     q = applyDateRange(q, 'day_one_date', startMs, endMs)
 
-    const { data, error } = await q.order('day_one_date', { ascending: false })
-    if (error) return res.status(500).json({ error: 'Failed to fetch PT data', detail: error.message })
-
-    const contacts = data || []
+    let contacts
+    try {
+      contacts = await fetchAll(q.order('day_one_date', { ascending: false }))
+    } catch (e) {
+      return res.status(500).json({ error: 'Failed to fetch PT data', detail: e.message })
+    }
 
     // Aggregate by status
     const byStatus = {}
@@ -572,10 +578,12 @@ router.get('/club-health', async (req, res) => {
     dayOneQ = applyLocationFilter(dayOneQ, locationFilter)
     dayOneQ = applyDateRange(dayOneQ, 'day_one_booking_date', startMs, endMs)
 
-    const { data: dayOneContacts, error: dayOneErr } = await dayOneQ
-    if (dayOneErr) return res.status(500).json({ error: 'Failed to fetch day one data', detail: dayOneErr.message })
-
-    const dayOnes = dayOneContacts || []
+    let dayOnes
+    try {
+      dayOnes = await fetchAll(dayOneQ)
+    } catch (e) {
+      return res.status(500).json({ error: 'Failed to fetch day one data', detail: e.message })
+    }
     const totalDayOnesBooked = dayOnes.length
 
     const dayOneBookedCounts = { 'Yes': totalDayOnesBooked }
@@ -1103,10 +1111,12 @@ router.get('/speed-to-lead', async (req, res) => {
     if (startISO) q = q.gte('opportunity_created_at', startISO)
     if (endISO)   q = q.lte('opportunity_created_at', endISO)
 
-    const { data, error } = await q
-    if (error) return res.status(500).json({ error: 'Failed to fetch speed-to-lead data', detail: error.message })
-
-    const rows = data || []
+    let rows
+    try {
+      rows = await fetchAll(q)
+    } catch (e) {
+      return res.status(500).json({ error: 'Failed to fetch speed-to-lead data', detail: e.message })
+    }
 
     // Resolve the set of "New Lead" stage ids (the entry stage, position 0).
     const { data: stageRows } = await supabaseAdmin
@@ -1536,9 +1546,8 @@ router.get('/kpi-history', requireReportAccess('manager', ['kpis']), async (req,
     if (scoped.slugs) {
       q = scoped.slugs.length === 1 ? q.eq('location_slug', scoped.slugs[0]) : q.in('location_slug', scoped.slugs)
     }
-    const { data, error } = await q
-    if (error) throw error
-    res.json({ rows: data || [] })
+    const rows = await fetchAll(q)
+    res.json({ rows })
   } catch (err) {
     console.error('[reports] /kpi-history error:', err.message)
     res.status(500).json({ error: err.message })

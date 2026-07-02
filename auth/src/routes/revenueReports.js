@@ -4,6 +4,7 @@ const { requireRole, requireReportAccess, canSeeAllLocations } = require('../mid
 const { supabaseAdmin } = require('../services/supabase')
 const { buildMtdMonthWindows } = require('../services/revenueMtdWindows')
 const { capRevenueEndDate } = require('../services/revenueEndCap')
+const { fetchAll } = require('../lib/supabaseFetchAll')
 const { parseLocationSlugParam, intersectWithAllowed } = require('../utils/locationSlug')
 
 const LOCATION_LABELS = {
@@ -161,10 +162,9 @@ router.get('/profit-center-trend', authenticate, requireReportAccess('manager', 
       // No access — return empty series.
       return res.json({ series: [] })
     }
-    const { data, error } = await q
-    if (error) throw error
+    const data = await fetchAll(q)
     const byDay = {}
-    for (const r of data || []) {
+    for (const r of data) {
       byDay[r.payment_date] = (byDay[r.payment_date] || 0) + Number(r.payment_amount)
     }
     const series = Object.entries(byDay)
