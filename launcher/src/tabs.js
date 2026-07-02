@@ -90,7 +90,29 @@ class TabManager {
     // auto-fill never fires.
     const tabManager = this
     view.webContents.setWindowOpenHandler(({ url }) => {
-      if (!url || url === 'about:blank') return { action: 'deny' }
+      // The portal's report viewer (QA/Audit "View Report") opens a blank
+      // window and writes styled HTML into it via window.open('', '_blank').
+      // Denying about:blank made that button silently do nothing in the kiosk.
+      // Allow it on the portal tab only, as a safe self-scripted child window.
+      if (!url || url === 'about:blank') {
+        if (isPortalPreload) {
+          return {
+            action: 'allow',
+            overrideBrowserWindowOptions: {
+              width: 1100,
+              height: 800,
+              autoHideMenuBar: true,
+              webPreferences: {
+                contextIsolation: true,
+                nodeIntegration: false,
+                sandbox: true,
+                partition: 'persist:wcs-portal',
+              },
+            },
+          }
+        }
+        return { action: 'deny' }
+      }
       try {
         const next = new URL(url).hostname
         const cur = new URL(view.webContents.getURL()).hostname
