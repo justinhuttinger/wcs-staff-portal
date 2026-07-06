@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { getMembershipReport, getAppSettings, getSpeedToLead, getCancelsReport, getOperandioRange, getOperandioQaReports, getOperandioQaReport, getKpiHistory } from '../../lib/api'
+import ReportInfoButton from '../ReportInfoButton'
 import { openAuditReport } from '../../lib/qaReportHtml'
 import { pct, gapInfo, monthRangesBetween, median, mean, formatMinutes } from '../../lib/kpiMath'
 import { LOCATION_NAMES } from '../../config/locations'
@@ -320,20 +321,71 @@ function ComparisonPill({ comp, setComp }) {
 // source: which fetcher to use (keys of SOURCE_FETCHERS).
 // format: 'minutes' for duration KPIs; default is percentage.
 // lowerIsBetter: true for duration KPIs (lower response time = better).
+// info: plain-English explanation surfaced by the per-KPI info icon
+// (ReportInfoButton shape: { title, sections, notes }).
 export const KPI_DEFS = [
   { key: 'trial', label: 'Trial Conversion', goalKey: 'kpi_goal_trial', source: 'membership',
-    derive: d => (d?.trial_conversion?.trial_started ? d.trial_conversion.rate : null) },
+    derive: d => (d?.trial_conversion?.trial_started ? d.trial_conversion.rate : null),
+    info: {
+      title: 'Trial Conversion',
+      sections: [{
+        heading: 'What it measures',
+        body: 'Of the trials started in the selected date range, the percentage that converted into a paid membership. Same number as the Membership report.',
+      }],
+      notes: ['Higher is better. The goal is the minimum conversion rate to hit.'],
+    } },
   { key: 'dayone', label: 'Day One Attachment', goalKey: 'kpi_goal_dayone', source: 'membership',
-    derive: d => pct(d?.total_day_one_booked || 0, d?.total_memberships || 0) },
+    derive: d => pct(d?.total_day_one_booked || 0, d?.total_memberships || 0),
+    info: {
+      title: 'Day One Attachment',
+      sections: [{
+        heading: 'What it measures',
+        body: 'Of the new memberships signed in the selected range, the percentage that booked a Day One (their first personal training session). Day Ones come from GHL appointments.',
+      }],
+      notes: ['Higher is better. Every new member should leave with a Day One on the calendar.'],
+    } },
   { key: 'vip', label: 'VIP Collection Percentage', goalKey: 'kpi_goal_vip', source: 'membership',
-    derive: d => pct(d?.total_vips || 0, d?.total_memberships || 0) },
+    derive: d => pct(d?.total_vips || 0, d?.total_memberships || 0),
+    info: {
+      title: 'VIP Collection Percentage',
+      sections: [{
+        heading: 'What it measures',
+        body: 'Of the new memberships signed in the selected range, the percentage that came with a VIP appointment collected. VIPs come from GHL appointments.',
+      }],
+      notes: ['Higher is better. The goal is the minimum share of new members with a VIP.'],
+    } },
   { key: 'speed', label: 'Speed to Lead', goalKey: 'kpi_goal_speed', source: 'speed',
     format: 'minutes', lowerIsBetter: true,
-    derive: d => (d?.contacted_count ? d.median_minutes : null) },
+    derive: d => (d?.contacted_count ? d.business_median_minutes : null),
+    info: {
+      title: 'Speed to Lead',
+      sections: [
+        {
+          heading: 'What it measures',
+          body: 'Median minutes from when a new Membership-pipeline lead is created to the first human contact: a manually sent text or a phone call. Automated texts do not count, so this reflects real staff response time.',
+        },
+        {
+          heading: 'Business-hours clock',
+          body: 'Only time inside staffed lead-response hours counts: the clock runs 11:00am to 7:30pm Pacific, every day, and pauses outside those hours. A lead that comes in overnight and is contacted first thing in the morning does not count the overnight wait against the team.',
+        },
+      ],
+      notes: [
+        'Lower is better. The goal is the maximum acceptable response time in minutes.',
+        'DND contacts and leads that never entered the pipeline as a New Lead are excluded.',
+      ],
+    } },
   // Average of the daily Operandio overall scores in range (weekly rows are
   // skipped so they don't double-count) — same math as the Operations report.
   { key: 'ops', label: 'Operational Compliance', goalKey: 'kpi_goal_ops', source: 'operations',
-    derive: d => mean((d?.rows || []).filter(r => r.period_start === r.period_end).map(r => r.overall_pct)) },
+    derive: d => mean((d?.rows || []).filter(r => r.period_start === r.period_end).map(r => r.overall_pct)),
+    info: {
+      title: 'Operational Compliance',
+      sections: [{
+        heading: 'What it measures',
+        body: 'The average of each day\'s overall Operandio checklist score across the selected range, the same math as the Operational Compliance report. Days with no Operandio activity are skipped, not counted as zero.',
+      }],
+      notes: ['Higher is better. The goal is the minimum daily compliance score to average.'],
+    } },
   // Share of Cancelled members that went through Click2Save. Member-level
   // match computed server-side (c2s_utilization): of the membership
   // (non-insurance) members whose cancel took effect in range, how many have a
@@ -342,7 +394,18 @@ export const KPI_DEFS = [
   { key: 'c2s', label: 'Click2Save Utilization', goalKey: 'kpi_goal_c2s', source: 'cancels',
     derive: d => (d?.c2s_utilization
       ? pct(d.c2s_utilization.via_c2s, d.c2s_utilization.cancelled_members)
-      : null) },
+      : null),
+    info: {
+      title: 'Click2Save Utilization',
+      sections: [{
+        heading: 'What it measures',
+        body: 'Of the members whose cancellation took effect in the selected range, the share that went through Click2Save. Insurance plans (A2 / Active and Fit) are excluded since those don\'t cancel through Click2Save.',
+      }],
+      notes: [
+        'Higher is better. Everyone should cancel through Click2Save, so a low number means staff are cancelling directly in ABC.',
+        'A member\'s Click2Save request can be up to 90 days before the cancel takes effect, since cancels sit in Pending Cancel until their effective date.',
+      ],
+    } },
   // QA-Cleaning audits submitted in Operandio by leadership on an irregular
   // (roughly monthly) cadence. `timeless`: the fetch ignores the report date
   // range and the value is each club's MOST RECENT audit score (averaged when
@@ -354,6 +417,17 @@ export const KPI_DEFS = [
     derive: d => {
       const latest = Object.values(latestQaByClub(d)).map(r => r.score_pct).filter(v => v != null)
       return latest.length ? mean(latest) : null
+    },
+    info: {
+      title: 'Cleanliness - Quality Assessment',
+      sections: [{
+        heading: 'What it measures',
+        body: 'The most recent QA-Cleaning audit score submitted in Operandio by leadership for each club, averaged when multiple clubs are selected. Audits happen roughly monthly, so this KPI ignores the date range and always shows the latest score.',
+      }],
+      notes: [
+        'Higher is better. The goal is the minimum audit score.',
+        'Expand the tile to see every submission with a View Report link to the full scored breakdown.',
+      ],
     } },
 ]
 
@@ -542,7 +616,11 @@ function KpiHistoryView({ locationSlug }) {
               return (
                 <li key={def.key} className="px-4 sm:px-5 py-4">
                   <div className="flex items-center justify-between gap-3 sm:gap-4">
-                    <p className="text-base sm:text-lg font-bold text-text-primary min-w-0">{def.label}</p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="text-base sm:text-lg font-bold text-text-primary min-w-0">{def.label}</p>
+                      {/* portal: the list wrapper is overflow-hidden and would clip the popover */}
+                      <ReportInfoButton info={def.info} portal />
+                    </div>
                     <div className="flex items-center gap-4 sm:gap-6 flex-shrink-0">
                       <div className="text-right">
                         <p className="text-xl sm:text-2xl font-bold text-text-primary leading-none">{formatValue(def, v)}</p>
@@ -811,15 +889,26 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
 
         return (
           <li key={def.key} className="px-4 sm:px-5 py-4">
-            <button
-              type="button"
+            {/* div[role=button] instead of <button>: the row hosts a real nested
+                button (the info icon), and nested buttons are invalid HTML. */}
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() => toggle(def.key)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(def.key) } }}
               aria-expanded={open}
               aria-controls={`kpi-detail-${def.key}`}
-              className="w-full flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-left"
+              className="w-full flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-left cursor-pointer"
             >
               <div className="min-w-0">
-                <p className="text-base sm:text-lg font-bold text-text-primary">{def.label}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-base sm:text-lg font-bold text-text-primary">{def.label}</p>
+                  {/* Clicks/keys inside the info button (and its portal popover,
+                      which bubbles through the React tree) must not toggle the row. */}
+                  <span onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                    <ReportInfoButton info={def.info} portal />
+                  </span>
+                </div>
                 <p className="text-xs text-text-muted mt-0.5">
                   {isMulti
                     ? `${plan.enabled.length} club${plan.enabled.length === 1 ? '' : 's'}`
@@ -886,7 +975,7 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                 </svg>
               </div>
-            </button>
+            </div>
 
             {open && (
               <div id={`kpi-detail-${def.key}`}>

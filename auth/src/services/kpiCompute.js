@@ -86,9 +86,11 @@ async function computeKpisForClub(slug, startDate, endDate) {
     ? { value: pct(mem.total_vips || 0, mem.total_memberships || 0), numerator: mem.total_vips || 0, denominator: mem.total_memberships || 0 }
     : { value: null }
 
-  // Speed to Lead: median minutes (lower is better); sample_size = contacted leads.
+  // Speed to Lead: business-hours median minutes (staffed-window clock, lower
+  // is better) — matches the KPI report's headline number. sample_size =
+  // contacted leads.
   out.speed = spd && spd.contacted_count
-    ? { value: spd.median_minutes, sample_size: spd.contacted_count }
+    ? { value: spd.business_median_minutes, sample_size: spd.contacted_count }
     : { value: null }
 
   // Operational Compliance: mean of the daily overall scores in range (weekly
