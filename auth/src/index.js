@@ -77,6 +77,7 @@ app.use('/reports/fb-roas', require('./routes/fbRoas'))
 app.use('/reports/revenue', require('./routes/revenueReports'))
 app.use('/reports/website-submissions', require('./routes/websiteSubmissions'))
 app.use('/reports/daily-snapshot', require('./routes/dailySnapshot'))
+app.use('/reports/compliance', require('./routes/compliance'))
 app.use('/reports', require('./routes/reports'))
 app.use('/sync-status', require('./routes/syncStatus'))
 app.use('/day-one-program', require('./routes/dayOneProgram'))
@@ -161,6 +162,13 @@ app.listen(PORT, () => {
     } catch (err) {
       console.error('[inventorySync] failed to start:', err.message)
     }
+  }
+
+  // Operandio API compliance sync — opt-in via OPERANDIO_API_SYNC_ENABLED=true.
+  try {
+    require('./services/operandioSync').start()
+  } catch (err) {
+    console.error('[operandioSync] failed to start:', err.message)
   }
 
   // Blog automation weekly cron — opt-in via BLOG_AUTOMATION_ENABLED=true.
