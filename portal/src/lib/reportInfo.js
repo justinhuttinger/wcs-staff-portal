@@ -449,7 +449,7 @@ const REPORT_INFO = {
     ],
     notes: [
       'All-locations view shows actuals only; goals are set per club.',
-      'History only goes back as far as synced data exists.',
+      'The date range drives every KPI except Cleanliness QA (which always shows the latest audit). Trends only go back as far as synced data exists.',
       'KPIs can be turned off per club in Admin → KPI Goals. An off club is hidden from that KPI in its own view and excluded from the blended number and per-club tables.',
     ],
   },
