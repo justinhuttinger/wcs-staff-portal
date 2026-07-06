@@ -31,9 +31,19 @@ export default function ReportInfoButton({ info, portal = false }) {
   function toggleOpen() {
     if (!open && portal && buttonRef.current) {
       const r = buttonRef.current.getBoundingClientRect()
+      // Fit vertically: open downward when there's room, otherwise flip above
+      // the icon. Either way cap the height to the available space and let the
+      // popover scroll internally, so content near the viewport edge is never
+      // cut off (the page behind can't be scrolled while the popover is open —
+      // scrolling closes it).
+      const spaceBelow = window.innerHeight - r.bottom - 16
+      const spaceAbove = r.top - 16
+      const openUp = spaceBelow < 240 && spaceAbove > spaceBelow
       setPos({
-        top: r.bottom + 8,
         left: Math.max(8, Math.min(r.left, window.innerWidth - POPOVER_W - 8)),
+        ...(openUp
+          ? { bottom: window.innerHeight - r.top + 8, maxHeight: spaceAbove }
+          : { top: r.bottom + 8, maxHeight: spaceBelow }),
       })
     }
     setOpen(v => !v)
@@ -58,10 +68,14 @@ export default function ReportInfoButton({ info, portal = false }) {
   }, [open])
 
   // A portal popover is anchored to a snapshot of the icon's viewport position,
-  // so any scroll/resize invalidates it — close rather than drift.
+  // so any scroll/resize invalidates it — close rather than drift. Scrolls that
+  // originate INSIDE the popover (its own overflow scrollbar) must not close it.
   useEffect(() => {
     if (!open || !portal) return
-    const close = () => setOpen(false)
+    const close = (e) => {
+      if (e.target instanceof Node && popoverRef.current && popoverRef.current.contains(e.target)) return
+      setOpen(false)
+    }
     window.addEventListener('scroll', close, true)
     window.addEventListener('resize', close)
     return () => {
@@ -77,8 +91,8 @@ export default function ReportInfoButton({ info, portal = false }) {
       ref={popoverRef}
       role="dialog"
       aria-label={info.title || 'About this report'}
-      style={portal && pos ? { top: pos.top, left: pos.left } : undefined}
-      className={`${portal ? 'fixed z-[60]' : 'absolute right-0 top-8 z-30'} w-80 bg-surface border border-border rounded-xl shadow-lg p-4 text-left`}
+      style={portal && pos ? pos : undefined}
+      className={`${portal ? 'fixed z-[60] overflow-y-auto' : 'absolute right-0 top-8 z-30'} w-80 bg-surface border border-border rounded-xl shadow-lg p-4 text-left`}
     >
       <div className="flex items-start justify-between gap-2 mb-3">
         <h3 className="text-sm font-semibold text-text-primary">
