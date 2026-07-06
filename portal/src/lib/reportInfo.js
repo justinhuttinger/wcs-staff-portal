@@ -437,7 +437,7 @@ const REPORT_INFO = {
       {
         heading: 'Speed to Lead',
         body:
-          'Median minutes from when a Membership-pipeline lead is created to the first human outbound contact (a manually-sent text or a call). Automated texts are ignored, so this reflects real staff response time. Lower is better; the goal is a maximum number of minutes.',
+          'Median minutes from when a Membership-pipeline lead is created to the first human outbound contact (a manually-sent text or a call), counted on a business-hours clock: only time inside staffed lead-response hours (11:00am to 7:30pm Pacific, every day) counts, so an overnight lead contacted first thing in the morning is not penalized. Automated texts are ignored, so this reflects real staff response time. Lower is better; the goal is a maximum number of minutes.',
       },
       {
         heading: 'Trends',

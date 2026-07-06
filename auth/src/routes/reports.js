@@ -1089,7 +1089,10 @@ router.get('/cancels', async (req, res) => {
 // ---------------------------------------------------------------------------
 // GET /reports/speed-to-lead
 // Query params: start_date, end_date, location_slug
-// Reports median + mean minutes from opportunity creation to first human contact.
+// Reports median + mean minutes from opportunity creation to first human contact,
+// both raw (wall-clock) and business-hours (clamped to the staffed contactable
+// window via the speed_to_lead_business RPC). business_median_minutes is the
+// headline KPI number; median_minutes stays the raw wall-clock figure.
 // ---------------------------------------------------------------------------
 router.get('/speed-to-lead', async (req, res) => {
   const { start_date, end_date } = req.query
@@ -1115,20 +1118,20 @@ router.get('/speed-to-lead', async (req, res) => {
       }
     }
 
-    let q = supabaseAdmin
-      .from('ghl_first_contact')
-      .select('opportunity_id, contact_id, opportunity_created_at, first_human_contact_at, location_id')
-
-    if (locationIds.length > 0) q = q.in('location_id', locationIds)
-    if (startISO) q = q.gte('opportunity_created_at', startISO)
-    if (endISO)   q = q.lte('opportunity_created_at', endISO)
-
-    let rows
-    try {
-      rows = await fetchAll(q)
-    } catch (e) {
-      return res.status(500).json({ error: 'Failed to fetch speed-to-lead data', detail: e.message })
+    // Postgres owns the clock: the RPC returns raw + business seconds per
+    // opportunity (business_seconds clamps to the staffed window with correct
+    // DST handling), already date/location filtered. The 50k cap is far above
+    // any real range's lead volume — it exists so a runaway query can't hang.
+    const { data, error } = await supabaseAdmin.rpc('speed_to_lead_business', {
+      p_location_ids: locationIds.length > 0 ? locationIds : null,
+      p_start: startISO,
+      p_end: endISO,
+      p_limit: 50000,
+    })
+    if (error) {
+      return res.status(500).json({ error: 'Failed to fetch speed-to-lead data', detail: error.message })
     }
+    const rows = data || []
 
     // Resolve the set of "New Lead" stage ids (the entry stage, position 0).
     const { data: stageRows } = await supabaseAdmin
@@ -1177,39 +1180,41 @@ router.get('/speed-to-lead', async (req, res) => {
     let uncontactedCount = 0
     let excludedNotNewLead = 0
     let excludedDnd = 0
-    const minutes = []
+    const rawMins = []
+    const bizMins = []
 
     for (const row of rows) {
       if (dndById.get(row.contact_id) === true) { excludedDnd++; continue }
       const opp = oppById.get(row.opportunity_id)
       if (!isNewLead(opp)) { excludedNotNewLead++; continue }
       if (row.first_human_contact_at == null) { uncontactedCount++; continue }
-      const created = new Date(row.opportunity_created_at).getTime()
-      const contacted = new Date(row.first_human_contact_at).getTime()
-      const mins = (contacted - created) / 60000
+      const mins = row.raw_seconds / 60
       if (mins < 0) { excludedNotNewLead++; continue } // contact before creation — not a fresh lead
       contactedCount++
-      minutes.push(mins)
+      rawMins.push(mins)
+      bizMins.push((row.business_seconds ?? 0) / 60)
     }
 
-    let medianMinutes = null
-    let meanMinutes = null
-    if (minutes.length > 0) {
-      const sum = minutes.reduce((acc, v) => acc + v, 0)
-      meanMinutes = Math.round(sum / minutes.length)
-      const sorted = [...minutes].sort((a, b) => a - b)
+    function median(xs) {
+      if (xs.length === 0) return null
+      const sorted = [...xs].sort((a, b) => a - b)
       const mid = Math.floor(sorted.length / 2)
-      medianMinutes = sorted.length % 2 === 1
+      return sorted.length % 2 === 1
         ? Math.round(sorted[mid])
         : Math.round((sorted[mid - 1] + sorted[mid]) / 2)
     }
+    const mean = xs => (xs.length ? Math.round(xs.reduce((a, v) => a + v, 0) / xs.length) : null)
 
     res.json({
       // Only genuine New-Lead entrants are counted; opps created directly at a
       // later stage are excluded (excluded_not_new_lead). Counts reflect opps the
-      // compute step has processed (rows in ghl_first_contact). median is headline.
-      median_minutes: medianMinutes,
-      mean_minutes: meanMinutes,
+      // compute step has processed (rows in ghl_first_contact).
+      // business_median_minutes (staffed-hours clock) is the headline KPI;
+      // median_minutes/mean_minutes remain the raw wall-clock numbers.
+      median_minutes: median(rawMins),
+      mean_minutes: mean(rawMins),
+      business_median_minutes: median(bizMins),
+      business_mean_minutes: mean(bizMins),
       contacted_count: contactedCount,
       uncontacted_count: uncontactedCount,
       excluded_not_new_lead: excludedNotNewLead,
