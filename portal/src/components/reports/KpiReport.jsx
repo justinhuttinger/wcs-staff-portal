@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getMembershipReport, getAppSettings, getSpeedToLead, getCancelsReport, getOperandioRange, getOperandioQaReports, getOperandioQaReport, getKpiHistory } from '../../lib/api'
+import { getMembershipReport, getAppSettings, getSpeedToLead, getCancelsReport, getComplianceSummary, getOperandioQaReports, getOperandioQaReport, getKpiHistory } from '../../lib/api'
 import ReportInfoButton from '../ReportInfoButton'
 import { openAuditReport } from '../../lib/qaReportHtml'
 import { pct, gapInfo, monthRangesBetween, median, mean, formatMinutes } from '../../lib/kpiMath'
@@ -374,17 +374,18 @@ export const KPI_DEFS = [
         'DND contacts and leads that never entered the pipeline as a New Lead are excluded.',
       ],
     } },
-  // Average of the daily Operandio overall scores in range (weekly rows are
-  // skipped so they don't double-count) — same math as the Operations report.
+  // Jobs completed (on-time + late; skipped jobs already score on-time) out of
+  // jobs that came due, from the Operandio API sync — the same number as the
+  // Compliance report's Period Summary.
   { key: 'ops', label: 'Operational Compliance', goalKey: 'kpi_goal_ops', source: 'operations',
-    derive: d => mean((d?.rows || []).filter(r => r.period_start === r.period_end).map(r => r.overall_pct)),
+    derive: d => (d && d.decided > 0 ? pct(d.totals.on_time + d.totals.late, d.decided) : null),
     info: {
       title: 'Operational Compliance',
       sections: [{
         heading: 'What it measures',
-        body: 'The average of each day\'s overall Operandio checklist score across the selected range, the same math as the Operational Compliance report. Days with no Operandio activity are skipped, not counted as zero.',
+        body: 'Of the Operandio jobs that came due in the selected range, the share that got completed (on time or late; jobs skipped in Operandio, e.g. a closed day, count as completed). Pulled live from the Operandio API — the same number as the Compliance report\'s Period Summary.',
       }],
-      notes: ['Higher is better. The goal is the minimum daily compliance score to average.'],
+      notes: ['Higher is better. The goal is the minimum share of due jobs completed.'],
     } },
   // Share of Cancelled members that went through Click2Save. Member-level
   // match computed server-side (c2s_utilization): of the membership
@@ -434,7 +435,7 @@ export const KPI_DEFS = [
 const SOURCE_FETCHERS = {
   membership: (params, opts) => getMembershipReport(params, opts),
   speed: (params, opts) => getSpeedToLead(params, opts),
-  operations: (params, opts) => getOperandioRange(params, opts),
+  operations: (params, opts) => getComplianceSummary(params, opts),
   cancels: (params, opts) => getCancelsReport(params, opts),
   // The KPI tracks only the QA-Cleaning audit; other departments live in the
   // experimental Audits report.
