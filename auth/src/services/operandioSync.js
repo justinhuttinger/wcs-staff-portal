@@ -32,6 +32,8 @@ function pacificDay(iso) {
 }
 
 // pending | in_progress | on_time | late | missed
+// A job-level skip (skipReason, e.g. club closed that day) counts as
+// completed on time — skipped work is accounted-for work, not missed work.
 function complianceStatus(job, now = Date.now()) {
   const due = job.dueAt ? new Date(job.dueAt).getTime() : null
   const st = job.status || {}
@@ -39,6 +41,7 @@ function complianceStatus(job, now = Date.now()) {
     const completedAt = st.completedAt ? new Date(st.completedAt).getTime() : null
     return due && completedAt && completedAt > due ? 'late' : 'on_time'
   }
+  if (st.skipReason) return 'on_time'
   if (due && due < now) return 'missed'
   return (job.percentComplete || 0) > 0 ? 'in_progress' : 'pending'
 }
@@ -69,6 +72,7 @@ function jobRow(job, slug, locationId, now) {
     started_at: st.startedAt || null,
     ended_at: st.endedAt || null,
     failed: st.failed ?? null,
+    skip_reason: st.skipReason || null,
     score: st.score ?? null,
     possible_score: st.possibleScore ?? null,
     assigned_users: (job.users || []).map(u => u.fullName).filter(Boolean),

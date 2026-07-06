@@ -354,7 +354,9 @@ const REPORT_INFO = {
           'On Time — completed before the due time.',
           'Late — completed, but after the due time.',
           'Missed — due time passed and it was never completed.',
-          'In Progress / Pending — not yet due (today\'s and upcoming jobs).',
+          'Skipped — skipped inside Operandio (e.g. the club was closed that day). Counts as completed on time.',
+          'In Progress — someone has started it but it is not finished (and not yet due).',
+          'Pending — scheduled but not started and not yet due (today\'s and upcoming jobs).',
         ],
       },
       {

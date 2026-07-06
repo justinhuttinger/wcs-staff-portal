@@ -224,7 +224,16 @@ function CountTag({ color, n, title }) {
   )
 }
 
-function StatusPill({ status }) {
+function StatusPill({ status, skipped }) {
+  if (skipped) {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap"
+        style={{ backgroundColor: '#3B82F61F', color: '#3B82F6' }}
+        title="Skipped in Operandio (e.g. club closed) — counts as completed">
+        Skipped
+      </span>
+    )
+  }
   const meta = STATUS_META[status] || STATUS_META.pending
   const muted = status === 'pending'
   return (
@@ -331,7 +340,7 @@ function JobRow({ job, showLoc }) {
               </>
             : <p className="text-[11px] text-text-muted">{Math.round(job.percent_complete || 0)}% complete</p>}
         </div>
-        <StatusPill status={job.compliance_status} />
+        <StatusPill status={job.compliance_status} skipped={!!job.skip_reason} />
         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-medium whitespace-nowrap transition-colors ${
           open ? 'bg-text-primary text-white border-text-primary' : 'bg-bg text-text-muted border-border'
         }`}>
@@ -608,7 +617,7 @@ export default function ComplianceReport({ locationSlug }) {
                         <DeltaChip current={agg.completion_pct} previous={prevAgg.completion_pct} />
                         <span
                           className="text-2xl font-bold text-text-primary cursor-help"
-                          title="Completed % = jobs done (on-time + late) out of jobs that came due. Pending / in-progress jobs aren't counted yet."
+                          title="Completed % = jobs done or skipped (on-time + late + skipped) out of jobs that came due. Pending / in-progress jobs aren't counted yet."
                         >
                           {agg.completion_pct != null ? `${agg.completion_pct.toFixed(0)}%` : '—'}
                         </span>

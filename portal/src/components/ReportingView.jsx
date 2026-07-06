@@ -3,7 +3,6 @@ import MembershipReport from './reports/MembershipReport'
 import PTReport from './reports/PTReport'
 import ClubHealthReport from './reports/ClubHealthReport'
 import PTRosterReport from './reports/PTRosterReport'
-import OperationsReport from './reports/OperationsReport'
 import ComplianceReport from './reports/ComplianceReport'
 import CancelsReport from './reports/CancelsReport'
 import CheckinsReport from './reports/CheckinsReport'
@@ -73,7 +72,6 @@ const ALL_REPORT_TILES = [
   { key: 'revenue', label: 'Revenue', desc: 'Dollars & Profit Centers' },
   { key: 'pos-sales', label: 'POS Sales', desc: 'Retail, Staff & Shrinkage' },
   { key: 'till', label: 'Till', desc: 'Cash Drawer Reconciliation' },
-  { key: 'operations', label: 'Operational Compliance', desc: 'Checklists' },
   { key: 'compliance', label: 'Compliance', desc: 'Jobs: Who, When & Missed' },
   { key: 'meta-ads', label: 'Meta Ads', desc: 'Facebook & Instagram' },
   { key: 'google-marketing', label: 'Google', desc: 'Business + Analytics' },
@@ -95,7 +93,7 @@ const REPORT_GROUPS = [
     label: 'Club Health',
     desc: 'Health, Activity & Compliance',
     iconPath: REPORT_ICONS['club-health'],
-    reports: ['club-health', 'membership', 'cancels', 'operations', 'compliance', 'audits', 'checkins', 'payroll', 'revenue', 'pos-sales', 'till'],
+    reports: ['club-health', 'membership', 'cancels', 'compliance', 'audits', 'checkins', 'payroll', 'revenue', 'pos-sales', 'till'],
   },
   {
     key: 'training',
@@ -124,7 +122,7 @@ function defaultReportKeysForRole(role, customReports) {
     case 'lead':
       return ['membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health']
     case 'manager':
-      return ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'operations', 'compliance', 'revenue', 'pos-sales', 'till', 'kpis', 'audits']
+      return ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'compliance', 'revenue', 'pos-sales', 'till', 'kpis', 'audits']
     case 'marketing':
       return ALL_REPORT_TILES.map(t => t.key).filter(k => k !== 'kpis' && k !== 'audits')
     default: // corporate, admin, director
@@ -429,7 +427,7 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
       {/* Header card */}
       <div className="relative z-20 bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
         {(() => {
-          const showDateControls = activeReport !== 'pt-roster' && activeReport !== 'operations' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing' && activeReport !== 'audits'
+          const showDateControls = activeReport !== 'pt-roster' && activeReport !== 'compliance' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing' && activeReport !== 'audits'
           const showLocation = hasMultipleReportLocations
           return (
             <>
@@ -499,9 +497,9 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
                   </div>
                 )}
                 <div className="ml-auto flex-shrink-0">
-                  {/* KPIs, Audits, and Operational Compliance use location pills
+                  {/* KPIs, Audits, and Compliance use location pills
                       below instead of this dropdown. */}
-                  {['kpis', 'audits', 'operations'].includes(activeReport) ? null : showLocation ? (
+                  {['kpis', 'audits', 'compliance'].includes(activeReport) ? null : showLocation ? (
                     <LocationMultiSelect
                       value={locationSlug}
                       onChange={setLocationSlug}
@@ -553,10 +551,10 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
                 </div>
               )}
 
-              {/* KPIs, Audits, Operational Compliance: single-select location
-                  pills for quick club-to-club navigation. Audits has no All
-                  option — it's strictly one club at a time. */}
-              {['kpis', 'audits', 'operations'].includes(activeReport) && showLocation && (
+              {/* KPIs, Audits, Compliance: single-select location pills for
+                  quick club-to-club navigation. Audits has no All option —
+                  it's strictly one club at a time. */}
+              {['kpis', 'audits', 'compliance'].includes(activeReport) && showLocation && (
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {[...(activeReport !== 'audits' ? [{ slug: 'all', label: 'All' }] : []), ...(isAdmin
                     ? LOCATIONS.filter(l => l.slug !== 'all')
@@ -641,9 +639,6 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           )}
           {activeReport === 'payroll' && (
             <PayrollReport locationSlug={locationSlug} />
-          )}
-          {activeReport === 'operations' && (
-            <OperationsReport locationSlug={locationSlug} />
           )}
           {activeReport === 'compliance' && (
             <ComplianceReport locationSlug={locationSlug} />
