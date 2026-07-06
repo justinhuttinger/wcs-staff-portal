@@ -340,6 +340,34 @@ const REPORT_INFO = {
     ],
   },
 
+  compliance: {
+    title: 'Compliance',
+    sections: [
+      {
+        heading: 'What this is',
+        body:
+          'Every Operandio job at every club, pulled straight from the Operandio API: what got done on time, what was late, what was missed entirely, and who completed each step. Expand any job to see step-by-step detail with names, timestamps, responses, and notes.',
+      },
+      {
+        heading: 'Statuses',
+        body: [
+          'On Time — completed before the due time.',
+          'Late — completed, but after the due time.',
+          'Missed — due time passed and it was never completed.',
+          'In Progress / Pending — not yet due (today\'s and upcoming jobs).',
+        ],
+      },
+      {
+        heading: 'How filters work',
+        body: [
+          'Date range — by each job\'s due date (Pacific).',
+          'Location — one club, or All Locations.',
+          'Data refreshes from Operandio about every 15 minutes.',
+        ],
+      },
+    ],
+  },
+
   'meta-ads': {
     title: 'Meta Ads',
     sections: [

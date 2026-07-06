@@ -1285,6 +1285,33 @@ export async function getOperandioJobs(params = {}, options = {}) {
   return api('/operandio/jobs' + (qs ? '?' + qs : ''), options)
 }
 
+// ---- Compliance report (Operandio API sync) ----
+
+function complianceQs(params = {}) {
+  const cleaned = {}
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') cleaned[k] = v
+  }
+  const qs = new URLSearchParams(cleaned).toString()
+  return qs ? '?' + qs : ''
+}
+
+export async function getComplianceSummary(params = {}, options = {}) {
+  return api('/reports/compliance/summary' + complianceQs(params), options)
+}
+
+export async function getComplianceJobs(params = {}, options = {}) {
+  return api('/reports/compliance/jobs' + complianceQs(params), options)
+}
+
+export async function getComplianceJobSteps(jobId, params = {}, options = {}) {
+  return api(`/reports/compliance/jobs/${encodeURIComponent(jobId)}/steps` + complianceQs(params), options)
+}
+
+export async function getCompliancePeople(params = {}, options = {}) {
+  return api('/reports/compliance/people' + complianceQs(params), options)
+}
+
 // Task-level detail for a single job instance (drill-down)
 export async function getOperandioJobInstance(params = {}, options = {}) {
   const cleaned = {}
