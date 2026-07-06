@@ -52,7 +52,8 @@ async function fetchJobRows(scope, start, end, extraFilters = q => q) {
 }
 
 // GET /summary — totals + per-location + per-day rollups for the range.
-router.get('/summary', requireReportAccess('manager', ['compliance']), async (req, res) => {
+// Also grants 'kpis': the KPI report's Operational Compliance tile reads this.
+router.get('/summary', requireReportAccess('manager', ['compliance', 'kpis']), async (req, res) => {
   try {
     const { start, end } = parseDates(req)
     const scope = await resolveScopedSlugs(req)

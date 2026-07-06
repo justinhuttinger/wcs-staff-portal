@@ -15,6 +15,7 @@
 
 const reportsRouter = require('../routes/reports')
 const operandioRouter = require('../routes/operandio')
+const complianceRouter = require('../routes/compliance')
 
 function extractHandler(router, path) {
   const layer = (router.stack || []).find(l => l.route && l.route.path === path)
@@ -59,7 +60,7 @@ async function computeKpisForClub(slug, startDate, endDate) {
   const membershipH = extractHandler(reportsRouter, '/membership')
   const cancelsH = extractHandler(reportsRouter, '/cancels')
   const speedH = extractHandler(reportsRouter, '/speed-to-lead')
-  const rangeH = extractHandler(operandioRouter, '/range')
+  const opsH = extractHandler(complianceRouter, '/summary')
   const qaH = extractHandler(operandioRouter, '/qa-reports')
 
   const dateQ = { start_date: startDate, end_date: endDate, location_slug: slug }
@@ -67,7 +68,7 @@ async function computeKpisForClub(slug, startDate, endDate) {
     callHandler(membershipH, dateQ).catch(() => null),
     callHandler(cancelsH, dateQ).catch(() => null),
     callHandler(speedH, dateQ).catch(() => null),
-    callHandler(rangeH, dateQ).catch(() => null),
+    callHandler(opsH, dateQ).catch(() => null),
     // QA is "timeless": latest audit ON OR BEFORE the snapshot day, no start bound.
     callHandler(qaH, { location_slug: slug, department: 'QA-Cleaning', end_date: endDate }).catch(() => null),
   ])
@@ -93,10 +94,15 @@ async function computeKpisForClub(slug, startDate, endDate) {
     ? { value: spd.business_median_minutes, sample_size: spd.contacted_count }
     : { value: null }
 
-  // Operational Compliance: mean of the daily overall scores in range (weekly
-  // rows, where period_start !== period_end, are skipped so they don't double-count).
-  out.ops = ops
-    ? { value: mean((ops.rows || []).filter(r => r.period_start === r.period_end).map(r => r.overall_pct)) }
+  // Operational Compliance: jobs completed (on-time + late, skips already
+  // scored on_time) out of jobs that came due, from the Operandio API sync —
+  // the same number as the Compliance report's Period Summary.
+  out.ops = ops && ops.decided > 0
+    ? {
+        value: pct(ops.totals.on_time + ops.totals.late, ops.decided),
+        numerator: ops.totals.on_time + ops.totals.late,
+        denominator: ops.decided,
+      }
     : { value: null }
 
   out.c2s = can && can.c2s_utilization
