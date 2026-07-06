@@ -70,33 +70,24 @@ router.get('/data-freshness', async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
-// Helper: convert YYYY-MM-DD date strings to millisecond timestamp strings
-// GHL custom field dates are stored as midnight UTC but displayed on the client
-// in Pacific time (UTC-7 PDT). Without offset, a date shown as "April 11" in
-// the UI (stored as April 12 00:00 UTC) falls outside an April 11 UTC filter.
-// Adding 7 hours aligns the filter with the displayed Pacific-time dates.
+// Helper: convert YYYY-MM-DD date strings to millisecond timestamp strings.
+// Every column filtered with these bounds (day_one_booking_date, day_one_date)
+// is a GHL DATE-PICKER field: GHL stores the chosen calendar date as midnight
+// UTC and displays that same calendar date. So the correct window for a
+// date-only field is plain UTC day boundaries — verified in prod (every stored
+// value is exactly midnight UTC; a field showing "July 1" in GHL is stored
+// 2026-07-01T00:00:00Z). A Pacific offset was applied here historically, which
+// silently shifted every day boundary: "July 1-31" matched GHL dates
+// July 2 - Aug 1, and bookings dated the 1st fell out of their month.
+// Do NOT reintroduce a timezone offset for date-only fields; offsets belong
+// only on real event timestamps (those use ISO bounds on TIMESTAMPTZ columns).
 // ---------------------------------------------------------------------------
-// Dynamic Pacific timezone offset (handles PDT/PST automatically)
-function getPacificOffsetMs(date) {
-  // Use Intl to determine if a date is in PDT or PST
-  const jan = new Date(date.getFullYear(), 0, 1)
-  const jul = new Date(date.getFullYear(), 6, 1)
-  const stdOffset = Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset())
-  // For server in UTC: Pacific Standard = UTC-8, Pacific Daylight = UTC-7
-  // Check if the date is in DST by comparing formatted hour
-  const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false })
-  const utcHour = date.getUTCHours()
-  const pacificHour = parseInt(formatter.format(date), 10)
-  const diff = (utcHour - pacificHour + 24) % 24
-  return diff * 3600000
-}
-
 function dateToMs(dateStr, endOfDay = false) {
   if (!dateStr) return null
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null
   const d = endOfDay ? new Date(dateStr + 'T23:59:59.999Z') : new Date(dateStr + 'T00:00:00.000Z')
   if (isNaN(d.getTime())) return null
-  return (d.getTime() + getPacificOffsetMs(d)).toString()
+  return d.getTime().toString()
 }
 
 // ---------------------------------------------------------------------------

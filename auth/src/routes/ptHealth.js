@@ -271,31 +271,24 @@ async function computeDeactivatedPT(club, startDate, endDate) {
 //   Set   = total contacts in the filter
 //   Show  = day_one_status = 'Completed'
 //   Close = Show ∩ day_one_sale = 'Sale'
-// Mirror /reports/pt's date-to-ms helper. GHL stores custom-field dates as
-// UTC ms but the UI thinks in Pacific calendar dates, so the day boundaries
-// need a Pacific offset (+7h PDT, +8h PST) added before they hit Supabase.
-// Without this, PT Health was sweeping in ~7h of events from the prior
-// Pacific day at the start of the range.
-function getPacificOffsetMs(date) {
-  const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false })
-  const utcHour = date.getUTCHours()
-  const pacificHour = parseInt(formatter.format(date), 10)
-  const diff = (utcHour - pacificHour + 24) % 24
-  return diff * 3600000
-}
-
-function pacificDateToMs(dateStr, endOfDay = false) {
+// Mirror /reports/pt's date-to-ms helper. day_one_date is a GHL DATE-PICKER
+// field: the chosen calendar date is stored as midnight UTC and GHL displays
+// that same calendar date, so the correct window is plain UTC day boundaries.
+// The Pacific offset this used to add shifted every day boundary by 7-8h,
+// pushing bookings dated the 1st of a month into the prior month (see
+// dateToMs in reports.js for the full story — keep these in sync).
+function dateOnlyToMs(dateStr, endOfDay = false) {
   if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null
   const d = endOfDay
     ? new Date(dateStr + 'T23:59:59.999Z')
     : new Date(dateStr + 'T00:00:00.000Z')
   if (isNaN(d.getTime())) return null
-  return (d.getTime() + getPacificOffsetMs(d)).toString()
+  return d.getTime().toString()
 }
 
 async function computeDayOnes(slug, startDate, endDate) {
-  const startMs = pacificDateToMs(startDate, false)
-  const endMs = pacificDateToMs(endDate, true)
+  const startMs = dateOnlyToMs(startDate, false)
+  const endMs = dateOnlyToMs(endDate, true)
 
   // Mirror /reports/pt exactly: same select shape, same filter chain, single
   // .order() query (no manual pagination) so the result set matches even at
@@ -437,8 +430,8 @@ router.get('/debug-day-one', async (req, res) => {
       return res.status(403).json({ error: 'Admin only' })
     }
     const { start_date, end_date, location_slug } = req.query
-    const startMs = pacificDateToMs(start_date, false)
-    const endMs = pacificDateToMs(end_date, true)
+    const startMs = dateOnlyToMs(start_date, false)
+    const endMs = dateOnlyToMs(end_date, true)
     let q = supabaseAdmin
       .from('ghl_contacts_report')
       .select('id, full_name, day_one_booked, day_one_booking_date, day_one_date, day_one_status, day_one_sale, location_slug')
