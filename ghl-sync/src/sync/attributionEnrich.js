@@ -9,24 +9,24 @@
  *
  * Search endpoint paginates via { searchAfter: [ts, id] } returned in
  * `meta.searchAfter`. Page size matches the contacts sync (100).
+ *
+ * Runs in two modes: a full pass (manual /api/sync/attribution backfill) and
+ * an incremental pass scoped to contacts added in the last N days (nightly
+ * scheduler) via a dateAdded range filter on the search body.
  */
 
 const axios = require('axios');
 const supabase = require('../db/supabase');
 const LOCATIONS = require('../config/locations');
 const { sleep } = require('../ghl/client');
+const { buildSearchBody } = require('./attributionSearchBody');
 
 const BASE_URL = process.env.GHL_BASE_URL || 'https://services.leadconnectorhq.com';
 const PAGE_LIMIT = parseInt(process.env.CONTACTS_PAGE_SIZE) || 100;
 const UPDATE_BATCH = 200;
 
-async function searchPage(locationId, apiKey, searchAfter) {
-  const body = {
-    locationId,
-    pageLimit: PAGE_LIMIT,
-    sort: [{ field: 'dateAdded', direction: 'desc' }],
-  };
-  if (searchAfter) body.searchAfter = searchAfter;
+async function searchPage(locationId, apiKey, searchAfter, sinceIso) {
+  const body = buildSearchBody({ locationId, searchAfter, sinceIso });
 
   const res = await axios.post(`${BASE_URL}/contacts/search`, body, {
     headers: {
@@ -75,8 +75,9 @@ async function flushUpdates(rows) {
   return updated;
 }
 
-async function enrichLocation(location, { maxPages = 2000 } = {}) {
-  console.log(`[Attribution] Enriching ${location.name} (${location.id})`);
+async function enrichLocation(location, { maxPages = 2000, sinceDays = null } = {}) {
+  const sinceIso = sinceDays ? new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString() : null;
+  console.log(`[Attribution] Enriching ${location.name} (${location.id})${sinceIso ? ` since ${sinceIso}` : ' (full pass)'}`);
   const start = Date.now();
   let searchAfter = null;
   let totalScanned = 0;
@@ -86,7 +87,7 @@ async function enrichLocation(location, { maxPages = 2000 } = {}) {
   for (let page = 1; page <= maxPages; page++) {
     let data;
     try {
-      data = await searchPage(location.id, location.apiKey, searchAfter);
+      data = await searchPage(location.id, location.apiKey, searchAfter, sinceIso);
     } catch (err) {
       console.error(`[Attribution] ${location.name} page ${page} failed:`, err.response?.status, err.response?.data || err.message);
       break;
@@ -121,13 +122,13 @@ async function enrichLocation(location, { maxPages = 2000 } = {}) {
   return { scanned: totalScanned, withAttr: totalWithAttr, updated: totalUpdated };
 }
 
-async function enrichAll() {
-  console.log(`[Attribution] Enriching ${LOCATIONS.length} locations`);
+async function enrichAll({ sinceDays = null } = {}) {
+  console.log(`[Attribution] Enriching ${LOCATIONS.length} locations${sinceDays ? ` (last ${sinceDays} days)` : ''}`);
   const start = Date.now();
   const results = {};
   for (const location of LOCATIONS) {
     try {
-      results[location.slug] = await enrichLocation(location);
+      results[location.slug] = await enrichLocation(location, { sinceDays });
     } catch (err) {
       console.error(`[Attribution] ${location.name} failed:`, err.message);
       results[location.slug] = { error: err.message };
