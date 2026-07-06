@@ -44,6 +44,7 @@ import BlogAutomationView from './BlogAutomationView'
 import AdminPrintDevicesTab from './admin/AdminPrintDevicesTab'
 import AdminPrintAutomationsTab from './admin/AdminPrintAutomationsTab'
 import DayOneProgramsAdmin from './admin/DayOneProgramsAdmin'
+import SpotlightReport from './admin/SpotlightReport'
 
 const SETUP_TILES = [
   { key: 'staff', label: 'Staff', desc: 'Accounts & Roles', icon: 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z' },
@@ -97,6 +98,7 @@ const EXPERIMENTAL_TILES = [
   { key: 'daily-snapshot', label: 'Daily Snapshot', desc: 'Single-Day Report (Beta)', icon: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5M12 12.75h.008v.008H12v-.008z' },
   { key: 'membership-audit', label: 'Membership Audit', desc: 'Dues & Leaks (Beta)', icon: 'M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z M6 6h.008v.008H6V6Z' },
   { key: 'business-hours-stl', label: 'Business-Hours STL', desc: 'Speed to Lead, Workable Hours (Beta)', icon: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
+  { key: 'spotlight', label: 'Spotlight', desc: 'Day Wins & Losses (Beta)', icon: 'M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z' },
   { key: 'university-enroll', label: 'University Enrollment', desc: 'Enroll Trainees (Beta)', icon: 'M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342M6.75 15a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm0 0v-3.675A55.378 55.378 0 0 1 12 8.443m-7.007 11.55A5.981 5.981 0 0 0 6.75 15.75v-1.5' },
 ]
 
@@ -111,7 +113,7 @@ const TILE_BY_KEY = Object.fromEntries(ALL_TILES.map(t => [t.key, t]))
 const CATEGORIES = [
   { title: 'Staff & HR', keys: ['staff', 'import', 'employee-roster', 'roles-v2', 'paychex', 'paychex-training'] },
   { title: 'Portal Setup', keys: ['tiles', 'layouts', 'config', 'drive-folders', 'action-links', 'references', 'tickets', 'portal-refresh'] },
-  { title: 'Reports & KPIs', keys: ['kpi-goals', 'trends-12mo', 'daily-snapshot', 'membership-audit', 'speed-to-lead-audit', 'business-hours-stl', 'revenue-backfill', 'payroll-commissions'] },
+  { title: 'Reports & KPIs', keys: ['kpi-goals', 'trends-12mo', 'daily-snapshot', 'spotlight', 'membership-audit', 'speed-to-lead-audit', 'business-hours-stl', 'revenue-backfill', 'payroll-commissions'] },
   { title: 'Members & Sales', keys: ['online-join', 'vip-referrals', 'tour-checkin', 'membership-skip', 'referral-rewards', 'audit-toggles', 'vendor-price-list'] },
   { title: 'Integrations & Sync', keys: ['sync', 'abc-sync', 'custom-fields', 'google-connections', 'shared-credentials'] },
   { title: 'Logs & Messaging', keys: ['webhooks', 'sms', 'audit-log'] },
@@ -201,6 +203,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'university-enroll' && <UniversityEnrollAdmin />}
         {activeSection === 'roles-v2' && <AdminRolesV2Tab />}
         {activeSection === 'daily-snapshot' && <DailySnapshotReport />}
+        {activeSection === 'spotlight' && <SpotlightReport />}
         {activeSection === 'paychex-training' && <PaychexTrainingAdmin />}
         {activeSection === 'revenue-backfill' && <RevenueBackfillTile />}
         {activeSection === 'payroll-commissions' && <PayrollCommissionsAdmin />}
