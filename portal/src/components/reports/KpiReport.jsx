@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getMembershipReport, getAppSettings, getSpeedToLead, getCancelsReport, getComplianceSummary, getOperandioQaReports, getOperandioQaReport, getKpiHistory } from '../../lib/api'
+import { getMembershipReport, getAppSettings, getSpeedToLead, getCancelsReport, getComplianceSummary, getOperandioQaReports, getOperandioQaReport } from '../../lib/api'
 import ReportInfoButton from '../ReportInfoButton'
 import { openAuditReport } from '../../lib/qaReportHtml'
 import { pct, gapInfo, monthRangesBetween, median, mean, formatMinutes } from '../../lib/kpiMath'
@@ -516,140 +516,6 @@ function onTarget(def, value, goal) {
   return def.lowerIsBetter ? value <= goal : value >= goal
 }
 
-// --- History mode -----------------------------------------------------------
-// Reads frozen end-of-day snapshots (kpi_daily_snapshots) instead of computing
-// live, so you can step day by day and see exactly when a metric slid. Each day
-// is the MTD-as-of-that-evening value; goals shown are what they were that day.
-
-function ymdLocal(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-function yesterdayYmd() {
-  const d = new Date(); d.setDate(d.getDate() - 1); return ymdLocal(d)
-}
-function firstOfMonth(dateStr) {
-  return dateStr.slice(0, 8) + '01'
-}
-
-function ModeToggle({ mode, setMode }) {
-  return (
-    <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs font-semibold">
-      {[['live', 'Live'], ['history', 'History']].map(([m, label]) => (
-        <button
-          key={m}
-          type="button"
-          onClick={() => setMode(m)}
-          className={`px-3 py-1.5 transition-colors ${mode === m ? 'bg-wcs-red text-white' : 'bg-bg text-text-muted hover:text-text-primary'}`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function KpiHistoryView({ locationSlug }) {
-  const [day, setDay] = useState(yesterdayYmd)
-  const [rows, setRows] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true); setError(null)
-    getKpiHistory({ start_date: firstOfMonth(day), end_date: day, location_slug: locationSlug })
-      .then(r => { if (!cancelled) setRows(r.rows || []) })
-      .catch(e => { if (!cancelled) setError(e.message || 'Failed to load KPI history') })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [day, locationSlug])
-
-  // Average a KPI's snapshot value/goal across the selected clubs on one date.
-  const avg = (arr) => (arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null)
-  function dayAvg(key, date, field) {
-    const vals = (rows || []).filter(r => r.kpi_key === key && r.snapshot_date === date && r[field] != null).map(r => Number(r[field]))
-    return avg(vals)
-  }
-  // Per-day trend across the range (one averaged point per snapshot date).
-  function trend(key) {
-    const byDate = {}
-    for (const r of (rows || [])) {
-      if (r.kpi_key !== key || r.value == null) continue
-      ;(byDate[r.snapshot_date] = byDate[r.snapshot_date] || []).push(Number(r.value))
-    }
-    return Object.keys(byDate).sort().map(d => ({
-      key: d, label: d.slice(5).replace('-', '/'), value: avg(byDate[d]),
-    }))
-  }
-
-  if (loading) return <DesktopLoading />
-  if (error) {
-    return <div className="bg-surface rounded-xl border border-border p-8 text-center text-red-500">{error}</div>
-  }
-  const hasAny = (rows || []).length > 0
-
-  return (
-    <div className="space-y-3">
-      <div className="bg-surface rounded-xl border border-border p-4 flex items-center gap-3 flex-wrap">
-        <label className="text-xs text-text-muted font-semibold uppercase tracking-wide">KPIs as of</label>
-        <input
-          type="date"
-          value={day}
-          max={yesterdayYmd()}
-          onChange={e => e.target.value && setDay(e.target.value)}
-          className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:border-wcs-red"
-        />
-        <span className="text-xs text-text-muted">Frozen end-of-day value (month-to-date). History begins the day snapshots were switched on.</span>
-      </div>
-
-      {!hasAny ? (
-        <div className="bg-surface rounded-xl border border-border p-8 text-center text-text-muted">
-          No saved KPI history for this range yet. Snapshots are captured nightly, so they start appearing the day after this goes live.
-        </div>
-      ) : (
-        <div className="bg-surface border border-border rounded-xl overflow-hidden">
-          <ul className="divide-y divide-border">
-            {KPI_DEFS.map(def => {
-              const v = dayAvg(def.key, day, 'value')
-              const g = dayAvg(def.key, day, 'goal')
-              const hit = onTarget(def, v, g)
-              const points = trend(def.key)
-              return (
-                <li key={def.key} className="px-4 sm:px-5 py-4">
-                  <div className="flex items-center justify-between gap-3 sm:gap-4">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <p className="text-base sm:text-lg font-bold text-text-primary min-w-0">{def.label}</p>
-                      {/* portal: the list wrapper is overflow-hidden and would clip the popover */}
-                      <ReportInfoButton info={def.info} portal />
-                    </div>
-                    <div className="flex items-center gap-4 sm:gap-6 flex-shrink-0">
-                      <div className="text-right">
-                        <p className="text-xl sm:text-2xl font-bold text-text-primary leading-none">{formatValue(def, v)}</p>
-                        <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">That day</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xl sm:text-2xl font-bold text-text-muted leading-none">{g == null ? '—' : formatValue(def, g)}</p>
-                        <p className="text-[11px] text-text-muted mt-1 uppercase tracking-wide">Goal</p>
-                      </div>
-                      <div className="w-14 text-right">
-                        {g == null ? <span className="text-text-muted text-xs">No goal</span>
-                          : v == null ? <span className="text-text-muted text-xs">n/a</span>
-                          : hit ? <span className="text-green-600 font-semibold text-xs">Hit</span>
-                          : <span className="text-red-500 font-semibold text-xs">Missed</span>}
-                      </div>
-                    </div>
-                  </div>
-                  {points.length > 0 && <KpiTrendChart points={points} goal={g} format={def.format} />}
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      )}
-    </div>
-  )
-}
-
 export default function KpiReport({ startDate, endDate, locationSlug }) {
   // dataByPlan: { '<source>|<slugParam>': response } — one entry per unique
   // (source, enabled-club-set) combination among the KPI defs.
@@ -671,8 +537,6 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
   const trendSigRef = useRef(null)
   const fetchToken = useRef(0)
 
-  // 'live' = compute now (default); 'history' = read frozen daily snapshots.
-  const [mode, setMode] = useState('live')
   const clubs = selectedClubSlugs(locationSlug)
   const isMulti = clubs.length > 1
   const compSig = `${locationSlug}|${comp.start}|${comp.end}`
@@ -782,17 +646,6 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
     setOpenKey(prev => (prev === key ? null : key))
   }
 
-  // History mode reads frozen snapshots and must render before the live-loading
-  // gate (the live fetches keep running in the background but aren't shown).
-  if (mode === 'history') {
-    return (
-      <div className="space-y-3">
-        <ModeToggle mode={mode} setMode={setMode} />
-        <KpiHistoryView locationSlug={locationSlug} />
-      </div>
-    )
-  }
-
   if (loading) return <DesktopLoading />
   if (error) {
     return (
@@ -819,7 +672,6 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
 
   return (
     <div className="space-y-3">
-      <ModeToggle mode={mode} setMode={setMode} />
       {/* Header: a Retry when a source failed to load, plus the comparison-range
           pill (single-club trend mode only). The "data updated" stamp lives up in
           the report title row (ReportingView). */}
