@@ -114,6 +114,7 @@ const JOB_FIELDS = `
     failed
     score
     possibleScore
+    skipReason
   }
 `
 
