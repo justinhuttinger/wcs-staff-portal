@@ -9,6 +9,7 @@ const { alertSyncFailed } = require('./alerts');
 const { runMediaIndex } = require('./media/mediaIndex');
 const { checkRevenueGaps } = require('./revenue/gapCheck');
 const { emailStatsSync } = require('./sync/emailStatsSync');
+const { enrichAll: enrichAttributionAll } = require('./sync/attributionEnrich');
 
 function startScheduler() {
   const intervalMinutes = process.env.SYNC_INTERVAL_MINUTES || 10;
@@ -128,6 +129,34 @@ function startScheduler() {
     }
   });
 
+  // Attribution enrichment — nightly incremental pass over recently added
+  // contacts. The bulk contact sync (GET /contacts/) never returns
+  // attributionSource, so without this the attribution_source columns only
+  // ever get populated by a manual full backfill (the FB ROAS "memberships
+  // sold" count silently went to 0 when the May 2026 backfill aged out).
+  // The lookback window re-scans each contact for ~5 weeks, catching leads
+  // that convert (get retagged) well after their first touch.
+  const attributionSyncHour = Number(process.env.ATTRIBUTION_SYNC_HOUR || 5); // PST
+  const attributionSyncHourUTC = (attributionSyncHour + 8) % 24;
+  const attributionLookbackDays = Number(process.env.ATTRIBUTION_LOOKBACK_DAYS || 35);
+  let attributionRunning = false;
+  cron.schedule(`0 ${attributionSyncHourUTC} * * *`, async () => {
+    if (attributionRunning) {
+      console.warn('[Scheduler] Previous attribution enrichment still running — skipping');
+      return;
+    }
+    attributionRunning = true;
+    console.log('[Scheduler] Starting attribution enrichment...');
+    try {
+      await enrichAttributionAll({ sinceDays: attributionLookbackDays });
+    } catch (err) {
+      console.error('[Scheduler] Attribution enrichment failed:', err.message);
+      await alertSyncFailed(err).catch(() => {});
+    } finally {
+      attributionRunning = false;
+    }
+  });
+
   // GHL email campaign stats — every N minutes (default 30; stats don't need to
   // be fresher than the other syncs). Logged-and-skipped on failure, never fatal.
   const emailStatsIntervalMinutes = process.env.EMAIL_STATS_INTERVAL_MINUTES || 30;
@@ -142,6 +171,7 @@ function startScheduler() {
 
   console.log(`[Scheduler] Delta sync every ${intervalMinutes}m, full sync daily at ${fullSyncHour}:00 PST (${fullSyncHourUTC}:00 UTC)`);
   console.log(`[Scheduler] Email stats sync every ${emailStatsIntervalMinutes}m`);
+  console.log(`[Scheduler] Attribution enrichment daily at ${attributionSyncHour}:00 PST (${attributionSyncHourUTC}:00 UTC), lookback ${attributionLookbackDays}d`);
   console.log(`[Scheduler] Recurring PT sync daily at ${recurringPtHour}:30 PST (${recurringPtHourUTC}:30 UTC)`);
   console.log(`[Scheduler] Revenue gap check daily at ${revenueGapCheckHour}:00 UTC`);
   console.log(`[Scheduler] Payroll recurring sync daily at ${payrollSyncHour}:00 PST (${payrollSyncHourUTC}:00 UTC)`);

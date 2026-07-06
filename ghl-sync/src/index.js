@@ -416,11 +416,16 @@ app.post('/api/sync/checkins/probe', requireSecret, async (req, res) => {
 // POST /api/sync/attribution — enrich attribution_source / last_attribution_source
 // for all locations using POST /contacts/search. Additive: does not touch other
 // contact fields. Long-running (full pass across all locations is ~hours).
+// Optional ?days=N scopes the pass to contacts added in the last N days.
 app.post('/api/sync/attribution', requireSecret, (req, res) => {
   if (syncRunning) return res.status(409).json({ error: 'Sync already in progress' });
+  const sinceDays = req.query.days ? parseInt(req.query.days, 10) : null;
+  if (req.query.days && (!Number.isInteger(sinceDays) || sinceDays <= 0)) {
+    return res.status(400).json({ error: 'days must be a positive integer' });
+  }
   syncRunning = true;
-  res.json({ status: 'started', message: 'Attribution enrichment running in background' });
-  enrichAttributionAll()
+  res.json({ status: 'started', message: `Attribution enrichment running in background${sinceDays ? ` (last ${sinceDays} days)` : ''}` });
+  enrichAttributionAll({ sinceDays })
     .then(results => console.log('[API] Attribution enrichment results:', JSON.stringify(results)))
     .catch(err => console.error('[API] Attribution enrichment failed:', err.message))
     .finally(() => { syncRunning = false; });
