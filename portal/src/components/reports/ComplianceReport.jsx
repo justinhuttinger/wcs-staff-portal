@@ -118,12 +118,17 @@ function StepDetail({ jobId }) {
       .catch(e => setError(e.message || 'Failed to load steps'))
   }, [jobId])
 
-  if (error) return <p className="text-xs text-wcs-red px-5 py-3">{error}</p>
-  if (!steps) return <p className="text-xs text-text-muted px-5 py-3">Loading steps...</p>
-  if (!steps.length) return <p className="text-xs text-text-muted px-5 py-3">No step detail synced yet for this job.</p>
+  if (error) return <p className="text-xs text-wcs-red px-5 py-3 bg-bg/50">{error}</p>
+  if (!steps) return <p className="text-xs text-text-muted px-5 py-3 bg-bg/50">Loading steps...</p>
+  if (!steps.length) return <p className="text-xs text-text-muted px-5 py-3 bg-bg/50">No step detail synced yet for this job — the next sync (within 15 min) should fill it in.</p>
 
+  const doneCount = steps.filter(s => s.completed_at).length
   return (
-    <ul className="divide-y divide-border/60 bg-bg/50">
+    <div className="bg-bg/50 border-t border-border/60">
+      <p className="px-5 pt-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+        Step breakdown — {doneCount}/{steps.length} completed
+      </p>
+      <ul className="divide-y divide-border/60">
       {steps.map(s => {
         const done = !!s.completed_at
         return (
@@ -138,6 +143,7 @@ function StepDetail({ jobId }) {
                 {s.name}
                 {s.skip && <span className="ml-2 text-blue-600 font-semibold">skipped</span>}
                 {s.failed && <span className="ml-2 text-red-600 font-semibold">failed</span>}
+                {!done && !s.skip && <span className="ml-2 text-red-500/80 font-semibold">not done</span>}
               </p>
               {s.response && (
                 <p className="text-[11px] text-text-muted mt-0.5 break-words">
@@ -162,7 +168,8 @@ function StepDetail({ jobId }) {
           </li>
         )
       })}
-    </ul>
+      </ul>
+    </div>
   )
 }
 
@@ -171,9 +178,8 @@ function JobRow({ job, showLoc }) {
   const assigned = [...(job.assigned_groups || []), ...(job.assigned_users || [])]
   return (
     <li>
-      <button type="button" onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-bg/60 transition-colors">
-        <span className={`text-text-muted text-xs transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
+        className="w-full flex items-center gap-3 px-5 py-3 text-left cursor-pointer hover:bg-bg/60 transition-colors">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-text-primary truncate">{cleanJob(job.display_name || job.process_name)}</p>
           <p className="text-[11px] text-text-muted truncate">
@@ -191,6 +197,12 @@ function JobRow({ job, showLoc }) {
             : <p className="text-[11px] text-text-muted">{Math.round(job.percent_complete || 0)}% complete</p>}
         </div>
         <StatusPill status={job.compliance_status} />
+        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-medium whitespace-nowrap transition-colors ${
+          open ? 'bg-text-primary text-white border-text-primary' : 'bg-bg text-text-muted border-border'
+        }`}>
+          Steps
+          <span className={`text-[9px] transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+        </span>
       </button>
       {open && <StepDetail jobId={job.id} />}
     </li>
