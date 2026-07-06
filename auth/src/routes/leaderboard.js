@@ -39,26 +39,17 @@ function setCache(key, data) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Pacific timezone offset for custom field date alignment
-// ---------------------------------------------------------------------------
-// Dynamic Pacific timezone offset (handles PDT/PST automatically)
-function getPacificOffsetMs(date) {
-  const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false })
-  const utcHour = date.getUTCHours()
-  const pacificHour = parseInt(formatter.format(date), 10)
-  const diff = (utcHour - pacificHour + 24) % 24
-  return diff * 3600000
-}
-
 function monthBounds(monthStr) {
   // monthStr = "YYYY-MM"
   const [year, mon] = monthStr.split('-').map(Number)
   const start = new Date(Date.UTC(year, mon - 1, 1))
   const end = new Date(Date.UTC(year, mon, 0, 23, 59, 59, 999)) // last day of month
   return {
-    startMs: (start.getTime() + getPacificOffsetMs(start)).toString(),
-    endMs: (end.getTime() + getPacificOffsetMs(end)).toString(),
+    // startMs/endMs filter GHL date-picker fields (day_one_booking_date),
+    // which store the chosen calendar date as midnight UTC — plain UTC month
+    // boundaries, no timezone offset (see dateToMs in reports.js).
+    startMs: start.getTime().toString(),
+    endMs: end.getTime().toString(),
     startISO: start.toISOString(),
     endISO: end.toISOString(),
     startDate: start.toISOString().slice(0, 10),

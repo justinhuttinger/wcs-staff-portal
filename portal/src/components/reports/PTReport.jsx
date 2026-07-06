@@ -13,7 +13,9 @@ function capitalize(str) {
 function formatDate(val) {
   if (!val) return '—'
   if (typeof val === 'number' || (typeof val === 'string' && /^\d{10,}$/.test(val))) {
-    return new Date(parseInt(val)).toLocaleDateString()
+    // GHL date-picker values are the calendar date at midnight UTC — render in
+    // UTC or the browser's Pacific offset shows the previous day.
+    return new Date(parseInt(val)).toLocaleDateString('en-US', { timeZone: 'UTC' })
   }
   return val
 }
