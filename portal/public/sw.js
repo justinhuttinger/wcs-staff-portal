@@ -13,18 +13,25 @@ self.addEventListener('push', (event) => {
     requireInteraction: true,
     icon: '/wcs-logo.png',
     badge: '/wcs-logo.png',
+    data: { url: data.url || null },
   }
   event.waitUntil(self.registration.showNotification(title, options))
 })
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
+  const url = (event.notification.data && event.notification.data.url) || null
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      // Prefer an already-open tour app window over anything else at this scope.
+      const tourWin = wins.find((w) => w.url && w.url.includes('/tour.html'))
+      if (tourWin && 'focus' in tourWin) return tourWin.focus()
+      // App closed: open the tour URL carried in the push payload. Never open
+      // '/' — that is the login-gated staff portal, not the tour app.
+      if (url && self.clients.openWindow) return self.clients.openWindow(url)
       for (const w of wins) {
         if ('focus' in w) return w.focus()
       }
-      if (self.clients.openWindow) return self.clients.openWindow('/')
     })
   )
 })

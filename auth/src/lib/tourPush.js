@@ -36,6 +36,16 @@ async function sendTourArrival(locationId, intake) {
   }
   if (!subs || !subs.length) return
 
+  // The service worker needs the location's tour URL to open on notification
+  // tap — without it the only URL it knows is '/', the portal login page.
+  let url = null
+  const { data: cfg } = await supabaseAdmin
+    .from('tour_location_config')
+    .select('public_token')
+    .eq('location_id', locationId)
+    .maybeSingle()
+  if (cfg && cfg.public_token) url = `/tour.html?token=${cfg.public_token}`
+
   const name = (intake && intake.contact_name) || 'Someone'
   const payload = JSON.stringify({
     title: 'New tour checked in',
@@ -43,6 +53,7 @@ async function sendTourArrival(locationId, intake) {
     // Per-intake tag so two near-simultaneous arrivals both surface (don't collapse).
     tag: intake && intake.id ? `tour-${intake.id}` : 'tour-arrival',
     intake_id: intake && intake.id,
+    url,
   })
 
   const dead = []
