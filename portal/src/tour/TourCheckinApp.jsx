@@ -260,7 +260,14 @@ export default function TourCheckinApp({ token }) {
           intake={selected}
           dayOneBaseUrl={data.day_one_base_url}
           onClose={() => setSelected(null)}
-          onSaved={() => { setSelected(null); load({ silent: true }) }}
+          onSaved={(id) => {
+            // The server already deleted the row on save — drop the card from
+            // local state now so it vanishes with the modal instead of lingering
+            // until the refetch returns. The silent load stays as reconciliation.
+            setData(d => ({ ...d, ready: (d.ready || []).filter(r => r.id !== id) }))
+            setSelected(null)
+            load({ silent: true })
+          }}
         />
       )}
       </div>
@@ -295,7 +302,7 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
       // Show the success animation briefly, then close + refresh the queue.
       setSaved(true)
       try { navigator.vibrate?.(80) } catch (e) { /* best-effort */ }
-      setTimeout(() => onSaved(), 1300)
+      setTimeout(() => onSaved(intake.id), 1300)
     } catch (e) {
       setError(e.message || 'Failed to save'); setSaving(false)
     }
