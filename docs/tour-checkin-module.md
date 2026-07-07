@@ -77,7 +77,10 @@ The iPad is alerted to a new tour in three complementary ways:
   is the primary alert for the usual case (kiosk app left open).
 - **Web Push** (PR #379) - when the GHL webhook creates a row, the server pushes a
   notification to every subscription registered for that location, so staff are
-  alerted **even when the app is closed or the screen is locked**.
+  alerted **even when the app is closed or the screen is locked**. The payload
+  carries the location's tour URL (`/tour.html?token=…`); tapping the notification
+  focuses the open tour app, or opens that URL if the app is closed. (Before this,
+  a tap with the app closed opened `/` - the login-gated portal.)
 
 ### iOS Web Push requirements (Apple constraints, not code)
 
