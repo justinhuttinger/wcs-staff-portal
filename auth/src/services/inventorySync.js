@@ -26,6 +26,25 @@ const OVERLAP_MS = 60 * 60 * 1000
 
 const running = { catalog: false, pos: false, employees: false }
 
+// Fetch every row a query would return, paginating past PostgREST's default
+// 1000-row cap. `makeQuery` must return a FRESH builder each call (awaiting a
+// builder executes it, so it cannot be reused) and should carry a stable
+// .order() so pages don't overlap or skip. Without this, a club with >1000
+// catalog items had ~40% of its catalog invisible to the sale-line matcher, so
+// those sales read as "(unmatched)" / Uncategorized forever.
+const PAGE = 1000
+async function fetchAll(makeQuery, label) {
+  const rows = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await makeQuery().range(from, from + PAGE - 1)
+    if (error) throw new Error(`${label} failed: ` + error.message)
+    if (!data || data.length === 0) break
+    rows.push(...data)
+    if (data.length < PAGE) break
+  }
+  return rows
+}
+
 async function setSyncState(clubNumber, kind, fields) {
   await supabaseAdmin.from('inventory_sync_state').upsert(
     { club_number: clubNumber, kind, ...fields },
@@ -126,20 +145,22 @@ const costOf = (item) => item ? (num(item.avg_unit_cost) ?? num(item.last_unit_c
 // from on-hand, and on-hand reflects the latest physical count — retro-posting
 // movements now would wrongly drop it. This only fixes reporting linkage.
 async function reconcileUnmatchedForClub(clubNumber) {
-  const { data: catalog } = await supabaseAdmin
+  const catalog = await fetchAll(() => supabaseAdmin
     .from('inventory_items')
     .select('id, upc, avg_unit_cost, last_unit_cost')
     .eq('club_number', clubNumber)
+    .order('id'), 'reconcile catalog read')
   const byUpc = new Map()
   for (const it of catalog || []) if (it.upc) byUpc.set(it.upc, it)
   if (byUpc.size === 0) return 0
 
-  const { data: orphans } = await supabaseAdmin
+  const orphans = await fetchAll(() => supabaseAdmin
     .from('inventory_transaction_items')
     .select('id, upc, unit_cost_at_sale')
     .eq('club_number', clubNumber)
     .is('item_id', null)
     .not('upc', 'is', null)
+    .order('id'), 'reconcile orphan read')
 
   let relinked = 0
   for (const line of orphans || []) {
@@ -169,12 +190,13 @@ async function syncPosForClub(clubNumber) {
   const txns = await fetchPosTransactions(clubNumber, from, to)
   if (txns.length === 0) return { transactions: 0, newTransactions: 0, movements: 0 }
 
-  // Catalog lookup maps for line-item matching.
-  const { data: catalog, error: catErr } = await supabaseAdmin
+  // Catalog lookup maps for line-item matching. Paginated: a club with >1000
+  // catalog items would otherwise match only the first 1000 and orphan the rest.
+  const catalog = await fetchAll(() => supabaseAdmin
     .from('inventory_items')
     .select('id, sale_item_id, upc, avg_unit_cost, last_unit_cost')
     .eq('club_number', clubNumber)
-  if (catErr) throw new Error('catalog lookup failed: ' + catErr.message)
+    .order('id'), 'POS catalog lookup')
   const bySaleItemId = new Map((catalog || []).map(it => [String(it.sale_item_id), it]))
   const byUpc = new Map()
   for (const it of catalog || []) if (it.upc) byUpc.set(it.upc, it)
