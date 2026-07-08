@@ -3,7 +3,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, roleLevel, ROLE_HIERARCHY } = require('../middleware/role')
 const { canAccessForm, requireFormsBuilder } = require('../services/formsPermissions')
-const { validateSchema, makeSlug } = require('../services/formsSchema')
+const { validateSchema, makeSlug, INPUT_TYPES } = require('../services/formsSchema')
 const formsSheets = require('../services/formsSheets')
 const formsAudit = require('../services/formsAudit')
 
@@ -26,7 +26,7 @@ async function loadFormAccess(req, formId) {
 router.get('/', async (req, res) => {
   try {
     const { data: forms, error } = await supabaseAdmin.from('forms')
-      .select('*').neq('status', 'deleted').order('updated_at', { ascending: false })
+      .select('*').order('updated_at', { ascending: false })
     if (error) throw error
     const all = forms || []
     let visible
@@ -53,8 +53,9 @@ router.get('/', async (req, res) => {
     ])
     const counts = {}
     if (visibleIds.length) {
-      const { data: subs } = await supabaseAdmin.from('form_submissions').select('form_id').in('form_id', visibleIds)
-      for (const s of subs || []) counts[s.form_id] = (counts[s.form_id] || 0) + 1
+      const countResults = await Promise.all(visibleIds.map(id =>
+        supabaseAdmin.from('form_submissions').select('id', { count: 'exact', head: true }).eq('form_id', id)))
+      visibleIds.forEach((id, i) => { counts[id] = countResults[i].count || 0 })
     }
     const ownerName = Object.fromEntries((owners || []).map(o => [o.id, o.display_name]))
     const locName = Object.fromEntries((locs || []).map(l => [l.id, l.name]))
@@ -202,7 +203,7 @@ router.post('/:id/publish', async (req, res) => {
   try {
     const { form, access } = await loadFormAccess(req, req.params.id)
     if (!form || !access.edit) return res.status(form ? 403 : 404).json({ error: form ? 'No access' : 'Not found' })
-    const inputCount = (form.schema || []).filter(f => !['header', 'description'].includes(f.type)).length
+    const inputCount = (form.schema || []).filter(f => INPUT_TYPES.includes(f.type)).length
     if (inputCount === 0) return res.status(400).json({ error: 'Add at least one input field before publishing' })
     let sheet = { sheet_id: form.sheet_id, sheet_tab: form.sheet_tab, sheet_columns: form.sheet_columns }
     let sheetError = null
