@@ -25,6 +25,7 @@ export const PORTAL_TILE_CATALOG = [
   { key: 'tickets',         label: 'Tickets/Support',  desc: 'Help Desk',     group: 'tools' },
   { key: 'trainerAvail',    label: 'D1 Availability',  desc: 'Trainers',      group: 'tools' },
   { key: 'reporting',       label: 'Reporting',        desc: 'Reports',       group: 'tools' },
+  { key: 'forms',           label: 'Forms',            desc: 'Signups',       group: 'tools' },
   // Note: the Marketing Tracker tile is NOT listed here — it is controlled by
   // the marketing add-on toggle (with its own club/type scope), not the custom
   // tile picker, so the tile and its API gate never disagree.

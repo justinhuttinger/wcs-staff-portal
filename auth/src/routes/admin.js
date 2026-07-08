@@ -44,7 +44,7 @@ const MARKETING_TYPE_SLUGS = new Set([
 const CUSTOM_TILE_KEYS = new Set([
   'grow', 'abc', 'wheniwork', 'paychex', 'gmail', 'drive', 'insights', 'notifications',
   'calendar', 'leaderboard', 'helpCenter', 'ordering', 'tickets',
-  'trainerAvail', 'reporting',
+  'trainerAvail', 'reporting', 'forms',
 ])
 // Reports an admin may grant to a custom-role member. Lead-tier reports the
 // custom role can already load, plus the higher-tier reports now unlocked per

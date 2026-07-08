@@ -14,6 +14,7 @@ app.set('trust proxy', 1)
 // CORS: whitelist known origins
 const ALLOWED_ORIGINS = [
   process.env.PORTAL_URL || 'https://portal.wcstrength.com',
+  'https://forms.westcoaststrength.com',
   'http://localhost:3000',
   'http://localhost:5173',
 ]
@@ -111,6 +112,8 @@ app.use('/admin/shared-credentials', require('./routes/sharedCredentials'))
 app.use('/admin/cache', require('./routes/cacheAdmin'))
 app.use('/admin/exports', require('./routes/exports'))
 app.use('/audit-log', require('./routes/auditLog'))
+app.use('/forms', require('./routes/forms'))
+app.use('/public/forms', require('./routes/publicForms'))
 
 // WCS University (voice roleplay training) — ships dark behind a flag until the
 // Retell agent + GHL custom fields are configured. See services/university/README.md.
@@ -184,6 +187,13 @@ app.listen(PORT, () => {
     require('./services/kpiSnapshot').start()
   } catch (err) {
     console.error('[kpiSnapshot] failed to start:', err.message)
+  }
+
+  // Forms module: Google Sheets retry sweep. Opt out via FORMS_SHEETS_DISABLED=1.
+  try {
+    require('./services/formsSheets').start()
+  } catch (err) {
+    console.error('[formsSheets] failed to start:', err.message)
   }
 
   // RBAC v2: load admin-created role -> base-tier map so the synchronous auth
