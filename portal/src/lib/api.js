@@ -1024,6 +1024,24 @@ export const tourAdmin = {
     api('/admin/tour-locations/' + locationId + '/regenerate-token', { method: 'POST' }),
 }
 
+// Form Builder
+export const forms = {
+  list: () => api('/forms'),
+  get: (id) => api(`/forms/${id}`),
+  create: (body) => api('/forms', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id, body) => api(`/forms/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  publish: (id) => api(`/forms/${id}/publish`, { method: 'POST' }),
+  archive: (id) => api(`/forms/${id}/archive`, { method: 'POST' }),
+  remove: (id) => api(`/forms/${id}`, { method: 'DELETE' }),
+  addShare: (id, body) => api(`/forms/${id}/shares`, { method: 'POST', body: JSON.stringify(body) }),
+  removeShare: (id, staffId) => api(`/forms/${id}/shares/${staffId}`, { method: 'DELETE' }),
+  audit: (id) => api(`/forms/${id}/audit`),
+  auditAll: (params = {}) => api(`/forms/audit/all?` + new URLSearchParams(params)),
+  submissions: (id, offset = 0) => api(`/forms/${id}/submissions?offset=${offset}`),
+  retrySync: (id) => api(`/forms/${id}/retry-sync`, { method: 'POST' }),
+  staffDirectory: () => api('/forms/staff-directory'),
+}
+
 // Trainer Availability
 export async function getTrainerAvailability(params = {}) {
   const qs = new URLSearchParams(params).toString()
