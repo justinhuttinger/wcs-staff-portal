@@ -3,9 +3,9 @@ import { getInventorySummary, getInventoryEmployeeSpend, getInventoryShrinkage, 
 import { exportCSV } from '../../lib/export'
 
 // POS Sales report — the financial views that used to live on the Inventory page.
-// Three sub-tabs: Product Sales (retail), Employee Spend (staff purchases), and
-// Shrinkage (physical-count variance → misplacement & theft). Date range +
-// location come from the Reporting shell as props.
+// Four sub-tabs: Product Sales (retail), Employee Spend (staff purchases),
+// Shrinkage (physical-count variance → misplacement & theft), and Compliance.
+// Date range + location come from the Reporting shell as props.
 
 // --- helpers ---
 function fmtMoney(v) {
@@ -29,6 +29,97 @@ function fmtDateTime(iso) {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
   return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+// --- sorting ---
+// Every table on this report is click-to-sort. A column getter returns a number,
+// a lowercased string, or null (nulls always sort to the bottom). `null` sort
+// state means "server / natural order".
+const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v))
+const ts = (v) => { if (!v) return null; const t = new Date(v).getTime(); return Number.isNaN(t) ? null : t }
+
+function useSortState(initial = null) {
+  const [sort, setSort] = useState(initial)
+  // desc → asc → off, then back to desc on the next click.
+  const cycle = (col) => setSort(s => (!s || s.col !== col ? { col, dir: 'desc' } : s.dir === 'desc' ? { col, dir: 'asc' } : null))
+  return [sort, cycle]
+}
+
+function sortRows(rows, sort, getters) {
+  if (!sort || !getters[sort.col]) return rows
+  const get = getters[sort.col]
+  const dir = sort.dir === 'asc' ? 1 : -1
+  return rows.slice().sort((a, b) => {
+    const av = get(a), bv = get(b)
+    if (av == null && bv == null) return 0
+    if (av == null) return 1
+    if (bv == null) return -1
+    if (typeof av === 'string') return dir * av.localeCompare(bv)
+    return dir * (av - bv)
+  })
+}
+
+const CATEGORY_GETTERS = {
+  category: r => (r.category || '').toLowerCase(),
+  revenue: r => num(r.revenue),
+  cogs: r => num(r.cogs),
+  profit: r => num(r.profit),
+  margin: r => num(r.margin_pct),
+}
+const SALES_GETTERS = {
+  name: r => (r.name || '').toLowerCase(),
+  units: r => num(r.units),
+  revenue: r => num(r.revenue),
+  cogs: r => num(r.cogs),
+  profit: r => num(r.profit),
+  margin: r => num(r.margin_pct),
+}
+const EMP_GETTERS = {
+  name: r => (r.item_name || '').toLowerCase(),
+  club: r => (r.location_slug || '').toLowerCase(),
+  category: r => (r.category || '').toLowerCase(),
+  units: r => num(r.units),
+  purchases: r => num(r.purchases),
+  catalog: r => num(r.abc_unit_price),
+  empdisc: r => num(r.emp_discount_pct),
+  empprice: r => num(r.emp_price),
+  cost: r => num(r.unit_cost),
+  margin: r => num(r.margin_pct),
+  spend: r => num(r.emp_spend),
+  profit: r => num(r.profit),
+}
+const SHRINK_EMP_GETTERS = {
+  name: r => (r.name || '').toLowerCase(),
+  events: r => num(r.events),
+  net_units: r => num(r.net_units),
+  shrink: r => num(r.shrink_value),
+  net: r => num(r.net_value),
+}
+const SHRINK_ITEM_GETTERS = {
+  name: r => (r.item_name || '').toLowerCase(),
+  club: r => (r.location_slug || '').toLowerCase(),
+  events: r => num(r.events),
+  net_units: r => num(r.net_units),
+  net: r => num(r.net_value),
+}
+const SHRINK_EVENT_GETTERS = {
+  when: r => ts(r.occurred_at),
+  item: r => (r.item_name || '').toLowerCase(),
+  club: r => (r.location_slug || '').toLowerCase(),
+  by: r => (r.created_by_name || '').toLowerCase(),
+  expected: r => num(r.expected),
+  counted: r => num(r.counted),
+  delta: r => num(r.delta),
+  impact: r => num(r.impact),
+}
+const COMPLIANCE_GETTERS = {
+  club: r => String(r.location_slug || r.club_number || '').toLowerCase(),
+  lastcount: r => ts(r.last_count_at),
+  dayssince: r => num(r.days_since_count),
+  lastrestock: r => ts(r.last_restock_at),
+  tracked: r => num(r.tracked_items),
+  never: r => num(r.never_counted_items),
+  status: r => (r.status || '').toLowerCase(),
 }
 
 // Sortable column header (desc → asc → none). Every sortable column shows a
@@ -67,16 +158,14 @@ const moneyClass = (n) => (Number(n) < 0 ? 'text-wcs-red font-semibold' : Number
 
 // Roll a list of { category, revenue, cogs } lines up into per-category revenue /
 // COGS / profit / margin. cogs may be null for a line whose item has no cost on
-// file — those lines still count toward revenue but flag the category so we can
-// note that profit is overstated where cost is missing.
+// file — those lines still count toward revenue; their COGS just isn't added in.
 function rollupByCategory(items) {
   const m = new Map()
   for (const r of items) {
     const cat = r.category || 'Uncategorized'
-    const e = m.get(cat) || { category: cat, revenue: 0, cogs: 0, anyNoCost: false }
+    const e = m.get(cat) || { category: cat, revenue: 0, cogs: 0 }
     e.revenue += Number(r.revenue) || 0
-    if (r.cogs == null) e.anyNoCost = true
-    else e.cogs += Number(r.cogs) || 0
+    if (r.cogs != null) e.cogs += Number(r.cogs) || 0
     m.set(cat, e)
   }
   return [...m.values()].map(e => ({
@@ -85,16 +174,17 @@ function rollupByCategory(items) {
     cogs: +e.cogs.toFixed(2),
     profit: +(e.revenue - e.cogs).toFixed(2),
     margin_pct: e.revenue > 0 ? +(((e.revenue - e.cogs) / e.revenue) * 100).toFixed(1) : null,
-    anyNoCost: e.anyNoCost,
   })).sort((a, b) => b.revenue - a.revenue)
 }
 
-// Shared by-category summary table (Product Sales + Employee Spend).
+// Shared by-category summary table (Product Sales + Employee Spend). Sortable;
+// defaults to highest revenue first.
 function CategoryTable({ rows, revenueLabel = 'Revenue' }) {
+  const [sort, cycle] = useSortState({ col: 'revenue', dir: 'desc' })
   if (!rows.length) return null
   const tot = rows.reduce((a, r) => ({ revenue: a.revenue + r.revenue, cogs: a.cogs + r.cogs, profit: a.profit + r.profit }), { revenue: 0, cogs: 0, profit: 0 })
   const totMargin = tot.revenue > 0 ? (tot.profit / tot.revenue) * 100 : null
-  const someNoCost = rows.some(r => r.anyNoCost)
+  const sorted = sortRows(rows, sort, CATEGORY_GETTERS)
   return (
     <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
       <div className="px-4 py-2.5 border-b border-border bg-bg/40"><p className="text-xs font-bold uppercase tracking-wider text-text-muted">By Category</p></div>
@@ -102,17 +192,17 @@ function CategoryTable({ rows, revenueLabel = 'Revenue' }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
-              <th className="py-2.5 px-4">Category</th>
-              <th className="py-2.5 px-2 text-right">{revenueLabel}</th>
-              <th className="py-2.5 px-2 text-right">COGS</th>
-              <th className="py-2.5 px-2 text-right">Profit</th>
-              <th className="py-2.5 px-4 text-right">Margin</th>
+              <SortHeader label="Category" col="category" sort={sort} onSort={cycle} align="left" />
+              <SortHeader label={revenueLabel} col="revenue" sort={sort} onSort={cycle} />
+              <SortHeader label="COGS" col="cogs" sort={sort} onSort={cycle} />
+              <SortHeader label="Profit" col="profit" sort={sort} onSort={cycle} />
+              <SortHeader label="Margin" col="margin" sort={sort} onSort={cycle} />
             </tr>
           </thead>
           <tbody>
-            {rows.map(r => (
+            {sorted.map(r => (
               <tr key={r.category} className="border-b border-border/50 hover:bg-bg/40">
-                <td className="py-2 px-4 font-medium text-text-primary">{r.category}{r.anyNoCost && <span className="ml-1 text-text-muted">*</span>}</td>
+                <td className="py-2 px-4 font-medium text-text-primary">{r.category}</td>
                 <td className="py-2 px-2 text-right">{fmtMoney(r.revenue)}</td>
                 <td className="py-2 px-2 text-right">{fmtMoney(r.cogs)}</td>
                 <td className={`py-2 px-2 text-right ${moneyClass(r.profit)}`}>{fmtMoney(r.profit)}</td>
@@ -133,9 +223,6 @@ function CategoryTable({ rows, revenueLabel = 'Revenue' }) {
           </tfoot>
         </table>
       </div>
-      {someNoCost && (
-        <p className="text-xs text-text-muted px-4 py-2.5 border-t border-border">* Some items in this category have no cost on file — COGS and profit exclude them, so profit is overstated there.</p>
-      )}
     </div>
   )
 }
@@ -143,8 +230,12 @@ function CategoryTable({ rows, revenueLabel = 'Revenue' }) {
 export default function PosSalesReport({ startDate, endDate, locationSlug }) {
   const [subTab, setSubTab] = useState('sales')
   const [search, setSearch] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('') // '' = all categories
-  const [salesSort, setSalesSort] = useState({ col: 'name', dir: 'asc' }) // default: alphabetical by item
+  const [salesSort, cycleSalesSort] = useSortState({ col: 'name', dir: 'asc' }) // default: alphabetical by item
+  const [empSort, cycleEmpSort] = useSortState()
+  const [byEmpSort, cycleByEmpSort] = useSortState()
+  const [byItemSort, cycleByItemSort] = useSortState()
+  const [eventsSort, cycleEventsSort] = useSortState()
+  const [complianceSort, cycleComplianceSort] = useSortState()
 
   const [summary, setSummary] = useState(null)
   const [empSpend, setEmpSpend] = useState(null)
@@ -162,7 +253,7 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
 
   // Invalidate cached tab data whenever the date range / location changes so a
   // stale tab doesn't flash old numbers when revisited.
-  useEffect(() => { setSummary(null); setEmpSpend(null); setShrinkage(null); setCompliance(null); setCategoryFilter('') }, [params])
+  useEffect(() => { setSummary(null); setEmpSpend(null); setShrinkage(null); setCompliance(null) }, [params])
 
   useEffect(() => { setCompliance(null) }, [overdueDays])
 
@@ -183,10 +274,6 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
     fetcher.catch(err => { if (!ignore) setError(err.message) }).finally(() => { if (!ignore) setLoading(false) })
     return () => { ignore = true }
   }, [subTab, params, summary, empSpend, shrinkage, compliance, overdueDays])
-
-  function cycleSalesSort(col) {
-    setSalesSort(s => (!s || s.col !== col ? { col, dir: 'desc' } : s.dir === 'desc' ? { col, dir: 'asc' } : null))
-  }
 
   // On the All-Clubs view, blend the same product (same UPC) across clubs into a
   // single line: units / revenue / COGS sum; COGS is only "known" if every club's
@@ -218,14 +305,6 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
   // Product Sales by-category rollup (top summary).
   const salesCategoryRollup = useMemo(() => rollupByCategory(consolidatedSummary), [consolidatedSummary])
 
-  // Distinct categories present in the current range, alphabetical, for the
-  // Product Sales filter dropdown. Null categories collapse to 'Uncategorized'
-  // to match the rollup labeling.
-  const categoryOptions = useMemo(
-    () => [...new Set(consolidatedSummary.map(r => r.category || 'Uncategorized'))].sort((a, b) => a.localeCompare(b)),
-    [consolidatedSummary]
-  )
-
   // Employee Spend by-category rollup. Revenue = staff spend; per-row COGS =
   // spend − profit where profit is known (else the item has no cost on file).
   const empCategoryRollup = useMemo(() => {
@@ -237,34 +316,19 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
     })))
   }, [empSpend])
 
-  // Product Sales: category filter + search + sort over the consolidated rows.
+  // Product Sales: search + sort over the consolidated rows.
   const displaySummary = useMemo(() => {
     const q = search.trim().toLowerCase()
-    let rows = consolidatedSummary.slice()
-    if (categoryFilter) rows = rows.filter(r => (r.category || 'Uncategorized') === categoryFilter)
-    if (q) rows = rows.filter(r => (r.name || '').toLowerCase().includes(q) || (r.upc || '').includes(q))
-    if (salesSort) {
-      const getters = {
-        name: r => (r.name || '').toLowerCase(),
-        units: r => Number(r.units),
-        revenue: r => Number(r.revenue),
-        cogs: r => (r.cogs == null ? null : Number(r.cogs)),
-        profit: r => (r.profit == null ? null : Number(r.profit)),
-        margin: r => (r.margin_pct == null ? null : Number(r.margin_pct)),
-      }
-      const get = getters[salesSort.col]
-      const dir = salesSort.dir === 'asc' ? 1 : -1
-      rows.sort((a, b) => {
-        const av = get(a), bv = get(b)
-        if (av == null && bv == null) return 0
-        if (av == null) return 1
-        if (bv == null) return -1
-        if (typeof av === 'string') return dir * av.localeCompare(bv)
-        return dir * (av - bv)
-      })
-    }
-    return rows
-  }, [consolidatedSummary, categoryFilter, search, salesSort])
+    const rows = q ? consolidatedSummary.filter(r => (r.name || '').toLowerCase().includes(q) || (r.upc || '').includes(q)) : consolidatedSummary
+    return sortRows(rows, salesSort, SALES_GETTERS)
+  }, [consolidatedSummary, search, salesSort])
+
+  // Sorted views for the remaining tabs (export follows the on-screen order).
+  const displayEmp = useMemo(() => sortRows(empSpend?.rows || [], empSort, EMP_GETTERS), [empSpend, empSort])
+  const displayByEmp = useMemo(() => sortRows(shrinkage?.by_employee || [], byEmpSort, SHRINK_EMP_GETTERS), [shrinkage, byEmpSort])
+  const displayByItem = useMemo(() => sortRows(shrinkage?.by_item || [], byItemSort, SHRINK_ITEM_GETTERS), [shrinkage, byItemSort])
+  const displayEvents = useMemo(() => sortRows(shrinkage?.events || [], eventsSort, SHRINK_EVENT_GETTERS), [shrinkage, eventsSort])
+  const displayClubs = useMemo(() => sortRows(compliance?.clubs || [], complianceSort, COMPLIANCE_GETTERS), [compliance, complianceSort])
 
   const rangeLabel = `${startDate}_to_${endDate}`
 
@@ -279,7 +343,7 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
     if (!empSpend) return
     exportCSV(
       [['Item', 'Club', 'Category', 'Units', 'Purchases', 'Catalog', 'Emp Disc %', 'Emp Price', 'Cost', 'Margin %', 'Spend', 'Profit'],
-        ...empSpend.rows.map(r => [r.item_name, r.location_slug || '', r.category || '', r.units, r.purchases, r.abc_unit_price, r.emp_discount_pct, r.emp_price, r.unit_cost, r.margin_pct ?? '', r.emp_spend, r.profit ?? ''])],
+        ...displayEmp.map(r => [r.item_name, r.location_slug || '', r.category || '', r.units, r.purchases, r.abc_unit_price, r.emp_discount_pct, r.emp_price, r.unit_cost, r.margin_pct ?? '', r.emp_spend, r.profit ?? ''])],
       `employee-spend-${rangeLabel}`
     )
   }
@@ -287,7 +351,7 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
     if (!shrinkage) return
     exportCSV(
       [['Date', 'Item', 'Club', 'Counted By', 'Expected', 'Counted', 'Net Units', 'Unit Cost', 'Impact', 'Note'],
-        ...shrinkage.events.map(e => [fmtDateTime(e.occurred_at), e.item_name || '', e.location_slug || '', e.created_by_name || '', e.expected ?? '', e.counted ?? '', e.delta, e.unit_cost ?? '', e.impact ?? '', e.note || ''])],
+        ...displayEvents.map(e => [fmtDateTime(e.occurred_at), e.item_name || '', e.location_slug || '', e.created_by_name || '', e.expected ?? '', e.counted ?? '', e.delta, e.unit_cost ?? '', e.impact ?? '', e.note || ''])],
       `shrinkage-${rangeLabel}`
     )
   }
@@ -306,21 +370,16 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
         </div>
         <div className="flex items-center gap-2">
           {subTab === 'sales' && (
-            <>
-              <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
-                className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red max-w-[12rem]">
-                <option value="">All categories</option>
-                {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or UPC..."
-                className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red w-48" />
-            </>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or UPC..."
+              className="px-3 py-1.5 rounded-lg border border-border bg-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-wcs-red w-48" />
           )}
-          <button
-            onClick={subTab === 'sales' ? exportSales : subTab === 'employee' ? exportEmployee : exportShrinkage}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-border bg-bg text-text-muted hover:text-text-primary transition-colors">
-            Export CSV
-          </button>
+          {subTab !== 'compliance' && (
+            <button
+              onClick={subTab === 'sales' ? exportSales : subTab === 'employee' ? exportEmployee : exportShrinkage}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-border bg-bg text-text-muted hover:text-text-primary transition-colors">
+              Export CSV
+            </button>
+          )}
         </div>
       </div>
 
@@ -336,7 +395,7 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
           ) : !summary || summary.length === 0 ? (
             <p className="text-sm text-text-muted p-6 text-center">No sales in this range yet.</p>
           ) : displaySummary.length === 0 ? (
-            <p className="text-sm text-text-muted p-6 text-center">No items match your filters.</p>
+            <p className="text-sm text-text-muted p-6 text-center">No items match your search.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -397,22 +456,22 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
-                          <th className="py-2.5 px-4">Item</th>
-                          {allLoc && <th className="py-2.5 px-2">Club</th>}
-                          <th className="py-2.5 px-2">Category</th>
-                          <th className="py-2.5 px-2 text-right">Units</th>
-                          <th className="py-2.5 px-2 text-right">Purchases</th>
-                          <th className="py-2.5 px-2 text-right">Catalog</th>
-                          <th className="py-2.5 px-2 text-right">Emp&nbsp;Disc</th>
-                          <th className="py-2.5 px-2 text-right">Emp&nbsp;Price</th>
-                          <th className="py-2.5 px-2 text-right">Cost</th>
-                          <th className="py-2.5 px-2 text-right">Margin</th>
-                          <th className="py-2.5 px-2 text-right">Spend</th>
-                          <th className="py-2.5 px-4 text-right">Profit</th>
+                          <SortHeader label="Item" col="name" sort={empSort} onSort={cycleEmpSort} align="left" />
+                          {allLoc && <SortHeader label="Club" col="club" sort={empSort} onSort={cycleEmpSort} align="left" />}
+                          <SortHeader label="Category" col="category" sort={empSort} onSort={cycleEmpSort} align="left" />
+                          <SortHeader label="Units" col="units" sort={empSort} onSort={cycleEmpSort} />
+                          <SortHeader label="Purchases" col="purchases" sort={empSort} onSort={cycleEmpSort} />
+                          <SortHeader label="Catalog" col="catalog" sort={empSort} onSort={cycleEmpSort} />
+                          <SortHeader label={'Emp Disc'} col="empdisc" sort={empSort} onSort={cycleEmpSort} />
+                          <SortHeader label={'Emp Price'} col="empprice" sort={empSort} onSort={cycleEmpSort} />
+                          <SortHeader label="Cost" col="cost" sort={empSort} onSort={cycleEmpSort} />
+                          <SortHeader label="Margin" col="margin" sort={empSort} onSort={cycleEmpSort} />
+                          <SortHeader label="Spend" col="spend" sort={empSort} onSort={cycleEmpSort} />
+                          <SortHeader label="Profit" col="profit" sort={empSort} onSort={cycleEmpSort} />
                         </tr>
                       </thead>
                       <tbody>
-                        {empSpend.rows.map(r => (
+                        {displayEmp.map(r => (
                           <tr key={r.item_id} className="border-b border-border/50 hover:bg-bg/40">
                             <td className="py-2 px-4 font-medium text-text-primary">{r.item_name}</td>
                             {allLoc && <td className="py-2 px-2 capitalize text-text-muted">{r.location_slug || '—'}</td>}
@@ -462,17 +521,17 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
-              <th className="py-2.5 px-4">Club</th>
-              <th className="py-2.5 px-2 text-right">Last count</th>
-              <th className="py-2.5 px-2 text-right">Days since</th>
-              <th className="py-2.5 px-2 text-right">Last restock</th>
-              <th className="py-2.5 px-2 text-right">Tracked</th>
-              <th className="py-2.5 px-2 text-right">Never counted</th>
-              <th className="py-2.5 px-4 text-right">Status</th>
+              <SortHeader label="Club" col="club" sort={complianceSort} onSort={cycleComplianceSort} align="left" />
+              <SortHeader label="Last count" col="lastcount" sort={complianceSort} onSort={cycleComplianceSort} />
+              <SortHeader label="Days since" col="dayssince" sort={complianceSort} onSort={cycleComplianceSort} />
+              <SortHeader label="Last restock" col="lastrestock" sort={complianceSort} onSort={cycleComplianceSort} />
+              <SortHeader label="Tracked" col="tracked" sort={complianceSort} onSort={cycleComplianceSort} />
+              <SortHeader label="Never counted" col="never" sort={complianceSort} onSort={cycleComplianceSort} />
+              <SortHeader label="Status" col="status" sort={complianceSort} onSort={cycleComplianceSort} />
             </tr>
           </thead>
           <tbody>
-            {(compliance?.clubs || []).map((c) => {
+            {displayClubs.map((c) => {
               const badge = c.status === 'overdue' ? 'bg-red-100 text-wcs-red'
                 : c.status === 'never' ? 'bg-bg text-text-muted'
                 : 'bg-emerald-100 text-emerald-700'
@@ -542,15 +601,15 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
-                            <th className="py-2.5 px-4">Counted By</th>
-                            <th className="py-2.5 px-2 text-right">Counts</th>
-                            <th className="py-2.5 px-2 text-right">Net Units</th>
-                            <th className="py-2.5 px-2 text-right">Shrink $</th>
-                            <th className="py-2.5 px-4 text-right">Net $</th>
+                            <SortHeader label="Counted By" col="name" sort={byEmpSort} onSort={cycleByEmpSort} align="left" />
+                            <SortHeader label="Counts" col="events" sort={byEmpSort} onSort={cycleByEmpSort} />
+                            <SortHeader label="Net Units" col="net_units" sort={byEmpSort} onSort={cycleByEmpSort} />
+                            <SortHeader label="Shrink $" col="shrink" sort={byEmpSort} onSort={cycleByEmpSort} />
+                            <SortHeader label="Net $" col="net" sort={byEmpSort} onSort={cycleByEmpSort} />
                           </tr>
                         </thead>
                         <tbody>
-                          {shrinkage.by_employee.map(e => (
+                          {displayByEmp.map(e => (
                             <tr key={e.name} className="border-b border-border/50 hover:bg-bg/40">
                               <td className="py-2 px-4 font-medium text-text-primary">{e.name}</td>
                               <td className="py-2 px-2 text-right text-text-muted">{e.events}</td>
@@ -571,15 +630,15 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
-                            <th className="py-2.5 px-4">Item</th>
-                            {allLoc && <th className="py-2.5 px-2">Club</th>}
-                            <th className="py-2.5 px-2 text-right">Counts</th>
-                            <th className="py-2.5 px-2 text-right">Net Units</th>
-                            <th className="py-2.5 px-4 text-right">Net $</th>
+                            <SortHeader label="Item" col="name" sort={byItemSort} onSort={cycleByItemSort} align="left" />
+                            {allLoc && <SortHeader label="Club" col="club" sort={byItemSort} onSort={cycleByItemSort} align="left" />}
+                            <SortHeader label="Counts" col="events" sort={byItemSort} onSort={cycleByItemSort} />
+                            <SortHeader label="Net Units" col="net_units" sort={byItemSort} onSort={cycleByItemSort} />
+                            <SortHeader label="Net $" col="net" sort={byItemSort} onSort={cycleByItemSort} />
                           </tr>
                         </thead>
                         <tbody>
-                          {shrinkage.by_item.map(i => (
+                          {displayByItem.map(i => (
                             <tr key={i.item_id} className="border-b border-border/50 hover:bg-bg/40">
                               <td className="py-2 px-4 font-medium text-text-primary">{i.item_name || '—'}</td>
                               {allLoc && <td className="py-2 px-2 capitalize text-text-muted">{i.location_slug || '—'}</td>}
@@ -600,18 +659,18 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
-                            <th className="py-2.5 px-4">When</th>
-                            <th className="py-2.5 px-2">Item</th>
-                            {allLoc && <th className="py-2.5 px-2">Club</th>}
-                            <th className="py-2.5 px-2">Counted By</th>
-                            <th className="py-2.5 px-2 text-right">Expected</th>
-                            <th className="py-2.5 px-2 text-right">Counted</th>
-                            <th className="py-2.5 px-2 text-right">Δ Units</th>
-                            <th className="py-2.5 px-4 text-right">$ Impact</th>
+                            <SortHeader label="When" col="when" sort={eventsSort} onSort={cycleEventsSort} align="left" />
+                            <SortHeader label="Item" col="item" sort={eventsSort} onSort={cycleEventsSort} align="left" />
+                            {allLoc && <SortHeader label="Club" col="club" sort={eventsSort} onSort={cycleEventsSort} align="left" />}
+                            <SortHeader label="Counted By" col="by" sort={eventsSort} onSort={cycleEventsSort} align="left" />
+                            <SortHeader label="Expected" col="expected" sort={eventsSort} onSort={cycleEventsSort} />
+                            <SortHeader label="Counted" col="counted" sort={eventsSort} onSort={cycleEventsSort} />
+                            <SortHeader label="Δ Units" col="delta" sort={eventsSort} onSort={cycleEventsSort} />
+                            <SortHeader label="$ Impact" col="impact" sort={eventsSort} onSort={cycleEventsSort} />
                           </tr>
                         </thead>
                         <tbody>
-                          {shrinkage.events.map(e => (
+                          {displayEvents.map(e => (
                             <tr key={e.id} className="border-b border-border/50 hover:bg-bg/40">
                               <td className="py-2 px-4 text-text-muted whitespace-nowrap">{fmtDateTime(e.occurred_at)}</td>
                               <td className="py-2 px-2 font-medium text-text-primary">
