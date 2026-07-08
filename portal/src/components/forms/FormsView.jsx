@@ -23,7 +23,7 @@ export default function FormsView({ onBack, me }) {
   useEffect(() => { load() }, [])
 
   if (openFormId) {
-    return <FormBuilder formId={openFormId} onBack={() => { setOpenFormId(null); load() }} />
+    return <FormBuilder formId={openFormId} me={me} onBack={() => { setOpenFormId(null); load() }} />
   }
 
   return (
