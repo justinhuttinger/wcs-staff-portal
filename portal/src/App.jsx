@@ -18,6 +18,7 @@ import TicketsView from './components/TicketsView'
 import DriveView from './components/DriveView'
 import DriveHub from './components/DriveHub'
 import MediaLibraryView from './components/MediaLibraryView'
+import FormsView from './components/forms/FormsView'
 import GlobalProgressBar from './components/GlobalProgressBar'
 import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout } from './lib/api'
 import { logEvent } from './lib/audit'
@@ -60,6 +61,7 @@ export default function App() {
   const [showDrive, setShowDrive] = useState(false)
   const [showDriveHub, setShowDriveHub] = useState(false)
   const [showMediaLibrary, setShowMediaLibrary] = useState(false)
+  const [showForms, setShowForms] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
   const [locationOverride, setLocationOverride] = useState(() => localStorage.getItem('wcs_location_override') || '')
   const isElectron = !!window.wcsElectron
@@ -91,6 +93,7 @@ export default function App() {
   useEffect(() => { if (showHelpCenter) logEvent('view.help_center') }, [showHelpCenter])
   useEffect(() => { if (showTickets) logEvent('view.tickets') }, [showTickets])
   useEffect(() => { if (showDrive) logEvent('view.drive') }, [showDrive])
+  useEffect(() => { if (showForms) logEvent('view.forms') }, [showForms])
 
   // Auto-login from stored token (for new tabs like Reporting)
   // Or kiosk auto-login with shared secret
@@ -136,6 +139,7 @@ export default function App() {
         setShowHR(false)
         setShowHelpCenter(false)
         setShowTickets(false)
+        setShowForms(false)
         if (window.wcsElectron) window.wcsElectron.onLogout()
       })
     }
@@ -150,6 +154,7 @@ export default function App() {
         setShowHR(false)
         setShowHelpCenter(false)
         setShowTickets(false)
+        setShowForms(false)
         // Navigate to requested view
         if (view === 'calendar') setShowCalendar(true)
         else setShowCalendar(false)
@@ -181,6 +186,7 @@ export default function App() {
       setShowHelpCenter(false)
       setShowTickets(false)
       setShowDrive(false)
+      setShowForms(false)
       if (kioskMode === 'dayone' && kioskKey) {
         api('/auth/kiosk', { method: 'POST', body: JSON.stringify({ key: kioskKey }) })
           .then(data => {
@@ -221,6 +227,7 @@ export default function App() {
     setShowHR(false)
     setShowHelpCenter(false)
     setShowTickets(false)
+    setShowForms(false)
     if (window.location.hash) window.location.hash = ''
     // Notify Electron main process about the login
     if (window.wcsElectron) {
@@ -240,6 +247,7 @@ export default function App() {
     setShowLeaderboard(false)
     setShowCommunicationNotes(false)
     setShowHR(false)
+    setShowForms(false)
     // Notify Electron main process about logout
     if (window.wcsElectron) {
       window.wcsElectron.onLogout()
@@ -288,7 +296,7 @@ export default function App() {
     )
   }
 
-  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTickets && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTickets && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms
 
   function handleBackToPortal() {
     setShowAdmin(false)
@@ -303,6 +311,7 @@ export default function App() {
     setShowHelpCenter(false)
     setShowTickets(false)
     setShowDrive(false)
+    setShowForms(false)
     if (window.location.hash) window.location.hash = ''
   }
 
@@ -393,9 +402,11 @@ export default function App() {
         <InventoryView onBack={() => setShowInventory(false)} location={location} isAdmin={isAdmin} user={user} />
       ) : showMediaLibrary ? (
         <MediaLibraryView onBack={() => setShowMediaLibrary(false)} userRole={user?.staff?.role} />
+      ) : showForms ? (
+        <FormsView onBack={handleBackToPortal} me={user.staff} />
       ) : (
         <main className="flex-1 flex items-start pt-1 pb-12">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>
