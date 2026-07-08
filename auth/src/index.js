@@ -113,6 +113,7 @@ app.use('/admin/cache', require('./routes/cacheAdmin'))
 app.use('/admin/exports', require('./routes/exports'))
 app.use('/audit-log', require('./routes/auditLog'))
 app.use('/forms', require('./routes/forms'))
+app.use('/public/forms', require('./routes/publicForms'))
 
 // WCS University (voice roleplay training) — ships dark behind a flag until the
 // Retell agent + GHL custom fields are configured. See services/university/README.md.
