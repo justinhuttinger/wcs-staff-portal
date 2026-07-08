@@ -25,7 +25,7 @@ async function loadPublished(slug) {
   return data || null
 }
 
-// GET /public/forms/:slug — published schema for rendering.
+// GET /public/forms/:slug - published schema for rendering.
 router.get('/:slug', async (req, res) => {
   try {
     const form = await loadPublished(req.params.slug)
@@ -43,7 +43,7 @@ router.get('/:slug', async (req, res) => {
   }
 })
 
-// POST /public/forms/:slug/submit — validate, back up in Supabase, then Sheets.
+// POST /public/forms/:slug/submit - validate, back up in Supabase, then Sheets.
 router.post('/:slug/submit', submitLimiter, async (req, res) => {
   try {
     const form = await loadPublished(req.params.slug)

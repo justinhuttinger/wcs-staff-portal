@@ -22,7 +22,7 @@ async function loadFormAccess(req, formId) {
   return { form, shares: shares || [], access: canAccessForm(req.staff, form, shares || []) }
 }
 
-// GET /forms — every form the caller can see.
+// GET /forms - every form the caller can see.
 router.get('/', async (req, res) => {
   try {
     const { data: forms, error } = await supabaseAdmin.from('forms')
@@ -73,7 +73,7 @@ router.get('/', async (req, res) => {
   }
 })
 
-// GET /forms/staff-directory — share picker. Must be declared before /:id.
+// GET /forms/staff-directory - share picker. Must be declared before /:id.
 router.get('/staff-directory', requireFormsBuilder, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin.from('staff')
@@ -87,7 +87,7 @@ router.get('/staff-directory', requireFormsBuilder, async (req, res) => {
 
 // Resolve staff display names for audit responses: actor_name on each event,
 // plus staff_name inside detail for share-action events. Response-only
-// enrichment — never written back to the database.
+// enrichment, never written back to the database.
 async function enrichAuditEvents(events) {
   const ids = new Set()
   for (const e of events) {
@@ -107,7 +107,7 @@ async function enrichAuditEvents(events) {
   })
 }
 
-// GET /forms/audit/all — cross-form audit for corporate/admin. Before /:id.
+// GET /forms/audit/all - cross-form audit for corporate/admin. Before /:id.
 router.get('/audit/all', requireRole('corporate'), async (req, res) => {
   try {
     let q = supabaseAdmin.from('form_audit_log').select('*').order('created_at', { ascending: false }).limit(500)
@@ -121,7 +121,7 @@ router.get('/audit/all', requireRole('corporate'), async (req, res) => {
   }
 })
 
-// POST /forms — create.
+// POST /forms - create.
 router.post('/', requireFormsBuilder, async (req, res) => {
   try {
     const { title, description, location_id } = req.body || {}
@@ -149,7 +149,7 @@ router.post('/', requireFormsBuilder, async (req, res) => {
   }
 })
 
-// GET /forms/:id — for the builder.
+// GET /forms/:id - for the builder.
 router.get('/:id', async (req, res) => {
   try {
     const { form, shares, access } = await loadFormAccess(req, req.params.id)
@@ -168,7 +168,7 @@ router.get('/:id', async (req, res) => {
   }
 })
 
-// PATCH /forms/:id — save with last-write protection.
+// PATCH /forms/:id - save with last-write protection.
 router.patch('/:id', async (req, res) => {
   try {
     const { form, access } = await loadFormAccess(req, req.params.id)
@@ -220,7 +220,7 @@ router.patch('/:id', async (req, res) => {
   }
 })
 
-// POST /forms/:id/publish — creates/syncs the Google Sheet.
+// POST /forms/:id/publish - creates/syncs the Google Sheet.
 router.post('/:id/publish', async (req, res) => {
   try {
     const { form, access } = await loadFormAccess(req, req.params.id)
@@ -265,7 +265,7 @@ router.post('/:id/archive', async (req, res) => {
   }
 })
 
-// DELETE /forms/:id — drafts with zero submissions only.
+// DELETE /forms/:id - drafts with zero submissions only.
 router.delete('/:id', async (req, res) => {
   try {
     const { form, access } = await loadFormAccess(req, req.params.id)
@@ -287,7 +287,7 @@ router.delete('/:id', async (req, res) => {
   }
 })
 
-// POST /forms/:id/shares — upsert one person's access.
+// POST /forms/:id/shares - upsert one person's access.
 router.post('/:id/shares', async (req, res) => {
   try {
     const { form, shares, access } = await loadFormAccess(req, req.params.id)
@@ -324,7 +324,7 @@ router.delete('/:id/shares/:staffId', async (req, res) => {
   }
 })
 
-// GET /forms/:id/audit — per-form timeline.
+// GET /forms/:id/audit - per-form timeline.
 router.get('/:id/audit', async (req, res) => {
   try {
     const { form, access } = await loadFormAccess(req, req.params.id)
@@ -338,7 +338,7 @@ router.get('/:id/audit', async (req, res) => {
   }
 })
 
-// GET /forms/:id/submissions — in-portal peek; Sheets is the primary surface.
+// GET /forms/:id/submissions - in-portal peek; Sheets is the primary surface.
 router.get('/:id/submissions', async (req, res) => {
   try {
     const { form, access } = await loadFormAccess(req, req.params.id)
@@ -356,7 +356,7 @@ router.get('/:id/submissions', async (req, res) => {
   }
 })
 
-// POST /forms/:id/retry-sync — manual retry of unsynced submissions.
+// POST /forms/:id/retry-sync - manual retry of unsynced submissions.
 router.post('/:id/retry-sync', async (req, res) => {
   try {
     const { form, access } = await loadFormAccess(req, req.params.id)
