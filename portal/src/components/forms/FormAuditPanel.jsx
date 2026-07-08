@@ -19,6 +19,18 @@ const ACTION_LABELS = {
 
 const VISIBILITY_WORDS = { private: 'Private', location: 'My location', shared: 'Specific people' }
 
+// Label for the event, using the resolved teammate name when the backend
+// provided one; falls back to the generic copy otherwise.
+function actionLabel(action, detail) {
+  const name = detail && typeof detail === 'object' ? detail.staff_name : null
+  if (name) {
+    if (action === 'shared') return `Shared with ${name}`
+    if (action === 'unshared') return `Removed ${name}'s access`
+    if (action === 'permission_changed') return `Changed ${name}'s permission`
+  }
+  return ACTION_LABELS[action] || action
+}
+
 // A short, human-readable summary of the event detail. Falls back to compact
 // JSON so nothing is ever silently dropped.
 function summarizeDetail(action, detail) {
@@ -27,6 +39,12 @@ function summarizeDetail(action, detail) {
     case 'permission_changed':
     case 'shared':
       return detail.permission ? `as ${detail.permission}` : ''
+    case 'unshared': {
+      // The teammate's name is already in the label; nothing else to show.
+      if (detail.staff_name) return ''
+      const s = JSON.stringify(detail)
+      return s === '{}' ? '' : s
+    }
     case 'visibility_changed': {
       const parts = []
       if (detail.visibility) parts.push(VISIBILITY_WORDS[detail.visibility] || detail.visibility)
@@ -60,7 +78,7 @@ function summarizeDetail(action, detail) {
 }
 
 function EventRow({ event }) {
-  const label = ACTION_LABELS[event.action] || event.action
+  const label = actionLabel(event.action, event.detail)
   const summary = summarizeDetail(event.action, event.detail)
   const when = event.created_at ? new Date(event.created_at).toLocaleString() : ''
   return (

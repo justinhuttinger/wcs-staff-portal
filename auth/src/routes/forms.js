@@ -85,6 +85,28 @@ router.get('/staff-directory', requireFormsBuilder, async (req, res) => {
   }
 })
 
+// Resolve staff display names for audit responses: actor_name on each event,
+// plus staff_name inside detail for share-action events. Response-only
+// enrichment — never written back to the database.
+async function enrichAuditEvents(events) {
+  const ids = new Set()
+  for (const e of events) {
+    if (e.actor_id) ids.add(e.actor_id)
+    if (e.detail && typeof e.detail === 'object' && e.detail.staff_id) ids.add(e.detail.staff_id)
+  }
+  const idList = [...ids]
+  const { data: staff } = idList.length
+    ? await supabaseAdmin.from('staff').select('id, display_name').in('id', idList) : { data: [] }
+  const names = Object.fromEntries((staff || []).map(s => [s.id, s.display_name]))
+  return events.map(e => {
+    const out = { ...e, actor_name: e.actor_id ? (names[e.actor_id] || 'Unknown') : 'Public' }
+    if (e.detail && typeof e.detail === 'object' && e.detail.staff_id && names[e.detail.staff_id]) {
+      out.detail = { ...e.detail, staff_name: names[e.detail.staff_id] }
+    }
+    return out
+  })
+}
+
 // GET /forms/audit/all — cross-form audit for corporate/admin. Before /:id.
 router.get('/audit/all', requireRole('corporate'), async (req, res) => {
   try {
@@ -93,7 +115,7 @@ router.get('/audit/all', requireRole('corporate'), async (req, res) => {
     if (req.query.form_id) q = q.eq('form_id', req.query.form_id)
     const { data, error } = await q
     if (error) throw error
-    res.json({ events: data || [] })
+    res.json({ events: await enrichAuditEvents(data || []) })
   } catch (err) {
     res.status(500).json({ error: 'Failed to load audit log' })
   }
@@ -310,11 +332,7 @@ router.get('/:id/audit', async (req, res) => {
     const { data, error } = await supabaseAdmin.from('form_audit_log')
       .select('*').eq('form_id', form.id).order('created_at', { ascending: false }).limit(300)
     if (error) throw error
-    const actorIds = [...new Set((data || []).map(e => e.actor_id).filter(Boolean))]
-    const { data: actors } = actorIds.length
-      ? await supabaseAdmin.from('staff').select('id, display_name').in('id', actorIds) : { data: [] }
-    const names = Object.fromEntries((actors || []).map(a => [a.id, a.display_name]))
-    res.json({ events: (data || []).map(e => ({ ...e, actor_name: e.actor_id ? (names[e.actor_id] || 'Unknown') : 'Public' })) })
+    res.json({ events: await enrichAuditEvents(data || []) })
   } catch (err) {
     res.status(500).json({ error: 'Failed to load audit log' })
   }
