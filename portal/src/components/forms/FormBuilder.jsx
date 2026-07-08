@@ -6,7 +6,12 @@ import FormSharePanel from './FormSharePanel'
 import FormQrPanel from './FormQrPanel'
 import FormAuditPanel from './FormAuditPanel'
 
-const ROLE_LEVELS = { team_member: 0, lead: 1, manager: 2, corporate: 3, admin: 4 }
+// Mirror the backend role canonicalization (auth/src/middleware/role.js):
+// front_desk/personal_trainer -> team_member, director -> corporate; custom sits
+// between lead and manager, marketing at/above corporate.
+const ROLE_ALIASES = { front_desk: 'team_member', personal_trainer: 'team_member', director: 'corporate' }
+const ROLE_LEVELS = { team_member: 0, lead: 1, custom: 2, manager: 3, corporate: 4, marketing: 5, admin: 6 }
+const roleLevel = (role) => ROLE_LEVELS[ROLE_ALIASES[role] || role] ?? 0
 
 const STATUS_STYLES = {
   draft: 'bg-gray-100 border border-gray-200 text-gray-600',
@@ -79,7 +84,7 @@ export default function FormBuilder({ formId, onBack, me }) {
   const [submissionCount, setSubmissionCount] = useState(null)
 
   const canEdit = !!form?.access?.edit
-  const isCorporate = (ROLE_LEVELS[me?.role] ?? 0) >= ROLE_LEVELS.corporate
+  const isCorporate = roleLevel(me?.role) >= ROLE_LEVELS.corporate
   const dirty = useMemo(
     () => baseline !== '' && JSON.stringify({ title, description, schema }) !== baseline,
     [baseline, title, description, schema]
