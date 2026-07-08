@@ -45,6 +45,7 @@ import AdminPrintDevicesTab from './admin/AdminPrintDevicesTab'
 import AdminPrintAutomationsTab from './admin/AdminPrintAutomationsTab'
 import DayOneProgramsAdmin from './admin/DayOneProgramsAdmin'
 import SpotlightReport from './admin/SpotlightReport'
+import FormsAdmin from './admin/FormsAdmin'
 
 const SETUP_TILES = [
   { key: 'staff', label: 'Staff', desc: 'Accounts & Roles', icon: 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z' },
@@ -56,6 +57,7 @@ const SETUP_TILES = [
   { key: 'config', label: 'App Config', desc: 'Kiosk Settings', icon: 'M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.431.992a7.723 7.723 0 0 1 0 .255c-.007.378.138.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z' },
   { key: 'tickets', label: 'Tickets', desc: 'Embed Config', icon: 'M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 0 1 0 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 0 1 0-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375Z' },
   { key: 'drive-folders', label: 'Drive Folders', desc: 'Shared Drive Tiles', icon: 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z' },
+  { key: 'forms', label: 'Forms', desc: 'Drive folder + sync', icon: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z' },
   { key: 'layouts', label: 'Layouts', desc: 'Explore UI Options', icon: 'M2.25 7.125C2.25 6.504 2.754 6 3.375 6h6c.621 0 1.125.504 1.125 1.125v3.75c0 .621-.504 1.125-1.125 1.125h-6a1.125 1.125 0 0 1-1.125-1.125v-3.75ZM14.25 8.625c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v8.25c0 .621-.504 1.125-1.125 1.125h-5.25a1.125 1.125 0 0 1-1.125-1.125v-8.25ZM3.75 16.125c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v2.25c0 .621-.504 1.125-1.125 1.125h-5.25a1.125 1.125 0 0 1-1.125-1.125v-2.25Z' },
   { key: 'action-links', label: 'Action Links', desc: 'Day One & VIP URLs', icon: 'M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m9.86-4.939a4.5 4.5 0 0 0-1.242-7.244l4.5-4.5a4.5 4.5 0 0 1 6.364 6.364l-1.757 1.757' },
   { key: 'day-one-programs', label: 'Day One Programs', desc: 'Generator Setup & Monitor', icon: 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z' },
@@ -112,7 +114,7 @@ const TILE_BY_KEY = Object.fromEntries(ALL_TILES.map(t => [t.key, t]))
 // and its list of tools — no more one long scrolling list.
 const CATEGORIES = [
   { title: 'Staff & HR', keys: ['staff', 'import', 'employee-roster', 'roles-v2', 'paychex', 'paychex-training'] },
-  { title: 'Portal Setup', keys: ['tiles', 'layouts', 'config', 'drive-folders', 'action-links', 'references', 'tickets', 'portal-refresh'] },
+  { title: 'Portal Setup', keys: ['tiles', 'layouts', 'config', 'drive-folders', 'forms', 'action-links', 'references', 'tickets', 'portal-refresh'] },
   { title: 'Reports & KPIs', keys: ['kpi-goals', 'trends-12mo', 'daily-snapshot', 'spotlight', 'membership-audit', 'speed-to-lead-audit', 'business-hours-stl', 'revenue-backfill', 'payroll-commissions'] },
   { title: 'Members & Sales', keys: ['online-join', 'vip-referrals', 'tour-checkin', 'membership-skip', 'referral-rewards', 'audit-toggles', 'vendor-price-list'] },
   { title: 'Integrations & Sync', keys: ['sync', 'abc-sync', 'custom-fields', 'google-connections', 'shared-credentials'] },
@@ -175,6 +177,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'sync' && <SyncStatusTile />}
         {activeSection === 'tickets' && <TicketEmbedsAdmin />}
         {activeSection === 'drive-folders' && <DriveFoldersAdmin />}
+        {activeSection === 'forms' && <FormsAdmin />}
         {activeSection === 'google-connections' && <GoogleConnections />}
         {activeSection === 'paychex' && <PaychexAdmin />}
         {activeSection === 'layouts' && <LayoutExplorer />}
