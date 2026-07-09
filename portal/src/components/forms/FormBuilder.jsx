@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { forms as formsApi } from '../../lib/api'
 import FieldEditor from './FieldEditor'
 import FormPreview from './FormPreview'
@@ -73,6 +73,8 @@ export default function FormBuilder({ formId, onBack, me }) {
   const [allowResubmit, setAllowResubmit] = useState(false)
   const [baseline, setBaseline] = useState('')
 
+  const introRef = useRef(null)
+
   const [selectedId, setSelectedId] = useState(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
   const [showPreview, setShowPreview] = useState(true)
@@ -143,6 +145,16 @@ export default function FormBuilder({ formId, onBack, me }) {
     }
   }
   useEffect(() => { load() }, [formId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Grow the intro textarea to fit its content so the whole intro stays visible
+  // while editing. Runs on change and whenever the value loads or the tab remounts it.
+  function resizeIntro() {
+    const el = introRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = el.scrollHeight + 'px'
+  }
+  useEffect(() => { resizeIntro() }, [description, tab])
 
   function handleBack() {
     if (dirty && !window.confirm('You have unsaved changes. Leave without saving?')) return
@@ -425,7 +437,7 @@ export default function FormBuilder({ formId, onBack, me }) {
             <p className="text-xs text-text-muted mt-0.5">Control what people see after they submit this form.</p>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-text-muted mb-1">Completion message</label>
+            <label className="block text-xs font-semibold text-text-muted mb-1">Completion heading</label>
             <textarea
               value={successMessage}
               onChange={e => setSuccessMessage(e.target.value)}
@@ -435,7 +447,7 @@ export default function FormBuilder({ formId, onBack, me }) {
               placeholder="Thanks, you're signed up."
               className={inputClass}
             />
-            <p className="text-[11px] text-text-muted mt-1">Shown after someone submits the form. Leave blank for the default thank you message.</p>
+            <p className="text-[11px] text-text-muted mt-1">Shown as the big heading after someone submits. The line "We have received your response." always appears under it. Leave blank for the default heading.</p>
           </div>
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
@@ -475,8 +487,10 @@ export default function FormBuilder({ formId, onBack, me }) {
             </div>
             <div>
               <label className="block text-xs font-semibold text-text-muted mb-1">Intro text (optional)</label>
-              <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} disabled={!canEdit}
-                className={inputClass} />
+              <textarea ref={introRef} value={description}
+                onChange={e => { setDescription(e.target.value); resizeIntro() }}
+                rows={2} disabled={!canEdit}
+                className={`${inputClass} resize-none`} />
             </div>
           </div>
 
