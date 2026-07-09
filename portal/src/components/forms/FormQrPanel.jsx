@@ -7,6 +7,11 @@ const PUBLIC_FORMS_BASE = import.meta.env.VITE_PUBLIC_FORMS_URL || 'https://form
 // downloads stay crisp; the on-screen size is controlled by CSS.
 async function drawQrCanvas(canvas, url) {
   await QRCode.toCanvas(canvas, url, { errorCorrectionLevel: 'H', width: 1024, margin: 2 })
+  // toCanvas writes the 1024px bitmap size onto the inline style, overriding our
+  // CSS. Re-pin the on-screen size after every draw; the bitmap stays 1024 for
+  // crisp downloads.
+  canvas.style.width = '160px'
+  canvas.style.height = '160px'
 }
 
 // Build the plain QR SVG string.
