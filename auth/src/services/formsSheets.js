@@ -147,7 +147,16 @@ async function ensureSheet(form) {
 async function appendSubmission(form, submission) {
   try {
     const token = await getToken()
-    const row = buildRowValues(form.sheet_columns, submission.data, pacificTimestamp(new Date(submission.submitted_at)))
+    // Column-drift guard: if this submission carries a field id that isn't yet
+    // in the sheet's column map (schema changed after the last ensureSheet),
+    // create/extend the sheet now and use its fresh column map for the row.
+    let columns = form.sheet_columns || {}
+    const missing = Object.keys(submission.data || {}).some(fieldId => !columns[fieldId])
+    if (missing) {
+      const ensured = await ensureSheet(form)
+      columns = ensured.sheet_columns
+    }
+    const row = buildRowValues(columns, submission.data, pacificTimestamp(new Date(submission.submitted_at)))
     await googleJson(
       `${SHEETS_BASE}/${form.sheet_id}/values/${encodeURIComponent(`${form.sheet_tab}!A1`)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
       token,
@@ -164,8 +173,18 @@ async function appendSubmission(form, submission) {
 
 // Re-append every unsynced submission for one form, oldest first.
 async function retryFormSync(formId) {
-  const { data: form } = await db().from('forms').select('*').eq('id', formId).single()
-  if (!form || !form.sheet_id) return { retried: 0, failed: 0 }
+  let { data: form } = await db().from('forms').select('*').eq('id', formId).single()
+  if (!form) return { retried: 0, failed: 0 }
+  // Self-heal: a published form whose sheet creation failed at publish time has
+  // sheet_id=null. Create the sheet now, then re-read the fresh row so the
+  // re-append loop below uses the new sheet_id and sheet_columns.
+  if (!form.sheet_id) {
+    if (form.status !== 'published') return { retried: 0, failed: 0 }
+    await ensureSheet(form)
+    const { data: fresh } = await db().from('forms').select('*').eq('id', formId).single()
+    if (!fresh || !fresh.sheet_id) return { retried: 0, failed: 0 }
+    form = fresh
+  }
   const { data: rows } = await db().from('form_submissions')
     .select('*').eq('form_id', formId).eq('synced_to_sheet', false)
     .order('submitted_at', { ascending: true }).limit(200)

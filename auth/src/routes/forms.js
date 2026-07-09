@@ -77,7 +77,7 @@ router.get('/', async (req, res) => {
 router.get('/staff-directory', requireFormsBuilder, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin.from('staff')
-      .select('id, display_name, role').order('display_name')
+      .select('id, display_name, role').eq('is_active', true).order('display_name')
     if (error) throw error
     res.json({ staff: (data || []).filter(s => s.id !== req.staff.id) })
   } catch (err) {

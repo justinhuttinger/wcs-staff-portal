@@ -66,7 +66,7 @@ function summarizeDetail(action, detail) {
       return detail.sheet_error ? `Sheet not ready: ${detail.sheet_error}` : (detail.sheet_id ? 'Sheet connected' : '')
     case 'sheet_retry': {
       const parts = []
-      if (typeof detail.synced === 'number') parts.push(`${detail.synced} synced`)
+      if (typeof detail.retried === 'number') parts.push(`${detail.retried} synced`)
       if (typeof detail.failed === 'number') parts.push(`${detail.failed} failed`)
       return parts.join(', ')
     }
