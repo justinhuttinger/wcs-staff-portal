@@ -2,71 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 
 const PUBLIC_FORMS_BASE = import.meta.env.VITE_PUBLIC_FORMS_URL || 'https://forms.westcoaststrength.com'
-const LOGO_SRC = '/wcs-logo.png'
 
-// Load the logo image once. Resolves to an HTMLImageElement, or null if it fails.
-function loadLogo() {
-  return new Promise((resolve) => {
-    const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = () => resolve(null)
-    img.src = LOGO_SRC
-  })
-}
-
-// Render the QR to the given canvas at 1024px, then overlay the logo (if it loads)
-// centered at 20% width over a white rounded pad. Never throws on logo failure.
+// Render a plain QR to the given canvas. Kept at a 1024px bitmap so PNG
+// downloads stay crisp; the on-screen size is controlled by CSS.
 async function drawQrCanvas(canvas, url) {
   await QRCode.toCanvas(canvas, url, { errorCorrectionLevel: 'H', width: 1024, margin: 2 })
-  const logo = await loadLogo()
-  if (!logo) return // plain QR, no logo
-  const ctx = canvas.getContext('2d')
-  const size = canvas.width * 0.2
-  const x = (canvas.width - size) / 2
-  const pad = size * 0.12
-  ctx.fillStyle = '#ffffff'
-  ctx.beginPath()
-  ctx.roundRect(x - pad, x - pad, size + pad * 2, size + pad * 2, pad)
-  ctx.fill()
-  ctx.drawImage(logo, x, x, size, size)
 }
 
-// Draw the logo to an offscreen canvas and return a PNG data URL, or null on failure.
-async function buildLogoDataUrl() {
-  const logo = await loadLogo()
-  if (!logo) return null
-  const off = document.createElement('canvas')
-  off.width = logo.naturalWidth || logo.width || 256
-  off.height = logo.naturalHeight || logo.height || 256
-  const ctx = off.getContext('2d')
-  ctx.drawImage(logo, 0, 0, off.width, off.height)
-  try {
-    return off.toDataURL('image/png')
-  } catch {
-    return null
-  }
-}
-
-// Build the QR SVG string, injecting a centered logo (white rounded pad + <image>)
-// sized from the viewBox. Falls back to the plain QR SVG if the logo can't load.
+// Build the plain QR SVG string.
 async function buildQrSvg(url) {
-  const svg = await QRCode.toString(url, { type: 'svg', errorCorrectionLevel: 'H', margin: 2 })
-  const logoDataUrl = await buildLogoDataUrl()
-  if (!logoDataUrl) return svg
-
-  const viewBoxMatch = svg.match(/viewBox="([\d.\s-]+)"/)
-  if (!viewBoxMatch) return svg
-  const parts = viewBoxMatch[1].trim().split(/\s+/).map(Number)
-  const vb = parts[2] // viewBox width (square QR)
-  if (!vb || Number.isNaN(vb)) return svg
-
-  const size = vb * 0.2
-  const x = (vb - size) / 2
-  const pad = size * 0.12
-  const overlay =
-    `<rect x="${x - pad}" y="${x - pad}" width="${size + pad * 2}" height="${size + pad * 2}" rx="${pad}" ry="${pad}" fill="#ffffff"/>` +
-    `<image href="${logoDataUrl}" x="${x}" y="${x}" width="${size}" height="${size}"/>`
-  return svg.replace('</svg>', `${overlay}</svg>`)
+  return QRCode.toString(url, { type: 'svg', errorCorrectionLevel: 'H', margin: 2 })
 }
 
 function triggerDownload(href, filename) {
@@ -131,7 +76,7 @@ export default function FormQrPanel({ form }) {
     <div className="bg-surface rounded-xl border border-border p-5 space-y-5">
       <div>
         <h3 className="text-sm font-bold text-text-primary">QR code and signage</h3>
-        <p className="text-xs text-text-muted mt-0.5">Download a branded QR code that opens this form.</p>
+        <p className="text-xs text-text-muted mt-0.5">Download a QR code that opens this form.</p>
       </div>
 
       {/* Public URL with copy */}
@@ -158,8 +103,8 @@ export default function FormQrPanel({ form }) {
       <div className="bg-bg rounded-xl border border-border p-6 flex flex-col items-center gap-4">
         <canvas
           ref={canvasRef}
-          className="rounded-lg"
-          style={{ width: '256px', height: '256px' }}
+          className="rounded-lg max-w-full"
+          style={{ width: '160px', height: '160px' }}
         />
         <div className="flex flex-wrap items-center justify-center gap-2">
           <button

@@ -31,10 +31,16 @@ router.get('/:slug', async (req, res) => {
     const form = await loadPublished(req.params.slug)
     if (!form) return res.status(404).json({ error: 'This form is not available' })
     const { data: loc } = await supabaseAdmin.from('locations').select('name').eq('id', form.location_id).maybeSingle()
+    // Expose only the recognized settings keys the renderer reads.
+    const s = form.settings || {}
+    const publicSettings = {}
+    if (s.success_message !== undefined) publicSettings.success_message = s.success_message
+    if (s.allow_resubmit !== undefined) publicSettings.allow_resubmit = s.allow_resubmit
     res.json({
       form: {
         slug: form.slug, title: form.title, description: form.description,
         schema: form.schema, location_name: loc?.name || '',
+        settings: publicSettings,
       },
     })
   } catch (err) {

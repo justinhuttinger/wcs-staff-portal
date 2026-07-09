@@ -38,6 +38,7 @@ const DISPLAY_TYPES = ['header', 'description']
 
 const TABS = [
   { key: 'build', label: 'Build' },
+  { key: 'settings', label: 'Settings' },
   { key: 'share', label: 'Share' },
   { key: 'qr', label: 'QR' },
   { key: 'audit', label: 'Audit' },
@@ -68,11 +69,14 @@ export default function FormBuilder({ formId, onBack, me }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [schema, setSchema] = useState([])
+  const [successMessage, setSuccessMessage] = useState('')
+  const [allowResubmit, setAllowResubmit] = useState(false)
   const [baseline, setBaseline] = useState('')
 
   const [selectedId, setSelectedId] = useState(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
   const [showPreview, setShowPreview] = useState(true)
+  const [editingTitle, setEditingTitle] = useState(false)
   const [tab, setTab] = useState('build')
 
   const [saving, setSaving] = useState(false)
@@ -85,9 +89,15 @@ export default function FormBuilder({ formId, onBack, me }) {
 
   const canEdit = !!form?.access?.edit
   const isCorporate = roleLevel(me?.role) >= ROLE_LEVELS.corporate
+  // Settings map to the backend settings blob. Kept in the same dirty/baseline
+  // snapshot as title/description/schema so one Save covers everything.
+  const settings = useMemo(
+    () => ({ success_message: successMessage, allow_resubmit: allowResubmit }),
+    [successMessage, allowResubmit]
+  )
   const dirty = useMemo(
-    () => baseline !== '' && JSON.stringify({ title, description, schema }) !== baseline,
-    [baseline, title, description, schema]
+    () => baseline !== '' && JSON.stringify({ title, description, schema, settings }) !== baseline,
+    [baseline, title, description, schema, settings]
   )
   const selectedField = schema.find(f => f.id === selectedId) || null
   const publicUrl = form?.slug ? `https://forms.westcoaststrength.com/f/${form.slug}` : ''
@@ -96,11 +106,20 @@ export default function FormBuilder({ formId, onBack, me }) {
     const t = f.title || ''
     const d = f.description || ''
     const s = Array.isArray(f.schema) ? f.schema : []
+    const set = f.settings || {}
+    const sm = typeof set.success_message === 'string' ? set.success_message : ''
+    const ar = !!set.allow_resubmit
     setForm(f)
     setTitle(t)
     setDescription(d)
     setSchema(s)
-    setBaseline(JSON.stringify({ title: t, description: d, schema: s }))
+    setSuccessMessage(sm)
+    setAllowResubmit(ar)
+    setEditingTitle(false)
+    setBaseline(JSON.stringify({
+      title: t, description: d, schema: s,
+      settings: { success_message: sm, allow_resubmit: ar },
+    }))
   }
 
   async function load() {
@@ -172,7 +191,7 @@ export default function FormBuilder({ formId, onBack, me }) {
     try {
       const res = await formsApi.update(formId, {
         known_updated_at: form.updated_at,
-        title, description, schema,
+        title, description, schema, settings,
       })
       syncLoaded(res.form)
       setConflict(false)
@@ -259,7 +278,46 @@ export default function FormBuilder({ formId, onBack, me }) {
             className="px-3 py-1.5 text-xs text-text-muted border border-border rounded-lg hover:text-text-primary transition-colors">
             &larr; Back
           </button>
-          <h2 className="text-lg font-bold text-text-primary flex-1 min-w-0 truncate">{title || 'Untitled Form'}</h2>
+          {canEdit ? (
+            editingTitle ? (
+              <input
+                autoFocus
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                onBlur={() => setEditingTitle(false)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); setEditingTitle(false) }
+                  if (e.key === 'Escape') setEditingTitle(false)
+                }}
+                placeholder="Untitled Form"
+                aria-label="Form name"
+                className="flex-1 min-w-0 text-lg font-bold text-text-primary bg-bg border border-border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-wcs-red"
+              />
+            ) : (
+              <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                <h2
+                  onClick={() => setEditingTitle(true)}
+                  className="text-lg font-bold text-text-primary min-w-0 truncate cursor-text hover:opacity-80"
+                  title="Click to rename"
+                >
+                  {title || 'Untitled Form'}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setEditingTitle(true)}
+                  title="Rename form"
+                  aria-label="Rename form"
+                  className="shrink-0 w-6 h-6 flex items-center justify-center rounded text-text-muted hover:text-text-primary transition-colors"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931zm0 0L19.5 7.125" />
+                  </svg>
+                </button>
+              </div>
+            )
+          ) : (
+            <h2 className="text-lg font-bold text-text-primary flex-1 min-w-0 truncate">{title || 'Untitled Form'}</h2>
+          )}
           <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${STATUS_STYLES[form.status] || STATUS_STYLES.draft}`}>
             {form.status.charAt(0).toUpperCase() + form.status.slice(1)}
           </span>
@@ -359,6 +417,48 @@ export default function FormBuilder({ formId, onBack, me }) {
           </button>
         ))}
       </div>
+
+      {tab === 'settings' && (
+        <div className="bg-surface rounded-xl border border-border p-5 space-y-5">
+          <div>
+            <h3 className="text-sm font-bold text-text-primary">Form settings</h3>
+            <p className="text-xs text-text-muted mt-0.5">Control what people see after they submit this form.</p>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-text-muted mb-1">Completion message</label>
+            <textarea
+              value={successMessage}
+              onChange={e => setSuccessMessage(e.target.value)}
+              rows={3}
+              maxLength={500}
+              disabled={!canEdit}
+              placeholder="Thanks, you're signed up."
+              className={inputClass}
+            />
+            <p className="text-[11px] text-text-muted mt-1">Shown after someone submits the form. Leave blank for the default thank you message.</p>
+          </div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-text-primary">Allow submitting another response</p>
+              <p className="text-[11px] text-text-muted mt-0.5">Shows a button on the completion screen to fill out the form again.</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={allowResubmit}
+              disabled={!canEdit}
+              onClick={() => setAllowResubmit(v => !v)}
+              className={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-60 ${
+                allowResubmit ? 'bg-wcs-red' : 'bg-border'
+              }`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                allowResubmit ? 'translate-x-6' : 'translate-x-1'
+              }`} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {tab === 'share' && <FormSharePanel form={form} shares={shares} onChanged={load} />}
       {tab === 'qr' && <FormQrPanel form={form} />}
