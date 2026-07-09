@@ -10,6 +10,28 @@ const formsAudit = require('../services/formsAudit')
 const router = Router()
 router.use(authenticate)
 
+// Validate + normalize an incoming settings object. Recognized keys only:
+// success_message (string, trimmed, max 500) and allow_resubmit (boolean).
+// Unrecognized keys are dropped. Returns { ok, error, settings }.
+function normalizeSettings(input) {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    return { ok: false, error: 'settings must be an object' }
+  }
+  const out = {}
+  if (input.success_message !== undefined) {
+    if (typeof input.success_message !== 'string') {
+      return { ok: false, error: 'success_message must be a string' }
+    }
+    const trimmed = input.success_message.trim()
+    if (trimmed.length > 500) return { ok: false, error: 'success_message must be 500 characters or fewer' }
+    out.success_message = trimmed
+  }
+  if (input.allow_resubmit !== undefined) {
+    out.allow_resubmit = !!input.allow_resubmit
+  }
+  return { ok: true, settings: out }
+}
+
 const CORPORATE_LEVEL = ROLE_HIERARCHY.indexOf('corporate')
 const isCorporate = (staff) => roleLevel(staff.role) >= CORPORATE_LEVEL
 
@@ -173,7 +195,7 @@ router.patch('/:id', async (req, res) => {
   try {
     const { form, access } = await loadFormAccess(req, req.params.id)
     if (!form || !access.edit) return res.status(form ? 403 : 404).json({ error: form ? 'No access' : 'Not found' })
-    const { known_updated_at, title, description, schema, visibility, location_can_edit } = req.body || {}
+    const { known_updated_at, title, description, schema, visibility, location_can_edit, settings } = req.body || {}
     if (!known_updated_at) return res.status(400).json({ error: 'known_updated_at is required' })
     if (new Date(form.updated_at).getTime() > new Date(known_updated_at).getTime()) {
       return res.status(409).json({
@@ -198,6 +220,13 @@ router.patch('/:id', async (req, res) => {
       patch.visibility = visibility
     }
     if (location_can_edit !== undefined) patch.location_can_edit = !!location_can_edit
+    if (settings !== undefined) {
+      const v = normalizeSettings(settings)
+      if (!v.ok) return res.status(400).json({ error: v.error })
+      // Merge over existing settings so unrelated keys are preserved.
+      patch.settings = { ...(form.settings || {}), ...v.settings }
+      detail.settings = true
+    }
     const { data, error } = await supabaseAdmin.from('forms').update(patch).eq('id', form.id).select('*').single()
     if (error) throw error
     // Published forms with a sheet get new columns appended right away.
@@ -209,7 +238,7 @@ router.patch('/:id', async (req, res) => {
         visibility: data.visibility, location_can_edit: data.location_can_edit,
       })
     }
-    if (patch.title || patch.schema || detail.description) {
+    if (patch.title || patch.schema || detail.description || detail.settings) {
       formsAudit.record(form.id, req.staff.id, 'edited', detail)
     }
     const fresh = await loadFormAccess(req, form.id)

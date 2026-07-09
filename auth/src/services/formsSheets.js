@@ -100,10 +100,19 @@ async function ensureSheet(form) {
   const columns = computeColumns(form.schema, form.sheet_columns || {})
 
   if (!sheet_id) {
+    // Title new spreadsheets with the club name so a shared Drive folder of
+    // sheets stays readable. Lookup failures fall back to the plain form title.
+    let sheetTitle = form.title
+    try {
+      const { data: loc } = await db().from('locations').select('name').eq('id', form.location_id).maybeSingle()
+      if (loc?.name) sheetTitle = `${form.title} (${loc.name})`
+    } catch (e) {
+      console.error('[formsSheets] location lookup for sheet title failed:', e.message)
+    }
     const create = await googleJson(SHEETS_BASE, token, {
       method: 'POST',
       body: JSON.stringify({
-        properties: { title: form.title },
+        properties: { title: sheetTitle },
         sheets: [{ properties: { sheetId: 0, title: TAB, gridProperties: { frozenRowCount: 1 } } }],
       }),
     })
