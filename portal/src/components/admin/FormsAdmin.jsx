@@ -158,8 +158,8 @@ export default function FormsAdmin() {
                     )}
                     <button
                       onClick={() => handleRetry(form.id)}
-                      disabled={rs.busy || !form.sheet_id}
-                      title={form.sheet_id ? '' : 'Publish creates a sheet first'}
+                      disabled={rs.busy}
+                      title="Creates the sheet if needed, then re-appends unsynced submissions"
                       className="text-xs bg-bg border border-border text-text-primary rounded-lg px-3 py-1.5 font-medium hover:border-wcs-red disabled:opacity-50"
                     >
                       {rs.busy ? 'Retrying...' : 'Retry Sync'}
