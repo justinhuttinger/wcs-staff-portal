@@ -20,7 +20,7 @@ import DriveHub from './components/DriveHub'
 import MediaLibraryView from './components/MediaLibraryView'
 import FormsView from './components/forms/FormsView'
 import GlobalProgressBar from './components/GlobalProgressBar'
-import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout } from './lib/api'
+import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout, setImpersonateId } from './lib/api'
 import { logEvent } from './lib/audit'
 import { useForceRefresh } from './lib/useForceRefresh'
 
@@ -298,6 +298,11 @@ export default function App() {
 
   const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTickets && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms
 
+  function exitImpersonation() {
+    setImpersonateId(null)
+    window.location.assign('/')
+  }
+
   function handleBackToPortal() {
     setShowAdmin(false)
     setShowCalendar(false)
@@ -317,6 +322,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-bg flex flex-col relative">
+      {user?.impersonating?.active && (
+        <div className="sticky top-0 z-[100] flex items-center justify-center gap-3 bg-wcs-red text-white text-sm font-semibold px-4 py-2">
+          <span>👁 Viewing as {user.impersonating.target.name} ({user.impersonating.target.role}) — read-only</span>
+          <button type="button" onClick={exitImpersonation} className="underline font-bold">Exit</button>
+        </div>
+      )}
       <GlobalProgressBar />
       {/* Location background image — persists on all views */}
       {bgImage && (

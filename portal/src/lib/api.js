@@ -70,6 +70,17 @@ export function getToken() {
   return authToken
 }
 
+const IMPERSONATE_KEY = 'wcs_impersonate_id'
+export function getImpersonateId() {
+  try { return localStorage.getItem(IMPERSONATE_KEY) } catch { return null }
+}
+export function setImpersonateId(id) {
+  try {
+    if (id) localStorage.setItem(IMPERSONATE_KEY, id)
+    else localStorage.removeItem(IMPERSONATE_KEY)
+  } catch {}
+}
+
 export function clearToken() {
   authToken = null
   refreshToken = null
@@ -77,6 +88,7 @@ export function clearToken() {
     localStorage.removeItem('wcs_token')
     localStorage.removeItem('wcs_refresh_token')
   } catch {}
+  try { localStorage.removeItem(IMPERSONATE_KEY) } catch {}
   // Drop any cached responses from the previous session so the next user
   // doesn't see leftover data.
   apiCache.clear()
@@ -167,6 +179,8 @@ async function fetchWithAuthAndRetry(path, options) {
   if (authToken) {
     headers['Authorization'] = 'Bearer ' + authToken
   }
+  const impersonateId = getImpersonateId()
+  if (impersonateId) headers['X-Impersonate-Staff-Id'] = impersonateId
 
   // Drop our custom options before passing to fetch.
   const { cache: _cache, ...restOptions } = options
@@ -360,6 +374,10 @@ export async function getStaff() {
 
 export async function createStaff(data) {
   return api('/admin/staff', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function startImpersonation(staffId) {
+  return api('/admin/impersonate/' + staffId, { method: 'POST' })
 }
 
 export async function updateStaff(id, data) {
