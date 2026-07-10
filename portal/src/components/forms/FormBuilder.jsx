@@ -156,6 +156,22 @@ export default function FormBuilder({ formId, onBack, me }) {
   }
   useEffect(() => { resizeIntro() }, [description, tab])
 
+  // Wrap the intro textarea's current selection in a formatting marker
+  // (**bold**, *italic*, __underline__); the preview and public renderer
+  // turn the markers into real styling.
+  function wrapIntroSelection(marker) {
+    const el = introRef.current
+    if (!el) return
+    const s = el.selectionStart ?? description.length
+    const e = el.selectionEnd ?? description.length
+    setDescription(description.slice(0, s) + marker + description.slice(s, e) + marker + description.slice(e))
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(s + marker.length, e + marker.length)
+      resizeIntro()
+    })
+  }
+
   function handleBack() {
     if (dirty && !window.confirm('You have unsaved changes. Leave without saving?')) return
     onBack()
@@ -486,7 +502,19 @@ export default function FormBuilder({ formId, onBack, me }) {
                 className={inputClass} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-text-muted mb-1">Intro text (optional)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-text-muted">Intro text (optional)</label>
+                {canEdit && (
+                  <div className="flex gap-1">
+                    <button type="button" onClick={() => wrapIntroSelection('**')} title="Bold (select text first)"
+                      className="w-7 h-7 text-xs font-bold border border-border rounded text-text-muted hover:text-text-primary hover:bg-bg transition-colors">B</button>
+                    <button type="button" onClick={() => wrapIntroSelection('*')} title="Italic (select text first)"
+                      className="w-7 h-7 text-xs italic border border-border rounded text-text-muted hover:text-text-primary hover:bg-bg transition-colors">I</button>
+                    <button type="button" onClick={() => wrapIntroSelection('__')} title="Underline (select text first)"
+                      className="w-7 h-7 text-xs underline border border-border rounded text-text-muted hover:text-text-primary hover:bg-bg transition-colors">U</button>
+                  </div>
+                )}
+              </div>
               <textarea ref={introRef} value={description}
                 onChange={e => { setDescription(e.target.value); resizeIntro() }}
                 rows={2} disabled={!canEdit}
