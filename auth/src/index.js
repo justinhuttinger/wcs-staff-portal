@@ -112,6 +112,7 @@ app.use('/admin/shared-credentials', require('./routes/sharedCredentials'))
 app.use('/admin/cache', require('./routes/cacheAdmin'))
 app.use('/admin/exports', require('./routes/exports'))
 app.use('/audit-log', require('./routes/auditLog'))
+app.use('/changelog', require('./routes/changelog'))
 app.use('/forms', require('./routes/forms'))
 app.use('/public/forms', require('./routes/publicForms'))
 

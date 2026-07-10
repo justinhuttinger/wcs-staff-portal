@@ -367,6 +367,14 @@ export async function getMe() {
   return api('/auth/me')
 }
 
+// Per-user "What's New" read state (highest changelog entry id seen).
+export async function getChangelogSeen() {
+  return api('/changelog/seen')
+}
+export async function setChangelogSeen(last_seen_id) {
+  return api('/changelog/seen', { method: 'POST', body: JSON.stringify({ last_seen_id }) })
+}
+
 // Admin - Staff
 export async function getStaff() {
   return api('/admin/staff')
