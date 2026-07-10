@@ -17,6 +17,7 @@ export default function FormsView({ onBack, me }) {
   const [tab, setTab] = useState('forms')
   const [search, setSearch] = useState('')
   const [locFilter, setLocFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('active')
 
   async function load() {
     try {
@@ -37,9 +38,15 @@ export default function FormsView({ onBack, me }) {
     .map(([id, name]) => ({ id, name }))
     .sort((a, b) => a.name.localeCompare(b.name))
   const query = search.trim().toLowerCase()
+  // 'active' = anything not archived (drafts + published).
+  const matchesStatus = f =>
+    statusFilter === 'all' ? true
+      : statusFilter === 'archived' ? f.status === 'archived'
+        : f.status !== 'archived'
   const filtered = (items || []).filter(f =>
     (!query || (f.title || '').toLowerCase().includes(query)) &&
-    (!locFilter || f.location_id === locFilter)
+    (!locFilter || f.location_id === locFilter) &&
+    matchesStatus(f)
   )
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-4 w-full">
@@ -73,6 +80,12 @@ export default function FormsView({ onBack, me }) {
             className="px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red">
             <option value="">All locations</option>
             {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            className="px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red">
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
+            <option value="all">All statuses</option>
           </select>
         </div>
       </div>
