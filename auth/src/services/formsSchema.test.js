@@ -60,6 +60,26 @@ test('validateSubmission enforces required, formats, option membership, unknown 
   assert.ok(r.errors.f_bogus)  // unknown field
 })
 
+test('phone: normalizes valid US numbers to (999) 999-9999', () => {
+  const base = { f_name: 'A', f_email: 'a@b.co', f_shirt: 'S' }
+  for (const input of ['9717203264', '971-720-3264', '(971) 720 3264', '1 971 720 3264', '+1 (971) 720-3264']) {
+    const r = validateSubmission(SCHEMA, { ...base, f_phone: input })
+    assert.strictEqual(r.ok, true, `should accept ${input}`)
+    assert.strictEqual(r.cleaned.f_phone, '(971) 720-3264', `should normalize ${input}`)
+  }
+})
+
+test('phone: rejects wrong lengths and non-NANP shapes', () => {
+  const base = { f_name: 'A', f_email: 'a@b.co', f_shirt: 'S' }
+  // 9 digits, 11 digits without a leading 1, 12 digits, area code starting
+  // with 0, exchange starting with 1.
+  for (const input of ['971720326', '99717203264', '197172032645', '0717203264', '9711203264']) {
+    const r = validateSubmission(SCHEMA, { ...base, f_phone: input })
+    assert.strictEqual(r.ok, false, `should reject ${input}`)
+    assert.ok(r.errors.f_phone, `should error on ${input}`)
+  }
+})
+
 test('display blocks are ignored by validateSubmission', () => {
   const r = validateSubmission(SCHEMA, { f_name: 'A', f_email: 'a@b.co', f_shirt: 'S' })
   assert.strictEqual(r.ok, true)

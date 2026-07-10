@@ -68,9 +68,15 @@ function validateSubmission(schema, data) {
         if (!EMAIL_RE.test(v)) { errors[f.id] = 'Enter a valid email address'; continue }
         break
       case 'phone': {
-        const digits = v.replace(/\D/g, '')
-        if (digits.length < 7 || digits.length > 15) { errors[f.id] = 'Enter a valid phone number'; continue }
-        break
+        // US numbers only: 10 digits (optional leading 1), NANP shape — area
+        // code and exchange can't start with 0/1. Normalized to
+        // "(999) 999-9999" so Sheets always shows one consistent format.
+        const digits = v.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '')
+        if (!/^[2-9]\d{2}[2-9]\d{6}$/.test(digits)) {
+          errors[f.id] = 'Enter a valid 10-digit phone number'; continue
+        }
+        cleaned[f.id] = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+        continue
       }
       case 'number':
         if (!Number.isFinite(Number(v))) { errors[f.id] = 'Enter a number'; continue }
