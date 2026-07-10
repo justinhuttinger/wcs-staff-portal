@@ -8,7 +8,7 @@ const { Router } = require('express')
 const multer = require('multer')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole, resolveRole, canSeeAllLocations } = require('../middleware/role')
+const { requireRole, requireReportAccess, resolveRole, canSeeAllLocations } = require('../middleware/role')
 const { getAccessToken } = require('./googleBusiness')
 const { parseLocationSlugParam, SLUG_CLUB_MAP } = require('../utils/locationSlug')
 const { resolveScopedSlugs, getUserAllowedSlugs } = require('../services/locationScope')
@@ -732,7 +732,7 @@ router.get('/transactions', requireRole('manager'), async (req, res) => {
 
 // GET /summary?location_slug=&from=&to= — per-item revenue, COGS, profit.
 // Financial data (the Sales tab) → manager+ only.
-router.get('/summary', requireRole('manager'), async (req, res) => {
+router.get('/summary', requireReportAccess('manager', ['pos-sales']), async (req, res) => {
   try {
     const { clubs, error: cErr } = await clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
@@ -815,7 +815,7 @@ router.get('/summary', requireRole('manager'), async (req, res) => {
 // shrink, positive = found extra). This rolls those up by employee / item /
 // location and values each at the item's cost so misplacement and theft can be
 // measured. Financial data → manager+.
-router.get('/shrinkage', requireRole('manager'), async (req, res) => {
+router.get('/shrinkage', requireReportAccess('manager', ['pos-sales']), async (req, res) => {
   try {
     const { clubs, error: cErr } = await clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
@@ -920,7 +920,7 @@ router.get('/shrinkage', requireRole('manager'), async (req, res) => {
 // last counted / restocked" scoreboard so managers can see which teams are
 // letting physical counts slip. Status keys off COUNT age (the discipline being
 // measured); restock is context only. Manager+.
-router.get('/compliance', requireRole('manager'), async (req, res) => {
+router.get('/compliance', requireReportAccess('manager', ['pos-sales']), async (req, res) => {
   try {
     const { clubs, error: cErr } = await clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
@@ -1022,7 +1022,7 @@ router.get('/compliance', requireRole('manager'), async (req, res) => {
 // activity for the scoped club(s), bucketed by Pacific business day. Powers the
 // compliance drill-down: it summarizes each day (items counted, items restocked,
 // units added) rather than listing every item. Manager+.
-router.get('/compliance/activity', requireRole('manager'), async (req, res) => {
+router.get('/compliance/activity', requireReportAccess('manager', ['pos-sales']), async (req, res) => {
   try {
     const { clubs, error: cErr } = await clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
@@ -1216,7 +1216,7 @@ const empDiscountFor = (category) => EMP_DISCOUNT[category] || 0
 // margin after the employee discount is applied to the catalog price. Staff are
 // identified by an Employee/STAFF membership type (codes EMPLOY/COMP). The
 // discounted price is MODELED (catalog × (1 − discount)), not the till price.
-router.get('/employee-spend', requireRole('manager'), async (req, res) => {
+router.get('/employee-spend', requireReportAccess('manager', ['pos-sales']), async (req, res) => {
   try {
     const { clubs, error: cErr } = await clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
