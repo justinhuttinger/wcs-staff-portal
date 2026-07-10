@@ -2,6 +2,8 @@
 // The public renderer mirrors this markup: white card, labels with required
 // asterisks, one block per field, red submit button.
 
+import { renderInline } from './richText'
+
 const inputClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-500'
 
 function RequiredMark({ field }) {
@@ -134,7 +136,7 @@ export default function FormPreview({ schema, title, description }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 max-w-xl mx-auto">
       <h2 className="text-xl font-bold text-gray-900">{title || 'Untitled Form'}</h2>
-      {description && <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{description}</p>}
+      {description && <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{renderInline(description)}</p>}
       {fields.length === 0 ? (
         <p className="text-sm text-gray-400 mt-6">No fields yet. Add fields to see the preview.</p>
       ) : (
