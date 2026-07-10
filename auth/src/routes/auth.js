@@ -312,6 +312,16 @@ router.get('/me', authenticate, async (req, res) => {
       custom_reports: req.staff.custom_reports || [],
     },
     visible_tools,
+    ...(req.impersonating ? {
+      impersonating: {
+        active: true,
+        target: {
+          name: req.staff.display_name || [req.staff.first_name, req.staff.last_name].filter(Boolean).join(' '),
+          role: req.staff.role,
+        },
+        by: req.realStaff?.email || null,
+      },
+    } : {}),
   })
 })
 
