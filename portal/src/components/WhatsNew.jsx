@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { visibleChangelog } from '../config/changelog'
 import { getChangelogSeen, setChangelogSeen } from '../lib/api'
 
@@ -59,16 +60,48 @@ export default function WhatsNew({ user, bgImage }) {
     }
   }
 
-  const btnCls = `relative p-1.5 rounded-lg border transition-colors ${
+  // Height-matched to the text buttons (Sign Out / Admin): px-3 py-1.5 text-xs.
+  const btnCls = `relative inline-flex items-center px-2 py-1.5 rounded-lg border transition-colors ${
     bgImage
       ? 'border-white/30 bg-white/10 text-white/80 hover:text-white hover:border-white/60'
       : 'border-border bg-surface text-text-muted hover:text-wcs-red hover:border-wcs-red'
   }`
 
+  // Rendered into document.body so the overlay escapes the header's `relative
+  // z-10` stacking context (otherwise its z-50 is trapped below the app content).
+  const modal = open && createPortal(
+    <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-[100] p-4 pt-20" onClick={() => setOpen(false)}>
+      <div
+        className="bg-surface rounded-2xl border border-border w-full max-w-lg max-h-[75vh] flex flex-col shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h3 className="text-lg font-bold text-text-primary">What&rsquo;s New</h3>
+          <button onClick={() => setOpen(false)} className="text-text-muted hover:text-text-primary text-2xl leading-none">&times;</button>
+        </div>
+        <div className="overflow-y-auto px-5 py-4 space-y-5">
+          {entries.map(e => (
+            <div key={e.id} className="flex gap-3">
+              <div className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${e.id > lastSeen ? 'bg-wcs-red' : 'bg-border'}`} />
+              <div className="min-w-0">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <h4 className="text-sm font-bold text-text-primary">{e.title}</h4>
+                  <span className="text-[11px] text-text-muted">{fmtDate(e.date)}</span>
+                </div>
+                <p className="text-sm text-text-muted mt-0.5">{e.body}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+
   return (
     <>
       <button onClick={openPanel} className={btnCls} title="What's New" aria-label="What's New">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4">
           <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
         </svg>
         {unseen > 0 && (
@@ -77,34 +110,7 @@ export default function WhatsNew({ user, bgImage }) {
           </span>
         )}
       </button>
-
-      {open && (
-        <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 p-4 pt-20" onClick={() => setOpen(false)}>
-          <div
-            className="bg-surface rounded-2xl border border-border w-full max-w-lg max-h-[75vh] flex flex-col shadow-2xl"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-              <h3 className="text-lg font-bold text-text-primary">What&rsquo;s New</h3>
-              <button onClick={() => setOpen(false)} className="text-text-muted hover:text-text-primary text-2xl leading-none">&times;</button>
-            </div>
-            <div className="overflow-y-auto px-5 py-4 space-y-5">
-              {entries.map(e => (
-                <div key={e.id} className="flex gap-3">
-                  <div className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${e.id > lastSeen ? 'bg-wcs-red' : 'bg-border'}`} />
-                  <div className="min-w-0">
-                    <div className="flex items-baseline gap-2 flex-wrap">
-                      <h4 className="text-sm font-bold text-text-primary">{e.title}</h4>
-                      <span className="text-[11px] text-text-muted">{fmtDate(e.date)}</span>
-                    </div>
-                    <p className="text-sm text-text-muted mt-0.5">{e.body}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {modal}
     </>
   )
 }
