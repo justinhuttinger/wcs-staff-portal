@@ -90,6 +90,31 @@ function colLetter(n) {
   return s
 }
 
+// Spreadsheets are titled with the club name so a shared Drive folder of
+// sheets stays readable. Lookup failures fall back to the plain form title.
+async function sheetTitleFor(form) {
+  let sheetTitle = form.title
+  try {
+    const { data: loc } = await db().from('locations').select('name').eq('id', form.location_id).maybeSingle()
+    if (loc?.name) sheetTitle = `${form.title} (${loc.name})`
+  } catch (e) {
+    console.error('[formsSheets] location lookup for sheet title failed:', e.message)
+  }
+  return sheetTitle
+}
+
+// Keep the Drive file name in step with the form title after a rename.
+// supportsAllDrives is REQUIRED because the sheet lives in a shared drive.
+async function renameSheet(form) {
+  if (!form.sheet_id) return
+  const token = await getToken()
+  const name = await sheetTitleFor(form)
+  await googleJson(`${DRIVE_BASE}/${form.sheet_id}?supportsAllDrives=true`, token, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  })
+}
+
 // First publish: create the spreadsheet, move it into the configured shared
 // drive folder (supportsAllDrives is REQUIRED for shared drives), write the
 // header row. Republish after schema changes: append headers for new columns
@@ -100,15 +125,7 @@ async function ensureSheet(form) {
   const columns = computeColumns(form.schema, form.sheet_columns || {})
 
   if (!sheet_id) {
-    // Title new spreadsheets with the club name so a shared Drive folder of
-    // sheets stays readable. Lookup failures fall back to the plain form title.
-    let sheetTitle = form.title
-    try {
-      const { data: loc } = await db().from('locations').select('name').eq('id', form.location_id).maybeSingle()
-      if (loc?.name) sheetTitle = `${form.title} (${loc.name})`
-    } catch (e) {
-      console.error('[formsSheets] location lookup for sheet title failed:', e.message)
-    }
+    const sheetTitle = await sheetTitleFor(form)
     const create = await googleJson(SHEETS_BASE, token, {
       method: 'POST',
       body: JSON.stringify({
@@ -229,5 +246,5 @@ function start() {
 
 module.exports = {
   computeColumns, buildHeaderRow, buildRowValues, pacificTimestamp,
-  ensureSheet, appendSubmission, retryFormSync, start,
+  ensureSheet, renameSheet, appendSubmission, retryFormSync, getFolderId, start,
 }

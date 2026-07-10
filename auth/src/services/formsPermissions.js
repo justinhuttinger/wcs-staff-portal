@@ -1,7 +1,7 @@
 const { roleLevel, ROLE_HIERARCHY } = require('../middleware/role')
 
 const CORPORATE_LEVEL = ROLE_HIERARCHY.indexOf('corporate')
-const MANAGER_LEVEL = ROLE_HIERARCHY.indexOf('manager')
+const ADMIN_LEVEL = ROLE_HIERARCHY.indexOf('admin')
 
 // Single access function for the builder/management side, evaluated in spec
 // order (docs/superpowers/specs/2026-07-08-form-builder-design.md). The public
@@ -23,12 +23,12 @@ function canAccessForm(staff, form, shares = []) {
   return none
 }
 
-// Builder gate: who may create forms and open the builder at all. Manager tier
-// and up, or an effective 'forms' permission (RBAC v2 role toggle / override).
-// Mirrors the requireReportAccess pattern in middleware/role.js.
+// Module gate: who may enter the forms module at all. Admin tier and up, or
+// an explicit 'forms' permission (RBAC v2 role toggle / override) an admin
+// granted. Mirrors the requireReportAccess pattern in middleware/role.js.
 async function requireFormsBuilder(req, res, next) {
   if (!req.staff) return res.status(401).json({ error: 'Authentication required' })
-  if (roleLevel(req.staff.role) >= MANAGER_LEVEL) return next()
+  if (roleLevel(req.staff.role) >= ADMIN_LEVEL) return next()
   try {
     const { getEffectivePermissions } = require('./permissions')
     const perms = await getEffectivePermissions(req.staff)
@@ -36,7 +36,7 @@ async function requireFormsBuilder(req, res, next) {
   } catch (err) {
     console.error('[forms] effective-perm check failed:', err.message)
   }
-  return res.status(403).json({ error: 'Forms access requires manager or a forms grant' })
+  return res.status(403).json({ error: 'Forms access requires admin or a forms grant' })
 }
 
 module.exports = { canAccessForm, requireFormsBuilder }

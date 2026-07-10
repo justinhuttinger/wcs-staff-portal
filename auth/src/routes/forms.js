@@ -9,6 +9,9 @@ const formsAudit = require('../services/formsAudit')
 
 const router = Router()
 router.use(authenticate)
+// The whole module is admin-only (or an explicit RBAC 'forms' grant) — per-form
+// visibility/share rules below only scope what a permitted caller sees.
+router.use(requireFormsBuilder)
 
 // Validate + normalize an incoming settings object. Recognized keys only:
 // success_message (string, trimmed, max 500) and allow_resubmit (boolean).
@@ -81,7 +84,10 @@ router.get('/', async (req, res) => {
     }
     const ownerName = Object.fromEntries((owners || []).map(o => [o.id, o.display_name]))
     const locName = Object.fromEntries((locs || []).map(l => [l.id, l.name]))
+    let driveFolderId = null
+    try { driveFolderId = await formsSheets.getFolderId() } catch { /* link is optional */ }
     res.json({
+      drive_folder_id: driveFolderId,
       forms: visible.map(({ f, access }) => ({
         ...f, access,
         owner_name: ownerName[f.owner_id] || '',
@@ -232,6 +238,10 @@ router.patch('/:id', async (req, res) => {
     // Published forms with a sheet get new columns appended right away.
     if (patch.schema && data.sheet_id) {
       try { await formsSheets.ensureSheet(data) } catch (e) { console.error('[forms] column sync failed:', e.message) }
+    }
+    // A title change renames the Drive file too, so the sheet stays findable.
+    if (patch.title && patch.title !== form.title && data.sheet_id) {
+      try { await formsSheets.renameSheet(data) } catch (e) { console.error('[forms] sheet rename failed:', e.message) }
     }
     if (patch.visibility !== undefined || patch.location_can_edit !== undefined) {
       formsAudit.record(form.id, req.staff.id, 'visibility_changed', {
