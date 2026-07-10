@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
-import { getInventorySummary, getInventoryEmployeeSpend, getInventoryShrinkage, getInventoryCompliance } from '../../lib/api'
+import { useState, useEffect, useMemo, Fragment } from 'react'
+import { getInventorySummary, getInventoryEmployeeSpend, getInventoryShrinkage, getInventoryCompliance, getInventoryComplianceActivity } from '../../lib/api'
 import { exportCSV } from '../../lib/export'
 
 // POS Sales report — the financial views that used to live on the Inventory page.
@@ -115,6 +115,7 @@ const SHRINK_EVENT_GETTERS = {
 const COMPLIANCE_GETTERS = {
   club: r => String(r.location_slug || r.club_number || '').toLowerCase(),
   lastcount: r => ts(r.last_count_at),
+  counted: r => num(r.last_count_items),
   dayssince: r => num(r.days_since_count),
   lastrestock: r => ts(r.last_restock_at),
   tracked: r => num(r.tracked_items),
@@ -242,6 +243,10 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
   const [shrinkage, setShrinkage] = useState(null)
   const [compliance, setCompliance] = useState(null)
   const [overdueDays, setOverdueDays] = useState(30)
+  // Compliance drill-down: which club row is expanded, and its per-day activity
+  // (keyed by club_number → { loading, days, error }).
+  const [openClub, setOpenClub] = useState(null)
+  const [activity, setActivity] = useState({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -253,7 +258,7 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
 
   // Invalidate cached tab data whenever the date range / location changes so a
   // stale tab doesn't flash old numbers when revisited.
-  useEffect(() => { setSummary(null); setEmpSpend(null); setShrinkage(null); setCompliance(null) }, [params])
+  useEffect(() => { setSummary(null); setEmpSpend(null); setShrinkage(null); setCompliance(null); setActivity({}); setOpenClub(null) }, [params])
 
   useEffect(() => { setCompliance(null) }, [overdueDays])
 
@@ -329,6 +334,20 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
   const displayByItem = useMemo(() => sortRows(shrinkage?.by_item || [], byItemSort, SHRINK_ITEM_GETTERS), [shrinkage, byItemSort])
   const displayEvents = useMemo(() => sortRows(shrinkage?.events || [], eventsSort, SHRINK_EVENT_GETTERS), [shrinkage, eventsSort])
   const displayClubs = useMemo(() => sortRows(compliance?.clubs || [], complianceSort, COMPLIANCE_GETTERS), [compliance, complianceSort])
+
+  // Expand/collapse a club row, lazy-loading its per-day restock/count activity
+  // for the current date range on first open.
+  function toggleClubActivity(c) {
+    const key = c.club_number
+    if (openClub === key) { setOpenClub(null); return }
+    setOpenClub(key)
+    if (!activity[key]) {
+      setActivity(a => ({ ...a, [key]: { loading: true } }))
+      getInventoryComplianceActivity({ location_slug: c.location_slug || '', from: startDate, to: endDate })
+        .then(r => setActivity(a => ({ ...a, [key]: { loading: false, days: r.days || [] } })))
+        .catch(err => setActivity(a => ({ ...a, [key]: { loading: false, error: err.message } })))
+    }
+  }
 
   const rangeLabel = `${startDate}_to_${endDate}`
 
@@ -523,6 +542,7 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
             <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
               <SortHeader label="Club" col="club" sort={complianceSort} onSort={cycleComplianceSort} align="left" />
               <SortHeader label="Last count" col="lastcount" sort={complianceSort} onSort={cycleComplianceSort} />
+              <SortHeader label="Items counted" col="counted" sort={complianceSort} onSort={cycleComplianceSort} />
               <SortHeader label="Days since" col="dayssince" sort={complianceSort} onSort={cycleComplianceSort} />
               <SortHeader label="Last restock" col="lastrestock" sort={complianceSort} onSort={cycleComplianceSort} />
               <SortHeader label="Tracked" col="tracked" sort={complianceSort} onSort={cycleComplianceSort} />
@@ -536,20 +556,69 @@ export default function PosSalesReport({ startDate, endDate, locationSlug }) {
                 : c.status === 'never' ? 'bg-bg text-text-muted'
                 : 'bg-emerald-100 text-emerald-700'
               const label = c.status === 'overdue' ? 'Overdue' : c.status === 'never' ? 'Never' : 'OK'
+              const isOpen = openClub === c.club_number
+              const act = activity[c.club_number]
               return (
-                <tr key={c.club_number} className="border-b border-border/50 hover:bg-bg/40">
-                  <td className="py-2 px-4 font-medium text-text-primary capitalize">{c.location_slug || c.club_number}</td>
-                  <td className="py-2 px-2 text-right">{fmtDateTime(c.last_count_at)}</td>
-                  <td className={`py-2 px-2 text-right ${c.status === 'overdue' ? 'text-wcs-red font-semibold' : ''}`}>{c.days_since_count == null ? '—' : c.days_since_count}</td>
-                  <td className="py-2 px-2 text-right">{fmtDateTime(c.last_restock_at)}</td>
-                  <td className="py-2 px-2 text-right">{c.tracked_items}</td>
-                  <td className="py-2 px-2 text-right">{c.never_counted_items}</td>
-                  <td className="py-2 px-4 text-right"><span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${badge}`}>{label}</span></td>
-                </tr>
+                <Fragment key={c.club_number}>
+                  <tr className="border-b border-border/50 hover:bg-bg/40 cursor-pointer" onClick={() => toggleClubActivity(c)}>
+                    <td className="py-2 px-4 font-medium text-text-primary capitalize">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className={`text-text-muted transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
+                        {c.location_slug || c.club_number}
+                      </span>
+                    </td>
+                    <td className="py-2 px-2 text-right">{fmtDateTime(c.last_count_at)}</td>
+                    <td className="py-2 px-2 text-right">{c.last_count_at ? c.last_count_items : '—'}</td>
+                    <td className={`py-2 px-2 text-right ${c.status === 'overdue' ? 'text-wcs-red font-semibold' : ''}`}>{c.days_since_count == null ? '—' : c.days_since_count}</td>
+                    <td className="py-2 px-2 text-right">{fmtDateTime(c.last_restock_at)}</td>
+                    <td className="py-2 px-2 text-right">{c.tracked_items}</td>
+                    <td className="py-2 px-2 text-right">{c.never_counted_items}</td>
+                    <td className="py-2 px-4 text-right"><span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${badge}`}>{label}</span></td>
+                  </tr>
+                  {isOpen && (
+                    <tr className="bg-bg/30">
+                      <td colSpan="8" className="px-4 py-3">
+                        <p className="text-[11px] uppercase tracking-wider text-text-muted mb-2">
+                          Restock &amp; count activity by day{startDate && endDate ? ` · ${startDate} to ${endDate}` : ''}
+                        </p>
+                        {!act || act.loading ? (
+                          <p className="text-sm text-text-muted py-2">Loading activity…</p>
+                        ) : act.error ? (
+                          <p className="text-sm text-wcs-red py-2">{act.error}</p>
+                        ) : act.days.length === 0 ? (
+                          <p className="text-sm text-text-muted py-2">No restock or count activity in this date range.</p>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border">
+                                  <th className="py-1.5 px-2">Day</th>
+                                  <th className="py-1.5 px-2 text-right">Items counted</th>
+                                  <th className="py-1.5 px-2 text-right">Items restocked</th>
+                                  <th className="py-1.5 px-2 text-right">Units added</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {act.days.map((d) => (
+                                  <tr key={d.date} className="border-b border-border/40">
+                                    <td className="py-1.5 px-2 font-medium text-text-primary">{d.date}</td>
+                                    <td className="py-1.5 px-2 text-right">{d.counted_items || '—'}</td>
+                                    <td className="py-1.5 px-2 text-right">{d.restocked_items || '—'}</td>
+                                    <td className="py-1.5 px-2 text-right">{d.units_added ? fmtQty(d.units_added) : '—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               )
             })}
             {compliance && compliance.clubs.length === 0 && (
-              <tr><td colSpan="7" className="py-6 text-center text-text-muted">No data</td></tr>
+              <tr><td colSpan="8" className="py-6 text-center text-text-muted">No data</td></tr>
             )}
           </tbody>
         </table>
