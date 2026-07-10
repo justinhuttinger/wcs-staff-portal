@@ -2,7 +2,7 @@
 // buildTillReceiptPayload consumes. Mirrors the single-club/day slice of the
 // /till/reconciliation route, reusing the same till-cash-tracking primitives.
 
-const { reconcileDay } = require('../../lib/tillReconcile')
+const { reconcileDay, resolveFloatForDate } = require('../../lib/tillReconcile')
 const { aggregateCashByDay } = require('../../lib/tillCashMovements')
 const { SLUG_CLUB_MAP } = require('../../utils/locationSlug')
 
@@ -81,8 +81,12 @@ async function loadReconciliation(supabase, locationSlug, businessDate) {
 
   const { data: setting } = await supabase
     .from('till_settings').select('standard_float, drop_upc').eq('club_number', club).maybeSingle()
-  const standardFloat = Number(setting?.standard_float ?? 100)
   const dropUpc = setting?.drop_upc || null
+
+  // Float effective for this business date (matches /till/reconciliation).
+  const { data: floatRows } = await supabase
+    .from('till_float_history').select('effective_date, standard_float').eq('club_number', club)
+  const standardFloat = resolveFloatForDate(floatRows, businessDate, setting?.standard_float ?? 100)
 
   const { data: counts } = await supabase
     .from('till_counts').select('count_type, counted_amount, employee_name')

@@ -28,4 +28,20 @@ function reconcileDay({ standardFloat, openingCount, closingCount, cashSales = 0
   return { openingFloat, expectedClose, countedClose, overShort, bagDrop, floatVariance, status }
 }
 
-module.exports = { reconcileDay }
+// Resolve the standard float in effect for a business date from a club's float
+// history — an array of { effective_date: 'YYYY-MM-DD', standard_float }. Picks
+// the row with the greatest effective_date <= businessDate (ISO date strings
+// compare lexicographically). Falls back to `fallback` when history is empty or
+// the date precedes every row.
+function resolveFloatForDate(history, businessDate, fallback = 100) {
+  let best = null
+  for (const h of history || []) {
+    const eff = String(h.effective_date).slice(0, 10)
+    if (eff <= businessDate && (best === null || eff > best.eff)) {
+      best = { eff, value: h.standard_float }
+    }
+  }
+  return best ? Number(best.value) : Number(fallback)
+}
+
+module.exports = { reconcileDay, resolveFloatForDate }

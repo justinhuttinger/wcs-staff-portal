@@ -83,6 +83,14 @@ export default function TillReport({ startDate, endDate, locationSlug }) {
       .sort((a, b) => a.overShort - b.overShort)
   }, [rows])
 
+  // Daily tables show the most recent day at the top.
+  const sortedRows = useMemo(() => (
+    [...(rows || [])].sort((a, b) => (
+      a.business_date < b.business_date ? 1 : a.business_date > b.business_date ? -1
+      : (a.location_slug || '').localeCompare(b.location_slug || '')
+    ))
+  ), [rows])
+
   const totals = useMemo(() => {
     const t = { overShort: 0, bagDrop: 0, counted: 0, missing: 0 }
     for (const r of (rows || [])) {
@@ -173,8 +181,8 @@ export default function TillReport({ startDate, endDate, locationSlug }) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, i) => (
-                  <tr key={i} className="border-b border-border/50 hover:bg-bg/40">
+                {sortedRows.map((r) => (
+                  <tr key={`${r.business_date}|${r.club_number}`} className="border-b border-border/50 hover:bg-bg/40">
                     <td className="py-2 px-4 text-text-primary whitespace-nowrap">{r.business_date}</td>
                     {allLoc && <td className="py-2 px-2 capitalize text-text-muted">{r.location_slug || '—'}</td>}
                     <td className={`py-2 px-2 text-right ${r.floatVariance ? 'text-amber-600' : 'text-text-muted'}`} title={r.floatVariance ? 'Opening count differs from the standard float' : ''}>{fmtMoney(r.openingFloat)}</td>
@@ -242,8 +250,8 @@ export default function TillReport({ startDate, endDate, locationSlug }) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, i) => (
-                  <tr key={i} className="border-b border-border/50 hover:bg-bg/40">
+                {sortedRows.map((r) => (
+                  <tr key={`${r.business_date}|${r.club_number}`} className="border-b border-border/50 hover:bg-bg/40">
                     <td className="py-2 px-4 text-text-primary whitespace-nowrap">{r.business_date}</td>
                     {allLoc && <td className="py-2 px-2 capitalize text-text-muted">{r.location_slug || '—'}</td>}
                     <td className="py-2 px-2 text-text-muted">{r.openBy || '—'}</td>

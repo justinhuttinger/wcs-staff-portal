@@ -5,13 +5,18 @@ const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, canSeeAllLocations } = require('../middleware/role')
 const { parseLocationSlugParam, SLUG_CLUB_MAP, intersectWithAllowed } = require('../utils/locationSlug')
-const { reconcileDay } = require('../lib/tillReconcile')
+const { reconcileDay, resolveFloatForDate } = require('../lib/tillReconcile')
 const { aggregateCashByDay } = require('../lib/tillCashMovements')
 
 const CLUB_TO_SLUG = Object.fromEntries(Object.entries(SLUG_CLUB_MAP).map(([s, c]) => [c, s]))
 const router = Router()
 router.use(authenticate)
 router.use(requireRole('manager'))
+
+// Today's Pacific calendar date (YYYY-MM-DD). A float edit takes effect this day.
+function pacificToday() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+}
 
 // Convert a location name to a slug (same as payroll/checkinsReport).
 function locSlugFromName(name) {
@@ -74,6 +79,18 @@ router.get('/reconciliation', async (req, res) => {
       .in('club_number', clubs)
     const settingByClub = new Map((settings || []).map(s => [s.club_number, s]))
 
+    // Effective-dated float history per club — the float used for a given day is
+    // the most recent one with effective_date <= that business date, so editing a
+    // club's float only changes that day forward (past variances stay put).
+    const { data: floatRows } = await supabaseAdmin
+      .from('till_float_history').select('club_number, effective_date, standard_float')
+      .in('club_number', clubs)
+    const floatByClub = new Map()
+    for (const f of floatRows || []) {
+      if (!floatByClub.has(f.club_number)) floatByClub.set(f.club_number, [])
+      floatByClub.get(f.club_number).push(f)
+    }
+
     // Counts per club/day (open/close). Tolerate the table not existing yet.
     let counts = []
     try {
@@ -103,7 +120,7 @@ router.get('/reconciliation', async (req, res) => {
         const open = countMap.get(countKey(club, date, 'open'))
         const close = countMap.get(countKey(club, date, 'close'))
         const rec = reconcileDay({
-          standardFloat: Number(setting.standard_float),
+          standardFloat: resolveFloatForDate(floatByClub.get(club), date, setting.standard_float),
           openingCount: open ? Number(open.counted_amount) : null,
           closingCount: close ? Number(close.counted_amount) : null,
           cashSales: cash.cashSales, cashRefunds: cash.cashRefunds, cashDrops: cash.cashDrops,
@@ -137,7 +154,9 @@ async function allowedClubs(req) {
   return slugs.map(s => SLUG_CLUB_MAP[s]).filter(Boolean)
 }
 
-// GET /settings — per-club standard float (and drop UPC), scoped to the caller.
+// GET /settings — per-club CURRENT standard float (and drop UPC), scoped to the
+// caller. till_settings.standard_float mirrors the latest effective float, and
+// effective_since is that float's effective date from the history table.
 router.get('/settings', async (req, res) => {
   try {
     const clubs = await allowedClubs(req)
@@ -148,6 +167,20 @@ router.get('/settings', async (req, res) => {
       .in('club_number', clubs)
     if (error) throw error
     const byClub = new Map((data || []).map(s => [s.club_number, s]))
+
+    // Latest effective_date per club (the date the current float took effect).
+    const today = pacificToday()
+    const { data: floatRows } = await supabaseAdmin
+      .from('till_float_history').select('club_number, effective_date')
+      .in('club_number', clubs).lte('effective_date', today)
+    const effectiveSince = new Map()
+    for (const f of floatRows || []) {
+      const eff = String(f.effective_date).slice(0, 10)
+      if (!effectiveSince.has(f.club_number) || eff > effectiveSince.get(f.club_number)) {
+        effectiveSince.set(f.club_number, eff)
+      }
+    }
+
     // Emit a row for every in-scope club, defaulting unseeded ones to 100.
     const settings = clubs.map(club => {
       const s = byClub.get(club) || {}
@@ -157,6 +190,7 @@ router.get('/settings', async (req, res) => {
         standard_float: s.standard_float != null ? Number(s.standard_float) : 100,
         drop_upc: s.drop_upc || 'XXXCASHDROPXXX',
         updated_at: s.updated_at || null,
+        effective_since: effectiveSince.get(club) || null,
       }
     }).sort((a, b) => (a.location_slug || '').localeCompare(b.location_slug || ''))
     res.json({ settings })
@@ -166,9 +200,10 @@ router.get('/settings', async (req, res) => {
   }
 })
 
-// PUT /settings — upsert one club's standard float. Body: { location_slug,
-// standard_float }. Manager+ (router gate); the editor UI lives in the
-// admin-only panel.
+// PUT /settings — set one club's standard float, effective TODAY. Body:
+// { location_slug, standard_float }. Writes a dated row into till_float_history
+// (so past days keep their old float) and mirrors the current value onto
+// till_settings. Manager+ (router gate); the editor UI lives in the admin panel.
 router.put('/settings', async (req, res) => {
   try {
     const parsed = parseLocationSlugParam(req.body.location_slug)
@@ -182,9 +217,20 @@ router.put('/settings', async (req, res) => {
     const float = typeof raw === 'number' ? raw : parseFloat(raw)
     if (!Number.isFinite(float) || float < 0) return res.status(400).json({ error: 'standard_float must be a non-negative number' })
 
+    const nowIso = new Date().toISOString()
+    const today = pacificToday()
+
+    // The change takes effect today; a second edit the same day overwrites it.
+    const { error: histErr } = await supabaseAdmin
+      .from('till_float_history')
+      .upsert({ club_number: club, effective_date: today, standard_float: float, updated_at: nowIso, updated_by: req.staff.id },
+        { onConflict: 'club_number,effective_date' })
+    if (histErr) throw histErr
+
+    // Mirror the current float onto till_settings (display + fallback).
     const { data, error } = await supabaseAdmin
       .from('till_settings')
-      .upsert({ club_number: club, standard_float: float, updated_at: new Date().toISOString() }, { onConflict: 'club_number' })
+      .upsert({ club_number: club, standard_float: float, updated_at: nowIso }, { onConflict: 'club_number' })
       .select('club_number, standard_float, drop_upc, updated_at').single()
     if (error) throw error
     res.json({ setting: {
@@ -192,6 +238,7 @@ router.put('/settings', async (req, res) => {
       location_slug: CLUB_TO_SLUG[data.club_number] || null,
       standard_float: Number(data.standard_float),
       drop_upc: data.drop_upc, updated_at: data.updated_at,
+      effective_since: today,
     } })
   } catch (err) {
     console.error('[till] settings write failed:', err.message)

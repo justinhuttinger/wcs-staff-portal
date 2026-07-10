@@ -34,7 +34,7 @@ export default function TillSettingsAdmin() {
     setMessage(null)
     try {
       const { setting } = await setTillFloat(slug, val)
-      setRows(prev => prev.map(r => r.location_slug === slug ? { ...r, standard_float: setting.standard_float, updated_at: setting.updated_at } : r))
+      setRows(prev => prev.map(r => r.location_slug === slug ? { ...r, standard_float: setting.standard_float, updated_at: setting.updated_at, effective_since: setting.effective_since || r.effective_since } : r))
       setDrafts(prev => ({ ...prev, [slug]: String(setting.standard_float) }))
       setMessage({ slug, type: 'success', text: 'Saved' })
     } catch (err) {
@@ -51,7 +51,7 @@ export default function TillSettingsAdmin() {
       <div>
         <h3 className="text-sm font-bold text-text-primary">Till Float</h3>
         <p className="text-xs text-text-muted mt-1">
-          The standard float each club's cash drawer resets to. The Till report reconciles overnight drift and bag drops against this baseline.
+          The standard float each club's cash drawer resets to. The Till report reconciles overnight drift and bag drops against this baseline. A change takes effect <span className="font-semibold text-text-primary">today forward only</span> — past days keep the float they were reconciled with.
         </p>
       </div>
 
@@ -61,6 +61,7 @@ export default function TillSettingsAdmin() {
             <tr className="text-[11px] uppercase tracking-wide text-text-muted">
               <th className="text-left font-semibold py-2 pr-4">Club</th>
               <th className="text-left font-semibold py-2 px-2">Standard Float</th>
+              <th className="text-left font-semibold py-2 px-2">In effect since</th>
               <th className="text-left font-semibold py-2 px-2"></th>
             </tr>
           </thead>
@@ -86,6 +87,7 @@ export default function TillSettingsAdmin() {
                       />
                     </div>
                   </td>
+                  <td className="py-2.5 px-2 text-text-muted whitespace-nowrap">{r.effective_since || '—'}</td>
                   <td className="py-2.5 px-2">
                     <div className="flex items-center gap-3">
                       <button
