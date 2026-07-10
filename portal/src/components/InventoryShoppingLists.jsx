@@ -15,20 +15,16 @@ const btnPrimary = 'px-3 py-1.5 rounded-lg bg-wcs-red text-white text-xs font-se
 const btnGhost = 'px-3 py-1.5 rounded-lg border border-border bg-surface text-xs font-semibold text-text-muted hover:text-text-primary hover:border-text-muted transition-colors disabled:opacity-50'
 const inputCls = 'px-3 py-2 rounded-lg border border-border bg-bg text-sm text-text-primary focus:outline-none focus:border-wcs-red w-full'
 
-// Presaved, per-club reorder checklists. A list is a named set of catalog items;
-// opening it shows each item's live on-hand next to its category's reorder level
-// so staff can eyeball what to restock. Anyone with inventory access can manage
-// lists. Lists are per-club, so an "all clubs" view prompts to pick one.
-export default function InventoryShoppingLists({ slug }) {
+// -----------------------------------------------------------------------------
+// Lists browser — a searchable, scrolling list of the club's saved shopping
+// lists. Lives inside the To Order tab (All / Lists toggle). Clicking a list
+// (or "New List") hands off to the full-screen ListEditor via the callbacks.
+// -----------------------------------------------------------------------------
+export function ListsBrowser({ slug, refreshKey, onOpen, onCreate }) {
   const [lists, setLists] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [creating, setCreating] = useState(false)
-  const [newName, setNewName] = useState('')
-
-  const [activeId, setActiveId] = useState(null)
-  const [detail, setDetail] = useState(null) // { list, items }
-  const [detailLoading, setDetailLoading] = useState(false)
+  const [search, setSearch] = useState('')
 
   const loadLists = useCallback(() => {
     if (slug === 'all') { setLists([]); setLoading(false); return }
@@ -39,125 +35,180 @@ export default function InventoryShoppingLists({ slug }) {
       .finally(() => setLoading(false))
   }, [slug])
 
-  useEffect(() => { setActiveId(null); setDetail(null); loadLists() }, [loadLists])
-
-  const loadDetail = useCallback((id) => {
-    setDetailLoading(true)
-    getShoppingList(id)
-      .then(setDetail)
-      .catch(err => setError(err.message))
-      .finally(() => setDetailLoading(false))
-  }, [])
-
-  useEffect(() => { if (activeId) loadDetail(activeId) }, [activeId, loadDetail])
-
-  async function handleCreate() {
-    const name = newName.trim()
-    if (!name) return
-    setCreating(true); setError('')
-    try {
-      const { list } = await createShoppingList({ location_slug: slug, name })
-      setNewName('')
-      setLists(prev => [...prev, list].sort((a, b) => a.name.localeCompare(b.name)))
-      setActiveId(list.id)
-    } catch (err) { setError(err.message) }
-    setCreating(false)
-  }
-
-  async function handleRename(id) {
-    const name = prompt('Rename list:', detail?.list?.name || '')
-    if (name == null) return
-    const trimmed = name.trim()
-    if (!trimmed) return
-    try {
-      await renameShoppingList(id, trimmed)
-      setLists(prev => prev.map(l => l.id === id ? { ...l, name: trimmed } : l).sort((a, b) => a.name.localeCompare(b.name)))
-      setDetail(d => d && d.list.id === id ? { ...d, list: { ...d.list, name: trimmed } } : d)
-    } catch (err) { setError(err.message) }
-  }
-
-  async function handleDelete(id) {
-    if (!confirm('Delete this list? This cannot be undone.')) return
-    try {
-      await deleteShoppingList(id)
-      setLists(prev => prev.filter(l => l.id !== id))
-      if (activeId === id) { setActiveId(null); setDetail(null) }
-    } catch (err) { setError(err.message) }
-  }
+  useEffect(() => { loadLists() }, [loadLists, refreshKey])
 
   if (slug === 'all') {
     return (
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-8 text-center">
-        <p className="text-sm text-text-muted">Shopping lists are per club. Select a single club above to view and manage its lists.</p>
+        <p className="text-sm text-text-muted">Shopping lists are per club. Pick a single club above to view and build its lists.</p>
       </div>
     )
   }
 
+  const term = search.trim().toLowerCase()
+  const shown = term ? lists.filter(l => l.name.toLowerCase().includes(term)) : lists
+
   return (
-    <div className="space-y-4">
-      {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2">{error}</div>}
+    <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
+      {error && <div className="bg-red-50 border-b border-red-200 text-red-700 text-sm px-4 py-2">{error}</div>}
 
-      {/* Create + list picker */}
-      <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <input
-            className={inputCls}
-            placeholder="New list name (e.g. Weekly Drinks Order)"
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleCreate() }}
-          />
-          <button className={btnPrimary} onClick={handleCreate} disabled={creating || !newName.trim()}>
-            {creating ? 'Adding...' : 'New List'}
-          </button>
-        </div>
-
-        {loading ? (
-          <p className="text-sm text-text-muted">Loading...</p>
-        ) : lists.length === 0 ? (
-          <p className="text-sm text-text-muted">No lists yet. Create one above.</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {lists.map(l => (
-              <button
-                key={l.id}
-                onClick={() => setActiveId(l.id)}
-                className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
-                  activeId === l.id
-                    ? 'bg-wcs-red text-white border-wcs-red'
-                    : 'bg-bg text-text-muted border-border hover:text-text-primary hover:border-text-muted'
-                }`}
-              >
-                {l.name} <span className="opacity-70">· {l.item_count}</span>
-              </button>
-            ))}
-          </div>
-        )}
+      <div className="px-4 py-3 border-b border-border bg-bg/40 flex items-center gap-2">
+        <input
+          className={inputCls}
+          placeholder="Search lists..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <button className={btnPrimary + ' whitespace-nowrap'} onClick={onCreate}>+ New List</button>
       </div>
 
-      {/* Active list detail */}
-      {activeId && (
-        <ListDetail
-          detail={detail}
-          loading={detailLoading}
-          slug={slug}
-          onRename={() => handleRename(activeId)}
-          onDelete={() => handleDelete(activeId)}
-          onChanged={() => { loadDetail(activeId); loadLists() }}
-        />
+      {loading ? (
+        <p className="text-sm text-text-muted p-8 text-center">Loading lists...</p>
+      ) : shown.length === 0 ? (
+        <p className="text-sm text-text-muted p-8 text-center">
+          {lists.length === 0 ? 'No lists yet. Create one with “+ New List”.' : 'No lists match your search.'}
+        </p>
+      ) : (
+        <div className="max-h-[60vh] overflow-y-auto divide-y divide-border/60">
+          {shown.map(l => (
+            <button
+              key={l.id}
+              onClick={() => onOpen(l.id)}
+              className="w-full text-left px-4 py-3 hover:bg-bg/50 flex items-center justify-between gap-3 transition-colors"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-text-primary truncate">{l.name}</p>
+                <p className="text-[11px] text-text-muted mt-0.5">
+                  {l.item_count} item{l.item_count === 1 ? '' : 's'}
+                  {l.created_by_name ? ` · ${l.created_by_name}` : ''}
+                </p>
+              </div>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-text-muted shrink-0">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   )
 }
 
-function ListDetail({ detail, loading, slug, onRename, onDelete, onChanged }) {
+// -----------------------------------------------------------------------------
+// List editor — a dedicated full-screen screen (like the form builder) for
+// creating or editing one list. A new list first asks for a name; once created
+// it shows the item manager (search-to-add + live on-hand vs reorder level).
+// -----------------------------------------------------------------------------
+export function ListEditor({ slug, listId: initialId, onBack }) {
+  const isNew = !initialId
+  const [listId, setListId] = useState(initialId || null)
+  const [name, setName] = useState('')
+  const [detail, setDetail] = useState(null) // { list, items }
+  const [loading, setLoading] = useState(!isNew)
+  const [error, setError] = useState('')
+  const [creating, setCreating] = useState(false)
+
+  const loadDetail = useCallback((id) => {
+    setLoading(true)
+    getShoppingList(id)
+      .then(d => { setDetail(d); setName(d.list?.name || '') })
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => { if (listId) loadDetail(listId) }, [listId, loadDetail])
+
+  async function handleCreate() {
+    const nm = name.trim()
+    if (!nm) return
+    setCreating(true); setError('')
+    try {
+      const { list } = await createShoppingList({ location_slug: slug, name: nm })
+      setListId(list.id) // triggers detail load, switches to item manager
+    } catch (err) { setError(err.message) }
+    setCreating(false)
+  }
+
+  async function handleRename() {
+    const next = prompt('Rename list:', name)
+    if (next == null) return
+    const trimmed = next.trim()
+    if (!trimmed || trimmed === name) return
+    try {
+      await renameShoppingList(listId, trimmed)
+      setName(trimmed)
+      setDetail(d => d ? { ...d, list: { ...d.list, name: trimmed } } : d)
+    } catch (err) { setError(err.message) }
+  }
+
+  async function handleDelete() {
+    if (!confirm('Delete this list? This cannot be undone.')) return
+    try {
+      await deleteShoppingList(listId)
+      onBack()
+    } catch (err) { setError(err.message) }
+  }
+
+  return (
+    <div className="w-full max-w-5xl mx-auto px-8 py-6">
+      {/* Screen header */}
+      <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-5">
+        <button onClick={onBack} className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to Lists
+        </button>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-xl font-bold text-text-primary">
+            {isNew && !listId ? 'New List' : (name || 'List')}
+            <span className="ml-2 text-sm font-medium text-text-muted capitalize">· {slug}</span>
+          </h2>
+          {listId && (
+            <div className="flex items-center gap-2">
+              <button className={btnGhost} onClick={handleRename}>Rename</button>
+              <button className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-xs font-semibold text-red-600 hover:bg-red-100 transition-colors" onClick={handleDelete}>Delete</button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {error && <p className="text-sm text-wcs-red mb-4 bg-surface border border-border rounded-lg px-3 py-2">{error}</p>}
+
+      {/* New list: name entry before item management */}
+      {!listId ? (
+        <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-6 max-w-lg">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">List name</label>
+          <input
+            autoFocus
+            className={inputCls}
+            placeholder="e.g. Weekly Drinks Order"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleCreate() }}
+          />
+          <div className="flex items-center gap-2 mt-4">
+            <button className={btnPrimary} onClick={handleCreate} disabled={creating || !name.trim()}>
+              {creating ? 'Creating...' : 'Create list'}
+            </button>
+            <button className={btnGhost} onClick={onBack}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <ItemManager slug={slug} detail={detail} loading={loading} onChanged={() => loadDetail(listId)} />
+      )}
+    </div>
+  )
+}
+
+// Item manager: add-item search + the list's item table. Used once a list exists.
+function ItemManager({ slug, detail, loading, onChanged }) {
   const [search, setSearch] = useState('')
   const [results, setResults] = useState([])
   const [searching, setSearching] = useState(false)
   const [busyId, setBusyId] = useState(null)
   const debounce = useRef(null)
 
-  // Debounced catalog search for adding items (this club only).
   useEffect(() => {
     if (debounce.current) clearTimeout(debounce.current)
     const term = search.trim()
@@ -203,18 +254,11 @@ function ListDetail({ detail, loading, slug, onRename, onDelete, onChanged }) {
 
   return (
     <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
-      <div className="px-4 py-3 border-b border-border bg-bg/40 flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-bold text-text-primary">{detail.list.name}</h3>
-          <p className="text-[11px] text-text-muted mt-0.5">
-            {items.length} item{items.length === 1 ? '' : 's'}
-            {belowCount > 0 && <span className="text-amber-600 font-semibold"> · {belowCount} below reorder</span>}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button className={btnGhost} onClick={onRename}>Rename</button>
-          <button className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-xs font-semibold text-red-600 hover:bg-red-100 transition-colors" onClick={onDelete}>Delete</button>
-        </div>
+      <div className="px-4 py-3 border-b border-border bg-bg/40">
+        <p className="text-[11px] text-text-muted">
+          {items.length} item{items.length === 1 ? '' : 's'}
+          {belowCount > 0 && <span className="text-amber-600 font-semibold"> · {belowCount} below reorder</span>}
+        </p>
       </div>
 
       {/* Add item */}

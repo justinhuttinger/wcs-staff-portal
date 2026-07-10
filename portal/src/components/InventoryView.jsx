@@ -10,7 +10,7 @@ import {
 } from '../lib/api'
 import { LOCATION_OPTIONS } from '../config/locations'
 import { exportCSV } from '../lib/export'
-import InventoryShoppingLists from './InventoryShoppingLists'
+import { ListsBrowser, ListEditor } from './InventoryShoppingLists'
 
 // --- helpers ---
 function fmtMoney(v) {
@@ -700,6 +700,11 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   }, [canSeeAllClubs, accessibleSlugs])
 
   const [tab, setTab] = useState('items') // items | order | restock | audit (admin)
+  // Within the To Order tab: 'all' = the computed reorder list, 'lists' = saved
+  // shopping lists. Opening/creating a list swaps to a full-screen editor.
+  const [orderView, setOrderView] = useState('all') // 'all' | 'lists'
+  const [listScreen, setListScreen] = useState(null) // null | { id } | { new: true }
+  const [listsRefresh, setListsRefresh] = useState(0) // bump to refetch the lists browser
   // Default to the widest view the user can see; single-club users land on their club.
   const [slug, setSlug] = useState(() =>
     canSeeAllClubs || accessibleSlugs.length > 1 ? 'all' : (accessibleSlugs[0] || 'all'))
@@ -1082,6 +1087,18 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
     getInventoryMovements().then(res => setMovements(res.movements || [])).catch(() => {})
   }
 
+  // Full-screen list editor — its own screen (like the form builder), replacing
+  // the inventory chrome while creating or editing a shopping list.
+  if (listScreen) {
+    return (
+      <ListEditor
+        slug={slug}
+        listId={listScreen.id || null}
+        onBack={() => { setListScreen(null); setListsRefresh(n => n + 1) }}
+      />
+    )
+  }
+
   return (
     <div className="w-full max-w-6xl mx-auto px-8 py-6">
       {/* Header card */}
@@ -1096,7 +1113,6 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
               {[
                 { key: 'items', label: 'Inventory' },
                 { key: 'order', label: 'To Order' },
-                { key: 'lists', label: 'Lists' },
                 { key: 'restock', label: 'Restock' },
                 ...(isAdmin ? [{ key: 'audit', label: 'Audit' }] : []),
               ].map(m => (
@@ -1118,7 +1134,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
               {clubOptions.map(o => <option key={o.slug} value={o.slug}>{o.label}</option>)}
             </select>
           </div>
-          {(tab === 'items' || tab === 'order') && (
+          {(tab === 'items' || (tab === 'order' && orderView === 'all')) && (
             <div className="flex-1 min-w-[200px]">
               <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Search</span>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or UPC..." className={inputCls} />
@@ -1220,19 +1236,40 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
 
       {/* === To Order tab === */}
       {tab === 'order' && (
-        <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
-          <div className="px-4 py-3 border-b border-border bg-bg/40 flex items-center justify-between gap-3">
-            <p className="text-xs text-text-muted">
-              An item lands here when on-hand drops below its category's reorder point. Items at 0 show only if they sold in the last {REORDER_SOLD_WINDOW_DAYS} days.
-              {slug === 'all' && ' Reorder points are set per club.'}
-            </p>
-            {isManagerPlus && (
+        <>
+          {/* All (computed reorder list) vs Lists (saved shopping lists) toggle */}
+          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <div className="flex gap-1 bg-bg rounded-lg p-1">
+              {[{ key: 'all', label: 'All' }, { key: 'lists', label: 'Lists' }].map(v => (
+                <button key={v.key} onClick={() => setOrderView(v.key)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${orderView === v.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>
+                  {v.label}
+                </button>
+              ))}
+            </div>
+            {orderView === 'all' && isManagerPlus && (
               slug === 'all' ? (
                 <span className="text-[11px] text-text-muted whitespace-nowrap italic">Pick a club to edit levels</span>
               ) : (
                 <button onClick={openReorderEditor} className={btnGhost + ' whitespace-nowrap'}>Edit reorder levels</button>
               )
             )}
+          </div>
+
+          {orderView === 'lists' ? (
+            <ListsBrowser
+              slug={slug}
+              refreshKey={listsRefresh}
+              onOpen={(id) => setListScreen({ id })}
+              onCreate={() => setListScreen({ new: true })}
+            />
+          ) : (
+        <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
+          <div className="px-4 py-3 border-b border-border bg-bg/40 flex items-center justify-between gap-3">
+            <p className="text-xs text-text-muted">
+              An item lands here when on-hand drops below its category's reorder point. Items at 0 show only if they sold in the last {REORDER_SOLD_WINDOW_DAYS} days.
+              {slug === 'all' && ' Reorder points are set per club.'}
+            </p>
           </div>
           {loading ? (
             <p className="text-sm text-text-muted p-6 text-center">Building order list...</p>
@@ -1281,11 +1318,8 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
             </div>
           )}
         </div>
-      )}
-
-      {/* === Lists tab (shopping lists) === */}
-      {tab === 'lists' && (
-        <InventoryShoppingLists slug={slug} />
+          )}
+        </>
       )}
 
       {/* === Audit tab (admin) === */}
