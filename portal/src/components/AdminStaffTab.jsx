@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { getStaff, createStaff, updateStaff, deleteStaff, setStaffActive, getLocations, getRolesAdmin } from '../lib/api'
+import { getStaff, createStaff, updateStaff, deleteStaff, setStaffActive, getLocations, getRolesAdmin, startImpersonation, setImpersonateId } from '../lib/api'
 import { PORTAL_TILE_CATALOG, CUSTOM_REPORT_CATALOG } from '../config/portalTiles'
 import AdminStaffOverrides from './AdminStaffOverrides'
 
@@ -387,6 +387,17 @@ export default function AdminStaffTab() {
     }
   }
 
+  async function handleViewAs(member) {
+    try {
+      await startImpersonation(member.id)
+      setImpersonateId(member.id)
+      // Hard reload to the portal home so the whole app re-renders as the target.
+      window.location.assign('/')
+    } catch (e) {
+      alert(e.message || 'Could not start view-as')
+    }
+  }
+
   async function handleToggleActive(member) {
     const next = member.is_active === false // currently inactive → reactivating
     const verb = next ? 'reactivate' : 'deactivate'
@@ -543,6 +554,15 @@ export default function AdminStaffTab() {
                     >
                       Edit
                     </button>
+                    {isActive && (
+                      <button
+                        type="button"
+                        onClick={() => handleViewAs(member)}
+                        className="text-xs font-semibold text-wcs-red hover:underline"
+                      >
+                        View as
+                      </button>
+                    )}
                     <button
                       onClick={() => handleToggleActive(member)}
                       className="text-xs font-medium text-text-muted hover:text-text-primary transition-colors"
