@@ -20,6 +20,7 @@ import DriveHub from './components/DriveHub'
 import MediaLibraryView from './components/MediaLibraryView'
 import FormsView from './components/forms/FormsView'
 import GlobalProgressBar from './components/GlobalProgressBar'
+import WhatsNew from './components/WhatsNew'
 import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout, setImpersonateId } from './lib/api'
 import { logEvent } from './lib/audit'
 import { useForceRefresh } from './lib/useForceRefresh'
@@ -353,6 +354,7 @@ export default function App() {
           <h1 className={`text-2xl font-black tracking-[-0.5px] ${bgImage ? 'text-white' : 'text-text-primary'}`}>Portal</h1>
         </div>
         <div className="flex items-center gap-4">
+          <WhatsNew user={user} bgImage={bgImage} />
           {isAdmin && (
             <button
               onClick={() => setShowAdmin(true)}
