@@ -125,4 +125,78 @@ router.get('/reconciliation', async (req, res) => {
   }
 })
 
+// The club numbers the caller may configure. All-location roles get every club;
+// others are narrowed to their assigned locations (mirrors the reconciliation
+// route's narrowing above).
+async function allowedClubs(req) {
+  if (canSeeAllLocations(req.staff.role)) return Object.values(SLUG_CLUB_MAP)
+  const allowedIds = req.staff.report_location_ids || []
+  if (allowedIds.length === 0) return []
+  const { data } = await supabaseAdmin.from('locations').select('name').in('id', allowedIds)
+  const slugs = (data || []).map(l => locSlugFromName(l.name))
+  return slugs.map(s => SLUG_CLUB_MAP[s]).filter(Boolean)
+}
+
+// GET /settings — per-club standard float (and drop UPC), scoped to the caller.
+router.get('/settings', async (req, res) => {
+  try {
+    const clubs = await allowedClubs(req)
+    if (clubs.length === 0) return res.json({ settings: [] })
+    const { data, error } = await supabaseAdmin
+      .from('till_settings')
+      .select('club_number, standard_float, drop_upc, active, updated_at')
+      .in('club_number', clubs)
+    if (error) throw error
+    const byClub = new Map((data || []).map(s => [s.club_number, s]))
+    // Emit a row for every in-scope club, defaulting unseeded ones to 100.
+    const settings = clubs.map(club => {
+      const s = byClub.get(club) || {}
+      return {
+        club_number: club,
+        location_slug: CLUB_TO_SLUG[club] || null,
+        standard_float: s.standard_float != null ? Number(s.standard_float) : 100,
+        drop_upc: s.drop_upc || 'XXXCASHDROPXXX',
+        updated_at: s.updated_at || null,
+      }
+    }).sort((a, b) => (a.location_slug || '').localeCompare(b.location_slug || ''))
+    res.json({ settings })
+  } catch (err) {
+    console.error('[till] settings list failed:', err.message)
+    res.status(500).json({ error: 'settings list failed' })
+  }
+})
+
+// PUT /settings — upsert one club's standard float. Body: { location_slug,
+// standard_float }. Manager+ (router gate); the editor UI lives in the
+// admin-only panel.
+router.put('/settings', async (req, res) => {
+  try {
+    const parsed = parseLocationSlugParam(req.body.location_slug)
+    if (parsed.invalid) return res.status(400).json({ error: `Unknown location: ${parsed.invalid}` })
+    if (parsed.all || parsed.slugs.length !== 1) return res.status(400).json({ error: 'A single location_slug is required' })
+    const club = SLUG_CLUB_MAP[parsed.slugs[0]]
+    if (!club) return res.status(400).json({ error: `Unknown location: ${parsed.slugs[0]}` })
+    if (!(await allowedClubs(req)).includes(club)) return res.status(403).json({ error: 'Not authorized for this location' })
+
+    const raw = req.body.standard_float
+    const float = typeof raw === 'number' ? raw : parseFloat(raw)
+    if (!Number.isFinite(float) || float < 0) return res.status(400).json({ error: 'standard_float must be a non-negative number' })
+
+    const { data, error } = await supabaseAdmin
+      .from('till_settings')
+      .upsert({ club_number: club, standard_float: float, updated_at: new Date().toISOString() }, { onConflict: 'club_number' })
+      .select('club_number, standard_float, drop_upc, updated_at').single()
+    if (error) throw error
+    res.json({ setting: {
+      club_number: data.club_number,
+      location_slug: CLUB_TO_SLUG[data.club_number] || null,
+      standard_float: Number(data.standard_float),
+      drop_upc: data.drop_upc, updated_at: data.updated_at,
+    } })
+  } catch (err) {
+    console.error('[till] settings write failed:', err.message)
+    res.status(500).json({ error: 'settings write failed' })
+  }
+})
+
 module.exports = router

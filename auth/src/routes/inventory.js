@@ -421,6 +421,273 @@ router.post('/items/:id/adjust', async (req, res) => {
   }
 })
 
+// --- Reorder levels ------------------------------------------------------------
+// Per-club, per-category reorder points. A missing row means "use the default"
+// (mirrored in the To Order tab's REORDER_THRESHOLDS constant) so behaviour is
+// unchanged until a manager edits. Reads are lead+ (the To Order tab needs
+// them); writes are manager+.
+const REORDER_DEFAULTS = { Drinks: 12, Snacks: 12, Supplements: 4 }
+
+// Resolve ?location_slug= to exactly one in-scope club_number, or { error }.
+async function resolveOneClub(req, rawSlug) {
+  const parsed = parseLocationSlugParam(rawSlug)
+  if (parsed.invalid) return { error: `Unknown location: ${parsed.invalid}` }
+  if (parsed.all || parsed.slugs.length !== 1) return { error: 'A single location_slug is required' }
+  const club = SLUG_CLUB_MAP[parsed.slugs[0]]
+  if (!club) return { error: `Unknown location: ${parsed.slugs[0]}` }
+  if (!(await clubInScope(req, club))) return { error: 'Not authorized for this location' }
+  return { club, slug: parsed.slugs[0] }
+}
+
+// GET /reorder-levels?location_slug= — saved levels within the caller's scope.
+router.get('/reorder-levels', async (req, res) => {
+  try {
+    const { clubs, error: cErr } = await clubFilter(req)
+    if (cErr) return res.status(400).json({ error: cErr })
+    let q = supabaseAdmin
+      .from('inventory_reorder_levels')
+      .select('club_number, category, reorder_point, updated_at')
+    if (clubs) q = q.in('club_number', clubs)
+    const { data, error } = await q
+    if (error) throw error
+    res.json({
+      defaults: REORDER_DEFAULTS,
+      levels: (data || []).map(r => ({
+        ...r,
+        location_slug: CLUB_TO_SLUG[r.club_number] || null,
+        reorder_point: num(r.reorder_point),
+      })),
+    })
+  } catch (err) {
+    console.error('[Inventory] reorder-levels list error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// PUT /reorder-levels — upsert one { location_slug, category, reorder_point }.
+// A null/blank reorder_point deletes the row (category no longer tracked).
+router.put('/reorder-levels', requireRole('manager'), async (req, res) => {
+  try {
+    const { club, error: rErr } = await resolveOneClub(req, req.body.location_slug)
+    if (rErr) return res.status(400).json({ error: rErr })
+    const category = String(req.body.category || '').trim()
+    if (!category) return res.status(400).json({ error: 'category is required' })
+
+    const raw = req.body.reorder_point
+    if (raw === null || raw === '' || typeof raw === 'undefined') {
+      const { error } = await supabaseAdmin
+        .from('inventory_reorder_levels').delete()
+        .eq('club_number', club).eq('category', category)
+      if (error) throw error
+      return res.json({ deleted: true, club_number: club, category })
+    }
+
+    const point = num(raw)
+    if (point == null || point < 0) return res.status(400).json({ error: 'reorder_point must be a non-negative number' })
+
+    const { data, error } = await supabaseAdmin
+      .from('inventory_reorder_levels')
+      .upsert({
+        club_number: club, category, reorder_point: point,
+        updated_at: new Date().toISOString(), updated_by: req.staff.id,
+      }, { onConflict: 'club_number,category' })
+      .select('club_number, category, reorder_point').single()
+    if (error) throw error
+    res.json({ level: { ...data, reorder_point: num(data.reorder_point), location_slug: CLUB_TO_SLUG[data.club_number] || null } })
+  } catch (err) {
+    console.error('[Inventory] reorder-levels write error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// --- Shopping lists ------------------------------------------------------------
+// Presaved, per-club reorder checklists. Any inventory user (lead+) can create
+// and manage them. Opening a list shows each item's live on-hand next to its
+// category's reorder level.
+
+// Map of category -> reorder point for one club, defaults filled in.
+async function reorderMapForClub(club) {
+  const { data } = await supabaseAdmin
+    .from('inventory_reorder_levels')
+    .select('category, reorder_point').eq('club_number', club)
+  const map = { ...REORDER_DEFAULTS }
+  for (const r of data || []) map[r.category] = num(r.reorder_point)
+  return map
+}
+
+// GET /shopping-lists?location_slug= — lists in scope, with item counts.
+router.get('/shopping-lists', async (req, res) => {
+  try {
+    const { clubs, error: cErr } = await clubFilter(req)
+    if (cErr) return res.status(400).json({ error: cErr })
+    let q = supabaseAdmin
+      .from('inventory_shopping_lists')
+      .select('id, club_number, name, created_by_name, created_at, updated_at, inventory_shopping_list_items(count)')
+      .order('name')
+    if (clubs) q = q.in('club_number', clubs)
+    const { data, error } = await q
+    if (error) throw error
+    res.json({
+      lists: (data || []).map(l => ({
+        id: l.id, name: l.name, club_number: l.club_number,
+        location_slug: CLUB_TO_SLUG[l.club_number] || null,
+        created_by_name: l.created_by_name, created_at: l.created_at, updated_at: l.updated_at,
+        item_count: l.inventory_shopping_list_items?.[0]?.count || 0,
+      })),
+    })
+  } catch (err) {
+    console.error('[Inventory] shopping-lists list error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /shopping-lists — { location_slug, name } create a list for one club.
+router.post('/shopping-lists', async (req, res) => {
+  try {
+    const { club, error: rErr } = await resolveOneClub(req, req.body.location_slug)
+    if (rErr) return res.status(400).json({ error: rErr })
+    const name = String(req.body.name || '').trim().slice(0, 120)
+    if (!name) return res.status(400).json({ error: 'name is required' })
+    const { data, error } = await supabaseAdmin
+      .from('inventory_shopping_lists')
+      .insert({
+        club_number: club, name,
+        created_by: req.staff.id,
+        created_by_name: req.staff.display_name || req.staff.email || null,
+      })
+      .select('id, club_number, name, created_by_name, created_at, updated_at').single()
+    if (error) throw error
+    res.status(201).json({ list: { ...data, location_slug: CLUB_TO_SLUG[data.club_number] || null, item_count: 0 } })
+  } catch (err) {
+    console.error('[Inventory] shopping-list create error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Fetch a list and confirm the caller may see its club, else null.
+async function loadListInScope(req, id) {
+  if (!UUID_RE.test(id)) return { error: 'Invalid list id', status: 400 }
+  const { data: list } = await supabaseAdmin
+    .from('inventory_shopping_lists')
+    .select('id, club_number, name, created_by, created_by_name, created_at, updated_at')
+    .eq('id', id).maybeSingle()
+  if (!list || !(await clubInScope(req, list.club_number))) return { error: 'List not found', status: 404 }
+  return { list }
+}
+
+// GET /shopping-lists/:id — list detail with live on-hand + reorder level.
+router.get('/shopping-lists/:id', async (req, res) => {
+  try {
+    const { list, error, status } = await loadListInScope(req, req.params.id)
+    if (error) return res.status(status).json({ error })
+    const reorderMap = await reorderMapForClub(list.club_number)
+    const { data: rows, error: iErr } = await supabaseAdmin
+      .from('inventory_shopping_list_items')
+      .select('id, added_at, inventory_items(id, item_name, category, upc, qty_on_hand)')
+      .eq('list_id', list.id)
+      .order('added_at')
+    if (iErr) throw iErr
+    const items = (rows || []).map(r => {
+      const it = r.inventory_items || {}
+      const qty = num(it.qty_on_hand) || 0
+      const point = reorderMap[it.category] ?? null
+      return {
+        list_item_id: r.id,
+        inventory_item_id: it.id,
+        item_name: it.item_name,
+        category: it.category,
+        upc: it.upc,
+        qty_on_hand: qty,
+        reorder_point: point,
+        below_reorder: point != null && qty <= point,
+        added_at: r.added_at,
+      }
+    })
+    res.json({
+      list: { ...list, location_slug: CLUB_TO_SLUG[list.club_number] || null },
+      items,
+    })
+  } catch (err) {
+    console.error('[Inventory] shopping-list detail error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// PATCH /shopping-lists/:id — rename.
+router.patch('/shopping-lists/:id', async (req, res) => {
+  try {
+    const { list, error, status } = await loadListInScope(req, req.params.id)
+    if (error) return res.status(status).json({ error })
+    const name = String(req.body.name || '').trim().slice(0, 120)
+    if (!name) return res.status(400).json({ error: 'name is required' })
+    const { data, error: uErr } = await supabaseAdmin
+      .from('inventory_shopping_lists')
+      .update({ name, updated_at: new Date().toISOString() })
+      .eq('id', list.id).select('id, club_number, name').single()
+    if (uErr) throw uErr
+    res.json({ list: { ...data, location_slug: CLUB_TO_SLUG[data.club_number] || null } })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /shopping-lists/:id — remove the list (items cascade).
+router.delete('/shopping-lists/:id', async (req, res) => {
+  try {
+    const { list, error, status } = await loadListInScope(req, req.params.id)
+    if (error) return res.status(status).json({ error })
+    const { error: dErr } = await supabaseAdmin
+      .from('inventory_shopping_lists').delete().eq('id', list.id)
+    if (dErr) throw dErr
+    res.json({ deleted: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /shopping-lists/:id/items — { inventory_item_id } add an item. The item
+// must belong to the same club as the list.
+router.post('/shopping-lists/:id/items', async (req, res) => {
+  try {
+    const { list, error, status } = await loadListInScope(req, req.params.id)
+    if (error) return res.status(status).json({ error })
+    const itemId = String(req.body.inventory_item_id || '')
+    if (!UUID_RE.test(itemId)) return res.status(400).json({ error: 'Invalid inventory_item_id' })
+    const { data: item } = await supabaseAdmin
+      .from('inventory_items').select('id, club_number').eq('id', itemId).maybeSingle()
+    if (!item || item.club_number !== list.club_number) {
+      return res.status(400).json({ error: 'Item is not in this list\'s club' })
+    }
+    const { data, error: iErr } = await supabaseAdmin
+      .from('inventory_shopping_list_items')
+      .upsert({ list_id: list.id, inventory_item_id: itemId }, { onConflict: 'list_id,inventory_item_id', ignoreDuplicates: true })
+      .select('id').maybeSingle()
+    if (iErr) throw iErr
+    await supabaseAdmin.from('inventory_shopping_lists')
+      .update({ updated_at: new Date().toISOString() }).eq('id', list.id)
+    res.status(201).json({ added: true, list_item_id: data?.id || null })
+  } catch (err) {
+    console.error('[Inventory] shopping-list add item error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /shopping-lists/:id/items/:itemId — remove one list item (by list_item_id).
+router.delete('/shopping-lists/:id/items/:itemId', async (req, res) => {
+  try {
+    const { list, error, status } = await loadListInScope(req, req.params.id)
+    if (error) return res.status(status).json({ error })
+    if (!UUID_RE.test(req.params.itemId)) return res.status(400).json({ error: 'Invalid item id' })
+    const { error: dErr } = await supabaseAdmin
+      .from('inventory_shopping_list_items')
+      .delete().eq('id', req.params.itemId).eq('list_id', list.id)
+    if (dErr) throw dErr
+    res.json({ removed: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // --- Transactions --------------------------------------------------------------
 
 // GET /transactions?location_slug=&from=&to=&limit= — synced POS sales with
