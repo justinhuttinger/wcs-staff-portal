@@ -111,28 +111,13 @@ const REPORT_GROUPS = [
   },
 ]
 
-// Reports the role sees by default (the historical tier defaults). Reports an
-// admin grants via the roles grid (visible_tools `report:<key>`) are unioned on
-// top, so a fully customizable role can be given any report regardless of tier.
-function defaultReportKeysForRole(role, customReports) {
-  if (role === 'custom') return customReports || []
-  switch (role) {
-    case 'team_member':
-      return []
-    case 'lead':
-      return ['membership', 'cancels', 'pt', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health']
-    case 'manager':
-      return ['membership', 'cancels', 'pt', 'club-health', 'pt-roster', 'checkins', 'pt-sessions', 'pt-new-clients', 'session-frequency', 'deactivated-pt', 'pt-health', 'payroll', 'compliance', 'revenue', 'pos-sales', 'till', 'kpis', 'audits']
-    case 'marketing':
-      return ALL_REPORT_TILES.map(t => t.key).filter(k => k !== 'kpis' && k !== 'audits')
-    default: // corporate, admin, director
-      return ALL_REPORT_TILES.map(t => t.key)
-  }
-}
-
+// Report visibility is driven entirely by the roles grid: the `report:<key>`
+// grants in visible_tools (seeded per role in migration 084, editable in
+// Admin -> Roles). No hardcoded per-role defaults — checking/unchecking a box
+// in the Roles page is now the single source of truth for what a role sees.
+// The built-in 'custom' role still layers its per-person custom_reports on top.
 function getReportTilesForRole(role, customReports, visibleTools) {
-  const allowed = new Set(defaultReportKeysForRole(role, customReports))
-  // Union in reports granted through the roles grid / per-person overrides.
+  const allowed = new Set(role === 'custom' && Array.isArray(customReports) ? customReports : [])
   for (const key of (visibleTools || [])) {
     if (typeof key === 'string' && key.startsWith('report:')) allowed.add(key.slice('report:'.length))
   }

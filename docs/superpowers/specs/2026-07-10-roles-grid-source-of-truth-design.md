@@ -1,7 +1,9 @@
 # Roles Grid as the Source of Truth for Report + Marketing Visibility
 
 **Date:** 2026-07-10
-**Status:** Design — approved in brainstorm, pending spec review
+**Status:** Implemented (desktop) 2026-07-10.
+
+**Scope note (2026-07-10 implementation):** Shipped for the **desktop** reporting UI + the data seed + marketing. **Mobile deferred**: `ReportsHome.jsx` keys the Meta Ads report as `'marketing'` (desktop uses `'meta-ads'`) and lacks `pos-sales`/`till`/`email-marketing` tiles — normalizing that is its own PR. Mobile keeps its hardcoded defaults for now (no regression; it already unions grid grants on top). Also: the canonical Operational-Compliance report key on current master is **`compliance`**, not `operations` — the seed uses `compliance`.
 **Repo:** wcs-staff-portal · **Supabase:** ybopxxydsuwlbwxiuzve
 
 ## Problem
