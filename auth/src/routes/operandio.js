@@ -357,7 +357,7 @@ router.post('/webhook', upload.any(), async (req, res) => {
 // Returns: { rows: [{period_start, period_end, location_slug, ...pcts}] }
 // Daily rows have period_start = period_end. Weekly rows span 7 days.
 // ---------------------------------------------------------------------------
-router.get('/range', authenticate, requireReportAccess('manager', ['kpis']), async (req, res) => {
+router.get('/range', authenticate, requireReportAccess('manager', ['compliance']), async (req, res) => {
   try {
     const { start_date, end_date, location_slug } = req.query
     if (!start_date || !end_date) return res.status(400).json({ error: 'start_date and end_date required' })
@@ -390,7 +390,7 @@ router.get('/range', authenticate, requireReportAccess('manager', ['kpis']), asy
 // Query: start_date, end_date (YYYY-MM-DD), optional location_slug (comma ok)
 // Returns: { rows: [{location_slug, job_name, score_*, report_url, submitted_date}] }
 // ---------------------------------------------------------------------------
-router.get('/qa-reports', authenticate, requireReportAccess('manager', ['kpis']), async (req, res) => {
+router.get('/qa-reports', authenticate, requireReportAccess('manager', ['kpis', 'audits']), async (req, res) => {
   try {
     const { start_date, end_date, location_slug, department } = req.query
 
@@ -421,7 +421,7 @@ router.get('/qa-reports', authenticate, requireReportAccess('manager', ['kpis'])
 // GET /operandio/qa-reports/:id — single audit with its per-item breakdown,
 // used by the portal's in-house HTML report viewer.
 // ---------------------------------------------------------------------------
-router.get('/qa-reports/:id', authenticate, requireRole('manager'), async (req, res) => {
+router.get('/qa-reports/:id', authenticate, requireReportAccess('manager', ['kpis', 'audits']), async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('operandio_qa_reports')
@@ -443,7 +443,7 @@ router.get('/qa-reports/:id', authenticate, requireRole('manager'), async (req, 
 //        optional job (exact job_name), optional person (completed_by)
 // Returns who is doing the jobs and what is not getting done.
 // ---------------------------------------------------------------------------
-router.get('/jobs', authenticate, requireRole('manager'), async (req, res) => {
+router.get('/jobs', authenticate, requireReportAccess('manager', ['compliance']), async (req, res) => {
   try {
     const { start_date, end_date, location_slug, job, person } = req.query
     if (!start_date || !end_date) return res.status(400).json({ error: 'start_date and end_date required' })
