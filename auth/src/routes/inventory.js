@@ -431,8 +431,8 @@ router.post('/items/:id/adjust', async (req, res) => {
 // --- Reorder levels ------------------------------------------------------------
 // Per-club, per-category reorder points. A missing row means "use the default"
 // (mirrored in the To Order tab's REORDER_THRESHOLDS constant) so behaviour is
-// unchanged until a manager edits. Reads are lead+ (the To Order tab needs
-// them); writes are manager+.
+// unchanged until someone edits. Both read and write are lead+ (anyone who can
+// use the Inventory tool / Restock page) — the router-level requireRole('lead').
 const REORDER_DEFAULTS = { Drinks: 12, Snacks: 12, Supplements: 4 }
 
 // Resolve ?location_slug= to exactly one in-scope club_number, or { error }.
@@ -473,7 +473,8 @@ router.get('/reorder-levels', async (req, res) => {
 
 // PUT /reorder-levels — upsert one { location_slug, category, reorder_point }.
 // A null/blank reorder_point deletes the row (category no longer tracked).
-router.put('/reorder-levels', requireRole('manager'), async (req, res) => {
+// lead+ (inherits the router gate) — anyone who can use the Restock page.
+router.put('/reorder-levels', async (req, res) => {
   try {
     const { club, error: rErr } = await resolveOneClub(req, req.body.location_slug)
     if (rErr) return res.status(400).json({ error: rErr })

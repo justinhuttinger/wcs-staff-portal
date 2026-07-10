@@ -677,9 +677,6 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   // All-location roles see every club; everyone else is locked to the locations
   // on their staff profile (matches the backend scoping in routes/inventory.js).
   const canSeeAllClubs = isAdmin || ['corporate', 'marketing'].includes(user?.staff?.role)
-  // Manager+ (manager/corporate/marketing/admin, plus the director alias) may
-  // edit reorder levels; mirrors requireRole('manager') on the backend.
-  const isManagerPlus = isAdmin || ['manager', 'corporate', 'marketing', 'director'].includes(user?.staff?.role)
   // Clubs this user may view/restock into. Invoices are always single-club.
   const accessibleSlugs = useMemo(() => {
     const all = LOCATION_OPTIONS.filter(o => o.slug !== 'all').map(o => o.slug)
@@ -703,6 +700,8 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   // Within the To Order tab: 'all' = the computed reorder list, 'lists' = saved
   // shopping lists. Opening/creating a list swaps to a full-screen editor.
   const [orderView, setOrderView] = useState('all') // 'all' | 'lists'
+  // To Order category filter: empty set = show all; otherwise only the picked ones.
+  const [orderCats, setOrderCats] = useState(() => new Set())
   const [listScreen, setListScreen] = useState(null) // null | { id } | { new: true }
   const [listsRefresh, setListsRefresh] = useState(0) // bump to refetch the lists browser
   // Default to the widest view the user can see; single-club users land on their club.
@@ -971,6 +970,18 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
       (a.item_name || '').localeCompare(b.item_name || ''))
   }, [orderItems, search, reorderLevelFor])
 
+  // Categories present in the order list (for the filter pills), stable across
+  // the category selection so pills don't disappear when you pick one.
+  const orderCategories = useMemo(
+    () => [...new Set(toOrderRows.map(r => r.category).filter(Boolean))].sort(),
+    [toOrderRows]
+  )
+  // Rows actually shown: no categories picked = all; otherwise only picked ones.
+  const displayedOrderRows = useMemo(
+    () => (orderCats.size === 0 ? toOrderRows : toOrderRows.filter(r => orderCats.has(r.category))),
+    [toOrderRows, orderCats]
+  )
+
   const lastSync = useMemo(() => {
     const rows = syncStatus?.status || []
     const ts = rows.filter(r => r.kind === 'pos' && r.last_synced_at).map(r => new Date(r.last_synced_at).getTime())
@@ -1237,17 +1248,39 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
       {/* === To Order tab === */}
       {tab === 'order' && (
         <>
-          {/* All (computed reorder list) vs Lists (saved shopping lists) toggle */}
+          {/* All (computed reorder list) vs Lists (saved shopping lists) toggle,
+              with per-category filter pills inline on the All view. */}
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-            <div className="flex gap-1 bg-bg rounded-lg p-1">
-              {[{ key: 'all', label: 'All' }, { key: 'lists', label: 'Lists' }].map(v => (
-                <button key={v.key} onClick={() => setOrderView(v.key)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${orderView === v.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>
-                  {v.label}
-                </button>
-              ))}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex gap-1 bg-bg rounded-lg p-1">
+                {[{ key: 'all', label: 'All' }, { key: 'lists', label: 'Lists' }].map(v => (
+                  <button key={v.key} onClick={() => setOrderView(v.key)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${orderView === v.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+              {orderView === 'all' && orderCategories.map(cat => {
+                const on = orderCats.has(cat)
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setOrderCats(prev => {
+                      const next = new Set(prev)
+                      next.has(cat) ? next.delete(cat) : next.add(cat)
+                      return next
+                    })}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${on ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
+                  >
+                    {cat}
+                  </button>
+                )
+              })}
+              {orderView === 'all' && orderCats.size > 0 && (
+                <button onClick={() => setOrderCats(new Set())} className="text-[11px] text-text-muted hover:text-text-primary underline">Clear</button>
+              )}
             </div>
-            {orderView === 'all' && isManagerPlus && (
+            {orderView === 'all' && (
               slug === 'all' ? (
                 <span className="text-[11px] text-text-muted whitespace-nowrap italic">Pick a club to edit levels</span>
               ) : (
@@ -1273,9 +1306,11 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
           </div>
           {loading ? (
             <p className="text-sm text-text-muted p-6 text-center">Building order list...</p>
-          ) : toOrderRows.length === 0 ? (
+          ) : displayedOrderRows.length === 0 ? (
             <p className="text-sm text-text-muted p-8 text-center">
-              {orderItems.length === 0 ? 'No items yet — sync the ABC catalog first.' : 'Nothing to order — every tracked item is above its reorder point.'}
+              {orderItems.length === 0 ? 'No items yet — sync the ABC catalog first.'
+                : toOrderRows.length > 0 ? 'No items to order in the selected categories.'
+                : 'Nothing to order — every tracked item is above its reorder point.'}
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -1291,7 +1326,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {toOrderRows.map(i => {
+                  {displayedOrderRows.map(i => {
                     const qty = Number(i.qty_on_hand) || 0
                     return (
                       <tr key={i.id} className="border-b border-border/50 hover:bg-bg/40">
