@@ -719,21 +719,35 @@ router.get('/day-one-programs', requireRole('admin'), async (req, res) => {
 // Runs as the real admin (no impersonation header yet). Validates the target
 // and writes one audit row. The frontend then stores the id and reloads.
 router.post('/impersonate/:staffId', requireRole('admin'), async (req, res) => {
-  const { staffId } = req.params
-  const { data: target, error } = await supabaseAdmin
-    .from('staff')
-    .select('id, display_name, first_name, last_name, role, is_active')
-    .eq('id', staffId)
-    .single()
-  if (error || !target || target.is_active === false) {
-    return res.status(404).json({ error: 'Staff member not found or inactive' })
+  try {
+    const { staffId } = req.params
+    const { data: target, error } = await supabaseAdmin
+      .from('staff')
+      .select('id, display_name, first_name, last_name, role, is_active')
+      .eq('id', staffId)
+      .single()
+    if (error && error.code !== 'PGRST116') {
+      // PGRST116 = no rows found (treated as a real 404 below); anything else is an infra error.
+      console.error('[Admin] impersonate lookup error:', error.message)
+      return res.status(500).json({ error: 'Failed to start view-as' })
+    }
+    if (!target || target.is_active === false) {
+      return res.status(404).json({ error: 'Staff member not found or inactive' })
+    }
+    const { error: logError } = await supabaseAdmin.from('impersonation_log').insert({
+      actor_staff_id: req.staff.id,
+      target_staff_id: target.id,
+    })
+    if (logError) {
+      console.error('[Admin] impersonate audit-log error:', logError.message)
+      return res.status(500).json({ error: 'Failed to start view-as' })
+    }
+    const name = target.display_name || [target.first_name, target.last_name].filter(Boolean).join(' ')
+    res.json({ target: { id: target.id, name, role: target.role } })
+  } catch (err) {
+    console.error('[Admin] impersonate error:', err.message)
+    res.status(500).json({ error: 'Failed to start view-as' })
   }
-  await supabaseAdmin.from('impersonation_log').insert({
-    actor_staff_id: req.staff.id,
-    target_staff_id: target.id,
-  })
-  const name = target.display_name || [target.first_name, target.last_name].filter(Boolean).join(' ')
-  res.json({ target: { id: target.id, name, role: target.role } })
 })
 
 module.exports = router
