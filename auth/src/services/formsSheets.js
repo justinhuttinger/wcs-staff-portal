@@ -90,17 +90,70 @@ function colLetter(n) {
   return s
 }
 
+async function locationNameFor(form) {
+  try {
+    const { data: loc } = await db().from('locations').select('name').eq('id', form.location_id).maybeSingle()
+    return loc?.name || null
+  } catch (e) {
+    console.error('[formsSheets] location lookup failed:', e.message)
+    return null
+  }
+}
+
 // Spreadsheets are titled with the club name so a shared Drive folder of
 // sheets stays readable. Lookup failures fall back to the plain form title.
 async function sheetTitleFor(form) {
-  let sheetTitle = form.title
-  try {
-    const { data: loc } = await db().from('locations').select('name').eq('id', form.location_id).maybeSingle()
-    if (loc?.name) sheetTitle = `${form.title} (${loc.name})`
-  } catch (e) {
-    console.error('[formsSheets] location lookup for sheet title failed:', e.message)
-  }
-  return sheetTitle
+  const locName = await locationNameFor(form)
+  return locName ? `${form.title} (${locName})` : form.title
+}
+
+// Anyone with the link can edit: staff open sheets straight from the portal's
+// Submissions tab, so access can't depend on individual Drive grants.
+// Re-posting the 'anyone' permission is idempotent.
+async function ensureLinkAccess(sheetId, token) {
+  await googleJson(`${DRIVE_BASE}/${sheetId}/permissions?supportsAllDrives=true`, token, {
+    method: 'POST',
+    body: JSON.stringify({ type: 'anyone', role: 'writer' }),
+  })
+}
+
+// Resolve (or create) the per-location subfolder under the shared forms
+// folder. Forms with no resolvable location name file into the root folder.
+async function locationFolderId(token, rootId, locName) {
+  if (!locName) return rootId
+  const q = `name = '${locName.replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.folder' and '${rootId}' in parents and trashed = false`
+  const params = new URLSearchParams({
+    q, fields: 'files(id)', supportsAllDrives: 'true', includeItemsFromAllDrives: 'true',
+  })
+  const found = await googleJson(`${DRIVE_BASE}?${params}`, token)
+  if (found.files?.length) return found.files[0].id
+  const created = await googleJson(`${DRIVE_BASE}?supportsAllDrives=true`, token, {
+    method: 'POST',
+    body: JSON.stringify({ name: locName, mimeType: 'application/vnd.google-apps.folder', parents: [rootId] }),
+  })
+  return created.id
+}
+
+async function moveToFolder(token, fileId, folderId) {
+  const meta = await googleJson(`${DRIVE_BASE}/${fileId}?fields=parents&supportsAllDrives=true`, token)
+  const parents = meta.parents || []
+  if (parents.length === 1 && parents[0] === folderId) return
+  const params = new URLSearchParams({ addParents: folderId, supportsAllDrives: 'true' })
+  const removeParents = parents.filter(p => p !== folderId).join(',')
+  if (removeParents) params.set('removeParents', removeParents)
+  await googleJson(`${DRIVE_BASE}/${fileId}?${params}`, token, { method: 'PATCH', body: JSON.stringify({}) })
+}
+
+// Put an existing sheet where it belongs: link-edit access on, filed in its
+// location subfolder. Used by the backfill script; safe to re-run.
+async function organizeSheet(form) {
+  if (!form.sheet_id) return
+  const token = await getToken()
+  await ensureLinkAccess(form.sheet_id, token)
+  const rootId = await getFolderId()
+  if (!rootId) return
+  const folderId = await locationFolderId(token, rootId, await locationNameFor(form))
+  await moveToFolder(token, form.sheet_id, folderId)
 }
 
 // Keep the Drive file name in step with the form title after a rename.
@@ -125,7 +178,8 @@ async function ensureSheet(form) {
   const columns = computeColumns(form.schema, form.sheet_columns || {})
 
   if (!sheet_id) {
-    const sheetTitle = await sheetTitleFor(form)
+    const locName = await locationNameFor(form)
+    const sheetTitle = locName ? `${form.title} (${locName})` : form.title
     const create = await googleJson(SHEETS_BASE, token, {
       method: 'POST',
       body: JSON.stringify({
@@ -135,13 +189,18 @@ async function ensureSheet(form) {
     })
     sheet_id = create.spreadsheetId
     sheet_tab = TAB
-    const folderId = await getFolderId()
-    if (folderId) {
-      const meta = await googleJson(`${DRIVE_BASE}/${sheet_id}?fields=parents&supportsAllDrives=true`, token)
-      const params = new URLSearchParams({ addParents: folderId, supportsAllDrives: 'true' })
-      const removeParents = (meta.parents || []).join(',')
-      if (removeParents) params.set('removeParents', removeParents)
-      await googleJson(`${DRIVE_BASE}/${sheet_id}?${params}`, token, { method: 'PATCH', body: JSON.stringify({}) })
+    try { await ensureLinkAccess(sheet_id, token) } catch (e) {
+      console.error('[formsSheets] link-access grant failed:', e.message)
+    }
+    const rootId = await getFolderId()
+    if (rootId) {
+      // A subfolder hiccup shouldn't strand the sheet outside the shared
+      // drive entirely — fall back to filing it in the root folder.
+      let folderId = rootId
+      try { folderId = await locationFolderId(token, rootId, locName) } catch (e) {
+        console.error('[formsSheets] location subfolder resolve failed, using root:', e.message)
+      }
+      await moveToFolder(token, sheet_id, folderId)
     }
     const header = buildHeaderRow(form.schema, columns)
     await googleJson(
@@ -150,6 +209,10 @@ async function ensureSheet(form) {
       { method: 'PUT', body: JSON.stringify({ values: [header] }) }
     )
   } else {
+    // Self-heal link access on every sync in case someone removed it in Drive.
+    try { await ensureLinkAccess(sheet_id, token) } catch (e) {
+      console.error('[formsSheets] link-access re-assert failed:', e.message)
+    }
     // Write headers for any newly appended columns (label edits also land here).
     const header = buildHeaderRow(form.schema, columns)
     const prevMax = Math.max(1, ...Object.values(form.sheet_columns || {}))
@@ -246,5 +309,5 @@ function start() {
 
 module.exports = {
   computeColumns, buildHeaderRow, buildRowValues, pacificTimestamp,
-  ensureSheet, renameSheet, appendSubmission, retryFormSync, getFolderId, start,
+  ensureSheet, renameSheet, organizeSheet, appendSubmission, retryFormSync, getFolderId, start,
 }
