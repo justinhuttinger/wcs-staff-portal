@@ -65,6 +65,18 @@ export function visibleChangelog(ctx) {
 
 export const CHANGELOG = [
   {
+    id: 9, date: '2026-07-10',
+    title: 'Anyone on Restock can set reorder levels',
+    body: 'Setting reorder levels by category (Inventory → To Order → “Edit reorder levels”) is no longer manager-only — anyone who can use the Restock page can now adjust them.',
+    audience: { tool: 'inventory' },
+  },
+  {
+    id: 8, date: '2026-07-10',
+    title: 'Filter the To Order list by category',
+    body: 'On Inventory → To Order, tap the category pills next to All/Lists to show only the categories you care about. None selected shows everything.',
+    audience: { tool: 'inventory' },
+  },
+  {
     id: 1, date: '2026-07-10',
     title: 'Inventory shopping lists',
     body: 'Build reusable reorder checklists in Inventory → To Order → Lists. Each list shows an item’s current on-hand next to its reorder level so you can see what to restock. Open a list to view it; hit Edit to add or remove items.',
