@@ -1216,7 +1216,7 @@ const empDiscountFor = (category) => EMP_DISCOUNT[category] || 0
 // margin after the employee discount is applied to the catalog price. Staff are
 // identified by an Employee/STAFF membership type (codes EMPLOY/COMP). The
 // discounted price is MODELED (catalog × (1 − discount)), not the till price.
-router.get('/employee-spend', requireRole('admin'), async (req, res) => {
+router.get('/employee-spend', requireRole('manager'), async (req, res) => {
   try {
     const { clubs, error: cErr } = await clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
