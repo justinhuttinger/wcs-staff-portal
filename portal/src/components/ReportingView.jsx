@@ -258,10 +258,10 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
     setDetailView(false)
   }, [activeReport])
 
-  // Audits is strictly per-club (no All pill) — snap to the first club when
-  // arriving on it with the all-locations selection.
+  // Audits and Till are strictly per-club (no All pill) — snap to the first club
+  // when arriving on one with the all-locations selection.
   useEffect(() => {
-    if (activeReport !== 'audits' || locationSlug !== 'all') return
+    if (!['audits', 'till'].includes(activeReport) || locationSlug !== 'all') return
     const first = isAdmin
       ? LOCATIONS.find(l => l.slug !== 'all')?.slug
       : reportLocations[0]?.name?.toLowerCase()
@@ -497,9 +497,9 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
                   </div>
                 )}
                 <div className="ml-auto flex-shrink-0">
-                  {/* KPIs, Audits, and Compliance use location pills
+                  {/* KPIs, Audits, Compliance, and Till use location pills
                       below instead of this dropdown. */}
-                  {['kpis', 'audits', 'compliance'].includes(activeReport) ? null : showLocation ? (
+                  {['kpis', 'audits', 'compliance', 'till'].includes(activeReport) ? null : showLocation ? (
                     <LocationMultiSelect
                       value={locationSlug}
                       onChange={setLocationSlug}
@@ -551,12 +551,12 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
                 </div>
               )}
 
-              {/* KPIs, Audits, Compliance: single-select location pills for
-                  quick club-to-club navigation. Audits has no All option —
-                  it's strictly one club at a time. */}
-              {['kpis', 'audits', 'compliance'].includes(activeReport) && showLocation && (
+              {/* KPIs, Audits, Compliance, Till: single-select location pills for
+                  quick club-to-club navigation. Audits and Till have no All
+                  option — they're strictly one club at a time. */}
+              {['kpis', 'audits', 'compliance', 'till'].includes(activeReport) && showLocation && (
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {[...(activeReport !== 'audits' ? [{ slug: 'all', label: 'All' }] : []), ...(isAdmin
+                  {[...(!['audits', 'till'].includes(activeReport) ? [{ slug: 'all', label: 'All' }] : []), ...(isAdmin
                     ? LOCATIONS.filter(l => l.slug !== 'all')
                     : reportLocations.map(l => ({ slug: l.name.toLowerCase(), label: l.name }))
                   )].map(opt => {
