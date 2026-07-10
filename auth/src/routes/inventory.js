@@ -73,6 +73,13 @@ const num = (v) => {
   return Number.isFinite(n) ? n : null
 }
 
+// The Pacific (America/Los_Angeles) calendar date of a timestamp, as YYYY-MM-DD.
+// Used to bucket movement activity by "business day" the way staff experience it.
+function pacificDayStr(iso) {
+  if (!iso) return null
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+}
+
 // Attach slug + margin fields the UI renders everywhere.
 function decorateItem(it) {
   const cost = num(it.avg_unit_cost) ?? num(it.last_unit_cost)
@@ -939,12 +946,24 @@ router.get('/compliance', requireRole('manager'), async (req, res) => {
     }
     const moves = await fetchAllRows(makeMoves)
     const lastCount = new Map()   // club -> iso
+    const lastCountDay = new Map()      // club -> Pacific YYYY-MM-DD of the last count
+    const lastCountDayItems = new Map() // club -> Set(item_id) counted on that day
     const lastRestock = new Map() // club -> iso
     const countedItems = new Set() // `${club}:${item_id}` ever counted
     for (const m of moves) {
       if (m.kind === 'count') {
-        if (!lastCount.has(m.club_number)) lastCount.set(m.club_number, m.occurred_at)
+        // moves are newest-first, so the first count seen per club is the latest;
+        // its Pacific day defines "the last count day", and we tally the distinct
+        // items counted on that same day.
+        if (!lastCount.has(m.club_number)) {
+          lastCount.set(m.club_number, m.occurred_at)
+          lastCountDay.set(m.club_number, pacificDayStr(m.occurred_at))
+          lastCountDayItems.set(m.club_number, new Set())
+        }
         if (m.item_id) countedItems.add(`${m.club_number}:${m.item_id}`)
+        if (m.item_id && pacificDayStr(m.occurred_at) === lastCountDay.get(m.club_number)) {
+          lastCountDayItems.get(m.club_number).add(m.item_id)
+        }
       } else if (!lastRestock.has(m.club_number)) {
         lastRestock.set(m.club_number, m.occurred_at)
       }
@@ -973,6 +992,7 @@ router.get('/compliance', requireRole('manager'), async (req, res) => {
         club_number: club,
         last_count_at: lc,
         days_since_count: dsc,
+        last_count_items: lastCountDayItems.get(club)?.size || 0,
         last_restock_at: lastRestock.get(club) || null,
         days_since_restock: daysSince(lastRestock.get(club) || null),
         tracked_items: trackedByClub.get(club) || 0,
@@ -994,6 +1014,66 @@ router.get('/compliance', requireRole('manager'), async (req, res) => {
     res.json({ overdue_days: overdueDays, clubs: rows, rollup })
   } catch (err) {
     console.error('[Inventory] compliance error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /compliance/activity?location_slug=&from=&to= — per-DAY restock/count
+// activity for the scoped club(s), bucketed by Pacific business day. Powers the
+// compliance drill-down: it summarizes each day (items counted, items restocked,
+// units added) rather than listing every item. Manager+.
+router.get('/compliance/activity', requireRole('manager'), async (req, res) => {
+  try {
+    const { clubs, error: cErr } = await clubFilter(req)
+    if (cErr) return res.status(400).json({ error: cErr })
+    const from = String(req.query.from || '').slice(0, 10)
+    const to = String(req.query.to || '').slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      return res.status(400).json({ error: 'from and to (YYYY-MM-DD) are required' })
+    }
+    // Widen the UTC window by a day on each side to cover either Pacific offset,
+    // then bucket precisely by Pacific day and trim back to [from, to].
+    const fromUtc = new Date(`${from}T00:00:00-08:00`); fromUtc.setUTCDate(fromUtc.getUTCDate() - 1)
+    const toUtc = new Date(`${to}T23:59:59-07:00`); toUtc.setUTCDate(toUtc.getUTCDate() + 1)
+
+    const makeQuery = () => {
+      let q = supabaseAdmin.from('inventory_movements')
+        .select('club_number, kind, qty_delta, item_id, occurred_at')
+        .in('kind', ['count', 'received', 'adjustment'])
+        .gte('occurred_at', fromUtc.toISOString())
+        .lte('occurred_at', toUtc.toISOString())
+        .order('occurred_at', { ascending: false })
+      if (clubs) q = q.in('club_number', clubs)
+      return q
+    }
+    const moves = await fetchAllRows(makeQuery)
+
+    // Bucket by Pacific day: distinct items counted, distinct items restocked,
+    // and units added (received/adjustment qty). One row per active day.
+    const byDay = new Map() // date -> aggregate
+    for (const m of moves) {
+      const date = pacificDayStr(m.occurred_at)
+      if (date < from || date > to) continue
+      let d = byDay.get(date)
+      if (!d) { d = { date, countItems: new Set(), restockItems: new Set(), unitsAdded: 0 }; byDay.set(date, d) }
+      if (m.kind === 'count') {
+        if (m.item_id) d.countItems.add(m.item_id)
+      } else {
+        if (m.item_id) d.restockItems.add(m.item_id)
+        d.unitsAdded += num(m.qty_delta) || 0
+      }
+    }
+    const days = [...byDay.values()]
+      .map(d => ({
+        date: d.date,
+        counted_items: d.countItems.size,
+        restocked_items: d.restockItems.size,
+        units_added: +d.unitsAdded.toFixed(2),
+      }))
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)) // newest first
+    res.json({ from, to, days })
+  } catch (err) {
+    console.error('[Inventory] compliance activity error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })

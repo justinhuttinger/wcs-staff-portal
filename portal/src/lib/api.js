@@ -1008,6 +1008,12 @@ export async function getInventoryCompliance(params = {}) {
   return api('/inventory/compliance' + inventoryQs(params))
 }
 
+// Per-day restock/count activity for the compliance drill-down.
+// params: { location_slug, from, to } (YYYY-MM-DD).
+export async function getInventoryComplianceActivity(params = {}) {
+  return api('/inventory/compliance/activity' + inventoryQs(params))
+}
+
 // Day One Tracker
 export async function getDayOneTrackerAppointments(params = {}) {
   const qs = new URLSearchParams(params).toString()
