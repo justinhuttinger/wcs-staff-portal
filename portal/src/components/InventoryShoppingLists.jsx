@@ -107,6 +107,9 @@ export function ListEditor({ slug, listId: initialId, onBack }) {
   const [loading, setLoading] = useState(!isNew)
   const [error, setError] = useState('')
   const [creating, setCreating] = useState(false)
+  // Existing lists open read-only ("view"); Edit reveals add/remove/rename/delete.
+  // A freshly created list drops straight into edit so items can be added.
+  const [mode, setMode] = useState('view')
 
   const loadDetail = useCallback((id) => {
     setLoading(true)
@@ -125,6 +128,7 @@ export function ListEditor({ slug, listId: initialId, onBack }) {
     try {
       const { list } = await createShoppingList({ location_slug: slug, name: nm })
       setListId(list.id) // triggers detail load, switches to item manager
+      setMode('edit')    // new list opens ready to add items
     } catch (err) { setError(err.message) }
     setCreating(false)
   }
@@ -166,8 +170,15 @@ export function ListEditor({ slug, listId: initialId, onBack }) {
           </h2>
           {listId && (
             <div className="flex items-center gap-2">
-              <button className={btnGhost} onClick={handleRename}>Rename</button>
-              <button className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-xs font-semibold text-red-600 hover:bg-red-100 transition-colors" onClick={handleDelete}>Delete</button>
+              {mode === 'view' ? (
+                <button className={btnPrimary} onClick={() => setMode('edit')}>Edit</button>
+              ) : (
+                <>
+                  <button className={btnGhost} onClick={handleRename}>Rename</button>
+                  <button className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-xs font-semibold text-red-600 hover:bg-red-100 transition-colors" onClick={handleDelete}>Delete</button>
+                  <button className={btnPrimary} onClick={() => setMode('view')}>Done</button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -195,14 +206,15 @@ export function ListEditor({ slug, listId: initialId, onBack }) {
           </div>
         </div>
       ) : (
-        <ItemManager slug={slug} detail={detail} loading={loading} onChanged={() => loadDetail(listId)} />
+        <ItemManager slug={slug} detail={detail} loading={loading} editing={mode === 'edit'} onChanged={() => loadDetail(listId)} />
       )}
     </div>
   )
 }
 
-// Item manager: add-item search + the list's item table. Used once a list exists.
-function ItemManager({ slug, detail, loading, onChanged }) {
+// Item manager: the list's item table, plus (when editing) an add-item search
+// and per-row remove. Read-only in view mode.
+function ItemManager({ slug, detail, loading, editing, onChanged }) {
   const [search, setSearch] = useState('')
   const [results, setResults] = useState([])
   const [searching, setSearching] = useState(false)
@@ -261,7 +273,8 @@ function ItemManager({ slug, detail, loading, onChanged }) {
         </p>
       </div>
 
-      {/* Add item */}
+      {/* Add item (edit mode only) */}
+      {editing && (
       <div className="px-4 py-3 border-b border-border relative">
         <input
           className={inputCls}
@@ -292,10 +305,13 @@ function ItemManager({ slug, detail, loading, onChanged }) {
           </div>
         )}
       </div>
+      )}
 
       {/* Items table */}
       {items.length === 0 ? (
-        <p className="text-sm text-text-muted p-8 text-center">No items yet — search above to add some.</p>
+        <p className="text-sm text-text-muted p-8 text-center">
+          {editing ? 'No items yet — search above to add some.' : 'No items in this list yet. Hit Edit to add some.'}
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -305,7 +321,7 @@ function ItemManager({ slug, detail, loading, onChanged }) {
                 <th className="py-2.5 px-2">Category</th>
                 <th className="py-2.5 px-2 text-right">On Hand</th>
                 <th className="py-2.5 px-2 text-right">Reorder At</th>
-                <th className="py-2.5 px-2"></th>
+                {editing && <th className="py-2.5 px-2"></th>}
               </tr>
             </thead>
             <tbody>
@@ -318,16 +334,18 @@ function ItemManager({ slug, detail, loading, onChanged }) {
                     {i.below_reorder && <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wide text-amber-700 bg-amber-100 border border-amber-200 rounded-full px-1.5 py-0.5">Low</span>}
                   </td>
                   <td className="py-2 px-2 text-right text-text-muted">{i.reorder_point != null ? fmtQty(i.reorder_point) : '—'}</td>
-                  <td className="py-2 px-2 text-right">
-                    <button
-                      onClick={() => removeItem(i.list_item_id)}
-                      disabled={busyId === i.list_item_id}
-                      className="text-xs text-text-muted hover:text-red-600 disabled:opacity-50"
-                      title="Remove from list"
-                    >
-                      Remove
-                    </button>
-                  </td>
+                  {editing && (
+                    <td className="py-2 px-2 text-right">
+                      <button
+                        onClick={() => removeItem(i.list_item_id)}
+                        disabled={busyId === i.list_item_id}
+                        className="text-xs text-text-muted hover:text-red-600 disabled:opacity-50"
+                        title="Remove from list"
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
