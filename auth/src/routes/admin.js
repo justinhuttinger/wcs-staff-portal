@@ -715,4 +715,25 @@ router.get('/day-one-programs', requireRole('admin'), async (req, res) => {
   }
 })
 
+// POST /admin/impersonate/:staffId — start a read-only "view as" session.
+// Runs as the real admin (no impersonation header yet). Validates the target
+// and writes one audit row. The frontend then stores the id and reloads.
+router.post('/impersonate/:staffId', requireRole('admin'), async (req, res) => {
+  const { staffId } = req.params
+  const { data: target, error } = await supabaseAdmin
+    .from('staff')
+    .select('id, display_name, first_name, last_name, role, is_active')
+    .eq('id', staffId)
+    .single()
+  if (error || !target || target.is_active === false) {
+    return res.status(404).json({ error: 'Staff member not found or inactive' })
+  }
+  await supabaseAdmin.from('impersonation_log').insert({
+    actor_staff_id: req.staff.id,
+    target_staff_id: target.id,
+  })
+  const name = target.display_name || [target.first_name, target.last_name].filter(Boolean).join(' ')
+  res.json({ target: { id: target.id, name, role: target.role } })
+})
+
 module.exports = router
