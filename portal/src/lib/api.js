@@ -88,6 +88,7 @@ export function clearToken() {
     localStorage.removeItem('wcs_token')
     localStorage.removeItem('wcs_refresh_token')
   } catch {}
+  try { localStorage.removeItem(IMPERSONATE_KEY) } catch {}
   // Drop any cached responses from the previous session so the next user
   // doesn't see leftover data.
   apiCache.clear()

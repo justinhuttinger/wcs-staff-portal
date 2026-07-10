@@ -44,3 +44,7 @@ test('isImpersonatedWrite: blocks non-GET only while impersonating', () => {
 test('isImpersonatedWrite: allowlisted POST read passes', () => {
   assert.strictEqual(isImpersonatedWrite('POST', true, '/reports/foo', ['/reports/foo']), false)
 })
+
+test('isImpersonatedWrite: default allowlist lets /media/search POST read through', () => {
+  assert.strictEqual(isImpersonatedWrite('POST', true, '/media/search'), false)
+})

@@ -54,7 +54,7 @@ async function authenticate(req, res, next) {
     req.impersonating = impersonating
 
     // View-only: block any write while impersonating.
-    if (isImpersonatedWrite(req.method, impersonating, req.path)) {
+    if (isImpersonatedWrite(req.method, impersonating, req.baseUrl + req.path)) {
       return res.status(403).json({ error: 'read-only preview', impersonating: true })
     }
 

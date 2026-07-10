@@ -1,7 +1,9 @@
 // Pure impersonation-decision helpers. No Supabase here so they stay unit-
 // testable; auth.js wires them to the real staff loader.
 
-const READONLY_POST_PATHS = [] // POST endpoints that are actually reads; extend if any are found.
+// POST endpoints that are actually reads (not mutations) — allowed while
+// impersonating. Paths are FULL paths (baseUrl + path), matched by prefix.
+const READONLY_POST_PATHS = ['/media/search']
 
 async function applyImpersonation({ realStaff, targetStaffId, loadStaffContext }) {
   const passthrough = { staff: realStaff, realStaff: null, impersonating: false }

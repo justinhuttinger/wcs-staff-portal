@@ -735,7 +735,7 @@ router.post('/impersonate/:staffId', requireRole('admin'), async (req, res) => {
       return res.status(404).json({ error: 'Staff member not found or inactive' })
     }
     const { error: logError } = await supabaseAdmin.from('impersonation_log').insert({
-      actor_staff_id: req.staff.id,
+      actor_staff_id: req.realStaff?.id || req.staff.id,
       target_staff_id: target.id,
     })
     if (logError) {
