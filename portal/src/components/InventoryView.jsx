@@ -6,9 +6,11 @@ import {
   deleteInventoryInvoiceFile, addInventoryInvoiceItem,
   deleteInventoryInvoiceItem, receiveInventoryInvoice, deleteInventoryInvoice,
   startInventorySync, getInventorySyncStatus, getInventoryAudit, importInventoryCosts,
+  getReorderLevels, setReorderLevel,
 } from '../lib/api'
 import { LOCATION_OPTIONS } from '../config/locations'
 import { exportCSV } from '../lib/export'
+import InventoryShoppingLists from './InventoryShoppingLists'
 
 // --- helpers ---
 function fmtMoney(v) {
@@ -675,6 +677,9 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   // All-location roles see every club; everyone else is locked to the locations
   // on their staff profile (matches the backend scoping in routes/inventory.js).
   const canSeeAllClubs = isAdmin || ['corporate', 'marketing'].includes(user?.staff?.role)
+  // Manager+ (manager/corporate/marketing/admin, plus the director alias) may
+  // edit reorder levels; mirrors requireRole('manager') on the backend.
+  const isManagerPlus = isAdmin || ['manager', 'corporate', 'marketing', 'director'].includes(user?.staff?.role)
   // Clubs this user may view/restock into. Invoices are always single-club.
   const accessibleSlugs = useMemo(() => {
     const all = LOCATION_OPTIONS.filter(o => o.slug !== 'all').map(o => o.slug)
@@ -704,6 +709,13 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   const [items, setItems] = useState([])
   const [itemsLoading, setItemsLoading] = useState(true)
   const [orderItems, setOrderItems] = useState([]) // items carrying sold_in_range over the reorder window, for the To Order tab
+  // Per-club, per-category reorder points from the DB (keyed `${slug}|${category}`);
+  // REORDER_THRESHOLDS is the fallback when a club/category has no saved row.
+  const [reorderLevels, setReorderLevels] = useState({})
+  const [reorderEditor, setReorderEditor] = useState(false) // manager editor modal open
+  const [reorderDraft, setReorderDraft] = useState({}) // category -> string input
+  const [reorderSaving, setReorderSaving] = useState(false)
+  const [reorderMsg, setReorderMsg] = useState('')
   const [invoices, setInvoices] = useState([])
   const [movements, setMovements] = useState([])
   const [sort, setSort] = useState(null) // { col, dir: 'desc' | 'asc' } | null
@@ -747,14 +759,23 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
         .finally(() => setLoading(false))
     } else if (tab === 'order') {
       // Pull per-club items with units sold over the reorder window so depleted
-      // items can be filtered to ones that actually still sell.
+      // items can be filtered to ones that actually still sell, plus the saved
+      // per-club reorder levels (fall back to REORDER_THRESHOLDS when absent).
       setLoading(true)
-      getInventoryItems({
-        location_slug: slug === 'all' ? '' : slug,
-        from: daysAgoStr(REORDER_SOLD_WINDOW_DAYS),
-        to: toLocalDateStr(new Date()),
-      })
-        .then(res => setOrderItems(res.items || []))
+      Promise.all([
+        getInventoryItems({
+          location_slug: slug === 'all' ? '' : slug,
+          from: daysAgoStr(REORDER_SOLD_WINDOW_DAYS),
+          to: toLocalDateStr(new Date()),
+        }),
+        getReorderLevels({ location_slug: slug === 'all' ? '' : slug }).catch(() => ({ levels: [] })),
+      ])
+        .then(([itemsRes, levelsRes]) => {
+          setOrderItems(itemsRes.items || [])
+          const map = {}
+          for (const l of levelsRes.levels || []) map[`${l.location_slug}|${l.category}`] = l.reorder_point
+          setReorderLevels(map)
+        })
         .catch(err => setError(err.message))
         .finally(() => setLoading(false))
     } else if (tab === 'restock') {
@@ -785,6 +806,65 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   const SORT_VALUE = {
     sold: i => Number(i.sold_in_range),
     on_hand: i => Number(i.qty_on_hand),
+  }
+
+  // Categories offered in the reorder-level editor: the default-tracked ones,
+  // plus any category present in the catalog or already carrying a saved level.
+  const editorCategories = useMemo(() => {
+    const set = new Set(Object.keys(REORDER_THRESHOLDS))
+    for (const c of categories) if (c) set.add(c)
+    for (const k of Object.keys(reorderLevels)) {
+      const cat = k.split('|')[1]
+      if (cat) set.add(cat)
+    }
+    return [...set].sort()
+  }, [categories, reorderLevels])
+
+  function openReorderEditor() {
+    const draft = {}
+    for (const cat of editorCategories) {
+      const v = reorderLevelFor(slug, cat)
+      draft[cat] = v == null ? '' : String(v)
+    }
+    setReorderDraft(draft)
+    setReorderMsg('')
+    setReorderEditor(true)
+  }
+
+  async function saveReorderLevels() {
+    setReorderSaving(true)
+    setReorderMsg('')
+    try {
+      // Only push categories whose value actually changed from the effective one.
+      const changes = []
+      for (const cat of editorCategories) {
+        const cur = reorderLevelFor(slug, cat)
+        const curStr = cur == null ? '' : String(cur)
+        const nextStr = String(reorderDraft[cat] ?? '').trim()
+        if (nextStr === curStr) continue
+        const point = nextStr === '' ? null : Number(nextStr)
+        if (point != null && (!Number.isFinite(point) || point < 0)) {
+          throw new Error(`${cat}: enter a non-negative number`)
+        }
+        changes.push({ category: cat, reorder_point: point })
+      }
+      for (const ch of changes) {
+        await setReorderLevel({ location_slug: slug, category: ch.category, reorder_point: ch.reorder_point })
+      }
+      setReorderLevels(prev => {
+        const next = { ...prev }
+        for (const ch of changes) {
+          const key = `${slug}|${ch.category}`
+          if (ch.reorder_point == null) delete next[key]
+          else next[key] = ch.reorder_point
+        }
+        return next
+      })
+      setReorderEditor(false)
+    } catch (err) {
+      setReorderMsg(err.message)
+    }
+    setReorderSaving(false)
   }
 
   // On the All-clubs view we show one consolidated row per product (same UPC):
@@ -856,13 +936,23 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
     return list
   }, [itemRows, search, category, sort, oversoldOnly])
 
+  // The reorder point in effect for an item's club + category: a saved per-club
+  // level if one exists, else the category default (REORDER_THRESHOLDS). Null =
+  // category is not reorder-tracked.
+  const reorderLevelFor = useCallback((itemSlug, cat) => {
+    if (!cat) return null
+    const saved = reorderLevels[`${itemSlug}|${cat}`]
+    if (saved != null) return Number(saved)
+    return REORDER_THRESHOLDS[cat] ?? null
+  }, [reorderLevels])
+
   // To Order tab: per-club items (never consolidated) below their category's
   // reorder point. A depleted item (on-hand <= 0) only qualifies if it sold in
   // the reorder window, so discontinued stock doesn't sit on the list forever.
   const toOrderRows = useMemo(() => {
     const term = search.trim().toLowerCase()
     const rows = orderItems.filter(it => {
-      const threshold = REORDER_THRESHOLDS[it.category]
+      const threshold = reorderLevelFor(it.location_slug, it.category)
       if (threshold == null) return false
       const qty = Number(it.qty_on_hand) || 0
       if (qty >= threshold) return false
@@ -874,7 +964,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
     return [...rows].sort((a, b) =>
       (Number(a.qty_on_hand) || 0) - (Number(b.qty_on_hand) || 0) ||
       (a.item_name || '').localeCompare(b.item_name || ''))
-  }, [orderItems, search])
+  }, [orderItems, search, reorderLevelFor])
 
   const lastSync = useMemo(() => {
     const rows = syncStatus?.status || []
@@ -1006,6 +1096,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
               {[
                 { key: 'items', label: 'Inventory' },
                 { key: 'order', label: 'To Order' },
+                { key: 'lists', label: 'Lists' },
                 { key: 'restock', label: 'Restock' },
                 ...(isAdmin ? [{ key: 'audit', label: 'Audit' }] : []),
               ].map(m => (
@@ -1130,10 +1221,18 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
       {/* === To Order tab === */}
       {tab === 'order' && (
         <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
-          <div className="px-4 py-3 border-b border-border bg-bg/40">
+          <div className="px-4 py-3 border-b border-border bg-bg/40 flex items-center justify-between gap-3">
             <p className="text-xs text-text-muted">
-              Reorder points: <span className="font-semibold text-text-primary">Drinks &amp; Snacks under 12</span>, <span className="font-semibold text-text-primary">Supplements under 4</span>. Items at 0 show only if they sold in the last {REORDER_SOLD_WINDOW_DAYS} days.
+              An item lands here when on-hand drops below its category's reorder point. Items at 0 show only if they sold in the last {REORDER_SOLD_WINDOW_DAYS} days.
+              {slug === 'all' && ' Reorder points are set per club.'}
             </p>
+            {isManagerPlus && (
+              slug === 'all' ? (
+                <span className="text-[11px] text-text-muted whitespace-nowrap italic">Pick a club to edit levels</span>
+              ) : (
+                <button onClick={openReorderEditor} className={btnGhost + ' whitespace-nowrap'}>Edit reorder levels</button>
+              )
+            )}
           </div>
           {loading ? (
             <p className="text-sm text-text-muted p-6 text-center">Building order list...</p>
@@ -1173,7 +1272,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                           )}
                         </td>
                         <td className="py-2 px-2 text-right text-text-muted">{fmtQty(i.sold_in_range)}</td>
-                        <td className="py-2 px-2 text-right text-text-muted">{REORDER_THRESHOLDS[i.category]}</td>
+                        <td className="py-2 px-2 text-right text-text-muted">{fmtQty(reorderLevelFor(i.location_slug, i.category))}</td>
                       </tr>
                     )
                   })}
@@ -1182,6 +1281,11 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
             </div>
           )}
         </div>
+      )}
+
+      {/* === Lists tab (shopping lists) === */}
+      {tab === 'lists' && (
+        <InventoryShoppingLists slug={slug} />
       )}
 
       {/* === Audit tab (admin) === */}
@@ -1486,6 +1590,37 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
         />
       )}
       {modal?.history && <HistoryModal item={modal.history} onClose={() => setModal(null)} />}
+
+      {reorderEditor && (
+        <Modal title={`Reorder levels — ${clubOptions.find(o => o.slug === slug)?.label || slug}`} onClose={() => setReorderEditor(false)}>
+          <p className="text-xs text-text-muted mb-4">
+            An item shows on the To Order list when its on-hand drops below the point for its category. Leave a field blank to stop tracking that category.
+          </p>
+          <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
+            {editorCategories.map(cat => (
+              <div key={cat} className="flex items-center justify-between gap-3">
+                <span className="text-sm text-text-primary">{cat}</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={reorderDraft[cat] ?? ''}
+                  onChange={e => setReorderDraft(prev => ({ ...prev, [cat]: e.target.value }))}
+                  placeholder="Not tracked"
+                  className="w-28 px-2 py-1 rounded-lg border border-border bg-bg text-sm text-text-primary text-right focus:outline-none focus:border-wcs-red"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between gap-3 mt-5">
+            {reorderMsg ? <span className="text-xs font-medium text-red-500">{reorderMsg}</span> : <span />}
+            <div className="flex items-center gap-2">
+              <button className={btnGhost} onClick={() => setReorderEditor(false)} disabled={reorderSaving}>Cancel</button>
+              <button className={btnPrimary} onClick={saveReorderLevels} disabled={reorderSaving}>{reorderSaving ? 'Saving...' : 'Save'}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

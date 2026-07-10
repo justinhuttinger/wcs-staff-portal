@@ -846,6 +846,48 @@ export async function updateInventoryItem(id, data) {
   return api('/inventory/items/' + id, { method: 'PATCH', body: JSON.stringify(data) })
 }
 
+// Reorder levels — per-club, per-category reorder points (read lead+, write manager+).
+export async function getReorderLevels(params = {}) {
+  return api('/inventory/reorder-levels' + inventoryQs(params))
+}
+
+// Set/clear one level. reorder_point null/'' clears it (category untracked).
+export async function setReorderLevel({ location_slug, category, reorder_point }) {
+  return api('/inventory/reorder-levels', {
+    method: 'PUT',
+    body: JSON.stringify({ location_slug, category, reorder_point }),
+  })
+}
+
+// Shopping lists (per-club reorder checklists, lead+).
+export async function getShoppingLists(params = {}) {
+  return api('/inventory/shopping-lists' + inventoryQs(params))
+}
+
+export async function createShoppingList({ location_slug, name }) {
+  return api('/inventory/shopping-lists', { method: 'POST', body: JSON.stringify({ location_slug, name }) })
+}
+
+export async function getShoppingList(id) {
+  return api('/inventory/shopping-lists/' + id)
+}
+
+export async function renameShoppingList(id, name) {
+  return api('/inventory/shopping-lists/' + id, { method: 'PATCH', body: JSON.stringify({ name }) })
+}
+
+export async function deleteShoppingList(id) {
+  return api('/inventory/shopping-lists/' + id, { method: 'DELETE' })
+}
+
+export async function addShoppingListItem(id, inventory_item_id) {
+  return api('/inventory/shopping-lists/' + id + '/items', { method: 'POST', body: JSON.stringify({ inventory_item_id }) })
+}
+
+export async function removeShoppingListItem(id, listItemId) {
+  return api('/inventory/shopping-lists/' + id + '/items/' + listItemId, { method: 'DELETE' })
+}
+
 export async function getInventoryTransactions(params = {}) {
   return api('/inventory/transactions' + inventoryQs(params))
 }
@@ -859,6 +901,15 @@ export async function getInventorySummary(params = {}) {
 export async function getTillReconciliation(params = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/till/reconciliation' + (qs ? '?' + qs : ''))
+}
+
+// Per-club till settings (standard float). Read/write manager+; editor is admin-only.
+export async function getTillSettings() {
+  return api('/till/settings')
+}
+
+export async function setTillFloat(location_slug, standard_float) {
+  return api('/till/settings', { method: 'PUT', body: JSON.stringify({ location_slug, standard_float }) })
 }
 
 // Email Marketing report — GHL email campaign sends + stats (from email_stats).
