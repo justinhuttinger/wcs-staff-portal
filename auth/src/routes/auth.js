@@ -189,7 +189,40 @@ router.post('/change-password', authenticate, async (req, res) => {
     .update({ must_change_password: false })
     .eq('id', req.staff.id)
 
-  res.json({ message: 'Password updated' })
+  // The admin password update revokes every existing Supabase session for
+  // this user — including the one that authorized this request. Sign back in
+  // with the new password and hand the client a fresh session, otherwise the
+  // very next authenticated call 401s and the user gets stranded on the
+  // set-password screen ("Missing or invalid authorization header").
+  try {
+    const anonClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+    const { data: authData, error: signInError } = await anonClient.auth.signInWithPassword({
+      email: req.staff.email,
+      password: new_password,
+    })
+    if (!signInError && authData?.session) {
+      res.cookie('wcs_session', authData.session.access_token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days, matches Supabase refresh token lifetime
+        path: '/',
+      })
+      return res.json({
+        message: 'Password updated',
+        token: authData.session.access_token,
+        refresh_token: authData.session.refresh_token,
+        expires_at: authData.session.expires_at,
+      })
+    }
+  } catch (err) {
+    console.error('[Auth] Post-change-password re-login failed:', err.message)
+  }
+
+  // Fallback: password IS changed but we couldn't mint a new session. The
+  // client treats a token-less response as "sign in again with your new
+  // password" instead of silently keeping a dead session.
+  res.json({ message: 'Password updated', reauth_required: true })
 })
 
 // POST /auth/logout — clears the SSO session cookie and revokes the Supabase

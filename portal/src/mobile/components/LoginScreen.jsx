@@ -14,9 +14,14 @@ export default function LoginScreen({ onLogin }) {
   const [forgotEmail, setForgotEmail] = useState('')
   const [forgotMessage, setForgotMessage] = useState('')
 
+  // Green notice shown on the sign-in form (e.g. "password updated, sign in
+  // again" when the server couldn't hand back a fresh session).
+  const [notice, setNotice] = useState('')
+
   async function handleLogin(e) {
     e.preventDefault()
     setError('')
+    setNotice('')
     setLoading(true)
     try {
       const data = await login(email, password)
@@ -46,9 +51,17 @@ export default function LoginScreen({ onLogin }) {
     }
     setLoading(true)
     try {
-      await changePassword(newPassword)
-      const me = await getMe()
-      onLogin(me)
+      const result = await changePassword(newPassword)
+      if (result?.token) {
+        const me = await getMe()
+        onLogin(me)
+      } else {
+        // Password changed but the server couldn't mint a fresh session
+        // (the change revokes the current one) — back to sign-in.
+        setMustChangePassword(false)
+        setPassword('')
+        setNotice('Password updated — sign in with your new password.')
+      }
     } catch (err) {
       setError(err.message || 'Failed to change password')
     }
@@ -253,6 +266,12 @@ export default function LoginScreen({ onLogin }) {
           {error && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-red-400 text-sm">
               {error}
+            </div>
+          )}
+
+          {notice && (
+            <div className="bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-3 text-green-400 text-sm">
+              {notice}
             </div>
           )}
 

@@ -37,9 +37,14 @@ export default function LoginScreen({ onLogin, bgImage }) {
   const [resetEmail, setResetEmail] = useState('')
   const [resetMessage, setResetMessage] = useState('')
 
+  // Green notice shown on the sign-in form (e.g. "password updated, sign in
+  // again" when the server couldn't hand back a fresh session).
+  const [notice, setNotice] = useState('')
+
   async function handleLogin(e) {
     e.preventDefault()
     setError('')
+    setNotice('')
     setLoading(true)
 
     try {
@@ -72,8 +77,16 @@ export default function LoginScreen({ onLogin, bgImage }) {
 
     setLoading(true)
     try {
-      await changePassword(newPassword)
-      onLogin({ ...staffData, must_change_password: false })
+      const result = await changePassword(newPassword)
+      if (result?.token) {
+        onLogin({ ...staffData, must_change_password: false })
+      } else {
+        // Password changed but the server couldn't mint a fresh session
+        // (the change revokes the current one) — back to sign-in.
+        setMustChange(false)
+        setPassword('')
+        setNotice('Password updated — sign in with your new password.')
+      }
     } catch (err) {
       setError(err.message)
     } finally {
@@ -251,6 +264,7 @@ export default function LoginScreen({ onLogin, bgImage }) {
             </button>
           </div>
           {error && <p className="text-sm text-wcs-red">{error}</p>}
+          {notice && <p className="text-sm text-green-500">{notice}</p>}
           <button
             type="submit"
             disabled={loading}
