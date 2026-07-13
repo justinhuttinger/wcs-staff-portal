@@ -19,6 +19,7 @@ import DriveView from './components/DriveView'
 import DriveHub from './components/DriveHub'
 import MediaLibraryView from './components/MediaLibraryView'
 import FormsView from './components/forms/FormsView'
+import TourCheckinQueueView from './components/TourCheckinQueueView'
 import GlobalProgressBar from './components/GlobalProgressBar'
 import WhatsNew from './components/WhatsNew'
 import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout, setImpersonateId } from './lib/api'
@@ -63,6 +64,7 @@ export default function App() {
   const [showDriveHub, setShowDriveHub] = useState(false)
   const [showMediaLibrary, setShowMediaLibrary] = useState(false)
   const [showForms, setShowForms] = useState(false)
+  const [showTourCheckin, setShowTourCheckin] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
   const [locationOverride, setLocationOverride] = useState(() => localStorage.getItem('wcs_location_override') || '')
   const isElectron = !!window.wcsElectron
@@ -297,7 +299,7 @@ export default function App() {
     )
   }
 
-  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTickets && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTickets && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms && !showTourCheckin
 
   function exitImpersonation() {
     setImpersonateId(null)
@@ -318,6 +320,7 @@ export default function App() {
     setShowTickets(false)
     setShowDrive(false)
     setShowForms(false)
+    setShowTourCheckin(false)
     if (window.location.hash) window.location.hash = ''
   }
 
@@ -417,9 +420,11 @@ export default function App() {
         <MediaLibraryView onBack={() => setShowMediaLibrary(false)} userRole={user?.staff?.role} />
       ) : showForms ? (
         <FormsView onBack={handleBackToPortal} me={user.staff} />
+      ) : showTourCheckin && isAdmin ? (
+        <TourCheckinQueueView location={location} />
       ) : (
         <main className="flex-1 flex items-start pt-1 pb-12">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onTourCheckin={() => setShowTourCheckin(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>
