@@ -1110,6 +1110,8 @@ export const tourAdmin = {
     api('/admin/tour-locations/' + locationId, { method: 'PUT', body: JSON.stringify(body) }),
   regenerate: (locationId) =>
     api('/admin/tour-locations/' + locationId + '/regenerate-token', { method: 'POST' }),
+  searchReferrers: (q) =>
+    api('/admin/tour-locations/referrer-search?q=' + encodeURIComponent(q)),
 }
 
 // Form Builder

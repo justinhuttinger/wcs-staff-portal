@@ -39,6 +39,22 @@ router.get('/', async (req, res) => {
   }
 })
 
+// GET /admin/tour-locations/referrer-search?q= -> active members across all
+// clubs for the VIP-pass "referring member" picker. Matches name/email/barcode
+// and digit-normalized phone via the search_active_members SQL function.
+router.get('/referrer-search', async (req, res) => {
+  const q = String(req.query.q || '').trim()
+  if (q.length < 2) return res.json({ members: [] })
+  try {
+    const { data, error } = await supabaseAdmin.rpc('search_active_members', { q })
+    if (error) throw new Error(error.message)
+    res.json({ members: data || [] })
+  } catch (err) {
+    console.error('[tour-admin] referrer-search failed:', err.message)
+    res.status(500).json({ error: 'Search failed' })
+  }
+})
+
 // PUT /admin/tour-locations/:locationId -> upsert webhook + day one link + active
 router.put('/:locationId', async (req, res) => {
   try {

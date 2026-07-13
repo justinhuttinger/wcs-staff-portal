@@ -142,7 +142,7 @@ router.patch('/:token/intake/:id', async (req, res) => {
     const ctx = await resolveToken(req.params.token)
     if (!ctx) return res.status(404).json({ error: 'not found' })
 
-    const { tour_member, outcome, notes, status } = req.body || {}
+    const { tour_member, outcome, notes, status, referring_member_id, referring_member_name } = req.body || {}
     const cancelled = status === 'cancelled'
     if (!cancelled && !ALLOWED_OUTCOMES.includes(outcome)) {
       return res.status(400).json({ error: 'invalid outcome' })
@@ -167,6 +167,8 @@ router.patch('/:token/intake/:id', async (req, res) => {
         tour_member: tour_member || null,
         outcome,
         notes: notes || null,
+        referring_member_id: referring_member_id || null,
+        referring_member_name: referring_member_name || null,
         completed_at: new Date().toISOString(),
       })
       fetch(ctx.cfg.webhook_url, {

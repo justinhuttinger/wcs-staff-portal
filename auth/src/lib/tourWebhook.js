@@ -11,6 +11,8 @@ function buildTourWebhookPayload(location, intake) {
     tour_member: intake.tour_member || null,
     outcome: intake.outcome || null,
     notes: intake.notes || null,
+    referring_member_id: intake.referring_member_id || null,
+    referring_member_name: intake.referring_member_name || null,
     completed_at: intake.completed_at || null,
   }
 }
