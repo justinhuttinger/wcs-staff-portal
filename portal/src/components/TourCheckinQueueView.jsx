@@ -194,12 +194,6 @@ function Queue({ token }) {
         </button>
       )}
 
-      <div className="flex items-center justify-between px-1">
-        <p className="text-sm font-medium text-text-muted">
-          {data.location_name || 'Front desk'}{list.length ? ` · ${list.length} waiting` : ''}
-        </p>
-      </div>
-
       {error && <Card tone="error">{error}</Card>}
       {loading && <Card>Loading…</Card>}
 
@@ -232,7 +226,16 @@ function Queue({ token }) {
           intake={selected}
           dayOneBaseUrl={data.day_one_base_url}
           onClose={() => setSelected(null)}
-          onSaved={() => { setSelected(null); load({ silent: true }) }}
+          onSaved={() => {
+            // Drop the completed tour from the list instantly so it doesn't
+            // linger at the top until the next poll (the row is already deleted
+            // server-side on save). Also forget its id so it can't re-alert.
+            const doneId = selected.id
+            setData(d => ({ ...d, ready: (d.ready || []).filter(r => r.id !== doneId) }))
+            knownIds.current?.delete(doneId)
+            setSelected(null)
+            load({ silent: true })
+          }}
         />
       )}
     </div>
