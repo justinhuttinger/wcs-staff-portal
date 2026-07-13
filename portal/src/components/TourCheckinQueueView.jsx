@@ -247,14 +247,19 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
   const [tourMember, setTourMember] = useState('')
   const [outcome, setOutcome] = useState(intake.outcome || '')
   const [notes, setNotes] = useState(intake.notes || '')
+  const [referrer, setReferrer] = useState(null) // { member_id, name } | null — VIP referrals
   const [showDayOne, setShowDayOne] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const isVip = outcome === 'Started VIP Pass'
 
   useEffect(() => {
     publicTour.employees(token).then(r => setEmployees(r.employees || [])).catch(() => {})
   }, [token])
+
+  // The referring member only applies to a VIP Pass; drop it if the outcome changes.
+  useEffect(() => { if (!isVip) setReferrer(null) }, [isVip])
 
   const dayOneUrl = buildDayOneUrl(dayOneBaseUrl, {
     name: intake.contact_name, email: intake.contact_email,
@@ -264,7 +269,11 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
   async function save() {
     setSaving(true); setError('')
     try {
-      await publicTour.saveOutcome(token, intake.id, { tour_member: tourMember, outcome, notes, status: 'completed' })
+      await publicTour.saveOutcome(token, intake.id, {
+        tour_member: tourMember, outcome, notes, status: 'completed',
+        referring_member_id: referrer?.member_id || null,
+        referring_member_name: referrer?.name || null,
+      })
       setSaved(true)
       setTimeout(() => onSaved(), 1100)
     } catch (e) {
@@ -321,6 +330,14 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
                 </div>
               </div>
 
+              {isVip && (
+                <div>
+                  <label className="block text-sm font-semibold text-text-primary mb-2">Referring member</label>
+                  <ReferrerPicker value={referrer} onChange={setReferrer} />
+                  <p className="mt-1 text-xs text-text-muted">Who referred them? Search active members by name, phone, or email.</p>
+                </div>
+              )}
+
               {dayOneBaseUrl && (
                 <div>
                   <label className="block text-sm font-semibold text-text-primary mb-2">Book Day One</label>
@@ -363,6 +380,85 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
             </div>
             <iframe title="Book Day One" src={dayOneUrl} className="flex-1 w-full border-0 bg-white" />
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Debounced member search for the VIP-pass referring member. Searches active
+// ABC members across all clubs (name / phone / email) via the authed admin
+// endpoint. `value` is the chosen { member_id, name } or null.
+function ReferrerPicker({ value, onChange }) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (value) return // a member is picked; don't keep searching
+    const term = query.trim()
+    if (term.length < 2) { setResults([]); setLoading(false); return }
+    setLoading(true)
+    const t = setTimeout(async () => {
+      try {
+        const r = await tourAdmin.searchReferrers(term)
+        setResults(r.members || [])
+        setOpen(true)
+      } catch {
+        setResults([])
+      } finally {
+        setLoading(false)
+      }
+    }, 250)
+    return () => clearTimeout(t)
+  }, [query, value])
+
+  if (value) {
+    return (
+      <div className="flex items-center justify-between gap-2 rounded-xl border border-border bg-bg px-3 py-2.5">
+        <span className="text-sm font-medium text-text-primary truncate">{value.name}</span>
+        <button
+          onClick={() => { onChange(null); setQuery(''); setResults([]) }}
+          className="text-text-muted hover:text-wcs-red text-xl leading-none shrink-0"
+          aria-label="Clear referring member"
+        >
+          &times;
+        </button>
+      </div>
+    )
+  }
+
+  const showDropdown = open && query.trim().length >= 2
+  return (
+    <div className="relative">
+      <input
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        onFocus={() => query.trim().length >= 2 && setOpen(true)}
+        placeholder="Search by name, phone, or email…"
+        className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-wcs-red"
+      />
+      {showDropdown && (
+        <div className="absolute z-10 mt-1 w-full max-h-60 overflow-y-auto rounded-xl border border-border bg-surface shadow-lg">
+          {loading && <p className="px-3 py-2 text-sm text-text-muted">Searching…</p>}
+          {!loading && results.map(m => {
+            const name = `${m.first_name || ''} ${m.last_name || ''}`.trim()
+            const sub = [m.phone, m.email, m.home_club].filter(Boolean).join(' · ')
+            return (
+              <button
+                key={m.member_id}
+                onClick={() => { onChange({ member_id: m.member_id, name }); setOpen(false) }}
+                className="w-full text-left px-3 py-2 hover:bg-bg border-b border-border last:border-0"
+              >
+                <p className="text-sm font-medium text-text-primary truncate">{name || 'Unknown'}</p>
+                {sub && <p className="text-xs text-text-muted truncate">{sub}</p>}
+              </button>
+            )
+          })}
+          {!loading && results.length === 0 && (
+            <p className="px-3 py-2 text-sm text-text-muted">No matches</p>
+          )}
         </div>
       )}
     </div>
