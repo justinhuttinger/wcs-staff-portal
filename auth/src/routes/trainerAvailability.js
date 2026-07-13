@@ -1,14 +1,18 @@
 const { Router } = require('express')
 const crypto = require('crypto')
 const authenticate = require('../middleware/auth')
-const { requireRole, resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
+const { resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
+const { requireTile } = require('../middleware/tile')
 const { getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
 const { CONFIG_SCALAR_KEYS, buildPriorityUpdateBody } = require('./trainerAvailabilityHelpers')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('lead'))
+// Access tracks the D1 Availability tile (role grid + per-person overrides),
+// not a fixed tier — so the tile a user sees and this API never drift apart.
+// Managers+ can still edit anyone; everyone else only themselves (guards below).
+router.use(requireTile('trainerAvail'))
 
 const CAL_VERSION = '2021-04-15'
 const PRIORITY_VALUES = [0, 0.5, 1]

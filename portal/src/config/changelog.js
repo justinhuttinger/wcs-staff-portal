@@ -42,6 +42,7 @@ function canSeeTool(tool, { role, visibleTools }) {
   switch (tool) {
     case 'inventory': return role !== 'custom' && idx >= ROLE_LEVELS.lead
     case 'forms': return idx >= ROLE_LEVELS.admin || (visibleTools || []).includes('forms')
+    case 'trainerAvail': return (visibleTools || []).includes('trainerAvail')
     case 'admin': return role === 'admin'
     default: return true
   }
@@ -64,6 +65,12 @@ export function visibleChangelog(ctx) {
 }
 
 export const CHANGELOG = [
+  {
+    id: 10, date: '2026-07-13',
+    title: 'D1 Availability is now grantable per role and per person',
+    body: 'D1 Availability now appears in Admin → Roles & Permissions (Tools) and in each person’s permission overrides, so you can grant it to or hide it from anyone. Existing access is unchanged: managers and above have it on by default. People below manager who are granted it can view availability and edit only their own.',
+    audience: { tool: 'admin' },
+  },
   {
     id: 9, date: '2026-07-10',
     title: 'Anyone on Restock can set reorder levels',

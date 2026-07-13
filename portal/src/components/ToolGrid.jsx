@@ -609,8 +609,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {/* 4.9. Tickets — lead+ */}
           {onTickets && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTickets} iconPath={TILE_ICONS.tickets} label="Tickets/Support" desc="Help Desk" />}
           {/* (Day One Tracking merged into Calendar) */}
-          {/* 6. Trainer Availability — manager+ only (leads cannot see it) */}
-          {onTrainerAvail && roleIdx >= ROLE_LEVELS.manager && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}
+          {/* 6. Trainer Availability — role/override-driven (seeded manager+ in migration 086) */}
+          {onTrainerAvail && (visibleTools || []).includes('trainerAvail') && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}
           {/* 6.5. Marketing Tracker — corporate/admin, or anyone with the marketing add-on */}
           {onMarketingTracker && (canMarketingTracker ?? (roleIdx >= ROLE_LEVELS.corporate || marketingAddon)) && <SvgTileButton onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />}
           {/* 6.6. Inventory (experimental) — lead+ (leads get restock/adjust, no Sales/margin) */}
