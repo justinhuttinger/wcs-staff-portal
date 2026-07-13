@@ -350,10 +350,15 @@ export function logout() {
 }
 
 export async function changePassword(newPassword) {
-  return api('/auth/change-password', {
+  const data = await api('/auth/change-password', {
     method: 'POST',
     body: JSON.stringify({ new_password: newPassword }),
   })
+  // Changing the password revokes the session that authorized the request, so
+  // the server signs back in and returns a fresh session. Adopt it before any
+  // follow-up call (getMe etc.) fires with the now-dead token.
+  if (data?.token) setToken(data.token, data.refresh_token)
+  return data
 }
 
 export async function resetPassword(email) {
