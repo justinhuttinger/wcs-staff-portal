@@ -19,7 +19,7 @@ import DriveView from './components/DriveView'
 import DriveHub from './components/DriveHub'
 import MediaLibraryView from './components/MediaLibraryView'
 import FormsView from './components/forms/FormsView'
-import TourCheckinLocations from './components/admin/TourCheckinLocations'
+import TourCheckinQueueView from './components/TourCheckinQueueView'
 import GlobalProgressBar from './components/GlobalProgressBar'
 import WhatsNew from './components/WhatsNew'
 import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout, setImpersonateId } from './lib/api'
@@ -421,9 +421,7 @@ export default function App() {
       ) : showForms ? (
         <FormsView onBack={handleBackToPortal} me={user.staff} />
       ) : showTourCheckin && isAdmin ? (
-        <div className="w-full max-w-3xl mx-auto px-4 py-4">
-          <TourCheckinLocations />
-        </div>
+        <TourCheckinQueueView location={location} />
       ) : (
         <main className="flex-1 flex items-start pt-1 pb-12">
           <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onTourCheckin={() => setShowTourCheckin(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
