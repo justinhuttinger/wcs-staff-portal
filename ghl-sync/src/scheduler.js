@@ -10,6 +10,7 @@ const { runMediaIndex } = require('./media/mediaIndex');
 const { checkRevenueGaps } = require('./revenue/gapCheck');
 const { emailStatsSync } = require('./sync/emailStatsSync');
 const { enrichAll: enrichAttributionAll } = require('./sync/attributionEnrich');
+const { runLapsedTaggingAll } = require('./abc/lapsedTaggingJob');
 
 function startScheduler() {
   const intervalMinutes = process.env.SYNC_INTERVAL_MINUTES || 10;
@@ -168,6 +169,35 @@ function startScheduler() {
       console.error('[Scheduler] Email stats sync failed:', err.message);
     }
   });
+
+  // Lapsed check-in tagging — nightly, dark-launched behind LAPSED_TAGGING_ENABLED
+  // (default off). Tags active members lapsed 10/21/30 days for GHL win-back
+  // workflows. Defaults to dry-run (log-only, no tag writes) until the rollout
+  // flips LAPSED_TAGGING_DRY_RUN=false. See ghl-sync/src/abc/lapsedTaggingJob.js.
+  if (process.env.LAPSED_TAGGING_ENABLED === 'true') {
+    const lapsedTaggingHour = Number(process.env.LAPSED_TAGGING_HOUR || 5); // PST
+    const lapsedTaggingHourUTC = (lapsedTaggingHour + 8) % 24;
+    const lapsedTaggingDryRun = process.env.LAPSED_TAGGING_DRY_RUN !== 'false'; // default true
+    let lapsedTaggingRunning = false;
+    cron.schedule(`0 ${lapsedTaggingHourUTC} * * *`, async () => {
+      if (lapsedTaggingRunning) {
+        console.warn('[Scheduler] Previous lapsed tagging run still running — skipping');
+        return;
+      }
+      lapsedTaggingRunning = true;
+      console.log('[Scheduler] Starting lapsed check-in tagging...');
+      try {
+        const summary = await runLapsedTaggingAll({ dryRun: lapsedTaggingDryRun });
+        console.log('[Scheduler] Lapsed tagging results:', JSON.stringify(summary));
+      } catch (err) {
+        console.error('[Scheduler] Lapsed tagging failed:', err.message);
+        await alertSyncFailed(err).catch(() => {});
+      } finally {
+        lapsedTaggingRunning = false;
+      }
+    });
+    console.log(`[Scheduler] Lapsed tagging scheduled daily at ${lapsedTaggingHour}:00 PST (${lapsedTaggingHourUTC}:00 UTC), dryRun=${lapsedTaggingDryRun}`);
+  }
 
   console.log(`[Scheduler] Delta sync every ${intervalMinutes}m, full sync daily at ${fullSyncHour}:00 PST (${fullSyncHourUTC}:00 UTC)`);
   console.log(`[Scheduler] Email stats sync every ${emailStatsIntervalMinutes}m`);
