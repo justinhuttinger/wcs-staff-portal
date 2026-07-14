@@ -7,12 +7,24 @@ const {
   tierDayRange,
   inTierRange,
   normalizeExcludedInput,
+  findUnknownTypes,
 } = require('./lapsedCheckinsHelpers')
 
 // node:test + node:assert, CommonJS. Run with `node --test`.
 
 // Fixed "now": 2026-07-14 12:00 PT
 const NOW = new Date('2026-07-14T19:00:00Z')
+
+test('resolveActivityDate: skips blank/empty-string fields, not just null/undefined', () => {
+  assert.strictEqual(
+    resolveActivityDate({ last_check_in_timestamp: '', sign_date: '', begin_date: '2026-06-01', since_date: '2020-01-01' }),
+    '2026-06-01',
+  )
+  assert.strictEqual(
+    resolveActivityDate({ last_check_in_timestamp: '   ', sign_date: '  ', begin_date: '  ', since_date: '2026-05-01' }),
+    '2026-05-01',
+  )
+})
 
 test('resolveActivityDate: prefers last_check_in_timestamp, falls back in order', () => {
   assert.strictEqual(
@@ -87,4 +99,24 @@ test('normalizeExcludedInput: rejects non-array', () => {
 test('normalizeExcludedInput: rejects non-string entries', () => {
   const r = normalizeExcludedInput(['CORP', 5])
   assert.strictEqual(r.ok, false)
+})
+
+test('findUnknownTypes: all entries known -> ok true, empty unknown list', () => {
+  const known = new Set(['CORP', 'SINGLE', 'COUPLE'])
+  const r = findUnknownTypes(['CORP', 'SINGLE'], known)
+  assert.strictEqual(r.ok, true)
+  assert.deepStrictEqual(r.unknown, [])
+})
+
+test('findUnknownTypes: unknown entries rejected and listed', () => {
+  const known = new Set(['CORP', 'SINGLE'])
+  const r = findUnknownTypes(['CORP', 'NOT-REAL', 'ALSO-FAKE'], known)
+  assert.strictEqual(r.ok, false)
+  assert.deepStrictEqual(r.unknown, ['NOT-REAL', 'ALSO-FAKE'])
+})
+
+test('findUnknownTypes: accepts a plain array as the known set; preserves the caller-deduped input order/shape (does not dedupe itself)', () => {
+  const r = findUnknownTypes(['SINGLE', 'FAKE'], ['CORP', 'SINGLE'])
+  assert.strictEqual(r.ok, false)
+  assert.deepStrictEqual(r.unknown, ['FAKE'])
 })

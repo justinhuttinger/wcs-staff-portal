@@ -280,6 +280,46 @@ test('runLapsedTaggingForLocation: no-op members produce no log rows or PUT call
   assert.strictEqual(inserted.abc_sync_run_log.length, 0)
 })
 
+test('runLapsedTaggingForLocation: blank sign_date falls through to begin_date (not treated as null)', async () => {
+  const members = [
+    { // sign_date is an empty string (not null/undefined) -> must fall through
+      // to begin_date, same as auth's resolveActivityDate. begin_date is far
+      // enough in the past to land in lapsed-30d if used, but never used as
+      // the days-since input directly here — only as the join-date fallback
+      // for daysSince() when last_check_in_timestamp is also absent.
+      member_id: 'M6', club_number: '99999', email: 'm6@example.com', primary_phone: '5035551006',
+      mobile_phone: null, first_name: 'Six', last_name: 'BlankSign', is_active: true, member_status: 'Active',
+      membership_type: 'SINGLE', last_check_in_timestamp: null, sign_date: '',
+      begin_date: '2025-01-01', since_date: null,
+    },
+  ]
+  const contacts = [
+    {
+      id: 'ghl_6', email: 'm6@example.com', phone: '+15035551006', first_name: 'Six', last_name: 'BlankSign',
+      tags: ['sale'], custom_fields: { fld_member_id: 'M6' },
+    },
+  ]
+  const { db, inserted } = makeFakeDb({ members, contacts, fieldDefs: FIELD_DEFS })
+  const { put, calls } = makeFakePut()
+  const { get, calls: getCalls } = makeFakeGet(new Map(contacts.map(c => [c.id, c])))
+
+  const summary = await runLapsedTaggingForLocation(LOCATION, {
+    dryRun: false, db, now: NOW, get, put, sleepFn: noopSleep,
+  })
+
+  // If sign_date's blank string were kept (instead of falling through to
+  // begin_date), daysSince would receive join=null and the member would be
+  // treated as non-lapsed (tier null, no tag change, no PUT). Asserting a
+  // tag write here proves begin_date was actually used.
+  assert.strictEqual(summary.matched, 1)
+  assert.strictEqual(summary.tagged, 1)
+  assert.strictEqual(calls.length, 1)
+  const m6Call = calls.find(c => c.path === '/contacts/ghl_6')
+  assert.ok(m6Call, 'expected a PUT tagging the member off the begin_date fallback')
+  assert.deepStrictEqual(new Set(m6Call.body.tags), new Set(['sale', 'lapsed-30d']))
+  assert.ok(inserted.abc_sync_run_log.some(e => e.abc_member_id === 'M6'))
+})
+
 test('runLapsedTaggingForLocation: pagination — reads all rows across multiple pages for both abc_members and ghl_contacts_v2', async () => {
   const TOTAL = 1200 // > Supabase's 1000-row default page, forces 2 pages each
   const members = []

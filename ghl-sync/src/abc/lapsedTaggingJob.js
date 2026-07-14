@@ -107,7 +107,11 @@ async function runLapsedTaggingForLocation(location, options = {}) {
 
     if (!isEligible(member, excludedTypes)) continue;
 
-    const join = member.sign_date ?? member.begin_date ?? member.since_date;
+    // First non-blank of sign_date/begin_date/since_date — matches the auth
+    // dashboard's resolveActivityDate, which falls through empty-string and
+    // blank values (not just null/undefined) across all three fields.
+    const join = [member.sign_date, member.begin_date, member.since_date]
+      .find(v => v && String(v).trim()) || null;
     const days = daysSince(member.last_check_in_timestamp, join, now);
     const tier = selectTier(days);
 

@@ -96,6 +96,18 @@ function normalizeExcludedInput(input) {
   return { ok: true, list: out }
 }
 
+// Filter a normalized `excluded` list (already shape-validated by
+// normalizeExcludedInput) against the set of known membership_type values
+// pulled from abc_members. Pure — takes the known set as an argument so it's
+// testable without Supabase. Returns { ok, unknown } where `unknown` lists
+// any submitted entries not present in `knownTypes` (dedupe-preserving order
+// from the input list).
+function findUnknownTypes(list, knownTypes) {
+  const known = knownTypes instanceof Set ? knownTypes : new Set(knownTypes || [])
+  const unknown = list.filter(t => !known.has(t))
+  return { ok: unknown.length === 0, unknown }
+}
+
 module.exports = {
   toDateOnly,
   resolveActivityDate,
@@ -106,4 +118,5 @@ module.exports = {
   tierDayRange,
   inTierRange,
   normalizeExcludedInput,
+  findUnknownTypes,
 }

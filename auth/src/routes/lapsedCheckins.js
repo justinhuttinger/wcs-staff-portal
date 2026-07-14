@@ -10,6 +10,7 @@ const {
   tierDayRange,
   inTierRange,
   normalizeExcludedInput,
+  findUnknownTypes,
 } = require('./lapsedCheckinsHelpers')
 
 const router = Router()
@@ -18,6 +19,26 @@ router.use(authenticate)
 router.use(requireRole('admin'))
 
 const CONFIG_KEY = 'lapsed_checkin_excluded_types'
+
+// Paginate past Supabase's 1000-row default — mirrors ghl-sync's
+// lapsedTaggingJob.js .range() loop so large clubs (~3k active members each,
+// 7 clubs) aren't silently truncated. `buildQuery` returns a *fresh*
+// Supabase query builder (already configured with .select()/.eq() etc) on
+// each call, matching the pattern of building a new query per page.
+const PAGE_SIZE = 1000
+async function fetchAllRows(buildQuery) {
+  const rows = []
+  let from = 0
+  while (true) {
+    const { data, error } = await buildQuery().range(from, from + PAGE_SIZE - 1)
+    if (error) throw error
+    if (!data || data.length === 0) break
+    rows.push(...data)
+    if (data.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+  return rows
+}
 
 // club_number (abc_members) -> display name, built from the same location
 // config the rest of the API uses (auth/src/config/ghlLocations.js).
@@ -48,11 +69,11 @@ router.get('/types', async (req, res) => {
     const { list: excluded, updated_at } = await loadExcludedTypes()
     const excludedSet = new Set(excluded)
 
-    const { data: members, error } = await supabaseAdmin
-      .from('abc_members')
-      .select('membership_type')
-      .eq('is_active', true)
-    if (error) throw error
+    const members = await fetchAllRows(() =>
+      supabaseAdmin
+        .from('abc_members')
+        .select('membership_type')
+        .eq('is_active', true))
 
     const counts = new Map()
     for (const m of members || []) {
@@ -74,11 +95,28 @@ router.get('/types', async (req, res) => {
   }
 })
 
+// Distinct membership_type values across ALL abc_members (no is_active
+// filter, so rarely-active types still validate against the submitted
+// excluded list).
+async function loadKnownMembershipTypes() {
+  const rows = await fetchAllRows(() =>
+    supabaseAdmin
+      .from('abc_members')
+      .select('membership_type'))
+  return new Set(rows.map(r => r.membership_type).filter(Boolean))
+}
+
 // PUT /admin/lapsed-checkins/types  body: { excluded: string[] }
 router.put('/types', async (req, res) => {
   try {
     const { ok, error, list } = normalizeExcludedInput(req.body?.excluded)
     if (!ok) return res.status(400).json({ error })
+
+    const knownTypes = await loadKnownMembershipTypes()
+    const { ok: allKnown, unknown } = findUnknownTypes(list, knownTypes)
+    if (!allKnown) {
+      return res.status(400).json({ error: 'excluded contains unknown membership types', unknown })
+    }
 
     const { error: upsertError } = await supabaseAdmin
       .from('app_config')
@@ -97,15 +135,16 @@ router.put('/types', async (req, res) => {
 // Load eligible members (is_active + member_status='Active' + not excluded
 // type) with the columns needed for the dashboard's days-since math.
 async function loadEligibleMembers(excludedSet, clubNumber) {
-  let query = supabaseAdmin
-    .from('abc_members')
-    .select('member_id, first_name, last_name, membership_type, last_check_in_timestamp, sign_date, begin_date, since_date, club_number')
-    .eq('is_active', true)
-    .eq('member_status', 'Active')
-  if (clubNumber) query = query.eq('club_number', clubNumber)
-  const { data, error } = await query
-  if (error) throw error
-  return (data || []).filter(m => !excludedSet.has(m.membership_type))
+  const data = await fetchAllRows(() => {
+    let query = supabaseAdmin
+      .from('abc_members')
+      .select('member_id, first_name, last_name, membership_type, last_check_in_timestamp, sign_date, begin_date, since_date, club_number')
+      .eq('is_active', true)
+      .eq('member_status', 'Active')
+    if (clubNumber) query = query.eq('club_number', clubNumber)
+    return query
+  })
+  return data.filter(m => !excludedSet.has(m.membership_type))
 }
 
 // GET /admin/lapsed-checkins/dashboard
