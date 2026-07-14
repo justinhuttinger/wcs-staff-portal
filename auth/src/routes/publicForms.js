@@ -1,7 +1,7 @@
 const { Router } = require('express')
 const rateLimit = require('express-rate-limit')
 const { supabaseAdmin } = require('../services/supabase')
-const { validateSubmission } = require('../services/formsSchema')
+const { validateSubmission, sanitizeUtm } = require('../services/formsSchema')
 const formsSheets = require('../services/formsSheets')
 const formsAudit = require('../services/formsAudit')
 
@@ -58,8 +58,11 @@ router.post('/:slug/submit', submitLimiter, async (req, res) => {
     if (!result.ok) return res.status(400).json({ errors: result.errors })
 
     // 1. Supabase backup first. A Sheets outage never loses a submission.
+    // UTM attribution rides in a separate body key (never inside `data`, which
+    // rejects unknown keys) and is whitelisted before storage.
+    const utm = sanitizeUtm((req.body || {}).utm)
     const { data: submission, error } = await supabaseAdmin.from('form_submissions')
-      .insert({ form_id: form.id, data: result.cleaned }).select('*').single()
+      .insert({ form_id: form.id, data: result.cleaned, utm }).select('*').single()
     if (error) throw error
     formsAudit.record(form.id, null, 'submission_received', { submission_id: submission.id })
 

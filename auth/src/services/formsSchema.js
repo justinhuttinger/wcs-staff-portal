@@ -7,6 +7,11 @@ const INPUT_TYPES = ['short_text', 'long_text', 'email', 'phone', 'number', 'dro
 const FIELD_TYPES = [...INPUT_TYPES, ...DISPLAY_TYPES]
 const OPTION_TYPES = ['dropdown', 'radio', 'checkbox']
 
+// Attribution params captured from the form URL (?utm_source=...). These are
+// NOT schema fields: they arrive in a separate `utm` key on the submit body so
+// validateSubmission never sees them (an unknown key in `data` is an error).
+const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign']
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 
 function validateSchema(schema) {
@@ -94,6 +99,22 @@ function validateSubmission(schema, data) {
   return { ok: Object.keys(errors).length === 0, errors, cleaned }
 }
 
+// Whitelist + normalize the UTM object off a public submit body. Only the
+// three known keys survive; each is coerced to a trimmed string and capped so
+// a hand-edited URL can't bloat a row. Missing/blank values are dropped, so a
+// form opened without UTMs stores {}.
+function sanitizeUtm(raw) {
+  const out = {}
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    for (const k of UTM_KEYS) {
+      if (raw[k] == null) continue
+      const v = String(raw[k]).trim().slice(0, 200)
+      if (v) out[k] = v
+    }
+  }
+  return out
+}
+
 function makeSlug(title) {
   const base = String(title || 'form').toLowerCase()
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'form'
@@ -101,4 +122,4 @@ function makeSlug(title) {
   return `${base}-${suffix}`
 }
 
-module.exports = { FIELD_TYPES, INPUT_TYPES, OPTION_TYPES, DISPLAY_TYPES, validateSchema, validateSubmission, makeSlug }
+module.exports = { FIELD_TYPES, INPUT_TYPES, OPTION_TYPES, DISPLAY_TYPES, UTM_KEYS, validateSchema, validateSubmission, sanitizeUtm, makeSlug }

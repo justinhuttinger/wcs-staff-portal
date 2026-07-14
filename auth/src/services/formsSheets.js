@@ -1,8 +1,14 @@
-const { INPUT_TYPES } = require('./formsSchema')
+const { INPUT_TYPES, UTM_KEYS } = require('./formsSchema')
 
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets'
 const DRIVE_BASE = 'https://www.googleapis.com/drive/v3/files'
 const TAB = 'Submissions'
+
+// UTM attribution columns are appended after the form's field columns on every
+// sheet (always-on). Their keys live in the same sheet_columns map as field
+// ids — utm_* never collides with an f_* id — so the append-only invariant and
+// all the column math are reused unchanged.
+const UTM_LABELS = { utm_source: 'UTM Source', utm_medium: 'UTM Medium', utm_campaign: 'UTM Campaign' }
 
 // Lazy-require: services/supabase creates the client at import time and throws
 // without env vars, so pull it in only when a function actually needs it
@@ -36,17 +42,22 @@ function computeColumns(schema, existing = {}) {
   for (const f of inputFields(schema)) {
     if (!cols[f.id]) { max += 1; cols[f.id] = max }
   }
+  // Append the UTM columns after the field columns. Existing sheets pick these
+  // up the next time ensureSheet runs; already-assigned keys never move.
+  for (const k of UTM_KEYS) {
+    if (!cols[k]) { max += 1; cols[k] = max }
+  }
   return cols
 }
 
 function buildHeaderRow(schema, columns) {
-  const labels = {}
+  const labels = { ...UTM_LABELS }
   for (const f of inputFields(schema)) labels[f.id] = f.label
   const max = Math.max(1, ...Object.values(columns))
   const row = new Array(max).fill('')
   row[0] = 'Submitted At'
-  for (const [fieldId, col] of Object.entries(columns)) {
-    row[col - 1] = labels[fieldId] || row[col - 1] || ''
+  for (const [key, col] of Object.entries(columns)) {
+    row[col - 1] = labels[key] || row[col - 1] || ''
   }
   return row
 }
@@ -240,12 +251,16 @@ async function appendSubmission(form, submission) {
     // in the sheet's column map (schema changed after the last ensureSheet),
     // create/extend the sheet now and use its fresh column map for the row.
     let columns = form.sheet_columns || {}
-    const missing = Object.keys(submission.data || {}).some(fieldId => !columns[fieldId])
+    // utm_* keys never collide with f_* field ids, so they share one value map.
+    const rowData = { ...(submission.data || {}), ...(submission.utm || {}) }
+    // Extend the sheet if this submission carries an unmapped field id OR the
+    // sheet predates UTM columns (existing forms gain them on first submission).
+    const missing = Object.keys(rowData).some(k => !columns[k]) || UTM_KEYS.some(k => !columns[k])
     if (missing) {
       const ensured = await ensureSheet(form)
       columns = ensured.sheet_columns
     }
-    const row = buildRowValues(columns, submission.data, pacificTimestamp(new Date(submission.submitted_at)))
+    const row = buildRowValues(columns, rowData, pacificTimestamp(new Date(submission.submitted_at)))
     await googleJson(
       `${SHEETS_BASE}/${form.sheet_id}/values/${encodeURIComponent(`${form.sheet_tab}!A1`)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
       token,
