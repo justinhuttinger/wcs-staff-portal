@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { daysSince, selectTier, parseAbcPacificDate } = require('./lapsedTagging')
+const { daysSince, selectTier, parseAbcPacificDate, diffTags, isEligible, LAPSED_TAGS } = require('./lapsedTagging')
 
 // Fixed "now": 2026-07-14 12:00 PT
 const NOW = new Date('2026-07-14T19:00:00Z')
@@ -28,4 +28,29 @@ test('parseAbcPacificDate: handles date-only and null', () => {
   assert.ok(parseAbcPacificDate('2026-07-09') instanceof Date)
   assert.strictEqual(parseAbcPacificDate(null), null)
   assert.strictEqual(parseAbcPacificDate(''), null)
+})
+
+test('diffTags: adds desired tier, strips other lapsed tags, preserves others', () => {
+  const r = diffTags(['sale', 'vip', 'lapsed-10d'], 'lapsed-21d')
+  assert.deepStrictEqual(new Set(r.tags), new Set(['sale', 'vip', 'lapsed-21d']))
+  assert.deepStrictEqual(r.added, ['lapsed-21d'])
+  assert.deepStrictEqual(r.removed, ['lapsed-10d'])
+  assert.strictEqual(r.changed, true)
+})
+test('diffTags: no desired tier removes all lapsed tags', () => {
+  const r = diffTags(['sale', 'lapsed-30d'], null)
+  assert.deepStrictEqual(r.tags, ['sale'])
+  assert.strictEqual(r.changed, true)
+})
+test('diffTags: no-op when already correct', () => {
+  const r = diffTags(['sale', 'lapsed-10d'], 'lapsed-10d')
+  assert.strictEqual(r.changed, false)
+  assert.deepStrictEqual(new Set(r.tags), new Set(['sale', 'lapsed-10d']))
+})
+test('isEligible: active + Active status + non-excluded type', () => {
+  const ex = new Set(['CORP'])
+  assert.strictEqual(isEligible({ is_active: true, member_status: 'Active', membership_type: 'SINGLE' }, ex), true)
+  assert.strictEqual(isEligible({ is_active: true, member_status: 'Freeze', membership_type: 'SINGLE' }, ex), false)
+  assert.strictEqual(isEligible({ is_active: false, member_status: 'Active', membership_type: 'SINGLE' }, ex), false)
+  assert.strictEqual(isEligible({ is_active: true, member_status: 'Active', membership_type: 'CORP' }, ex), false)
 })

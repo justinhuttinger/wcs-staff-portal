@@ -38,4 +38,23 @@ function selectTier(days) {
   return null
 }
 
-module.exports = { parseAbcPacificDate, daysSince, selectTier }
+const LAPSED_TAGS = ['lapsed-10d', 'lapsed-21d', 'lapsed-30d']
+const LAPSED_SET = new Set(LAPSED_TAGS)
+
+function diffTags(currentTags, desiredTier) {
+  const current = Array.isArray(currentTags) ? currentTags : []
+  const kept = current.filter(t => !LAPSED_SET.has(t))
+  const tags = desiredTier ? [...kept, desiredTier] : kept
+  const currentLapsed = current.filter(t => LAPSED_SET.has(t))
+  const added = desiredTier && !current.includes(desiredTier) ? [desiredTier] : []
+  const removed = currentLapsed.filter(t => t !== desiredTier)
+  return { tags, added, removed, changed: added.length > 0 || removed.length > 0 }
+}
+
+function isEligible(member, excludedTypes) {
+  return member.is_active === true
+    && member.member_status === 'Active'
+    && !excludedTypes.has(member.membership_type)
+}
+
+module.exports = { parseAbcPacificDate, daysSince, selectTier, diffTags, isEligible, LAPSED_TAGS }
