@@ -1,7 +1,35 @@
 const supabase = require('./supabase');
 const { decidePrune } = require('./pruneDecision');
+const { nullMissingContacts } = require('./contactRepair');
 
 const BATCH_SIZE = 500;
+// Chunk size for the contact-existence lookup. PostgREST caps `.in()` list
+// length, and a batch can carry up to BATCH_SIZE distinct contact_ids.
+const CONTACT_LOOKUP_CHUNK = 300;
+
+// Which of the given contact_ids currently exist in ghl_contacts_v2. Chunked so a
+// full-size batch's worth of ids never exceeds the PostgREST `.in()` limit.
+async function fetchExistingContactIds(contactIds) {
+  const existing = new Set();
+  for (let i = 0; i < contactIds.length; i += CONTACT_LOOKUP_CHUNK) {
+    const chunk = contactIds.slice(i, i + CONTACT_LOOKUP_CHUNK);
+    const { data, error } = await supabase
+      .from('ghl_contacts_v2')
+      .select('id')
+      .in('id', chunk);
+    if (error) throw error;
+    for (const row of (data || [])) existing.add(row.id);
+  }
+  return existing;
+}
+
+// Repair a FK-violating batch by nulling only the genuinely-orphaned contact_ids.
+async function repairBatchContacts(batch) {
+  const contactIds = [...new Set(batch.map(o => o.contact_id).filter(Boolean))];
+  if (contactIds.length === 0) return batch;
+  const existing = await fetchExistingContactIds(contactIds);
+  return nullMissingContacts(batch, existing);
+}
 
 async function upsertOpportunities(opportunities) {
   let upserted = 0;
@@ -16,29 +44,56 @@ async function upsertOpportunities(opportunities) {
 
   for (let i = 0; i < deduped.length; i += BATCH_SIZE) {
     const batch = deduped.slice(i, i + BATCH_SIZE);
+    const batchNum = Math.floor(i / BATCH_SIZE);
 
     const { error, count } = await supabase
       .from('ghl_opportunities_v2')
       .upsert(batch, { onConflict: 'id', count: 'exact' });
 
-    if (error) {
-      // If FK violation, retry without contact_id
-      if (error.code === '23503') {
+    if (!error) {
+      upserted += count || batch.length;
+      continue;
+    }
+
+    // FK violation (23503): at least one opp points at a contact/pipeline/stage
+    // not present locally. Repair by nulling ONLY the opps whose contact is
+    // missing, so valid opps keep their contact link.
+    if (error.code === '23503') {
+      let repaired;
+      try {
+        repaired = await repairBatchContacts(batch);
+      } catch (lookupErr) {
+        // Lookup failed — fall back to prior behavior (null all contact_id) so
+        // the batch still lands rather than being lost entirely.
+        console.error(`[DB] Opportunity contact lookup failed (batch ${batchNum}):`, lookupErr.message);
+        repaired = batch.map(o => ({ ...o, contact_id: null }));
+      }
+
+      const retry = await supabase
+        .from('ghl_opportunities_v2')
+        .upsert(repaired, { onConflict: 'id', count: 'exact' });
+
+      if (!retry.error) {
+        upserted += retry.count || repaired.length;
+      } else if (retry.error.code === '23503') {
+        // Still violating — the offending FK isn't contact_id (e.g. pipeline/stage),
+        // or a contact vanished mid-run. Last resort: preserve prior behavior and
+        // null every contact_id so the batch lands.
         const batchNoFk = batch.map(o => ({ ...o, contact_id: null }));
-        const retry = await supabase
+        const retry2 = await supabase
           .from('ghl_opportunities_v2')
           .upsert(batchNoFk, { onConflict: 'id', count: 'exact' });
-        if (retry.error) {
-          errors.push({ batch: Math.floor(i / BATCH_SIZE), error: retry.error.message });
+        if (retry2.error) {
+          errors.push({ batch: batchNum, error: retry2.error.message });
         } else {
-          upserted += retry.count || batchNoFk.length;
+          upserted += retry2.count || batchNoFk.length;
         }
       } else {
-        console.error(`[DB] Opportunity upsert batch error:`, error.message);
-        errors.push({ batch: Math.floor(i / BATCH_SIZE), error: error.message });
+        errors.push({ batch: batchNum, error: retry.error.message });
       }
     } else {
-      upserted += count || batch.length;
+      console.error(`[DB] Opportunity upsert batch error:`, error.message);
+      errors.push({ batch: batchNum, error: error.message });
     }
   }
 
@@ -84,4 +139,8 @@ async function pruneStaleOpportunities(locationId, runStartIso) {
   return { pruned: count || 0, skipped: false };
 }
 
-module.exports = { upsertOpportunities, pruneStaleOpportunities };
+module.exports = {
+  upsertOpportunities,
+  pruneStaleOpportunities,
+  repairBatchContacts,
+};
