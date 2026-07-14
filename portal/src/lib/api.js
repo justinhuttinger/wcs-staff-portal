@@ -210,7 +210,15 @@ async function fetchWithAuthAndRetry(path, options) {
         throw new Error('Server error — please try again')
       }
       if (!retryRes.ok) {
-        throw new Error(retryData.error || 'Request failed')
+        const retryErr = new Error(retryData.error || 'Request failed')
+        // Preserve extra fields (e.g. { unknown: [...] } from validation errors)
+        // without clobbering properties the Error already has (e.g. `message`).
+        if (retryData && typeof retryData === 'object') {
+          for (const k of Object.keys(retryData)) {
+            if (!(k in retryErr)) retryErr[k] = retryData[k]
+          }
+        }
+        throw retryErr
       }
       return retryData
     }
@@ -222,10 +230,12 @@ async function fetchWithAuthAndRetry(path, options) {
   if (!res.ok) {
     const err = new Error(data.error || 'Request failed')
     // Preserve extra fields (e.g. { unknown: [...] } from validation errors)
-    // so callers can surface them without re-parsing the response.
+    // so callers can surface them without re-parsing the response. Never
+    // overwrite a property the Error already has (esp. `message`, which
+    // callers like PayrollReport.jsx regex-match against data.error).
     if (data && typeof data === 'object') {
       for (const k of Object.keys(data)) {
-        if (k !== 'error') err[k] = data[k]
+        if (!(k in err)) err[k] = data[k]
       }
     }
     throw err

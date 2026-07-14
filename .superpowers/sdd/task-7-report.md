@@ -77,3 +77,27 @@ Message: `feat(portal): admin Lapsed Check-ins page (exclusions + at-risk dashbo
 - No unit tests exist for portal UI per repo convention (confirmed by the plan's own Task 7 checklist, which only calls for `npm run build`) — behavior was verified by build success and manual code-pattern comparison, not a running dev server against the live admin API (backend endpoints from Task 6 are assumed correct/already built per the assignment).
 - The `api.js` error-object change (copying extra JSON fields onto thrown `Error`s) is a shared-code touch outside the strict "just this task" boundary, but was necessary to fulfill "Handle the 400 `{unknown}` response by surfacing which types were rejected" — it's additive and backward-compatible (only adds fields, never changes the thrown message or control flow for other callers).
 - Did not verify runtime rendering in a live browser session (no dev server / auth token available in this environment) — only static build correctness (JSX/import resolution, bundling) was confirmed.
+
+## Follow-up fix: Critical review finding — err.message clobbered
+
+**The bug:** the original extra-field copy loop in `fetchWithAuthAndRetry`'s `!res.ok` branch excluded only the literal key `'error'` (`if (k !== 'error') err[k] = data[k]`). Since `Error` objects have a `message` property, and the 412 `google_not_connected` response from `auth/src/routes/payroll.js` is `{ error: 'google_not_connected', message: <human text> }`, the loop assigned `err.message = data.message`, overwriting the `err.message` that had just been set from `data.error` two lines above (`new Error(data.error || 'Request failed')`). This broke `portal/src/components/reports/PayrollReport.jsx`'s `~line 437` detection: `/google_not_connected/i.test(e.message)` — after the clobber, `e.message` held the human-readable text instead of the machine code, so the regex no longer matched and the "Connect Google" flow silently fell through to the generic error path.
+
+Also flagged: the 401-refresh-retry branch (`if (!retryRes.ok) throw new Error(retryData.error || 'Request failed')`) never got the extra-field treatment at all, so a lapsed-check-in `{ error, unknown }` 400 that happened to arrive on the retry-after-refresh path would lose `unknown` entirely.
+
+**Fix (`portal/src/lib/api.js`):**
+- Primary `!res.ok` branch: changed the guard from `if (k !== 'error')` to `if (!(k in err))` — this keys off whether the `Error` instance already owns that property, not a hardcoded field name. `message` is always present on a fresh `Error`, so `data.message` is now skipped and the code-derived `err.message` (from `data.error`) survives untouched. `unknown` is not a pre-existing `Error` property, so it still gets attached as `err.unknown`.
+- 401-refresh-retry branch: previously threw a bare `new Error(retryData.error || 'Request failed')` with no field-copying at all. Added the identical `for (const k of Object.keys(retryData)) if (!(k in retryErr)) retryErr[k] = retryData[k]` loop before throwing, so `unknown` (and any other extra field) survives on the retry path too, consistent with the primary branch.
+
+**Why this preserves both callers:**
+- `PayrollReport.jsx` ~437: `e.message` is set from `data.error` (`'google_not_connected'`) and the `in` check now prevents `data.message` from overwriting it — regex `/google_not_connected/i.test(e.message)` still matches.
+- Lapsed-check-in caller (`LapsedCheckins.jsx`, `PUT /admin/lapsed-checkins/types`): a `400 { error: 'invalid_types', unknown: [...] }` response still produces a thrown `Error` whose `.message` is `'invalid_types'` (unchanged) and whose `.unknown` array is attached via the same `!(k in err)` rule, since `unknown` isn't a native `Error` property.
+
+**Build:**
+```
+cd "C:/Users/justi/wcs-staff-portal/.claude/worktrees/lapsed-checkin/portal" && npm run build
+...
+✓ built in 915ms
+```
+No errors; only the pre-existing >500kB chunk-size warning (unrelated, present before this change).
+
+**Commit:** `fix(portal): preserve err.message when attaching extra API error fields` on branch `feat/lapsed-checkin-tagging` — see repo log for hash (not pushed, no PR opened per instructions).
