@@ -10,6 +10,7 @@ const {
   tierDayRange,
   inTierRange,
   normalizeExcludedInput,
+  parseStoredExcluded,
   findUnknownTypes,
 } = require('./lapsedCheckinsHelpers')
 
@@ -54,7 +55,11 @@ async function loadExcludedTypes() {
     .maybeSingle()
   if (error) throw error
   if (!data) return { list: SEED_EXCLUDED_TYPES, updated_at: null }
-  const { list } = normalizeExcludedInput(Array.isArray(data.value) ? data.value : [])
+  // app_config.value is TEXT, so a saved list comes back as a JSON string, not
+  // an array — parse it before normalizing, or the dashboard silently ignores
+  // saved exclusions and falls back to the seed.
+  const norm = normalizeExcludedInput(parseStoredExcluded(data.value))
+  const list = norm.ok ? norm.list : []
   return { list: list.length ? list : SEED_EXCLUDED_TYPES, updated_at: data.updated_at || null }
 }
 
