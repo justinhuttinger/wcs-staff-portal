@@ -7,6 +7,7 @@ const {
   tierDayRange,
   inTierRange,
   normalizeExcludedInput,
+  parseStoredExcluded,
   findUnknownTypes,
 } = require('./lapsedCheckinsHelpers')
 
@@ -83,6 +84,31 @@ test('inTierRange: bounds check for each tier', () => {
   assert.strictEqual(inTierRange(30, tierDayRange('30')), true)
   assert.strictEqual(inTierRange(9999, tierDayRange('30')), true)
   assert.strictEqual(inTierRange(null, tierDayRange('10')), false)
+})
+
+test('parseStoredExcluded: JSON string (how TEXT app_config round-trips) -> array', () => {
+  assert.deepStrictEqual(
+    parseStoredExcluded('["CORP","A2 CORE - Active Adult Core"]'),
+    ['CORP', 'A2 CORE - Active Adult Core'],
+  )
+})
+
+test('parseStoredExcluded: real array passthrough', () => {
+  assert.deepStrictEqual(parseStoredExcluded(['CORP', 'STAFF']), ['CORP', 'STAFF'])
+})
+
+test('parseStoredExcluded: null / garbage / non-array JSON -> []', () => {
+  assert.deepStrictEqual(parseStoredExcluded(null), [])
+  assert.deepStrictEqual(parseStoredExcluded('not json'), [])
+  assert.deepStrictEqual(parseStoredExcluded('{"a":1}'), [])
+  assert.deepStrictEqual(parseStoredExcluded(42), [])
+})
+
+test('parseStoredExcluded + normalizeExcludedInput: end-to-end from a stored string', () => {
+  const parsed = parseStoredExcluded('[" CORP ","CORP","STAFF"]')
+  const norm = normalizeExcludedInput(parsed)
+  assert.strictEqual(norm.ok, true)
+  assert.deepStrictEqual(norm.list, ['CORP', 'STAFF'])
 })
 
 test('normalizeExcludedInput: happy path trims + dedupes', () => {

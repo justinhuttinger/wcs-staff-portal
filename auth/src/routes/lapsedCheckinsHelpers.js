@@ -96,6 +96,19 @@ function normalizeExcludedInput(input) {
   return { ok: true, list: out }
 }
 
+// Coerce a stored app_config value into an array. The `value` column is TEXT,
+// so a saved list round-trips as a JSON *string* (e.g. '["CORP","STAFF"]'),
+// not a real array — this mirrors ghl-sync's parseExcludedValue so the auth
+// dashboard and the tagging job read the saved exclusions identically. Returns
+// [] for null/garbage/non-array JSON.
+function parseStoredExcluded(value) {
+  let arr = value
+  if (typeof value === 'string') {
+    try { arr = JSON.parse(value) } catch { return [] }
+  }
+  return Array.isArray(arr) ? arr : []
+}
+
 // Filter a normalized `excluded` list (already shape-validated by
 // normalizeExcludedInput) against the set of known membership_type values
 // pulled from abc_members. Pure — takes the known set as an argument so it's
@@ -118,5 +131,6 @@ module.exports = {
   tierDayRange,
   inTierRange,
   normalizeExcludedInput,
+  parseStoredExcluded,
   findUnknownTypes,
 }
