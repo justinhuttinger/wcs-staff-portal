@@ -44,6 +44,9 @@ const TABS = [
   { key: 'audit', label: 'Audit' },
 ]
 
+// Sentinel for the "all locations" choice (location_id is NULL on the backend).
+const ALL_LOCATIONS_VALUE = '__all_locations__'
+
 const inputClass = 'w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red disabled:opacity-60'
 
 function newFieldId(existingIds) {
@@ -71,6 +74,8 @@ export default function FormBuilder({ formId, onBack, me }) {
   const [schema, setSchema] = useState([])
   const [successMessage, setSuccessMessage] = useState('')
   const [allowResubmit, setAllowResubmit] = useState(false)
+  // location_id as a form value: a club UUID, or the all-locations sentinel.
+  const [locationValue, setLocationValue] = useState(ALL_LOCATIONS_VALUE)
   const [baseline, setBaseline] = useState('')
 
   const introRef = useRef(null)
@@ -98,8 +103,8 @@ export default function FormBuilder({ formId, onBack, me }) {
     [successMessage, allowResubmit]
   )
   const dirty = useMemo(
-    () => baseline !== '' && JSON.stringify({ title, description, schema, settings }) !== baseline,
-    [baseline, title, description, schema, settings]
+    () => baseline !== '' && JSON.stringify({ title, description, schema, settings, location: locationValue }) !== baseline,
+    [baseline, title, description, schema, settings, locationValue]
   )
   const selectedField = schema.find(f => f.id === selectedId) || null
   const publicUrl = form?.slug ? `https://forms.westcoaststrength.com/f/${form.slug}` : ''
@@ -111,16 +116,19 @@ export default function FormBuilder({ formId, onBack, me }) {
     const set = f.settings || {}
     const sm = typeof set.success_message === 'string' ? set.success_message : ''
     const ar = !!set.allow_resubmit
+    const loc = f.location_id || ALL_LOCATIONS_VALUE
     setForm(f)
     setTitle(t)
     setDescription(d)
     setSchema(s)
     setSuccessMessage(sm)
     setAllowResubmit(ar)
+    setLocationValue(loc)
     setEditingTitle(false)
     setBaseline(JSON.stringify({
       title: t, description: d, schema: s,
       settings: { success_message: sm, allow_resubmit: ar },
+      location: loc,
     }))
   }
 
@@ -217,10 +225,17 @@ export default function FormBuilder({ formId, onBack, me }) {
     setSaving(true)
     setActionError('')
     try {
-      const res = await formsApi.update(formId, {
+      const body = {
         known_updated_at: form.updated_at,
         title, description, schema, settings,
-      })
+      }
+      // Only send a location intent when it actually changed, so saving other
+      // settings never re-asserts (and re-permission-checks) the location.
+      if (locationValue !== (form.location_id || ALL_LOCATIONS_VALUE)) {
+        if (locationValue === ALL_LOCATIONS_VALUE) body.all_locations = true
+        else body.location_id = locationValue
+      }
+      const res = await formsApi.update(formId, body)
       syncLoaded(res.form)
       setConflict(false)
     } catch (err) {
@@ -450,7 +465,20 @@ export default function FormBuilder({ formId, onBack, me }) {
         <div className="bg-surface rounded-xl border border-border p-5 space-y-5">
           <div>
             <h3 className="text-sm font-bold text-text-primary">Form settings</h3>
-            <p className="text-xs text-text-muted mt-0.5">Control what people see after they submit this form.</p>
+            <p className="text-xs text-text-muted mt-0.5">Control who this form is for and what people see after they submit.</p>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-text-muted mb-1">Location</label>
+            <select
+              value={locationValue}
+              onChange={e => setLocationValue(e.target.value)}
+              disabled={!canEdit}
+              className={inputClass}
+            >
+              {(isCorporate || locationValue === ALL_LOCATIONS_VALUE) && <option value={ALL_LOCATIONS_VALUE}>All Locations</option>}
+              {(me?.locations || []).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+            <p className="text-[11px] text-text-muted mt-1">Which club this form belongs to. Changing it re-titles and moves the form's Google Sheet. Save to apply.</p>
           </div>
           <div>
             <label className="block text-xs font-semibold text-text-muted mb-1">Completion heading</label>
