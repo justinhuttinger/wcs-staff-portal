@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { validateSchema, validateSubmission, makeSlug, INPUT_TYPES, FIELD_TYPES } = require('./formsSchema')
+const { validateSchema, validateSubmission, makeSlug, sanitizeUtm, INPUT_TYPES, FIELD_TYPES } = require('./formsSchema')
 
 const SCHEMA = [
   { id: 'f_head1', type: 'header', label: 'Event Signup' },
@@ -84,6 +84,27 @@ test('display blocks are ignored by validateSubmission', () => {
   const r = validateSubmission(SCHEMA, { f_name: 'A', f_email: 'a@b.co', f_shirt: 'S' })
   assert.strictEqual(r.ok, true)
   assert.strictEqual('f_head1' in r.cleaned, false)
+})
+
+test('sanitizeUtm: keeps only the three known keys, trims, drops blanks', () => {
+  const r = sanitizeUtm({
+    utm_source: '  google ', utm_medium: 'cpc', utm_campaign: '',
+    utm_term: 'shoes', gclid: 'abc', evil: '<script>',
+  })
+  assert.deepStrictEqual(r, { utm_source: 'google', utm_medium: 'cpc' })
+})
+
+test('sanitizeUtm: caps length at 200 and coerces non-strings', () => {
+  const r = sanitizeUtm({ utm_source: 'x'.repeat(500), utm_campaign: 42 })
+  assert.strictEqual(r.utm_source.length, 200)
+  assert.strictEqual(r.utm_campaign, '42')
+})
+
+test('sanitizeUtm: non-object / array / null input yields {}', () => {
+  assert.deepStrictEqual(sanitizeUtm(null), {})
+  assert.deepStrictEqual(sanitizeUtm('utm_source=google'), {})
+  assert.deepStrictEqual(sanitizeUtm(['utm_source']), {})
+  assert.deepStrictEqual(sanitizeUtm(undefined), {})
 })
 
 test('makeSlug: lowercase, hyphenated, 4-char suffix, distinct per call', () => {
