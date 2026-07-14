@@ -206,7 +206,7 @@ router.patch('/:id', async (req, res) => {
   try {
     const { form, access } = await loadFormAccess(req, req.params.id)
     if (!form || !access.edit) return res.status(form ? 403 : 404).json({ error: form ? 'No access' : 'Not found' })
-    const { known_updated_at, title, description, schema, visibility, location_can_edit, settings } = req.body || {}
+    const { known_updated_at, title, description, schema, visibility, location_can_edit, settings, location_id, all_locations } = req.body || {}
     if (!known_updated_at) return res.status(400).json({ error: 'known_updated_at is required' })
     if (new Date(form.updated_at).getTime() > new Date(known_updated_at).getTime()) {
       return res.status(409).json({
@@ -231,6 +231,20 @@ router.patch('/:id', async (req, res) => {
       patch.visibility = visibility
     }
     if (location_can_edit !== undefined) patch.location_can_edit = !!location_can_edit
+    // Location change. all_locations:true (corporate only) → NULL; otherwise a
+    // specific club the caller is allowed to use. Mirrors the create-route rules.
+    let locationChanged = false
+    if (all_locations === true && form.location_id !== null) {
+      if (!isCorporate(req.staff)) return res.status(403).json({ error: 'Only admins can set a form to all locations' })
+      patch.location_id = null; locationChanged = true
+    } else if (all_locations !== true && location_id !== undefined && location_id !== form.location_id) {
+      if (!location_id) return res.status(400).json({ error: 'location_id is required' })
+      if (!isCorporate(req.staff) && !(req.staff.location_ids || []).includes(location_id)) {
+        return res.status(403).json({ error: 'You can only assign forms to your own location' })
+      }
+      patch.location_id = location_id; locationChanged = true
+    }
+    if (locationChanged) detail.location_id = patch.location_id
     if (settings !== undefined) {
       const v = normalizeSettings(settings)
       if (!v.ok) return res.status(400).json({ error: v.error })
@@ -247,6 +261,17 @@ router.patch('/:id', async (req, res) => {
     // A title change renames the Drive file too, so the sheet stays findable.
     if (patch.title && patch.title !== form.title && data.sheet_id) {
       try { await formsSheets.renameSheet(data) } catch (e) { console.error('[forms] sheet rename failed:', e.message) }
+    }
+    // A location change re-titles the sheet ("Title (New Location)") and refiles
+    // it into the new location's Drive subfolder so it stays where staff expect.
+    if (locationChanged && data.sheet_id) {
+      try {
+        await formsSheets.renameSheet(data)
+        await formsSheets.organizeSheet(data)
+      } catch (e) { console.error('[forms] sheet relocation failed:', e.message) }
+    }
+    if (locationChanged) {
+      formsAudit.record(form.id, req.staff.id, 'location_changed', { location_id: data.location_id })
     }
     if (patch.visibility !== undefined || patch.location_can_edit !== undefined) {
       formsAudit.record(form.id, req.staff.id, 'visibility_changed', {
