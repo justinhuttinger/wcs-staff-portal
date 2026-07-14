@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { put: ghlPut, sleep: ghlSleep } = require('../ghl/client');
+const { get: ghlGet, put: ghlPut, sleep: ghlSleep } = require('../ghl/client');
 const LOCATIONS = require('../config/locations');
 const { daysSince, selectTier, diffTags, isEligible, LAPSED_TAGS } = require('./lapsedTagging');
 const { loadExcludedTypes } = require('./lapsedConfig');
@@ -35,6 +35,7 @@ async function runLapsedTaggingForLocation(location, options = {}) {
     dryRun = true,
     db = getDefaultDb(),
     now = new Date(),
+    get: getFn = ghlGet,
     put: putFn = ghlPut,
     sleepFn = ghlSleep,
   } = options;
@@ -44,19 +45,42 @@ async function runLapsedTaggingForLocation(location, options = {}) {
 
   const excludedTypes = await loadExcludedTypes(db);
 
-  const { data: members, error: memberErr } = await db
-    .from('abc_members')
-    .select(MEMBER_SELECT)
-    .eq('club_number', clubNumber)
-    .eq('is_active', true)
-    .eq('member_status', 'Active');
-  if (memberErr) throw new Error(`[LapsedTagging] ${locationName}: failed to load abc_members: ${memberErr.message}`);
+  // Paginate past Supabase's 1000-row default — mirrors reconcile.js's
+  // .range() loop for these same two tables (abc_members, ghl_contacts_v2)
+  // so large clubs (~3k active members) aren't silently truncated.
+  const PAGE_SIZE = 1000;
 
-  const { data: contacts, error: contactErr } = await db
-    .from('ghl_contacts_v2')
-    .select('id, email, phone, first_name, last_name, tags, custom_fields')
-    .eq('location_id', locationId);
-  if (contactErr) throw new Error(`[LapsedTagging] ${locationName}: failed to load ghl_contacts_v2: ${contactErr.message}`);
+  const members = [];
+  let mFrom = 0;
+  while (true) {
+    const { data: mPage, error: memberErr } = await db
+      .from('abc_members')
+      .select(MEMBER_SELECT)
+      .eq('club_number', clubNumber)
+      .eq('is_active', true)
+      .eq('member_status', 'Active')
+      .range(mFrom, mFrom + PAGE_SIZE - 1);
+    if (memberErr) throw new Error(`[LapsedTagging] ${locationName}: failed to load abc_members: ${memberErr.message}`);
+    if (!mPage || mPage.length === 0) break;
+    members.push(...mPage);
+    if (mPage.length < PAGE_SIZE) break;
+    mFrom += PAGE_SIZE;
+  }
+
+  const contacts = [];
+  let cFrom = 0;
+  while (true) {
+    const { data: cPage, error: contactErr } = await db
+      .from('ghl_contacts_v2')
+      .select('id, email, phone, first_name, last_name, tags, custom_fields')
+      .eq('location_id', locationId)
+      .range(cFrom, cFrom + PAGE_SIZE - 1);
+    if (contactErr) throw new Error(`[LapsedTagging] ${locationName}: failed to load ghl_contacts_v2: ${contactErr.message}`);
+    if (!cPage || cPage.length === 0) break;
+    contacts.push(...cPage);
+    if (cPage.length < PAGE_SIZE) break;
+    cFrom += PAGE_SIZE;
+  }
 
   const { data: fieldDefs, error: fieldErr } = await db
     .from('ghl_custom_field_defs')
@@ -101,17 +125,11 @@ async function runLapsedTaggingForLocation(location, options = {}) {
     }
     summary.matched++;
 
-    // Diff against the cached tag list (same pattern reconcile.js uses for
-    // its own tag/field updates) — no live GET needed for a tag-only write.
-    const diff = diffTags(match.contact.tags, tier);
-    if (!diff.changed) continue;
-
-    if (tier) {
-      summary.tagged++;
-      summary.byTier[tier] = (summary.byTier[tier] || 0) + 1;
-    } else {
-      summary.cleared++;
-    }
+    // Cheap first pass against the cached tag list — decides whether a live
+    // GET (and possible write) is even worth spending rate budget on. A
+    // no-op here means we skip the member entirely, no GET/PUT attempted.
+    const cachedDiff = diffTags(match.contact.tags, tier);
+    if (!cachedDiff.changed) continue;
 
     const contactName = `${match.contact.first_name || ''} ${match.contact.last_name || ''}`.trim();
     const baseLog = {
@@ -119,37 +137,78 @@ async function runLapsedTaggingForLocation(location, options = {}) {
       ghl_contact_id: match.contact.id, ghl_contact_name: contactName, ghl_contact_email: match.contact.email,
       abc_member_id: member.member_id,
     };
-    const contactLogEntries = [];
-    for (const tag of diff.added) {
-      const entry = {
-        ...baseLog, action: 'add_tag',
-        detail: { tag, match_method: match.matchMethod, ...(dryRun ? { note: 'dry_run' } : {}) },
-        applied: false, error: null,
-      };
-      contactLogEntries.push(entry);
-      logEntries.push(entry);
-    }
-    for (const tag of diff.removed) {
-      const entry = {
-        ...baseLog, action: 'remove_tag',
-        detail: { tag, match_method: match.matchMethod, ...(dryRun ? { note: 'dry_run' } : {}) },
-        applied: false, error: null,
-      };
-      contactLogEntries.push(entry);
-      logEntries.push(entry);
+
+    if (dryRun) {
+      // Dry run never GETs or PUTs — count the intended change and log it
+      // against the cached diff, same as before.
+      if (tier) {
+        summary.tagged++;
+        summary.byTier[tier] = (summary.byTier[tier] || 0) + 1;
+      } else {
+        summary.cleared++;
+      }
+      for (const tag of cachedDiff.added) {
+        logEntries.push({
+          ...baseLog, action: 'add_tag',
+          detail: { tag, match_method: match.matchMethod, note: 'dry_run' },
+          applied: false, error: null,
+        });
+      }
+      for (const tag of cachedDiff.removed) {
+        logEntries.push({
+          ...baseLog, action: 'remove_tag',
+          detail: { tag, match_method: match.matchMethod, note: 'dry_run' },
+          applied: false, error: null,
+        });
+      }
+      continue;
     }
 
-    if (!dryRun) {
-      try {
-        await putFn(`/contacts/${match.contact.id}`, { tags: diff.tags }, apiKey);
-        for (const entry of contactLogEntries) entry.applied = true;
-        await sleepFn(650);
-      } catch (err) {
-        const errDetail = err.response?.data?.message || err.response?.data || err.message;
-        const errMsg = typeof errDetail === 'string' ? errDetail : JSON.stringify(errDetail);
-        for (const entry of contactLogEntries) entry.error = errMsg;
-        console.error(`[LapsedTagging] ${locationName}: failed to tag ${contactName}: ${errMsg}`);
+    // Real run: GET the live contact so the freshest tags are the
+    // read-modify-write base — avoids clobbering tags added since the last
+    // sync. Only fetched here (cachedDiff already said a change looks
+    // likely), never for members with no plausible change.
+    const contactLogEntries = [];
+    try {
+      const live = await getFn(`/contacts/${match.contact.id}`, {}, apiKey);
+      const freshTags = live?.contact?.tags ?? match.contact.tags;
+      const diff = diffTags(freshTags, tier);
+      if (!diff.changed) continue; // fresh state already matches desired — skip the write
+
+      for (const tag of diff.added) {
+        const entry = {
+          ...baseLog, action: 'add_tag',
+          detail: { tag, match_method: match.matchMethod },
+          applied: false, error: null,
+        };
+        contactLogEntries.push(entry);
+        logEntries.push(entry);
       }
+      for (const tag of diff.removed) {
+        const entry = {
+          ...baseLog, action: 'remove_tag',
+          detail: { tag, match_method: match.matchMethod },
+          applied: false, error: null,
+        };
+        contactLogEntries.push(entry);
+        logEntries.push(entry);
+      }
+
+      await putFn(`/contacts/${match.contact.id}`, { tags: diff.tags }, apiKey);
+      for (const entry of contactLogEntries) entry.applied = true;
+      // Only count as tagged/cleared once the write actually succeeds.
+      if (tier) {
+        summary.tagged++;
+        summary.byTier[tier] = (summary.byTier[tier] || 0) + 1;
+      } else {
+        summary.cleared++;
+      }
+      await sleepFn(650);
+    } catch (err) {
+      const errDetail = err.response?.data?.message || err.response?.data || err.message;
+      const errMsg = typeof errDetail === 'string' ? errDetail : JSON.stringify(errDetail);
+      for (const entry of contactLogEntries) entry.error = errMsg;
+      console.error(`[LapsedTagging] ${locationName}: failed to tag ${contactName}: ${errMsg}`);
     }
   }
 

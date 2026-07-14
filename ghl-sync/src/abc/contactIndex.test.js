@@ -94,6 +94,44 @@ test('matchContact: no match returns null', () => {
   assert.strictEqual(m, null)
 })
 
+test('matchContact: falls back to name match when exactly one contact matches "first last" -> name_review', () => {
+  const contacts = [
+    ...makeContacts(),
+    {
+      id: 'ghl_5', email: null, phone: null, first_name: 'Unique', last_name: 'Namematch',
+      tags: [], custom_fields: {},
+    },
+  ]
+  const idx = buildContactIndex(contacts, FIELD_DEFS)
+  const m = matchContact(idx, {
+    member_id: 'M999', email: 'nope@example.com', primary_phone: '5035559999',
+    first_name: 'Unique', last_name: 'Namematch',
+  })
+  assert.ok(m, 'expected an unambiguous name match to resolve')
+  assert.strictEqual(m.contact.id, 'ghl_5')
+  assert.strictEqual(m.matchMethod, 'name_review')
+})
+
+test('matchContact: ambiguous name (matches more than one contact) does not match', () => {
+  const contacts = [
+    ...makeContacts(),
+    {
+      id: 'ghl_5', email: null, phone: null, first_name: 'Dupe', last_name: 'Name',
+      tags: [], custom_fields: {},
+    },
+    {
+      id: 'ghl_6', email: null, phone: null, first_name: 'Dupe', last_name: 'Name',
+      tags: [], custom_fields: {},
+    },
+  ]
+  const idx = buildContactIndex(contacts, FIELD_DEFS)
+  const m = matchContact(idx, {
+    member_id: 'M999', email: 'nope@example.com', primary_phone: '5035559999',
+    first_name: 'Dupe', last_name: 'Name',
+  })
+  assert.strictEqual(m, null, 'an ambiguous name (2+ contacts sharing it) must not be matched')
+})
+
 test('isClaimedByOther: true when contact custom field holds a different member_id', () => {
   const idx = buildContactIndex(makeContacts(), FIELD_DEFS)
   const claimed = idx.byMemberId.size ? { custom_fields: { fld_member_id: 'M200' } } : null

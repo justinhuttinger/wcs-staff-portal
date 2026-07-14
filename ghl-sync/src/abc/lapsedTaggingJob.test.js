@@ -82,11 +82,16 @@ function makeFakeDb({ members, contacts, fieldDefs, appConfigValue } = {}) {
       }
       const rows = tables[table] || []
       const builder = {
+        _from: null,
+        _to: null,
         select() { return builder },
         eq() { return builder },
+        gte() { return builder },
         limit() { return builder },
+        range(from, to) { builder._from = from; builder._to = to; return builder },
         then(resolve, reject) {
-          return Promise.resolve({ data: rows, error: null }).then(resolve, reject)
+          const data = builder._from == null ? rows : rows.slice(builder._from, builder._to + 1)
+          return Promise.resolve({ data, error: null }).then(resolve, reject)
         },
       }
       return builder
@@ -104,18 +109,36 @@ function makeFakePut() {
   return { put, calls }
 }
 
+// Fake `get` — by default returns whatever tags are on the matching cached
+// contact (so the live-GET refresh is a no-op vs. the cache unless a test
+// overrides `tagsById` to simulate the live contact having drifted).
+function makeFakeGet(contactsById, tagsById = {}) {
+  const calls = []
+  const get = async (path, params, apiKey) => {
+    calls.push({ path, params, apiKey })
+    const id = path.split('/').pop()
+    const tags = Object.prototype.hasOwnProperty.call(tagsById, id)
+      ? tagsById[id]
+      : (contactsById.get(id)?.tags || [])
+    return { contact: { id, tags } }
+  }
+  return { get, calls }
+}
+
 const noopSleep = async () => {}
 
 test('runLapsedTaggingForLocation: applied run tags lapsed members, clears recovered members, skips excluded types, counts no-match', async () => {
+  const contactsById = new Map(baseContacts().map(c => [c.id, c]))
   const { db, inserted } = makeFakeDb({
     members: baseMembers(),
     contacts: baseContacts(),
     fieldDefs: FIELD_DEFS,
   })
   const { put, calls } = makeFakePut()
+  const { get, calls: getCalls } = makeFakeGet(contactsById)
 
   const summary = await runLapsedTaggingForLocation(LOCATION, {
-    dryRun: false, db, now: NOW, put, sleepFn: noopSleep,
+    dryRun: false, db, now: NOW, get, put, sleepFn: noopSleep,
   })
 
   assert.strictEqual(summary.evaluated, 4)
@@ -124,6 +147,12 @@ test('runLapsedTaggingForLocation: applied run tags lapsed members, clears recov
   assert.strictEqual(summary.tagged, 1) // M1
   assert.strictEqual(summary.cleared, 1) // M2
   assert.deepStrictEqual(summary.byTier['lapsed-30d'], 1)
+
+  // A live GET happened for both changed contacts before the write, and the
+  // write reflects the (here, unchanged) freshly-fetched tags as its base.
+  assert.strictEqual(getCalls.length, 2)
+  assert.ok(getCalls.some(c => c.path === '/contacts/ghl_1'))
+  assert.ok(getCalls.some(c => c.path === '/contacts/ghl_2'))
 
   // Exactly two PUT calls: one per changed contact (M1 tag add, M2 tag remove)
   assert.strictEqual(calls.length, 2)
@@ -153,19 +182,62 @@ test('runLapsedTaggingForLocation: applied run tags lapsed members, clears recov
   assert.strictEqual(removeEntry.detail.tag, 'lapsed-10d')
 })
 
+test('runLapsedTaggingForLocation: live GET is used as the write base — fresh tags differing from cache are preserved, and a fresh no-op is skipped', async () => {
+  const contacts = baseContacts()
+  const contactsById = new Map(contacts.map(c => [c.id, c]))
+  const { db, inserted } = makeFakeDb({
+    members: baseMembers(),
+    contacts,
+    fieldDefs: FIELD_DEFS,
+  })
+  const { put, calls } = makeFakePut()
+  // Simulate live drift since the cache was populated:
+  //  - ghl_1 (M1, cache wants lapsed-30d added) already got tagged lapsed-30d
+  //    live (e.g. by a concurrent run) AND picked up an unrelated 'vip' tag —
+  //    the fresh diff for lapsed-30d is a no-op, so the write must be skipped
+  //    entirely, and the 'vip' tag must never be touched.
+  //  - ghl_2 (M2, cache wants lapsed-10d removed) still has it live too, but
+  //    also picked up 'vip' live — the write must use the fresh tag list
+  //    (including 'vip') as its base, not the stale cached one.
+  const { get, calls: getCalls } = makeFakeGet(contactsById, {
+    ghl_1: ['sale', 'vip', 'lapsed-30d'],
+    ghl_2: ['sale', 'vip', 'lapsed-10d'],
+  })
+
+  const summary = await runLapsedTaggingForLocation(LOCATION, {
+    dryRun: false, db, now: NOW, get, put, sleepFn: noopSleep,
+  })
+
+  assert.strictEqual(getCalls.length, 2, 'a live GET happens for every member whose cached diff looked like a change')
+
+  // ghl_1: fresh diff is a no-op (lapsed-30d already present live) -> no PUT
+  assert.ok(!calls.some(c => c.path === '/contacts/ghl_1'), 'no write when the fresh diff is a no-op')
+  assert.ok(!inserted.abc_sync_run_log.some(e => e.abc_member_id === 'M1'), 'no log row for a fresh no-op')
+  assert.strictEqual(summary.tagged, 0, 'not counted as tagged since the fresh state already matched')
+
+  // ghl_2: fresh diff still needs the tag removed, using the fresh tag list as the base
+  const m2Call = calls.find(c => c.path === '/contacts/ghl_2')
+  assert.ok(m2Call, 'expected a PUT for ghl_2 built off the fresh (live) tags')
+  assert.deepStrictEqual(new Set(m2Call.body.tags), new Set(['sale', 'vip']))
+  assert.strictEqual(summary.cleared, 1)
+})
+
 test('runLapsedTaggingForLocation: dryRun makes no PUT calls but still writes run-log rows', async () => {
+  const contactsById = new Map(baseContacts().map(c => [c.id, c]))
   const { db, inserted } = makeFakeDb({
     members: baseMembers(),
     contacts: baseContacts(),
     fieldDefs: FIELD_DEFS,
   })
   const { put, calls } = makeFakePut()
+  const { get, calls: getCalls } = makeFakeGet(contactsById)
 
   const summary = await runLapsedTaggingForLocation(LOCATION, {
-    dryRun: true, db, now: NOW, put, sleepFn: noopSleep,
+    dryRun: true, db, now: NOW, get, put, sleepFn: noopSleep,
   })
 
   assert.strictEqual(calls.length, 0, 'dry run must never call put()')
+  assert.strictEqual(getCalls.length, 0, 'dry run must never call get() either — no live GET needed for an intended-only change')
   assert.strictEqual(summary.tagged, 1)
   assert.strictEqual(summary.cleared, 1)
 
@@ -194,14 +266,52 @@ test('runLapsedTaggingForLocation: no-op members produce no log rows or PUT call
   ]
   const { db, inserted } = makeFakeDb({ members, contacts, fieldDefs: FIELD_DEFS })
   const { put, calls } = makeFakePut()
+  const { get, calls: getCalls } = makeFakeGet(new Map(contacts.map(c => [c.id, c])))
 
   const summary = await runLapsedTaggingForLocation(LOCATION, {
-    dryRun: false, db, now: NOW, put, sleepFn: noopSleep,
+    dryRun: false, db, now: NOW, get, put, sleepFn: noopSleep,
   })
 
   assert.strictEqual(summary.matched, 1)
   assert.strictEqual(summary.tagged, 0)
   assert.strictEqual(summary.cleared, 0)
   assert.strictEqual(calls.length, 0)
+  assert.strictEqual(getCalls.length, 0, 'no plausible change from cache -> no live GET spent on this member')
   assert.strictEqual(inserted.abc_sync_run_log.length, 0)
+})
+
+test('runLapsedTaggingForLocation: pagination — reads all rows across multiple pages for both abc_members and ghl_contacts_v2', async () => {
+  const TOTAL = 1200 // > Supabase's 1000-row default page, forces 2 pages each
+  const members = []
+  const contacts = []
+  for (let i = 0; i < TOTAL; i++) {
+    const id = `P${i}`
+    members.push({
+      member_id: id, club_number: '99999', email: `${id.toLowerCase()}@example.com`,
+      primary_phone: null, mobile_phone: null, first_name: 'Page', last_name: `Member${i}`,
+      is_active: true, member_status: 'Active', membership_type: 'SINGLE',
+      // Checked in yesterday relative to NOW -> tier null, no tag change -> no PUT/GET noise.
+      last_check_in_timestamp: '2026-07-13', sign_date: '2025-01-01', begin_date: null, since_date: null,
+    })
+    contacts.push({
+      id: `ghl_${id}`, email: `${id.toLowerCase()}@example.com`, phone: null,
+      first_name: 'Page', last_name: `Member${i}`, tags: [], custom_fields: { fld_member_id: id },
+    })
+  }
+
+  const { db } = makeFakeDb({ members, contacts, fieldDefs: FIELD_DEFS })
+  const { put } = makeFakePut()
+  const { get } = makeFakeGet(new Map(contacts.map(c => [c.id, c])))
+
+  const summary = await runLapsedTaggingForLocation(LOCATION, {
+    dryRun: false, db, now: NOW, get, put, sleepFn: noopSleep,
+  })
+
+  // All 1200 members must have been fetched (not truncated to 1000) and all
+  // 1200 must have matched a contact — which is only possible if the
+  // ghl_contacts_v2 page beyond row 1000 was fetched too, since contactIndex
+  // is built from the full `contacts` array.
+  assert.strictEqual(summary.evaluated, TOTAL)
+  assert.strictEqual(summary.matched, TOTAL)
+  assert.strictEqual(summary.noMatch, 0)
 })
