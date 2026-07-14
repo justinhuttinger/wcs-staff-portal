@@ -210,7 +210,15 @@ async function fetchWithAuthAndRetry(path, options) {
         throw new Error('Server error — please try again')
       }
       if (!retryRes.ok) {
-        throw new Error(retryData.error || 'Request failed')
+        const retryErr = new Error(retryData.error || 'Request failed')
+        // Preserve extra fields (e.g. { unknown: [...] } from validation errors)
+        // without clobbering properties the Error already has (e.g. `message`).
+        if (retryData && typeof retryData === 'object') {
+          for (const k of Object.keys(retryData)) {
+            if (!(k in retryErr)) retryErr[k] = retryData[k]
+          }
+        }
+        throw retryErr
       }
       return retryData
     }
@@ -220,7 +228,17 @@ async function fetchWithAuthAndRetry(path, options) {
   }
 
   if (!res.ok) {
-    throw new Error(data.error || 'Request failed')
+    const err = new Error(data.error || 'Request failed')
+    // Preserve extra fields (e.g. { unknown: [...] } from validation errors)
+    // so callers can surface them without re-parsing the response. Never
+    // overwrite a property the Error already has (esp. `message`, which
+    // callers like PayrollReport.jsx regex-match against data.error).
+    if (data && typeof data === 'object') {
+      for (const k of Object.keys(data)) {
+        if (!(k in err)) err[k] = data[k]
+      }
+    }
+    throw err
   }
 
   return data
@@ -1130,6 +1148,14 @@ export const forms = {
   submissions: (id, offset = 0) => api(`/forms/${id}/submissions?offset=${offset}`),
   retrySync: (id) => api(`/forms/${id}/retry-sync`, { method: 'POST' }),
   staffDirectory: () => api('/forms/staff-directory'),
+}
+
+// Lapsed Check-in Tagging — admin exclusions + at-risk dashboard
+export const lapsedCheckins = {
+  getTypes: () => api('/admin/lapsed-checkins/types'),
+  saveTypes: (excluded) => api('/admin/lapsed-checkins/types', { method: 'PUT', body: JSON.stringify({ excluded }) }),
+  getDashboard: () => api('/admin/lapsed-checkins/dashboard'),
+  getDrilldown: (club, tier) => api(`/admin/lapsed-checkins/dashboard/${encodeURIComponent(club)}/${encodeURIComponent(tier)}`),
 }
 
 // Trainer Availability

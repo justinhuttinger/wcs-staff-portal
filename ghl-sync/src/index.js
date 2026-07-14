@@ -16,6 +16,7 @@ const supabase = require('./db/supabase');
 const { runMediaIndex } = require('./media/mediaIndex');
 const { syncRecurringPtServices } = require('./abc/recurringPtServices');
 const { emailStatsSync, emailStatsSyncForSlug } = require('./sync/emailStatsSync');
+const { runLapsedTaggingAll } = require('./abc/lapsedTaggingJob');
 
 const app = express();
 app.use(express.json());
@@ -441,6 +442,24 @@ app.post('/api/sync/attribution/:locationSlug', requireSecret, (req, res) => {
     .then(result => console.log(`[API] Attribution enrichment ${slug} result:`, JSON.stringify(result)))
     .catch(err => console.error(`[API] Attribution enrichment ${slug} failed:`, err.message))
     .finally(() => { syncRunning = false; });
+});
+
+// POST /api/lapsed-tagging/run — on-demand lapsed check-in tagging pass across
+// all locations, for rollout verification without waiting on the nightly cron.
+// Body { dryRun?: boolean } — defaults to LAPSED_TAGGING_DRY_RUN (true unless
+// explicitly set to 'false'). Awaits and returns the run summary directly
+// (mirrors /api/sync/checkins/probe) rather than the fire-and-forget
+// "started" pattern used by the heavier full/delta syncs.
+app.post('/api/lapsed-tagging/run', requireSecret, async (req, res) => {
+  try {
+    const defaultDryRun = process.env.LAPSED_TAGGING_DRY_RUN !== 'false';
+    const dryRun = typeof req.body?.dryRun === 'boolean' ? req.body.dryRun : defaultDryRun;
+    const summary = await runLapsedTaggingAll({ dryRun });
+    res.json({ dryRun, summary });
+  } catch (err) {
+    console.error('[API] Lapsed tagging run failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/sync/abc

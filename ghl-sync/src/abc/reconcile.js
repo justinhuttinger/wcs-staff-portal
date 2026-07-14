@@ -2,6 +2,7 @@ const supabase = require('../db/supabase');
 const { get, post, put, sleep } = require('../ghl/client');
 const { ABC_GHL_FIELD_MAP, ABC_TAGS } = require('../config/abc-field-map');
 const { getSkipList } = require('../config/membership-skip-list');
+const { buildContactIndex, matchContact, isClaimedByOther } = require('./contactIndex');
 const referral = require('../config/referral');
 const { isEligibleCandidate, processReferralReward } = require('./referralRewards');
 const { fetchMemberInvoices, adjustInvoice } = require('./client');
@@ -152,31 +153,7 @@ async function reconcileLocation(location, runId) {
     console.warn(`[Reconcile] ${locationName}: only ${locContacts.length} cached contacts (< ${MIN_CACHED_CONTACTS_FOR_CREATES}) — creates DISABLED for this run`);
   }
 
-  // 3. Build lookup indexes for GHL contacts
-  const byMemberId = new Map();  // abc_member_id custom field → contact
-  const byEmail = new Map();     // lowercase email → contact
-  const byPhone = new Map();     // digits-only phone → contact
-  const byName = new Map();      // "first last" lowercase → contact[]
-
-  for (const c of locContacts) {
-    if (c.email) {
-      byEmail.set(c.email.toLowerCase().trim(), c);
-    }
-    if (c.phone) {
-      const digits = c.phone.replace(/[^\d]/g, '');
-      if (digits.length >= 10) {
-        byPhone.set(digits.slice(-10), c); // Last 10 digits
-      }
-    }
-    const name = `${(c.first_name || '').toLowerCase().trim()} ${(c.last_name || '').toLowerCase().trim()}`.trim();
-    if (name) {
-      if (!byName.has(name)) byName.set(name, []);
-      byName.get(name).push(c);
-    }
-  }
-
-  // Also index by abc_member_id from the custom field definitions
-  // We need the field ID that corresponds to contact.abc_member_id
+  // 3. Build lookup indexes for GHL contacts (shared with lapsedTaggingJob.js)
   const { data: fieldDefs } = await supabase
     .from('ghl_custom_field_defs')
     .select('id, field_key')
@@ -184,16 +161,10 @@ async function reconcileLocation(location, runId) {
     .eq('field_key', 'contact.abc_member_id')
     .limit(1);
 
-  const abcMemberIdFieldId = fieldDefs?.[0]?.id || null;
+  const contactIndex = buildContactIndex(locContacts, fieldDefs || []);
+  const { byMemberId, byEmail, byPhone, abcMemberIdFieldId } = contactIndex;
 
   if (abcMemberIdFieldId) {
-    for (const c of locContacts) {
-      const cf = c.custom_fields || {};
-      const memberId = cf[abcMemberIdFieldId];
-      if (memberId) {
-        byMemberId.set(memberId, c);
-      }
-    }
     console.log(`[Reconcile] ${locationName}: ${byMemberId.size} contacts indexed by abc_member_id`);
   } else {
     console.warn(`[Reconcile] ${locationName}: abc_member_id field def not found — skipping member ID matching`);
@@ -257,49 +228,23 @@ async function reconcileLocation(location, runId) {
     let ghlContact = null;
     let matchMethod = null;
 
-    // Match chain: member_id → email → phone → name
-    // For email/phone/name matches, skip if the GHL contact already has a different
-    // abc_member_id — that contact is claimed by another ABC member (e.g. family plans
-    // where multiple members share a phone number).
-    const isClaimedByOther = (candidate) => {
-      if (!abcMemberIdFieldId || !candidate) return false;
-      const existingId = (candidate.custom_fields || {})[abcMemberIdFieldId];
-      return existingId && existingId !== abc.member_id;
-    };
+    // Match chain: member_id → email → phone → name (shared with lapsedTaggingJob.js
+    // via contactIndex.js). For email/phone/name matches, skip if the GHL contact
+    // already has a different abc_member_id — that contact is claimed by another
+    // ABC member (e.g. family plans where multiple members share a phone number).
+    const claimedByOther = (candidate) => isClaimedByOther(contactIndex, candidate, abc.member_id);
 
-    if (abc.member_id && byMemberId.has(abc.member_id)) {
-      ghlContact = byMemberId.get(abc.member_id);
-      matchMethod = 'member_id';
-    } else if (abc.email && byEmail.has(abc.email.toLowerCase().trim())) {
-      const candidate = byEmail.get(abc.email.toLowerCase().trim());
-      if (!isClaimedByOther(candidate)) {
-        ghlContact = candidate;
-        matchMethod = 'email';
-      }
-    }
-
-    if (!ghlContact) {
-      // Try phone match
-      const abcPhone = (abc.primary_phone || abc.mobile_phone || '').replace(/[^\d]/g, '');
-      if (abcPhone.length >= 10 && byPhone.has(abcPhone.slice(-10))) {
-        const candidate = byPhone.get(abcPhone.slice(-10));
-        if (!isClaimedByOther(candidate)) {
-          ghlContact = candidate;
-          matchMethod = 'phone';
-        }
-      }
-    }
-
-    if (!ghlContact) {
-      // Try name match
-      const abcName = `${(abc.first_name || '').toLowerCase().trim()} ${(abc.last_name || '').toLowerCase().trim()}`.trim();
-      if (abcName && byName.has(abcName)) {
-        const nameMatches = byName.get(abcName);
-        if (nameMatches.length === 1 && !isClaimedByOther(nameMatches[0])) {
-          ghlContact = nameMatches[0];
-          matchMethod = 'name_review'; // Flag for review
-        }
-      }
+    const match = matchContact(contactIndex, {
+      member_id: abc.member_id,
+      email: abc.email,
+      primary_phone: abc.primary_phone,
+      mobile_phone: abc.mobile_phone,
+      first_name: abc.first_name,
+      last_name: abc.last_name,
+    });
+    if (match) {
+      ghlContact = match.contact;
+      matchMethod = match.matchMethod;
     }
 
     if (!ghlContact) {
@@ -321,7 +266,7 @@ async function reconcileLocation(location, runId) {
       const abcEmail = (abc.email || '').trim().toLowerCase();
       const phoneContact = abcPhone.length >= 10 ? byPhone.get(abcPhone.slice(-10)) : null;
       const emailContact = abcEmail ? byEmail.get(abcEmail) : null;
-      if ((phoneContact && isClaimedByOther(phoneContact)) || (emailContact && isClaimedByOther(emailContact))) {
+      if ((phoneContact && claimedByOther(phoneContact)) || (emailContact && claimedByOther(emailContact))) {
         unmatched++;
         logEntries.push({
           run_id: runId, club_number: clubNumber, club_name: locationName, dry_run: DRY_RUN,
