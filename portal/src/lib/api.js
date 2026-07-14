@@ -220,7 +220,15 @@ async function fetchWithAuthAndRetry(path, options) {
   }
 
   if (!res.ok) {
-    throw new Error(data.error || 'Request failed')
+    const err = new Error(data.error || 'Request failed')
+    // Preserve extra fields (e.g. { unknown: [...] } from validation errors)
+    // so callers can surface them without re-parsing the response.
+    if (data && typeof data === 'object') {
+      for (const k of Object.keys(data)) {
+        if (k !== 'error') err[k] = data[k]
+      }
+    }
+    throw err
   }
 
   return data
@@ -1130,6 +1138,14 @@ export const forms = {
   submissions: (id, offset = 0) => api(`/forms/${id}/submissions?offset=${offset}`),
   retrySync: (id) => api(`/forms/${id}/retry-sync`, { method: 'POST' }),
   staffDirectory: () => api('/forms/staff-directory'),
+}
+
+// Lapsed Check-in Tagging — admin exclusions + at-risk dashboard
+export const lapsedCheckins = {
+  getTypes: () => api('/admin/lapsed-checkins/types'),
+  saveTypes: (excluded) => api('/admin/lapsed-checkins/types', { method: 'PUT', body: JSON.stringify({ excluded }) }),
+  getDashboard: () => api('/admin/lapsed-checkins/dashboard'),
+  getDrilldown: (club, tier) => api(`/admin/lapsed-checkins/dashboard/${encodeURIComponent(club)}/${encodeURIComponent(tier)}`),
 }
 
 // Trainer Availability
