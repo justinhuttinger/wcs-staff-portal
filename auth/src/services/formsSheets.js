@@ -101,10 +101,21 @@ function colLetter(n) {
   return s
 }
 
+const ALL_LOCATIONS_LABEL = 'All Locations'
+
+// Pure: map a form's location to its display label. A NULL location_id means the
+// form spans every club, so it reads as "All Locations". A resolvable club uses
+// its name; an unresolved club falls back to null (bare title, root folder).
+function locationLabelFor(locationId, clubName) {
+  if (!locationId) return ALL_LOCATIONS_LABEL
+  return clubName || null
+}
+
 async function locationNameFor(form) {
+  if (!form.location_id) return ALL_LOCATIONS_LABEL
   try {
     const { data: loc } = await db().from('locations').select('name').eq('id', form.location_id).maybeSingle()
-    return loc?.name || null
+    return locationLabelFor(form.location_id, loc?.name)
   } catch (e) {
     console.error('[formsSheets] location lookup failed:', e.message)
     return null
@@ -325,4 +336,5 @@ function start() {
 module.exports = {
   computeColumns, buildHeaderRow, buildRowValues, pacificTimestamp,
   ensureSheet, renameSheet, organizeSheet, appendSubmission, retryFormSync, getFolderId, start,
+  locationLabelFor, ALL_LOCATIONS_LABEL,
 }

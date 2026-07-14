@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { computeColumns, buildHeaderRow, buildRowValues, pacificTimestamp } = require('./formsSheets')
+const { computeColumns, buildHeaderRow, buildRowValues, pacificTimestamp, locationLabelFor, ALL_LOCATIONS_LABEL } = require('./formsSheets')
 
 const SCHEMA = [
   { id: 'f_h', type: 'header', label: 'Welcome' },
@@ -56,6 +56,22 @@ test('buildRowValues: merged field + UTM values land in their columns, blanks wh
   const merged = { f_name: 'Justin', utm_source: 'google', utm_medium: 'cpc' }
   const row = buildRowValues(cols, merged, '07/08/2026 09:00:00')
   assert.deepStrictEqual(row, ['07/08/2026 09:00:00', 'Justin', 'google', 'cpc', ''])
+})
+
+test('locationLabelFor: null location_id spans all clubs → "All Locations"', () => {
+  assert.strictEqual(locationLabelFor(null, null), ALL_LOCATIONS_LABEL)
+  assert.strictEqual(locationLabelFor(null, 'ignored'), ALL_LOCATIONS_LABEL)
+  assert.strictEqual(locationLabelFor(undefined, null), ALL_LOCATIONS_LABEL)
+  assert.strictEqual(ALL_LOCATIONS_LABEL, 'All Locations')
+})
+
+test('locationLabelFor: a resolvable club uses its name', () => {
+  assert.strictEqual(locationLabelFor('loc-uuid', 'Salem'), 'Salem')
+})
+
+test('locationLabelFor: unresolved club falls back to null (bare title, root folder)', () => {
+  assert.strictEqual(locationLabelFor('loc-uuid', null), null)
+  assert.strictEqual(locationLabelFor('loc-uuid', undefined), null)
 })
 
 test('pacificTimestamp formats a fixed instant in America/Los_Angeles', () => {
