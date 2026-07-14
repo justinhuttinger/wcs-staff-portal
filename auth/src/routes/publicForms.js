@@ -30,7 +30,11 @@ router.get('/:slug', async (req, res) => {
   try {
     const form = await loadPublished(req.params.slug)
     if (!form) return res.status(404).json({ error: 'This form is not available' })
-    const { data: loc } = await supabaseAdmin.from('locations').select('name').eq('id', form.location_id).maybeSingle()
+    // A NULL location_id means the form spans all clubs.
+    const { data: loc } = form.location_id
+      ? await supabaseAdmin.from('locations').select('name').eq('id', form.location_id).maybeSingle()
+      : { data: null }
+    const locationName = form.location_id ? (loc?.name || '') : 'All Locations'
     // Expose only the recognized settings keys the renderer reads.
     const s = form.settings || {}
     const publicSettings = {}
@@ -39,7 +43,7 @@ router.get('/:slug', async (req, res) => {
     res.json({
       form: {
         slug: form.slug, title: form.title, description: form.description,
-        schema: form.schema, location_name: loc?.name || '',
+        schema: form.schema, location_name: locationName,
         settings: publicSettings,
       },
     })

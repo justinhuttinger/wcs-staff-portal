@@ -71,7 +71,7 @@ router.get('/', async (req, res) => {
     const visibleIds = visible.map(x => x.f.id)
     // Owner names, location names, submission counts in three cheap queries.
     const ownerIds = [...new Set(visible.map(x => x.f.owner_id))]
-    const locIds = [...new Set(visible.map(x => x.f.location_id))]
+    const locIds = [...new Set(visible.map(x => x.f.location_id).filter(Boolean))]
     const [{ data: owners }, { data: locs }] = await Promise.all([
       ownerIds.length ? supabaseAdmin.from('staff').select('id, display_name').in('id', ownerIds) : { data: [] },
       locIds.length ? supabaseAdmin.from('locations').select('id, name').in('id', locIds) : { data: [] },
@@ -91,7 +91,7 @@ router.get('/', async (req, res) => {
       forms: visible.map(({ f, access }) => ({
         ...f, access,
         owner_name: ownerName[f.owner_id] || '',
-        location_name: locName[f.location_id] || '',
+        location_name: f.location_id ? (locName[f.location_id] || '') : 'All Locations',
         submission_count: counts[f.id] || 0,
       })),
     })
@@ -152,11 +152,16 @@ router.get('/audit/all', requireRole('corporate'), async (req, res) => {
 // POST /forms - create.
 router.post('/', requireFormsBuilder, async (req, res) => {
   try {
-    const { title, description, location_id } = req.body || {}
+    const { title, description, location_id, all_locations } = req.body || {}
     if (!title || !String(title).trim()) return res.status(400).json({ error: 'Title is required' })
     let loc = location_id
     const myLocs = req.staff.location_ids || []
-    if (!isCorporate(req.staff)) {
+    // An all-locations form (location_id NULL) is a corporate/admin-only concept:
+    // one form spanning every club. Non-corporate callers stay pinned to their
+    // own club and the flag is ignored.
+    if (all_locations && isCorporate(req.staff)) {
+      loc = null
+    } else if (!isCorporate(req.staff)) {
       if (!loc) loc = req.staff.primary_location_id || myLocs[0]
       if (!loc || !myLocs.includes(loc)) return res.status(403).json({ error: 'You can only create forms for your own location' })
     } else if (!loc) {

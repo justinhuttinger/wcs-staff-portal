@@ -8,6 +8,10 @@ const STATUS_STYLES = {
   archived: 'bg-amber-50 border border-amber-200 text-amber-700',
 }
 
+// Sentinel for the "all locations" form option (location_id is NULL on the
+// backend). Non-empty so it never collides with the filter's "no filter" value.
+const ALL_LOCATIONS_VALUE = '__all_locations__'
+
 export default function FormsView({ onBack, me }) {
   const [items, setItems] = useState(null)
   const [driveFolderId, setDriveFolderId] = useState(null)
@@ -33,8 +37,9 @@ export default function FormsView({ onBack, me }) {
   }
 
   // Filter options come from the forms themselves, so the dropdown only ever
-  // lists locations that actually have forms.
-  const locations = [...new Map((items || []).map(f => [f.location_id, f.location_name])).entries()]
+  // lists locations that actually have forms. All-locations forms (null
+  // location_id) collapse to one entry under a stable sentinel value.
+  const locations = [...new Map((items || []).map(f => [f.location_id || ALL_LOCATIONS_VALUE, f.location_name])).entries()]
     .map(([id, name]) => ({ id, name }))
     .sort((a, b) => a.name.localeCompare(b.name))
   const query = search.trim().toLowerCase()
@@ -43,9 +48,11 @@ export default function FormsView({ onBack, me }) {
     statusFilter === 'all' ? true
       : statusFilter === 'archived' ? f.status === 'archived'
         : f.status !== 'archived'
+  const matchesLocation = f =>
+    !locFilter || (locFilter === ALL_LOCATIONS_VALUE ? !f.location_id : f.location_id === locFilter)
   const filtered = (items || []).filter(f =>
     (!query || (f.title || '').toLowerCase().includes(query)) &&
-    (!locFilter || f.location_id === locFilter) &&
+    matchesLocation(f) &&
     matchesStatus(f)
   )
   return (
@@ -168,7 +175,8 @@ function CreateFormModal({ me, onClose, onCreated }) {
     setSaving(true); setError('')
     try {
       const body = { title, description }
-      if (locationId) body.location_id = locationId
+      if (locationId === ALL_LOCATIONS_VALUE) body.all_locations = true
+      else if (locationId) body.location_id = locationId
       const res = await formsApi.create(body)
       onCreated(res.form)
     } catch (err) { setError(err.message); setSaving(false) }
@@ -199,6 +207,7 @@ function CreateFormModal({ me, onClose, onCreated }) {
               <select value={locationId} onChange={e => setLocationId(e.target.value)}
                 className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red">
                 <option value="">Choose a location</option>
+                <option value={ALL_LOCATIONS_VALUE}>All Locations</option>
                 {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </div>
