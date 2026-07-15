@@ -94,14 +94,19 @@ async function computeKpisForClub(slug, startDate, endDate) {
     ? { value: spd.business_median_minutes, sample_size: spd.contacted_count }
     : { value: null }
 
-  // Operational Compliance: jobs completed (on-time + late, skips already
-  // scored on_time) out of jobs that came due, from the Operandio API sync —
-  // the same number as the Compliance report's Period Summary.
-  out.ops = ops && ops.decided > 0
+  // Operational Compliance: tasks completed out of tasks on jobs that came due,
+  // from the Operandio API sync — the same number as the Compliance report's
+  // Period Summary.
+  //
+  // Basis changed 2026-07-15: this was job-level ((on_time + late) / decided)
+  // before that date. Snapshots frozen earlier keep the old basis, so the trend
+  // has a seam there — task-level reads higher because a job that was worked but
+  // never submitted scores 0 job-level and part credit task-level.
+  out.ops = ops && ops.task && ops.task.steps_total > 0
     ? {
-        value: pct(ops.totals.on_time + ops.totals.late, ops.decided),
-        numerator: ops.totals.on_time + ops.totals.late,
-        denominator: ops.decided,
+        value: pct(ops.task.steps_done, ops.task.steps_total),
+        numerator: ops.task.steps_done,
+        denominator: ops.task.steps_total,
       }
     : { value: null }
 

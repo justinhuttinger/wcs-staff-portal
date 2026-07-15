@@ -124,6 +124,7 @@ async function syncLocation(loc, slug, windowStart, windowEnd) {
   // Step detail is fetched per process (that's the API's report granularity).
   const processIds = [...new Set(jobs.map(j => j.process?.id).filter(Boolean))]
   const knownJobIds = new Set(jobs.map(j => j.id))
+  const stepCounts = new Map()
   let steps = 0
   for (const processId of processIds) {
     const detail = await fetchJobStepDetail(processId, loc.id, windowStart, windowEnd)
@@ -135,9 +136,24 @@ async function syncLocation(loc, slug, windowStart, windowEnd) {
       if (rows.length) {
         await upsertChunks('operandio_api_job_steps', rows, 'job_id,step_instance_id')
         steps += rows.length
+        stepCounts.set(dj.id, {
+          steps_total: rows.length,
+          steps_done: rows.filter(r => r.completed_at).length,
+        })
       }
     }
   }
+
+  // Mirror the step counts onto the parent job rows — compliance is scored
+  // task-level off these (migration 090). Patched after the fact rather than
+  // folded into jobRow() so a step-detail failure still leaves the job rows
+  // updated, as before. Safe as a partial upsert: every id here is one we just
+  // wrote above, so ON CONFLICT always takes the UPDATE branch.
+  if (stepCounts.size) {
+    const patch = [...stepCounts].map(([id, counts]) => ({ id, ...counts }))
+    await upsertChunks('operandio_api_jobs', patch, 'id')
+  }
+
   return { jobs: jobs.length, steps }
 }
 

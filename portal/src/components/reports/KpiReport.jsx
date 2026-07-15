@@ -374,16 +374,19 @@ export const KPI_DEFS = [
         'DND contacts and leads that never entered the pipeline as a New Lead are excluded.',
       ],
     } },
-  // Jobs completed (on-time + late; skipped jobs already score on-time) out of
-  // jobs that came due, from the Operandio API sync — the same number as the
-  // Compliance report's Period Summary.
+  // Tasks completed out of tasks on jobs that came due, from the Operandio API
+  // sync — the same number as the Compliance report's Period Summary. Was
+  // job-level before 2026-07-15; see kpiCompute for the snapshot seam.
   { key: 'ops', label: 'Operational Compliance', goalKey: 'kpi_goal_ops', source: 'operations',
-    derive: d => (d && d.decided > 0 ? pct(d.totals.on_time + d.totals.late, d.decided) : null),
+    derive: d => (d && d.task && d.task.steps_total > 0 ? pct(d.task.steps_done, d.task.steps_total) : null),
     info: {
       title: 'Operational Compliance',
       sections: [{
         heading: 'What it measures',
-        body: 'Of the Operandio jobs that came due in the selected range, the share that got completed (on time or late; jobs skipped in Operandio, e.g. a closed day, count as completed). Pulled live from the Operandio API — the same number as the Compliance report\'s Period Summary.',
+        body: 'Of the Operandio tasks on jobs that came due in the selected range, the share that got ticked off (tasks skipped in Operandio, e.g. on a closed day, count as done). Pulled live from the Operandio API — the same number as the Compliance report\'s Period Summary.',
+      }, {
+        heading: 'Changed 15 Jul 2026',
+        body: 'This was scored per job until 15 Jul 2026: a job that came due either counted or it didn\'t, and a job worked but never submitted counted as a miss. It now scores per task, giving part credit for the tasks that did get done. The new basis reads higher, and days before 15 Jul 2026 are still stored on the old basis — so treat that date as a break in the trend rather than a jump in performance.',
       }],
       notes: ['Higher is better. The goal is the minimum share of due jobs completed.'],
     } },
