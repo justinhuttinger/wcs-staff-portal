@@ -145,13 +145,19 @@ async function syncLocation(loc, slug, windowStart, windowEnd) {
   }
 
   // Mirror the step counts onto the parent job rows — compliance is scored
-  // task-level off these (migration 090). Patched after the fact rather than
-  // folded into jobRow() so a step-detail failure still leaves the job rows
-  // updated, as before. Safe as a partial upsert: every id here is one we just
-  // wrote above, so ON CONFLICT always takes the UPDATE branch.
+  // task-level off these (migration 090). Second pass rather than folded into
+  // the upsert above so a step-detail failure still leaves the job rows
+  // updated, as before.
+  //
+  // Sends whole rows, not just the two count columns: Postgres enforces NOT
+  // NULL while building the tuple to insert, before ON CONFLICT arbitration, so
+  // an id-plus-counts payload fails on location_slug even though every row here
+  // already exists and only ever takes the UPDATE branch.
   if (stepCounts.size) {
-    const patch = [...stepCounts].map(([id, counts]) => ({ id, ...counts }))
-    await upsertChunks('operandio_api_jobs', patch, 'id')
+    const patched = jobs
+      .filter(j => stepCounts.has(j.id))
+      .map(j => ({ ...jobRow(j, slug, loc.id, now), ...stepCounts.get(j.id) }))
+    await upsertChunks('operandio_api_jobs', patched, 'id')
   }
 
   return { jobs: jobs.length, steps }
