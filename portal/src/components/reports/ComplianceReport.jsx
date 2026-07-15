@@ -90,17 +90,35 @@ function pctColor(p) { return p >= 85 ? '#18CE99' : p >= 60 ? '#FCD34D' : '#F26C
 
 const zeroCounts = () => ({ on_time: 0, late: 0, missed: 0, in_progress: 0, pending: 0 })
 
+const DECIDED = new Set(['on_time', 'late', 'missed'])
+
 // Roll up a set of job rows: counts + completion % of decided jobs.
 // "Decided" = on_time + late + missed (past-due outcome known). Pending /
 // in-progress jobs aren't due yet so they don't drag the percentage.
+//
+// Headline completion_pct is task-level as of 2026-07-15 (tasks ticked out of
+// tasks on decided jobs). job_completion_pct keeps the old job-level number so
+// the two stay visible side by side: they diverge exactly when a club works a
+// job and never submits it.
 function aggregate(rows) {
   const counts = zeroCounts()
-  for (const r of rows) counts[r.compliance_status] = (counts[r.compliance_status] || 0) + 1
+  let stepsTotal = 0
+  let stepsDone = 0
+  for (const r of rows) {
+    counts[r.compliance_status] = (counts[r.compliance_status] || 0) + 1
+    if (DECIDED.has(r.compliance_status)) {
+      stepsTotal += r.steps_total || 0
+      stepsDone += r.steps_done || 0
+    }
+  }
   const decided = counts.on_time + counts.late + counts.missed
   return {
     counts,
     decided,
-    completion_pct: decided ? ((counts.on_time + counts.late) / decided) * 100 : null,
+    steps_total: stepsTotal,
+    steps_done: stepsDone,
+    completion_pct: stepsTotal ? (stepsDone / stepsTotal) * 100 : null,
+    job_completion_pct: decided ? ((counts.on_time + counts.late) / decided) * 100 : null,
     on_time_pct: decided ? (counts.on_time / decided) * 100 : null,
   }
 }
@@ -178,7 +196,7 @@ function Sparkline({ rowsByDay, dateRange }) {
         return (
           <div
             key={day}
-            title={pct != null ? `${fmtDate(day)} — ${pct.toFixed(0)}% completed (${agg.decided} due)` : `${fmtDate(day)} — no jobs due`}
+            title={pct != null ? `${fmtDate(day)} — ${pct.toFixed(0)}% of tasks completed (${agg.steps_total} on ${agg.decided} due job${agg.decided === 1 ? '' : 's'})` : `${fmtDate(day)} — no jobs due`}
             className="flex-1 rounded-t-sm"
             style={{ height: `${h}%`, backgroundColor: bg, minWidth: '4px' }}
           />
@@ -367,7 +385,8 @@ function ByJobView({ jobs, showLoc }) {
       location_slug: list[0].location_slug,
       ...agg.counts,
       total: agg.decided,
-      done: agg.counts.on_time + agg.counts.late,
+      steps_total: agg.steps_total,
+      steps_done: agg.steps_done,
       completion_pct: agg.completion_pct,
     }
   }).filter(r => r.total > 0).sort((a, b) => (a.completion_pct ?? 101) - (b.completion_pct ?? 101))
@@ -387,10 +406,12 @@ function ByJobView({ jobs, showLoc }) {
           </div>
           <div className="w-44 flex items-center gap-2">
             <div className="flex-1 h-2 rounded-full bg-bg overflow-hidden">
-              <div className="h-full rounded-full" style={{ width: `${j.completion_pct}%`, backgroundColor: pctColor(j.completion_pct) }} />
+              <div className="h-full rounded-full" style={{ width: `${j.completion_pct ?? 0}%`, backgroundColor: pctColor(j.completion_pct ?? 0) }} />
             </div>
-            <span className="text-xs font-bold text-text-primary whitespace-nowrap" title="done out of due (on-time + late)">
-              {j.done}/{j.total} · {Math.round(j.completion_pct)}%
+            <span className="text-xs font-bold text-text-primary whitespace-nowrap" title="tasks done out of tasks on jobs that came due">
+              {j.completion_pct != null
+                ? `${j.steps_done}/${j.steps_total} · ${Math.round(j.completion_pct)}%`
+                : `${j.total} job${j.total === 1 ? '' : 's'} · no task detail`}
             </span>
           </div>
         </li>
@@ -611,13 +632,23 @@ export default function ComplianceReport({ locationSlug }) {
                     <div className="flex items-center justify-between gap-4 mb-2">
                       <div>
                         <p className="text-sm font-semibold text-text-primary">{displayName}</p>
-                        <p className="text-[11px] text-text-muted">{agg.decided} job{agg.decided === 1 ? '' : 's'} due in range</p>
+                        <p className="text-[11px] text-text-muted">
+                          {agg.steps_done} of {agg.steps_total} task{agg.steps_total === 1 ? '' : 's'} across {agg.decided} job{agg.decided === 1 ? '' : 's'} due
+                        </p>
+                        {agg.job_completion_pct != null && (
+                          <p
+                            className="text-[11px] text-text-muted cursor-help"
+                            title="Job-level = jobs submitted on-time or late (skips count as on-time) out of jobs that came due. A job worked but never submitted scores 0 here but earns part credit on the task number above, so a wide gap means work is getting done and not closed out."
+                          >
+                            {agg.job_completion_pct.toFixed(0)}% by job
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <DeltaChip current={agg.completion_pct} previous={prevAgg.completion_pct} />
                         <span
                           className="text-2xl font-bold text-text-primary cursor-help"
-                          title="Completed % = jobs done or skipped (on-time + late + skipped) out of jobs that came due. Pending / in-progress jobs aren't counted yet."
+                          title="Completed % = tasks ticked or skipped out of tasks on jobs that came due. Pending / in-progress jobs aren't counted yet."
                         >
                           {agg.completion_pct != null ? `${agg.completion_pct.toFixed(0)}%` : '—'}
                         </span>

@@ -17,6 +17,10 @@ router.use(authenticate)
 
 const STATUSES = ['pending', 'in_progress', 'on_time', 'late', 'missed']
 
+// A job's outcome is decided once it's done or past due. Pending / in-progress
+// jobs aren't due yet, so they stay out of both the job- and task-level rates.
+const DECIDED = new Set(['on_time', 'late', 'missed'])
+
 function parseDates(req) {
   const start = String(req.query.start_date || '')
   const end = String(req.query.end_date || '')
@@ -60,8 +64,11 @@ router.get('/summary', requireReportAccess('manager', ['compliance', 'kpis']), a
     const rows = await fetchJobRows(scope, start, end)
 
     const zero = () => Object.fromEntries(STATUSES.map(s => [s, 0]))
+    const zeroSteps = () => ({ steps_total: 0, steps_done: 0 })
     const totals = zero()
+    const taskTotals = zeroSteps()
     const byLocation = {}
+    const taskByLocation = {}
     const byDay = {}
     for (const r of rows) {
       totals[r.compliance_status] = (totals[r.compliance_status] || 0) + 1
@@ -69,6 +76,13 @@ router.get('/summary', requireReportAccess('manager', ['compliance', 'kpis']), a
       byLocation[r.location_slug][r.compliance_status]++
       byDay[r.job_date] = byDay[r.job_date] || zero()
       byDay[r.job_date][r.compliance_status]++
+      if (DECIDED.has(r.compliance_status)) {
+        taskByLocation[r.location_slug] = taskByLocation[r.location_slug] || zeroSteps()
+        for (const acc of [taskTotals, taskByLocation[r.location_slug]]) {
+          acc.steps_total += r.steps_total || 0
+          acc.steps_done += r.steps_done || 0
+        }
+      }
     }
 
     // On-time rate over jobs whose outcome is decided (done or past due).
@@ -81,6 +95,16 @@ router.get('/summary', requireReportAccess('manager', ['compliance', 'kpis']), a
       totals,
       decided,
       on_time_rate: decided ? +(totals.on_time / decided * 100).toFixed(1) : null,
+      // Task-level: steps done out of steps on decided jobs. Headline Completed
+      // % as of 2026-07-15; the job-level counts above stay for context and for
+      // reading snapshots frozen before the switch.
+      task: {
+        ...taskTotals,
+        rate: taskTotals.steps_total
+          ? +(taskTotals.steps_done / taskTotals.steps_total * 100).toFixed(1)
+          : null,
+      },
+      task_by_location: taskByLocation,
       by_location: byLocation,
       by_day: byDay,
       sync_state: syncState || [],

@@ -155,7 +155,8 @@ export default function SpotlightReport() {
   const vipPct = pctOf(vips || 0, sold || 0)
   const speedMedian = speed?.contacted_count ? speed.business_median_minutes : null
   const opsDecided = compliance?.decided ?? 0
-  const opsPct = opsDecided > 0 ? pctOf((compliance.totals.on_time || 0) + (compliance.totals.late || 0), opsDecided) : null
+  const opsSteps = compliance?.task?.steps_total ?? 0
+  const opsPct = opsSteps > 0 ? pctOf(compliance.task.steps_done || 0, opsSteps) : null
   const cancelled = cancels?.c2s_utilization?.cancelled_members ?? 0
   const viaC2s = cancels?.c2s_utilization?.via_c2s ?? 0
   const c2sPct = cancelled > 0 ? Math.min(100, pctOf(viaC2s, cancelled)) : null
@@ -191,8 +192,8 @@ export default function SpotlightReport() {
     },
     {
       label: 'Operational Compliance', verdict: judge(opsPct, gOps),
-      detail: opsDecided > 0
-        ? `${(compliance.totals.on_time || 0) + (compliance.totals.late || 0)} of ${opsDecided} due Operandio jobs completed`
+      detail: opsSteps > 0
+        ? `${compliance.task.steps_done} of ${opsSteps} tasks completed across ${opsDecided} due Operandio job${opsDecided === 1 ? '' : 's'}`
         : 'No Operandio jobs due this day',
       value: opsPct == null ? 'n/a' : `${opsPct}%`, goal: gOps == null ? null : `${gOps}%`,
       unavailable: compliance == null,
