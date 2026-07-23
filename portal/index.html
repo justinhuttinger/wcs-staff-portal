@@ -8,6 +8,15 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <!-- Apply the saved portal theme before first paint so WP-mode users never
+         see a flash of the Classic look. Mirrors src/lib/theme.js. -->
+    <script>
+      try {
+        if (localStorage.getItem('wcs-portal-theme') === 'wp') {
+          document.documentElement.setAttribute('data-theme', 'wp')
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body class="bg-bg min-h-screen">
     <div id="root"></div>
