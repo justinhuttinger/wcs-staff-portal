@@ -114,3 +114,35 @@ body {
 [data-theme='wp'] .rounded-2xl { border-radius: 0.3rem; }
 [data-theme='wp'] .rounded-xl  { border-radius: 0.25rem; }
 [data-theme='wp'] .rounded-lg  { border-radius: 0.1875rem; }
+
+/* WP look: home tiles become compact horizontal chips (icon left, label right)
+   in the display font, instead of the tall centered Classic boxes. Driven by
+   marker classes (.portal-tile*) added to ToolButton / SvgTileButton so Classic
+   keeps its own utility-class styling untouched. */
+[data-theme='wp'] .portal-tile {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.75rem;
+  min-height: 0;
+  padding: 0.7rem 0.9rem;
+  text-align: left;
+}
+[data-theme='wp'] .portal-tile__icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+}
+[data-theme='wp'] .portal-tile__icon svg { width: 1.15rem; height: 1.15rem; }
+[data-theme='wp'] .portal-tile__text { text-align: left; min-width: 0; }
+[data-theme='wp'] .portal-tile__label {
+  font-family: 'WCSDisplay', 'Arial Narrow', 'Inter', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.95rem;
+  line-height: 1.05;
+}
+/* Give the horizontal tiles room to breathe: two per row instead of four. */
+[data-theme='wp'] .portal-tile-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
