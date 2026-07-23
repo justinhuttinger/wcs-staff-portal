@@ -58,7 +58,7 @@ function SvgTileButton({ onClick, iconPath, label, desc, badge, star }) {
   return (
     <button
       onClick={onClick}
-      className="group relative flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+      className="portal-tile group relative flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
     >
       {star && (
         <svg viewBox="0 0 24 24" fill="currentColor" className="absolute top-2.5 left-2.5 w-3.5 h-3.5 text-amber-400">
@@ -70,13 +70,13 @@ function SvgTileButton({ onClick, iconPath, label, desc, badge, star }) {
           {badge}
         </span>
       )}
-      <div className="flex items-center justify-center w-14 h-14 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
+      <div className="portal-tile__icon flex items-center justify-center w-14 h-14 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 text-wcs-red">
           <path strokeLinecap="round" strokeLinejoin="round" d={iconPath} />
         </svg>
       </div>
-      <div className="text-center">
-        <span className="block text-base font-semibold text-text-primary">{label}</span>
+      <div className="portal-tile__text text-center">
+        <span className="portal-tile__label block text-base font-semibold text-text-primary">{label}</span>
         <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">{desc}</span>
       </div>
     </button>
@@ -325,7 +325,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
             No tools have been assigned to your account yet. Contact an admin.
           </p>
         ) : (
-          <div className="grid grid-cols-3 gap-5">{cells}</div>
+          <div className="portal-tile-grid grid grid-cols-3 gap-5">{cells}</div>
         )}
       </div>
     )
@@ -564,7 +564,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
       {/* Apps — left side */}
       <div className="w-1/2">
         <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">Apps</p>
-        <div className="grid grid-cols-4 gap-4">
+        <div className="portal-tile-grid grid grid-cols-4 gap-4">
           {appTools.map((tool) => (
             <ToolButton key={tool.id} label={tool.label} description={tool.description} icon={tool.icon} url={getUrl(tool)} star={tool.id === 'grow' || tool.id === 'abc'} />
           ))}
@@ -592,7 +592,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
       {/* Tools — right side, ordered */}
       <div className="w-1/2">
         <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">Tools</p>
-        <div className="grid grid-cols-4 gap-4">
+        <div className="portal-tile-grid grid grid-cols-4 gap-4">
           {/* 1. Cancel Tool (custom tile — direct link) */}
           {toolCustomTiles.filter(t => ['cancel', 'cancel tool'].includes((t.label || '').toLowerCase())).map(tile => (
             <ToolButton key={'custom-' + tile.id} label={tile.label} description={tile.description || ''} url={tile.url} star />
