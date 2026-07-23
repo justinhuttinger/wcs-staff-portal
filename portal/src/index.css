@@ -68,3 +68,49 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* ---------------------------------------------------------------------------
+   WP-style theme (opt-in, admin-only via Admin Panel → Appearance)
+   Applied by setting data-theme="wp" on <html>. Every semantic token below is
+   redefined, so the ~7,500 bg-surface/text-primary/etc. utilities re-resolve
+   to the westcoaststrength.com palette without touching a single component.
+   Classic = the :root defaults above; nothing changes until an admin opts in.
+   --------------------------------------------------------------------------- */
+@font-face {
+  font-family: 'WCSDisplay';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/wcs-display.woff2') format('woff2');
+}
+
+[data-theme='wp'] {
+  --color-navy: #16181d;
+  --color-wcs-red: #ff0000;
+  --color-wcs-red-hover: #cc0000;
+  --color-surface: #ffffff;
+  --color-bg: #f4f4f2;
+  --color-text-primary: #16181d;
+  --color-text-secondary: rgb(22 24 29 / 0.82);
+  --color-text-muted: rgb(22 24 29 / 0.66);
+  --color-tile-sub: rgb(22 24 29 / 0.5);
+  --color-border: rgb(0 0 0 / 0.12);
+}
+
+/* WP look: condensed uppercase display headers on section/panel titles. */
+[data-theme='wp'] h1,
+[data-theme='wp'] h2,
+[data-theme='wp'] h3 {
+  font-family: 'WCSDisplay', 'Arial Narrow', 'Inter', sans-serif;
+  letter-spacing: 0.01em;
+}
+[data-theme='wp'] h1,
+[data-theme='wp'] h2 {
+  text-transform: uppercase;
+}
+
+/* WP look: sharpen the large card radii toward the site's minimal-radius edges.
+   Pills/toggles (rounded-full) and small controls stay as-is. */
+[data-theme='wp'] .rounded-2xl { border-radius: 0.3rem; }
+[data-theme='wp'] .rounded-xl  { border-radius: 0.25rem; }
+[data-theme='wp'] .rounded-lg  { border-radius: 0.1875rem; }
