@@ -1236,6 +1236,16 @@ export async function getGoogleBusinessStatus() {
   return api('/google-business/status')
 }
 
+// Meeting-notes automation: connection status (owner Google account + scopes)
+// and the OAuth consent URL for the dedicated Docs+Calendar connect flow.
+export async function getMeetingNotesStatus() {
+  return api('/meeting-notes/status')
+}
+
+export async function getMeetingNotesAuthUrl() {
+  return api('/meeting-notes/authorize-url', { method: 'POST' })
+}
+
 export async function getGoogleBusinessLocations() {
   return api('/google-business/locations')
 }
