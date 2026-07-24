@@ -8,11 +8,11 @@
 const cron = require('node-cron')
 const cu = require('./clickup')
 const { parseDoc } = require('./parse')
-const { getMeeting, enabledMeetings, CALENDAR_ID, DRIVE_FOLDER_ID, CRON, TZ, ENABLED_ENV, SCAN_PAGES } = require('./config')
+const { getMeeting, enabledMeetings, CALENDAR_ID, DRIVE_FOLDER_ID, CRON, TZ, ENABLED_ENV, SCAN_PAGES, MAX_AGE_DAYS } = require('./config')
 const { buildNotesMarkdown, longDate } = require('./format')
 const { markdownToHtml, htmlDocument } = require('./markdown')
 const { generatePrepNotes } = require('./prep')
-const { addDays } = require('./dates')
+const { addDays, todayPacific } = require('./dates')
 const google = require('./google')
 const jobs = require('./jobs')
 const { sendAlert } = require('../blogAutomation/alerts')
@@ -85,16 +85,23 @@ async function processDoc(parsed, docId, accessToken) {
 }
 
 // One poll: find unprocessed dated Docs for enabled meetings and process them.
-async function runOnce() {
+// Options (all optional): `meeting` restricts to one meeting key; `limit` caps
+// how many docs are processed (newest first) — pass 1 for a single-meeting test.
+async function runOnce({ meeting = null, limit = null } = {}) {
   const enabledKeys = new Set(enabledMeetings().map((m) => m.key))
   if (enabledKeys.size === 0) return { processed: 0 }
 
+  const cutoff = addDays(todayPacific(), -MAX_AGE_DAYS)
   const metaDocs = await cu.listMeetingDocs({ maxPages: SCAN_PAGES })
-  const candidates = metaDocs.filter((d) => enabledKeys.has(d.meeting))
+  let candidates = metaDocs
+    .filter((d) => enabledKeys.has(d.meeting))
+    .filter((d) => d.date >= cutoff) // never process stale meetings
+  if (meeting) candidates = candidates.filter((d) => d.meeting === meeting)
   if (candidates.length === 0) return { processed: 0 }
 
   const done = await jobs.doneDocIds()
-  const todo = candidates.filter((d) => !done.has(d.id))
+  let todo = candidates.filter((d) => !done.has(d.id)) // already newest-first
+  if (limit != null) todo = todo.slice(0, Math.max(0, limit))
   if (todo.length === 0) return { processed: 0 }
 
   const accessToken = await google.getOwnerAccessToken()
