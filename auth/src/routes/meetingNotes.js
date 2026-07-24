@@ -129,10 +129,17 @@ router.get('/callback', async (req, res) => {
   } catch (e) { res.status(500).send(closeHtml(e.message || 'Token exchange failed', false)) }
 })
 
-// Manual poll (fire-and-forget; it processes any unhandled meeting docs).
+// Manual poll (fire-and-forget). Body (optional): { limit, meeting } to bound a
+// test run — e.g. { "limit": 1 } processes just the single most recent
+// unhandled meeting. Without a limit it processes all unhandled docs within the
+// recency window.
 router.post('/run', admin, (req, res) => {
-  runOnce().catch((e) => console.error('[MeetingNotes] manual run failed:', e.message))
-  res.json({ started: true })
+  const body = req.body || {}
+  const opts = {}
+  if (body.limit != null) opts.limit = Math.max(0, parseInt(body.limit, 10) || 0)
+  if (body.meeting) opts.meeting = String(body.meeting)
+  runOnce(opts).catch((e) => console.error('[MeetingNotes] manual run failed:', e.message))
+  res.json({ started: true, ...opts })
 })
 
 module.exports = router

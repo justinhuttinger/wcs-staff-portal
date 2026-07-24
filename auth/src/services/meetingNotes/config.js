@@ -43,4 +43,10 @@ module.exports = {
 
   // How many recent ClickUp docs to scan each poll (newest first).
   SCAN_PAGES: 3,
+
+  // Never process a meeting whose date is older than this many days. Bounds the
+  // very first run (the tracking table starts empty, so without this every past
+  // instance of every meeting would be processed at once) and keeps the job to
+  // recent meetings. Override with MEETING_NOTES_MAX_AGE_DAYS.
+  MAX_AGE_DAYS: parseInt(process.env.MEETING_NOTES_MAX_AGE_DAYS, 10) || 21,
 }
