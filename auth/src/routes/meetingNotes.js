@@ -56,11 +56,13 @@ async function fetchGoogleEmail(accessToken) {
   return info.email || ''
 }
 
-router.use(authenticate)
-router.use(requireRole('admin'))
+// NOTE: auth is applied per-route, NOT globally, because /callback is hit by
+// Google's redirect with no Authorization header. A global router.use(auth)
+// would 401 that callback ("Missing or invalid authorization header").
+const admin = [authenticate, requireRole('admin')]
 
 // Status: connection state of the owner account + job config.
-router.get('/status', async (req, res) => {
+router.get('/status', admin, async (req, res) => {
   try {
     const { data } = await supabaseAdmin
       .from('staff').select('id').eq('email', GOOGLE_OWNER_EMAIL).maybeSingle()
@@ -85,7 +87,7 @@ router.get('/status', async (req, res) => {
 })
 
 // Issue a consent URL bound to the requesting admin (who should be the owner).
-router.post('/authorize-url', (req, res) => {
+router.post('/authorize-url', admin, (req, res) => {
   if (!GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth not configured' })
   const state = setState(req.staff.id)
   const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
@@ -128,7 +130,7 @@ router.get('/callback', async (req, res) => {
 })
 
 // Manual poll (fire-and-forget; it processes any unhandled meeting docs).
-router.post('/run', (req, res) => {
+router.post('/run', admin, (req, res) => {
   runOnce().catch((e) => console.error('[MeetingNotes] manual run failed:', e.message))
   res.json({ started: true })
 })
