@@ -104,6 +104,7 @@ app.use('/abc-sync', require('./routes/abcSync'))
 app.use('/referral-rewards', require('./routes/referralRewards'))
 app.use('/marketing-tracker', require('./routes/marketingTracker'))
 app.use('/blog-automation', require('./routes/blogAutomation'))
+app.use('/kpi-digest', require('./routes/kpiDigest'))
 app.use('/inventory', require('./routes/inventory'))
 app.use('/till', require('./routes/till'))
 app.use('/media', require('./routes/media'))
@@ -181,6 +182,13 @@ app.listen(PORT, () => {
     require('./services/blogAutomation').start()
   } catch (err) {
     console.error('[blog] failed to start:', err.message)
+  }
+
+  // Weekly Operandio KPI digest — opt-in via OPERANDIO_KPI_DIGEST_ENABLED=true.
+  try {
+    require('./services/kpiDigest').start()
+  } catch (err) {
+    console.error('[kpiDigest] failed to start:', err.message)
   }
 
   // Nightly KPI snapshot — freezes end-of-day KPIs for the History view.

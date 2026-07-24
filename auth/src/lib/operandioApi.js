@@ -172,4 +172,53 @@ async function fetchJobStepDetail(processId, locationId, startDate, endDate) {
   return data.reportJobDetail?.jobs || []
 }
 
-module.exports = { graphql, getToken, scheduleDate, fetchLocations, fetchJobs, fetchJobStepDetail }
+// ---------------------------------------------------------------------------
+// Knowledge articles (for the weekly KPI digest).
+//
+// The public API has NO updateKnowledgeV2, so an article cannot be edited in
+// place. To republish we createKnowledgeV2 the new one, verify it, then
+// deleteKnowledge the previous one — the id changes every run, so callers must
+// look articles up by title, never by a stored id. `richTextContent` is a
+// TipTap doc; on INPUT the field is `tipTapContent`, on OUTPUT `richTextContent`.
+// (Full schema notes in reference_operandio_api project memory.)
+
+// All KnowledgeArticle items with id + title (files are ignored). Used to find
+// the current digest article to supersede.
+async function listKnowledgeArticles() {
+  const data = await graphql(
+    `query { knowledges { ... on KnowledgeArticle { id title } } }`,
+  )
+  return (data.knowledges || []).filter((k) => k && k.id)
+}
+
+// Create a rich-text article. `tipTapContent` is a TipTap doc object.
+async function createKnowledgeArticle({ title, category, groups = [], tipTapContent }) {
+  const data = await graphql(
+    `mutation ($input: KnowledgeInput!) {
+      createKnowledgeV2(input: $input) {
+        ... on KnowledgeArticle { id title richTextContent createdAt }
+      }
+    }`,
+    { input: { type: 'article', title, category, groups, tipTapContent } },
+  )
+  return data.createKnowledgeV2
+}
+
+// Fetch one article's stored richTextContent (for post-create verification).
+async function fetchKnowledgeContent(id) {
+  const data = await graphql(
+    `query { knowledges { ... on KnowledgeArticle { id richTextContent } } }`,
+  )
+  const hit = (data.knowledges || []).find((k) => k && k.id === id)
+  return hit ? hit.richTextContent : null
+}
+
+async function deleteKnowledge(id) {
+  const data = await graphql(`mutation ($id: ID!) { deleteKnowledge(id: $id) }`, { id })
+  return data.deleteKnowledge === true
+}
+
+module.exports = {
+  graphql, getToken, scheduleDate, fetchLocations, fetchJobs, fetchJobStepDetail,
+  listKnowledgeArticles, createKnowledgeArticle, fetchKnowledgeContent, deleteKnowledge,
+}
