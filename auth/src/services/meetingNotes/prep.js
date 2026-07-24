@@ -24,7 +24,10 @@ LENGTH IS CRITICAL: the whole output must fit on ONE PAGE (about 350 words, and 
 Write prep notes for the NEXT meeting as GitHub-flavored markdown, with exactly these two H2 sections:
 
 ## Carryover accountability
-A markdown table of open commitments only: columns Owner | Commitment | Due. One row per real commitment made in the meeting. Skip anything vague or already done. If a blocking chain exists (X gates Y), add one short sentence under the table.
+Open commitments only, as a GitHub-Flavored Markdown table with a header row AND a separator row, exactly these columns:
+| Owner | Commitment | Due |
+| --- | --- | --- |
+One row per real commitment made in the meeting. Keep each cell short (a few words). Put "not stated" in the Due cell when no deadline was given. Skip anything vague or already done. If a blocking chain exists (X gates Y), add one short sentence under the table.
 
 ## To raise next meeting
 3 to 5 bullets, most important first: unresolved disagreements (name who disagreed and on what), open decisions, work with no owner. One sentence each, specific, tied to what was said.
