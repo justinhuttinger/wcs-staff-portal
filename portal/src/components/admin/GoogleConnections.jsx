@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getGoogleBusinessStatus } from '../../lib/api'
+import { getGoogleBusinessStatus, getMeetingNotesStatus, getMeetingNotesAuthUrl } from '../../lib/api'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
@@ -30,6 +30,74 @@ function ScopeRow({ label, desc, granted }) {
       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${granted ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
         {granted ? 'Granted' : 'Missing'}
       </span>
+    </div>
+  )
+}
+
+// Separate per-owner connection for the meeting-notes job. It needs Docs +
+// Calendar scopes that the shared Business connection above does not carry, so
+// the owner connects through the dedicated /meeting-notes OAuth flow.
+function MeetingNotesConnection() {
+  const [status, setStatus] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const fetchStatus = useCallback(() => {
+    setLoading(true)
+    setError('')
+    getMeetingNotesStatus()
+      .then(setStatus)
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    fetchStatus()
+    const onMsg = (e) => { if (e.data && e.data.type === 'meeting-notes-auth') fetchStatus() }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [fetchStatus])
+
+  async function handleConnect() {
+    try {
+      const { url } = await getMeetingNotesAuthUrl()
+      window.open(url, '_blank', 'width=560,height=720')
+    } catch (err) { setError(err.message) }
+  }
+
+  const g = status?.google || {}
+  return (
+    <div className="bg-surface border border-border rounded-xl p-5">
+      <div className="flex items-center justify-between gap-4 mb-4">
+        <div>
+          <p className="text-sm font-semibold text-text-primary">Meeting Notes</p>
+          <p className="text-xs text-text-muted mt-0.5">
+            {g.connected ? `Connected as ${g.email || status?.ownerEmail}` : `Not connected (${status?.ownerEmail || 'owner'})`}
+            {status?.enabled === false && ' — job disabled'}
+          </p>
+        </div>
+        <button
+          onClick={handleConnect}
+          className="px-4 py-2 rounded-lg bg-wcs-red text-white text-sm font-semibold hover:bg-red-700 transition-colors shrink-0"
+        >
+          {g.connected ? 'Reconnect Google' : 'Connect Google'}
+        </button>
+      </div>
+      {loading ? (
+        <p className="text-xs text-text-muted">Checking...</p>
+      ) : error ? (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700">{error}</div>
+      ) : (
+        <>
+          <ScopeRow label="Google Docs" desc="Create the notes + prep documents" granted={!!g.hasDocs} />
+          <ScopeRow label="Calendar events" desc="Attach docs to the meeting's calendar event" granted={!!g.hasCalendar} />
+          {g.connected && !g.ready && (
+            <p className="mt-3 text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              Connected, but missing Docs/Calendar scopes. Click <strong>Reconnect Google</strong> and approve the listed permissions.
+            </p>
+          )}
+        </>
+      )}
     </div>
   )
 }
@@ -102,6 +170,8 @@ export default function GoogleConnections() {
           >
             ↻ Refresh status
           </button>
+
+          <MeetingNotesConnection />
 
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-xs text-yellow-900">
             <p className="font-semibold mb-1">When to reconnect:</p>
