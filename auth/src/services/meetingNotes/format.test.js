@@ -23,7 +23,10 @@ test('buildNotesMarkdown adds a title, attendees, recording, and keeps the body 
     notes: '**Attendees:** Jon Horn, East Side Athletic Club\n### Overview\n\nTeam met.',
   }
   const md = buildNotesMarkdown(parsed)
-  assert.match(md, /^# Corporate Operations — Monday, July 20, 2026/)
+  // Title is an H2 (not an oversized H1) with the date on its own line, no em-dash.
+  assert.match(md, /^## Corporate Operations\n/)
+  assert.match(md, /\nMonday, July 20, 2026\n/)
+  assert.ok(!md.includes('—'), 'no em-dashes in the notes doc')
   assert.match(md, /\*\*Attendees:\*\* Jon Horn, Annette \(East Side Athletic Club\)/)
   assert.match(md, /\*\*Recording:\*\* https:\/\/x\/rec\.mp4/)
   assert.match(md, /### Overview/)

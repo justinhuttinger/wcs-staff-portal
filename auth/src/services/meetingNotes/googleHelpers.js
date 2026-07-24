@@ -29,4 +29,19 @@ function hashString(s) {
   return h
 }
 
-module.exports = { buildMultipartBody, pacificDayBounds, hashString }
+// Emails of real human invitees on a calendar event: skip resource rooms and
+// anyone who declined. Deduped, lowercased. The owner always keeps access
+// separately (they own the file), so they need not be in here.
+function attendeeEmails(event) {
+  const out = []
+  const seen = new Set()
+  for (const a of (event && event.attendees) || []) {
+    if (!a || !a.email || a.resource) continue
+    if (a.responseStatus === 'declined') continue
+    const email = a.email.toLowerCase()
+    if (!seen.has(email)) { seen.add(email); out.push(a.email) }
+  }
+  return out
+}
+
+module.exports = { buildMultipartBody, pacificDayBounds, hashString, attendeeEmails }

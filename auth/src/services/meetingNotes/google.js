@@ -9,7 +9,7 @@
 const { supabaseAdmin } = require('../supabase')
 const { getStaffGoogleAccessToken } = require('../googleUserToken')
 const { GOOGLE_OWNER_EMAIL } = require('./config')
-const { buildMultipartBody, pacificDayBounds, hashString } = require('./googleHelpers')
+const { buildMultipartBody, pacificDayBounds, hashString, attendeeEmails } = require('./googleHelpers')
 
 const DRIVE = 'https://www.googleapis.com/drive/v3'
 const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3'
@@ -40,8 +40,9 @@ async function getOwnerAccessToken() {
 
 // --- Drive: create a Google Doc from HTML ---------------------------------
 
-// Uploads `html` as a converted Google Doc. Returns { id, url }.
-async function createDocFromHtml({ accessToken, title, html, folderId = null, anyoneWithLink = false }) {
+// Uploads `html` as a converted Google Doc. Returns { id, url }. Owner keeps
+// full access automatically; call shareDocWithEmails to grant the invitees.
+async function createDocFromHtml({ accessToken, title, html, folderId = null }) {
   const metadata = {
     name: title,
     mimeType: 'application/vnd.google-apps.document',
@@ -54,15 +55,25 @@ async function createDocFromHtml({ accessToken, title, html, folderId = null, an
     accessToken,
     { method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body },
   )
-  if (anyoneWithLink) {
-    try {
-      await googleJson(`${DRIVE}/files/${created.id}/permissions`, accessToken, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: 'reader', type: 'anyone' }),
-      })
-    } catch (e) { console.warn('[meetingNotes] share failed:', e.message) }
-  }
   return { id: created.id, url: created.webViewLink || `https://docs.google.com/document/d/${created.id}/edit` }
+}
+
+// Grant reader access to specific people (the meeting's invitees). Each grant
+// is independent and soft-fails so one bad address doesn't block the rest. No
+// notification email is sent. Returns the emails successfully shared.
+async function shareDocWithEmails({ accessToken, fileId, emails = [] }) {
+  const shared = []
+  for (const email of emails) {
+    if (!email) continue
+    try {
+      await googleJson(`${DRIVE}/files/${fileId}/permissions?sendNotificationEmail=false`, accessToken, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'reader', type: 'user', emailAddress: email }),
+      })
+      shared.push(email)
+    } catch (e) { console.warn(`[meetingNotes] share to ${email} failed:`, e.message) }
+  }
+  return shared
 }
 
 // --- Calendar: find a meeting's event on a date, attach a Doc -------------
@@ -105,5 +116,6 @@ async function attachDocToEvent({ accessToken, calendarId, eventId, doc, label =
 }
 
 module.exports = {
-  getOwnerAccessToken, createDocFromHtml, findEventOnDate, attachDocToEvent,
+  getOwnerAccessToken, createDocFromHtml, shareDocWithEmails,
+  findEventOnDate, attachDocToEvent, attendeeEmails,
 }

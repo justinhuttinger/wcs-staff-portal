@@ -23,9 +23,13 @@ function cleanAttendees(attendees) {
 }
 
 // parsed = output of parse.parseDoc. Returns a markdown string for the Doc.
+// Title is a Heading 2 (H1 imports as an oversized Docs title); the date is a
+// plain line beneath it. No em-dashes (they read oddly in the rendered Doc).
 function buildNotesMarkdown(parsed) {
   const lines = []
-  lines.push(`# ${parsed.meeting} — ${longDate(parsed.date)}`)
+  lines.push(`## ${parsed.meeting}`)
+  lines.push('')
+  lines.push(longDate(parsed.date))
   lines.push('')
   if (parsed.attendees.length) {
     lines.push(`**Attendees:** ${cleanAttendees(parsed.attendees).join(', ')}`)

@@ -3,8 +3,25 @@
 // live owner token and are verified after the OAuth reconnect.
 const test = require('node:test')
 const assert = require('node:assert')
-const { buildMultipartBody, pacificDayBounds } = require('./googleHelpers')
+const { buildMultipartBody, pacificDayBounds, attendeeEmails } = require('./googleHelpers')
 const { addDays } = require('./dates')
+
+test('attendeeEmails: dedupes, drops resources and declines, keeps the rest', () => {
+  const event = { attendees: [
+    { email: 'Jon@wcs.com' },
+    { email: 'jon@wcs.com' }, // dup (case-insensitive)
+    { email: 'room-a@resource.calendar.google.com', resource: true }, // resource
+    { email: 'skip@wcs.com', responseStatus: 'declined' }, // declined
+    { email: 'paige@wcs.com', responseStatus: 'accepted' },
+    { displayName: 'no email' }, // no email
+  ] }
+  assert.deepStrictEqual(attendeeEmails(event), ['Jon@wcs.com', 'paige@wcs.com'])
+})
+
+test('attendeeEmails: no attendees -> empty (doc stays owner-only)', () => {
+  assert.deepStrictEqual(attendeeEmails({}), [])
+  assert.deepStrictEqual(attendeeEmails(null), [])
+})
 
 test('buildMultipartBody wraps metadata + html in a related body', () => {
   const meta = { name: 'X', mimeType: 'application/vnd.google-apps.document' }

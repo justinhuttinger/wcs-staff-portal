@@ -10,31 +10,31 @@ const { generateText } = require('../dayOneProgram/anthropic')
 const { longDate } = require('./format')
 
 function buildPrompt({ meeting, date, nextDate, attendees, notes, transcript }) {
-  return `You are preparing a busy operator for the next occurrence of a recurring meeting. Your job is to make the next meeting sharper by surfacing what actually needs follow-up, using ONLY what was said in the meeting you are given.
+  return `You are preparing a busy operator for the next occurrence of a recurring meeting. Make the next meeting sharper by surfacing what actually needs follow-up, using ONLY what was said in the meeting you are given.
 
 MEETING: ${meeting}
 THIS MEETING'S DATE: ${longDate(date)}
 NEXT MEETING'S DATE: ${longDate(nextDate)}
 ATTENDEES: ${attendees.join(', ')}
 
-You are given the meeting's structured NOTES and its full TRANSCRIPT. The transcript is the source of truth; the notes are a lossy summary. Read the transcript for things the summary flattened: commitments with owners and deadlines, disagreements that were talked over rather than resolved, work that was assigned to no one, and items that were raised and then dropped or laughed off.
+You are given the meeting's structured NOTES and its full TRANSCRIPT. The transcript is the source of truth; the notes are a lossy summary. Read the transcript for what the summary flattened: commitments with owners and deadlines, disagreements talked over rather than resolved, and work assigned to no one.
 
-Write prep notes for the NEXT meeting as GitHub-flavored markdown. Use exactly these two H2 sections, in order:
+LENGTH IS CRITICAL: the whole output must fit on ONE PAGE (about 350 words, and never more than 500). Be ruthless. Include only the highest-signal items a manager must act on. It is better to list 3 sharp items than 10 mediocre ones. Cut anything routine or obvious.
+
+Write prep notes for the NEXT meeting as GitHub-flavored markdown, with exactly these two H2 sections:
 
 ## Carryover accountability
-Open action items and commitments from this meeting, each with its owner and, where stated, its deadline. Prefer a markdown table with columns: Owner | Commitment | Due | Status to confirm. Include a short line calling out any blocking chain (X gates Y gates Z) if one exists in the transcript. Only include commitments that were actually made.
+A markdown table of open commitments only: columns Owner | Commitment | Due. One row per real commitment made in the meeting. Skip anything vague or already done. If a blocking chain exists (X gates Y), add one short sentence under the table.
 
-## Suggested agenda
-The handful of things worth raising next meeting: unresolved disagreements (name who disagreed and on what), decisions left open, work with no owner, and metrics someone said they'd revisit. Lead with the single most important unresolved item. Be specific and cite what was said. If something was raised and dodged, say so plainly.
-
-If there are genuinely loose threads that fit neither section (raised once, no follow-up, no owner), add a short "## Loose threads" section. Otherwise omit it.
+## To raise next meeting
+3 to 5 bullets, most important first: unresolved disagreements (name who disagreed and on what), open decisions, work with no owner. One sentence each, specific, tied to what was said.
 
 Rules:
-- Trace everything to the transcript. Do NOT invent tasks, numbers, or agreements. If you're unsure something was committed, leave it out.
-- Name people. Attribute disagreements and commitments to who said them.
-- Be concise. No filler, no restating the summary, no motivational language.
-- Do not include the transcript or a summary of the meeting. Only forward-looking prep.
-- Do not wrap the output in code fences.
+- Trace everything to the transcript. Do NOT invent tasks, numbers, or agreements. If unsure something was committed, leave it out.
+- Name people.
+- No filler, no summary of the meeting, no motivational language, no preamble.
+- Do NOT use em-dashes anywhere. Use commas, periods, or "to" for ranges.
+- Do not wrap the output in code fences. Do not add a title or heading above the two sections.
 
 NOTES:
 ${notes}
@@ -43,10 +43,11 @@ TRANSCRIPT:
 ${transcript}`
 }
 
-// Returns the prep-notes markdown string. `now` unused; nextDate is passed in.
+// Returns the prep-notes markdown string. maxTokens capped low to enforce the
+// one-page target (the prompt also demands it).
 async function generatePrepNotes({ meeting, date, nextDate, attendees, notes, transcript }, { model } = {}) {
   const prompt = buildPrompt({ meeting, date, nextDate, attendees, notes, transcript })
-  const text = await generateText({ prompt, maxTokens: 4000, ...(model ? { model } : {}) })
+  const text = await generateText({ prompt, maxTokens: 1200, ...(model ? { model } : {}) })
   return text.trim()
 }
 

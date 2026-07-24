@@ -24,19 +24,23 @@ async function processDoc(parsed, docId, accessToken) {
   if (!meeting) return { status: 'skipped', reason: 'meeting not in registry' }
 
   try {
-    // 1. Notes Google Doc, attached to this meeting's calendar event.
-    const notesMd = buildNotesMarkdown(parsed)
-    const notesTitle = `${parsed.meeting} - ${longDate(parsed.date)} - Notes`
-    const notesDoc = await google.createDocFromHtml({
-      accessToken, title: notesTitle, folderId: DRIVE_FOLDER_ID, anyoneWithLink: true,
-      html: htmlDocument(notesTitle, markdownToHtml(notesMd)),
-    })
-    notesDoc.title = notesTitle
-
-    let notesEventId = null
+    // 1. Notes Google Doc. Find the meeting's calendar event first so the Doc
+    //    is shared only with that meeting's invitees (not anyone-with-link).
     const notesEvent = await google.findEventOnDate({
       accessToken, calendarId: CALENDAR_ID, dateYmd: parsed.date, query: meeting.calendarQuery,
     })
+    const notesMd = buildNotesMarkdown(parsed)
+    const notesTitle = `${parsed.meeting} - ${longDate(parsed.date)} - Notes`
+    const notesDoc = await google.createDocFromHtml({
+      accessToken, title: notesTitle, folderId: DRIVE_FOLDER_ID,
+      html: htmlDocument(notesTitle, markdownToHtml(notesMd)),
+    })
+    notesDoc.title = notesTitle
+    await google.shareDocWithEmails({
+      accessToken, fileId: notesDoc.id, emails: google.attendeeEmails(notesEvent),
+    })
+
+    let notesEventId = null
     if (notesEvent) {
       await google.attachDocToEvent({
         accessToken, calendarId: CALENDAR_ID, eventId: notesEvent.id, doc: notesDoc, label: 'Meeting notes',
@@ -44,23 +48,30 @@ async function processDoc(parsed, docId, accessToken) {
       notesEventId = notesEvent.id
     }
 
-    // 2. Prep notes for next week's meeting, attached to next week's event.
+    // 2. Prep notes for next week's meeting, shared with and attached to next
+    //    week's event (its invitees, which may differ from this week's).
     const nextDate = addDays(parsed.date, meeting.cadenceDays)
+    const prepEvent = await google.findEventOnDate({
+      accessToken, calendarId: CALENDAR_ID, dateYmd: nextDate, query: meeting.calendarQuery,
+    })
     const prepMd = await generatePrepNotes({
       meeting: parsed.meeting, date: parsed.date, nextDate,
       attendees: parsed.attendees, notes: parsed.notes, transcript: parsed.transcript,
     })
     const prepTitle = `${parsed.meeting} - ${longDate(nextDate)} - Prep Notes`
     const prepDoc = await google.createDocFromHtml({
-      accessToken, title: prepTitle, folderId: DRIVE_FOLDER_ID, anyoneWithLink: true,
+      accessToken, title: prepTitle, folderId: DRIVE_FOLDER_ID,
       html: htmlDocument(prepTitle, markdownToHtml(prepMd)),
     })
     prepDoc.title = prepTitle
+    // Fall back to this week's invitees if next week's event has none yet.
+    const prepEmails = google.attendeeEmails(prepEvent)
+    await google.shareDocWithEmails({
+      accessToken, fileId: prepDoc.id,
+      emails: prepEmails.length ? prepEmails : google.attendeeEmails(notesEvent),
+    })
 
     let prepEventId = null
-    const prepEvent = await google.findEventOnDate({
-      accessToken, calendarId: CALENDAR_ID, dateYmd: nextDate, query: meeting.calendarQuery,
-    })
     if (prepEvent) {
       await google.attachDocToEvent({
         accessToken, calendarId: CALENDAR_ID, eventId: prepEvent.id, doc: prepDoc, label: 'Prep notes',
