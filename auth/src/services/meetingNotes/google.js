@@ -38,6 +38,28 @@ async function getOwnerAccessToken() {
   return accessToken
 }
 
+// --- Drive: find-or-create the notes folder -------------------------------
+
+// Returns the id of a (non-trashed) folder named `name`, creating it if absent.
+// With the drive.file scope, files.list only returns app-created files, so this
+// finds the job's own folder and never collides with the user's other folders.
+async function ensureFolder({ accessToken, name, parentId = null }) {
+  const esc = String(name).replace(/'/g, "\\'")
+  let q = `name = '${esc}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`
+  if (parentId) q += ` and '${parentId}' in parents`
+  const list = await googleJson(
+    `${DRIVE}/files?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=5`, accessToken)
+  if (list.files && list.files.length) return list.files[0].id
+  const created = await googleJson(`${DRIVE}/files?fields=id`, accessToken, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name, mimeType: 'application/vnd.google-apps.folder',
+      ...(parentId ? { parents: [parentId] } : {}),
+    }),
+  })
+  return created.id
+}
+
 // --- Drive: create a Google Doc from HTML ---------------------------------
 
 // Uploads `html` as a converted Google Doc. Returns { id, url }. Owner keeps
@@ -116,6 +138,6 @@ async function attachDocToEvent({ accessToken, calendarId, eventId, doc, label =
 }
 
 module.exports = {
-  getOwnerAccessToken, createDocFromHtml, shareDocWithEmails,
+  getOwnerAccessToken, ensureFolder, createDocFromHtml, shareDocWithEmails,
   findEventOnDate, attachDocToEvent, attendeeEmails,
 }

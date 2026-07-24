@@ -8,7 +8,7 @@
 const cron = require('node-cron')
 const cu = require('./clickup')
 const { parseDoc, splitSections, getSection } = require('./parse')
-const { getMeeting, enabledMeetings, CALENDAR_ID, DRIVE_FOLDER_ID, CRON, TZ, ENABLED_ENV, SCAN_PAGES, MAX_AGE_DAYS } = require('./config')
+const { getMeeting, enabledMeetings, CALENDAR_ID, DRIVE_FOLDER_ID, DRIVE_FOLDER_NAME, CRON, TZ, ENABLED_ENV, SCAN_PAGES, MAX_AGE_DAYS } = require('./config')
 const { buildNotesMarkdown, longDate } = require('./format')
 const { markdownToHtml, htmlDocument } = require('./markdown')
 const { generatePrepNotes } = require('./prep')
@@ -18,9 +18,26 @@ const google = require('./google')
 const jobs = require('./jobs')
 const { sendAlert } = require('../blogAutomation/alerts')
 
+// Resolve (and cache for the process) the Drive folder the Docs go in. An
+// explicit id wins; otherwise find-or-create the named folder. Non-fatal: on
+// failure, return null so Docs still publish (to My Drive root).
+let _folderIdCache = null
+async function resolveFolderId(accessToken) {
+  if (DRIVE_FOLDER_ID) return DRIVE_FOLDER_ID
+  if (_folderIdCache) return _folderIdCache
+  try {
+    _folderIdCache = await google.ensureFolder({ accessToken, name: DRIVE_FOLDER_NAME })
+  } catch (e) {
+    console.warn('[MeetingNotes] folder resolve failed, using My Drive root:', e.message)
+    return null
+  }
+  return _folderIdCache
+}
+
 // Process one already-parsed meeting doc end to end. Never throws; records the
-// run. `accessToken` is the owner's Google token (fetched once per poll).
-async function processDoc(parsed, docId, accessToken) {
+// run. `accessToken` is the owner's Google token; `folderId` is the Drive
+// folder the Docs go in (may be null).
+async function processDoc(parsed, docId, accessToken, folderId = null) {
   const meeting = getMeeting(parsed.meeting)
   if (!meeting) return { status: 'skipped', reason: 'meeting not in registry' }
 
@@ -45,7 +62,7 @@ async function processDoc(parsed, docId, accessToken) {
     const notesMd = buildNotesMarkdown(parsed, { condensedTakeaways })
     const notesTitle = `${parsed.meeting} - ${longDate(parsed.date)} - Notes`
     const notesDoc = await google.createDocFromHtml({
-      accessToken, title: notesTitle, folderId: DRIVE_FOLDER_ID,
+      accessToken, title: notesTitle, folderId,
       html: htmlDocument(notesTitle, markdownToHtml(notesMd)),
     })
     notesDoc.title = notesTitle
@@ -73,7 +90,7 @@ async function processDoc(parsed, docId, accessToken) {
     })
     const prepTitle = `${parsed.meeting} - ${longDate(nextDate)} - Prep Notes`
     const prepDoc = await google.createDocFromHtml({
-      accessToken, title: prepTitle, folderId: DRIVE_FOLDER_ID,
+      accessToken, title: prepTitle, folderId,
       html: htmlDocument(prepTitle, markdownToHtml(prepMd)),
     })
     prepDoc.title = prepTitle
@@ -129,13 +146,14 @@ async function runOnce({ meeting = null, limit = null } = {}) {
   if (todo.length === 0) return { processed: 0 }
 
   const accessToken = await google.getOwnerAccessToken()
+  const folderId = await resolveFolderId(accessToken)
 
   const results = []
   for (const d of todo) {
     const content = await cu.getDocContent(d.id).catch((e) => { console.warn('[MeetingNotes] content fetch failed', d.id, e.message); return '' })
     const parsed = content ? parseDoc({ name: d.name, content }) : null
     if (!parsed) { results.push({ doc: d.id, status: 'skipped', reason: 'unparseable' }); continue }
-    results.push({ doc: d.id, ...(await processDoc(parsed, d.id, accessToken)) })
+    results.push({ doc: d.id, ...(await processDoc(parsed, d.id, accessToken, folderId)) })
   }
   console.log('[MeetingNotes] poll complete:', results.map((r) => `${r.doc}:${r.status}`).join(' '))
   return { processed: results.filter((r) => r.status === 'done').length, results }

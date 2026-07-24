@@ -32,8 +32,12 @@ module.exports = {
   // Which Google Calendar to search for meeting events.
   CALENDAR_ID: process.env.MEETING_NOTES_CALENDAR_ID || 'primary',
 
-  // Optional Drive folder to place generated Docs in (else My Drive root).
+  // Where the generated Docs live. By default the job auto-creates (and reuses)
+  // a single Drive folder by this name and drops every notes + prep Doc there.
+  // Set MEETING_NOTES_DRIVE_FOLDER_ID to pin a specific folder id instead
+  // (must be a folder the app created, given the drive.file scope).
   DRIVE_FOLDER_ID: process.env.MEETING_NOTES_DRIVE_FOLDER_ID || null,
+  DRIVE_FOLDER_NAME: process.env.MEETING_NOTES_DRIVE_FOLDER_NAME || 'Meeting Notes',
 
   // Cron: hourly poll; it only acts on docs it hasn't processed yet, so a
   // meeting's Doc is picked up within the hour of the notetaker publishing it.
