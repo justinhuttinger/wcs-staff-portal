@@ -34,6 +34,32 @@ async function resolveFolderId(accessToken) {
   return _folderIdCache
 }
 
+// Look up a meeting's event, non-fatally. Calendar problems (an outage, a not-
+// yet-enabled API) return null instead of throwing, so Doc creation still
+// proceeds — a throw here would only orphan Docs on the retry.
+async function findEventSafe({ accessToken, dateYmd, query, label }) {
+  try {
+    return await google.findEventOnDate({ accessToken, calendarId: CALENDAR_ID, dateYmd, query })
+  } catch (e) {
+    console.warn(`[MeetingNotes] ${label} event lookup failed (non-fatal):`, e.message)
+    return null
+  }
+}
+
+// Attach a Doc to an event, non-fatally. Returns the event id on success, else
+// null. A failed attach must not fail the whole meeting (the Doc already
+// exists; failing would orphan it and re-create a duplicate on retry).
+async function attachSafe(event, doc, label, accessToken) {
+  if (!event) return null
+  try {
+    await google.attachDocToEvent({ accessToken, calendarId: CALENDAR_ID, eventId: event.id, doc, label })
+    return event.id
+  } catch (e) {
+    console.warn(`[MeetingNotes] ${label} attach failed (non-fatal):`, e.message)
+    return null
+  }
+}
+
 // Process one already-parsed meeting doc end to end. Never throws; records the
 // run. `accessToken` is the owner's Google token; `folderId` is the Drive
 // folder the Docs go in (may be null).
@@ -43,9 +69,11 @@ async function processDoc(parsed, docId, accessToken, folderId = null) {
 
   try {
     // 1. Notes Google Doc. Find the meeting's calendar event first so the Doc
-    //    is shared only with that meeting's invitees (not anyone-with-link).
-    const notesEvent = await google.findEventOnDate({
-      accessToken, calendarId: CALENDAR_ID, dateYmd: parsed.date, query: meeting.calendarQuery,
+    //    is shared only with that meeting's invitees. Calendar is best-effort:
+    //    an outage must never block Doc creation (it would only orphan Docs on
+    //    the retry), so a lookup failure just means no invitees / no attach.
+    const notesEvent = await findEventSafe({
+      accessToken, dateYmd: parsed.date, query: meeting.calendarQuery, label: 'notes',
     })
     // Condense the notetaker's granular Key Takeaways (non-fatal: on failure,
     // fall back to the verbatim takeaways so the notes Doc still publishes).
@@ -70,19 +98,13 @@ async function processDoc(parsed, docId, accessToken, folderId = null) {
       accessToken, fileId: notesDoc.id, emails: google.attendeeEmails(notesEvent),
     })
 
-    let notesEventId = null
-    if (notesEvent) {
-      await google.attachDocToEvent({
-        accessToken, calendarId: CALENDAR_ID, eventId: notesEvent.id, doc: notesDoc, label: 'Meeting notes',
-      })
-      notesEventId = notesEvent.id
-    }
+    const notesEventId = await attachSafe(notesEvent, notesDoc, 'Meeting notes', accessToken)
 
     // 2. Prep notes for next week's meeting, shared with and attached to next
     //    week's event (its invitees, which may differ from this week's).
     const nextDate = addDays(parsed.date, meeting.cadenceDays)
-    const prepEvent = await google.findEventOnDate({
-      accessToken, calendarId: CALENDAR_ID, dateYmd: nextDate, query: meeting.calendarQuery,
+    const prepEvent = await findEventSafe({
+      accessToken, dateYmd: nextDate, query: meeting.calendarQuery, label: 'prep',
     })
     const prepMd = await generatePrepNotes({
       meeting: parsed.meeting, date: parsed.date, nextDate,
@@ -101,13 +123,7 @@ async function processDoc(parsed, docId, accessToken, folderId = null) {
       emails: prepEmails.length ? prepEmails : google.attendeeEmails(notesEvent),
     })
 
-    let prepEventId = null
-    if (prepEvent) {
-      await google.attachDocToEvent({
-        accessToken, calendarId: CALENDAR_ID, eventId: prepEvent.id, doc: prepDoc, label: 'Prep notes',
-      })
-      prepEventId = prepEvent.id
-    }
+    const prepEventId = await attachSafe(prepEvent, prepDoc, 'Prep notes', accessToken)
 
     await jobs.markDone(docId, {
       meeting: parsed.meeting, meeting_date: parsed.date,
@@ -128,7 +144,25 @@ async function processDoc(parsed, docId, accessToken, folderId = null) {
 // One poll: find unprocessed dated Docs for enabled meetings and process them.
 // Options (all optional): `meeting` restricts to one meeting key; `limit` caps
 // how many docs are processed (newest first) — pass 1 for a single-meeting test.
-async function runOnce({ meeting = null, limit = null } = {}) {
+//
+// Run-lock: node-cron does not prevent overlap, and a manual run can coincide
+// with a cron tick. Without the lock both would see the same not-yet-recorded
+// docs and double-create. A second concurrent call returns immediately.
+let _running = false
+async function runOnce(opts = {}) {
+  if (_running) {
+    console.warn('[MeetingNotes] run already in progress — skipping this call')
+    return { processed: 0, skipped: 'already running' }
+  }
+  _running = true
+  try {
+    return await runOnceInner(opts)
+  } finally {
+    _running = false
+  }
+}
+
+async function runOnceInner({ meeting = null, limit = null } = {}) {
   const enabledKeys = new Set(enabledMeetings().map((m) => m.key))
   if (enabledKeys.size === 0) return { processed: 0 }
 
