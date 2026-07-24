@@ -1,7 +1,16 @@
 // auth/src/services/meetingNotes/parse.test.js
 const test = require('node:test')
 const assert = require('node:assert')
-const { parseDocName, splitNotesTranscript, extractAttendees, extractRecording, parseDoc } = require('./parse')
+const { parseDocName, splitNotesTranscript, extractAttendees, extractRecording, parseDoc, splitSections, getSection } = require('./parse')
+
+test('splitSections + getSection pull named sections, ignore preamble', () => {
+  const body = '**Attendees:** x\n### Overview\n\nTeam met.\n\n### Key Takeaways\n\n- a\n- b\n\n### Key Topics\n\nlong wall'
+  const secs = splitSections(body)
+  assert.deepStrictEqual(secs.map((s) => s.title), ['Overview', 'Key Takeaways', 'Key Topics'])
+  assert.strictEqual(getSection(secs, 'Overview'), 'Team met.')
+  assert.strictEqual(getSection(secs, 'key takeaways'), '- a\n- b') // case-insensitive
+  assert.strictEqual(getSection(secs, 'Next Steps'), null) // absent
+})
 
 // Mirrors the real Corp Ops 7/20 doc shape.
 const SAMPLE = `**Attendees:** Steve Vedder, Matthew Turnquist, Matthew Turnquist, Jon Horn, Justin Huttinger

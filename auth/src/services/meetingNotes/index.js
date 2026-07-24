@@ -7,11 +7,12 @@
 
 const cron = require('node-cron')
 const cu = require('./clickup')
-const { parseDoc } = require('./parse')
+const { parseDoc, splitSections, getSection } = require('./parse')
 const { getMeeting, enabledMeetings, CALENDAR_ID, DRIVE_FOLDER_ID, CRON, TZ, ENABLED_ENV, SCAN_PAGES, MAX_AGE_DAYS } = require('./config')
 const { buildNotesMarkdown, longDate } = require('./format')
 const { markdownToHtml, htmlDocument } = require('./markdown')
 const { generatePrepNotes } = require('./prep')
+const { condenseTakeaways } = require('./summarize')
 const { addDays, todayPacific } = require('./dates')
 const google = require('./google')
 const jobs = require('./jobs')
@@ -29,7 +30,19 @@ async function processDoc(parsed, docId, accessToken) {
     const notesEvent = await google.findEventOnDate({
       accessToken, calendarId: CALENDAR_ID, dateYmd: parsed.date, query: meeting.calendarQuery,
     })
-    const notesMd = buildNotesMarkdown(parsed)
+    // Condense the notetaker's granular Key Takeaways (non-fatal: on failure,
+    // fall back to the verbatim takeaways so the notes Doc still publishes).
+    let condensedTakeaways = null
+    try {
+      const secs = splitSections(parsed.notes)
+      condensedTakeaways = await condenseTakeaways({
+        meeting: parsed.meeting,
+        overview: getSection(secs, 'Overview'),
+        takeaways: getSection(secs, 'Key Takeaways'),
+      })
+    } catch (e) { console.warn('[MeetingNotes] takeaway condense failed:', e.message) }
+
+    const notesMd = buildNotesMarkdown(parsed, { condensedTakeaways })
     const notesTitle = `${parsed.meeting} - ${longDate(parsed.date)} - Notes`
     const notesDoc = await google.createDocFromHtml({
       accessToken, title: notesTitle, folderId: DRIVE_FOLDER_ID,

@@ -71,4 +71,31 @@ function parseDoc({ name, content }) {
   }
 }
 
-module.exports = { parseDocName, splitNotesTranscript, extractAttendees, extractRecording, parseDoc }
+// Split notetaker notes markdown into its ## / ### sections. Returns an ordered
+// array of { title, content }. Content before the first heading (the attendees
+// line) is dropped — callers pull named sections via getSection.
+function splitSections(md) {
+  const lines = String(md || '').split(/\r?\n/)
+  const sections = []
+  let cur = null
+  for (const line of lines) {
+    const h = /^#{2,6}\s+(.+?)\s*$/.exec(line)
+    if (h) { cur = { title: h[1].trim(), lines: [] }; sections.push(cur) }
+    else if (cur) cur.lines.push(line)
+  }
+  return sections.map((s) => ({ title: s.title, content: s.lines.join('\n').trim() }))
+}
+
+const normTitle = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
+
+// Content of the first section whose title matches `name` (case/punct-insensitive).
+function getSection(sections, name) {
+  const want = normTitle(name)
+  const hit = sections.find((s) => normTitle(s.title) === want)
+  return hit ? hit.content : null
+}
+
+module.exports = {
+  parseDocName, splitNotesTranscript, extractAttendees, extractRecording, parseDoc,
+  splitSections, getSection,
+}
