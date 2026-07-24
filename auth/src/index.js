@@ -105,6 +105,7 @@ app.use('/referral-rewards', require('./routes/referralRewards'))
 app.use('/marketing-tracker', require('./routes/marketingTracker'))
 app.use('/blog-automation', require('./routes/blogAutomation'))
 app.use('/kpi-digest', require('./routes/kpiDigest'))
+app.use('/meeting-notes', require('./routes/meetingNotes'))
 app.use('/inventory', require('./routes/inventory'))
 app.use('/till', require('./routes/till'))
 app.use('/media', require('./routes/media'))
@@ -189,6 +190,13 @@ app.listen(PORT, () => {
     require('./services/kpiDigest').start()
   } catch (err) {
     console.error('[kpiDigest] failed to start:', err.message)
+  }
+
+  // Meeting-notes poller — opt-in via MEETING_NOTES_ENABLED=true.
+  try {
+    require('./services/meetingNotes').start()
+  } catch (err) {
+    console.error('[meetingNotes] failed to start:', err.message)
   }
 
   // Nightly KPI snapshot — freezes end-of-day KPIs for the History view.
