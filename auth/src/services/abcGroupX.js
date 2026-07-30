@@ -80,6 +80,19 @@ async function abcMutate(method, path, body, timeoutMs = 30000) {
       error: data?.status?.message || data?.message || `HTTP ${res.status}`,
     }
   }
+  // A 200 is not success on its own. ABC reports write failures (missing member,
+  // event type not online, unknown training level) inside a 200 body. Treating
+  // that as success would tell staff a class was created when it was not.
+  const bodyErr = _abcBodyError(data)
+  if (bodyErr) {
+    console.error(`[abcGroupX] ${method} ${path} rejected:`, bodyErr.code, bodyErr.message)
+    return {
+      ok: false,
+      http: res.status,
+      data,
+      error: `${bodyErr.code}: ${bodyErr.message}`,
+    }
+  }
   return { ok: true, http: res.status, data, error: null }
 }
 
@@ -189,14 +202,21 @@ function _chunkDateRange(startDate, endDate, maxDays = MAX_RANGE_DAYS) {
   return out
 }
 
-// ABC signals success with messageCode API-CAL-EVT-0000. Anything else on a
-// 200 is a real error hiding in a success response, and must not be read as
-// "no classes" — that silently turns a failed read into an empty calendar.
-function _assertAbcOk(body, context) {
+// ABC signals success with messageCode API-CAL-EVT-0000 and reports failures
+// as an HTTP 200 carrying the error in the body. Reads that ignore this turn a
+// failed fetch into an empty calendar; writes that ignore it report a create
+// that never happened as a success.
+const ABC_OK_CODE = 'API-CAL-EVT-0000'
+
+function _abcBodyError(body) {
   const code = body?.status?.messageCode
-  if (code && code !== 'API-CAL-EVT-0000') {
-    throw new Error(`ABC ${code}: ${(body.status.message || '').trim()} (${context})`)
-  }
+  if (!code || code === ABC_OK_CODE) return null
+  return { code, message: (body.status.message || '').trim() }
+}
+
+function _assertAbcOk(body, context) {
+  const err = _abcBodyError(body)
+  if (err) throw new Error(`ABC ${err.code}: ${err.message} (${context})`)
 }
 
 async function _fetchClassWindow(clubNumber, start, end) {
@@ -270,5 +290,5 @@ module.exports = {
   GX_DEPARTMENTS, EXCLUDED_NAMES,
   listClassTypes, listInstructors, listClasses, createClass, cancelClass,
   _shapeClassType, _shapeInstructor, _shapeClassEvent,
-  _chunkDateRange, _assertAbcOk, MAX_RANGE_DAYS,
+  _chunkDateRange, _assertAbcOk, _abcBodyError, MAX_RANGE_DAYS, ABC_OK_CODE,
 }
