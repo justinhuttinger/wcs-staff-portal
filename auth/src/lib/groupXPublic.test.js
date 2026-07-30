@@ -117,3 +117,28 @@ test('buildWeek tolerates no classes at all', () => {
   assert.strictEqual(w.days.length, 7)
   assert.ok(w.days.every(d => d.classes.length === 0))
 })
+
+test('publicCacheKeysForDates maps dates to their week keys and dedupes', () => {
+  const { publicCacheKeysForDates } = require('./groupXPublic')
+  // Mon Jul 27 and Fri Jul 31 are the same week, so one key.
+  assert.deepStrictEqual(
+    publicCacheKeysForDates('30935', ['2026-07-27', '2026-07-31']),
+    ['gx:public:30935:2026-07-27'],
+  )
+  // A date in the next week adds a second key.
+  assert.strictEqual(publicCacheKeysForDates('30935', ['2026-07-31', '2026-08-05']).length, 2)
+})
+
+test('publicCacheKeysForDates ignores junk instead of building bad keys', () => {
+  const { publicCacheKeysForDates } = require('./groupXPublic')
+  assert.deepStrictEqual(publicCacheKeysForDates('30935', ['nonsense', null, undefined, '']), [])
+  assert.deepStrictEqual(publicCacheKeysForDates('30935', null), [])
+})
+
+test('publicCacheKeysForDates accepts a full local timestamp', () => {
+  const { publicCacheKeysForDates } = require('./groupXPublic')
+  assert.deepStrictEqual(
+    publicCacheKeysForDates('30935', ['2026-08-01 10:00:00']),
+    ['gx:public:30935:2026-07-27'],
+  )
+})

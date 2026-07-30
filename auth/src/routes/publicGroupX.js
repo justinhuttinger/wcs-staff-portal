@@ -15,17 +15,24 @@ const { Router } = require('express')
 const abc = require('../services/abcGroupX')
 const cache = require('../services/memoryCache')
 const { clubBySlug } = require('../lib/groupXClubs')
-const { mondayOf, currentPacificDate, buildWeek } = require('../lib/groupXPublic')
+const { mondayOf, currentPacificDate, buildWeek, publicCacheKey } = require('../lib/groupXPublic')
 const { renderBoardHtml } = require('../templates/groupXBoard')
 
 const router = Router()
 
-const FRESH_MS = 5 * 60 * 1000
+// The board polls every 5 minutes. Keeping the fresh window shorter than that
+// means each poll gets genuinely fresh data instead of a stale-serve, so a
+// class edited directly in ABC (which our own cache invalidation cannot see)
+// shows up on the next poll rather than the one after. At most one ABC call
+// per club-week per 2 minutes, which is nothing.
+const FRESH_MS = 2 * 60 * 1000
+// Long tail purely as a failure cushion: if ABC is down we keep serving the
+// last good week for an hour rather than blanking the TVs.
 const STALE_MS = 60 * 60 * 1000
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 async function loadWeek(club, monday) {
-  return cache.wrapSWR(`gx:public:${club.clubNumber}:${monday}`, FRESH_MS, STALE_MS, async () => {
+  return cache.wrapSWR(publicCacheKey(club.clubNumber, monday), FRESH_MS, STALE_MS, async () => {
     const sunday = buildWeek(monday, []).week_end
     const classes = await abc.listClasses(club.clubNumber, monday, sunday)
     return { club: club.name, club_slug: club.slug, ...buildWeek(monday, classes) }

@@ -95,7 +95,28 @@ function buildWeek(mondayIso, classes) {
   return { week_start: mondayIso, week_end: endIso, range_label: rangeLabel, days }
 }
 
+// Cache key for one club-week of the public board. Lives here (rather than in
+// the route) so the admin write paths can invalidate a week without importing
+// the public router.
+function publicCacheKey(clubNumber, mondayIso) {
+  return `gx:public:${clubNumber}:${mondayIso}`
+}
+
+// Every cache key touched by a set of class dates. A create or cancel must
+// clear the week that class falls in, or the board keeps serving the old week
+// for up to the full stale window.
+function publicCacheKeysForDates(clubNumber, dates) {
+  const keys = new Set()
+  for (const d of dates || []) {
+    const iso = String(d || '').slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) continue
+    keys.add(publicCacheKey(clubNumber, mondayOf(iso)))
+  }
+  return [...keys]
+}
+
 module.exports = {
   mondayOf, currentPacificDate, toPublicClass, buildWeek, isPublishable,
+  publicCacheKey, publicCacheKeysForDates,
   WEEKDAY_LABELS, MONTH_LABELS,
 }
