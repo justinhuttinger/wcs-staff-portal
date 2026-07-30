@@ -73,7 +73,10 @@ ${WCS_DISPLAY_FACE}
     --dur-fast: 0.3s;
   }
 
-  html { -webkit-text-size-adjust: 100%; }
+  html { -webkit-text-size-adjust: 100%; height: 100%; }
+  /* Fill the screen exactly and never scroll. A wall-mounted TV has no one to
+     scroll it, so the whole week has to be on screen at once. dvh first for
+     mobile browser chrome, vh fallback for TV browsers that lack dvh. */
   body {
     background: var(--color-bg);
     color: var(--color-text);
@@ -81,8 +84,13 @@ ${WCS_DISPLAY_FACE}
     font-size: var(--step-0);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
-    min-height: 100vh;
     padding: var(--space-s);
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
   }
 
   /* Theme convention: display face is uppercase, weight 400, tight leading. */
@@ -97,6 +105,7 @@ ${WCS_DISPLAY_FACE}
   .head {
     display: flex; align-items: flex-end; gap: var(--space-s);
     flex-wrap: wrap;
+    flex: 0 0 auto;
     padding-bottom: var(--space-xs);
     border-bottom: 3px solid var(--color-accent);
     margin-bottom: var(--space-s);
@@ -116,11 +125,17 @@ ${WCS_DISPLAY_FACE}
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: clamp(4px, .42vw, 10px);
-    align-items: start;
+    /* Take all remaining height. min-height:0 is required or the grid refuses
+       to shrink below its content and pushes the page into a scroll. */
+    flex: 1 1 auto;
+    min-height: 0;
+    align-items: stretch;
   }
   .day {
     background: var(--color-surface);
-    min-height: clamp(84px, 9vw, 140px);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
   .day--today { background: var(--color-bg); box-shadow: inset 0 0 0 3px var(--color-accent); }
 
@@ -141,7 +156,19 @@ ${WCS_DISPLAY_FACE}
   }
   .day--today .dnum { color: rgb(255 255 255 / .85); }
 
-  .list { padding: clamp(4px, .38vw, 9px); display: flex; flex-direction: column; gap: clamp(3px, .3vw, 7px); }
+  .list {
+    padding: clamp(4px, .38vw, 9px);
+    display: flex; flex-direction: column;
+    gap: clamp(3px, .3vw, 7px);
+    flex: 1 1 auto;
+    min-height: 0;
+    /* A day with an unusually full schedule scrolls inside its own column
+       rather than pushing the whole board into a page scroll. Scrollbar hidden
+       because nobody is going to drag one on a TV. */
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .list::-webkit-scrollbar { display: none; }
 
   .cls {
     position: relative;
@@ -174,6 +201,7 @@ ${WCS_DISPLAY_FACE}
   }
 
   .foot {
+    flex: 0 0 auto;
     margin-top: var(--space-xs);
     display: flex; gap: .7em; align-items: center;
     font-size: var(--step--1); font-weight: 600;
@@ -184,9 +212,14 @@ ${WCS_DISPLAY_FACE}
   .dot--stale { background: var(--color-muted); }
 
   /* ---- Narrow: website iframe / phone -------------------------------- */
-  @media (max-width: 900px) {
-    .week { grid-template-columns: 1fr; gap: 7px; }
-    .day { min-height: 0; }
+  /* Stack only on genuinely narrow screens (phones, a skinny website embed).
+     TV browsers can report widths well under 1000px, and a 16:9 screen must
+     never stack, so this is gated on portrait orientation too. Here the page
+     is allowed to scroll again, because a phone has someone holding it. */
+  @media (max-width: 760px) and (orientation: portrait) {
+    body { height: auto; min-height: 100vh; overflow: visible; }
+    .week { grid-template-columns: 1fr; gap: 7px; flex: 0 0 auto; }
+    .list { overflow-y: visible; }
     .day--empty:not(.day--today) { display: none; }
     .dow  { font-size: 20px; }
     .dnum { font-size: 18px; }
