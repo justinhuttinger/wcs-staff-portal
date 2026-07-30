@@ -3,6 +3,7 @@ import { api } from '../../lib/api'
 import { startOfWeek, addDays, toISODate, fmtTime12, parseLocalTimestamp, MONTH_LABELS } from '../../lib/weekGrid'
 import WeekGrid from './WeekGrid'
 import CreateClassModal from './CreateClassModal'
+import BoardLinks from './BoardLinks'
 
 function weekLabel(weekStart) {
   const end = addDays(weekStart, 6)
@@ -23,8 +24,11 @@ export default function GroupXView() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [selected, setSelected] = useState(null)
-  const [createOpen, setCreateOpen] = useState(false)
+  // null when closed; otherwise { date, time } prefilled from the clicked slot
+  // or from the toolbar button.
+  const [createOpen, setCreateOpen] = useState(null)
   const [cancelBusy, setCancelBusy] = useState(false)
+  const [linksOpen, setLinksOpen] = useState(false)
 
   useEffect(() => {
     api('/group-x/clubs')
@@ -114,8 +118,12 @@ export default function GroupXView() {
           </button>
           <span className="text-sm font-medium text-text-primary ml-1">{weekLabel(weekStart)}</span>
           {loading && <span className="text-xs text-text-muted">Loading...</span>}
-          <div className="ml-auto">
-            <button type="button" onClick={() => setCreateOpen(true)}
+          <div className="ml-auto flex gap-2">
+            <button type="button" onClick={() => setLinksOpen(v => !v)}
+              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
+              {linksOpen ? 'Hide board links' : 'Board links'}
+            </button>
+            <button type="button" onClick={() => setCreateOpen({ date: toISODate(weekStart), time: '06:00' })}
               className="px-3 py-1.5 text-sm rounded-lg bg-wcs-red text-white font-medium hover:bg-wcs-red-hover">
               Add class
             </button>
@@ -124,6 +132,7 @@ export default function GroupXView() {
 
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           Classes created or cancelled here are written straight to the live ABC calendar.
+          Click any empty spot on the calendar to add a class at that time.
         </div>
       </div>
 
@@ -133,7 +142,14 @@ export default function GroupXView() {
         </div>
       )}
 
-      <WeekGrid weekStart={weekStart} classes={classes} onClassClick={setSelected} />
+      {linksOpen && <BoardLinks clubs={clubs} />}
+
+      <WeekGrid
+        weekStart={weekStart}
+        classes={classes}
+        onClassClick={setSelected}
+        onSlotClick={slot => setCreateOpen(slot)}
+      />
 
       {selected && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelected(null)}>
@@ -173,9 +189,10 @@ export default function GroupXView() {
           club={club}
           classTypes={classTypes}
           instructors={instructors}
-          defaultDate={toISODate(weekStart)}
-          onClose={() => setCreateOpen(false)}
-          onCreated={async () => { setCreateOpen(false); await load() }}
+          defaultDate={createOpen.date}
+          defaultTime={createOpen.time}
+          onClose={() => setCreateOpen(null)}
+          onCreated={async () => { setCreateOpen(null); await load() }}
         />
       )}
     </div>

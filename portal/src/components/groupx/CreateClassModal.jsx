@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { api } from '../../lib/api'
 
-export default function CreateClassModal({ club, classTypes, instructors, defaultDate, onClose, onCreated }) {
+export default function CreateClassModal({ club, classTypes, instructors, defaultDate, defaultTime, onClose, onCreated }) {
   const [eventTypeId, setEventTypeId] = useState('')
   const [employeeId, setEmployeeId] = useState('')
   const [date, setDate] = useState(defaultDate || '')
-  const [time, setTime] = useState('06:00')
+  const [time, setTime] = useState(defaultTime || '06:00')
   const [levelId, setLevelId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)

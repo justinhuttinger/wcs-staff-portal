@@ -279,16 +279,48 @@ async function createClass(clubNumber, opts) {
   //   startTime  (NOT eventTimestamp) — naive club-local "YYYY-MM-DD HH:mm:ss"
   //   levelId    (NOT eventTrainingLevelId)
   // Duration is taken from the event type; POST does not accept it.
+  //
+  // ABC rejects the create with API-CAL-EVT-0060 ("The event training level
+  // doesn't exist") whenever the event type HAS a training level and levelId is
+  // absent. Every WCS class type has exactly one, so resolve a default here
+  // rather than trusting every caller to remember. Forgetting the level is the
+  // single most common way to hit 0060 and it is entirely avoidable.
+  let levelId = opts.training_level_id
+  if (!levelId) {
+    try {
+      const types = await listClassTypes(clubNumber)
+      const type = types.find(t => t.event_type_id === opts.event_type_id)
+      levelId = type?.training_levels?.[0]?.level_id || null
+    } catch (err) {
+      console.warn('[abcGroupX] could not resolve a default training level:', err.message)
+    }
+  }
+
   const payload = {
     eventTypeId: opts.event_type_id,
     employeeId: opts.employee_id,
     startTime: opts.event_timestamp_local,
   }
-  if (opts.training_level_id) payload.levelId = opts.training_level_id
+  if (levelId) payload.levelId = levelId
 
   const r = await abcMutate('POST', `/${clubNumber}/calendars/events`, payload)
   if (!r.ok) return { ok: false, event_id: null, http: r.http, error: r.error }
-  return { ok: true, event_id: _createdEventId(r.data), http: r.http, error: null }
+
+  // A real create always answers with a link to the new event. Without it we
+  // cannot confirm anything was created, so do NOT report success — an empty or
+  // unparseable 2xx body would otherwise read as "created" and the class would
+  // silently never appear on the calendar.
+  const eventId = _createdEventId(r.data)
+  if (!eventId) {
+    console.error('[abcGroupX] create returned no event link:', JSON.stringify(r.data))
+    return {
+      ok: false,
+      event_id: null,
+      http: r.http,
+      error: 'ABC accepted the request but returned no event, so the class was not created. Try again.',
+    }
+  }
+  return { ok: true, event_id: eventId, http: r.http, error: null }
 }
 
 async function cancelClass(clubNumber, eventId) {
