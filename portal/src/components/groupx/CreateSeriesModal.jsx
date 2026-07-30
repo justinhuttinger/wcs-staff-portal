@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react'
 import { api } from '../../lib/api'
 
+// Badges default to a month out. Long enough that members notice, short enough
+// that a forgotten badge ages off by itself.
+function plus30() {
+  const d = new Date()
+  d.setDate(d.getDate() + 30)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 const DAYS = [
   { value: 1, label: 'Mon' },
   { value: 2, label: 'Tue' },
@@ -29,6 +37,8 @@ export default function CreateSeriesModal({ club, classTypes, instructors, defau
   const [levelId, setLevelId] = useState('')
   const [preview, setPreview] = useState(null)
   const [result, setResult] = useState(null)
+  const [markNew, setMarkNew] = useState(false)
+  const [newUntil, setNewUntil] = useState(plus30())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
@@ -57,6 +67,8 @@ export default function CreateSeriesModal({ club, classTypes, instructors, defau
     training_level_id: levelId || null,
     starts_on: startsOn,
     ends_on: endsOn,
+    mark_new: markNew,
+    new_until: markNew ? newUntil : null,
   }
 
   async function doPreview(e) {
@@ -166,6 +178,20 @@ export default function CreateSeriesModal({ club, classTypes, instructors, defau
               </div>
             </div>
 
+            <div className="rounded-lg border border-border p-3">
+              <label className="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
+                <input type="checkbox" checked={markNew} onChange={e => setMarkNew(e.target.checked)} className="accent-wcs-red" />
+                Show a New class badge on every class in this series
+              </label>
+              {markNew && (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-xs text-text-muted">until</span>
+                  <input type="date" value={newUntil} onChange={e => setNewUntil(e.target.value)}
+                    className="border border-border rounded-lg px-2 py-1 text-sm bg-surface text-text-primary" />
+                </div>
+              )}
+            </div>
+
             {error && (
               <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900 break-words">{error}</div>
             )}
@@ -236,6 +262,12 @@ export default function CreateSeriesModal({ club, classTypes, instructors, defau
                   ))}
                 </div>
               </>
+            )}
+
+            {result.badge_error && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 break-words">
+                Classes were created, but the New badge could not be saved: {result.badge_error}
+              </div>
             )}
 
             <div className="flex justify-end">

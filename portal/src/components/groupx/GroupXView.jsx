@@ -34,6 +34,7 @@ export default function GroupXView() {
   const [cancelBusy, setCancelBusy] = useState(false)
   const [linksOpen, setLinksOpen] = useState(false)
   const [badgesOpen, setBadgesOpen] = useState(false)
+  const [badgeBusy, setBadgeBusy] = useState(false)
   const [seriesOpen, setSeriesOpen] = useState(false)
   const [tab, setTab] = useState('calendar')
   const [attendanceFor, setAttendanceFor] = useState(null)
@@ -67,6 +68,39 @@ export default function GroupXView() {
   }, [club, weekStart])
 
   useEffect(() => { load() }, [load])
+
+  // Badge or unbadge one already-scheduled class. This is the "we added a
+  // Saturday Yoga and Friday Yoga is not new" case, which a class-type badge
+  // cannot express.
+  async function toggleSessionBadge() {
+    if (!selected) return
+    setBadgeBusy(true)
+    setError(null)
+    try {
+      if (selected.is_new && selected.new_source === 'session') {
+        await api(`/group-x/new-classes/events/${encodeURIComponent(selected.event_id)}?club_number=${club.clubNumber}`, { method: 'DELETE' })
+      } else {
+        const d = new Date()
+        d.setDate(d.getDate() + 30)
+        const until = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        await api('/group-x/new-classes/events', {
+          method: 'PUT',
+          body: JSON.stringify({
+            club_number: club.clubNumber,
+            abc_event_id: selected.event_id,
+            class_name: selected.class_name,
+            show_until: until,
+          }),
+        })
+      }
+      setSelected(null)
+      await load()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBadgeBusy(false)
+    }
+  }
 
   async function cancelClass() {
     if (!selected) return
@@ -231,6 +265,15 @@ export default function GroupXView() {
               {selected.max_attendees != null && (
                 <div><span className="text-text-muted">Capacity: </span>{selected.max_attendees}</div>
               )}
+              {selected.is_new && (
+                <div>
+                  <span className="text-text-muted">Badge: </span>
+                  New class
+                  <span className="text-text-muted">
+                    {selected.new_source === 'session' ? ' (this class only)' : ' (whole class type)'}
+                  </span>
+                </div>
+              )}
               {selected.headcount != null && (
                 <div>
                   <span className="text-text-muted">Attended: </span>
@@ -243,6 +286,16 @@ export default function GroupXView() {
               <button type="button" onClick={() => setSelected(null)}
                 className="px-4 py-2 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
                 Close
+              </button>
+              <button type="button" onClick={toggleSessionBadge}
+                disabled={badgeBusy || (selected.is_new && selected.new_source === 'class')}
+                title={selected.is_new && selected.new_source === 'class'
+                  ? 'This badge comes from the whole class type. Remove it under New badges.'
+                  : undefined}
+                className="px-4 py-2 text-sm rounded-lg border border-border text-text-primary hover:bg-bg font-medium disabled:opacity-50">
+                {badgeBusy
+                  ? 'Saving...'
+                  : selected.is_new && selected.new_source === 'session' ? 'Remove New badge' : 'Mark as new'}
               </button>
               <button type="button" onClick={() => { setAttendanceFor(selected); setSelected(null) }}
                 className="px-4 py-2 text-sm rounded-lg border border-border text-text-primary hover:bg-bg font-medium">

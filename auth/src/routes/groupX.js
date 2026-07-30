@@ -65,6 +65,27 @@ function invalidateAllWeeksFor(clubNumber) {
   invalidatePublicBoard(clubNumber, dates)
 }
 
+// Flags individual ABC events as new until a date. Used by the create paths
+// (tick "mark as new" and every class it creates is badged) and by the toggle
+// on an existing class.
+async function flagEventsAsNew(clubNumber, events, showUntil, email) {
+  const rows = events
+    .filter(e => e && e.event_id)
+    .map(e => ({
+      club_number: String(clubNumber),
+      abc_event_id: e.event_id,
+      class_name: e.class_name || 'Class',
+      show_until: showUntil,
+      created_by: email || 'unknown',
+      created_at: new Date().toISOString(),
+    }))
+  if (rows.length === 0) return
+  const { error } = await supabaseAdmin
+    .from('group_x_new_class_events')
+    .upsert(rows, { onConflict: 'club_number,abc_event_id' })
+  if (error) throw new Error(error.message)
+}
+
 function fail(res, err, where) {
   console.error(`[groupX] ${where} failed:`, err.message)
   res.status(500).json({ error: err.message })
@@ -112,11 +133,13 @@ router.get('/classes', async (req, res) => {
       byId = new Map((data || []).map(r => [r.abc_event_id, r]))
     }
 
-    const { data: flags } = await supabaseAdmin
-      .from('group_x_new_classes')
-      .select('event_type_id, class_name, show_until')
-      .eq('club_number', club)
-    const flagged = markNewClasses(classes, flags || [])
+    const [typeFlags, eventFlags] = await Promise.all([
+      supabaseAdmin.from('group_x_new_classes')
+        .select('event_type_id, class_name, show_until').eq('club_number', club),
+      supabaseAdmin.from('group_x_new_class_events')
+        .select('abc_event_id, class_name, show_until').eq('club_number', club),
+    ])
+    const flagged = markNewClasses(classes, typeFlags.data || [], eventFlags.data || [])
 
     const nowIso = new Date().toISOString()
     res.json({
@@ -215,8 +238,22 @@ router.post('/classes', async (req, res) => {
     // ABC rejected it. Surface ABC's own message rather than a generic 500 —
     // its validation codes (API-CAL-EVT-*) are the useful part.
     if (!result.ok) return res.status(502).json({ error: result.error, abc_status: result.http })
+
+    // Badging is best-effort: the class exists in ABC either way, and failing
+    // the whole request over a missing badge would be worse than a missing
+    // badge. Report it instead of hiding it.
+    let badge_error = null
+    if (b.mark_new && DATE_RE.test(b.new_until || '')) {
+      try {
+        await flagEventsAsNew(b.club_number, [{ event_id: result.event_id, class_name: b.class_name }], b.new_until, req.user?.email)
+      } catch (err) {
+        console.error('[groupX] could not badge new class:', err.message)
+        badge_error = err.message
+      }
+    }
+
     invalidatePublicBoard(b.club_number, [b.date])
-    res.status(201).json({ event_id: result.event_id })
+    res.status(201).json({ event_id: result.event_id, badge_error })
   } catch (err) { fail(res, err, 'POST /classes') }
 })
 
@@ -308,6 +345,24 @@ router.post('/series', async (req, res) => {
   }
 
   const created = results.filter(r => r.ok).length
+
+  // A new day of an existing class is normally added as a series, so the badge
+  // has to apply to every occurrence it created, not just the first.
+  let badge_error = null
+  if (b.mark_new && DATE_RE.test(b.new_until || '')) {
+    try {
+      await flagEventsAsNew(
+        b.club_number,
+        results.filter(r => r.ok).map(r => ({ event_id: r.event_id, class_name: b.class_name })),
+        b.new_until,
+        req.user?.email,
+      )
+    } catch (err) {
+      console.error('[groupX] could not badge new series:', err.message)
+      badge_error = err.message
+    }
+  }
+
   // A series spans many weeks, so clear every week it touched or the board
   // keeps serving the old schedule for those weeks.
   invalidatePublicBoard(b.club_number, results.filter(r => r.ok).map(r => r.date))
@@ -317,6 +372,7 @@ router.post('/series', async (req, res) => {
     created,
     failed: results.length - created,
     occurrences: results,
+    badge_error,
   })
 })
 
@@ -475,6 +531,43 @@ router.put('/new-classes', async (req, res) => {
     invalidateAllWeeksFor(b.club_number)
     res.json({ ok: true })
   } catch (err) { fail(res, err, 'PUT /new-classes') }
+})
+
+// PUT /group-x/new-classes/events — badge one existing session as new.
+router.put('/new-classes/events', async (req, res) => {
+  const b = req.body || {}
+  if (!isKnownClubNumber(b.club_number)) {
+    return res.status(400).json({ error: 'valid club_number is required in body' })
+  }
+  if (!b.abc_event_id) return res.status(400).json({ error: 'abc_event_id is required' })
+  if (!DATE_RE.test(b.show_until || '')) {
+    return res.status(400).json({ error: 'show_until must be YYYY-MM-DD' })
+  }
+  try {
+    await flagEventsAsNew(
+      b.club_number,
+      [{ event_id: b.abc_event_id, class_name: b.class_name }],
+      b.show_until,
+      req.user?.email,
+    )
+    invalidateAllWeeksFor(b.club_number)
+    res.json({ ok: true })
+  } catch (err) { fail(res, err, 'PUT /new-classes/events') }
+})
+
+// DELETE /group-x/new-classes/events/:eventId?club_number=
+router.delete('/new-classes/events/:eventId', async (req, res) => {
+  const club = requireClub(req, res); if (!club) return
+  try {
+    const { error } = await supabaseAdmin
+      .from('group_x_new_class_events')
+      .delete()
+      .eq('club_number', club)
+      .eq('abc_event_id', req.params.eventId)
+    if (error) throw new Error(error.message)
+    invalidateAllWeeksFor(club)
+    res.json({ ok: true })
+  } catch (err) { fail(res, err, 'DELETE /new-classes/events') }
 })
 
 router.delete('/new-classes/:eventTypeId', async (req, res) => {
