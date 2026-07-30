@@ -41,12 +41,18 @@ test('toPublicClass leaks no member, staff, or business data', () => {
   const p = toPublicClass(CLASS)
   assert.deepStrictEqual(
     Object.keys(p).sort(),
-    ['class_name', 'duration_minutes', 'instructor', 'time', 'time_label'],
+    ['class_name', 'duration_minutes', 'instructor', 'is_new', 'time', 'time_label'],
   )
   const json = JSON.stringify(p)
   assert.ok(!json.includes('emp1'), 'employee_id must not leak')
   assert.ok(!json.includes('evt1'), 'event_id must not leak')
   assert.ok(!json.includes('Astley'), 'full staff surname must not leak')
+})
+
+test('toPublicClass exposes is_new as a real boolean, never undefined', () => {
+  assert.strictEqual(toPublicClass({ ...CLASS, is_new: true }).is_new, true)
+  assert.strictEqual(toPublicClass(CLASS).is_new, false)
+  assert.strictEqual(toPublicClass({ ...CLASS, is_new: 'yes' }).is_new, false)
 })
 
 test('toPublicClass handles a missing instructor', () => {

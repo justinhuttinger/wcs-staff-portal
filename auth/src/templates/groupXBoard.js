@@ -37,7 +37,12 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
-function renderBoardHtml({ clubSlug, clubName }) {
+function renderBoardHtml({ clubSlug, clubName, safePercent }) {
+  // TV overscan: most TVs crop 2-5% off every edge, a broadcast-era holdover,
+  // so content laid out to the true viewport gets its edges cut. We inset the
+  // whole board by a safe margin. 3% covers the common case; ?safe=N (0-10)
+  // lets a gym whose TV crops harder dial it in without a redeploy.
+  const safe = Number.isFinite(safePercent) ? Math.min(Math.max(safePercent, 0), 10) : 3
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -84,7 +89,9 @@ ${WCS_DISPLAY_FACE}
     font-size: var(--step-0);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
-    padding: var(--space-s);
+    /* Overscan-safe inset. Percentages are of the viewport, so the board sits
+       inside whatever the TV crops. box-sizing keeps it inside 100dvh. */
+    padding: ${safe}vh ${safe}vw;
     height: 100vh;
     height: 100dvh;
     overflow: hidden;
@@ -200,6 +207,30 @@ ${WCS_DISPLAY_FACE}
     margin-top: .3em; color: var(--color-muted);
   }
 
+  /* NEW badge. The board is otherwise a calm grid, so this is the one place
+     that moves — it has to catch an eye walking past without turning the wall
+     into a slot machine. */
+  .cls--new { background: var(--color-bg); box-shadow: inset 0 0 0 2px var(--color-accent); }
+  .badge {
+    display: inline-block;
+    margin-top: .35em;
+    padding: .12em .5em .16em;
+    background: var(--color-accent);
+    color: #fff;
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    font-size: clamp(8.5px, .72vw, 15px);
+    line-height: 1.15;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .badge { animation: pulse 2.4s var(--ease-out) infinite; }
+    @keyframes pulse {
+      0%, 68%, 100% { opacity: 1; }
+      80% { opacity: .45; }
+    }
+  }
+
   .foot {
     flex: 0 0 auto;
     margin-top: var(--space-xs);
@@ -289,10 +320,11 @@ ${WCS_DISPLAY_FACE}
       // A day with no classes renders as an empty column, not a "no classes"
       // message. The gap is the information.
       var items = d.classes.map(function (c) {
-        return '<div class="cls" style="--collar:' + collarFor(c.class_name) + '">'
+        return '<div class="cls' + (c.is_new ? ' cls--new' : '') + '" style="--collar:' + collarFor(c.class_name) + '">'
           + '<div class="time">' + esc(c.time_label) + '</div>'
           + '<div class="name">' + esc(c.class_name) + '</div>'
           + (c.instructor ? '<div class="who">' + esc(c.instructor) + '</div>' : '')
+          + (c.is_new ? '<span class="badge">New class</span>' : '')
           + '</div>';
       }).join('');
       return '<section class="day' + (isToday ? ' day--today' : '')
