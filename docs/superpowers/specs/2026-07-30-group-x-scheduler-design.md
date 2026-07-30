@@ -76,6 +76,20 @@ eventtypes response — do not compare across the two without normalizing).
 Salem already has a live class schedule in ABC (Bootcamp, Barbell Strength, Yoga running
 through July 2026). Any write path we build touches a real, in-use calendar.
 
+**`eventDateRange` is hard-capped at 31 days.** A wider span returns
+`API-CAL-EVT-0017` — as an **HTTP 200 with the error in the body** and `events: []`.
+Read naively that looks like "this club has no classes". Reads must therefore chunk into
+sub-31-day windows and treat any `status.messageCode` other than `API-CAL-EVT-0000` as a
+failure. This matters most for series cancellation, which spans months and would otherwise
+silently cancel nothing.
+
+**Open class slots come back as employee "Unbooked Unbooked".** Observed at Salem, 5 of 109
+classes over July-August. These must surface as having no instructor, never as a person named
+Unbooked on a TV in the gym.
+
+**Bot accounts are tagged into real departments.** Salem's roster returns "ABC SUPPORT" under
+Personal Trainers. The existing `EMPLOYEE_EXCLUDED_NAMES` list in `abcScheduler.js` is mirrored.
+
 ### Attendance is a dead end in ABC
 
 Of 37 Salem class events in July 2026: 31 had **zero** members attached, and the other 6 had

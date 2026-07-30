@@ -8,7 +8,9 @@
 //                                          ("Completed") when no eventStatus filter
 //   POST /{club}/calendars/events       -> create (no member required for a class)
 //   DELETE /{club}/calendars/events/{id}
-const axios = require('axios')
+// Uses native fetch, matching the rest of the ABC services (abcEmployeeRoster,
+// abcInventory, ...). Only the legacy abcScheduler.js uses axios, which is not
+// even declared in auth/package.json.
 const { parseAbcTs, padDate } = require('../lib/abcTime')
 const { isKnownClubNumber } = require('../lib/groupXClubs')
 const cache = require('./memoryCache')
@@ -42,6 +44,43 @@ function abcHeaders() {
 
 function assertClub(clubNumber) {
   if (!isKnownClubNumber(clubNumber)) throw new Error(`Unknown club number: ${clubNumber}`)
+}
+
+// GET returning parsed JSON, throwing on a non-2xx. `params` is a plain object.
+async function abcGet(path, params, timeoutMs = 30000) {
+  const qs = new URLSearchParams(params || {}).toString()
+  const url = `${ABC_BASE_URL}${path}${qs ? `?${qs}` : ''}`
+  const res = await fetch(url, {
+    headers: abcHeaders(),
+    signal: AbortSignal.timeout(timeoutMs),
+  })
+  if (!res.ok) throw new Error(`ABC API HTTP ${res.status} for ${path}`)
+  return res.json()
+}
+
+// Mutating call that reports failure as a value rather than throwing, so a
+// series fan-out can record per-occurrence outcomes and keep going.
+async function abcMutate(method, path, body, timeoutMs = 30000) {
+  const res = await fetch(`${ABC_BASE_URL}${path}`, {
+    method,
+    headers: body
+      ? { ...abcHeaders(), 'Content-Type': 'application/json' }
+      : abcHeaders(),
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(timeoutMs),
+  })
+  let data = null
+  try { data = await res.json() } catch { /* empty or non-JSON body is fine */ }
+  if (!res.ok) {
+    console.error(`[abcGroupX] ${method} ${path} failed:`, res.status, JSON.stringify(data))
+    return {
+      ok: false,
+      http: res.status,
+      data,
+      error: data?.status?.message || data?.message || `HTTP ${res.status}`,
+    }
+  }
+  return { ok: true, http: res.status, data, error: null }
 }
 
 function num(v) {
@@ -105,10 +144,8 @@ function _shapeClassEvent(raw) {
 async function listClassTypes(clubNumber) {
   assertClub(clubNumber)
   return cache.wrap(`gx:types:${clubNumber}`, TYPES_TTL_MS, async () => {
-    const r = await axios.get(`${ABC_BASE_URL}/${clubNumber}/calendars/eventtypes`, {
-      headers: abcHeaders(), timeout: 20000,
-    })
-    return (r.data?.eventTypes || [])
+    const body = await abcGet(`/${clubNumber}/calendars/eventtypes`, null, 20000)
+    return (body?.eventTypes || [])
       // /calendars/eventtypes says "class"; /calendars/events says "Class".
       .filter(t => String(t.category || '').toLowerCase() === 'class')
       .map(_shapeClassType)
@@ -119,10 +156,8 @@ async function listClassTypes(clubNumber) {
 async function listInstructors(clubNumber) {
   assertClub(clubNumber)
   return cache.wrap(`gx:instructors:${clubNumber}`, EMPLOYEES_TTL_MS, async () => {
-    const r = await axios.get(`${ABC_BASE_URL}/${clubNumber}/employees`, {
-      headers: abcHeaders(), timeout: 20000,
-    })
-    return (r.data?.employees || [])
+    const body = await abcGet(`/${clubNumber}/employees`, null, 20000)
+    return (body?.employees || [])
       .filter(e => String(e.employment?.employeeStatus || '').toLowerCase() === 'active')
       .map(_shapeInstructor)
       .filter(e => e.employee_id && GX_DEPARTMENTS.includes(e.department))
@@ -165,17 +200,16 @@ function _assertAbcOk(body, context) {
 }
 
 async function _fetchClassWindow(clubNumber, start, end) {
-  const r = await axios.get(`${ABC_BASE_URL}/${clubNumber}/calendars/events`, {
-    headers: abcHeaders(),
-    // No eventStatus filter: that is what makes future "Pending" classes visible.
-    // Widen by a day each side: ABC reads eventDateRange as club-local Pacific
-    // while we reason in UTC. Trimmed back by the caller.
-    params: { eventDateRange: `${padDate(start, -1)},${padDate(end, 1)}`, size: 500 },
-    timeout: 30000,
+  // No eventStatus filter: that is what makes future "Pending" classes visible.
+  // Widen by a day each side: ABC reads eventDateRange as club-local Pacific
+  // while we reason in UTC. Trimmed back by the caller.
+  const body = await abcGet(`/${clubNumber}/calendars/events`, {
+    eventDateRange: `${padDate(start, -1)},${padDate(end, 1)}`,
+    size: 500,
   })
-  _assertAbcOk(r.data, `${clubNumber} ${start}..${end}`)
-  const events = r.data?.events || []
-  const reported = parseInt(r.data?.status?.count, 10)
+  _assertAbcOk(body, `${clubNumber} ${start}..${end}`)
+  const events = body?.events || []
+  const reported = parseInt(body?.status?.count, 10)
   // size is capped at 500. If ABC ever reports more than it returned, we are
   // silently truncating a club's calendar — say so rather than under-report.
   if (Number.isInteger(reported) && reported > events.length) {
@@ -216,39 +250,20 @@ async function createClass(clubNumber, opts) {
   }
   if (opts.training_level_id) payload.eventTrainingLevelId = opts.training_level_id
 
-  const r = await axios.post(`${ABC_BASE_URL}/${clubNumber}/calendars/events`, payload, {
-    headers: { ...abcHeaders(), 'Content-Type': 'application/json' },
-    timeout: 30000,
-    validateStatus: () => true,
-  })
-  if (r.status < 200 || r.status >= 300) {
-    console.error('[abcGroupX] createClass failed:', r.status, JSON.stringify(r.data))
-    return {
-      ok: false,
-      event_id: null,
-      http: r.status,
-      error: r.data?.status?.message || r.data?.message || `HTTP ${r.status}`,
-    }
-  }
+  const r = await abcMutate('POST', `/${clubNumber}/calendars/events`, payload)
+  if (!r.ok) return { ok: false, event_id: null, http: r.http, error: r.error }
   const created = r.data?.events?.[0] || r.data?.event || r.data
-  return { ok: true, event_id: created?.eventId || null, http: r.status, error: null }
+  return { ok: true, event_id: created?.eventId || null, http: r.http, error: null }
 }
 
 async function cancelClass(clubNumber, eventId) {
   assertClub(clubNumber)
-  const r = await axios.delete(
-    `${ABC_BASE_URL}/${clubNumber}/calendars/events/${encodeURIComponent(eventId)}`,
-    { headers: abcHeaders(), timeout: 30000, validateStatus: () => true },
+  const r = await abcMutate(
+    'DELETE',
+    `/${clubNumber}/calendars/events/${encodeURIComponent(eventId)}`,
+    null,
   )
-  if (r.status < 200 || r.status >= 300) {
-    console.error('[abcGroupX] cancelClass failed:', r.status, JSON.stringify(r.data))
-    return {
-      ok: false,
-      http: r.status,
-      error: r.data?.status?.message || r.data?.message || `HTTP ${r.status}`,
-    }
-  }
-  return { ok: true, http: r.status, error: null }
+  return { ok: r.ok, http: r.http, error: r.error }
 }
 
 module.exports = {
