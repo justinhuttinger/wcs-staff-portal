@@ -6,6 +6,7 @@ import CreateClassModal from './CreateClassModal'
 import BoardLinks from './BoardLinks'
 import CreateSeriesModal from './CreateSeriesModal'
 import GroupXReport from './GroupXReport'
+import NewClassBadges from './NewClassBadges'
 import AttendanceModal from './AttendanceModal'
 
 function weekLabel(weekStart) {
@@ -32,6 +33,7 @@ export default function GroupXView() {
   const [createOpen, setCreateOpen] = useState(null)
   const [cancelBusy, setCancelBusy] = useState(false)
   const [linksOpen, setLinksOpen] = useState(false)
+  const [badgesOpen, setBadgesOpen] = useState(false)
   const [seriesOpen, setSeriesOpen] = useState(false)
   const [tab, setTab] = useState('calendar')
   const [attendanceFor, setAttendanceFor] = useState(null)
@@ -139,6 +141,10 @@ export default function GroupXView() {
           <span className="text-sm font-medium text-text-primary ml-1">{weekLabel(weekStart)}</span>
           {loading && <span className="text-xs text-text-muted">Loading...</span>}
           <div className="ml-auto flex gap-2">
+            <button type="button" onClick={() => setBadgesOpen(v => !v)}
+              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
+              {badgesOpen ? 'Hide new badges' : 'New badges'}
+            </button>
             <button type="button" onClick={() => setLinksOpen(v => !v)}
               className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
               {linksOpen ? 'Hide board links' : 'Board links'}
@@ -165,6 +171,8 @@ export default function GroupXView() {
           {error}
         </div>
       )}
+
+      {badgesOpen && <NewClassBadges club={club} classTypes={classTypes} />}
 
       {linksOpen && <BoardLinks clubs={clubs} />}
 

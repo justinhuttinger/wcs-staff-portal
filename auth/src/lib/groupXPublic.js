@@ -48,6 +48,8 @@ function toPublicClass(c) {
     class_name: c.class_name,
     instructor: shortenName(c.instructor_name),
     duration_minutes: c.duration_minutes,
+    // Always a boolean, never undefined, so the board never has to guess.
+    is_new: c.is_new === true,
   }
 }
 

@@ -17,6 +17,7 @@ const { expandSeries, MAX_OCCURRENCES } = require('../lib/groupXSeries')
 const { supabaseAdmin } = require('../services/supabase')
 const { publicCacheKeysForDates } = require('../lib/groupXPublic')
 const { aggregate } = require('../lib/groupXReport')
+const { markNewClasses } = require('../lib/groupXNewClasses')
 const memoryCache = require('../services/memoryCache')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
@@ -48,6 +49,20 @@ function invalidatePublicBoard(clubNumber, dates) {
   for (const key of publicCacheKeysForDates(String(clubNumber), dates)) {
     memoryCache.del(key)
   }
+}
+
+// A "new class" badge applies to every occurrence, so a change to it affects
+// every cached week rather than one. Clear a rolling window around today, which
+// covers everything a board or website embed can actually be showing.
+function invalidateAllWeeksFor(clubNumber) {
+  const dates = []
+  const d = new Date()
+  d.setUTCDate(d.getUTCDate() - 28)
+  for (let i = 0; i < 26; i++) {
+    dates.push(d.toISOString().slice(0, 10))
+    d.setUTCDate(d.getUTCDate() + 7)
+  }
+  invalidatePublicBoard(clubNumber, dates)
 }
 
 function fail(res, err, where) {
@@ -97,9 +112,15 @@ router.get('/classes', async (req, res) => {
       byId = new Map((data || []).map(r => [r.abc_event_id, r]))
     }
 
+    const { data: flags } = await supabaseAdmin
+      .from('group_x_new_classes')
+      .select('event_type_id, class_name, show_until')
+      .eq('club_number', club)
+    const flagged = markNewClasses(classes, flags || [])
+
     const nowIso = new Date().toISOString()
     res.json({
-      classes: classes.map(c => {
+      classes: flagged.map(c => {
         const a = byId.get(c.event_id) || null
         return {
           ...c,
@@ -395,6 +416,79 @@ router.get('/report', async (req, res) => {
     if (error) throw new Error(error.message)
     res.json({ club_number: clubParam, start, end, ...aggregate(data || []) })
   } catch (err) { fail(res, err, '/report') }
+})
+
+// ---------------------------------------------------------------------------
+// "New class" badges.
+//
+// Flags a class OFFERING as new at one club until a date, which the public
+// board renders. Keyed on class type rather than a single session so a
+// recurring class is badged everywhere without ticking a box per occurrence,
+// and so it expires by itself.
+// ---------------------------------------------------------------------------
+
+router.get('/new-classes', async (req, res) => {
+  const club = requireClub(req, res); if (!club) return
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('group_x_new_classes')
+      .select('*')
+      .eq('club_number', club)
+      .order('show_until', { ascending: false })
+    if (error) throw new Error(error.message)
+    const today = new Date().toISOString().slice(0, 10)
+    res.json({
+      new_classes: (data || []).map(f => ({ ...f, active: today <= f.show_until })),
+    })
+  } catch (err) { fail(res, err, 'GET /new-classes') }
+})
+
+router.put('/new-classes', async (req, res) => {
+  const b = req.body || {}
+  if (!isKnownClubNumber(b.club_number)) {
+    return res.status(400).json({ error: 'valid club_number is required in body' })
+  }
+  if (!b.event_type_id || !b.class_name) {
+    return res.status(400).json({ error: 'event_type_id and class_name are required' })
+  }
+  if (!DATE_RE.test(b.show_until || '')) {
+    return res.status(400).json({ error: 'show_until must be YYYY-MM-DD' })
+  }
+
+  // Whole row: a partial upsert fails NOT NULL columns even on an existing row.
+  const row = {
+    club_number: String(b.club_number),
+    event_type_id: b.event_type_id,
+    class_name: b.class_name,
+    show_until: b.show_until,
+    created_by: req.user?.email || 'unknown',
+    created_at: new Date().toISOString(),
+  }
+
+  try {
+    const { error } = await supabaseAdmin
+      .from('group_x_new_classes')
+      .upsert(row, { onConflict: 'club_number,event_type_id' })
+    if (error) throw new Error(error.message)
+    // The board caches whole weeks, so a badge change has to clear them or it
+    // will not show up until the cache turns over.
+    invalidateAllWeeksFor(b.club_number)
+    res.json({ ok: true })
+  } catch (err) { fail(res, err, 'PUT /new-classes') }
+})
+
+router.delete('/new-classes/:eventTypeId', async (req, res) => {
+  const club = requireClub(req, res); if (!club) return
+  try {
+    const { error } = await supabaseAdmin
+      .from('group_x_new_classes')
+      .delete()
+      .eq('club_number', club)
+      .eq('event_type_id', req.params.eventTypeId)
+    if (error) throw new Error(error.message)
+    invalidateAllWeeksFor(club)
+    res.json({ ok: true })
+  } catch (err) { fail(res, err, 'DELETE /new-classes') }
 })
 
 module.exports = router

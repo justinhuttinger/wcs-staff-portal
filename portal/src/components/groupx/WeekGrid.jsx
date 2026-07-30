@@ -165,6 +165,11 @@ export default function WeekGrid({ weekStart, classes, onClassClick, onSlotClick
                           {c.headcount}
                         </span>
                       )}
+                      {c.is_new && (
+                        <span className="inline-block mt-0.5 px-1 py-px rounded bg-wcs-red text-white text-[8px] font-bold uppercase tracking-wide leading-none">
+                          New
+                        </span>
+                      )}
                       {c.needs_attendance && (
                         <span
                           className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-500"
