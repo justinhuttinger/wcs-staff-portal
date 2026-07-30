@@ -25,7 +25,20 @@ function colorFor(eventTypeId) {
 
 const HOURS = Array.from({ length: DAY_END_HOUR - DAY_START_HOUR }, (_, i) => DAY_START_HOUR + i)
 
-export default function WeekGrid({ weekStart, classes, onClassClick }) {
+// Clicking empty grid space creates a class at that slot. Times snap to the
+// nearest half hour so a click never produces something like 9:47am.
+const SNAP_MINUTES = 30
+
+function slotTimeFromOffset(offsetY) {
+  const raw = DAY_START_HOUR * 60 + offsetY / PX_PER_MINUTE
+  const snapped = Math.round(raw / SNAP_MINUTES) * SNAP_MINUTES
+  const clamped = Math.min(Math.max(snapped, DAY_START_HOUR * 60), DAY_END_HOUR * 60 - SNAP_MINUTES)
+  const h = Math.floor(clamped / 60)
+  const m = clamped % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+export default function WeekGrid({ weekStart, classes, onClassClick, onSlotClick }) {
   const todayISO = toISODate(new Date())
 
   // Bucket classes by local date, then assign lanes so overlapping classes at
@@ -100,12 +113,20 @@ export default function WeekGrid({ weekStart, classes, onClassClick }) {
                 key={iso}
                 className={`relative border-l border-border ${isToday ? 'bg-wcs-red/5' : ''}`}
                 style={{ height: GRID_HEIGHT_PX }}
+                onClick={e => {
+                  // Only fire for the column itself. Clicks on a class block
+                  // stop propagation, so this never double-triggers.
+                  if (!onSlotClick || e.target !== e.currentTarget) return
+                  const y = e.clientY - e.currentTarget.getBoundingClientRect().top
+                  onSlotClick({ date: iso, time: slotTimeFromOffset(y) })
+                }}
+                title={onSlotClick ? 'Click to add a class' : undefined}
               >
                 {/* Hour lines */}
                 {HOURS.map(h => (
                   <div
                     key={h}
-                    className="absolute left-0 right-0 border-t border-border/40"
+                    className="absolute left-0 right-0 border-t border-border/40 pointer-events-none"
                     style={{ top: (h - DAY_START_HOUR) * 60 * PX_PER_MINUTE }}
                   />
                 ))}
@@ -118,7 +139,7 @@ export default function WeekGrid({ weekStart, classes, onClassClick }) {
                     <button
                       key={c.event_id}
                       type="button"
-                      onClick={() => onClassClick && onClassClick(c)}
+                      onClick={e => { e.stopPropagation(); if (onClassClick) onClassClick(c) }}
                       title={`${c.class_name} · ${fmtTime12(c._parsed.hour, c._parsed.min)}${c.instructor_name ? ' · ' + c.instructor_name : ''}`}
                       className={`absolute rounded-md border px-1.5 py-1 text-left overflow-hidden hover:brightness-95 transition ${colorFor(c.event_type_id)}`}
                       style={{
