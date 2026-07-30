@@ -15,6 +15,8 @@ const { CLUBS, isKnownClubNumber } = require('../lib/groupXClubs')
 const { buildLocalTimestamp, DATE_RE } = require('../lib/abcTime')
 const { expandSeries, MAX_OCCURRENCES } = require('../lib/groupXSeries')
 const { supabaseAdmin } = require('../services/supabase')
+const { publicCacheKeysForDates } = require('../lib/groupXPublic')
+const memoryCache = require('../services/memoryCache')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 
@@ -35,6 +37,16 @@ function requireClub(req, res) {
     return null
   }
   return clubNumber
+}
+
+// The public board serves each club-week from a stale-while-revalidate cache,
+// so a class created or cancelled here would otherwise take up to the full
+// stale window to appear on the TVs. Clear the affected weeks on every write
+// and the board picks the change up on its next poll.
+function invalidatePublicBoard(clubNumber, dates) {
+  for (const key of publicCacheKeysForDates(String(clubNumber), dates)) {
+    memoryCache.del(key)
+  }
 }
 
 function fail(res, err, where) {
@@ -100,6 +112,7 @@ router.post('/classes', async (req, res) => {
     // ABC rejected it. Surface ABC's own message rather than a generic 500 —
     // its validation codes (API-CAL-EVT-*) are the useful part.
     if (!result.ok) return res.status(502).json({ error: result.error, abc_status: result.http })
+    invalidatePublicBoard(b.club_number, [b.date])
     res.status(201).json({ event_id: result.event_id })
   } catch (err) { fail(res, err, 'POST /classes') }
 })
@@ -110,6 +123,10 @@ router.delete('/classes/:eventId', async (req, res) => {
   try {
     const result = await abc.cancelClass(club, req.params.eventId)
     if (!result.ok) return res.status(502).json({ error: result.error, abc_status: result.http })
+    // `date` is optional; without it we cannot know which week to clear, so the
+    // caller should send it. The board still self-corrects within the stale
+    // window either way.
+    if (req.query.date) invalidatePublicBoard(club, [req.query.date])
     res.json({ ok: true })
   } catch (err) { fail(res, err, 'DELETE /classes') }
 })
@@ -188,6 +205,9 @@ router.post('/series', async (req, res) => {
   }
 
   const created = results.filter(r => r.ok).length
+  // A series spans many weeks, so clear every week it touched or the board
+  // keeps serving the old schedule for those weeks.
+  invalidatePublicBoard(b.club_number, results.filter(r => r.ok).map(r => r.date))
   // Partial failure is reported as partial failure. Never as success.
   res.status(201).json({
     series_id: series.id,
@@ -257,6 +277,7 @@ router.delete('/series/:id', async (req, res) => {
       .eq('id', series.id)
 
     const canceled = results.filter(r => r.ok).length
+    invalidatePublicBoard(series.club_number, results.filter(r => r.ok).map(r => r.date))
     res.json({ canceled, failed: results.length - canceled, results })
   } catch (err) { fail(res, err, 'DELETE /series') }
 })

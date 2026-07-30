@@ -67,7 +67,7 @@ export default function GroupXView() {
     if (!window.confirm(`Cancel ${selected.class_name} on ${selected.event_timestamp_local.slice(0, 16)}? This removes it from the ABC calendar.`)) return
     setCancelBusy(true)
     try {
-      await api(`/group-x/classes/${encodeURIComponent(selected.event_id)}?club_number=${club.clubNumber}`, { method: 'DELETE' })
+      await api(`/group-x/classes/${encodeURIComponent(selected.event_id)}?club_number=${club.clubNumber}&date=${encodeURIComponent(String(selected.event_timestamp_local).slice(0, 10))}`, { method: 'DELETE' })
       setSelected(null)
       await load()
     } catch (e) {
