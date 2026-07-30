@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert')
 const {
   _shapeClassType, _shapeInstructor, _shapeClassEvent,
-  _chunkDateRange, _assertAbcOk,
+  _chunkDateRange, _assertAbcOk, _abcBodyError,
   GX_DEPARTMENTS, EXCLUDED_NAMES, MAX_RANGE_DAYS,
 } = require('./abcGroupX')
 
@@ -154,4 +154,22 @@ test('EXCLUDED_NAMES covers the bot accounts ABC tags into real departments', ()
   assert.ok(EXCLUDED_NAMES.has('abc support'))
   assert.ok(EXCLUDED_NAMES.has('easalytics bot'))
   assert.ok(!EXCLUDED_NAMES.has('matthew astley'))
+})
+
+test('_abcBodyError surfaces a write rejection hidden inside a 200', () => {
+  // Real response from POST /calendars/events: HTTP 200, but nothing was created.
+  const err = _abcBodyError({
+    status: { message: "The event training level doesn't exist.", count: '0', messageCode: 'API-CAL-EVT-0060' },
+  })
+  assert.strictEqual(err.code, 'API-CAL-EVT-0060')
+  assert.match(err.message, /training level/)
+})
+
+test('_abcBodyError returns null on the success code', () => {
+  assert.strictEqual(_abcBodyError({ status: { messageCode: 'API-CAL-EVT-0000' } }), null)
+})
+
+test('_abcBodyError returns null when ABC sends no status block', () => {
+  assert.strictEqual(_abcBodyError({}), null)
+  assert.strictEqual(_abcBodyError(null), null)
 })

@@ -1,5 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { api } from '../../lib/api'
+import {
+  DAY_START_HOUR, DAY_END_HOUR, PX_PER_MINUTE, GRID_HEIGHT_PX, WEEKDAY_LABELS, MONTH_LABELS,
+  startOfWeek, addDays, toISODate, fmtHour, fmtTime12, parseLocalTimestamp, layoutLanes,
+} from '../../lib/weekGrid'
+
 
 const CLUB_NUMBERS = [
   { slug: 'salem', name: 'Salem', clubNumber: '30935' },
@@ -10,60 +15,6 @@ const CLUB_NUMBERS = [
   { slug: 'milwaukie', name: 'Milwaukie', clubNumber: '31601' },
   { slug: 'medford', name: 'Medford', clubNumber: '32073' },
 ]
-
-// Calendar grid config
-const DAY_START_HOUR = 6           // 6 AM
-const DAY_END_HOUR = 22            // 10 PM
-const PX_PER_MINUTE = 1            // 1px = 1 minute → 30min slot = 30px
-const GRID_HEIGHT_PX = (DAY_END_HOUR - DAY_START_HOUR) * 60 * PX_PER_MINUTE
-const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-// Sunday of the week containing `d` (local time)
-function startOfWeek(d) {
-  const out = new Date(d)
-  out.setHours(0, 0, 0, 0)
-  out.setDate(out.getDate() - out.getDay())
-  return out
-}
-
-function addDays(d, n) {
-  const out = new Date(d)
-  out.setDate(out.getDate() + n)
-  return out
-}
-
-function toISODate(d) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${dd}`
-}
-
-function fmtHour(h) {
-  const ampm = h >= 12 ? 'PM' : 'AM'
-  let hh = h % 12 || 12
-  return `${hh} ${ampm}`
-}
-
-function fmtTime12(hour, min) {
-  const ampm = hour >= 12 ? 'PM' : 'AM'
-  const hh = hour % 12 || 12
-  const mm = String(min).padStart(2, '0')
-  return `${hh}:${mm} ${ampm}`
-}
-
-// "YYYY-MM-DD[T or space]HH:mm:ss" → { date: 'YYYY-MM-DD', hour, min }
-// Cached rows from ghl-sync use 'T'; live ABC rows (via /abc-scheduler/events
-// merge introduced in PR #130) come through with a space separator —
-// accept either. Before this fix, every live event silently failed the
-// parse and was dropped from the day buckets.
-function parseLocalTimestamp(ts) {
-  if (!ts) return null
-  const m = String(ts).match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})/)
-  if (!m) return null
-  return { date: m[1], hour: parseInt(m[2], 10), min: parseInt(m[3], 10) }
-}
 
 // Same heuristic as before, paired with a color hint for the event card
 function statusInfo(status, attended) {
@@ -794,35 +745,6 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
 
 // Place overlapping events side-by-side within a day column.
 // Returns each event with { laneIndex, laneCount } so the render layer can size.
-function layoutLanes(events) {
-  const sorted = events.slice().sort((a, b) => a._startMin - b._startMin)
-  const lanes = [] // each lane is a list of events; lanes[i] holds the latest endMin
-
-  for (const e of sorted) {
-    let placed = false
-    for (let i = 0; i < lanes.length; i++) {
-      const last = lanes[i][lanes[i].length - 1]
-      if (last._endMin <= e._startMin) {
-        e._laneIndex = i
-        lanes[i].push(e)
-        placed = true
-        break
-      }
-    }
-    if (!placed) {
-      e._laneIndex = lanes.length
-      lanes.push([e])
-    }
-  }
-  // Now compute laneCount per event — for overlap-group correctness, set
-  // laneCount = max lanes occupied by any event in its overlap cluster.
-  // Simple version: every event uses total lanes (slight horizontal waste
-  // but no overlap mistakes).
-  const totalLanes = Math.max(1, lanes.length)
-  for (const e of sorted) e._laneCount = totalLanes
-  return sorted
-}
-
 export default function PtSchedulerView() {
   const [club, setClub] = useState(CLUB_NUMBERS[0])
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))

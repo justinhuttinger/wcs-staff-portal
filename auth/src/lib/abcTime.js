@@ -36,4 +36,16 @@ function toIsoDate(d) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
 }
 
-module.exports = { isDstPacific, parseAbcTs, padDate, toIsoDate }
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/
+
+// Builds the naive club-local timestamp ABC wants on writes:
+// ("2026-08-03", "06:00") -> "2026-08-03 06:00:00"
+function buildLocalTimestamp(date, time) {
+  if (!DATE_RE.test(String(date || ''))) throw new Error('invalid date, expected YYYY-MM-DD')
+  const m = TIME_RE.exec(String(time || ''))
+  if (!m) throw new Error('invalid time, expected HH:mm')
+  return `${date} ${m[1]}:${m[2]}:${m[4] || '00'}`
+}
+
+module.exports = { isDstPacific, parseAbcTs, padDate, toIsoDate, buildLocalTimestamp, DATE_RE, TIME_RE }

@@ -12,14 +12,13 @@
 const { Router } = require('express')
 const abc = require('../services/abcGroupX')
 const { CLUBS, isKnownClubNumber } = require('../lib/groupXClubs')
+const { buildLocalTimestamp, DATE_RE } = require('../lib/abcTime')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 
 const router = Router()
 router.use(authenticate)
 router.use(requireRole('admin'))
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 // Resolves and validates club_number off the query string. Returns null and
 // sends the 400 itself when invalid, so handlers can `if (!club) return`.
@@ -69,6 +68,52 @@ router.get('/classes', async (req, res) => {
   try {
     res.json({ classes: await abc.listClasses(club, start, end) })
   } catch (err) { fail(res, err, '/classes') }
+})
+
+// POST /group-x/classes — create one class on the ABC calendar.
+router.post('/classes', async (req, res) => {
+  const b = req.body || {}
+  if (!isKnownClubNumber(b.club_number)) {
+    return res.status(400).json({ error: 'valid club_number is required in body' })
+  }
+  if (!b.event_type_id || !b.employee_id) {
+    return res.status(400).json({ error: 'event_type_id and employee_id are required' })
+  }
+  const duration = parseInt(b.duration_minutes, 10)
+  if (!duration || duration <= 0) {
+    return res.status(400).json({ error: 'duration_minutes must be a positive number' })
+  }
+
+  let stamp
+  try {
+    stamp = buildLocalTimestamp(b.date, b.time)
+  } catch (err) {
+    return res.status(400).json({ error: err.message })
+  }
+
+  try {
+    const result = await abc.createClass(String(b.club_number), {
+      event_type_id: b.event_type_id,
+      employee_id: b.employee_id,
+      event_timestamp_local: stamp,
+      duration_minutes: duration,
+      training_level_id: b.training_level_id || null,
+    })
+    // ABC rejected it. Surface ABC's own message rather than a generic 500 —
+    // its validation codes (API-CAL-EVT-*) are the useful part.
+    if (!result.ok) return res.status(502).json({ error: result.error, abc_status: result.http })
+    res.status(201).json({ event_id: result.event_id })
+  } catch (err) { fail(res, err, 'POST /classes') }
+})
+
+// DELETE /group-x/classes/:eventId?club_number= — cancel one class in ABC.
+router.delete('/classes/:eventId', async (req, res) => {
+  const club = requireClub(req, res); if (!club) return
+  try {
+    const result = await abc.cancelClass(club, req.params.eventId)
+    if (!result.ok) return res.status(502).json({ error: result.error, abc_status: result.http })
+    res.json({ ok: true })
+  } catch (err) { fail(res, err, 'DELETE /classes') }
 })
 
 module.exports = router
