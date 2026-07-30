@@ -6,6 +6,7 @@ import CreateClassModal from './CreateClassModal'
 import BoardLinks from './BoardLinks'
 import CreateSeriesModal from './CreateSeriesModal'
 import GroupXReport from './GroupXReport'
+import AttendanceModal from './AttendanceModal'
 
 function weekLabel(weekStart) {
   const end = addDays(weekStart, 6)
@@ -33,6 +34,7 @@ export default function GroupXView() {
   const [linksOpen, setLinksOpen] = useState(false)
   const [seriesOpen, setSeriesOpen] = useState(false)
   const [tab, setTab] = useState('calendar')
+  const [attendanceFor, setAttendanceFor] = useState(null)
 
   useEffect(() => {
     api('/group-x/clubs')
@@ -166,6 +168,36 @@ export default function GroupXView() {
 
       {linksOpen && <BoardLinks clubs={clubs} />}
 
+      {(() => {
+        const pending = classes.filter(c => c.needs_attendance)
+        // Nothing to chase means nothing rendered. We never show a card saying
+        // everything is logged.
+        if (pending.length === 0) return null
+        return (
+          <div className="bg-surface rounded-xl border border-border p-4">
+            <h3 className="font-semibold text-text-primary mb-2">
+              {pending.length} {pending.length === 1 ? 'class needs' : 'classes need'} an attendance count
+            </h3>
+            <div className="divide-y divide-border">
+              {pending.map(c => {
+                const p = parseLocalTimestamp(c.event_timestamp_local)
+                return (
+                  <button key={c.event_id} type="button" onClick={() => setAttendanceFor(c)}
+                    className="w-full text-left py-2 flex flex-wrap items-baseline gap-x-2 hover:bg-bg rounded px-1">
+                    <span className="text-sm font-medium text-text-primary">{c.class_name}</span>
+                    <span className="text-xs text-text-muted">
+                      {p ? `${p.date} at ${fmtTime12(p.hour, p.min)}` : c.event_timestamp_local}
+                      {c.instructor_name ? ` · ${c.instructor_name}` : ''}
+                    </span>
+                    <span className="ml-auto text-xs text-wcs-red font-medium">Add count</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
+
       <WeekGrid
         weekStart={weekStart}
         classes={classes}
@@ -191,11 +223,22 @@ export default function GroupXView() {
               {selected.max_attendees != null && (
                 <div><span className="text-text-muted">Capacity: </span>{selected.max_attendees}</div>
               )}
+              {selected.headcount != null && (
+                <div>
+                  <span className="text-text-muted">Attended: </span>
+                  {selected.headcount}
+                  {selected.max_attendees > 0 && ` (${Math.round((selected.headcount / selected.max_attendees) * 100)}% full)`}
+                </div>
+              )}
             </div>
             <div className="px-5 py-4 border-t border-border flex justify-end gap-2">
               <button type="button" onClick={() => setSelected(null)}
                 className="px-4 py-2 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
                 Close
+              </button>
+              <button type="button" onClick={() => { setAttendanceFor(selected); setSelected(null) }}
+                className="px-4 py-2 text-sm rounded-lg border border-border text-text-primary hover:bg-bg font-medium">
+                {selected.headcount != null ? 'Edit count' : 'Add count'}
               </button>
               <button type="button" onClick={cancelClass} disabled={cancelBusy}
                 className="px-4 py-2 text-sm rounded-lg border border-red-300 bg-red-50 text-red-900 font-medium hover:bg-red-100 disabled:opacity-50">
@@ -207,6 +250,15 @@ export default function GroupXView() {
       )}
 
       </>)}
+
+      {attendanceFor && (
+        <AttendanceModal
+          club={club}
+          classEvent={attendanceFor}
+          onClose={() => setAttendanceFor(null)}
+          onSaved={async () => { setAttendanceFor(null); await load() }}
+        />
+      )}
 
       {seriesOpen && (
         <CreateSeriesModal
