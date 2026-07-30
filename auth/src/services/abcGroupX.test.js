@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert')
 const {
   _shapeClassType, _shapeInstructor, _shapeClassEvent,
-  _chunkDateRange, _assertAbcOk, _abcBodyError,
+  _chunkDateRange, _assertAbcOk, _abcBodyError, _createdEventId,
   GX_DEPARTMENTS, EXCLUDED_NAMES, MAX_RANGE_DAYS,
 } = require('./abcGroupX')
 
@@ -172,4 +172,19 @@ test('_abcBodyError returns null on the success code', () => {
 test('_abcBodyError returns null when ABC sends no status block', () => {
   assert.strictEqual(_abcBodyError({}), null)
   assert.strictEqual(_abcBodyError(null), null)
+})
+
+test('_createdEventId pulls the new id out of the create response link', () => {
+  // A successful POST returns a link, not the event object.
+  const id = _createdEventId({
+    status: { messageCode: 'API-CAL-EVT-0000' },
+    result: { links: [{ rel: 'events', href: '/rest/30935/calendars/events/09747cbacdf246d7a9fd35798016614c' }] },
+  })
+  assert.strictEqual(id, '09747cbacdf246d7a9fd35798016614c')
+})
+
+test('_createdEventId returns null when ABC sends no link', () => {
+  assert.strictEqual(_createdEventId({ status: { messageCode: 'API-CAL-EVT-0000' } }), null)
+  assert.strictEqual(_createdEventId({}), null)
+  assert.strictEqual(_createdEventId(null), null)
 })

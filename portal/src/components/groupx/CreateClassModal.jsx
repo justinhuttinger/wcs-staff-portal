@@ -1,24 +1,21 @@
 import { useState, useEffect } from 'react'
 import { api } from '../../lib/api'
 
-export default function CreateClassModal({ club, classTypes, instructors, defaultDate, onClose, onCreated }) {
+export default function CreateClassModal({ club, classTypes, instructors, defaultDate, defaultTime, onClose, onCreated }) {
   const [eventTypeId, setEventTypeId] = useState('')
   const [employeeId, setEmployeeId] = useState('')
   const [date, setDate] = useState(defaultDate || '')
-  const [time, setTime] = useState('06:00')
-  const [duration, setDuration] = useState(60)
+  const [time, setTime] = useState(defaultTime || '06:00')
   const [levelId, setLevelId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
   const selectedType = classTypes.find(t => t.event_type_id === eventTypeId) || null
 
-  // Prefill duration and training level from the class type. ABC defines both
-  // per type, so picking the class should fill them in rather than making
-  // staff retype the same 60 every time.
+  // Auto-select the training level when the class type has exactly one, which
+  // is the case for all 6 WCS class types today.
   useEffect(() => {
     if (!selectedType) return
-    if (selectedType.duration_minutes) setDuration(selectedType.duration_minutes)
     const levels = selectedType.training_levels || []
     setLevelId(levels.length === 1 ? levels[0].level_id : '')
   }, [eventTypeId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -36,7 +33,6 @@ export default function CreateClassModal({ club, classTypes, instructors, defaul
           employee_id: employeeId,
           date,
           time,
-          duration_minutes: duration,
           training_level_id: levelId || null,
         }),
       })
@@ -50,7 +46,7 @@ export default function CreateClassModal({ club, classTypes, instructors, defaul
     }
   }
 
-  const canSubmit = eventTypeId && employeeId && date && time && duration > 0 && !saving
+  const canSubmit = eventTypeId && employeeId && date && time && !saving
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -110,9 +106,12 @@ export default function CreateClassModal({ club, classTypes, instructors, defaul
                 className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-surface text-text-primary" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-text-muted mb-1">Minutes</label>
-              <input type="number" min="5" step="5" value={duration} onChange={e => setDuration(parseInt(e.target.value, 10) || 0)} required
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-surface text-text-primary" />
+              {/* Read-only: ABC takes duration from the class type and ignores
+                  any value sent on create. An editable box here would lie. */}
+              <label className="block text-xs font-medium text-text-muted mb-1">Length</label>
+              <div className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-bg text-text-muted">
+                {selectedType?.duration_minutes ? `${selectedType.duration_minutes} min` : 'Set by class'}
+              </div>
             </div>
           </div>
 
