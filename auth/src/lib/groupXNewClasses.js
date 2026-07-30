@@ -20,15 +20,30 @@ function activeFlagMap(flags, onDate) {
   return map
 }
 
-// Marks each class with is_new. A class is new when its type is flagged AND
-// the flag is still active on that class's own local date — so a schedule
-// spanning the expiry shows the badge only on the days it should.
-function markNewClasses(classes, flags) {
-  const byType = new Map((flags || []).map(f => [f.event_type_id, f]))
+// Marks each class with is_new.
+//
+// Two independent sources, because they answer different questions:
+//   typeFlags  — this whole class offering is new (StrongHer just launched)
+//   eventFlags — this particular session is new (Yoga already runs Friday and
+//                we just added a Saturday one; only Saturday should be badged)
+//
+// A class is new if EITHER applies and is still active on that class's own
+// local date, so a schedule spanning an expiry badges only the days it should.
+function markNewClasses(classes, typeFlags, eventFlags) {
+  const byType = new Map((typeFlags || []).map(f => [f.event_type_id, f]))
+  const byEvent = new Map((eventFlags || []).map(f => [f.abc_event_id, f]))
+
   return (classes || []).map(c => {
-    const flag = byType.get(c.event_type_id)
     const day = String(c.event_timestamp_local || '').slice(0, 10)
-    return { ...c, is_new: !!flag && !!day && isFlagActive(flag, day) }
+    if (!day) return { ...c, is_new: false, new_source: null }
+
+    const eventFlag = byEvent.get(c.event_id)
+    if (isFlagActive(eventFlag, day)) return { ...c, is_new: true, new_source: 'session' }
+
+    const typeFlag = byType.get(c.event_type_id)
+    if (isFlagActive(typeFlag, day)) return { ...c, is_new: true, new_source: 'class' }
+
+    return { ...c, is_new: false, new_source: null }
   })
 }
 

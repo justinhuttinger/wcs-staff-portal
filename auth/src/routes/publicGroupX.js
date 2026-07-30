@@ -36,19 +36,22 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 async function loadWeek(club, monday) {
   return cache.wrapSWR(publicCacheKey(club.clubNumber, monday), FRESH_MS, STALE_MS, async () => {
     const sunday = buildWeek(monday, []).week_end
-    const [classes, flagsRes] = await Promise.all([
+    const [classes, typeFlags, eventFlags] = await Promise.all([
       abc.listClasses(club.clubNumber, monday, sunday),
       supabaseAdmin
         .from('group_x_new_classes')
         .select('event_type_id, class_name, show_until')
         .eq('club_number', club.clubNumber),
+      supabaseAdmin
+        .from('group_x_new_class_events')
+        .select('abc_event_id, class_name, show_until')
+        .eq('club_number', club.clubNumber),
     ])
     // A badge failure must never take the board down. Worst case members see
     // the schedule without the NEW pill, which beats a blank TV.
-    if (flagsRes.error) {
-      console.warn('[publicGroupX] new-class flags unavailable:', flagsRes.error.message)
-    }
-    const flagged = markNewClasses(classes, flagsRes.data || [])
+    if (typeFlags.error) console.warn('[publicGroupX] class badges unavailable:', typeFlags.error.message)
+    if (eventFlags.error) console.warn('[publicGroupX] session badges unavailable:', eventFlags.error.message)
+    const flagged = markNewClasses(classes, typeFlags.data || [], eventFlags.data || [])
     return { club: club.name, club_slug: club.slug, ...buildWeek(monday, flagged) }
   })
 }

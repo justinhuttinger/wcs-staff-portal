@@ -1,12 +1,22 @@
 import { useState, useEffect } from 'react'
 import { api } from '../../lib/api'
 
+// Badges default to a month out. Long enough that members notice, short enough
+// that a forgotten badge ages off by itself.
+function plus30() {
+  const d = new Date()
+  d.setDate(d.getDate() + 30)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export default function CreateClassModal({ club, classTypes, instructors, defaultDate, defaultTime, onClose, onCreated }) {
   const [eventTypeId, setEventTypeId] = useState('')
   const [employeeId, setEmployeeId] = useState('')
   const [date, setDate] = useState(defaultDate || '')
   const [time, setTime] = useState(defaultTime || '06:00')
   const [levelId, setLevelId] = useState('')
+  const [markNew, setMarkNew] = useState(false)
+  const [newUntil, setNewUntil] = useState(plus30())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
@@ -34,6 +44,9 @@ export default function CreateClassModal({ club, classTypes, instructors, defaul
           date,
           time,
           training_level_id: levelId || null,
+          class_name: selectedType?.name,
+          mark_new: markNew,
+          new_until: markNew ? newUntil : null,
         }),
       })
       onCreated()
@@ -127,6 +140,20 @@ export default function CreateClassModal({ club, classTypes, instructors, defaul
               </select>
             </div>
           )}
+
+          <div className="rounded-lg border border-border p-3">
+            <label className="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
+              <input type="checkbox" checked={markNew} onChange={e => setMarkNew(e.target.checked)} className="accent-wcs-red" />
+              Show a New class badge for this class
+            </label>
+            {markNew && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs text-text-muted">until</span>
+                <input type="date" value={newUntil} onChange={e => setNewUntil(e.target.value)}
+                  className="border border-border rounded-lg px-2 py-1 text-sm bg-surface text-text-primary" />
+              </div>
+            )}
+          </div>
 
           {error && (
             <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
