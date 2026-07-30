@@ -154,6 +154,17 @@ function _shapeClassEvent(raw) {
   }
 }
 
+// A successful create does not return the event object. It returns a link:
+//   { result: { links: [{ rel: 'events', href: '/rest/30935/calendars/events/<id>' }] } }
+// The new event id is the last path segment.
+function _createdEventId(body) {
+  const links = body?.result?.links || []
+  const href = (links.find(l => l.rel === 'events') || links[0] || {}).href
+  if (!href) return null
+  const id = String(href).split('/').filter(Boolean).pop()
+  return id || null
+}
+
 async function listClassTypes(clubNumber) {
   assertClub(clubNumber)
   return cache.wrap(`gx:types:${clubNumber}`, TYPES_TTL_MS, async () => {
@@ -262,18 +273,22 @@ async function listClasses(clubNumber, startDate, endDate) {
 
 async function createClass(clubNumber, opts) {
   assertClub(clubNumber)
+  // Field names confirmed against a working call 2026-07-30. These differ from
+  // the names GET responses use, which is what made this look like an ABC-side
+  // problem for a while:
+  //   startTime  (NOT eventTimestamp) — naive club-local "YYYY-MM-DD HH:mm:ss"
+  //   levelId    (NOT eventTrainingLevelId)
+  // Duration is taken from the event type; POST does not accept it.
   const payload = {
     eventTypeId: opts.event_type_id,
     employeeId: opts.employee_id,
-    eventTimestamp: opts.event_timestamp_local, // "YYYY-MM-DD HH:mm:ss", club-local
-    duration: String(opts.duration_minutes),
+    startTime: opts.event_timestamp_local,
   }
-  if (opts.training_level_id) payload.eventTrainingLevelId = opts.training_level_id
+  if (opts.training_level_id) payload.levelId = opts.training_level_id
 
   const r = await abcMutate('POST', `/${clubNumber}/calendars/events`, payload)
   if (!r.ok) return { ok: false, event_id: null, http: r.http, error: r.error }
-  const created = r.data?.events?.[0] || r.data?.event || r.data
-  return { ok: true, event_id: created?.eventId || null, http: r.http, error: null }
+  return { ok: true, event_id: _createdEventId(r.data), http: r.http, error: null }
 }
 
 async function cancelClass(clubNumber, eventId) {
@@ -290,5 +305,5 @@ module.exports = {
   GX_DEPARTMENTS, EXCLUDED_NAMES,
   listClassTypes, listInstructors, listClasses, createClass, cancelClass,
   _shapeClassType, _shapeInstructor, _shapeClassEvent,
-  _chunkDateRange, _assertAbcOk, _abcBodyError, MAX_RANGE_DAYS, ABC_OK_CODE,
+  _chunkDateRange, _assertAbcOk, _abcBodyError, _createdEventId, MAX_RANGE_DAYS, ABC_OK_CODE,
 }

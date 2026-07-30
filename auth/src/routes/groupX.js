@@ -71,6 +71,8 @@ router.get('/classes', async (req, res) => {
 })
 
 // POST /group-x/classes — create one class on the ABC calendar.
+// Duration is deliberately not accepted: ABC takes it from the event type and
+// silently ignores a duration in the payload (asked for 30, stored 60).
 router.post('/classes', async (req, res) => {
   const b = req.body || {}
   if (!isKnownClubNumber(b.club_number)) {
@@ -79,11 +81,6 @@ router.post('/classes', async (req, res) => {
   if (!b.event_type_id || !b.employee_id) {
     return res.status(400).json({ error: 'event_type_id and employee_id are required' })
   }
-  const duration = parseInt(b.duration_minutes, 10)
-  if (!duration || duration <= 0) {
-    return res.status(400).json({ error: 'duration_minutes must be a positive number' })
-  }
-
   let stamp
   try {
     stamp = buildLocalTimestamp(b.date, b.time)
@@ -96,7 +93,6 @@ router.post('/classes', async (req, res) => {
       event_type_id: b.event_type_id,
       employee_id: b.employee_id,
       event_timestamp_local: stamp,
-      duration_minutes: duration,
       training_level_id: b.training_level_id || null,
     })
     // ABC rejected it. Surface ABC's own message rather than a generic 500 —
