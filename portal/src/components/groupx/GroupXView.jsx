@@ -5,6 +5,7 @@ import WeekGrid from './WeekGrid'
 import CreateClassModal from './CreateClassModal'
 import BoardLinks from './BoardLinks'
 import CreateSeriesModal from './CreateSeriesModal'
+import GroupXReport from './GroupXReport'
 
 function weekLabel(weekStart) {
   const end = addDays(weekStart, 6)
@@ -31,6 +32,7 @@ export default function GroupXView() {
   const [cancelBusy, setCancelBusy] = useState(false)
   const [linksOpen, setLinksOpen] = useState(false)
   const [seriesOpen, setSeriesOpen] = useState(false)
+  const [tab, setTab] = useState('calendar')
 
   useEffect(() => {
     api('/group-x/clubs')
@@ -87,6 +89,20 @@ export default function GroupXView() {
 
   return (
     <div className="space-y-4">
+      <div className="bg-surface rounded-xl border border-border p-1.5 flex gap-1.5">
+        {['calendar', 'performance'].map(t => (
+          <button key={t} type="button" onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm rounded-lg capitalize transition ${
+              tab === t ? 'bg-wcs-red text-white font-medium' : 'text-text-primary hover:bg-bg'
+            }`}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'performance' && <GroupXReport clubs={clubs} />}
+
+      {tab === 'calendar' && (<>
       <div className="bg-surface rounded-xl border border-border p-4 space-y-3">
         <div className="flex flex-wrap gap-1.5">
           {clubs.map(c => (
@@ -189,6 +205,8 @@ export default function GroupXView() {
           </div>
         </div>
       )}
+
+      </>)}
 
       {seriesOpen && (
         <CreateSeriesModal

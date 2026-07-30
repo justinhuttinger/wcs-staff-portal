@@ -16,6 +16,7 @@ const { buildLocalTimestamp, DATE_RE } = require('../lib/abcTime')
 const { expandSeries, MAX_OCCURRENCES } = require('../lib/groupXSeries')
 const { supabaseAdmin } = require('../services/supabase')
 const { publicCacheKeysForDates } = require('../lib/groupXPublic')
+const { aggregate } = require('../lib/groupXReport')
 const memoryCache = require('../services/memoryCache')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
@@ -280,6 +281,39 @@ router.delete('/series/:id', async (req, res) => {
     invalidatePublicBoard(series.club_number, results.filter(r => r.ok).map(r => r.date))
     res.json({ canceled, failed: results.length - canceled, results })
   } catch (err) { fail(res, err, 'DELETE /series') }
+})
+
+// GET /group-x/report?club_number=&start=&end=
+// Which classes are worth keeping. club_number=all aggregates every club.
+router.get('/report', async (req, res) => {
+  const clubParam = String(req.query.club_number || '')
+  const isAll = clubParam === 'all'
+  if (!isAll && !isKnownClubNumber(clubParam)) {
+    return res.status(400).json({ error: 'club_number must be a known club or "all"' })
+  }
+  const { start, end } = req.query
+  if (!DATE_RE.test(start || '') || !DATE_RE.test(end || '')) {
+    return res.status(400).json({ error: 'start and end must be YYYY-MM-DD' })
+  }
+  if (end < start) {
+    return res.status(400).json({ error: 'end must not be before start' })
+  }
+
+  try {
+    // Filter on the club-local timestamp so a range means the same local days
+    // at every club, rather than sliding with UTC.
+    let q = supabaseAdmin
+      .from('group_x_class_attendance')
+      .select('club_number, class_name, instructor_name, event_timestamp_local, headcount, max_attendees')
+      .gte('event_timestamp_local', `${start} 00:00:00`)
+      .lte('event_timestamp_local', `${end} 23:59:59`)
+      .limit(20000)
+    if (!isAll) q = q.eq('club_number', clubParam)
+
+    const { data, error } = await q
+    if (error) throw new Error(error.message)
+    res.json({ club_number: clubParam, start, end, ...aggregate(data || []) })
+  } catch (err) { fail(res, err, '/report') }
 })
 
 module.exports = router
