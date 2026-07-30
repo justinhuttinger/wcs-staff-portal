@@ -1,6 +1,15 @@
-// The public class board. One self-contained HTML document: inlined CSS and
-// JS, no external fonts, no CDN. The only network call it makes is to its own
-// /public/group-x/schedule endpoint.
+// The public class board. One self-contained HTML document: inlined CSS, JS,
+// and font. No external fonts, no CDN. The only network call it makes is to
+// its own /public/group-x/schedule endpoint.
+//
+// Styling mirrors the westcoaststrength.com theme (wp-content/themes/wcs-custom)
+// so the board reads as part of the site rather than a bolted-on widget. Tokens
+// below are copied from that theme's :root and must stay in sync with it:
+//   --color-bg #ffffff  --color-surface #f4f4f2  --color-text #16181d
+//   --color-accent #ff0000  --color-accent-hover #cc0000
+//   --color-line rgb(0 0 0 / .12)  --color-muted rgb(0 0 0 / .58)
+//   --font-display 'WCSDisplay', 'Arial Narrow'  (uppercase, line-height .9)
+//   fluid --step-* type scale
 //
 // Design notes, so the next person does not "fix" these into something worse:
 //
@@ -15,11 +24,12 @@
 //    beats a blank TV.
 //  * Type scales with viewport width so the same URL fills a 1080p or 4K
 //    screen and still reads inside a narrow website iframe.
+const { WCS_DISPLAY_FACE } = require('./wcsDisplayFont')
 
-// Class name -> collar color. Keyed on the 6 real WCS class types, with a
-// hashed fallback so a new class type still gets a stable color instead of
-// falling back to grey.
-const COLLARS = ['#ff3b30', '#ffb400', '#2fd4c8', '#7c6cff', '#4ade80', '#ff7ab8']
+// Per-class accent. The theme is single-accent red, so the board stays red-led
+// and separates classes by a restrained tint ladder rather than a rainbow.
+// Red is reserved for today, so it is deliberately not in this list.
+const COLLARS = ['#16181d', '#5b6472', '#8a94a3', '#2f3a4a', '#6e7787', '#454f5e']
 
 function escapeHtml(s) {
   return String(s == null ? '' : s)
@@ -34,183 +44,169 @@ function renderBoardHtml({ clubSlug, clubName }) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Group X Schedule · West Coast Strength ${escapeHtml(clubName)}</title>
-<meta name="robots" content="index, follow">
 <style>
+${WCS_DISPLAY_FACE}
   *, *::before, *::after { box-sizing: border-box; }
+  * { margin: 0; }
+
   :root {
-    --ink:    #16181d;
-    --ink-2:  #1e2129;
-    --ink-3:  #262a33;
-    --paper:  #f4f4f2;
-    --muted:  rgba(244,244,242,.52);
-    --line:   rgba(244,244,242,.10);
-    --red:    #ff2d2d;
-    --display: 'Arial Narrow', 'Helvetica Neue Condensed', 'Roboto Condensed', ui-sans-serif, system-ui, sans-serif;
-    --ui: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    /* Copied from wcs-custom/assets/css/main.css :root — keep in sync. */
+    --color-bg: #ffffff;
+    --color-surface: #f4f4f2;
+    --color-text: #16181d;
+    --color-accent: #ff0000;
+    --color-accent-hover: #cc0000;
+    --color-line: rgb(0 0 0 / 0.12);
+    --color-muted: rgb(0 0 0 / 0.58);
+    --font-display: 'WCSDisplay', 'Arial Narrow', sans-serif;
+    --font-body: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --step--1: clamp(0.83rem, 0.8rem + 0.15vw, 0.9rem);
+    --step-0:  clamp(1rem, 0.95rem + 0.25vw, 1.13rem);
+    --step-1:  clamp(1.2rem, 1.1rem + 0.5vw, 1.5rem);
+    --step-2:  clamp(1.44rem, 1.25rem + 0.95vw, 2rem);
+    --step-3:  clamp(1.73rem, 1.4rem + 1.65vw, 2.66rem);
+    --step-4:  clamp(2.07rem, 1.55rem + 2.6vw, 3.55rem);
+    --space-xs: clamp(0.75rem, 0.7rem + 0.25vw, 1rem);
+    --space-s:  clamp(1rem, 0.9rem + 0.5vw, 1.5rem);
+    --space-m:  clamp(1.5rem, 1.3rem + 1vw, 2.5rem);
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --dur-fast: 0.3s;
   }
-  html, body { margin: 0; padding: 0; }
+
+  html { -webkit-text-size-adjust: 100%; }
   body {
-    background: var(--ink);
-    color: var(--paper);
-    font-family: var(--ui);
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-body);
+    font-size: var(--step-0);
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     min-height: 100vh;
-    padding: clamp(14px, 1.6vw, 34px);
+    padding: var(--space-s);
   }
+
+  /* Theme convention: display face is uppercase, weight 400, tight leading. */
+  .title { font-family: var(--font-display); font-weight: 400; text-transform: uppercase; line-height: .9; letter-spacing: -0.005em; }
+  .eyebrow {
+    font-family: var(--font-body); font-size: var(--step--1); font-weight: 600;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--color-accent);
+  }
+  .accent { color: var(--color-accent); }
 
   /* ---- Header ------------------------------------------------------- */
   .head {
-    display: flex; align-items: baseline; gap: clamp(10px, 1.4vw, 24px);
+    display: flex; align-items: flex-end; gap: var(--space-s);
     flex-wrap: wrap;
-    padding-bottom: clamp(10px, 1vw, 18px);
-    border-bottom: 2px solid var(--red);
-    margin-bottom: clamp(12px, 1.2vw, 22px);
+    padding-bottom: var(--space-xs);
+    border-bottom: 3px solid var(--color-accent);
+    margin-bottom: var(--space-s);
   }
-  .mark {
-    font-family: var(--display);
-    font-stretch: condensed;
-    text-transform: uppercase;
-    font-weight: 800;
-    letter-spacing: .01em;
-    font-size: clamp(22px, 2.5vw, 52px);
-    line-height: .95;
-  }
-  .mark em { font-style: normal; color: var(--red); }
-  .club {
-    font-family: var(--display);
-    font-stretch: condensed;
-    text-transform: uppercase;
-    font-size: clamp(15px, 1.5vw, 30px);
-    letter-spacing: .14em;
-    color: var(--muted);
-  }
+  .head__titles { display: flex; flex-direction: column; gap: .18em; }
+  .mark { font-size: var(--step-4); }
   .range {
     margin-left: auto;
-    font-family: var(--display);
-    font-stretch: condensed;
-    text-transform: uppercase;
-    font-size: clamp(15px, 1.6vw, 32px);
-    letter-spacing: .08em;
+    font-family: var(--font-display); text-transform: uppercase;
+    font-size: var(--step-2); line-height: .9;
     font-variant-numeric: tabular-nums;
+    color: var(--color-muted);
   }
 
   /* ---- Week --------------------------------------------------------- */
   .week {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: clamp(5px, .5vw, 12px);
+    gap: clamp(4px, .42vw, 10px);
     align-items: start;
   }
   .day {
-    background: var(--ink-2);
-    border-radius: 10px;
-    overflow: hidden;
-    min-height: clamp(90px, 10vw, 150px);
+    background: var(--color-surface);
+    min-height: clamp(84px, 9vw, 140px);
   }
-  .day.today { background: var(--ink-3); outline: 2px solid var(--red); }
+  .day--today { background: var(--color-bg); box-shadow: inset 0 0 0 3px var(--color-accent); }
 
   .dhead {
-    padding: clamp(6px, .6vw, 13px) clamp(7px, .7vw, 15px);
-    border-bottom: 1px solid var(--line);
-    display: flex; align-items: baseline; gap: .5em;
+    padding: clamp(6px, .55vw, 12px) clamp(7px, .65vw, 14px);
+    border-bottom: 1px solid var(--color-line);
+    display: flex; align-items: baseline; gap: .45em;
   }
-  .day.today .dhead { background: var(--red); border-bottom-color: transparent; }
+  .day--today .dhead { background: var(--color-accent); border-bottom-color: transparent; color: #fff; }
   .dow {
-    font-family: var(--display);
-    font-stretch: condensed;
-    text-transform: uppercase;
-    font-weight: 800;
-    letter-spacing: .09em;
-    font-size: clamp(13px, 1.35vw, 28px);
-    line-height: 1;
+    font-family: var(--font-display); text-transform: uppercase;
+    letter-spacing: .04em; font-size: clamp(14px, 1.42vw, 30px); line-height: .9;
   }
   .dnum {
-    margin-left: auto;
-    font-family: var(--display);
-    font-variant-numeric: tabular-nums;
-    font-size: clamp(12px, 1.15vw, 24px);
-    color: var(--muted);
-    line-height: 1;
+    margin-left: auto; font-family: var(--font-display);
+    font-variant-numeric: tabular-nums; font-size: clamp(12px, 1.15vw, 24px);
+    line-height: .9; color: var(--color-muted);
   }
-  .day.today .dnum { color: rgba(255,255,255,.8); }
+  .day--today .dnum { color: rgb(255 255 255 / .85); }
 
-  .list { padding: clamp(4px, .4vw, 9px); display: flex; flex-direction: column; gap: clamp(3px, .3vw, 7px); }
+  .list { padding: clamp(4px, .38vw, 9px); display: flex; flex-direction: column; gap: clamp(3px, .3vw, 7px); }
 
   .cls {
     position: relative;
-    background: rgba(244,244,242,.045);
-    border-radius: 7px;
-    padding: clamp(5px, .55vw, 12px) clamp(6px, .6vw, 13px);
-    padding-left: clamp(11px, 1.05vw, 21px);
+    background: var(--color-bg);
+    padding: clamp(5px, .5vw, 12px) clamp(6px, .6vw, 13px);
+    padding-left: clamp(11px, 1.02vw, 21px);
   }
+  .day--today .cls { background: var(--color-surface); }
   .cls::before {
     content: '';
-    position: absolute; left: clamp(4px, .38vw, 8px); top: clamp(5px, .5vw, 11px); bottom: clamp(5px, .5vw, 11px);
-    width: clamp(3px, .28vw, 6px);
-    border-radius: 3px;
-    background: var(--collar, var(--red));
+    position: absolute; left: clamp(4px, .36vw, 8px);
+    top: clamp(5px, .48vw, 11px); bottom: clamp(5px, .48vw, 11px);
+    width: clamp(3px, .26vw, 6px);
+    background: var(--collar, var(--color-text));
   }
   .time {
-    font-family: var(--display);
-    font-stretch: condensed;
+    font-family: var(--font-display); text-transform: uppercase;
     font-variant-numeric: tabular-nums;
-    font-size: clamp(11px, 1.02vw, 21px);
-    letter-spacing: .045em;
-    color: var(--collar, var(--paper));
-    line-height: 1.15;
+    font-size: clamp(11px, 1.02vw, 21px); line-height: .95;
+    letter-spacing: .02em; color: var(--color-muted);
   }
   .name {
-    font-family: var(--display);
-    font-stretch: condensed;
-    text-transform: uppercase;
-    font-weight: 800;
-    font-size: clamp(13px, 1.32vw, 29px);
-    letter-spacing: .015em;
-    line-height: 1.05;
-    margin-top: .08em;
+    font-family: var(--font-display); text-transform: uppercase;
+    font-size: clamp(13px, 1.36vw, 30px); line-height: .9;
+    letter-spacing: -0.005em; margin-top: .12em;
   }
   .who {
-    font-size: clamp(9.5px, .82vw, 17px);
-    color: var(--muted);
-    line-height: 1.2;
-    margin-top: .22em;
+    font-size: clamp(9.5px, .8vw, 16px); line-height: 1.25;
+    margin-top: .3em; color: var(--color-muted);
   }
 
   .foot {
-    margin-top: clamp(10px, 1vw, 20px);
-    display: flex; gap: 1em; align-items: center;
-    font-size: clamp(9.5px, .78vw, 15px);
-    color: var(--muted);
-    letter-spacing: .05em;
-    text-transform: uppercase;
-    font-family: var(--display);
-    font-stretch: condensed;
+    margin-top: var(--space-xs);
+    display: flex; gap: .7em; align-items: center;
+    font-size: var(--step--1); font-weight: 600;
+    letter-spacing: .22em; text-transform: uppercase;
+    color: var(--color-muted);
   }
-  .dot { width: .55em; height: .55em; border-radius: 50%; background: #4ade80; }
-  .dot.stale { background: var(--ffb400, #ffb400); }
+  .dot { width: .5em; height: .5em; border-radius: 50%; background: var(--color-accent); flex: none; }
+  .dot--stale { background: var(--color-muted); }
 
   /* ---- Narrow: website iframe / phone -------------------------------- */
   @media (max-width: 900px) {
-    .week { grid-template-columns: 1fr; gap: 8px; }
+    .week { grid-template-columns: 1fr; gap: 7px; }
     .day { min-height: 0; }
-    .day:not(.today):has(.list:empty) { display: none; }
-    .dow  { font-size: 19px; }
-    .dnum { font-size: 17px; }
+    .day--empty:not(.day--today) { display: none; }
+    .dow  { font-size: 20px; }
+    .dnum { font-size: 18px; }
     .time { font-size: 15px; }
-    .name { font-size: 21px; }
+    .name { font-size: 22px; }
     .who  { font-size: 13px; }
     .range { margin-left: 0; width: 100%; }
   }
 
   @media (prefers-reduced-motion: no-preference) {
-    .day { transition: outline-color .2s ease; }
+    .day { transition: box-shadow var(--dur-fast) var(--ease-out); }
   }
 </style>
 </head>
 <body>
   <header class="head">
-    <div class="mark">West Coast <em>Strength</em></div>
-    <div class="club">${escapeHtml(clubName)}</div>
+    <div class="head__titles">
+      <span class="eyebrow">${escapeHtml(clubName)} · Group X</span>
+      <h1 class="title mark">Class Schedule</h1>
+    </div>
     <div class="range" id="range"></div>
   </header>
 
@@ -260,14 +256,14 @@ function renderBoardHtml({ clubSlug, clubName }) {
       // A day with no classes renders as an empty column, not a "no classes"
       // message. The gap is the information.
       var items = d.classes.map(function (c) {
-        var collar = collarFor(c.class_name);
-        return '<div class="cls" style="--collar:' + collar + '">'
+        return '<div class="cls" style="--collar:' + collarFor(c.class_name) + '">'
           + '<div class="time">' + esc(c.time_label) + '</div>'
           + '<div class="name">' + esc(c.class_name) + '</div>'
           + (c.instructor ? '<div class="who">' + esc(c.instructor) + '</div>' : '')
           + '</div>';
       }).join('');
-      return '<section class="day' + (isToday ? ' today' : '') + '">'
+      return '<section class="day' + (isToday ? ' day--today' : '')
+        + (d.classes.length ? '' : ' day--empty') + '">'
         + '<div class="dhead"><span class="dow">' + esc(d.weekday) + '</span>'
         + '<span class="dnum">' + esc(d.day_number) + '</span></div>'
         + '<div class="list">' + items + '</div>'
@@ -277,7 +273,7 @@ function renderBoardHtml({ clubSlug, clubName }) {
 
   function setStatus(text, stale) {
     statusEl.textContent = text;
-    dotEl.className = 'dot' + (stale ? ' stale' : '');
+    dotEl.className = 'dot' + (stale ? ' dot--stale' : '');
   }
 
   function load() {
@@ -297,11 +293,7 @@ function renderBoardHtml({ clubSlug, clubName }) {
       })
       .catch(function () {
         // Keep the last good board on screen. A stale schedule beats a blank TV.
-        if (lastGood) {
-          setStatus('Showing last update, reconnecting', true);
-        } else {
-          setStatus('Schedule unavailable, retrying', true);
-        }
+        setStatus(lastGood ? 'Showing last update, reconnecting' : 'Schedule unavailable, retrying', true);
       });
   }
 
