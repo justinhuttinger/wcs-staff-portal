@@ -158,6 +158,19 @@ export default function WeekGrid({ weekStart, classes, onClassClick, onSlotClick
                       <div className="text-[10px] leading-tight truncate opacity-80">
                         {c.instructor_name || 'Unassigned'}
                       </div>
+                      {/* State reads at a glance: a logged class shows its
+                          number, a past unlogged one shows an amber dot. */}
+                      {c.headcount != null && (
+                        <span className="absolute top-0.5 right-1 text-[10px] font-bold tabular-nums opacity-90">
+                          {c.headcount}
+                        </span>
+                      )}
+                      {c.needs_attendance && (
+                        <span
+                          className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-500"
+                          title="Needs an attendance count"
+                        />
+                      )}
                     </button>
                   )
                 })}

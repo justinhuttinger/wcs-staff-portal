@@ -81,8 +81,89 @@ router.get('/classes', async (req, res) => {
     return res.status(400).json({ error: 'end must not be before start' })
   }
   try {
-    res.json({ classes: await abc.listClasses(club, start, end) })
+    const classes = await abc.listClasses(club, start, end)
+
+    // Join the staff-entered headcounts. ABC is the source of truth for what
+    // was scheduled; Supabase owns only how it went.
+    const ids = classes.map(c => c.event_id)
+    let byId = new Map()
+    if (ids.length) {
+      const { data, error } = await supabaseAdmin
+        .from('group_x_class_attendance')
+        .select('abc_event_id, headcount, notes, recorded_by, recorded_at')
+        .eq('club_number', club)
+        .in('abc_event_id', ids)
+      if (error) throw new Error(error.message)
+      byId = new Map((data || []).map(r => [r.abc_event_id, r]))
+    }
+
+    const nowIso = new Date().toISOString()
+    res.json({
+      classes: classes.map(c => {
+        const a = byId.get(c.event_id) || null
+        return {
+          ...c,
+          headcount: a ? a.headcount : null,
+          notes: a ? a.notes : null,
+          recorded_by: a ? a.recorded_by : null,
+          recorded_at: a ? a.recorded_at : null,
+          // Already happened and nobody logged a number. Drives the
+          // needs-attendance strip. An unbooked placeholder slot is not a real
+          // class, so it is never chased for a headcount.
+          needs_attendance: !a && !c.unbooked && !!c.event_timestamp && c.event_timestamp < nowIso,
+        }
+      }),
+    })
   } catch (err) { fail(res, err, '/classes') }
+})
+
+// PUT /group-x/classes/:eventId/attendance — record how many people came.
+//
+// Staff-entered rather than read from ABC: of 37 Salem class events in July
+// 2026, 31 had zero members attached and the rest had one, all marked "Did Not
+// Attend". Nobody books classes through ABC, so its attendance data is unusable.
+router.put('/classes/:eventId/attendance', async (req, res) => {
+  const b = req.body || {}
+  if (!isKnownClubNumber(b.club_number)) {
+    return res.status(400).json({ error: 'valid club_number is required in body' })
+  }
+  const headcount = parseInt(b.headcount, 10)
+  if (!Number.isInteger(headcount) || headcount < 0) {
+    return res.status(400).json({ error: 'headcount must be a whole number, zero or more' })
+  }
+  if (headcount > 500) {
+    return res.status(400).json({ error: 'headcount looks wrong, check the number' })
+  }
+  if (!b.event_timestamp || !b.event_timestamp_local || !b.event_type_id || !b.class_name) {
+    return res.status(400).json({ error: 'event_timestamp, event_timestamp_local, event_type_id and class_name are required' })
+  }
+
+  // Whole row. A partial upsert fails NOT NULL columns even when the row
+  // already exists, which has broken syncs in this codebase before.
+  const row = {
+    club_number: String(b.club_number),
+    abc_event_id: req.params.eventId,
+    series_id: b.series_id || null,
+    event_timestamp: b.event_timestamp,
+    event_timestamp_local: b.event_timestamp_local,
+    event_type_id: b.event_type_id,
+    class_name: b.class_name,
+    employee_id: b.employee_id || null,
+    instructor_name: b.instructor_name || null,
+    max_attendees: b.max_attendees ?? null,
+    headcount,
+    notes: b.notes || null,
+    recorded_by: req.user?.email || 'unknown',
+    recorded_at: new Date().toISOString(),
+  }
+
+  try {
+    const { error } = await supabaseAdmin
+      .from('group_x_class_attendance')
+      .upsert(row, { onConflict: 'club_number,abc_event_id' })
+    if (error) throw new Error(error.message)
+    res.json({ ok: true })
+  } catch (err) { fail(res, err, 'PUT /attendance') }
 })
 
 // POST /group-x/classes — create one class on the ABC calendar.
