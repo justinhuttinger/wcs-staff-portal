@@ -18,6 +18,13 @@ const ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'http://localhost:5173',
 ]
+// The global CORS below is locked to ALLOWED_ORIGINS and is mounted with no
+// path, so it answers OPTIONS preflight for EVERY url. The public class board
+// is embedded on westcoaststrength.com and loaded directly by in-gym TVs, so
+// its permissive CORS has to be mounted FIRST or preflight fails. This exact
+// ordering bug has bitten the prospects repo before.
+app.use('/public/group-x', cors({ origin: '*', methods: ['GET'] }))
+
 app.use(cors({
   origin: (origin, cb) => {
     // Allow requests with no origin (Electron, server-to-server, curl)
@@ -58,6 +65,7 @@ app.use('/appointments', require('./routes/appointments'))
 app.use('/tours', require('./routes/tours'))
 app.use('/tour-intake', require('./routes/tourIntake'))
 app.use('/public/tour', require('./routes/publicTour'))
+app.use('/public/group-x', require('./routes/publicGroupX'))
 app.use('/oidc', require('./routes/oidc'))
 
 // OIDC discovery at root level (some providers look here)
