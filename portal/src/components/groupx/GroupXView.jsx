@@ -4,6 +4,7 @@ import { startOfWeek, addDays, toISODate, fmtTime12, parseLocalTimestamp, MONTH_
 import WeekGrid from './WeekGrid'
 import CreateClassModal from './CreateClassModal'
 import BoardLinks from './BoardLinks'
+import CreateSeriesModal from './CreateSeriesModal'
 
 function weekLabel(weekStart) {
   const end = addDays(weekStart, 6)
@@ -29,6 +30,7 @@ export default function GroupXView() {
   const [createOpen, setCreateOpen] = useState(null)
   const [cancelBusy, setCancelBusy] = useState(false)
   const [linksOpen, setLinksOpen] = useState(false)
+  const [seriesOpen, setSeriesOpen] = useState(false)
 
   useEffect(() => {
     api('/group-x/clubs')
@@ -123,6 +125,10 @@ export default function GroupXView() {
               className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
               {linksOpen ? 'Hide board links' : 'Board links'}
             </button>
+            <button type="button" onClick={() => setSeriesOpen(true)}
+              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
+              Repeating class
+            </button>
             <button type="button" onClick={() => setCreateOpen({ date: toISODate(weekStart), time: '06:00' })}
               className="px-3 py-1.5 text-sm rounded-lg bg-wcs-red text-white font-medium hover:bg-wcs-red-hover">
               Add class
@@ -182,6 +188,17 @@ export default function GroupXView() {
             </div>
           </div>
         </div>
+      )}
+
+      {seriesOpen && (
+        <CreateSeriesModal
+          club={club}
+          classTypes={classTypes}
+          instructors={instructors}
+          defaultDate={toISODate(weekStart)}
+          onClose={() => setSeriesOpen(false)}
+          onCreated={async () => { setSeriesOpen(false); await load() }}
+        />
       )}
 
       {createOpen && (
