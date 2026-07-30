@@ -15,6 +15,7 @@ const axios = require('axios')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { parseAbcTs, padDate, toIsoDate } = require('../lib/abcTime')
 
 const router = Router()
 router.use(authenticate)
@@ -53,10 +54,6 @@ router.get('/events', async (req, res) => {
   // Widen the ABC date range by ±1 day to absorb timezone differences — ABC
   // interprets eventDateRange in club-local Pacific while we pass UTC dates.
   const fmtAbcDate = (s) => s // 'yyyy-MM-dd' already
-  const padDate = (s, days) => {
-    const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + days)
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`
-  }
   const abcStart = padDate(start, -1)
   const abcEnd = padDate(end, 1)
   const COLS = 'event_id, event_type_id, event_name, category, event_timestamp, event_timestamp_local, status, duration_minutes, employee_id, employee_first_name, employee_last_name, member_id, member_first_name, member_last_name, attended_status, training_level'
@@ -590,19 +587,6 @@ router.get('/event-types/:eventTypeId/abc-detail', async (req, res) => {
 // event by its eventDateRange day, finds it, and upserts to abc_calendar_events.
 // Returns the upserted row.
 // ---------------------------------------------------------------------------
-function isDstPacific(d) {
-  const y = d.getUTCFullYear()
-  const mar = new Date(Date.UTC(y, 2, 1)); mar.setUTCDate(mar.getUTCDate() + ((7 - mar.getUTCDay()) % 7) + 7)
-  const nov = new Date(Date.UTC(y, 10, 1)); nov.setUTCDate(nov.getUTCDate() + ((7 - nov.getUTCDay()) % 7))
-  return d >= mar && d < nov
-}
-function parseAbcTs(s) {
-  if (!s) return { utc: null, local: null }
-  const cleaned = String(s).replace('T', ' ').replace(/\.\d+$/, '')
-  const d = new Date(cleaned + 'Z')
-  const offset = isDstPacific(d) ? '-07:00' : '-08:00'
-  return { utc: new Date(cleaned.replace(' ', 'T') + offset).toISOString(), local: cleaned }
-}
 function transformEvent(evt, clubNumber) {
   const ts = parseAbcTs(evt.eventTimestamp)
   const member = (evt.members && evt.members[0]) || {}
@@ -644,7 +628,6 @@ router.post('/events/:eventId/refresh-from-abc', async (req, res) => {
   const center = near_date ? new Date(near_date + 'T00:00:00Z') : new Date()
   const start = new Date(center); start.setUTCDate(start.getUTCDate() - 7)
   const end = new Date(center); end.setUTCDate(end.getUTCDate() + 7)
-  const fmtDate = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`
 
   // Try multiple status filters. ABC's calendarEvents.js uses 'completed' +
   // 'canceled-charge' for sync but a brand-new booking is most likely
@@ -654,7 +637,7 @@ router.post('/events/:eventId/refresh-from-abc', async (req, res) => {
   try {
     let found = null
     for (const status of statuses) {
-      const params = { eventDateRange: `${fmtDate(start)},${fmtDate(end)}`, size: 500 }
+      const params = { eventDateRange: `${toIsoDate(start)},${toIsoDate(end)}`, size: 500 }
       if (status) params.eventStatus = status
       const r = await axios.get(`${ABC_BASE_URL}/${club_number}/calendars/events`, {
         headers: abcHeaders(),
@@ -673,7 +656,7 @@ router.post('/events/:eventId/refresh-from-abc', async (req, res) => {
       return res.status(404).json({
         error: 'Event not found in ABC date-range scan',
         eventId,
-        searched: { start: fmtDate(start), end: fmtDate(end), attempts },
+        searched: { start: toIsoDate(start), end: toIsoDate(end), attempts },
       })
     }
 
