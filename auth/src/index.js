@@ -100,6 +100,7 @@ app.use('/email-marketing', require('./routes/emailMarketing'))
 app.use('/abc-scheduler', require('./routes/abcScheduler'))
 app.use('/group-x', require('./routes/groupX'))
 app.use('/facility-schedule', require('./routes/facilitySchedule'))
+app.use('/class-seeding', require('./routes/classSeeding'))
 app.use('/google-business', require('./routes/googleBusiness'))
 app.use('/google-sheets', require('./routes/googleSheetsAuth'))
 app.use('/google-analytics', require('./routes/googleAnalytics'))
@@ -209,6 +210,15 @@ app.listen(PORT, () => {
     require('./services/meetingNotes').start()
   } catch (err) {
     console.error('[meetingNotes] failed to start:', err.message)
+  }
+
+  // Nightly class seeding — puts house accounts into empty Group X classes so
+  // the ABC app does not read as "nobody goes to this" for a class that is
+  // actually busy. Opt out via CLASS_SEEDING_DISABLED=1 (checked inside start()).
+  try {
+    require('./services/classSeeding').start()
+  } catch (err) {
+    console.error('[classSeeding] failed to start:', err.message)
   }
 
   // Nightly KPI snapshot — freezes end-of-day KPIs for the History view.
