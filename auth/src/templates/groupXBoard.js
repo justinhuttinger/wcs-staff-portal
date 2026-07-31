@@ -555,6 +555,10 @@ ${isEmbed ? '' : `    <div class="head__titles">
         + '<div class="list' + (LAYOUT === 'time' ? ' list--time' : '') + '">' + items + '</div>'
         + '</section>';
     }).join('');
+
+    // Embedded: the week that just painted is the thing whose height the parent
+    // needs. Only defined in embed mode.
+    if (typeof postHeight === 'function') postHeight();
   }
 
   function setStatus(text, stale) {
@@ -650,10 +654,20 @@ ${isEmbed ? `
   window.addEventListener('resize', postHeight);
   if (STACK_MQ.addEventListener) STACK_MQ.addEventListener('change', postHeight);
   window.addEventListener('load', postHeight);
-  // Each schedule refresh can change the stacked height, and a ResizeObserver
-  // catches that without reaching into render().
-  if (window.ResizeObserver) { new ResizeObserver(postHeight).observe(document.body); }
-  postHeight();
+  // A ResizeObserver on the documentElement, not the body: in the wide fill
+  // layout the body is pinned to 100dvh and its box never changes, so a body
+  // observer has nothing to fire on and a bad first reading would stand
+  // forever.
+  if (window.ResizeObserver) { new ResizeObserver(postHeight).observe(document.documentElement); }
+  // Measuring at parse time is too early. A lazily-loaded iframe gets its real
+  // viewport a beat after the document starts, and a reading taken before then
+  // reports a stub height AND resolves the stacking media query against a
+  // viewport that doesn't exist yet -- which lands as "not stacked, 150px" and,
+  // with nothing left to trigger a re-read, never corrects. So re-measure once
+  // layout has actually happened, and again after the first paint settles.
+  requestAnimationFrame(function () { requestAnimationFrame(postHeight); });
+  setTimeout(postHeight, 300);
+  setTimeout(postHeight, 1200);
 ` : ''}
   load();
   // Refreshing while someone is reading a description would yank it away, so
