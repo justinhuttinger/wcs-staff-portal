@@ -152,3 +152,29 @@ test('publicCacheKeysForDates accepts a full local timestamp', () => {
   assert.ok(keys.includes('gx:public:30935:2026-08-01'))
   assert.ok(keys.includes('gx:public:30935:2026-07-26'))
 })
+
+test('isPublishable can be told an instructor is not required', () => {
+  // Lap swim and open gym have nobody assigned; that is not a reason to hide
+  // them from members.
+  const slot = { status: 'Pending', instructor_name: null }
+  assert.strictEqual(isPublishable(slot), false)
+  assert.strictEqual(isPublishable(slot, { requireInstructor: false }), true)
+})
+
+test('a cancelled slot stays hidden even when instructors are optional', () => {
+  assert.strictEqual(
+    isPublishable({ status: 'Canceled', instructor_name: null }, { requireInstructor: false }),
+    false,
+  )
+})
+
+test('buildDays passes the instructor rule through', () => {
+  const slot = {
+    class_name: 'Lap Swim', instructor_name: null, status: 'Pending',
+    event_timestamp_local: '2026-07-31 06:00:00',
+  }
+  assert.strictEqual(buildDays('2026-07-31', [slot]).days[0].classes.length, 0)
+  assert.strictEqual(
+    buildDays('2026-07-31', [slot], { requireInstructor: false }).days[0].classes.length, 1,
+  )
+})
