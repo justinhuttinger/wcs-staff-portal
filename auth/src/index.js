@@ -221,6 +221,14 @@ app.listen(PORT, () => {
     console.error('[facilityTopUp] failed to start:', err.message)
   }
 
+  // Nightly top-up for open-ended Group X series. These create real ABC
+  // classes, so the job is rate-conscious. Opt out via GROUPX_TOPUP_DISABLED=1.
+  try {
+    require('./services/groupXSeriesTopUp').start()
+  } catch (err) {
+    console.error('[groupXTopUp] failed to start:', err.message)
+  }
+
   // Nightly class seeding — puts house accounts into empty Group X classes so
   // the ABC app does not read as "nobody goes to this" for a class that is
   // actually busy. Opt out via CLASS_SEEDING_DISABLED=1 (checked inside start()).

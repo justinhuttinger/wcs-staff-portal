@@ -208,16 +208,16 @@ ${WCS_DISPLAY_FACE}
   .time {
     font-family: var(--font-display); text-transform: uppercase;
     font-variant-numeric: tabular-nums;
-    font-size: clamp(11px, 1.02vw, 21px); line-height: .95;
+    font-size: calc(var(--fs, 1) * clamp(13px, 1.3vw, 27px)); line-height: .95;
     letter-spacing: .02em; color: var(--color-muted);
   }
   .name {
     font-family: var(--font-display); text-transform: uppercase;
-    font-size: clamp(13px, 1.36vw, 30px); line-height: .9;
+    font-size: calc(var(--fs, 1) * clamp(16px, 1.75vw, 40px)); line-height: .9;
     letter-spacing: -0.005em; margin-top: .12em;
   }
   .who {
-    font-size: clamp(9.5px, .8vw, 16px); line-height: 1.25;
+    font-size: calc(var(--fs, 1) * clamp(10px, .88vw, 18px)); line-height: 1.25;
     margin-top: .3em; color: var(--color-muted);
   }
 
