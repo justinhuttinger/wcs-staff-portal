@@ -102,6 +102,9 @@ router.get('/board', (req, res) => {
     scheduleUrl: `/public/facility/schedule?facility=${encodeURIComponent(r.facility.slug)}`,
     // These already show a start and an end, so a "240 min" tag on open gym
     // would add nothing.
+    // ?embed=1 strips the board's own title block, status line and overscan
+    // padding, for the iframe on westcoaststrength.com. See renderBoardHtml.
+    embed: req.query.embed === '1',
     showDurationTag: false,
     // Facility blocks scale with their length: a 4 hour open gym genuinely is
     // four times a 1 hour booking. Group X uses time positioning instead,
