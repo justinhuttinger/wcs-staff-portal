@@ -61,6 +61,10 @@ function toPublicClass(c, opts) {
     duration_minutes: c.duration_minutes,
     // Always a boolean, never undefined, so the board never has to guess.
     is_new: c.is_new === true,
+    // Only present when the class type actually has one. The board makes a
+    // card clickable off this, so an empty string would create a popup with
+    // nothing in it.
+    description: c.description ? String(c.description) : null,
   }
 }
 

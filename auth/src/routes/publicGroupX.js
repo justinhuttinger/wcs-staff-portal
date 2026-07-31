@@ -36,7 +36,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 async function loadWeek(club, start) {
   return cache.wrapSWR(publicCacheKey(club.clubNumber, start), FRESH_MS, STALE_MS, async () => {
     const last = windowEnd(start)
-    const [classes, typeFlags, eventFlags] = await Promise.all([
+    const [classes, typeFlags, eventFlags, classTypes] = await Promise.all([
       abc.listClasses(club.clubNumber, start, last),
       supabaseAdmin
         .from('group_x_new_classes')
@@ -46,12 +46,24 @@ async function loadWeek(club, start) {
         .from('group_x_new_class_events')
         .select('abc_event_id, class_name, show_until')
         .eq('club_number', club.clubNumber),
+      // Descriptions live on the event TYPE, not the event, so they are joined
+      // on here. listClassTypes is cached for an hour, so this is nearly free.
+      abc.listClassTypes(club.clubNumber).catch(err => {
+        // A missing description must never take the board down.
+        console.warn('[publicGroupX] class descriptions unavailable:', err.message)
+        return []
+      }),
     ])
     // A badge failure must never take the board down. Worst case members see
     // the schedule without the NEW pill, which beats a blank TV.
     if (typeFlags.error) console.warn('[publicGroupX] class badges unavailable:', typeFlags.error.message)
     if (eventFlags.error) console.warn('[publicGroupX] session badges unavailable:', eventFlags.error.message)
-    const flagged = markNewClasses(classes, typeFlags.data || [], eventFlags.data || [])
+    const descriptions = new Map((classTypes || []).map(t => [t.event_type_id, t.description]))
+    const withDescriptions = classes.map(c => ({
+      ...c,
+      description: descriptions.get(c.event_type_id) || null,
+    }))
+    const flagged = markNewClasses(withDescriptions, typeFlags.data || [], eventFlags.data || [])
     return { club: club.name, club_slug: club.slug, ...buildDays(start, flagged) }
   })
 }
