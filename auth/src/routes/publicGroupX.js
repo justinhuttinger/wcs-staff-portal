@@ -103,6 +103,9 @@ router.get('/board', (req, res) => {
     clubSlug: r.club.slug,
     clubName: r.club.name,
     safePercent,
+    // ?embed=1 strips the board's own title block, status line and overscan
+    // padding, for the iframe on westcoaststrength.com. See renderBoardHtml.
+    embed: req.query.embed === '1',
   }))
 })
 

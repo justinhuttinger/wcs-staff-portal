@@ -51,7 +51,7 @@ function escapeHtml(s) {
 // Shared by the Group X board and the facility (courts / pool) boards. The
 // only differences are the heading, the eyebrow and which endpoint it polls, so
 // they are parameters rather than a forked copy of 300 lines of CSS.
-function renderBoardHtml({ clubSlug, clubName, safePercent, boardTitle, eyebrowLabel, scheduleUrl, showDurationTag, layout }) {
+function renderBoardHtml({ clubSlug, clubName, safePercent, boardTitle, eyebrowLabel, scheduleUrl, showDurationTag, layout, embed }) {
   const title = boardTitle || 'Class Schedule'
   const eyebrow = eyebrowLabel || 'Group X'
   const feed = scheduleUrl || '/public/group-x/schedule'
@@ -70,6 +70,16 @@ function renderBoardHtml({ clubSlug, clubName, safePercent, boardTitle, eyebrowL
   // whole board by a safe margin. 3% covers the common case; ?safe=N (0-10)
   // lets a gym whose TV crops harder dial it in without a redeploy.
   const safe = Number.isFinite(safePercent) ? Math.min(Math.max(safePercent, 0), 10) : 3
+  // Embedded in an iframe on westcoaststrength.com rather than on a TV. The
+  // page around it already says which gym and which schedule this is, so the
+  // board drops its own title block and its "Updated 10:03" status line and
+  // renders just the week. Overscan padding goes too — there's no TV cropping
+  // the edges, and the parent page supplies its own margins.
+  //
+  // The week range stays. It lives in the same header as the title, but
+  // "JUL 31 - AUG 6" is the one thing the surrounding page can't say for the
+  // board, since the board picks the week off the client clock.
+  const isEmbed = embed === true
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -121,7 +131,7 @@ ${WCS_DISPLAY_FACE}
     -webkit-font-smoothing: antialiased;
     /* Overscan-safe inset. Percentages are of the viewport, so the board sits
        inside whatever the TV crops. box-sizing keeps it inside 100dvh. */
-    padding: ${safe}vh ${safe}vw;
+    padding: ${isEmbed ? '0' : `${safe}vh ${safe}vw`};
     height: 100vh;
     height: 100dvh;
     overflow: hidden;
@@ -361,15 +371,25 @@ ${WCS_DISPLAY_FACE}
   @media (prefers-reduced-motion: no-preference) {
     .day { transition: box-shadow var(--dur-fast) var(--ease-out); }
   }
+${isEmbed ? `
+  /* ---- Embedded on the website ---------------------------------------- */
+  /* The page around the iframe carries the title and the chrome, so the board
+     is only the week. The header element stays because the week range lives in
+     it (and its red rule is a useful lid on the grid), but the title block is
+     not rendered at all in this mode. */
+  .head { padding-bottom: clamp(.25rem, .6vh, .6rem); margin-bottom: clamp(.4rem, 1vh, 1rem); }
+  .range { margin-left: 0; }
+  .foot { display: none; }
+` : ''}
 </style>
 </head>
 <body>
   <header class="head">
-    <div class="head__titles">
+${isEmbed ? '' : `    <div class="head__titles">
       <span class="eyebrow">${escapeHtml(clubName)} · ${escapeHtml(eyebrow)}</span>
       <h1 class="title mark">${escapeHtml(title)}</h1>
     </div>
-    <div class="range" id="range"></div>
+`}    <div class="range" id="range"></div>
   </header>
 
   <main class="week" id="week" aria-live="polite"></main>
@@ -606,6 +626,35 @@ ${WCS_DISPLAY_FACE}
   scrim.addEventListener('click', function (e) { if (e.target === scrim) closeSheet(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSheet(); });
 
+${isEmbed ? `
+  // Tell the embedding page how tall we are -- but only when STACKED. Wide,
+  // this is a fill-the-viewport TV layout (height: 100dvh, never scrolls), so
+  // scrollHeight is simply whatever height the iframe was handed and reporting
+  // it back says nothing. Stacked, the narrow portrait media query switches the
+  // body to height:auto and the number becomes a real content height, which is
+  // the case the parent can't guess. The parent ignores the message unless
+  // stacked is true.
+  //
+  // targetOrigin '*' because the board doesn't know which page embedded it, and
+  // the payload is a number -- there is nothing here worth scoping.
+  var STACK_MQ = window.matchMedia('(max-width: 760px) and (orientation: portrait)');
+  function postHeight() {
+    try {
+      parent.postMessage({
+        type: 'wcs-board-height',
+        stacked: STACK_MQ.matches,
+        height: Math.ceil(document.documentElement.scrollHeight)
+      }, '*');
+    } catch (e) {}
+  }
+  window.addEventListener('resize', postHeight);
+  if (STACK_MQ.addEventListener) STACK_MQ.addEventListener('change', postHeight);
+  window.addEventListener('load', postHeight);
+  // Each schedule refresh can change the stacked height, and a ResizeObserver
+  // catches that without reaching into render().
+  if (window.ResizeObserver) { new ResizeObserver(postHeight).observe(document.body); }
+  postHeight();
+` : ''}
   load();
   // Refreshing while someone is reading a description would yank it away, so
   // hold off until the popup is closed.
