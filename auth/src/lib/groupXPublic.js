@@ -67,20 +67,25 @@ function toPublicClass(c) {
 // Barbell Strength entries, one staffed by Baley H. and one unbooked). Publishing
 // both shows members a duplicate class with no instructor. A class nobody is
 // assigned to teach is not something to advertise.
-function isPublishable(c) {
+function isPublishable(c, opts) {
+  const requireInstructor = !opts || opts.requireInstructor !== false
   const status = String(c.status || '').toLowerCase()
   if (status.includes('cancel')) return false
   if (c.unbooked === true) return false
-  if (!c.instructor_name) return false
+  // Group X classes need an instructor to be worth advertising. Facility slots
+  // (lap swim, open gym) legitimately have nobody assigned, so callers can opt
+  // out rather than us inventing a staff name to satisfy the rule.
+  if (requireInstructor && !c.instructor_name) return false
   return true
 }
 
 // Builds the rolling board window: `startIso` is the FIRST column, and the
 // next days follow it. Members looking at a wall want today first and the days
 // ahead of it, not a Monday that may already be four days gone.
-function buildDays(startIso, classes, dayCount) {
-  const count = dayCount || BOARD_DAYS
-  const publishable = (classes || []).filter(isPublishable)
+function buildDays(startIso, classes, opts) {
+  const options = opts || {}
+  const count = options.dayCount || BOARD_DAYS
+  const publishable = (classes || []).filter(c => isPublishable(c, options))
   const days = []
 
   for (let i = 0; i < count; i++) {

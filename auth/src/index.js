@@ -24,6 +24,7 @@ const ALLOWED_ORIGINS = [
 // its permissive CORS has to be mounted FIRST or preflight fails. This exact
 // ordering bug has bitten the prospects repo before.
 app.use('/public/group-x', cors({ origin: '*', methods: ['GET'] }))
+app.use('/public/facility', cors({ origin: '*', methods: ['GET'] }))
 
 app.use(cors({
   origin: (origin, cb) => {
@@ -66,6 +67,7 @@ app.use('/tours', require('./routes/tours'))
 app.use('/tour-intake', require('./routes/tourIntake'))
 app.use('/public/tour', require('./routes/publicTour'))
 app.use('/public/group-x', require('./routes/publicGroupX'))
+app.use('/public/facility', require('./routes/publicFacility'))
 app.use('/oidc', require('./routes/oidc'))
 
 // OIDC discovery at root level (some providers look here)
@@ -97,6 +99,7 @@ app.use('/meta-ads', require('./routes/metaAds'))
 app.use('/email-marketing', require('./routes/emailMarketing'))
 app.use('/abc-scheduler', require('./routes/abcScheduler'))
 app.use('/group-x', require('./routes/groupX'))
+app.use('/facility-schedule', require('./routes/facilitySchedule'))
 app.use('/google-business', require('./routes/googleBusiness'))
 app.use('/google-sheets', require('./routes/googleSheetsAuth'))
 app.use('/google-analytics', require('./routes/googleAnalytics'))

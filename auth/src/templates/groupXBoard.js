@@ -37,7 +37,13 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
-function renderBoardHtml({ clubSlug, clubName, safePercent }) {
+// Shared by the Group X board and the facility (courts / pool) boards. The
+// only differences are the heading, the eyebrow and which endpoint it polls, so
+// they are parameters rather than a forked copy of 300 lines of CSS.
+function renderBoardHtml({ clubSlug, clubName, safePercent, boardTitle, eyebrowLabel, scheduleUrl }) {
+  const title = boardTitle || 'Class Schedule'
+  const eyebrow = eyebrowLabel || 'Group X'
+  const feed = scheduleUrl || '/public/group-x/schedule'
   // TV overscan: most TVs crop 2-5% off every edge, a broadcast-era holdover,
   // so content laid out to the true viewport gets its edges cut. We inset the
   // whole board by a safe margin. 3% covers the common case; ?safe=N (0-10)
@@ -48,7 +54,7 @@ function renderBoardHtml({ clubSlug, clubName, safePercent }) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Group X Schedule · West Coast Strength ${escapeHtml(clubName)}</title>
+<title>${escapeHtml(title)} · West Coast Strength ${escapeHtml(clubName)}</title>
 <style>
 ${WCS_DISPLAY_FACE}
   *, *::before, *::after { box-sizing: border-box; }
@@ -268,8 +274,8 @@ ${WCS_DISPLAY_FACE}
 <body>
   <header class="head">
     <div class="head__titles">
-      <span class="eyebrow">${escapeHtml(clubName)} · Group X</span>
-      <h1 class="title mark">Class Schedule</h1>
+      <span class="eyebrow">${escapeHtml(clubName)} · ${escapeHtml(eyebrow)}</span>
+      <h1 class="title mark">${escapeHtml(title)}</h1>
     </div>
     <div class="range" id="range"></div>
   </header>
@@ -284,6 +290,7 @@ ${WCS_DISPLAY_FACE}
 <script>
 (function () {
   var CLUB = ${JSON.stringify(clubSlug)};
+  var FEED = ${JSON.stringify(feed)};
   var COLLARS = ${JSON.stringify(COLLARS)};
   var REFRESH_MS = 5 * 60 * 1000;
   var weekEl = document.getElementById('week');
@@ -313,10 +320,11 @@ ${WCS_DISPLAY_FACE}
   }
 
   function render(data) {
-    var today = pacificToday();
     rangeEl.textContent = data.range_label || '';
     weekEl.innerHTML = data.days.map(function (d) {
-      var isToday = d.date === today;
+      // The server marks the first column, so the browser does not re-derive
+      // the club's timezone.
+      var isToday = d.is_today === true;
       // A day with no classes renders as an empty column, not a "no classes"
       // message. The gap is the information.
       var items = d.classes.map(function (c) {
@@ -344,7 +352,10 @@ ${WCS_DISPLAY_FACE}
   function load() {
     // Ask for the week containing today, recomputed on every poll, so a screen
     // left running rolls over on its own at local midnight Monday.
-    var url = '/public/group-x/schedule?club=' + encodeURIComponent(CLUB)
+    // FEED may already carry a query string (the facility boards pass
+    // ?facility=pool), so pick the separator rather than always using '?'.
+    var sep = FEED.indexOf('?') === -1 ? '?' : '&';
+    var url = FEED + sep + 'club=' + encodeURIComponent(CLUB)
       + '&week=' + encodeURIComponent(pacificToday());
     fetch(url, { cache: 'no-store' })
       .then(function (r) {
