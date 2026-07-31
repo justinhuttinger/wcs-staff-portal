@@ -237,6 +237,53 @@ ${WCS_DISPLAY_FACE}
     }
   }
 
+  /* Only classes that actually have a description become clickable, so a tap
+     never opens an empty box. Nothing on a TV has a pointer, so this is
+     effectively website-only and stays invisible there. */
+  .cls--tap { cursor: pointer; }
+  .cls--tap:hover { background: var(--color-surface); }
+  .cls--tap:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
+  .day--today .cls--tap:hover { background: var(--color-bg); }
+
+  .scrim {
+    position: fixed; inset: 0;
+    background: rgb(0 0 0 / .55);
+    display: none;
+    align-items: center; justify-content: center;
+    padding: var(--space-s);
+    z-index: 50;
+  }
+  .scrim[data-open="1"] { display: flex; }
+  .sheet {
+    background: var(--color-bg);
+    max-width: 46ch; width: 100%;
+    max-height: 80vh; overflow-y: auto;
+    padding: var(--space-m);
+    box-shadow: 0 24px 60px rgb(0 0 0 / .35);
+  }
+  .sheet__eyebrow {
+    font-size: var(--step--1); font-weight: 600; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--color-accent);
+  }
+  .sheet__title {
+    font-family: var(--font-display); text-transform: uppercase;
+    font-size: var(--step-3); line-height: .9; letter-spacing: -0.005em;
+    margin: .15em 0 .35em;
+  }
+  .sheet__meta { color: var(--color-muted); font-size: var(--step-0); margin-bottom: .9em; }
+  .sheet__body { font-size: var(--step-0); line-height: 1.6; }
+  .sheet__close {
+    margin-top: var(--space-s);
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: .5em 1.2em;
+    background: var(--color-accent); color: #fff;
+    border: 0; cursor: pointer;
+    font-family: var(--font-display); text-transform: uppercase;
+    font-size: var(--step-0); letter-spacing: .04em;
+  }
+  .sheet__close:hover { background: var(--color-accent-hover); }
+  .sheet__close:focus-visible { outline: 3px solid var(--color-text); outline-offset: 2px; }
+
   .foot {
     flex: 0 0 auto;
     margin-top: var(--space-xs);
@@ -281,6 +328,16 @@ ${WCS_DISPLAY_FACE}
   </header>
 
   <main class="week" id="week" aria-live="polite"></main>
+
+  <div class="scrim" id="scrim" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" data-open="0">
+    <div class="sheet" id="sheet">
+      <div class="sheet__eyebrow" id="sheetEyebrow"></div>
+      <h2 class="sheet__title" id="sheetTitle"></h2>
+      <div class="sheet__meta" id="sheetMeta"></div>
+      <div class="sheet__body" id="sheetBody"></div>
+      <button type="button" class="sheet__close" id="sheetClose">Close</button>
+    </div>
+  </div>
 
   <footer class="foot">
     <span class="dot" id="dot"></span>
@@ -328,7 +385,16 @@ ${WCS_DISPLAY_FACE}
       // A day with no classes renders as an empty column, not a "no classes"
       // message. The gap is the information.
       var items = d.classes.map(function (c) {
-        return '<div class="cls' + (c.is_new ? ' cls--new' : '') + '" style="--collar:' + collarFor(c.class_name) + '">'
+        // Detail rides on the element, so the click handler needs no lookup.
+        var tappable = !!c.description;
+        var attrs = tappable
+          ? ' role="button" tabindex="0" data-desc="' + esc(c.description)
+            + '" data-name="' + esc(c.class_name)
+            + '" data-when="' + esc(c.time_label)
+            + '" data-who="' + esc(c.instructor || '') + '"'
+          : '';
+        return '<div class="cls' + (c.is_new ? ' cls--new' : '') + (tappable ? ' cls--tap' : '')
+          + '"' + attrs + ' style="--collar:' + collarFor(c.class_name) + '">'
           + '<div class="time">' + esc(c.time_label)
           + (c.duration_minutes && c.duration_minutes !== 60
               ? '<span class="len">' + esc(c.duration_minutes) + ' min</span>' : '')
@@ -376,8 +442,50 @@ ${WCS_DISPLAY_FACE}
       });
   }
 
+  // ---- class detail popup --------------------------------------------------
+  var scrim = document.getElementById('scrim');
+  var lastFocus = null;
+
+  function openSheet(el) {
+    document.getElementById('sheetEyebrow').textContent = el.getAttribute('data-when') || '';
+    document.getElementById('sheetTitle').textContent = el.getAttribute('data-name') || '';
+    var who = el.getAttribute('data-who');
+    document.getElementById('sheetMeta').textContent = who ? 'With ' + who : '';
+    document.getElementById('sheetBody').textContent = el.getAttribute('data-desc') || '';
+    lastFocus = el;
+    scrim.setAttribute('data-open', '1');
+    document.getElementById('sheetClose').focus();
+  }
+
+  function closeSheet() {
+    scrim.setAttribute('data-open', '0');
+    // Send focus back where it came from, so keyboard users are not dumped at
+    // the top of the page.
+    if (lastFocus && lastFocus.isConnected) lastFocus.focus();
+    lastFocus = null;
+  }
+
+  // Delegated, because the grid is rebuilt on every refresh.
+  weekEl.addEventListener('click', function (e) {
+    var card = e.target.closest ? e.target.closest('.cls--tap') : null;
+    if (card) openSheet(card);
+  });
+  weekEl.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var card = e.target.closest ? e.target.closest('.cls--tap') : null;
+    if (!card) return;
+    e.preventDefault();
+    openSheet(card);
+  });
+
+  document.getElementById('sheetClose').addEventListener('click', closeSheet);
+  scrim.addEventListener('click', function (e) { if (e.target === scrim) closeSheet(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSheet(); });
+
   load();
-  setInterval(load, REFRESH_MS);
+  // Refreshing while someone is reading a description would yank it away, so
+  // hold off until the popup is closed.
+  setInterval(function () { if (scrim.getAttribute('data-open') !== '1') load(); }, REFRESH_MS);
 })();
 </script>
 </body>
