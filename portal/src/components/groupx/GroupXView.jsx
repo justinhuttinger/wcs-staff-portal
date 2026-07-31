@@ -4,9 +4,9 @@ import { startOfWeek, addDays, toISODate, fmtTime12, parseLocalTimestamp, MONTH_
 import WeekGrid from './WeekGrid'
 import CreateClassModal from './CreateClassModal'
 import BoardLinks from './BoardLinks'
-import CreateSeriesModal from './CreateSeriesModal'
 import GroupXReport from './GroupXReport'
 import NewClassBadges from './NewClassBadges'
+import SeriesList from './SeriesList'
 import AttendanceModal from './AttendanceModal'
 
 function weekLabel(weekStart) {
@@ -35,7 +35,8 @@ export default function GroupXView() {
   const [linksOpen, setLinksOpen] = useState(false)
   const [badgesOpen, setBadgesOpen] = useState(false)
   const [badgeBusy, setBadgeBusy] = useState(false)
-  const [seriesOpen, setSeriesOpen] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [seriesListOpen, setSeriesListOpen] = useState(false)
   const [tab, setTab] = useState('calendar')
   const [attendanceFor, setAttendanceFor] = useState(null)
 
@@ -100,6 +101,17 @@ export default function GroupXView() {
     } finally {
       setBadgeBusy(false)
     }
+  }
+
+  // Instructors and class types are cached for an hour, so a newly onboarded
+  // instructor would otherwise not be bookable until it expired.
+  async function refreshStaff() {
+    setRefreshing(true)
+    setError(null)
+    try {
+      await api(`/group-x/refresh-staff?club_number=${club.clubNumber}`, { method: 'POST' })
+      await load()
+    } catch (e) { setError(e.message) } finally { setRefreshing(false) }
   }
 
   async function cancelClass() {
@@ -175,6 +187,15 @@ export default function GroupXView() {
           <span className="text-sm font-medium text-text-primary ml-1">{weekLabel(weekStart)}</span>
           {loading && <span className="text-xs text-text-muted">Loading...</span>}
           <div className="ml-auto flex gap-2">
+            <button type="button" onClick={() => setSeriesListOpen(v => !v)}
+              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
+              {seriesListOpen ? 'Hide repeating' : 'Repeating'}
+            </button>
+            <button type="button" onClick={refreshStaff} disabled={refreshing}
+              title="Reload instructors and class types from ABC"
+              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg disabled:opacity-50">
+              {refreshing ? 'Refreshing...' : 'Refresh staff'}
+            </button>
             <button type="button" onClick={() => setBadgesOpen(v => !v)}
               className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
               {badgesOpen ? 'Hide new badges' : 'New badges'}
@@ -182,10 +203,6 @@ export default function GroupXView() {
             <button type="button" onClick={() => setLinksOpen(v => !v)}
               className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
               {linksOpen ? 'Hide board links' : 'Board links'}
-            </button>
-            <button type="button" onClick={() => setSeriesOpen(true)}
-              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
-              Repeating class
             </button>
             <button type="button" onClick={() => setCreateOpen({ date: toISODate(weekStart), time: '06:00' })}
               className="px-3 py-1.5 text-sm rounded-lg bg-wcs-red text-white font-medium hover:bg-wcs-red-hover">
@@ -205,6 +222,8 @@ export default function GroupXView() {
           {error}
         </div>
       )}
+
+      {seriesListOpen && <SeriesList club={club} onChanged={load} />}
 
       {badgesOpen && <NewClassBadges club={club} classTypes={classTypes} />}
 
@@ -321,16 +340,6 @@ export default function GroupXView() {
         />
       )}
 
-      {seriesOpen && (
-        <CreateSeriesModal
-          club={club}
-          classTypes={classTypes}
-          instructors={instructors}
-          defaultDate={toISODate(weekStart)}
-          onClose={() => setSeriesOpen(false)}
-          onCreated={async () => { setSeriesOpen(false); await load() }}
-        />
-      )}
 
       {createOpen && (
         <CreateClassModal

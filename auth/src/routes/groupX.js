@@ -14,6 +14,8 @@ const abc = require('../services/abcGroupX')
 const { CLUBS, isKnownClubNumber } = require('../lib/groupXClubs')
 const { buildLocalTimestamp, DATE_RE } = require('../lib/abcTime')
 const { expandSeries, MAX_OCCURRENCES } = require('../lib/groupXSeries')
+const { OPEN_ENDED_HORIZON_DAYS } = require('../lib/scheduleTimes')
+const { padDate, toIsoDate } = require('../lib/abcTime')
 const { supabaseAdmin } = require('../services/supabase')
 const { publicCacheKeysForDates } = require('../lib/groupXPublic')
 const { aggregate } = require('../lib/groupXReport')
@@ -92,6 +94,16 @@ function fail(res, err, where) {
 }
 
 router.get('/clubs', (req, res) => res.json({ clubs: CLUBS }))
+
+// POST /group-x/refresh-staff?club_number=
+// Instructors and class types are cached for an hour. Onboarding a new
+// instructor in ABC should not mean waiting that out.
+router.post('/refresh-staff', (req, res) => {
+  const club = requireClub(req, res); if (!club) return
+  memoryCache.del(`gx:instructors:${club}`)
+  memoryCache.del(`gx:types:${club}`)
+  res.json({ ok: true })
+})
 
 router.get('/class-types', async (req, res) => {
   const club = requireClub(req, res); if (!club) return
@@ -281,9 +293,20 @@ router.delete('/classes/:eventId', async (req, res) => {
 
 // POST /group-x/series/preview — dry run, no writes anywhere.
 router.post('/series/preview', (req, res) => {
+  const b = req.body || {}
+  const openEnded = !b.ends_on
   try {
-    const occurrences = expandSeries(req.body || {})
-    res.json({ count: occurrences.length, occurrences, max: MAX_OCCURRENCES })
+    const through = openEnded ? padDate(b.starts_on, OPEN_ENDED_HORIZON_DAYS) : b.ends_on
+    const occurrences = expandSeries({ ...b, ends_on: through })
+    res.json({
+      count: occurrences.length,
+      occurrences,
+      max: MAX_OCCURRENCES,
+      open_ended: openEnded,
+      // With no end date this is only what gets created now; the nightly job
+      // keeps extending it. Say so rather than implying the series stops here.
+      materialized_through: through,
+    })
   } catch (err) {
     res.status(400).json({ error: err.message })
   }
@@ -299,9 +322,16 @@ router.post('/series', async (req, res) => {
     return res.status(400).json({ error: 'event_type_id, employee_id, class_name and instructor_name are required' })
   }
 
+  // No end date means open-ended: classes are created in ABC out to a rolling
+  // horizon and topped up nightly, since infinite events are not a thing.
+  const openEnded = !b.ends_on
+  const materializeThrough = openEnded
+    ? padDate(b.starts_on, OPEN_ENDED_HORIZON_DAYS)
+    : b.ends_on
+
   let occurrences
   try {
-    occurrences = expandSeries(b)
+    occurrences = expandSeries({ ...b, ends_on: materializeThrough })
   } catch (err) {
     return res.status(400).json({ error: err.message })
   }
@@ -324,7 +354,8 @@ router.post('/series', async (req, res) => {
       duration_minutes: parseInt(b.duration_minutes, 10) || 60,
       training_level_id: b.training_level_id || null,
       starts_on: b.starts_on,
-      ends_on: b.ends_on,
+      ends_on: openEnded ? null : b.ends_on,
+      materialized_through: materializeThrough,
       created_by: req.user?.email || 'unknown',
     })
     .select('id')
@@ -373,6 +404,7 @@ router.post('/series', async (req, res) => {
     failed: results.length - created,
     occurrences: results,
     badge_error,
+    open_ended: openEnded,
   })
 })
 
@@ -396,8 +428,19 @@ router.get('/series', async (req, res) => {
 // Cancels this series' occurrences on/after `from` (default today). We do not
 // store per-occurrence event ids (a partially-created series would have gaps),
 // so occurrences are matched in ABC on event type + employee + local start time.
+// DELETE /group-x/series/:id?through=YYYY-MM-DD
+//
+// Ends the series ON `through`: classes after that date are cancelled and
+// everything up to and including it is kept. Without `through` the whole
+// remaining series goes from today.
+//
+// "Remove everything from today" threw away classes people are already turning
+// up to; "we know it stops in two weeks" is the normal case.
 router.delete('/series/:id', async (req, res) => {
-  const from = DATE_RE.test(req.query.from || '') ? req.query.from : new Date().toISOString().slice(0, 10)
+  const through = DATE_RE.test(req.query.through || '') ? req.query.through : null
+  const from = through
+    ? padDate(through, 1)
+    : (DATE_RE.test(req.query.from || '') ? req.query.from : toIsoDate(new Date()))
 
   const { data: series, error: selErr } = await supabaseAdmin
     .from('group_x_series')
@@ -430,14 +473,16 @@ router.delete('/series/:id', async (req, res) => {
       results.push({ event_id: t.event_id, date: String(t.event_timestamp_local).slice(0, 10), ok: r.ok, error: r.error })
     }
 
-    await supabaseAdmin
-      .from('group_x_series')
-      .update({ canceled_at: new Date().toISOString(), canceled_by: req.user?.email || 'unknown' })
-      .eq('id', series.id)
+    // Ending on a date closes the series there so the nightly top-up stops
+    // extending it; with no date the series is cancelled outright.
+    const patch = through
+      ? { ends_on: through, materialized_through: through }
+      : { canceled_at: new Date().toISOString(), canceled_by: req.user?.email || 'unknown' }
+    await supabaseAdmin.from('group_x_series').update(patch).eq('id', series.id)
 
     const canceled = results.filter(r => r.ok).length
     invalidatePublicBoard(series.club_number, results.filter(r => r.ok).map(r => r.date))
-    res.json({ canceled, failed: results.length - canceled, results })
+    res.json({ canceled, failed: results.length - canceled, results, ends_on: through })
   } catch (err) { fail(res, err, 'DELETE /series') }
 })
 
