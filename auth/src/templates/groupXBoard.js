@@ -26,10 +26,21 @@
 //    screen and still reads inside a narrow website iframe.
 const { WCS_DISPLAY_FACE } = require('./wcsDisplayFont')
 
-// Per-class accent. The theme is single-accent red, so the board stays red-led
-// and separates classes by a restrained tint ladder rather than a rainbow.
-// Red is reserved for today, so it is deliberately not in this list.
-const COLLARS = ['#16181d', '#5b6472', '#8a94a3', '#2f3a4a', '#6e7787', '#454f5e']
+// Per-class colour on the left bar, hashed from the class NAME so the same
+// class is the same colour everywhere — across days, across clubs, and
+// matching the staff calendar, which hashes the same string with the same
+// algorithm and palette order.
+//
+// Red is deliberately absent: it belongs to today's column and the New badge,
+// and a red bar would compete with both.
+const COLLARS = [
+  '#0284c7', // sky
+  '#059669', // emerald
+  '#7c3aed', // violet
+  '#d97706', // amber
+  '#4f46e5', // indigo
+  '#0d9488', // teal
+]
 
 function escapeHtml(s) {
   return String(s == null ? '' : s)
@@ -40,7 +51,7 @@ function escapeHtml(s) {
 // Shared by the Group X board and the facility (courts / pool) boards. The
 // only differences are the heading, the eyebrow and which endpoint it polls, so
 // they are parameters rather than a forked copy of 300 lines of CSS.
-function renderBoardHtml({ clubSlug, clubName, safePercent, boardTitle, eyebrowLabel, scheduleUrl, showDurationTag }) {
+function renderBoardHtml({ clubSlug, clubName, safePercent, boardTitle, eyebrowLabel, scheduleUrl, showDurationTag, layout }) {
   const title = boardTitle || 'Class Schedule'
   const eyebrow = eyebrowLabel || 'Group X'
   const feed = scheduleUrl || '/public/group-x/schedule'
@@ -48,6 +59,12 @@ function renderBoardHtml({ clubSlug, clubName, safePercent, boardTitle, eyebrowL
   // flagging. Courts and pool already show "6:00 - 10:00 AM", where a
   // "240 min" tag says nothing the range has not already said.
   const durationTag = showDurationTag !== false
+  // 'time'  cards keep one size and sit at a height matching their start time,
+  //         with real gaps between a 6am and a 4pm class. Group X, where a
+  //         single early class filling the column read as an all-day event.
+  // 'fill'  cards grow with their duration and pack the column. Courts and
+  //         pool, where a 4 hour open gym genuinely is four times the block.
+  const layoutMode = layout === 'fill' ? 'fill' : 'time'
   // TV overscan: most TVs crop 2-5% off every edge, a broadcast-era holdover,
   // so content laid out to the true viewport gets its edges cut. We inset the
   // whole board by a safe margin. 3% covers the common case; ?safe=N (0-10)
@@ -202,7 +219,7 @@ ${WCS_DISPLAY_FACE}
     content: '';
     position: absolute; left: clamp(4px, .36vw, 8px);
     top: clamp(5px, .48vw, 11px); bottom: clamp(5px, .48vw, 11px);
-    width: clamp(3px, .26vw, 6px);
+    width: clamp(5px, .45vw, 11px);
     background: var(--collar, var(--color-text));
   }
   .time {
@@ -308,6 +325,10 @@ ${WCS_DISPLAY_FACE}
     vertical-align: baseline;
   }
 
+  /* Time mode: fixed-size cards, gaps proportional to the time between them. */
+  .list--time .cls { flex: 0 0 auto; }
+  .gap { flex: 1 1 0; min-height: 0; pointer-events: none; }
+
   .foot {
     flex: 0 0 auto;
     margin-top: var(--space-xs);
@@ -373,6 +394,7 @@ ${WCS_DISPLAY_FACE}
   var CLUB = ${JSON.stringify(clubSlug)};
   var FEED = ${JSON.stringify(feed)};
   var SHOW_LEN = ${JSON.stringify(durationTag)};
+  var LAYOUT = ${JSON.stringify(layoutMode)};
   var COLLARS = ${JSON.stringify(COLLARS)};
   var REFRESH_MS = 5 * 60 * 1000;
   var weekEl = document.getElementById('week');
@@ -429,8 +451,35 @@ ${WCS_DISPLAY_FACE}
     return smallest;
   }
 
+  // "06:00" or "6:00 AM" -> minutes past midnight.
+  function startMinutes(c) {
+    var t = String(c.time || '');
+    var m = /^(\d{1,2}):(\d{2})/.exec(t);
+    if (!m) return 0;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  }
+
+  function gapEl(minutes) {
+    // Zero-weight spacers still need to exist so the gap sequence stays in
+    // step with the cards, but they take no space.
+    return '<div class="gap" style="flex-grow:' + Math.max(0, minutes || 0) + '"></div>';
+  }
+
   function render(data) {
     rangeEl.textContent = data.range_label || '';
+
+    // The time window is derived from the week's own classes rather than a
+    // fixed 6am-10pm, so a board with nothing before 9am does not waste a
+    // third of every column on empty morning.
+    var allMins = [];
+    data.days.forEach(function (d) {
+      d.classes.forEach(function (c) { allMins.push(startMinutes(c)); });
+    });
+    var windowStart = allMins.length ? Math.min.apply(null, allMins) : 0;
+    var windowEnd = allMins.length ? Math.max.apply(null, allMins) : 0;
+    // A single time of day would make every gap zero; give it a nominal span
+    // so the layout stays stable.
+    if (windowEnd - windowStart < 60) windowEnd = windowStart + 60;
     weekEl.style.setProperty('--fs', fontScaleForFraction(smallestCardFraction(data.days)));
     weekEl.innerHTML = data.days.map(function (d) {
       // The server marks the first column, so the browser does not re-derive
@@ -438,7 +487,7 @@ ${WCS_DISPLAY_FACE}
       var isToday = d.is_today === true;
       // A day with no classes renders as an empty column, not a "no classes"
       // message. The gap is the information.
-      var items = d.classes.map(function (c) {
+      var cards = d.classes.map(function (c) {
         // Detail rides on the element, so the click handler needs no lookup.
         var tappable = !!c.description;
         var attrs = tappable
@@ -450,7 +499,7 @@ ${WCS_DISPLAY_FACE}
         return '<div class="cls' + (c.is_new ? ' cls--new' : '') + (tappable ? ' cls--tap' : '')
           + '"' + attrs
           + ' style="--collar:' + collarFor(c.class_name)
-          + ';flex-grow:' + (c.duration_minutes || 60) + '">'
+          + (LAYOUT === 'fill' ? ';flex-grow:' + (c.duration_minutes || 60) : '') + '">'
           + '<div class="time">' + esc(c.time_label)
           + (SHOW_LEN && c.duration_minutes && c.duration_minutes !== 60
               ? '<span class="len">' + esc(c.duration_minutes) + ' min</span>' : '')
@@ -459,12 +508,31 @@ ${WCS_DISPLAY_FACE}
           + (c.instructor ? '<div class="who">' + esc(c.instructor) + '</div>' : '')
           + (c.is_new ? '<span class="badge">New class</span>' : '')
           + '</div>';
-      }).join('');
+      });
+
+      // Time mode inserts weighted spacers so a class sits at a height roughly
+      // matching its start, leaving honest empty space between a 6am and a 4pm
+      // class. Flex does the arithmetic; nothing has to be measured.
+      var items;
+      if (LAYOUT === 'time' && cards.length) {
+        var mins = d.classes.map(startMinutes);
+        var parts = [];
+        parts.push(gapEl(mins[0] - windowStart));
+        for (var i = 0; i < cards.length; i++) {
+          parts.push(cards[i]);
+          if (i < cards.length - 1) parts.push(gapEl(mins[i + 1] - mins[i]));
+        }
+        parts.push(gapEl(windowEnd - mins[mins.length - 1]));
+        items = parts.join('');
+      } else {
+        items = cards.join('');
+      }
+
       return '<section class="day' + (isToday ? ' day--today' : '')
         + (d.classes.length ? '' : ' day--empty') + '">'
         + '<div class="dhead"><span class="dow">' + esc(d.weekday) + '</span>'
         + '<span class="dnum">' + esc(d.day_number) + '</span></div>'
-        + '<div class="list">' + items + '</div>'
+        + '<div class="list' + (LAYOUT === 'time' ? ' list--time' : '') + '">' + items + '</div>'
         + '</section>';
     }).join('');
   }

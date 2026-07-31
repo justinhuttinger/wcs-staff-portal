@@ -9,17 +9,21 @@ import {
 // every color in the grid.
 // Solid, saturated fills rather than the old -50 tints, which washed out
 // against the white surface and were hard to pick apart at a glance.
+//
+// Same order and same hash as the public board's collar palette, keyed on the
+// class NAME, so a class is the same colour in here as it is on the wall. Red
+// is absent on purpose: it belongs to the WCS accent.
 const CLASS_COLORS = [
   'bg-sky-600 border-sky-700 text-white',
   'bg-emerald-600 border-emerald-700 text-white',
   'bg-violet-600 border-violet-700 text-white',
   'bg-amber-600 border-amber-700 text-white',
-  'bg-rose-600 border-rose-700 text-white',
+  'bg-indigo-600 border-indigo-700 text-white',
   'bg-teal-600 border-teal-700 text-white',
 ]
 
-function colorFor(eventTypeId) {
-  const s = String(eventTypeId || '')
+function colorFor(className) {
+  const s = String(className || '')
   let h = 0
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
   return CLASS_COLORS[h % CLASS_COLORS.length]
@@ -143,7 +147,7 @@ export default function WeekGrid({ weekStart, classes, onClassClick, onSlotClick
                       type="button"
                       onClick={e => { e.stopPropagation(); if (onClassClick) onClassClick(c) }}
                       title={`${c.class_name} · ${fmtTime12(c._parsed.hour, c._parsed.min)}${c.instructor_name ? ' · ' + c.instructor_name : ''}`}
-                      className={`absolute rounded-md border px-1.5 py-1 text-left overflow-hidden hover:brightness-110 transition ${colorFor(c.event_type_id)}`}
+                      className={`absolute rounded-md border px-1.5 py-1 text-left overflow-hidden hover:brightness-110 transition ${colorFor(c.class_name)}`}
                       style={{
                         top,
                         height,
