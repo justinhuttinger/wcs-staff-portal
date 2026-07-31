@@ -17,7 +17,7 @@ const cache = require('../services/memoryCache')
 const { clubBySlug } = require('../lib/groupXClubs')
 const { markNewClasses } = require('../lib/groupXNewClasses')
 const { supabaseAdmin } = require('../services/supabase')
-const { mondayOf, currentPacificDate, buildWeek, publicCacheKey } = require('../lib/groupXPublic')
+const { currentPacificDate, buildDays, windowEnd, publicCacheKey } = require('../lib/groupXPublic')
 const { renderBoardHtml } = require('../templates/groupXBoard')
 
 const router = Router()
@@ -33,11 +33,11 @@ const FRESH_MS = 2 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
-async function loadWeek(club, monday) {
-  return cache.wrapSWR(publicCacheKey(club.clubNumber, monday), FRESH_MS, STALE_MS, async () => {
-    const sunday = buildWeek(monday, []).week_end
+async function loadWeek(club, start) {
+  return cache.wrapSWR(publicCacheKey(club.clubNumber, start), FRESH_MS, STALE_MS, async () => {
+    const last = windowEnd(start)
     const [classes, typeFlags, eventFlags] = await Promise.all([
-      abc.listClasses(club.clubNumber, monday, sunday),
+      abc.listClasses(club.clubNumber, start, last),
       supabaseAdmin
         .from('group_x_new_classes')
         .select('event_type_id, class_name, show_until')
@@ -52,15 +52,18 @@ async function loadWeek(club, monday) {
     if (typeFlags.error) console.warn('[publicGroupX] class badges unavailable:', typeFlags.error.message)
     if (eventFlags.error) console.warn('[publicGroupX] session badges unavailable:', eventFlags.error.message)
     const flagged = markNewClasses(classes, typeFlags.data || [], eventFlags.data || [])
-    return { club: club.name, club_slug: club.slug, ...buildWeek(monday, flagged) }
+    return { club: club.name, club_slug: club.slug, ...buildDays(start, flagged) }
   })
 }
 
 function resolve(req) {
   const club = clubBySlug(req.query.club)
   if (!club) return null
-  const week = DATE_RE.test(req.query.week || '') ? req.query.week : currentPacificDate()
-  return { club, monday: mondayOf(week) }
+  // The window starts on the requested day, or today in club-local Pacific.
+  // `week` is still accepted so any existing bookmark keeps working.
+  const requested = req.query.start || req.query.week
+  const start = DATE_RE.test(requested || '') ? requested : currentPacificDate()
+  return { club, start }
 }
 
 router.get('/schedule', async (req, res) => {
@@ -68,7 +71,7 @@ router.get('/schedule', async (req, res) => {
   if (!r) return res.status(404).json({ error: 'unknown club' })
   try {
     res.set('Cache-Control', 'public, max-age=300')
-    res.json(await loadWeek(r.club, r.monday))
+    res.json(await loadWeek(r.club, r.start))
   } catch (err) {
     console.error('[publicGroupX] /schedule failed:', err.message)
     res.status(503).json({ error: 'schedule temporarily unavailable' })

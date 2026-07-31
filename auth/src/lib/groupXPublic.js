@@ -7,6 +7,12 @@
 const { toIsoDate } = require('./abcTime')
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+// Indexed by Date#getUTCDay(), for a rolling window where the first column is
+// whatever day it happens to be rather than always Monday.
+const WEEKDAY_BY_DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+// The board shows this many days, starting today.
+const BOARD_DAYS = 7
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 function mondayOf(isoDate) {
@@ -69,56 +75,81 @@ function isPublishable(c) {
   return true
 }
 
-function buildWeek(mondayIso, classes) {
+// Builds the rolling board window: `startIso` is the FIRST column, and the
+// next days follow it. Members looking at a wall want today first and the days
+// ahead of it, not a Monday that may already be four days gone.
+function buildDays(startIso, classes, dayCount) {
+  const count = dayCount || BOARD_DAYS
   const publishable = (classes || []).filter(isPublishable)
   const days = []
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(mondayIso + 'T00:00:00Z')
+
+  for (let i = 0; i < count; i++) {
+    const d = new Date(startIso + 'T00:00:00Z')
     d.setUTCDate(d.getUTCDate() + i)
     const date = toIsoDate(d)
     days.push({
       date,
-      weekday: WEEKDAY_LABELS[i],
+      // Derived from the date, not the column index, because the window no
+      // longer starts on a fixed weekday.
+      weekday: WEEKDAY_BY_DOW[d.getUTCDay()],
       day_number: d.getUTCDate(),
       label: `${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}`,
+      is_today: i === 0,
       classes: publishable
         .filter(c => String(c.event_timestamp_local || '').slice(0, 10) === date)
         .sort((a, b) => String(a.event_timestamp_local).localeCompare(String(b.event_timestamp_local)))
         .map(toPublicClass),
     })
   }
-  const end = new Date(mondayIso + 'T00:00:00Z')
-  end.setUTCDate(end.getUTCDate() + 6)
+
+  const end = new Date(startIso + 'T00:00:00Z')
+  end.setUTCDate(end.getUTCDate() + count - 1)
   const endIso = toIsoDate(end)
-  const s = new Date(mondayIso + 'T00:00:00Z')
+  const s = new Date(startIso + 'T00:00:00Z')
   const rangeLabel = s.getUTCMonth() === end.getUTCMonth()
     ? `${MONTH_LABELS[s.getUTCMonth()]} ${s.getUTCDate()} - ${end.getUTCDate()}`
     : `${MONTH_LABELS[s.getUTCMonth()]} ${s.getUTCDate()} - ${MONTH_LABELS[end.getUTCMonth()]} ${end.getUTCDate()}`
-  return { week_start: mondayIso, week_end: endIso, range_label: rangeLabel, days }
+
+  return { week_start: startIso, week_end: endIso, range_label: rangeLabel, days }
 }
 
-// Cache key for one club-week of the public board. Lives here (rather than in
-// the route) so the admin write paths can invalidate a week without importing
-// the public router.
-function publicCacheKey(clubNumber, mondayIso) {
-  return `gx:public:${clubNumber}:${mondayIso}`
+// Last day of a window that starts on `startIso`.
+function windowEnd(startIso, dayCount) {
+  const d = new Date(startIso + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + (dayCount || BOARD_DAYS) - 1)
+  return toIsoDate(d)
 }
 
-// Every cache key touched by a set of class dates. A create or cancel must
-// clear the week that class falls in, or the board keeps serving the old week
-// for up to the full stale window.
-function publicCacheKeysForDates(clubNumber, dates) {
+// Cache key for one club window of the public board, keyed on the window's
+// FIRST day. Lives here rather than in the route so the admin write paths can
+// invalidate without importing the public router.
+function publicCacheKey(clubNumber, startIso) {
+  return `gx:public:${clubNumber}:${startIso}`
+}
+
+// Every cache key a class on these dates could appear in.
+//
+// With a rolling window a class on date D shows up in every window starting
+// D-6 through D, so clearing only D's own key would leave six stale windows
+// serving the old schedule. Cheap to over-clear; expensive to under-clear.
+function publicCacheKeysForDates(clubNumber, dates, dayCount) {
+  const span = dayCount || BOARD_DAYS
   const keys = new Set()
   for (const d of dates || []) {
     const iso = String(d || '').slice(0, 10)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) continue
-    keys.add(publicCacheKey(clubNumber, mondayOf(iso)))
+    for (let back = 0; back < span; back++) {
+      const start = new Date(iso + 'T00:00:00Z')
+      start.setUTCDate(start.getUTCDate() - back)
+      keys.add(publicCacheKey(clubNumber, toIsoDate(start)))
+    }
   }
   return [...keys]
 }
 
 module.exports = {
-  mondayOf, currentPacificDate, toPublicClass, buildWeek, isPublishable,
+  mondayOf, currentPacificDate, toPublicClass, isPublishable,
+  buildDays, windowEnd, BOARD_DAYS,
   publicCacheKey, publicCacheKeysForDates,
-  WEEKDAY_LABELS, MONTH_LABELS,
+  WEEKDAY_LABELS, WEEKDAY_BY_DOW, MONTH_LABELS,
 }

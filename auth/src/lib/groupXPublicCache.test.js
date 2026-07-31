@@ -9,8 +9,12 @@ const FRESH = 2 * 60 * 1000
 const STALE = 60 * 60 * 1000
 
 test('invalidating a week forces the next board read to refetch', async () => {
-  const key = publicCacheKeysForDates('30935', ['2026-08-01'])[0]
-  assert.strictEqual(key, 'gx:public:30935:2026-07-27')
+  // With a rolling window, a class on Aug 1 appears in every window starting
+  // Jul 26 through Aug 1. The first key returned is the class's own date.
+  const keys = publicCacheKeysForDates('30935', ['2026-08-01'])
+  assert.strictEqual(keys.length, 7)
+  const key = keys[0]
+  assert.strictEqual(key, 'gx:public:30935:2026-08-01')
 
   let fetches = 0
   const producer = async () => { fetches++; return { classes: fetches } }

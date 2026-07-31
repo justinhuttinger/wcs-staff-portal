@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { mondayOf, toPublicClass, buildWeek, isPublishable } = require('./groupXPublic')
+const { mondayOf, toPublicClass, buildDays, isPublishable, publicCacheKeysForDates } = require('./groupXPublic')
 
 const CLASS = {
   event_id: 'evt1',
@@ -81,14 +81,14 @@ test('isPublishable hides ABC unbooked placeholder slots', () => {
 test('buildWeek drops the unbooked duplicate but keeps the staffed class', () => {
   const staffed = { ...CLASS, event_timestamp_local: '2026-07-27 09:30:00', class_name: 'Barbell Strength' }
   const ghost = { ...staffed, instructor_name: null, unbooked: true }
-  const w = buildWeek('2026-07-27', [ghost, staffed])
+  const w = buildDays('2026-07-27', [ghost, staffed])
   const mon = w.days.find(d => d.date === '2026-07-27')
   assert.strictEqual(mon.classes.length, 1)
   assert.strictEqual(mon.classes[0].instructor, 'Matthew A.')
 })
 
 test('buildWeek produces seven Monday-first days', () => {
-  const w = buildWeek('2026-07-27', [CLASS])
+  const w = buildDays('2026-07-27', [CLASS])
   assert.strictEqual(w.week_start, '2026-07-27')
   assert.strictEqual(w.week_end, '2026-08-02')
   assert.strictEqual(w.days.length, 7)
@@ -97,42 +97,46 @@ test('buildWeek produces seven Monday-first days', () => {
 
 test('buildWeek files each class under its local date and sorts by time', () => {
   const later = { ...CLASS, event_timestamp_local: '2026-07-28 18:00:00', class_name: 'Yoga' }
-  const w = buildWeek('2026-07-27', [later, CLASS])
+  const w = buildDays('2026-07-27', [later, CLASS])
   const tue = w.days.find(d => d.date === '2026-07-28')
   assert.deepStrictEqual(tue.classes.map(c => c.class_name), ['Bootcamp', 'Yoga'])
   assert.strictEqual(w.days.find(d => d.date === '2026-07-27').classes.length, 0)
 })
 
 test('buildWeek drops classes outside the week', () => {
-  const w = buildWeek('2026-07-27', [{ ...CLASS, event_timestamp_local: '2026-09-01 06:00:00' }])
+  const w = buildDays('2026-07-27', [{ ...CLASS, event_timestamp_local: '2026-09-01 06:00:00' }])
   assert.strictEqual(w.days.reduce((n, d) => n + d.classes.length, 0), 0)
 })
 
 test('buildWeek excludes cancelled classes', () => {
-  const w = buildWeek('2026-07-27', [{ ...CLASS, status: 'Canceled' }])
+  const w = buildDays('2026-07-27', [{ ...CLASS, status: 'Canceled' }])
   assert.strictEqual(w.days.reduce((n, d) => n + d.classes.length, 0), 0)
 })
 
 test('buildWeek labels a range that spans two months', () => {
-  assert.strictEqual(buildWeek('2026-07-27', []).range_label, 'Jul 27 - Aug 2')
-  assert.strictEqual(buildWeek('2026-08-03', []).range_label, 'Aug 3 - 9')
+  assert.strictEqual(buildDays('2026-07-27', []).range_label, 'Jul 27 - Aug 2')
+  assert.strictEqual(buildDays('2026-08-03', []).range_label, 'Aug 3 - 9')
 })
 
 test('buildWeek tolerates no classes at all', () => {
-  const w = buildWeek('2026-07-27', [])
+  const w = buildDays('2026-07-27', [])
   assert.strictEqual(w.days.length, 7)
   assert.ok(w.days.every(d => d.classes.length === 0))
 })
 
-test('publicCacheKeysForDates maps dates to their week keys and dedupes', () => {
+test('publicCacheKeysForDates dedupes windows shared by nearby dates', () => {
   const { publicCacheKeysForDates } = require('./groupXPublic')
-  // Mon Jul 27 and Fri Jul 31 are the same week, so one key.
-  assert.deepStrictEqual(
-    publicCacheKeysForDates('30935', ['2026-07-27', '2026-07-31']),
-    ['gx:public:30935:2026-07-27'],
-  )
-  // A date in the next week adds a second key.
-  assert.strictEqual(publicCacheKeysForDates('30935', ['2026-07-31', '2026-08-05']).length, 2)
+  // Jul 27 and Jul 31 are 4 days apart, so their 7-day windows overlap.
+  // 7 keys each, minus the 3 they share = 11 distinct.
+  const keys = publicCacheKeysForDates('30935', ['2026-07-27', '2026-07-31'])
+  assert.strictEqual(keys.length, 11)
+  assert.strictEqual(new Set(keys).size, keys.length, 'no duplicates')
+})
+
+test('publicCacheKeysForDates covers far-apart dates independently', () => {
+  const { publicCacheKeysForDates } = require('./groupXPublic')
+  // A month apart: no window overlap, so 7 + 7.
+  assert.strictEqual(publicCacheKeysForDates('30935', ['2026-07-01', '2026-09-01']).length, 14)
 })
 
 test('publicCacheKeysForDates ignores junk instead of building bad keys', () => {
@@ -143,8 +147,8 @@ test('publicCacheKeysForDates ignores junk instead of building bad keys', () => 
 
 test('publicCacheKeysForDates accepts a full local timestamp', () => {
   const { publicCacheKeysForDates } = require('./groupXPublic')
-  assert.deepStrictEqual(
-    publicCacheKeysForDates('30935', ['2026-08-01 10:00:00']),
-    ['gx:public:30935:2026-07-27'],
-  )
+  const keys = publicCacheKeysForDates('30935', ['2026-08-01 10:00:00'])
+  assert.strictEqual(keys.length, 7)
+  assert.ok(keys.includes('gx:public:30935:2026-08-01'))
+  assert.ok(keys.includes('gx:public:30935:2026-07-26'))
 })
