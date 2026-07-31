@@ -7,13 +7,15 @@ import {
 // Stable per-class-type color so a class keeps its color week to week. Hashing
 // the event_type_id rather than the name means a rename does not reshuffle
 // every color in the grid.
+// Solid, saturated fills rather than the old -50 tints, which washed out
+// against the white surface and were hard to pick apart at a glance.
 const CLASS_COLORS = [
-  'bg-sky-50 border-sky-300 text-sky-900',
-  'bg-emerald-50 border-emerald-300 text-emerald-900',
-  'bg-violet-50 border-violet-300 text-violet-900',
-  'bg-amber-50 border-amber-300 text-amber-900',
-  'bg-rose-50 border-rose-300 text-rose-900',
-  'bg-teal-50 border-teal-300 text-teal-900',
+  'bg-sky-600 border-sky-700 text-white',
+  'bg-emerald-600 border-emerald-700 text-white',
+  'bg-violet-600 border-violet-700 text-white',
+  'bg-amber-600 border-amber-700 text-white',
+  'bg-rose-600 border-rose-700 text-white',
+  'bg-teal-600 border-teal-700 text-white',
 ]
 
 function colorFor(eventTypeId) {
@@ -141,7 +143,7 @@ export default function WeekGrid({ weekStart, classes, onClassClick, onSlotClick
                       type="button"
                       onClick={e => { e.stopPropagation(); if (onClassClick) onClassClick(c) }}
                       title={`${c.class_name} · ${fmtTime12(c._parsed.hour, c._parsed.min)}${c.instructor_name ? ' · ' + c.instructor_name : ''}`}
-                      className={`absolute rounded-md border px-1.5 py-1 text-left overflow-hidden hover:brightness-95 transition ${colorFor(c.event_type_id)}`}
+                      className={`absolute rounded-md border px-1.5 py-1 text-left overflow-hidden hover:brightness-110 transition ${colorFor(c.event_type_id)}`}
                       style={{
                         top,
                         height,
@@ -161,7 +163,7 @@ export default function WeekGrid({ weekStart, classes, onClassClick, onSlotClick
                       {/* State reads at a glance: a logged class shows its
                           number, a past unlogged one shows an amber dot. */}
                       {c.headcount != null && (
-                        <span className="absolute top-0.5 right-1 text-[10px] font-bold tabular-nums opacity-90">
+                        <span className="absolute top-0.5 right-1 text-[10px] font-bold tabular-nums bg-black/25 rounded px-1">
                           {c.headcount}
                         </span>
                       )}
@@ -172,7 +174,7 @@ export default function WeekGrid({ weekStart, classes, onClassClick, onSlotClick
                       )}
                       {c.needs_attendance && (
                         <span
-                          className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-500"
+                          className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-300 ring-1 ring-black/30"
                           title="Needs an attendance count"
                         />
                       )}

@@ -100,6 +100,9 @@ router.get('/board', (req, res) => {
     boardTitle: r.facility.title,
     eyebrowLabel: r.facility.label,
     scheduleUrl: `/public/facility/schedule?facility=${encodeURIComponent(r.facility.slug)}`,
+    // These already show a start and an end, so a "240 min" tag on open gym
+    // would add nothing.
+    showDurationTag: false,
   }))
 })
 

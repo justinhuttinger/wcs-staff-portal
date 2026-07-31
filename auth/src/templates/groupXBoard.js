@@ -40,10 +40,14 @@ function escapeHtml(s) {
 // Shared by the Group X board and the facility (courts / pool) boards. The
 // only differences are the heading, the eyebrow and which endpoint it polls, so
 // they are parameters rather than a forked copy of 300 lines of CSS.
-function renderBoardHtml({ clubSlug, clubName, safePercent, boardTitle, eyebrowLabel, scheduleUrl }) {
+function renderBoardHtml({ clubSlug, clubName, safePercent, boardTitle, eyebrowLabel, scheduleUrl, showDurationTag }) {
   const title = boardTitle || 'Class Schedule'
   const eyebrow = eyebrowLabel || 'Group X'
   const feed = scheduleUrl || '/public/group-x/schedule'
+  // Group X shows a start time only, so a non-standard length is worth
+  // flagging. Courts and pool already show "6:00 - 10:00 AM", where a
+  // "240 min" tag says nothing the range has not already said.
+  const durationTag = showDurationTag !== false
   // TV overscan: most TVs crop 2-5% off every edge, a broadcast-era holdover,
   // so content laid out to the true viewport gets its edges cut. We inset the
   // whole board by a safe margin. 3% covers the common case; ?safe=N (0-10)
@@ -77,6 +81,9 @@ ${WCS_DISPLAY_FACE}
     --step-2:  clamp(1.44rem, 1.25rem + 0.95vw, 2rem);
     --step-3:  clamp(1.73rem, 1.4rem + 1.65vw, 2.66rem);
     --step-4:  clamp(2.07rem, 1.55rem + 2.6vw, 3.55rem);
+    /* The board heading is the one piece of type that has to read from the
+       far side of a gym floor, so it gets its own step above the theme scale. */
+    --step-board: clamp(2.6rem, 1.4rem + 5.6vw, 7rem);
     --space-xs: clamp(0.75rem, 0.7rem + 0.25vw, 1rem);
     --space-s:  clamp(1rem, 0.9rem + 0.5vw, 1.5rem);
     --space-m:  clamp(1.5rem, 1.3rem + 1vw, 2.5rem);
@@ -109,7 +116,8 @@ ${WCS_DISPLAY_FACE}
   /* Theme convention: display face is uppercase, weight 400, tight leading. */
   .title { font-family: var(--font-display); font-weight: 400; text-transform: uppercase; line-height: .9; letter-spacing: -0.005em; }
   .eyebrow {
-    font-family: var(--font-body); font-size: var(--step--1); font-weight: 600;
+    font-family: var(--font-body); font-size: clamp(.8rem, .55rem + .7vw, 1.35rem);
+    font-weight: 600;
     letter-spacing: .22em; text-transform: uppercase; color: var(--color-accent);
   }
   .accent { color: var(--color-accent); }
@@ -119,16 +127,16 @@ ${WCS_DISPLAY_FACE}
     display: flex; align-items: flex-end; gap: var(--space-s);
     flex-wrap: wrap;
     flex: 0 0 auto;
-    padding-bottom: var(--space-xs);
-    border-bottom: 3px solid var(--color-accent);
-    margin-bottom: var(--space-s);
+    padding-bottom: clamp(.4rem, 1vh, 1.1rem);
+    border-bottom: 5px solid var(--color-accent);
+    margin-bottom: clamp(.5rem, 1.2vh, 1.3rem);
   }
   .head__titles { display: flex; flex-direction: column; gap: .18em; }
-  .mark { font-size: var(--step-4); }
+  .mark { font-size: var(--step-board); }
   .range {
     margin-left: auto;
     font-family: var(--font-display); text-transform: uppercase;
-    font-size: var(--step-2); line-height: .9;
+    font-size: clamp(1.3rem, .8rem + 2.2vw, 3rem); line-height: .9;
     font-variant-numeric: tabular-nums;
     color: var(--color-muted);
   }
@@ -137,7 +145,7 @@ ${WCS_DISPLAY_FACE}
   .week {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: clamp(4px, .42vw, 10px);
+    gap: clamp(3px, .32vw, 8px);
     /* Take all remaining height. min-height:0 is required or the grid refuses
        to shrink below its content and pushes the page into a scroll. */
     flex: 1 1 auto;
@@ -284,6 +292,22 @@ ${WCS_DISPLAY_FACE}
   .sheet__close:hover { background: var(--color-accent-hover); }
   .sheet__close:focus-visible { outline: 3px solid var(--color-text); outline-offset: 2px; }
 
+  /* Most classes run 60 minutes, so only the exceptions are called out.
+     Tagging every class "60 min" would be noise that teaches people to ignore
+     the line the one time it matters. */
+  .len {
+    display: inline-block;
+    margin-left: .5em;
+    padding: 0 .35em;
+    border: 1px solid var(--color-line);
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    font-size: calc(var(--fs, 1) * clamp(8px, .66vw, 14px));
+    color: var(--color-muted);
+    vertical-align: baseline;
+  }
+
   .foot {
     flex: 0 0 auto;
     margin-top: var(--space-xs);
@@ -348,6 +372,7 @@ ${WCS_DISPLAY_FACE}
 (function () {
   var CLUB = ${JSON.stringify(clubSlug)};
   var FEED = ${JSON.stringify(feed)};
+  var SHOW_LEN = ${JSON.stringify(durationTag)};
   var COLLARS = ${JSON.stringify(COLLARS)};
   var REFRESH_MS = 5 * 60 * 1000;
   var weekEl = document.getElementById('week');
@@ -376,8 +401,37 @@ ${WCS_DISPLAY_FACE}
     }).format(new Date());
   }
 
+  // Cards are sized by duration, so the smallest card is not "the busiest day"
+  // any more: it is the shortest event as a fraction of its own column's total
+  // minutes. Type is scaled against THAT, so nothing can overflow and quieter
+  // columns still read large.
+  function fontScaleForFraction(f) {
+    if (f >= 0.9) return 1.9;
+    if (f >= 0.45) return 1.7;
+    if (f >= 0.3) return 1.45;
+    if (f >= 0.22) return 1.25;
+    if (f >= 0.16) return 1.1;
+    return 1.0;
+  }
+
+  function smallestCardFraction(days) {
+    var smallest = 1;
+    days.forEach(function (d) {
+      if (!d.classes.length) return;
+      var total = 0, min = Infinity;
+      d.classes.forEach(function (c) {
+        var mins = c.duration_minutes || 60;
+        total += mins;
+        if (mins < min) min = mins;
+      });
+      if (total > 0) smallest = Math.min(smallest, min / total);
+    });
+    return smallest;
+  }
+
   function render(data) {
     rangeEl.textContent = data.range_label || '';
+    weekEl.style.setProperty('--fs', fontScaleForFraction(smallestCardFraction(data.days)));
     weekEl.innerHTML = data.days.map(function (d) {
       // The server marks the first column, so the browser does not re-derive
       // the club's timezone.
@@ -394,9 +448,11 @@ ${WCS_DISPLAY_FACE}
             + '" data-who="' + esc(c.instructor || '') + '"'
           : '';
         return '<div class="cls' + (c.is_new ? ' cls--new' : '') + (tappable ? ' cls--tap' : '')
-          + '"' + attrs + ' style="--collar:' + collarFor(c.class_name) + '">'
+          + '"' + attrs
+          + ' style="--collar:' + collarFor(c.class_name)
+          + ';flex-grow:' + (c.duration_minutes || 60) + '">'
           + '<div class="time">' + esc(c.time_label)
-          + (c.duration_minutes && c.duration_minutes !== 60
+          + (SHOW_LEN && c.duration_minutes && c.duration_minutes !== 60
               ? '<span class="len">' + esc(c.duration_minutes) + ' min</span>' : '')
           + '</div>'
           + '<div class="name">' + esc(c.class_name) + '</div>'
