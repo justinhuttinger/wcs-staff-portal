@@ -211,8 +211,8 @@ ${WCS_DISPLAY_FACE}
   .cls {
     position: relative;
     background: var(--color-bg);
-    padding: clamp(5px, .5vw, 12px) clamp(6px, .6vw, 13px);
-    padding-left: clamp(11px, 1.02vw, 21px);
+    padding: clamp(3px, .38vw, 9px) clamp(5px, .5vw, 11px);
+    padding-left: clamp(12px, 1.1vw, 23px);
   }
   .day--today .cls { background: var(--color-surface); }
   .cls::before {
@@ -325,8 +325,20 @@ ${WCS_DISPLAY_FACE}
     vertical-align: baseline;
   }
 
-  /* Time mode: fixed-size cards, gaps proportional to the time between them. */
-  .list--time .cls { flex: 0 0 auto; }
+  /* Time mode: same-size cards, gaps proportional to the time between them.
+     --cards is the busiest day of the week, so capping each card at that
+     fraction of the column guarantees the fullest day fits exactly. Gaps are
+     shrinkable, so on a packed day they collapse to nothing and the cards
+     still fit rather than overflowing.
+     overflow is hidden, not auto: a TV has nobody to scroll it, so anything
+     that does not fit is invisible content. The sizing above is what keeps
+     that from happening; this is the guarantee, not the mechanism. */
+  .list--time { overflow: hidden; }
+  .list--time .cls {
+    flex: 0 1 auto;
+    max-height: calc(100% / var(--cards, 4));
+    overflow: hidden;
+  }
   .gap { flex: 1 1 0; min-height: 0; pointer-events: none; }
 
   .foot {
@@ -423,10 +435,21 @@ ${WCS_DISPLAY_FACE}
     }).format(new Date());
   }
 
-  // Cards are sized by duration, so the smallest card is not "the busiest day"
-  // any more: it is the shortest event as a fraction of its own column's total
-  // minutes. Type is scaled against THAT, so nothing can overflow and quieter
-  // columns still read large.
+  // Time mode: every card is the same size, so the constraint is simply how
+  // many the busiest day holds. Four classes have to fit a column without
+  // scrolling, so the type comes down as the day fills up.
+  function fontScaleForCount(n) {
+    if (n <= 1) return 1.9;
+    if (n === 2) return 1.6;
+    if (n === 3) return 1.3;
+    if (n === 4) return 1.05;
+    if (n === 5) return 0.9;
+    return 0.78;
+  }
+
+  // Fill mode: cards vary with duration, so the smallest card is the shortest
+  // event as a fraction of its own column's total minutes. Type is scaled
+  // against THAT, so nothing overflows and quieter columns still read large.
   function fontScaleForFraction(f) {
     if (f >= 0.9) return 1.9;
     if (f >= 0.45) return 1.7;
@@ -480,7 +503,14 @@ ${WCS_DISPLAY_FACE}
     // A single time of day would make every gap zero; give it a nominal span
     // so the layout stays stable.
     if (windowEnd - windowStart < 60) windowEnd = windowStart + 60;
-    weekEl.style.setProperty('--fs', fontScaleForFraction(smallestCardFraction(data.days)));
+    var busiest = 0;
+    data.days.forEach(function (d) {
+      if (d.classes.length > busiest) busiest = d.classes.length;
+    });
+    weekEl.style.setProperty('--cards', Math.max(1, busiest));
+    weekEl.style.setProperty('--fs', LAYOUT === 'time'
+      ? fontScaleForCount(busiest)
+      : fontScaleForFraction(smallestCardFraction(data.days)));
     weekEl.innerHTML = data.days.map(function (d) {
       // The server marks the first column, so the browser does not re-derive
       // the club's timezone.
