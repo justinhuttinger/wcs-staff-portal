@@ -329,7 +329,10 @@ ${WCS_DISPLAY_FACE}
       // message. The gap is the information.
       var items = d.classes.map(function (c) {
         return '<div class="cls' + (c.is_new ? ' cls--new' : '') + '" style="--collar:' + collarFor(c.class_name) + '">'
-          + '<div class="time">' + esc(c.time_label) + '</div>'
+          + '<div class="time">' + esc(c.time_label)
+          + (c.duration_minutes && c.duration_minutes !== 60
+              ? '<span class="len">' + esc(c.duration_minutes) + ' min</span>' : '')
+          + '</div>'
           + '<div class="name">' + esc(c.class_name) + '</div>'
           + (c.instructor ? '<div class="who">' + esc(c.instructor) + '</div>' : '')
           + (c.is_new ? '<span class="badge">New class</span>' : '')

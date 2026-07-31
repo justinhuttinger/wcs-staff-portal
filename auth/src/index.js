@@ -212,6 +212,15 @@ app.listen(PORT, () => {
     console.error('[meetingNotes] failed to start:', err.message)
   }
 
+  // Nightly top-up for open-ended facility series. Without it an open-ended
+  // lap swim silently stops appearing once its written horizon runs out.
+  // Opt out via FACILITY_TOPUP_DISABLED=1 (checked inside start()).
+  try {
+    require('./services/facilitySeriesTopUp').start()
+  } catch (err) {
+    console.error('[facilityTopUp] failed to start:', err.message)
+  }
+
   // Nightly class seeding — puts house accounts into empty Group X classes so
   // the ABC app does not read as "nobody goes to this" for a class that is
   // actually busy. Opt out via CLASS_SEEDING_DISABLED=1 (checked inside start()).
