@@ -103,6 +103,10 @@ router.get('/board', (req, res) => {
     // These already show a start and an end, so a "240 min" tag on open gym
     // would add nothing.
     showDurationTag: false,
+    // Facility blocks scale with their length: a 4 hour open gym genuinely is
+    // four times a 1 hour booking. Group X uses time positioning instead,
+    // because one 6am class stretched down a column read as an all-day event.
+    layout: 'fill',
   }))
 })
 
