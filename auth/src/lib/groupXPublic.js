@@ -5,6 +5,7 @@
 //
 // Weeks here are MONDAY-first, unlike the staff calendars (Sunday-first).
 const { toIsoDate } = require('./abcTime')
+const { timeRangeLabel } = require('./scheduleTimes')
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 // Indexed by Date#getUTCDay(), for a rolling window where the first column is
@@ -46,11 +47,15 @@ function shortenName(full) {
   return `${parts[0]} ${parts[parts.length - 1][0]}.`
 }
 
-function toPublicClass(c) {
+function toPublicClass(c, opts) {
   const hhmm = String(c.event_timestamp_local || '').slice(11, 16)
+  const showRange = !!(opts && opts.includeEndTime)
   return {
     time: hhmm,
-    time_label: time12(hhmm),
+    // Courts and pool show a start and an end, because "the pool is open
+    // 6:00 - 7:00" is the useful fact. Group X shows a start; the class runs
+    // as long as the class runs.
+    time_label: showRange ? (timeRangeLabel(hhmm, c.duration_minutes) || time12(hhmm)) : time12(hhmm),
     class_name: c.class_name,
     instructor: shortenName(c.instructor_name),
     duration_minutes: c.duration_minutes,
@@ -103,7 +108,7 @@ function buildDays(startIso, classes, opts) {
       classes: publishable
         .filter(c => String(c.event_timestamp_local || '').slice(0, 10) === date)
         .sort((a, b) => String(a.event_timestamp_local).localeCompare(String(b.event_timestamp_local)))
-        .map(toPublicClass),
+        .map(c => toPublicClass(c, options)),
     })
   }
 

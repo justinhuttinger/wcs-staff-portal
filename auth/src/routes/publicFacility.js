@@ -60,7 +60,7 @@ async function loadWindow(club, facility, start) {
       facility_label: facility.label,
       // requireInstructor false: a lap swim slot has nobody assigned and that
       // is not a reason to hide it.
-      ...buildDays(start, (data || []).map(toBoardShape), { requireInstructor: false }),
+      ...buildDays(start, (data || []).map(toBoardShape), { requireInstructor: false, includeEndTime: true }),
     }
   })
 }

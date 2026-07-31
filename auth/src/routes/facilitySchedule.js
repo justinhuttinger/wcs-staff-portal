@@ -12,6 +12,8 @@ const { CLUBS, isKnownClubNumber } = require('../lib/groupXClubs')
 const { FACILITIES, isKnownFacility } = require('../lib/facilities')
 const { DATE_RE, buildLocalTimestamp } = require('../lib/abcTime')
 const { expandSeries, MAX_OCCURRENCES } = require('../lib/groupXSeries')
+const { durationBetween, OPEN_ENDED_HORIZON_DAYS } = require('../lib/scheduleTimes')
+const { padDate, toIsoDate } = require('../lib/abcTime')
 const { publicCacheKeysForDates } = require('../lib/groupXPublic')
 const memoryCache = require('../services/memoryCache')
 const authenticate = require('../middleware/auth')
@@ -97,13 +99,17 @@ router.post('/events', async (req, res) => {
   const title = cleanTitle(b.title)
   if (!title) return res.status(400).json({ error: 'give the event a name' })
 
-  const duration = parseInt(b.duration_minutes, 10)
-  if (!duration || duration <= 0 || duration > 24 * 60) {
-    return res.status(400).json({ error: 'duration_minutes must be between 1 and 1440' })
-  }
-
+  // Staff pick a start and an end; duration is derived. Older callers that
+  // still send duration_minutes keep working.
+  let duration
   let stamp
   try {
+    duration = b.end_time
+      ? durationBetween(b.time, b.end_time)
+      : parseInt(b.duration_minutes, 10)
+    if (!duration || duration <= 0 || duration > 24 * 60) {
+      return res.status(400).json({ error: 'give the event an end time after its start time' })
+    }
     stamp = buildLocalTimestamp(b.date, b.time)
   } catch (err) {
     return res.status(400).json({ error: err.message })
@@ -149,9 +155,20 @@ router.delete('/events/:id', async (req, res) => {
 
 // POST /facility-schedule/series/preview — dry run, no writes.
 router.post('/series/preview', (req, res) => {
+  const b = req.body || {}
+  const openEnded = !b.ends_on
   try {
-    const occurrences = expandSeries(req.body || {})
-    res.json({ count: occurrences.length, occurrences, max: MAX_OCCURRENCES })
+    const through = openEnded ? padDate(b.starts_on, OPEN_ENDED_HORIZON_DAYS) : b.ends_on
+    const occurrences = expandSeries({ ...b, ends_on: through })
+    res.json({
+      count: occurrences.length,
+      occurrences,
+      max: MAX_OCCURRENCES,
+      open_ended: openEnded,
+      // With no end date this is only what gets written now; the nightly job
+      // keeps extending it. Say so rather than implying the series stops here.
+      materialized_through: through,
+    })
   } catch (err) {
     res.status(400).json({ error: err.message })
   }
@@ -172,14 +189,28 @@ router.post('/series', async (req, res) => {
   const title = cleanTitle(b.title)
   if (!title) return res.status(400).json({ error: 'give the event a name' })
 
-  const duration = parseInt(b.duration_minutes, 10)
-  if (!duration || duration <= 0 || duration > 24 * 60) {
-    return res.status(400).json({ error: 'duration_minutes must be between 1 and 1440' })
+  let duration
+  try {
+    duration = b.end_time
+      ? durationBetween(b.start_time, b.end_time)
+      : parseInt(b.duration_minutes, 10)
+    if (!duration || duration <= 0 || duration > 24 * 60) {
+      return res.status(400).json({ error: 'give the event an end time after its start time' })
+    }
+  } catch (err) {
+    return res.status(400).json({ error: err.message })
   }
+
+  // No end date means an open-ended series: we cannot insert infinite rows, so
+  // occurrences are written out to a rolling horizon and topped up nightly.
+  const openEnded = !b.ends_on
+  const materializeThrough = openEnded
+    ? padDate(b.starts_on, OPEN_ENDED_HORIZON_DAYS)
+    : b.ends_on
 
   let occurrences
   try {
-    occurrences = expandSeries(b)
+    occurrences = expandSeries({ ...b, ends_on: materializeThrough })
   } catch (err) {
     return res.status(400).json({ error: err.message })
   }
@@ -199,7 +230,8 @@ router.post('/series', async (req, res) => {
         start_time: b.start_time,
         duration_minutes: duration,
         starts_on: b.starts_on,
-        ends_on: b.ends_on,
+        ends_on: openEnded ? null : b.ends_on,
+        materialized_through: materializeThrough,
         created_by: req.user?.email || 'unknown',
       })
       .select('id')
@@ -220,15 +252,26 @@ router.post('/series', async (req, res) => {
     if (eErr) throw new Error(eErr.message)
 
     invalidateBoard(b.club_number, b.facility, occurrences.map(o => o.date))
-    res.status(201).json({ series_id: series.id, created: rows.length })
+    res.status(201).json({ series_id: series.id, created: rows.length, open_ended: openEnded })
   } catch (err) { fail(res, err, 'POST /series') }
 })
 
-// DELETE /facility-schedule/series/:id?club_number=&facility=&from=YYYY-MM-DD
-// Cancels the series' remaining occurrences from a date forward.
+// DELETE /facility-schedule/series/:id?club_number=&facility=&through=YYYY-MM-DD
+//
+// Ends the series ON `through`: occurrences after that date are cancelled and
+// everything up to and including it is kept. Without `through` the whole
+// remaining series goes from today.
+//
+// This is the shape staff actually want. "Remove everything from today" throws
+// away classes people are already turning up to; "we know it stops in two
+// weeks" is the normal case.
 router.delete('/series/:id', async (req, res) => {
   const scope = requireScope(req, res); if (!scope) return
-  const from = DATE_RE.test(req.query.from || '') ? req.query.from : new Date().toISOString().slice(0, 10)
+  const today = toIsoDate(new Date())
+  const through = DATE_RE.test(req.query.through || '') ? req.query.through : null
+  // Cancel strictly AFTER the keep-through date. With no date, cancel from
+  // today forward.
+  const cancelFrom = through ? padDate(through, 1) : today
 
   try {
     const { data, error } = await supabaseAdmin
@@ -237,17 +280,19 @@ router.delete('/series/:id', async (req, res) => {
       .eq('series_id', req.params.id)
       .eq('club_number', scope.clubNumber)
       .is('canceled_at', null)
-      .gte('starts_at_local', `${from} 00:00:00`)
+      .gte('starts_at_local', `${cancelFrom} 00:00:00`)
       .select('starts_at_local')
     if (error) throw new Error(error.message)
 
-    await supabaseAdmin
-      .from('facility_series')
-      .update({ canceled_at: new Date().toISOString(), canceled_by: req.user?.email || 'unknown' })
-      .eq('id', req.params.id)
+    // Ending on a date closes the series there so the nightly top-up stops
+    // extending it; with no date the series is cancelled outright.
+    const patch = through
+      ? { ends_on: through, materialized_through: through }
+      : { canceled_at: new Date().toISOString(), canceled_by: req.user?.email || 'unknown' }
+    await supabaseAdmin.from('facility_series').update(patch).eq('id', req.params.id)
 
     invalidateBoard(scope.clubNumber, scope.facility, (data || []).map(r => String(r.starts_at_local).slice(0, 10)))
-    res.json({ canceled: (data || []).length })
+    res.json({ canceled: (data || []).length, ends_on: through })
   } catch (err) { fail(res, err, 'DELETE /series') }
 })
 

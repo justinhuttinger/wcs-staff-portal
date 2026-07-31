@@ -4,7 +4,6 @@ import { startOfWeek, addDays, toISODate, fmtTime12, parseLocalTimestamp, MONTH_
 import WeekGrid from '../groupx/WeekGrid'
 import BoardLinks from './FacilityBoardLinks'
 import CreateEventModal from './CreateEventModal'
-import CreateSeriesModal from './CreateFacilitySeriesModal'
 
 function weekLabel(weekStart) {
   const end = addDays(weekStart, 6)
@@ -41,9 +40,9 @@ export default function FacilityView() {
   const [error, setError] = useState(null)
   const [selected, setSelected] = useState(null)
   const [createOpen, setCreateOpen] = useState(null)
-  const [seriesOpen, setSeriesOpen] = useState(false)
   const [linksOpen, setLinksOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [endThrough, setEndThrough] = useState('')
 
   useEffect(() => {
     api('/facility-schedule/facilities')
@@ -82,13 +81,22 @@ export default function FacilityView() {
     } catch (e) { setError(e.message) } finally { setBusy(false) }
   }
 
-  async function cancelSeries() {
+  // Ending a series keeps everything up to and including the chosen day and
+  // drops what comes after. Removing everything from today would throw away
+  // sessions people are already turning up to.
+  async function endSeries() {
     if (!selected?.series_id) return
-    if (!window.confirm('Remove every remaining event in this repeating series from today onwards?')) return
+    const through = endThrough
+    const msg = through
+      ? `Keep this repeating event through ${through} and remove everything after it?`
+      : 'Remove every remaining event in this series from today onwards?'
+    if (!window.confirm(msg)) return
     setBusy(true)
     try {
-      await api(`/facility-schedule/series/${encodeURIComponent(selected.series_id)}?club_number=${club.clubNumber}&facility=${facility.slug}`, { method: 'DELETE' })
+      const qs = `club_number=${club.clubNumber}&facility=${facility.slug}` + (through ? `&through=${through}` : '')
+      await api(`/facility-schedule/series/${encodeURIComponent(selected.series_id)}?${qs}`, { method: 'DELETE' })
       setSelected(null)
+      setEndThrough('')
       await load()
     } catch (e) { setError(e.message) } finally { setBusy(false) }
   }
@@ -144,10 +152,6 @@ export default function FacilityView() {
               className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
               {linksOpen ? 'Hide board links' : 'Board links'}
             </button>
-            <button type="button" onClick={() => setSeriesOpen(true)}
-              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
-              Repeating event
-            </button>
             <button type="button" onClick={() => setCreateOpen({ date: toISODate(weekStart), time: '06:00' })}
               className="px-3 py-1.5 text-sm rounded-lg bg-wcs-red text-white font-medium hover:bg-wcs-red-hover">
               Add event
@@ -190,16 +194,27 @@ export default function FacilityView() {
               <div><span className="text-text-muted">Length: </span>{selected.duration_minutes} min</div>
               <div><span className="text-text-muted">Staff: </span>{selected.instructor_name || 'Nobody assigned'}</div>
               {selected.series_id && (
-                <div className="text-xs text-text-muted">Part of a repeating series.</div>
+                <div className="rounded-lg border border-border p-3 space-y-2">
+                  <div className="text-xs text-text-muted">Part of a repeating event.</div>
+                  <label className="block text-xs font-medium text-text-muted">
+                    End the series after
+                  </label>
+                  <input type="date" value={endThrough} onChange={e => setEndThrough(e.target.value)}
+                    className="w-full border border-border rounded-lg px-2 py-1.5 text-sm bg-surface text-text-primary" />
+                  <p className="text-xs text-text-muted">
+                    Everything up to and including this day is kept. Leave blank to remove the
+                    whole series from today.
+                  </p>
+                </div>
               )}
             </div>
             <div className="px-5 py-4 border-t border-border flex flex-wrap justify-end gap-2">
               <button type="button" onClick={() => setSelected(null)}
                 className="px-4 py-2 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">Close</button>
               {selected.series_id && (
-                <button type="button" onClick={cancelSeries} disabled={busy}
+                <button type="button" onClick={endSeries} disabled={busy}
                   className="px-4 py-2 text-sm rounded-lg border border-red-300 bg-red-50 text-red-900 font-medium hover:bg-red-100 disabled:opacity-50">
-                  Remove series
+                  {endThrough ? 'End series' : 'Remove series'}
                 </button>
               )}
               <button type="button" onClick={cancelEvent} disabled={busy}
@@ -222,15 +237,6 @@ export default function FacilityView() {
         />
       )}
 
-      {seriesOpen && (
-        <CreateSeriesModal
-          club={club}
-          facility={facility}
-          defaultDate={toISODate(weekStart)}
-          onClose={() => setSeriesOpen(false)}
-          onCreated={async () => { setSeriesOpen(false); await load() }}
-        />
-      )}
     </div>
   )
 }
