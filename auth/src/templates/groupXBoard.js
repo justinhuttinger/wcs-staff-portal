@@ -419,7 +419,16 @@ ${WCS_DISPLAY_FACE}
   @media (max-width: 760px) and (orientation: portrait) {
     body { height: auto; min-height: 100vh; overflow: visible; }
     .week { grid-template-columns: 1fr; gap: 7px; flex: 0 0 auto; }
-    .list { overflow-y: visible; padding: 9px; gap: 9px; }
+    /* Nothing may scroll inside the board once it stacks. The whole point of
+       the height beacon is that the page around it grows instead, and an inner
+       scroller both steals the gesture and hides the bottom of the week. The
+       shorthand on .list--time sets overflow-y too, so it has to be undone by
+       name, and the per-card cap is a fraction of a column height that no
+       longer exists here. */
+    html { height: auto; }
+    .list, .list--time { overflow: visible; }
+    .list--time .cls { max-height: none; overflow: visible; }
+    .list { padding: 9px; gap: 9px; }
     .day--empty:not(.day--today) { display: none; }
     .dow  { font-size: 22px; }
     .dnum { font-size: 19px; }
@@ -473,6 +482,16 @@ ${isEmbed ? `
   .head { padding-bottom: clamp(.25rem, .6vh, .6rem); margin-bottom: clamp(.4rem, 1vh, 1rem); }
   .range { margin-left: 0; }
   .foot { display: none; }
+
+  /* Stacked inside an iframe there is no screen to fill: the parent sizes the
+     frame to whatever height we report, so "at least one viewport tall" is a
+     floor measured against a number we ourselves supplied. It cannot make the
+     board taller than its content, but it does stop the frame ever shrinking
+     back down once something transient made it tall. Body height here is
+     exactly the content, which is also what makes the beacon exact. */
+  @media (max-width: 760px) and (orientation: portrait) {
+    body { min-height: 0; }
+  }
 ` : ''}
 </style>
 </head>
@@ -810,21 +829,48 @@ ${isEmbed ? `
   // targetOrigin '*' because the board doesn't know which page embedded it, and
   // the payload is a number -- there is nothing here worth scoping.
   var STACK_MQ = window.matchMedia('(max-width: 760px) and (orientation: portrait)');
+
+  // Take the largest of the four, because under-reporting by even a few pixels
+  // is exactly the failure being avoided: the frame comes up short and the
+  // board grows an inner scrollbar, which is the one thing it must never do.
+  // documentElement.scrollHeight alone is not enough -- the root carries
+  // height:100% for the TV layout, and a root with a definite height can report
+  // that height rather than its content.
+  function contentHeight() {
+    var b = document.body, h = document.documentElement;
+    return Math.max(
+      h.scrollHeight, h.offsetHeight,
+      b.scrollHeight, b.offsetHeight
+    );
+  }
+
   function postHeight() {
     try {
       parent.postMessage({
         type: 'wcs-board-height',
         stacked: STACK_MQ.matches,
-        height: Math.ceil(document.documentElement.scrollHeight)
+        height: Math.ceil(contentHeight())
       }, '*');
     } catch (e) {}
   }
   window.addEventListener('resize', postHeight);
   if (STACK_MQ.addEventListener) STACK_MQ.addEventListener('change', postHeight);
   window.addEventListener('load', postHeight);
+  // The display face is uppercase and tightly leaded; when it swaps in, class
+  // names rewrap and the board's real height changes after the last measurement
+  // anyone thought to take. Cheap to re-post, and the alternative is a frame
+  // that is short by one line.
+  if (document.fonts && document.fonts.ready) { document.fonts.ready.then(postHeight); }
   // Each schedule refresh can change the stacked height, and a ResizeObserver
-  // catches that without reaching into render().
-  if (window.ResizeObserver) { new ResizeObserver(postHeight).observe(document.body); }
+  // catches that without reaching into render(). The week grid is observed as
+  // well as the body: with the root at height:100% the body's own box can stay
+  // put while the grid inside it grows, and an observer watching only the body
+  // would never fire.
+  if (window.ResizeObserver) {
+    var ro = new ResizeObserver(postHeight);
+    ro.observe(document.body);
+    ro.observe(weekEl);
+  }
   postHeight();
 ` : ''}
   markNow();
