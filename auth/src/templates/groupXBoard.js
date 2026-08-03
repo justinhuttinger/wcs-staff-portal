@@ -200,12 +200,16 @@ ${WCS_DISPLAY_FACE}
     font-family: var(--font-display); text-transform: uppercase;
     letter-spacing: .04em; font-size: clamp(14px, 1.42vw, 30px); line-height: .9;
   }
+  /* Month and day, not a bare number. Somebody glancing at a wall should be
+     able to tell Mon Aug 3 from Mon Aug 10 without counting columns, and a
+     board photographed or shared out of context still says which week it is. */
   .dnum {
     margin-left: auto; font-family: var(--font-display);
-    font-variant-numeric: tabular-nums; font-size: clamp(12px, 1.15vw, 24px);
-    line-height: .9; color: var(--color-muted);
+    text-transform: uppercase; letter-spacing: .03em;
+    font-variant-numeric: tabular-nums; font-size: clamp(12px, 1.22vw, 26px);
+    line-height: .9; color: var(--color-text); white-space: nowrap;
   }
-  .day--today .dnum { color: rgb(255 255 255 / .85); }
+  .day--today .dnum { color: #fff; }
 
   .list {
     padding: clamp(4px, .38vw, 9px);
@@ -601,7 +605,7 @@ ${isEmbed ? '' : `    <div class="head__titles">
       return '<section class="day' + (isToday ? ' day--today' : '')
         + (d.classes.length ? '' : ' day--empty') + '">'
         + '<div class="dhead"><span class="dow">' + esc(d.weekday) + '</span>'
-        + '<span class="dnum">' + esc(d.day_number) + '</span></div>'
+        + '<span class="dnum">' + esc(d.label || d.day_number) + '</span></div>'
         + '<div class="list' + (LAYOUT === 'time' ? ' list--time' : '') + '">'
         + (d.classes.length ? items : '<p class="none">' + esc(EMPTY) + (isToday ? ' today' : '') + '</p>')
         + '</div>'
