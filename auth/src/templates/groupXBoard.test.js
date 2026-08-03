@@ -73,6 +73,44 @@ test('empty days say so, in the words of the board they belong to', () => {
   assert.ok(courts.includes(`(isToday ? ' today' : '')`))
 })
 
+test('nothing inside the board can scroll once it stacks', () => {
+  // The embed contract is that the PAGE grows and the iframe never scrolls. An
+  // inner scroller both steals the gesture and hides the bottom of the week, so
+  // every element that scrolls or clips in the TV layout has to be released at
+  // the narrow breakpoint -- including .list--time, whose `overflow` shorthand
+  // sets overflow-y and would otherwise survive a .list override.
+  const html = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem', embed: true })
+  const start = html.indexOf('@media (max-width: 760px) and (orientation: portrait)')
+  assert.notStrictEqual(start, -1)
+  const stacked = html.slice(start, html.indexOf('@media (prefers-reduced-motion', start))
+
+  assert.match(stacked, /html \{ height: auto; \}/)
+  assert.match(stacked, /\.list, \.list--time \{ overflow: visible; \}/)
+  assert.match(stacked, /\.list--time \.cls \{ max-height: none; overflow: visible; \}/)
+
+  // The TV rules these undo must still be there for the wide layout.
+  const wide = html.slice(0, start)
+  assert.match(wide, /html \{ [^}]*height: 100%; \}/)
+  assert.match(wide, /\.list--time \{ overflow: hidden; \}/)
+})
+
+test('the stacked embed measures its content, not the frame it was given', () => {
+  const embed = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem', embed: true })
+  // A root carrying height:100% can report that height rather than its content,
+  // so the beacon takes the largest of four measurements.
+  assert.match(embed, /h\.scrollHeight, h\.offsetHeight,\s*b\.scrollHeight, b\.offsetHeight/)
+  // The floor that would stop the frame shrinking back down is dropped.
+  assert.match(embed, /@media \(max-width: 760px\) and \(orientation: portrait\) \{\s*body \{ min-height: 0; \}/)
+  // Re-measure when the display face swaps in and class names rewrap.
+  assert.ok(embed.includes('document.fonts.ready.then(postHeight)'))
+  // The grid is watched as well as the body.
+  assert.ok(embed.includes('ro.observe(weekEl)'))
+
+  // None of this belongs on a TV, which has no parent to talk to.
+  const tv = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem' })
+  assert.ok(!tv.includes('wcs-board-height'))
+})
+
 test('embed mode drops the title block but keeps the week range', () => {
   const embed = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem', embed: true })
   // The .head__titles CSS rule ships either way; it is the markup that goes.
