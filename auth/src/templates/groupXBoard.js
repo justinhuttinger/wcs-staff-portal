@@ -51,10 +51,13 @@ function escapeHtml(s) {
 // Shared by the Group X board and the facility (courts / pool) boards. The
 // only differences are the heading, the eyebrow and which endpoint it polls, so
 // they are parameters rather than a forked copy of 300 lines of CSS.
-function renderBoardHtml({ clubSlug, clubName, safePercent, boardTitle, eyebrowLabel, scheduleUrl, showDurationTag, layout, embed }) {
+function renderBoardHtml({ clubSlug, clubName, safePercent, boardTitle, eyebrowLabel, scheduleUrl, showDurationTag, layout, embed, emptyLabel }) {
   const title = boardTitle || 'Class Schedule'
   const eyebrow = eyebrowLabel || 'Group X'
   const feed = scheduleUrl || '/public/group-x/schedule'
+  // What an empty day column says. Today's column appends " today", so this
+  // has to read as a sentence with that word on the end: "No classes today".
+  const empty = emptyLabel || 'No classes'
   // Group X shows a start time only, so a non-standard length is worth
   // flagging. Courts and pool already show "6:00 - 10:00 AM", where a
   // "240 min" tag says nothing the range has not already said.
@@ -217,6 +220,20 @@ ${WCS_DISPLAY_FACE}
     scrollbar-width: none;
   }
   .list::-webkit-scrollbar { display: none; }
+
+  /* A day with nothing on it says so. An empty column on its own reads as a
+     board that failed to load rather than a quiet day, and a club still filling
+     its schedule in can have a whole week of them on the website. margin:auto
+     centres it in the column, which is a flex box in both layout modes. */
+  .none {
+    margin: auto;
+    padding: .5em .4em;
+    text-align: center;
+    color: var(--color-muted);
+    font-size: clamp(11px, .85vw, 18px);
+    line-height: 1.25;
+  }
+  .day--today .none { color: var(--color-text); }
 
   .cls {
     position: relative;
@@ -427,6 +444,7 @@ ${isEmbed ? '' : `    <div class="head__titles">
   var FEED = ${JSON.stringify(feed)};
   var SHOW_LEN = ${JSON.stringify(durationTag)};
   var LAYOUT = ${JSON.stringify(layoutMode)};
+  var EMPTY = ${JSON.stringify(empty)};
   var COLLARS = ${JSON.stringify(COLLARS)};
   var REFRESH_MS = 5 * 60 * 1000;
   var weekEl = document.getElementById('week');
@@ -535,8 +553,10 @@ ${isEmbed ? '' : `    <div class="head__titles">
       // The server marks the first column, so the browser does not re-derive
       // the club's timezone.
       var isToday = d.is_today === true;
-      // A day with no classes renders as an empty column, not a "no classes"
-      // message. The gap is the information.
+      // A day with no classes says so. The empty column used to be the message
+      // -- fine on a TV beside six full ones, but on the website a club still
+      // filling its schedule in shows a whole week of blank columns, which
+      // reads as a board that failed to load rather than a quiet week.
       var cards = d.classes.map(function (c) {
         // Detail rides on the element, so the click handler needs no lookup.
         var tappable = !!c.description;
@@ -582,7 +602,9 @@ ${isEmbed ? '' : `    <div class="head__titles">
         + (d.classes.length ? '' : ' day--empty') + '">'
         + '<div class="dhead"><span class="dow">' + esc(d.weekday) + '</span>'
         + '<span class="dnum">' + esc(d.day_number) + '</span></div>'
-        + '<div class="list' + (LAYOUT === 'time' ? ' list--time' : '') + '">' + items + '</div>'
+        + '<div class="list' + (LAYOUT === 'time' ? ' list--time' : '') + '">'
+        + (d.classes.length ? items : '<p class="none">' + esc(EMPTY) + (isToday ? ' today' : '') + '</p>')
+        + '</div>'
         + '</section>';
     }).join('');
   }
