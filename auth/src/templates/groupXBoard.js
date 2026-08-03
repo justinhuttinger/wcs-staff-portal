@@ -170,6 +170,18 @@ ${WCS_DISPLAY_FACE}
     font-variant-numeric: tabular-nums;
     color: var(--color-muted);
   }
+  /* The clock. Without it the highlighted card asserts something the reader
+     can't check -- "on now" only means anything next to what time the board
+     thinks it is, which on a wall TV is also the fastest way to catch a screen
+     that has quietly frozen. Club time, not the reader's. */
+  .now {
+    align-self: flex-end;
+    font-family: var(--font-display); text-transform: uppercase;
+    font-size: clamp(1rem, .65rem + 1.2vw, 1.9rem); line-height: .9;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-accent);
+  }
+  .now:empty { display: none; }
 
   /* ---- Week --------------------------------------------------------- */
   .week {
@@ -293,6 +305,22 @@ ${WCS_DISPLAY_FACE}
     }
   }
 
+  /* Happening right now. Red already means today's column and the New badge,
+     so a solid red card is the same vocabulary turned up rather than a new
+     one, and it is the only thing on the board that answers "what is on right
+     now" without the reader doing arithmetic against the clock. Only ever one
+     or two cards, and only in today's column. */
+  .cls--now { background: var(--color-accent); color: #fff; }
+  .day--today .cls--now { background: var(--color-accent); }
+  .cls--now::before { background: #fff; }
+  .cls--now .time, .cls--now .who { color: rgb(255 255 255 / .85); }
+  .badge--now { display: none; background: #fff; color: var(--color-accent); }
+  .cls--now .badge--now { display: inline-block; }
+  /* A class that has already finished is still worth showing -- the day reads
+     as a whole -- but it should not compete with what is still to come. */
+  .cls--past { opacity: .42; }
+  .cls--past.cls--now { opacity: 1; }
+
   /* Only classes that actually have a description become clickable, so a tap
      never opens an empty box. Nothing on a TV has a pointer, so this is
      effectively website-only and stays invisible there. */
@@ -396,9 +424,28 @@ ${WCS_DISPLAY_FACE}
     .dow  { font-size: 20px; }
     .dnum { font-size: 18px; }
     .time { font-size: 15px; }
-    .name { font-size: 22px; }
+    .name { font-size: 20px; }
     .who  { font-size: 13px; }
     .range { margin-left: 0; width: 100%; }
+    .now { align-self: flex-start; }
+
+    /* One line, not two. A phone column is one card wide, so stacking the time
+       above the name spends a whole line on four characters and makes a full
+       day feel crammed. Side by side, the times form a left rail the eye can
+       run down. The instructor wraps to its own line -- it is the one part
+       that can be long enough to push the name into a bad wrap. */
+    .cls {
+      display: flex; flex-wrap: wrap;
+      align-items: baseline;
+      column-gap: .6em;
+    }
+    .time { flex: 0 0 auto; }
+    .name { flex: 1 1 auto; margin-top: 0; }
+    .who  { flex: 1 0 100%; margin-top: .1em; }
+    .badge { flex: 0 0 auto; margin-top: .25em; }
+    /* The duration tag sits under the time rather than beside it, so it cannot
+       push the name off the line it was just given. */
+    .len { display: block; }
   }
 
   @media (prefers-reduced-motion: no-preference) {
@@ -423,6 +470,7 @@ ${isEmbed ? '' : `    <div class="head__titles">
       <h1 class="title mark">${escapeHtml(title)}</h1>
     </div>
 `}    <div class="range" id="range"></div>
+    <div class="now" id="now"></div>
   </header>
 
   <main class="week" id="week" aria-live="polite"></main>
@@ -453,6 +501,7 @@ ${isEmbed ? '' : `    <div class="head__titles">
   var REFRESH_MS = 5 * 60 * 1000;
   var weekEl = document.getElementById('week');
   var rangeEl = document.getElementById('range');
+  var nowEl = document.getElementById('now');
   var statusEl = document.getElementById('status');
   var dotEl = document.getElementById('dot');
   var lastGood = null;
@@ -474,6 +523,28 @@ ${isEmbed ? '' : `    <div class="head__titles">
   function pacificToday() {
     return new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(new Date());
+  }
+
+  // Minutes past midnight, and the clock face, both in the club's timezone for
+  // the same reason the week is: a phone in another state must agree with the
+  // TV on the wall about what is on right now.
+  function pacificMinutes() {
+    var h = 0, m = 0;
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit', hour12: false
+    }).formatToParts(new Date()).forEach(function (p) {
+      if (p.type === 'hour') h = parseInt(p.value, 10);
+      if (p.type === 'minute') m = parseInt(p.value, 10);
+    });
+    // hour12:false reports midnight as 24 in some engines.
+    if (h === 24) h = 0;
+    return h * 60 + m;
+  }
+
+  function pacificClock() {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit'
     }).format(new Date());
   }
 
@@ -517,9 +588,15 @@ ${isEmbed ? '' : `    <div class="head__titles">
   }
 
   // "06:00" or "6:00 AM" -> minutes past midnight.
+  //
+  // The backslashes are doubled because this whole script is a Node template
+  // literal: a lone \d is not an escape sequence there, so it collapses to a
+  // bare "d" on the way out and the browser receives /^(d{1,2}):(d{2})/, which
+  // matches no time that has ever existed. Any escape added below needs the
+  // same treatment.
   function startMinutes(c) {
     var t = String(c.time || '');
-    var m = /^(\d{1,2}):(\d{2})/.exec(t);
+    var m = /^(\\d{1,2}):(\\d{2})/.exec(t);
     if (!m) return 0;
     return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
   }
@@ -570,8 +647,12 @@ ${isEmbed ? '' : `    <div class="head__titles">
             + '" data-when="' + esc(c.time_label)
             + '" data-who="' + esc(c.instructor || '') + '"'
           : '';
+        // Start and end ride on the element so the every-minute tick can move
+        // the "on now" marker by toggling classes, without re-rendering the
+        // board underneath someone's finger.
+        var startM = startMinutes(c);
         return '<div class="cls' + (c.is_new ? ' cls--new' : '') + (tappable ? ' cls--tap' : '')
-          + '"' + attrs
+          + '" data-start="' + startM + '" data-end="' + (startM + (c.duration_minutes || 60)) + '"' + attrs
           + ' style="--collar:' + collarFor(c.class_name)
           + (LAYOUT === 'fill' ? ';flex-grow:' + (c.duration_minutes || 60) : '') + '">'
           + '<div class="time">' + esc(c.time_label)
@@ -580,6 +661,7 @@ ${isEmbed ? '' : `    <div class="head__titles">
           + '</div>'
           + '<div class="name">' + esc(c.class_name) + '</div>'
           + (c.instructor ? '<div class="who">' + esc(c.instructor) + '</div>' : '')
+          + '<span class="badge badge--now">On now</span>'
           + (c.is_new ? '<span class="badge">New class</span>' : '')
           + '</div>';
       });
@@ -611,6 +693,27 @@ ${isEmbed ? '' : `    <div class="head__titles">
         + '</div>'
         + '</section>';
     }).join('');
+    markNow();
+  }
+
+  // Move the "on now" marker and the clock. Toggling classes rather than
+  // re-rendering keeps a tap target under the finger it is already under, and
+  // costs nothing on a screen left running for months. Only today's column can
+  // have a now: a card at 9:30 on Thursday is not on because it is 9:30 today.
+  function markNow() {
+    var mins = pacificMinutes();
+    if (nowEl) nowEl.textContent = 'Now ' + pacificClock();
+    var today = weekEl.querySelector('.day--today');
+    if (!today) return;
+    var cards = today.querySelectorAll('.cls');
+    for (var i = 0; i < cards.length; i++) {
+      var el = cards[i];
+      var s = parseInt(el.getAttribute('data-start'), 10);
+      var e = parseInt(el.getAttribute('data-end'), 10);
+      if (isNaN(s) || isNaN(e)) continue;
+      el.classList.toggle('cls--now', mins >= s && mins < e);
+      el.classList.toggle('cls--past', mins >= e);
+    }
   }
 
   function setStatus(text, stale) {
@@ -711,10 +814,14 @@ ${isEmbed ? `
   if (window.ResizeObserver) { new ResizeObserver(postHeight).observe(document.body); }
   postHeight();
 ` : ''}
+  markNow();
   load();
   // Refreshing while someone is reading a description would yank it away, so
   // hold off until the popup is closed.
   setInterval(function () { if (scrim.getAttribute('data-open') !== '1') load(); }, REFRESH_MS);
+  // The clock and the marker move on their own minute, not the poll's five: a
+  // class starting at 9:30 has to light up at 9:30, not at 9:34.
+  setInterval(markNow, 30 * 1000);
 })();
 </script>
 </body>
