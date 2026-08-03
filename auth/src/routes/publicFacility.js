@@ -106,6 +106,10 @@ router.get('/board', (req, res) => {
     // padding, for the iframe on westcoaststrength.com. See renderBoardHtml.
     embed: req.query.embed === '1',
     showDurationTag: false,
+    // "No classes" is Group X's word. A court or a lane holds open gym, leagues
+    // and rentals, so an empty day here is nothing scheduled rather than no
+    // class. Today's column appends " today".
+    emptyLabel: 'Nothing scheduled',
     // Facility blocks scale with their length: a 4 hour open gym genuinely is
     // four times a 1 hour booking. Group X uses time positioning instead,
     // because one 6am class stretched down a column read as an all-day event.
