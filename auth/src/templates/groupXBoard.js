@@ -294,7 +294,7 @@ ${WCS_DISPLAY_FACE}
     font-family: var(--font-display);
     text-transform: uppercase;
     letter-spacing: .12em;
-    font-size: clamp(8.5px, .72vw, 15px);
+    font-size: clamp(11px, .92vw, 19px);
     line-height: 1.15;
   }
   @media (prefers-reduced-motion: no-preference) {
@@ -419,30 +419,43 @@ ${WCS_DISPLAY_FACE}
   @media (max-width: 760px) and (orientation: portrait) {
     body { height: auto; min-height: 100vh; overflow: visible; }
     .week { grid-template-columns: 1fr; gap: 7px; flex: 0 0 auto; }
-    .list { overflow-y: visible; }
+    .list { overflow-y: visible; padding: 9px; gap: 9px; }
     .day--empty:not(.day--today) { display: none; }
-    .dow  { font-size: 20px; }
-    .dnum { font-size: 18px; }
-    .time { font-size: 15px; }
-    .name { font-size: 20px; }
-    .who  { font-size: 13px; }
+    .dow  { font-size: 22px; }
+    .dnum { font-size: 19px; }
     .range { margin-left: 0; width: 100%; }
     .now { align-self: flex-start; }
 
-    /* One line, not two. A phone column is one card wide, so stacking the time
-       above the name spends a whole line on four characters and makes a full
-       day feel crammed. Side by side, the times form a left rail the eye can
-       run down. The instructor wraps to its own line -- it is the one part
-       that can be long enough to push the name into a bad wrap. */
+    /* Sizes are fixed here rather than fluid. Everything above is sized against
+       a column roughly a seventh of a TV, so on a phone -- where that column is
+       the whole screen -- the vw terms bottom out and every card lands on its
+       clamp minimum: technically responsive, actually just small. A phone has
+       one width worth designing for, and the row is given height to sit in
+       rather than being packed tight to the type.
+
+       One line, not two: a phone column is one card wide, so stacking the time
+       above the name spends a whole line on four characters. Side by side, the
+       times form a left rail the eye can run down. The instructor wraps to its
+       own line -- it is the one part long enough to force a bad wrap. */
     .cls {
       display: flex; flex-wrap: wrap;
       align-items: baseline;
       column-gap: .6em;
+      padding: 11px 13px 11px 22px;
     }
-    .time { flex: 0 0 auto; }
-    .name { flex: 1 1 auto; margin-top: 0; }
-    .who  { flex: 1 0 100%; margin-top: .1em; }
-    .badge { flex: 0 0 auto; margin-top: .25em; }
+    .cls::before { left: 8px; width: 6px; top: 10px; bottom: 10px; }
+    .time { flex: 0 0 auto; font-size: 17px; }
+    .name { flex: 1 1 auto; margin-top: 0; font-size: 25px; }
+    .who  { flex: 1 0 100%; margin-top: .2em; font-size: 15px; }
+    /* The badge lands on a line of its own here (the instructor above it takes
+       the full width), and an inline-block left-aligned on an otherwise empty
+       row reads as something that fell off the card. auto margins centre it. */
+    .badge {
+      flex: 0 0 auto;
+      margin: .45em auto 0;
+      font-size: 13px;
+      padding: .25em .7em .28em;
+    }
     /* The duration tag sits under the time rather than beside it, so it cannot
        push the name off the line it was just given. */
     .len { display: block; }
@@ -661,7 +674,7 @@ ${isEmbed ? '' : `    <div class="head__titles">
           + '</div>'
           + '<div class="name">' + esc(c.class_name) + '</div>'
           + (c.instructor ? '<div class="who">' + esc(c.instructor) + '</div>' : '')
-          + '<span class="badge badge--now">On now</span>'
+          + '<span class="badge badge--now">Currently</span>'
           + (c.is_new ? '<span class="badge">New class</span>' : '')
           + '</div>';
       });
