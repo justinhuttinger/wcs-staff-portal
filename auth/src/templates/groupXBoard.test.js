@@ -48,7 +48,7 @@ test('the emitted time regex still has its backslashes', () => {
 test('cards carry the start and end the now-marker reads', () => {
   const html = groupX()
   assert.match(html, /data-start="' \+ startM \+ '" data-end="' \+ \(startM \+ \(c\.duration_minutes \|\| 60\)\)/)
-  assert.ok(html.includes('<span class="badge badge--now">On now</span>'))
+  assert.ok(html.includes('<span class="badge badge--now">Currently</span>'))
   // The badge is revealed by CSS, not JS, so the rule has to exist.
   assert.ok(html.includes('.cls--now .badge--now { display: inline-block; }'))
 })
