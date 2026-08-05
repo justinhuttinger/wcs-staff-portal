@@ -18,21 +18,21 @@ import { PRINT_DAY_LABELS } from '../../lib/printWeek'
 // renders onto white paper, not onto the portal's dark backdrop, so the theme
 // colours would be actively wrong here.
 
-function EventLine({ ev, showRange }) {
+// The length of a slot is carried by its time_label ("6:00 - 7:00 AM" for a
+// facility), never as a separate "60 min" line. Printing both says the same
+// thing twice and makes the reader do the arithmetic to check they agree.
+function EventLine({ ev }) {
   return (
     <div className="ps-ev">
       <span className="ps-ev__time">{ev.time_label}</span>
       <span className="ps-ev__name">{ev.class_name}</span>
       {ev.instructor_name && <span className="ps-ev__who">{ev.instructor_name}</span>}
-      {showRange && ev.duration_minutes ? (
-        <span className="ps-ev__len">{ev.duration_minutes} min</span>
-      ) : null}
     </div>
   )
 }
 
 export default function PrintScheduleSheet({
-  week, title, clubName, orientation, logoSrc, showDuration,
+  week, title, clubName, orientation, logoSrc,
 }) {
   const isPortrait = orientation === 'portrait'
 
@@ -55,9 +55,7 @@ export default function PrintScheduleSheet({
                 // An empty column headed "Sunday" says "nothing on Sunday". A
                 // missing one says "we forgot Sunday".
                 ? <div className="ps-empty">&mdash;</div>
-                : day.events.map(ev => (
-                  <EventLine key={ev.event_id} ev={ev} showRange={showDuration} />
-                ))}
+                : day.events.map(ev => <EventLine key={ev.event_id} ev={ev} />)}
             </div>
           </section>
         ))}

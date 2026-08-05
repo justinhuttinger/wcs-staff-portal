@@ -76,7 +76,6 @@ export default function PrintScheduleStyles({ orientation }) {
       .ps-ev__time { font-weight: 700; font-variant-numeric: tabular-nums; }
       .ps-ev__name { font-weight: 600; }
       .ps-ev__who { color: #444; }
-      .ps-ev__len { color: #777; }
 
       /* ---- Landscape: seven columns ---------------------------------- */
       /* A wall grid. Columns are equal width and never break across pages --
@@ -110,7 +109,6 @@ export default function PrintScheduleStyles({ orientation }) {
       .ps--landscape .ps-ev > span { display: block; }
       .ps--landscape .ps-ev__time { font-size: 8.5pt; }
       .ps--landscape .ps-ev__who { font-size: 7.8pt; }
-      .ps--landscape .ps-ev__len { font-size: 7.2pt; }
 
       /* ---- Portrait: seven rows -------------------------------------- */
       /* Seven columns on 8.5in leaves ~1.1in each, which wraps "Barbell
@@ -145,7 +143,6 @@ export default function PrintScheduleStyles({ orientation }) {
       }
       .ps--portrait .ps-ev > span { display: block; }
       .ps--portrait .ps-ev__who { font-size: 7.8pt; }
-      .ps--portrait .ps-ev__len { font-size: 7.2pt; }
       .ps--portrait .ps-empty { padding-top: .01in; }
 
       /* ---- On-screen preview ----------------------------------------- */

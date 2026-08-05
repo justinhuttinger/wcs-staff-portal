@@ -28,7 +28,7 @@ function toISO(d) {
 // does not need to know whether it is talking to Group X (ABC-backed) or to a
 // facility (portal-backed). Both hand back the same event shape.
 export default function PrintScheduleModal({
-  title, clubName, fetchWeek, requireInstructor = true, showDuration = false, onClose,
+  title, clubName, fetchWeek, requireInstructor = true, showEndTime = false, onClose,
 }) {
   const [monday, setMonday] = useState(() => addDays(startOfPrintWeek(new Date()), 7))
   const [orientation, setOrientation] = useState('landscape')
@@ -56,8 +56,8 @@ export default function PrintScheduleModal({
   useEffect(() => { load() }, [load])
 
   const week = useMemo(
-    () => buildPrintWeek(monday, events, { requireInstructor }),
-    [monday, events, requireInstructor],
+    () => buildPrintWeek(monday, events, { requireInstructor, showEndTime }),
+    [monday, events, requireInstructor, showEndTime],
   )
 
   const total = week.reduce((n, d) => n + d.events.length, 0)
@@ -78,7 +78,6 @@ export default function PrintScheduleModal({
       clubName={clubName}
       orientation={orientation}
       logoSrc="/wcs-logo.png"
-      showDuration={showDuration}
     />
   )
 

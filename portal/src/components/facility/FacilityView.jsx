@@ -262,8 +262,9 @@ export default function FacilityView() {
           // instructor here would print an empty sheet.
           requireInstructor={false}
           // "The pool is open 6:00 - 7:00" is the useful fact for a facility,
-          // the way it is on the public board.
-          showDuration
+          // the way it is on the public board. Group X shows a start only: a
+          // class runs as long as it runs.
+          showEndTime
           onClose={() => setPrintOpen(false)}
         />
       )}
