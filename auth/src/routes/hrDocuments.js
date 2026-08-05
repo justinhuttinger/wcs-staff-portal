@@ -118,7 +118,10 @@ async function generatePDF(htmlContent) {
   const resp = await fetch('https://api.pdfshift.io/v3/convert/pdf', {
     method: 'POST',
     headers: {
-      Authorization: 'Basic ' + Buffer.from(apiKey + ':').toString('base64'),
+      // PDFShift expects the key as the basic-auth PASSWORD with a literal
+      // 'api' username. Sending it as the username 401s with a misleading
+      // "The provided API Key was not found." Matches dayOneProgram/pdf.js.
+      Authorization: 'Basic ' + Buffer.from('api:' + apiKey).toString('base64'),
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ source: htmlContent, format: 'Letter' }),
