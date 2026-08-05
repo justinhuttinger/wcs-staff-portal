@@ -25,6 +25,7 @@
 //  * Type scales with viewport width so the same URL fills a 1080p or 4K
 //    screen and still reads inside a narrow website iframe.
 const { WCS_DISPLAY_FACE } = require('./wcsDisplayFont')
+const { WCS_MARK_DATA_URI } = require('./wcsMark')
 
 // Per-class colour on the left bar, hashed from the class NAME so the same
 // class is the same colour everywhere — across days, across clubs, and
@@ -162,6 +163,20 @@ ${WCS_DISPLAY_FACE}
     margin-bottom: clamp(.5rem, 1.2vh, 1.3rem);
   }
   .head__titles { display: flex; flex-direction: column; gap: .18em; }
+  /* The badge is sized off the same fluid step as the board title so the two
+     stay in proportion from a phone to a 4K panel, rather than the logo
+     swallowing the header on one and vanishing on the other. It is a circular
+     mark, so height is the honest dimension to size on. flex-shrink:0 keeps it
+     from being squeezed when the header wraps. */
+  .head__logo {
+    flex: 0 0 auto;
+    height: var(--step-board);
+    width: auto;
+    align-self: flex-end;
+    /* Black artwork on a white board. The source PNG is already black on
+       transparent, so nothing to correct -- but a stray white fringe from the
+       downscale would show, hence no background here. */
+  }
   .mark { font-size: var(--step-board); }
   .range {
     margin-left: auto;
@@ -483,6 +498,18 @@ ${isEmbed ? `
   .range { margin-left: 0; }
   .foot { display: none; }
 
+  /* The badge stays, but with the title block gone there is nothing left in
+     this header at --step-board size, and a badge scaled to a heading that is
+     not being drawn would tower over the week range beside it.
+     Sized off the range rather than the title, but deliberately larger than
+     it: the badge is a ring of small type around a mountain, and matching the
+     range exactly renders it as an illegible smudge. This is the smallest it
+     can be and still read as the WCS mark. The header row is otherwise nearly
+     empty here, so the extra height costs the iframe almost nothing. */
+  .head__logo { height: clamp(2rem, 1.3rem + 2.6vw, 3.6rem); }
+  /* margin-left:0 above puts the range hard against the badge. */
+  .range { margin-left: .5em; }
+
   /* Stacked inside an iframe there is no screen to fill: the parent sizes the
      frame to whatever height we report, so "at least one viewport tall" is a
      floor measured against a number we ourselves supplied. It cannot make the
@@ -497,6 +524,7 @@ ${isEmbed ? `
 </head>
 <body>
   <header class="head">
+    <img class="head__logo" src="${WCS_MARK_DATA_URI}" alt="West Coast Strength" />
 ${isEmbed ? '' : `    <div class="head__titles">
       <span class="eyebrow">${escapeHtml(clubName)} · ${escapeHtml(eyebrow)}</span>
       <h1 class="title mark">${escapeHtml(title)}</h1>
