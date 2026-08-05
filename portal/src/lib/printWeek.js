@@ -75,6 +75,28 @@ function time12(hour, min) {
   return `${hh}:${String(min).padStart(2, '0')} ${ampm}`
 }
 
+// "6:00 - 7:00 AM" when both ends share a meridiem, "11:30 AM - 12:30 PM" when
+// they do not. Mirrors timeRangeLabel in auth/src/lib/scheduleTimes.js so the
+// printed sheet and the wall board word a facility slot the same way; dropping
+// the repeated AM/PM is what keeps it on one line in a narrow column.
+//
+// Group X deliberately does NOT get this: a class shows a start, because it
+// runs as long as it runs. "The pool is open 6:00 - 7:00" is the useful fact
+// for a facility, and it is the whole reason this exists.
+function timeRangeLabel(hour, min, durationMinutes) {
+  const start = time12(hour, min)
+  const dur = Number(durationMinutes)
+  if (!Number.isFinite(dur) || dur <= 0) return start
+  const total = hour * 60 + min + dur
+  // A slot running past midnight wraps rather than printing "24:30".
+  const endH = Math.floor(total / 60) % 24
+  const endM = total % 60
+  const end = time12(endH, endM)
+  return start.slice(-2) === end.slice(-2)
+    ? `${start.slice(0, -3)} - ${end}`
+    : `${start} - ${end}`
+}
+
 // Seven day buckets, Monday first, each sorted by start time.
 //
 // Days with nothing on them are KEPT and returned empty. On a wall-mounted
@@ -104,7 +126,9 @@ export function buildPrintWeek(monday, events, opts) {
     bucket.push({
       ...ev,
       _startMin: p.hour * 60 + p.min,
-      time_label: time12(p.hour, p.min),
+      time_label: options.showEndTime
+        ? timeRangeLabel(p.hour, p.min, ev.duration_minutes)
+        : time12(p.hour, p.min),
     })
   }
 

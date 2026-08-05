@@ -133,6 +133,49 @@ test('an unparseable timestamp is dropped rather than crashing the sheet', () =>
   assert.equal(week[0].events.length, 0)
 })
 
+test('facilities print a start and an end, not a length', () => {
+  // "The pool is open 6:00 - 7:00" is the useful fact; "60 min" makes the
+  // reader do the arithmetic.
+  const week = buildPrintWeek(new Date(2026, 7, 3), [
+    ev({ class_name: 'Lap Swim', instructor_name: null,
+      event_timestamp_local: '2026-08-03 06:00:00', duration_minutes: 60 }),
+  ], { requireInstructor: false, showEndTime: true })
+  assert.equal(week[0].events[0].time_label, '6:00 - 7:00 AM')
+})
+
+test('the range drops a repeated meridiem but keeps one that changes', () => {
+  const at = (t, mins) => buildPrintWeek(new Date(2026, 7, 3), [
+    ev({ event_timestamp_local: `2026-08-03 ${t}:00`, duration_minutes: mins }),
+  ], { showEndTime: true })[0].events[0].time_label
+
+  assert.equal(at('06:00', 60), '6:00 - 7:00 AM')
+  assert.equal(at('11:30', 60), '11:30 AM - 12:30 PM')
+  assert.equal(at('16:30', 90), '4:30 - 6:00 PM')
+})
+
+test('a slot running past midnight wraps instead of printing 24:30', () => {
+  const week = buildPrintWeek(new Date(2026, 7, 3), [
+    ev({ event_timestamp_local: '2026-08-03 23:30:00', duration_minutes: 60 }),
+  ], { showEndTime: true })
+  assert.equal(week[0].events[0].time_label, '11:30 PM - 12:30 AM')
+})
+
+test('a slot with no usable duration falls back to the start alone', () => {
+  for (const d of [null, undefined, 0, 'x']) {
+    const week = buildPrintWeek(new Date(2026, 7, 3), [
+      ev({ event_timestamp_local: '2026-08-03 06:00:00', duration_minutes: d }),
+    ], { showEndTime: true })
+    assert.equal(week[0].events[0].time_label, '6:00 AM', String(d))
+  }
+})
+
+test('Group X still shows a start only -- a class runs as long as it runs', () => {
+  const week = buildPrintWeek(new Date(2026, 7, 3), [
+    ev({ event_timestamp_local: '2026-08-03 06:00:00', duration_minutes: 60 }),
+  ])
+  assert.equal(week[0].events[0].time_label, '6:00 AM')
+})
+
 test('the picker label spans a month boundary', () => {
   assert.equal(printWeekLabel(new Date(2026, 6, 27)), 'Jul 27 - Aug 2, 2026')
   assert.equal(printWeekLabel(new Date(2026, 7, 3)), 'Aug 3 - 9, 2026')
