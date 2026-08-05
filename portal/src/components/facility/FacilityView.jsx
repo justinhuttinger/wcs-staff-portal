@@ -3,6 +3,7 @@ import { api } from '../../lib/api'
 import { startOfWeek, addDays, toISODate, fmtTime12, parseLocalTimestamp, MONTH_LABELS } from '../../lib/weekGrid'
 import WeekGrid from '../groupx/WeekGrid'
 import BoardLinks from './FacilityBoardLinks'
+import PrintScheduleModal from '../schedule/PrintScheduleModal'
 import CreateEventModal from './CreateEventModal'
 
 function weekLabel(weekStart) {
@@ -41,6 +42,7 @@ export default function FacilityView() {
   const [selected, setSelected] = useState(null)
   const [createOpen, setCreateOpen] = useState(null)
   const [linksOpen, setLinksOpen] = useState(false)
+  const [printOpen, setPrintOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [endThrough, setEndThrough] = useState('')
 
@@ -69,6 +71,15 @@ export default function FacilityView() {
   }, [club, facility, weekStart])
 
   useEffect(() => { load() }, [load])
+
+  // Fetches its own range: the print sheet picks a week independently of the
+  // one on screen. Mapped onto the Group X shape for the same reason WeekGrid
+  // is -- one renderer, not a forked copy per facility.
+  const fetchPrintWeek = useCallback(async (start, end) => {
+    const qs = `club_number=${club.clubNumber}&facility=${facility.slug}&start=${start}&end=${end}`
+    const r = await api(`/facility-schedule/events?${qs}`)
+    return (r.events || []).map(toGridShape)
+  }, [club, facility])
 
   async function cancelEvent() {
     if (!selected) return
@@ -152,6 +163,11 @@ export default function FacilityView() {
               className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
               {linksOpen ? 'Hide board links' : 'Board links'}
             </button>
+            <button type="button" onClick={() => setPrintOpen(true)}
+              title="Print a Monday-Sunday sheet for a chosen week"
+              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
+              Print
+            </button>
             <button type="button" onClick={() => setCreateOpen({ date: toISODate(weekStart), time: '06:00' })}
               className="px-3 py-1.5 text-sm rounded-lg bg-wcs-red text-white font-medium hover:bg-wcs-red-hover">
               Add event
@@ -234,6 +250,21 @@ export default function FacilityView() {
           defaultTime={createOpen.time}
           onClose={() => setCreateOpen(null)}
           onCreated={async () => { setCreateOpen(null); await load() }}
+        />
+      )}
+
+      {printOpen && (
+        <PrintScheduleModal
+          title={facility.title || `${facility.label} Schedule`}
+          clubName={club.name}
+          fetchWeek={fetchPrintWeek}
+          // Lap swim and open gym have nobody assigned by design. Requiring an
+          // instructor here would print an empty sheet.
+          requireInstructor={false}
+          // "The pool is open 6:00 - 7:00" is the useful fact for a facility,
+          // the way it is on the public board.
+          showDuration
+          onClose={() => setPrintOpen(false)}
         />
       )}
 

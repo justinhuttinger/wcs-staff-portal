@@ -8,6 +8,7 @@ import GroupXReport from './GroupXReport'
 import NewClassBadges from './NewClassBadges'
 import SeriesList from './SeriesList'
 import AttendanceModal from './AttendanceModal'
+import PrintScheduleModal from '../schedule/PrintScheduleModal'
 
 function weekLabel(weekStart) {
   const end = addDays(weekStart, 6)
@@ -33,6 +34,7 @@ export default function GroupXView() {
   const [createOpen, setCreateOpen] = useState(null)
   const [cancelBusy, setCancelBusy] = useState(false)
   const [linksOpen, setLinksOpen] = useState(false)
+  const [printOpen, setPrintOpen] = useState(false)
   const [badgesOpen, setBadgesOpen] = useState(false)
   const [badgeBusy, setBadgeBusy] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
@@ -67,6 +69,14 @@ export default function GroupXView() {
       setLoading(false)
     }
   }, [club, weekStart])
+
+  // The print sheet picks its own week, which is usually not the one on screen
+  // (the point is to run off next week's sheet ahead of time), so it fetches
+  // its own range rather than reusing `classes`.
+  const fetchPrintWeek = useCallback(async (start, end) => {
+    const r = await api(`/group-x/classes?club_number=${club.clubNumber}&start=${start}&end=${end}`)
+    return r.classes || []
+  }, [club])
 
   useEffect(() => { load() }, [load])
 
@@ -203,6 +213,11 @@ export default function GroupXView() {
             <button type="button" onClick={() => setLinksOpen(v => !v)}
               className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
               {linksOpen ? 'Hide board links' : 'Board links'}
+            </button>
+            <button type="button" onClick={() => setPrintOpen(true)}
+              title="Print a Monday-Sunday sheet for a chosen week"
+              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
+              Print
             </button>
             <button type="button" onClick={() => setCreateOpen({ date: toISODate(weekStart), time: '06:00' })}
               className="px-3 py-1.5 text-sm rounded-lg bg-wcs-red text-white font-medium hover:bg-wcs-red-hover">
@@ -350,6 +365,15 @@ export default function GroupXView() {
           defaultTime={createOpen.time}
           onClose={() => setCreateOpen(null)}
           onCreated={async () => { setCreateOpen(null); await load() }}
+        />
+      )}
+
+      {printOpen && (
+        <PrintScheduleModal
+          title="Class Schedule"
+          clubName={club.name}
+          fetchWeek={fetchPrintWeek}
+          onClose={() => setPrintOpen(false)}
         />
       )}
     </div>
