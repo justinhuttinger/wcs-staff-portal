@@ -4,7 +4,7 @@ const cron = require('node-cron')
 const { getLocation, enabledLocations } = require('./config')
 const topics = require('./topics')
 const jobs = require('./jobs')
-const { generatePost } = require('./generate')
+const { generatePost, filterLivePosts } = require('./generate')
 const { validatePost } = require('./validate')
 const { pickPhoto, downloadPhoto } = require('./photo')
 const wordpress = require('./wordpress')
@@ -21,8 +21,11 @@ async function runForLocation(locationKey, { publish = true } = {}) {
   const category = topics.pickCategory(recentCats)
   const topic = topics.pickTopic(category, recentTops, location.city)
 
-  // Real internal-link candidates (related published posts). Non-fatal: bad fetch => none.
-  const relatedPosts = await jobs.recentPublished(locationKey, 5).catch(() => [])
+  // Real internal-link candidates (related published posts), minus any whose URL no
+  // longer resolves. Non-fatal: bad fetch => none.
+  const relatedPosts = await jobs.recentPublished(locationKey, 5)
+    .then(posts => filterLivePosts(posts))
+    .catch(() => [])
 
   const { id: jobId } = await jobs.createJob({ location: locationKey, category, topic })
   try {

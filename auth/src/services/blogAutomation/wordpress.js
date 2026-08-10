@@ -8,12 +8,16 @@ function authHeader() {
 }
 function jsonHeaders() { return { 'Content-Type': 'application/json', Authorization: authHeader() } }
 
+// The 2026-08-05 rebuild dropped Yoast, so `_yoast_wpseo_*` meta is no longer read by
+// anything (WP silently ignores meta keys nothing has registered, so it published fine
+// and the SEO fields just vanished). The wcs-custom theme registers these keys instead
+// and inc/seo.php prefers them over the excerpt when it builds the meta description.
 function buildPostPayload(post, { tagId, categoryId, mediaId }) {
   const payload = {
     title: post.title, content: post.contentHtml, excerpt: post.excerpt || '',
     slug: post.slug || undefined, status: 'publish',
     tags: [tagId], categories: [categoryId],
-    meta: { _yoast_wpseo_metadesc: post.metaDescription || '', _yoast_wpseo_focuskw: post.focusKeyword || '' },
+    meta: { _wcs_seo_description: post.metaDescription || '', _wcs_seo_focus_keyword: post.focusKeyword || '' },
   }
   if (mediaId) payload.featured_media = mediaId
   return payload

@@ -87,10 +87,12 @@ const CATEGORIES = [
 // Verified internal pages (pulled from the live westcoaststrength.com nav) offered to
 // the generator for in-content SEO linking. Only these exact URLs are allowed; any link
 // the model invents is stripped post-generation (see generate.sanitizeInternalLinks).
+// The 2026-08-05 site rebuild dropped the /home/ prefix; the old paths still 301 here,
+// but linking straight at the live URL keeps a redirect hop out of every post.
 const SITE_LINKS = [
-  { url: 'https://westcoaststrength.com/home/training/', topic: 'personal training and 1-on-1 coaching' },
-  { url: 'https://westcoaststrength.com/home/the-gym/', topic: 'the gym, equipment and facilities' },
-  { url: 'https://westcoaststrength.com/home/contact/', topic: 'booking a free trial or consultation' },
+  { url: 'https://westcoaststrength.com/training/', topic: 'personal training and 1-on-1 coaching' },
+  { url: 'https://westcoaststrength.com/the-gym/', topic: 'the gym, equipment and facilities' },
+  { url: 'https://westcoaststrength.com/contact/', topic: 'booking a free trial or consultation' },
 ]
 
 // Each location has its own landing page at /{key-lowercased}/ (verified live).

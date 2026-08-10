@@ -6,11 +6,13 @@ test('slugify lowercases, strips punctuation, hyphenates', () => {
   assert.equal(g.slugify('Best Compound Exercises (2026)!'), 'best-compound-exercises-2026')
 })
 
-test('buildFaqBlock emits Yoast FAQ block markup with each Q and A', () => {
+test('buildFaqBlock emits the schema-faq markup the theme parses, with each Q and A', () => {
   const html = g.buildFaqBlock([{ q: 'How often?', a: 'Three times a week.' }])
-  assert.match(html, /wp:yoast\/faq-block/)
-  assert.match(html, /How often\?/)
-  assert.match(html, /Three times a week\./)
+  assert.match(html, /class="schema-faq"/)
+  assert.match(html, /<h3 class="schema-faq-question">How often\?<\/h3>/)
+  assert.match(html, /<p class="schema-faq-answer">Three times a week\.<\/p>/)
+  // Yoast is gone from the site; its block wrapper would just be dead markup now.
+  assert.doesNotMatch(html, /yoast/i)
 })
 
 test('parseJsonLoose handles fenced JSON', () => {
@@ -58,23 +60,23 @@ test('buildLinkCandidates includes location page, site links, and related posts 
   const related = [
     { title: 'Post A', wp_url: 'https://westcoaststrength.com/post-a/' },
     { title: 'No URL', wp_url: null },                                  // dropped
-    { title: 'The Gym dup', wp_url: 'https://westcoaststrength.com/home/the-gym/' }, // dedup vs SITE_LINKS
+    { title: 'The Gym dup', wp_url: 'https://westcoaststrength.com/the-gym/' }, // dedup vs SITE_LINKS
   ]
   const urls = g.buildLinkCandidates(loc, related).map(c => c.url)
   assert.ok(urls.includes('https://westcoaststrength.com/salem/'), 'has location page')
-  assert.ok(urls.includes('https://westcoaststrength.com/home/training/'), 'has training page')
+  assert.ok(urls.includes('https://westcoaststrength.com/training/'), 'has training page')
   assert.ok(urls.includes('https://westcoaststrength.com/post-a/'), 'has related post')
   assert.ok(!urls.includes(null), 'drops posts with no url')
   assert.equal(new Set(urls.map(u => u.replace(/\/+$/, ''))).size, urls.length, 'no duplicate urls')
 })
 
 test('sanitizeInternalLinks keeps allow-listed links and strips the rest to text', () => {
-  const allowed = ['https://westcoaststrength.com/home/training/']
-  const html = '<p>Try <a href="https://westcoaststrength.com/home/training/">our coaching</a> ' +
+  const allowed = ['https://westcoaststrength.com/training/']
+  const html = '<p>Try <a href="https://westcoaststrength.com/training/">our coaching</a> ' +
     'and <a href="https://evil.example.com/spam">this</a> and ' +
     '<a href="https://westcoaststrength.com/made-up-page">made up</a>.</p>'
   const out = g.sanitizeInternalLinks(html, allowed)
-  assert.match(out, /<a href="https:\/\/westcoaststrength\.com\/home\/training\/">our coaching<\/a>/)
+  assert.match(out, /<a href="https:\/\/westcoaststrength\.com\/training\/">our coaching<\/a>/)
   assert.doesNotMatch(out, /evil\.example\.com/)
   assert.doesNotMatch(out, /made-up-page/)
   assert.match(out, /and this and/)   // disallowed anchors unwrapped to their text
@@ -98,14 +100,14 @@ test('generatePost strips links the model invents but keeps allow-listed ones', 
     return JSON.stringify({
       intro: '<p>Train at <a href="https://westcoaststrength.com/salem/">WCS Salem</a>.</p>',
       sections: [{ heading: 'Compounds', html: '<p>See <a href="https://random-site.com/x">this guide</a>.</p>' }],
-      ctaHtml: '<p>Book a <a href="https://westcoaststrength.com/home/contact/">free trial</a>.</p>',
+      ctaHtml: '<p>Book a <a href="https://westcoaststrength.com/contact/">free trial</a>.</p>',
     })
   }
   const loc = require('./config').getLocation('Salem')
   const post = await g.generatePost({ location: loc, category: 'fitness-tips', topic: 'Strength' },
     { generateText: fakeText })
   assert.match(post.contentHtml, /href="https:\/\/westcoaststrength\.com\/salem\/"/)
-  assert.match(post.contentHtml, /href="https:\/\/westcoaststrength\.com\/home\/contact\/"/)
+  assert.match(post.contentHtml, /href="https:\/\/westcoaststrength\.com\/contact\/"/)
   assert.doesNotMatch(post.contentHtml, /random-site\.com/)
   assert.match(post.contentHtml, /See this guide\./)  // invented link unwrapped
 })
@@ -120,7 +122,7 @@ test('assembleContentHtml includes sections, takeaways, faq, cta in order', () =
   })
   assert.match(html, /<h2>Warm Up<\/h2>/)
   assert.match(html, /Rest enough/)
-  assert.match(html, /wp:yoast\/faq-block/)
+  assert.match(html, /class="schema-faq"/)
   assert.ok(html.indexOf('Warm Up') < html.indexOf('Rest enough'))
 })
 
@@ -144,6 +146,23 @@ test('generatePost assembles a post from injected fake model output', async () =
   assert.equal(post.title, 'Strength Basics in Salem')
   assert.equal(post.slug, 'strength-basics-in-salem')
   assert.match(post.contentHtml, /<h2>Start With Compounds<\/h2>/)
-  assert.match(post.contentHtml, /wp:yoast\/faq-block/)
+  assert.match(post.contentHtml, /class="schema-faq"/)
   assert.equal(post.faq.length, 1)
+})
+
+test('filterLivePosts drops related posts whose URL is gone', async () => {
+  const fakeFetch = async (url) => ({ status: url.includes('gone') ? 404 : 200 })
+  const out = await g.filterLivePosts([
+    { title: 'Live', wp_url: 'https://westcoaststrength.com/live-post/' },
+    { title: 'Wiped by the launch', wp_url: 'https://westcoaststrength.com/gone-post/' },
+    { title: 'No URL', wp_url: null },
+  ], { fetch: fakeFetch })
+  assert.deepEqual(out.map(p => p.title), ['Live'])
+})
+
+test('filterLivePosts keeps a post it cannot check (network failure is not proof)', async () => {
+  const fakeFetch = async () => { throw new Error('ETIMEDOUT') }
+  const out = await g.filterLivePosts([{ title: 'Live', wp_url: 'https://westcoaststrength.com/live-post/' }],
+    { fetch: fakeFetch })
+  assert.equal(out.length, 1)
 })
