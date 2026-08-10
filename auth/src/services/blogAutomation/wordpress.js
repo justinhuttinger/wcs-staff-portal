@@ -1,6 +1,10 @@
 // auth/src/services/blogAutomation/wordpress.js
 'use strict'
-const WP_API_BASE = process.env.WP_API_URL || 'https://www.westcoaststrength.com/wp-json/wp/v2'
+// No `www.`: since the 2026-08-05 rebuild it 301s to the bare domain, and a redirect
+// to a different origin makes fetch drop the Authorization header, so every call
+// arrived unauthenticated and came back 401 ("WordPress disconnected" in the portal).
+// A POST is worse: it follows the 301 as a GET, so a publish would silently do nothing.
+const WP_API_BASE = process.env.WP_API_URL || 'https://westcoaststrength.com/wp-json/wp/v2'
 
 function authHeader() {
   const creds = Buffer.from(`${process.env.WP_USERNAME}:${process.env.WP_APP_PASSWORD}`).toString('base64')
@@ -89,13 +93,20 @@ async function publishPost({ post, location, image }, deps = {}) {
   return { id: published.id, url: published.link, mediaId }
 }
 
-async function testConnection() {
+async function testConnection(deps = {}) {
+  const f = deps.fetch || fetch
   try {
-    const r = await fetch(`${WP_API_BASE}/users/me`, { headers: jsonHeaders() })
-    if (!r.ok) return { success: false, error: `auth ${r.status}` }
+    // `manual` so a redirect surfaces as itself instead of as a confusing 401: fetch
+    // strips the Authorization header when a redirect crosses origins, which is
+    // exactly how a stale www/non-www base URL fails.
+    const r = await f(`${WP_API_BASE}/users/me`, { headers: jsonHeaders(), redirect: 'manual' })
+    if (r.status >= 300 && r.status < 400) {
+      return { success: false, url: WP_API_BASE, error: `${r.status} redirect to ${r.headers.get('location') || 'elsewhere'} (auth is dropped across a redirect, fix WP_API_URL)` }
+    }
+    if (!r.ok) return { success: false, url: WP_API_BASE, error: `auth ${r.status}` }
     const u = await r.json()
-    return { success: true, user: u.name }
-  } catch (e) { return { success: false, error: e.message } }
+    return { success: true, url: WP_API_BASE, user: u.name }
+  } catch (e) { return { success: false, url: WP_API_BASE, error: e.message } }
 }
 
 module.exports = { buildPostPayload, getOrCreateTag, getOrCreateCategory, uploadMedia, publishPost, testConnection }
