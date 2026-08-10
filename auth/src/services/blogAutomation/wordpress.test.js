@@ -69,3 +69,21 @@ test('uploadMedia is non-fatal when the alt_text update fails', async () => {
   ])
   assert.equal(await wp.uploadMedia(Buffer.from('x'), { mimeType: 'image/jpeg' }, 's', 'Alt', { fetch }), 99)
 })
+
+test('testConnection reports a redirect as a redirect, not as bad credentials', async () => {
+  const fakeFetch = async () => ({
+    status: 301, ok: false, headers: { get: () => 'https://westcoaststrength.com/wp-json/wp/v2/users/me' },
+  })
+  const out = await wp.testConnection({ fetch: fakeFetch })
+  assert.equal(out.success, false)
+  assert.match(out.error, /301 redirect/)
+  assert.match(out.error, /WP_API_URL/)
+})
+
+test('testConnection returns the base URL it tried, so a bad env is visible', async () => {
+  const fakeFetch = async () => ({ status: 200, ok: true, json: async () => ({ name: 'justin' }) })
+  const out = await wp.testConnection({ fetch: fakeFetch })
+  assert.equal(out.success, true)
+  assert.equal(out.user, 'justin')
+  assert.doesNotMatch(out.url, /www\./, 'the default base must not be the redirecting www host')
+})
