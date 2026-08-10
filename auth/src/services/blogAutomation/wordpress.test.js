@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert')
 const wp = require('./wordpress')
 
-test('buildPostPayload sets publish status, category, tag, media, Yoast meta', () => {
+test('buildPostPayload sets publish status, category, tag, media, WCS SEO meta', () => {
   const post = { title: 'T', contentHtml: '<p>body</p>', excerpt: 'E',
     metaDescription: 'M', focusKeyword: 'K', slug: 't-slug' }
   const payload = wp.buildPostPayload(post, { tagId: 11, categoryId: 22, mediaId: 33 })
@@ -12,8 +12,10 @@ test('buildPostPayload sets publish status, category, tag, media, Yoast meta', (
   assert.deepEqual(payload.tags, [11])
   assert.deepEqual(payload.categories, [22])
   assert.equal(payload.featured_media, 33)
-  assert.equal(payload.meta._yoast_wpseo_metadesc, 'M')
-  assert.equal(payload.meta._yoast_wpseo_focuskw, 'K')
+  assert.equal(payload.meta._wcs_seo_description, 'M')
+  assert.equal(payload.meta._wcs_seo_focus_keyword, 'K')
+  // Yoast left with the 2026-08-05 rebuild; its meta keys are read by nothing now.
+  assert.ok(!('_yoast_wpseo_metadesc' in payload.meta))
 })
 
 test('buildPostPayload omits featured_media when no image', () => {

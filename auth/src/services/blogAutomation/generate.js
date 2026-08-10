@@ -49,6 +49,31 @@ function buildLinkCandidates(location, relatedPosts = []) {
   return candidates.filter(c => { const k = c.url.replace(/\/+$/, ''); if (seen.has(k)) return false; seen.add(k); return true })
 }
 
+// Drop related posts whose URL no longer resolves. `blog_posts` records what we
+// published, not what is still on the site: the 2026-08-05 launch replaced the
+// production database with the staging one, so six rows still marked published now
+// 404. Those URLs feed the internal-link allow-list, which would put dead links in
+// new posts. Non-fatal by design - a network hiccup must not cost us every link, so
+// anything we cannot check is kept.
+async function filterLivePosts(relatedPosts = [], deps = {}) {
+  const f = deps.fetch || fetch
+  const checked = await Promise.all((relatedPosts || []).map(async (p) => {
+    if (!p || !p.wp_url) return null
+    try {
+      const res = await f(p.wp_url, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(8000) })
+      if (res.status === 404 || res.status === 410) {
+        console.warn(`[Blog] dropping dead related link (${res.status}): ${p.wp_url}`)
+        return null
+      }
+      return p
+    } catch (e) {
+      console.warn(`[Blog] could not verify related link (keeping): ${p.wp_url} - ${e.message}`)
+      return p
+    }
+  }))
+  return checked.filter(Boolean)
+}
+
 // Strip any <a> whose href is not in the allow-list (unwrap to its text), keeping the
 // approved ones. Trailing slashes are normalised so the compare is forgiving. This also
 // removes any external links the model adds on its own.
@@ -61,15 +86,19 @@ function sanitizeInternalLinks(html, allowedUrls = []) {
   })
 }
 
-// Yoast FAQ Gutenberg block - Yoast emits FAQPage schema from this markup.
+// FAQ markup. Yoast used to turn its block comment into FAQPage schema, but the
+// 2026-08-05 site rebuild dropped Yoast, so the theme now emits that schema itself by
+// reading these class names (wcs-custom inc/seo.php). Keep `schema-faq*`: it is what
+// the theme parses and what every pre-rebuild post already carries. The question is an
+// h3 so it is a real heading in the document outline, not bold text.
 function buildFaqBlock(faq) {
   const items = (faq || []).map((f, i) => {
     const id = `faq-${i + 1}`
     return `<div class="schema-faq-section" id="${id}">` +
-      `<strong class="schema-faq-question">${f.q}</strong> ` +
+      `<h3 class="schema-faq-question">${f.q}</h3>` +
       `<p class="schema-faq-answer">${f.a}</p></div>`
   }).join('\n')
-  return `<!-- wp:yoast/faq-block -->\n<div class="schema-faq wp-block-yoast-faq-block">\n${items}\n</div>\n<!-- /wp:yoast/faq-block -->`
+  return `<div class="schema-faq">\n${items}\n</div>`
 }
 
 function assembleContentHtml({ intro, sections, takeaways, faq, ctaHtml }) {
@@ -126,6 +155,6 @@ async function generatePost({ location, category, topic, relatedPosts = [] }, de
 
 module.exports = {
   slugify, clampMetaDescription, parseJsonLoose, buildFaqBlock, assembleContentHtml,
-  buildLinkCandidates, sanitizeInternalLinks,
+  buildLinkCandidates, filterLivePosts, sanitizeInternalLinks,
   buildOutlinePrompt, buildSectionPrompt, generatePost, MODEL_FAST,
 }

@@ -17,7 +17,7 @@ function validateProgrammatic(post, location) {
   if (md.length < 150 || md.length > 160) failures.push(`meta description length ${md.length} not in 150-160`)
   if (!post.focusKeyword) failures.push('focus keyword missing')
   if (wordCount(html) < MIN_WORDS) failures.push(`word count ${wordCount(html)} below ${MIN_WORDS}`)
-  if (!/wp:yoast\/faq-block/.test(html) || !(post.faq && post.faq.length)) failures.push('faq block missing')
+  if (!/class="schema-faq"/.test(html) || !(post.faq && post.faq.length)) failures.push('faq block missing')
   if (!new RegExp(location.city, 'i').test(html) && !new RegExp(location.key, 'i').test(html)) {
     failures.push(`location ${location.key} not named in content`)
   }
