@@ -27,8 +27,21 @@ test('em-dash in content fails (brand rule)', () => {
   assert.ok(r.failures.some(f => /em-dash/i.test(f)))
 })
 
-test('meta description outside 150-160 fails', () => {
+test('a genuinely thin meta description fails', () => {
   const r = v.validateProgrammatic({ ...goodPost, metaDescription: 'too short' }, loc)
+  assert.ok(r.failures.some(f => /meta/i.test(f)))
+})
+
+test('a slightly short meta description passes', () => {
+  // The real Salem skip: 139 characters, under the old 150 floor, and fine.
+  const md = 'Build real strength at West Coast Strength in Salem, Oregon, with simple weekly steps that work for beginners and seasoned lifters.'
+  assert.ok(md.length >= 120 && md.length < 150, `fixture is ${md.length} chars`)
+  const r = v.validateProgrammatic({ ...goodPost, metaDescription: md }, loc)
+  assert.equal(r.ok, true, JSON.stringify(r.failures))
+})
+
+test('an over-long meta description still fails', () => {
+  const r = v.validateProgrammatic({ ...goodPost, metaDescription: 'x'.repeat(v.MAX_META + 1) }, loc)
   assert.ok(r.failures.some(f => /meta/i.test(f)))
 })
 
