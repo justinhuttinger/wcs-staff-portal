@@ -146,6 +146,7 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     { label: 'Marketing', icon: <MegaphoneIcon />, route: 'marketing-tracker', desc: 'Campaign tracker' },
     { label: 'Inventory', icon: <BoxIcon />, route: 'inventory', desc: 'Scan & track stock' },
     { label: 'Tickets', icon: <TicketIcon />, route: 'tickets', desc: 'Status & support' },
+    { label: 'Ticketing', icon: <TicketIcon />, route: 'ticketing', desc: 'Submit & track tickets' },
     { label: 'HR', icon: <HRIcon />, route: 'hr', desc: 'Resources & docs' },
   ]
 
@@ -158,6 +159,8 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     if (tile.label === 'Reports' && roleIdx < ROLE_LEVELS.manager) return false
     // Tickets tile only for lead+ (matches desktop role gate)
     if (tile.label === 'Tickets' && roleIdx < ROLE_LEVELS.lead) return false
+    // Ticketing (native tool) is admin-only for now (matches desktop gate)
+    if (tile.label === 'Ticketing' && role !== 'admin') return false
     // HR tile only for manager+
     if (tile.label === 'HR' && roleIdx < ROLE_LEVELS.manager) return false
     // Marketing Tracker: effective tracker capability (corporate/admin, add-on,

@@ -18,6 +18,7 @@ import MobileLeaderboard from './components/MobileLeaderboard'
 import MobileCommunicationNotes from './components/MobileCommunicationNotes'
 import MobileHR from './components/MobileHR'
 import MobileTickets from './components/MobileTickets'
+import MobileTicketing from './components/MobileTicketing'
 import MobilePTRoster from './components/reports/MobilePTRoster'
 import MobileCheckins from './components/reports/MobileCheckins'
 import MobilePTSessions from './components/reports/MobilePTSessions'
@@ -499,6 +500,16 @@ export default function MobileApp() {
         return <MobileHR user={user} />
       case 'tickets':
         return <MobileTickets user={user} />
+      case 'ticketing':
+        // Native ticketing tool — admin-only for now.
+        return isAdmin
+          ? <MobileTicketing user={user} />
+          : (
+            <div className="pt-4 px-4">
+              <MobileHeader title="Ticketing" onBack={() => navigate('home')} />
+              <div className="mt-16 text-center text-text-muted">Admin only.</div>
+            </div>
+          )
       case 'reports/pt-projections':
         return (
           <div className="pt-4 px-4">
