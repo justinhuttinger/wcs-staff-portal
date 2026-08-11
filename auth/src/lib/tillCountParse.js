@@ -42,7 +42,10 @@ function classifyTillCount({ subject, html, receivedAt }) {
   if (!sub) return null
   const name = sub.jobName.toLowerCase()
   if (!/drawer/.test(name) || !/count/.test(name)) return null
-  const count_type = /close/.test(name) ? 'close' : (/open/.test(name) ? 'open' : null)
+  // Match on the word stems so both name orderings work: "Drawer Close Count"
+  // AND "Closing Drawer Count" (likewise "Open"/"Opening"). The literal "close"
+  // substring is absent from "closing", so stem matching is required here.
+  const count_type = /clos/.test(name) ? 'close' : (/open/.test(name) ? 'open' : null)
   if (!count_type) return null
 
   const items = parseSubmissionItems(html) || []

@@ -56,6 +56,18 @@ test('parses a close drawer count', () => {
   // 100*1 + 50*1 + 20*3 + 10*4 + 5*5 + 1*20 + .25*10 + .10*10 + .05*10 + .01*10
   assert.equal(out.counted_amount, 299.10)
 })
+test('parses "Opening"/"Closing Drawer Count" naming (word order variant)', () => {
+  const open = classifyTillCount({
+    subject: 'Opening Drawer Count (Jun 29) submitted at Salem',
+    html: openHtml, receivedAt: '2026-06-29T23:30:00Z',
+  })
+  assert.equal(open.count_type, 'open')
+  const close = classifyTillCount({
+    subject: 'Closing Drawer Count (Jun 29) submitted at Salem',
+    html: closeHtml, receivedAt: '2026-06-29T23:30:00Z',
+  })
+  assert.equal(close.count_type, 'close')
+})
 test('non-drawer submission is ignored', () => {
   assert.equal(classifyTillCount({ subject: 'Front Desk Open submitted at Salem', html: openHtml }), null)
 })
