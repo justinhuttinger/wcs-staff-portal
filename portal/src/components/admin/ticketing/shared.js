@@ -33,7 +33,11 @@ export const FIELD_PALETTE = [
   { type: 'file', label: 'File Upload', input: true },
   { type: 'header', label: 'Section Header', input: false },
   { type: 'description', label: 'Description Text', input: false },
+  { type: 'link', label: 'Link / Download', input: false },
 ]
+
+// Display-only field types collect no answer (skipped on submit + in answers).
+export const DISPLAY_TYPES = ['header', 'description', 'link']
 
 export const FIELD_LABEL = Object.fromEntries(FIELD_PALETTE.map(f => [f.type, f.label]))
 export const INPUT_TYPES = FIELD_PALETTE.filter(f => f.input).map(f => f.type)
@@ -63,7 +67,7 @@ export function buildSubmission(schema = [], values = {}) {
   const data = {}
   const files = []
   for (const f of schema) {
-    if (['header', 'description'].includes(f.type)) continue
+    if (DISPLAY_TYPES.includes(f.type)) continue
     const v = values[f.id]
     if (f.type === 'file') {
       if (v instanceof File) { data[f.id] = v.name; files.push(v) }

@@ -3,7 +3,10 @@
 // Builder uses (see services/formsSchema.js). Kept as its own module so the two
 // tools can diverge (ticketing may grow priority/assignment-aware fields).
 
-const DISPLAY_TYPES = ['header', 'description']
+// Display-only fields collect no answer. 'link' renders a clickable link/button
+// (e.g. a downloadable PDF the submitter prints, fills out, and re-uploads via a
+// file field). It carries a `label` (link text) and an http(s) `url`.
+const DISPLAY_TYPES = ['header', 'description', 'link']
 // 'file' collects an attachment. Its value in `data` is the uploaded file's
 // name (a string, for the record); the bytes are stored as a ticket attachment
 // tagged with the field id.
@@ -34,6 +37,15 @@ function validateSchema(schema) {
       const opts = f.options
       if (!Array.isArray(opts) || opts.length === 0 || opts.some(o => typeof o !== 'string' || !o.trim())) {
         return { ok: false, error: `field ${f.id} needs at least one option` }
+      }
+    }
+    if (f.type === 'link') {
+      if (typeof f.label !== 'string' || !f.label.trim()) {
+        return { ok: false, error: `link field ${f.id} needs link text` }
+      }
+      const url = typeof f.url === 'string' ? f.url.trim() : ''
+      if (!/^https?:\/\/.+/i.test(url)) {
+        return { ok: false, error: `link field ${f.id} needs a valid http(s) URL` }
       }
     }
   }

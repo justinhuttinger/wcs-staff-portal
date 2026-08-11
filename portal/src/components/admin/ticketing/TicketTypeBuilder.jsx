@@ -7,7 +7,7 @@ const inputClass = 'w-full px-3 py-2 bg-bg border border-border rounded-lg text-
 // A single field row inside the editor: type badge, label, options, required,
 // reorder + delete controls.
 function FieldRow({ field, index, count, onChange, onMove, onRemove }) {
-  const isDisplay = ['header', 'description'].includes(field.type)
+  const isDisplay = ['header', 'description', 'link'].includes(field.type)
   const [optionsText, setOptionsText] = useState((field.options || []).join('\n'))
   useEffect(() => { setOptionsText((field.options || []).join('\n')) }, [field.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -28,8 +28,14 @@ function FieldRow({ field, index, count, onChange, onMove, onRemove }) {
       </div>
 
       <input value={field.label || ''} onChange={e => onChange(index, { label: e.target.value })}
-        placeholder={field.type === 'header' ? 'Section heading' : field.type === 'description' ? 'Descriptive text' : 'Field label'}
+        placeholder={field.type === 'header' ? 'Section heading' : field.type === 'description' ? 'Descriptive text' : field.type === 'link' ? 'Link text (e.g. Download the form)' : 'Field label'}
         className={inputClass + ' mb-2'} />
+
+      {field.type === 'link' && (
+        <input value={field.url || ''} onChange={e => onChange(index, { url: e.target.value })}
+          placeholder="https://… (link to the file to download/print)"
+          className={inputClass + ' mb-2'} />
+      )}
 
       {OPTION_TYPES.includes(field.type) && (
         <textarea value={optionsText} rows={3}
@@ -90,10 +96,13 @@ function TypeEditor({ initial, onClose, onSaved }) {
     // Client-side guard mirroring the server validator.
     for (const f of schema) {
       if (!['header', 'description'].includes(f.type) && !String(f.label || '').trim()) {
-        setError('Every field needs a label'); return
+        setError(f.type === 'link' ? 'Every link needs link text' : 'Every field needs a label'); return
       }
       if (OPTION_TYPES.includes(f.type) && (!f.options || f.options.length === 0)) {
         setError(`"${f.label || f.type}" needs at least one option`); return
+      }
+      if (f.type === 'link' && !/^https?:\/\/.+/i.test(String(f.url || '').trim())) {
+        setError(`"${f.label || 'Link'}" needs a valid http(s) URL`); return
       }
     }
     setSaving(true); setError('')
