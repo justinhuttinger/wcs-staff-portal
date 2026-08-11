@@ -110,7 +110,8 @@ function Board({ onOpen, refreshKey }) {
 
   return (
     <div className="space-y-4">
-      <Section title="New" tint={STATUS_BY_KEY.open.dot} tickets={data.open || []} onOpen={onOpen} emptyMsg="No new tickets." />
+      <p className="text-xs text-text-muted">Tickets you've submitted.</p>
+      <Section title="New" tint={STATUS_BY_KEY.open.dot} tickets={data.open || []} onOpen={onOpen} emptyMsg="You haven't submitted any tickets yet." />
       <Section title="In Progress" tint={STATUS_BY_KEY.in_progress.dot} tickets={data.in_progress || []} onOpen={onOpen} emptyMsg="Nothing in progress." />
       <Section title={`Recently Completed`} tint={STATUS_BY_KEY.complete.dot} tickets={data.recently_completed || []} onOpen={onOpen} emptyMsg={`Nothing completed in the last ${data.window_days || 7} days.`} />
     </div>

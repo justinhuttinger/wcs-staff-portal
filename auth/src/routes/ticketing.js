@@ -218,13 +218,17 @@ async function decorate(rows) {
   }))
 }
 
-// GET /ticketing/board — maker status view, grouped. ?days=N sets the
-// recently-completed window (default 7).
+// GET /ticketing/board — personal status view, grouped. Scoped to the caller's
+// OWN submitted tickets (a regular person only sees what they submitted).
+// Handlers work others' tickets via the handler queue (GET /?handling=1), not
+// here. ?days=N sets the recently-completed window (default 7).
 router.get('/board', async (req, res) => {
   try {
     const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 60)
     const since = new Date(Date.now() - days * 86400000).toISOString()
-    const { data, error } = await supabaseAdmin.from('tickets').select('*').order('created_at', { ascending: false }).limit(500)
+    const { data, error } = await supabaseAdmin.from('tickets').select('*')
+      .eq('submitter_id', req.staff.id)
+      .order('created_at', { ascending: false }).limit(500)
     if (error) throw error
     const all = await decorate(data || [])
     res.json({
@@ -264,9 +268,13 @@ router.get('/', async (req, res) => {
     if (req.query.status) q = q.eq('status', req.query.status)
     if (req.query.type_id) q = q.eq('type_id', req.query.type_id)
     if (req.query.handling === '1') {
+      // Handler queue: tickets of the types the caller handles.
       const ids = await handledTypeIds(req.staff)
       if (ids.length === 0) return res.json({ tickets: [] })
       q = q.in('type_id', ids)
+    } else if (!isAdmin(req.staff)) {
+      // Personal view: a non-admin only sees tickets they submitted.
+      q = q.eq('submitter_id', req.staff.id)
     }
     const { data, error } = await q
     if (error) throw error
@@ -282,13 +290,15 @@ router.get('/', async (req, res) => {
 
 router.get('/summary', async (req, res) => {
   try {
-    let q = supabaseAdmin.from('tickets').select('status, type_id')
+    let q = supabaseAdmin.from('tickets').select('status, type_id, submitter_id')
     const { data, error } = await q
     if (error) throw error
     let rows = data || []
     if (req.query.handling === '1') {
       const ids = new Set(await handledTypeIds(req.staff))
       rows = rows.filter(r => ids.has(r.type_id))
+    } else if (!isAdmin(req.staff)) {
+      rows = rows.filter(r => r.submitter_id === req.staff.id)
     }
     const counts = { open: 0, in_progress: 0, complete: 0, closed: 0 }
     for (const r of rows) if (counts[r.status] !== undefined) counts[r.status]++
@@ -346,8 +356,13 @@ router.get('/:id', async (req, res) => {
         .concat((comments || []).map(c => c.author_id))
         .concat((attachments || []).map(a => a.uploaded_by))
     )
-    const signed = await Promise.all((attachments || []).map(a => signAttachment(a.storage_path)))
     const canHandle = canHandleType(req.staff, type)
+    // A regular person can only view tickets they submitted; handlers/admins can
+    // view the ones they handle.
+    if (!canHandle && ticket.submitter_id !== req.staff.id) {
+      return res.status(403).json({ error: 'You can only view tickets you submitted or handle' })
+    }
+    const signed = await Promise.all((attachments || []).map(a => signAttachment(a.storage_path)))
 
     res.json({
       ticket: {
