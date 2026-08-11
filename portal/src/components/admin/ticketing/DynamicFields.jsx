@@ -1,4 +1,9 @@
-import { OPTION_TYPES } from './shared'
+import { OPTION_TYPES, DISPLAY_TYPES } from './shared'
+
+// Only allow http(s) links so a schema can't smuggle a javascript: URL.
+function safeHref(url) {
+  return /^https?:\/\//i.test(String(url || '').trim()) ? url.trim() : null
+}
 
 const inputClass = 'w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red'
 
@@ -19,6 +24,22 @@ export default function DynamicFields({ schema = [], values = {}, onChange, erro
         }
         if (field.type === 'description') {
           return <p key={field.id} className="text-sm text-text-muted whitespace-pre-wrap">{field.help_text}</p>
+        }
+        if (field.type === 'link') {
+          const href = safeHref(field.url)
+          if (!href) return null
+          return (
+            <div key={field.id}>
+              <a href={href} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-wcs-red/30 bg-wcs-red/5 text-sm font-semibold text-wcs-red hover:bg-wcs-red/10 transition-colors">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                {field.label || 'Download'}
+              </a>
+              {field.help_text && <p className="text-[11px] text-text-muted mt-1">{field.help_text}</p>}
+            </div>
+          )
         }
 
         const val = values[field.id]
@@ -90,7 +111,7 @@ export default function DynamicFields({ schema = [], values = {}, onChange, erro
 
 // Read-only presentation of a submitted ticket's answers.
 export function DynamicAnswers({ schema = [], data = {} }) {
-  const inputs = schema.filter(f => !['header', 'description'].includes(f.type))
+  const inputs = schema.filter(f => !DISPLAY_TYPES.includes(f.type))
   const answered = inputs.filter(f => {
     const v = data[f.id]
     return !(v == null || v === '' || (Array.isArray(v) && v.length === 0))
