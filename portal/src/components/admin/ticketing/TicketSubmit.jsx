@@ -1,16 +1,16 @@
 import { useState, useEffect } from 'react'
 import { ticketing } from '../../../lib/api'
 import DynamicFields from './DynamicFields'
-import { PRIORITIES, fmtBytes } from './shared'
+import { PRIORITIES, buildSubmission } from './shared'
 
-// Submit a new ticket: pick an active type, fill its fields, attach files.
+// Submit a new ticket: pick an active type, fill its fields (file-upload fields
+// are part of the type's schema — added by an admin in the builder).
 export default function TicketSubmit({ onDone, onCancel }) {
   const [types, setTypes] = useState([])
   const [loading, setLoading] = useState(true)
   const [type, setType] = useState(null)
   const [values, setValues] = useState({})
   const [priority, setPriority] = useState('normal')
-  const [files, setFiles] = useState([])
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -23,15 +23,16 @@ export default function TicketSubmit({ onDone, onCancel }) {
   }, [])
 
   function pick(t) {
-    setType(t); setValues({}); setErrors({}); setFiles([]); setPriority('normal'); setError('')
+    setType(t); setValues({}); setErrors({}); setPriority('normal'); setError('')
   }
 
   async function submit() {
     setSubmitting(true); setError(''); setErrors({})
     try {
-      const res = await ticketing.create({ type_id: type.id, data: values, priority })
+      const { data, files } = buildSubmission(type.schema || [], values)
+      const res = await ticketing.create({ type_id: type.id, data, priority })
       const ticketId = res.ticket.id
-      // Upload attachments sequentially so a failure is easy to attribute.
+      // Upload file-field attachments sequentially so a failure is easy to attribute.
       for (const f of files) {
         await ticketing.uploadAttachment(ticketId, f)
       }
@@ -93,22 +94,6 @@ export default function TicketSubmit({ onDone, onCancel }) {
               </button>
             ))}
           </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-text-primary mb-1">Attachments</label>
-          <input type="file" multiple onChange={e => setFiles(prev => [...prev, ...Array.from(e.target.files)])}
-            className="block w-full text-xs text-text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-wcs-red/10 file:text-wcs-red hover:file:bg-wcs-red/20" />
-          {files.length > 0 && (
-            <ul className="mt-2 space-y-1">
-              {files.map((f, i) => (
-                <li key={i} className="flex items-center justify-between text-xs bg-bg border border-border rounded-lg px-2.5 py-1.5">
-                  <span className="truncate">{f.name} <span className="text-text-muted">({fmtBytes(f.size)})</span></span>
-                  <button onClick={() => setFiles(files.filter((_, idx) => idx !== i))} className="text-red-500 ml-2 shrink-0">✕</button>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
 
         {error && <p className="text-sm text-wcs-red">{error}</p>}

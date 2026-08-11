@@ -12,22 +12,18 @@ const {
 
 const router = Router()
 router.use(authenticate)
-// Admin-only for now (per rollout plan — mirrors the Forms module). Widen later
-// via the RBAC screens / a lower requireRole once other roles are ready.
-router.use(requireRole('admin'))
+// NOTE: this module is NOT blanket admin-only. Two personas share it:
+//   - Makers  (any authenticated staff): create tickets + view status.
+//   - Handlers (assigned per ticket type, + all admins): edit / mark done.
+// Type management (the builder) is admin-only, gated per-route below.
 
 const BUCKET = 'ticket-attachments'
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } })
 
-// Create the private bucket on demand. Idempotent: a "already exists" error is
-// swallowed so we never need a manual Supabase dashboard step.
 let bucketReady = false
 async function ensureBucket() {
   if (bucketReady) return
-  const { error } = await supabaseAdmin.storage.createBucket(BUCKET, {
-    public: false,
-    fileSizeLimit: '25MB',
-  })
+  const { error } = await supabaseAdmin.storage.createBucket(BUCKET, { public: false, fileSizeLimit: '25MB' })
   if (error && !/exist/i.test(error.message || '')) throw error
   bucketReady = true
 }
@@ -42,7 +38,15 @@ function uploadSingle(req, res, next) {
   })
 }
 
-// Resolve display names for a set of staff ids in one query.
+const isAdmin = (staff) => staff?.role === 'admin'
+
+// A handler for a type is an admin or a staff id listed in the type's handler_ids.
+function canHandleType(staff, type) {
+  if (isAdmin(staff)) return true
+  const ids = Array.isArray(type?.handler_ids) ? type.handler_ids : []
+  return ids.includes(staff.id)
+}
+
 async function nameMap(ids) {
   const uniq = [...new Set(ids.filter(Boolean))]
   if (!uniq.length) return {}
@@ -54,17 +58,37 @@ async function nameMap(ids) {
   return map
 }
 
-// Fresh short-lived signed URL for a stored attachment.
 async function signAttachment(path) {
   const { data } = await supabaseAdmin.storage.from(BUCKET).createSignedUrl(path, 60 * 60)
   return data?.signedUrl || null
 }
 
+// Load a type by id (cached-per-request would be nice; kept simple).
+async function getType(id) {
+  const { data } = await supabaseAdmin.from('ticket_types').select('*').eq('id', id).maybeSingle()
+  return data || null
+}
+
+// Ids of the types the caller can handle (admins → all). Used to scope the
+// handler queue and to tell the UI whether to show it.
+async function handledTypeIds(staff) {
+  const { data } = await supabaseAdmin.from('ticket_types').select('id, handler_ids')
+  const rows = data || []
+  if (isAdmin(staff)) return rows.map(r => r.id)
+  return rows.filter(r => (r.handler_ids || []).includes(staff.id)).map(r => r.id)
+}
+
 // ---------------------------------------------------------------------------
-// Ticket types (the "form builder")
+// Ticket types (the builder) — admin only
 // ---------------------------------------------------------------------------
 
-// GET /ticketing/types — all types (admin). ?active=1 restricts to active.
+function normHandlerIds(v) {
+  if (!Array.isArray(v)) return undefined
+  return [...new Set(v.filter(x => typeof x === 'string' && x))]
+}
+
+// GET /ticketing/types — list types. Any staff (needed to submit); ?active=1
+// restricts to active. Non-admins still see the list (names only matter).
 router.get('/types', async (req, res) => {
   try {
     let q = supabaseAdmin.from('ticket_types').select('*').order('sort_order').order('created_at')
@@ -78,25 +102,39 @@ router.get('/types', async (req, res) => {
   }
 })
 
-// POST /ticketing/types
-router.post('/types', async (req, res) => {
+// GET /ticketing/assignable-staff — active staff for the handler picker (admin)
+router.get('/assignable-staff', requireRole('admin'), async (req, res) => {
   try {
-    const { name, description, icon, schema = [], active = true, sort_order = 0 } = req.body || {}
+    const { data, error } = await supabaseAdmin.from('staff')
+      .select('id, display_name, first_name, last_name, role, is_active')
+      .eq('is_active', true).order('display_name')
+    if (error) throw error
+    res.json({
+      staff: (data || []).map(s => ({
+        id: s.id,
+        name: s.display_name || [s.first_name, s.last_name].filter(Boolean).join(' ') || 'Unknown',
+        role: s.role,
+      })),
+    })
+  } catch (err) {
+    console.error('[Ticketing] assignable-staff failed:', err.message)
+    res.status(500).json({ error: 'Failed to load staff' })
+  }
+})
+
+router.post('/types', requireRole('admin'), async (req, res) => {
+  try {
+    const { name, description, icon, schema = [], active = true, sort_order = 0, handler_ids } = req.body || {}
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required' })
     const check = validateSchema(schema)
     if (!check.ok) return res.status(400).json({ error: check.error })
 
-    // Unique slug: base off the name, disambiguate with a numeric suffix.
     let slug = makeSlug(name)
     const { data: existing } = await supabaseAdmin.from('ticket_types').select('slug').like('slug', `${slug}%`)
     const taken = new Set((existing || []).map(r => r.slug))
-    if (taken.has(slug)) {
-      let n = 2
-      while (taken.has(`${slug}-${n}`)) n++
-      slug = `${slug}-${n}`
-    }
+    if (taken.has(slug)) { let n = 2; while (taken.has(`${slug}-${n}`)) n++; slug = `${slug}-${n}` }
 
-    const { data, error } = await supabaseAdmin.from('ticket_types').insert({
+    const insert = {
       slug,
       name: String(name).trim(),
       description: description ? String(description).trim() : null,
@@ -105,7 +143,10 @@ router.post('/types', async (req, res) => {
       active: !!active,
       sort_order: Number(sort_order) || 0,
       created_by: req.staff.id,
-    }).select().single()
+    }
+    const h = normHandlerIds(handler_ids)
+    if (h) insert.handler_ids = h
+    const { data, error } = await supabaseAdmin.from('ticket_types').insert(insert).select().single()
     if (error) throw error
     res.status(201).json({ type: data })
   } catch (err) {
@@ -114,8 +155,7 @@ router.post('/types', async (req, res) => {
   }
 })
 
-// PATCH /ticketing/types/:id — update fields / toggle active
-router.patch('/types/:id', async (req, res) => {
+router.patch('/types/:id', requireRole('admin'), async (req, res) => {
   try {
     const patch = {}
     const b = req.body || {}
@@ -132,10 +172,10 @@ router.patch('/types/:id', async (req, res) => {
     }
     if (b.active !== undefined) patch.active = !!b.active
     if (b.sort_order !== undefined) patch.sort_order = Number(b.sort_order) || 0
+    if (b.handler_ids !== undefined) { const h = normHandlerIds(b.handler_ids); if (h) patch.handler_ids = h }
     if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'Nothing to update' })
 
-    const { data, error } = await supabaseAdmin.from('ticket_types')
-      .update(patch).eq('id', req.params.id).select().single()
+    const { data, error } = await supabaseAdmin.from('ticket_types').update(patch).eq('id', req.params.id).select().single()
     if (error) throw error
     if (!data) return res.status(404).json({ error: 'Ticket type not found' })
     res.json({ type: data })
@@ -145,15 +185,10 @@ router.patch('/types/:id', async (req, res) => {
   }
 })
 
-// DELETE /ticketing/types/:id — only when no tickets reference it. Otherwise
-// the caller should deactivate instead (preserves history).
-router.delete('/types/:id', async (req, res) => {
+router.delete('/types/:id', requireRole('admin'), async (req, res) => {
   try {
-    const { count } = await supabaseAdmin.from('tickets')
-      .select('id', { count: 'exact', head: true }).eq('type_id', req.params.id)
-    if (count && count > 0) {
-      return res.status(409).json({ error: `In use by ${count} ticket(s). Deactivate it instead.` })
-    }
+    const { count } = await supabaseAdmin.from('tickets').select('id', { count: 'exact', head: true }).eq('type_id', req.params.id)
+    if (count && count > 0) return res.status(409).json({ error: `In use by ${count} ticket(s). Deactivate it instead.` })
     const { error } = await supabaseAdmin.from('ticket_types').delete().eq('id', req.params.id)
     if (error) throw error
     res.json({ ok: true })
@@ -164,66 +199,122 @@ router.delete('/types/:id', async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
-// Tickets
+// Reads — available to any authenticated staff (maker status views)
 // ---------------------------------------------------------------------------
 
-// GET /ticketing — inbox list with filters ?status= &type_id= &q=
+async function decorate(rows) {
+  const typeIds = [...new Set(rows.map(t => t.type_id))]
+  const [{ data: types }, names] = await Promise.all([
+    typeIds.length ? supabaseAdmin.from('ticket_types').select('id, name, icon').in('id', typeIds) : Promise.resolve({ data: [] }),
+    nameMap(rows.map(t => t.submitter_id).concat(rows.map(t => t.assigned_to))),
+  ])
+  const typeMap = Object.fromEntries((types || []).map(t => [t.id, t]))
+  return rows.map(t => ({
+    ...t,
+    type_name: typeMap[t.type_id]?.name || 'Ticket',
+    type_icon: typeMap[t.type_id]?.icon || null,
+    submitter_name: names[t.submitter_id] || 'Unknown',
+    assignee_name: t.assigned_to ? (names[t.assigned_to] || 'Unknown') : null,
+  }))
+}
+
+// GET /ticketing/board — personal status view, grouped. Scoped to the caller's
+// OWN submitted tickets (a regular person only sees what they submitted).
+// Handlers work others' tickets via the handler queue (GET /?handling=1), not
+// here. ?days=N sets the recently-completed window (default 7).
+router.get('/board', async (req, res) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 60)
+    const since = new Date(Date.now() - days * 86400000).toISOString()
+    const { data, error } = await supabaseAdmin.from('tickets').select('*')
+      .eq('submitter_id', req.staff.id)
+      .order('created_at', { ascending: false }).limit(500)
+    if (error) throw error
+    const all = await decorate(data || [])
+    res.json({
+      open: all.filter(t => t.status === 'open'),
+      in_progress: all.filter(t => t.status === 'in_progress'),
+      recently_completed: all.filter(t => t.status === 'complete' && t.completed_at && t.completed_at >= since),
+      counts: {
+        open: all.filter(t => t.status === 'open').length,
+        in_progress: all.filter(t => t.status === 'in_progress').length,
+        complete: all.filter(t => t.status === 'complete').length,
+      },
+      window_days: days,
+    })
+  } catch (err) {
+    console.error('[Ticketing] board failed:', err.message)
+    res.status(500).json({ error: 'Failed to load board' })
+  }
+})
+
+// GET /ticketing/can-handle — does the caller handle any type? (drives the
+// handler queue tab). Returns { any, type_ids }.
+router.get('/can-handle', async (req, res) => {
+  try {
+    const ids = await handledTypeIds(req.staff)
+    res.json({ any: isAdmin(req.staff) || ids.length > 0, admin: isAdmin(req.staff), type_ids: ids })
+  } catch (err) {
+    console.error('[Ticketing] can-handle failed:', err.message)
+    res.status(500).json({ error: 'Failed' })
+  }
+})
+
+// GET /ticketing — inbox list. ?status= &type_id= &q= &handling=1
+// handling=1 scopes to the types the caller handles (the handler queue).
 router.get('/', async (req, res) => {
   try {
     let q = supabaseAdmin.from('tickets').select('*').order('created_at', { ascending: false }).limit(500)
     if (req.query.status) q = q.eq('status', req.query.status)
     if (req.query.type_id) q = q.eq('type_id', req.query.type_id)
-    const { data: tickets, error } = await q
+    if (req.query.handling === '1') {
+      // Handler queue: tickets of the types the caller handles.
+      const ids = await handledTypeIds(req.staff)
+      if (ids.length === 0) return res.json({ tickets: [] })
+      q = q.in('type_id', ids)
+    } else if (!isAdmin(req.staff)) {
+      // Personal view: a non-admin only sees tickets they submitted.
+      q = q.eq('submitter_id', req.staff.id)
+    }
+    const { data, error } = await q
     if (error) throw error
-    let rows = tickets || []
-
+    let rows = await decorate(data || [])
     const term = String(req.query.q || '').trim().toLowerCase()
     if (term) rows = rows.filter(t => (t.title || '').toLowerCase().includes(term))
-
-    const typeIds = [...new Set(rows.map(t => t.type_id))]
-    const [{ data: types }, names] = await Promise.all([
-      typeIds.length ? supabaseAdmin.from('ticket_types').select('id, name, icon').in('id', typeIds) : Promise.resolve({ data: [] }),
-      nameMap(rows.map(t => t.submitter_id).concat(rows.map(t => t.assigned_to))),
-    ])
-    const typeMap = Object.fromEntries((types || []).map(t => [t.id, t]))
-
-    res.json({
-      tickets: rows.map(t => ({
-        ...t,
-        type_name: typeMap[t.type_id]?.name || 'Ticket',
-        type_icon: typeMap[t.type_id]?.icon || null,
-        submitter_name: names[t.submitter_id] || 'Unknown',
-        assignee_name: t.assigned_to ? (names[t.assigned_to] || 'Unknown') : null,
-      })),
-    })
+    res.json({ tickets: rows })
   } catch (err) {
     console.error('[Ticketing] list tickets failed:', err.message)
     res.status(500).json({ error: 'Failed to load tickets' })
   }
 })
 
-// Counts by status for the board header. Kept separate so the list can be
-// filtered without losing the totals.
 router.get('/summary', async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin.from('tickets').select('status')
+    let q = supabaseAdmin.from('tickets').select('status, type_id, submitter_id')
+    const { data, error } = await q
     if (error) throw error
+    let rows = data || []
+    if (req.query.handling === '1') {
+      const ids = new Set(await handledTypeIds(req.staff))
+      rows = rows.filter(r => ids.has(r.type_id))
+    } else if (!isAdmin(req.staff)) {
+      rows = rows.filter(r => r.submitter_id === req.staff.id)
+    }
     const counts = { open: 0, in_progress: 0, complete: 0, closed: 0 }
-    for (const r of data || []) if (counts[r.status] !== undefined) counts[r.status]++
-    res.json({ counts, total: (data || []).length })
+    for (const r of rows) if (counts[r.status] !== undefined) counts[r.status]++
+    res.json({ counts, total: rows.length })
   } catch (err) {
     console.error('[Ticketing] summary failed:', err.message)
     res.status(500).json({ error: 'Failed to load summary' })
   }
 })
 
-// POST /ticketing — submit a ticket against an active type
+// POST /ticketing — submit a ticket against an active type (any staff)
 router.post('/', async (req, res) => {
   try {
     const { type_id, data = {}, priority, location_id } = req.body || {}
     if (!type_id) return res.status(400).json({ error: 'type_id is required' })
-    const { data: type, error: typeErr } = await supabaseAdmin.from('ticket_types').select('*').eq('id', type_id).maybeSingle()
-    if (typeErr) throw typeErr
+    const type = await getType(type_id)
     if (!type) return res.status(404).json({ error: 'Ticket type not found' })
     if (!type.active) return res.status(400).json({ error: 'This ticket type is inactive' })
 
@@ -238,7 +329,6 @@ router.post('/', async (req, res) => {
       location_id: location_id || null,
     }
     if (['low', 'normal', 'high', 'urgent'].includes(priority)) insert.priority = priority
-
     const { data: ticket, error } = await supabaseAdmin.from('tickets').insert(insert).select().single()
     if (error) throw error
     res.status(201).json({ ticket })
@@ -248,24 +338,30 @@ router.post('/', async (req, res) => {
   }
 })
 
-// GET /ticketing/:id — full detail: type schema, comments, attachments
+// GET /ticketing/:id — full detail (any staff can view status). Includes
+// can_handle so the UI shows edit controls only to handlers of this type.
 router.get('/:id', async (req, res) => {
   try {
     const { data: ticket, error } = await supabaseAdmin.from('tickets').select('*').eq('id', req.params.id).maybeSingle()
     if (error) throw error
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' })
 
-    const [{ data: type }, { data: comments }, { data: attachments }] = await Promise.all([
-      supabaseAdmin.from('ticket_types').select('*').eq('id', ticket.type_id).maybeSingle(),
+    const [type, { data: comments }, { data: attachments }] = await Promise.all([
+      getType(ticket.type_id),
       supabaseAdmin.from('ticket_comments').select('*').eq('ticket_id', ticket.id).order('created_at'),
       supabaseAdmin.from('ticket_attachments').select('*').eq('ticket_id', ticket.id).order('created_at'),
     ])
-
     const names = await nameMap(
       [ticket.submitter_id, ticket.assigned_to]
         .concat((comments || []).map(c => c.author_id))
         .concat((attachments || []).map(a => a.uploaded_by))
     )
+    const canHandle = canHandleType(req.staff, type)
+    // A regular person can only view tickets they submitted; handlers/admins can
+    // view the ones they handle.
+    if (!canHandle && ticket.submitter_id !== req.staff.id) {
+      return res.status(403).json({ error: 'You can only view tickets you submitted or handle' })
+    }
     const signed = await Promise.all((attachments || []).map(a => signAttachment(a.storage_path)))
 
     res.json({
@@ -276,12 +372,10 @@ router.get('/:id', async (req, res) => {
         assignee_name: ticket.assigned_to ? (names[ticket.assigned_to] || 'Unknown') : null,
       },
       type: type || null,
+      can_handle: canHandle,
+      is_submitter: ticket.submitter_id === req.staff.id,
       comments: (comments || []).map(c => ({ ...c, author_name: c.author_id ? (names[c.author_id] || 'Unknown') : 'System' })),
-      attachments: (attachments || []).map((a, i) => ({
-        ...a,
-        uploader_name: names[a.uploaded_by] || 'Unknown',
-        url: signed[i],
-      })),
+      attachments: (attachments || []).map((a, i) => ({ ...a, uploader_name: names[a.uploaded_by] || 'Unknown', url: signed[i] })),
     })
   } catch (err) {
     console.error('[Ticketing] get ticket failed:', err.message)
@@ -289,21 +383,32 @@ router.get('/:id', async (req, res) => {
   }
 })
 
-// PATCH /ticketing/:id — status / priority / assignment. Each change is logged
-// as a system comment so the timeline reads as an activity log.
-router.patch('/:id', async (req, res) => {
+// Middleware: load ticket + type and require the caller to be a handler.
+async function requireHandler(req, res, next) {
   try {
-    const { data: ticket, error: getErr } = await supabaseAdmin.from('tickets').select('*').eq('id', req.params.id).maybeSingle()
-    if (getErr) throw getErr
+    const { data: ticket } = await supabaseAdmin.from('tickets').select('*').eq('id', req.params.id).maybeSingle()
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' })
+    const type = await getType(ticket.type_id)
+    req._ticket = ticket
+    req._type = type
+    req._canHandle = canHandleType(req.staff, type)
+    if (!req._canHandle) return res.status(403).json({ error: 'Only handlers of this ticket type can do that' })
+    next()
+  } catch (err) {
+    console.error('[Ticketing] requireHandler failed:', err.message)
+    res.status(500).json({ error: 'Server error' })
+  }
+}
 
+// PATCH /ticketing/:id — status / priority / assignment (handlers only)
+router.patch('/:id', requireHandler, async (req, res) => {
+  try {
+    const ticket = req._ticket
     const b = req.body || {}
     const patch = {}
     const logs = []
     if (b.status !== undefined) {
-      if (!['open', 'in_progress', 'complete', 'closed'].includes(b.status)) {
-        return res.status(400).json({ error: 'Invalid status' })
-      }
+      if (!['open', 'in_progress', 'complete', 'closed'].includes(b.status)) return res.status(400).json({ error: 'Invalid status' })
       if (b.status !== ticket.status) {
         patch.status = b.status
         patch.completed_at = b.status === 'complete' ? new Date().toISOString() : (b.status === 'open' || b.status === 'in_progress' ? null : ticket.completed_at)
@@ -319,10 +424,8 @@ router.patch('/:id', async (req, res) => {
       logs.push(b.assigned_to ? 'Ticket assigned' : 'Ticket unassigned')
     }
     if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'Nothing to update' })
-
     const { data: updated, error } = await supabaseAdmin.from('tickets').update(patch).eq('id', ticket.id).select().single()
     if (error) throw error
-
     for (const body of logs) {
       await supabaseAdmin.from('ticket_comments').insert({ ticket_id: ticket.id, author_id: req.staff.id, body, system: true })
     }
@@ -333,18 +436,21 @@ router.patch('/:id', async (req, res) => {
   }
 })
 
-// POST /ticketing/:id/comments — add a progress note
+// POST /ticketing/:id/comments — progress note. Handlers or the submitter.
 router.post('/:id/comments', async (req, res) => {
   try {
     const body = String(req.body?.body || '').trim()
     if (!body) return res.status(400).json({ error: 'Comment cannot be empty' })
     if (body.length > 5000) return res.status(400).json({ error: 'Comment is too long' })
-    const { data: ticket } = await supabaseAdmin.from('tickets').select('id').eq('id', req.params.id).maybeSingle()
+    const { data: ticket } = await supabaseAdmin.from('tickets').select('*').eq('id', req.params.id).maybeSingle()
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' })
+    const type = await getType(ticket.type_id)
+    if (!canHandleType(req.staff, type) && ticket.submitter_id !== req.staff.id) {
+      return res.status(403).json({ error: 'Only handlers or the submitter can comment' })
+    }
     const { data, error } = await supabaseAdmin.from('ticket_comments')
       .insert({ ticket_id: ticket.id, author_id: req.staff.id, body, system: false }).select().single()
     if (error) throw error
-    // Nudge updated_at so the inbox re-sorts.
     await supabaseAdmin.from('tickets').update({ updated_at: new Date().toISOString() }).eq('id', ticket.id)
     res.status(201).json({ comment: { ...data, author_name: req.staff.display_name || 'You' } })
   } catch (err) {
@@ -353,19 +459,23 @@ router.post('/:id/comments', async (req, res) => {
   }
 })
 
-// POST /ticketing/:id/attachments — upload a file to a ticket (multipart).
-// Optional ?comment_id ties it to a specific comment.
+// POST /ticketing/:id/attachments — upload a file. The submitter may attach to
+// their own ticket (covers file fields on submit); handlers may attach to any
+// ticket they handle. Optional field_id / comment_id tag the file.
 router.post('/:id/attachments', uploadSingle, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
-    const { data: ticket } = await supabaseAdmin.from('tickets').select('id').eq('id', req.params.id).maybeSingle()
+    const { data: ticket } = await supabaseAdmin.from('tickets').select('*').eq('id', req.params.id).maybeSingle()
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' })
+    const type = await getType(ticket.type_id)
+    if (!canHandleType(req.staff, type) && ticket.submitter_id !== req.staff.id) {
+      return res.status(403).json({ error: 'Not allowed to attach to this ticket' })
+    }
 
     await ensureBucket()
     const safeName = (req.file.originalname || 'file').replace(/[\r\n"/\\]/g, '').slice(0, 200)
     const rand = Math.random().toString(36).slice(2, 8)
     const storagePath = `${ticket.id}/${Date.now()}-${rand}-${safeName}`
-
     const { error: upErr } = await supabaseAdmin.storage.from(BUCKET)
       .upload(storagePath, req.file.buffer, { contentType: req.file.mimetype || 'application/octet-stream', upsert: false })
     if (upErr) throw upErr
@@ -388,7 +498,7 @@ router.post('/:id/attachments', uploadSingle, async (req, res) => {
   }
 })
 
-// GET /ticketing/attachments/:id/url — mint a fresh signed URL for a download
+// GET /ticketing/attachments/:id/url — fresh signed URL for download (any staff)
 router.get('/attachments/:id/url', async (req, res) => {
   try {
     const { data: att } = await supabaseAdmin.from('ticket_attachments').select('storage_path').eq('id', req.params.id).maybeSingle()

@@ -4,7 +4,10 @@
 // tools can diverge (ticketing may grow priority/assignment-aware fields).
 
 const DISPLAY_TYPES = ['header', 'description']
-const INPUT_TYPES = ['short_text', 'long_text', 'email', 'phone', 'number', 'dropdown', 'radio', 'checkbox', 'date']
+// 'file' collects an attachment. Its value in `data` is the uploaded file's
+// name (a string, for the record); the bytes are stored as a ticket attachment
+// tagged with the field id.
+const INPUT_TYPES = ['short_text', 'long_text', 'email', 'phone', 'number', 'dropdown', 'radio', 'checkbox', 'date', 'file']
 const FIELD_TYPES = [...INPUT_TYPES, ...DISPLAY_TYPES]
 const OPTION_TYPES = ['dropdown', 'radio', 'checkbox']
 

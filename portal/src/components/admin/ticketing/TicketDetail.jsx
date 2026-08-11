@@ -57,8 +57,9 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
   if (error && !detail) return <div className="space-y-3"><button onClick={onBack} className="text-sm text-text-muted hover:text-text-primary">← Back</button><p className="text-sm text-wcs-red">{error}</p></div>
   if (!detail) return null
 
-  const { ticket, type, comments = [], attachments = [] } = detail
+  const { ticket, type, comments = [], attachments = [], can_handle = false, is_submitter = false } = detail
   const submitAttachments = attachments.filter(a => !a.comment_id)
+  const canComment = can_handle || is_submitter
 
   return (
     <div className="max-w-3xl space-y-4">
@@ -77,31 +78,39 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
           <StatusBadge status={ticket.status} />
         </div>
 
-        {/* Status controls */}
-        <div className="mt-4 pt-4 border-t border-border flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-text-muted mr-1">Set status:</span>
-          {STATUSES.map(s => (
-            <button key={s.key} disabled={busy || ticket.status === s.key} onClick={() => setStatus(s.key)}
-              className={`px-3 py-1 text-xs font-semibold rounded-lg border transition-colors ${ticket.status === s.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary disabled:opacity-40'}`}>
-              {s.label}
-            </button>
-          ))}
-          {ticket.status !== 'complete' && (
-            <button disabled={busy} onClick={() => setStatus('complete')}
-              className="ml-auto px-3 py-1 text-xs font-bold rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-40">
-              ✓ Mark Complete
-            </button>
-          )}
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-text-muted mr-1">Priority:</span>
-          {PRIORITIES.map(p => (
-            <button key={p.key} disabled={busy || ticket.priority === p.key} onClick={() => setPriority(p.key)}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors ${ticket.priority === p.key ? `${p.chip}` : 'bg-bg text-text-muted border-border hover:text-text-primary disabled:opacity-40'}`}>
-              {p.label}
-            </button>
-          ))}
-        </div>
+        {/* Status controls — handlers only. Makers see the badge above, read-only. */}
+        {can_handle ? (
+          <>
+            <div className="mt-4 pt-4 border-t border-border flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-text-muted mr-1">Set status:</span>
+              {STATUSES.map(s => (
+                <button key={s.key} disabled={busy || ticket.status === s.key} onClick={() => setStatus(s.key)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg border transition-colors ${ticket.status === s.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary disabled:opacity-40'}`}>
+                  {s.label}
+                </button>
+              ))}
+              {ticket.status !== 'complete' && (
+                <button disabled={busy} onClick={() => setStatus('complete')}
+                  className="ml-auto px-3 py-1 text-xs font-bold rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-40">
+                  ✓ Mark Complete
+                </button>
+              )}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-text-muted mr-1">Priority:</span>
+              {PRIORITIES.map(p => (
+                <button key={p.key} disabled={busy || ticket.priority === p.key} onClick={() => setPriority(p.key)}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors ${ticket.priority === p.key ? `${p.chip}` : 'bg-bg text-text-muted border-border hover:text-text-primary disabled:opacity-40'}`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="mt-4 pt-4 border-t border-border text-xs text-text-muted">
+            You can view this ticket's progress. Only its handlers can change the status.
+          </p>
+        )}
       </div>
 
       {/* Answers */}
@@ -146,7 +155,8 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
           })}
         </div>
 
-        {/* Add comment */}
+        {/* Add comment — handlers or the submitter */}
+        {canComment && (
         <div className="mt-4 pt-4 border-t border-border space-y-2">
           <textarea value={comment} onChange={e => setComment(e.target.value)} rows={2} placeholder="Add a progress note…"
             className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red" />
@@ -169,6 +179,7 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
             </ul>
           )}
         </div>
+        )}
       </div>
     </div>
   )

@@ -4,7 +4,7 @@ import { STATUSES, STATUS_BY_KEY, PRIORITY_BY_KEY, fmtDate } from './shared'
 
 // The management inbox: filter chips + list of tickets. Clicking a row opens
 // the detail view (handled by the parent via onOpen).
-export default function TicketInbox({ onOpen, refreshKey }) {
+export default function TicketInbox({ onOpen, refreshKey, handling = false }) {
   const [tickets, setTickets] = useState([])
   const [counts, setCounts] = useState({ open: 0, in_progress: 0, complete: 0, closed: 0 })
   const [total, setTotal] = useState(0)
@@ -20,14 +20,14 @@ export default function TicketInbox({ onOpen, refreshKey }) {
     setLoading(true)
     try {
       const [list, summary] = await Promise.all([
-        ticketing.list({ status, type_id: typeId, q }),
-        ticketing.summary(),
+        ticketing.list({ status, type_id: typeId, q, handling }),
+        ticketing.summary(handling),
       ])
       setTickets(list.tickets || [])
       setCounts(summary.counts || {})
       setTotal(summary.total || 0)
     } catch { /* silent */ } finally { setLoading(false) }
-  }, [status, typeId, q])
+  }, [status, typeId, q, handling])
   useEffect(() => { load() }, [load, refreshKey])
 
   const filters = [

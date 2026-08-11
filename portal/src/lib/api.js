@@ -1695,16 +1695,21 @@ export const ticketing = {
   updateType: (id, data) => api('/ticketing/types/' + id, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteType: (id) => api('/ticketing/types/' + id, { method: 'DELETE' }),
 
+  assignableStaff: () => api('/ticketing/assignable-staff'),
+
   // Tickets
-  list: ({ status, type_id, q } = {}) => {
+  list: ({ status, type_id, q, handling } = {}) => {
     const p = new URLSearchParams()
     if (status) p.set('status', status)
     if (type_id) p.set('type_id', type_id)
     if (q) p.set('q', q)
+    if (handling) p.set('handling', '1')
     const qs = p.toString()
     return api('/ticketing' + (qs ? '?' + qs : ''))
   },
-  summary: () => api('/ticketing/summary'),
+  summary: (handling) => api('/ticketing/summary' + (handling ? '?handling=1' : '')),
+  board: (days) => api('/ticketing/board' + (days ? '?days=' + days : '')),
+  canHandle: () => api('/ticketing/can-handle'),
   get: (id) => api('/ticketing/' + id),
   create: (data) => api('/ticketing', { method: 'POST', body: JSON.stringify(data) }),
   update: (id, patch) => api('/ticketing/' + id, { method: 'PATCH', body: JSON.stringify(patch) }),

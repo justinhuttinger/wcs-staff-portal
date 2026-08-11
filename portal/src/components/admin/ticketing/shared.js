@@ -30,6 +30,7 @@ export const FIELD_PALETTE = [
   { type: 'dropdown', label: 'Dropdown', input: true },
   { type: 'radio', label: 'Multiple Choice', input: true },
   { type: 'checkbox', label: 'Checkboxes', input: true },
+  { type: 'file', label: 'File Upload', input: true },
   { type: 'header', label: 'Section Header', input: false },
   { type: 'description', label: 'Description Text', input: false },
 ]
@@ -53,4 +54,22 @@ export function fmtBytes(n) {
 // Generate a schema field id compatible with the backend validator (^f_[a-z0-9]{1,12}$).
 export function newFieldId() {
   return 'f_' + Math.random().toString(36).slice(2, 10)
+}
+
+// Split a submit form's `values` into the JSON `data` payload and the list of
+// File objects to upload after the ticket is created. File fields store their
+// filename in `data` (for the record) and their bytes go up as attachments.
+export function buildSubmission(schema = [], values = {}) {
+  const data = {}
+  const files = []
+  for (const f of schema) {
+    if (['header', 'description'].includes(f.type)) continue
+    const v = values[f.id]
+    if (f.type === 'file') {
+      if (v instanceof File) { data[f.id] = v.name; files.push(v) }
+    } else if (v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0)) {
+      data[f.id] = v
+    }
+  }
+  return { data, files }
 }

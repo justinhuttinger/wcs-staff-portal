@@ -159,8 +159,8 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     if (tile.label === 'Reports' && roleIdx < ROLE_LEVELS.manager) return false
     // Tickets tile only for lead+ (matches desktop role gate)
     if (tile.label === 'Tickets' && roleIdx < ROLE_LEVELS.lead) return false
-    // Ticketing (native tool) is admin-only for now (matches desktop gate)
-    if (tile.label === 'Ticketing' && role !== 'admin') return false
+    // Ticketing (native maker board) — lead+ (matches desktop tile gate)
+    if (tile.label === 'Ticketing' && roleIdx < ROLE_LEVELS.lead) return false
     // HR tile only for manager+
     if (tile.label === 'HR' && roleIdx < ROLE_LEVELS.manager) return false
     // Marketing Tracker: effective tracker capability (corporate/admin, add-on,
