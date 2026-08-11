@@ -501,15 +501,9 @@ export default function MobileApp() {
       case 'tickets':
         return <MobileTickets user={user} />
       case 'ticketing':
-        // Native ticketing tool — admin-only for now.
-        return isAdmin
-          ? <MobileTicketing user={user} />
-          : (
-            <div className="pt-4 px-4">
-              <MobileHeader title="Ticketing" onBack={() => navigate('home')} />
-              <div className="mt-16 text-center text-text-muted">Admin only.</div>
-            </div>
-          )
+        // Native ticketing (maker board + handler queue). Any lead+ can open it;
+        // handler controls appear only for the ticket type's handlers.
+        return <MobileTicketing user={user} />
       case 'reports/pt-projections':
         return (
           <div className="pt-4 px-4">

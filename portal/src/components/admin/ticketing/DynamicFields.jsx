@@ -65,6 +65,13 @@ export default function DynamicFields({ schema = [], values = {}, onChange, erro
                   )
                 })}
               </div>
+            ) : field.type === 'file' ? (
+              <div>
+                <input type="file"
+                  onChange={e => setVal(e.target.files?.[0] || null)}
+                  className="block w-full text-xs text-text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-wcs-red/10 file:text-wcs-red hover:file:bg-wcs-red/20" />
+                {val instanceof File && <p className="text-[11px] text-text-muted mt-1">Selected: {val.name}</p>}
+              </div>
             ) : (
               <input
                 type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'email' ? 'email' : 'text'}

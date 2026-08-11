@@ -3,7 +3,7 @@ import MobileHeader from './MobileHeader'
 import MobileLoading from './MobileLoading'
 import { ticketing } from '../../lib/api'
 import DynamicFields, { DynamicAnswers } from '../../components/admin/ticketing/DynamicFields'
-import { STATUSES, STATUS_BY_KEY, PRIORITIES, fmtDate, fmtBytes } from '../../components/admin/ticketing/shared'
+import { STATUSES, STATUS_BY_KEY, PRIORITIES, fmtDate, fmtBytes, buildSubmission } from '../../components/admin/ticketing/shared'
 
 // Native ticketing tool for mobile (admin-only). Mirrors the desktop admin
 // tool: inbox -> detail (status + activity) and a submit flow.
@@ -29,7 +29,7 @@ function StatusPill({ status }) {
 
 function List({ onOpen, onNew }) {
   const [tickets, setTickets] = useState([])
-  const [status, setStatus] = useState('')
+  const [status, setStatus] = useState('open') // default to New
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -98,8 +98,9 @@ function Detail({ id, onBack }) {
 
   if (loading) return <div className="pt-4 px-4"><MobileHeader title="Ticket" onBack={onBack} /><MobileLoading /></div>
   if (!detail) return null
-  const { ticket, type, comments = [], attachments = [] } = detail
+  const { ticket, type, comments = [], attachments = [], can_handle = false, is_submitter = false } = detail
   const submitAtt = attachments.filter(a => !a.comment_id)
+  const canComment = can_handle || is_submitter
 
   return (
     <div className="pt-4 px-4 space-y-3 pb-6">
@@ -112,17 +113,23 @@ function Detail({ id, onBack }) {
         </div>
         <p className="text-[11px] text-text-muted mt-1">{ticket.submitter_name} · {fmtDate(ticket.created_at)}</p>
 
-        <div className="mt-3 pt-3 border-t border-border flex flex-wrap gap-1.5">
-          {STATUSES.map(s => (
-            <button key={s.key} disabled={busy || ticket.status === s.key} onClick={() => setStatus(s.key)}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-lg border ${ticket.status === s.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border disabled:opacity-40'}`}>
-              {s.label}
-            </button>
-          ))}
-        </div>
-        {ticket.status !== 'complete' && (
-          <button disabled={busy} onClick={() => setStatus('complete')}
-            className="mt-2 w-full py-2 text-sm font-bold rounded-lg bg-green-600 text-white disabled:opacity-40">✓ Mark Complete</button>
+        {can_handle ? (
+          <>
+            <div className="mt-3 pt-3 border-t border-border flex flex-wrap gap-1.5">
+              {STATUSES.map(s => (
+                <button key={s.key} disabled={busy || ticket.status === s.key} onClick={() => setStatus(s.key)}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg border ${ticket.status === s.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border disabled:opacity-40'}`}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            {ticket.status !== 'complete' && (
+              <button disabled={busy} onClick={() => setStatus('complete')}
+                className="mt-2 w-full py-2 text-sm font-bold rounded-lg bg-green-600 text-white disabled:opacity-40">✓ Mark Complete</button>
+            )}
+          </>
+        ) : (
+          <p className="mt-3 pt-3 border-t border-border text-xs text-text-muted">Only this type's handlers can change the status.</p>
         )}
       </div>
 
@@ -156,11 +163,13 @@ function Detail({ id, onBack }) {
             </div>
           ))}
         </div>
-        <div className="mt-3 flex gap-2">
-          <input value={comment} onChange={e => setComment(e.target.value)} placeholder="Add a note…"
-            className="flex-1 px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red" />
-          <button onClick={post} disabled={busy || !comment.trim()} className="px-3 py-2 text-sm font-semibold rounded-lg bg-wcs-red text-white disabled:opacity-40">Post</button>
-        </div>
+        {canComment && (
+          <div className="mt-3 flex gap-2">
+            <input value={comment} onChange={e => setComment(e.target.value)} placeholder="Add a note…"
+              className="flex-1 px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red" />
+            <button onClick={post} disabled={busy || !comment.trim()} className="px-3 py-2 text-sm font-semibold rounded-lg bg-wcs-red text-white disabled:opacity-40">Post</button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -187,7 +196,6 @@ function Submit({ onCancel, onDone }) {
   const [type, setType] = useState(null)
   const [values, setValues] = useState({})
   const [priority, setPriority] = useState('normal')
-  const [files, setFiles] = useState([])
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -199,7 +207,8 @@ function Submit({ onCancel, onDone }) {
   async function submit() {
     setSubmitting(true); setError(''); setErrors({})
     try {
-      const res = await ticketing.create({ type_id: type.id, data: values, priority })
+      const { data, files } = buildSubmission(type.schema || [], values)
+      const res = await ticketing.create({ type_id: type.id, data, priority })
       for (const f of files) await ticketing.uploadAttachment(res.ticket.id, f)
       onDone(res.ticket.id)
     } catch (err) {
@@ -217,7 +226,7 @@ function Submit({ onCancel, onDone }) {
         {types.length === 0 ? (
           <p className="text-sm text-text-muted text-center py-10">No active ticket types.</p>
         ) : types.map(t => (
-          <button key={t.id} onClick={() => { setType(t); setValues({}); setErrors({}); setFiles([]) }}
+          <button key={t.id} onClick={() => { setType(t); setValues({}); setErrors({}) }}
             className="w-full text-left bg-surface border border-border rounded-2xl p-4 active:scale-[0.99] transition-transform">
             <p className="text-sm font-bold text-text-primary">{t.name}</p>
             {t.description && <p className="text-xs text-text-muted mt-1">{t.description}</p>}
@@ -242,22 +251,6 @@ function Submit({ onCancel, onDone }) {
                 className={`px-3 py-1 text-xs font-semibold rounded-lg border ${priority === p.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border'}`}>{p.label}</button>
             ))}
           </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-text-primary mb-1">Attachments</label>
-          <input type="file" multiple onChange={e => setFiles(prev => [...prev, ...Array.from(e.target.files)])}
-            className="block w-full text-xs text-text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-wcs-red/10 file:text-wcs-red" />
-          {files.length > 0 && (
-            <ul className="mt-2 space-y-1">
-              {files.map((f, i) => (
-                <li key={i} className="flex items-center justify-between text-xs bg-bg border border-border rounded-lg px-2.5 py-1.5">
-                  <span className="truncate">{f.name}</span>
-                  <button onClick={() => setFiles(files.filter((_, idx) => idx !== i))} className="text-red-500 ml-2">✕</button>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
 
         {error && <p className="text-sm text-wcs-red">{error}</p>}

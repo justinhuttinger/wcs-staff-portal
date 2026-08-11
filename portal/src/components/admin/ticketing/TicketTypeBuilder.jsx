@@ -54,8 +54,17 @@ function TypeEditor({ initial, onClose, onSaved }) {
   const [description, setDescription] = useState(initial?.description || '')
   const [active, setActive] = useState(initial?.active ?? true)
   const [schema, setSchema] = useState(initial?.schema || [])
+  const [handlerIds, setHandlerIds] = useState(initial?.handler_ids || [])
+  const [staff, setStaff] = useState([])
+  const [staffQuery, setStaffQuery] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => { ticketing.assignableStaff().then(r => setStaff(r.staff || [])).catch(() => {}) }, [])
+  const staffFiltered = staff.filter(s => s.name.toLowerCase().includes(staffQuery.trim().toLowerCase()))
+  function toggleHandler(id) {
+    setHandlerIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id])
+  }
 
   function addField(type) {
     const f = { id: newFieldId(), type }
@@ -89,7 +98,7 @@ function TypeEditor({ initial, onClose, onSaved }) {
     }
     setSaving(true); setError('')
     try {
-      const payload = { name, description, active, schema }
+      const payload = { name, description, active, schema, handler_ids: handlerIds }
       if (initial?.id) await ticketing.updateType(initial.id, payload)
       else await ticketing.createType(payload)
       onSaved()
@@ -122,6 +131,26 @@ function TypeEditor({ initial, onClose, onSaved }) {
           <div>
             <label className="block text-xs font-semibold text-text-muted mb-1">Description (optional)</label>
             <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Shown under the tile" className={inputClass} />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-text-muted mb-1">
+              Handlers <span className="font-normal">— who can work these tickets (edit, add progress, mark done). Admins always can.</span>
+            </label>
+            <input value={staffQuery} onChange={e => setStaffQuery(e.target.value)} placeholder="Search staff…"
+              className={inputClass + ' mb-2'} />
+            <div className="max-h-40 overflow-y-auto border border-border rounded-lg divide-y divide-border">
+              {staffFiltered.length === 0 ? (
+                <p className="text-xs text-text-muted px-3 py-2">No staff match.</p>
+              ) : staffFiltered.map(s => (
+                <label key={s.id} className="flex items-center gap-2 px-3 py-1.5 text-sm text-text-primary cursor-pointer hover:bg-bg">
+                  <input type="checkbox" checked={handlerIds.includes(s.id)} onChange={() => toggleHandler(s.id)} className="w-4 h-4 accent-wcs-red" />
+                  <span className="flex-1">{s.name}</span>
+                  <span className="text-[10px] text-text-muted uppercase tracking-wide">{s.role}</span>
+                </label>
+              ))}
+            </div>
+            {handlerIds.length > 0 && <p className="text-[11px] text-text-muted mt-1">{handlerIds.length} handler{handlerIds.length === 1 ? '' : 's'} assigned</p>}
           </div>
 
           <div>
