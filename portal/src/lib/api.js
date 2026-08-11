@@ -1687,6 +1687,37 @@ export async function refreshTicketStatus() {
   return api('/tickets/refresh', { method: 'POST' })
 }
 
+// Ticketing (native ticketing tool — admin)
+export const ticketing = {
+  // Types (the ticket "form builder")
+  listTypes: (activeOnly) => api('/ticketing/types' + (activeOnly ? '?active=1' : '')),
+  createType: (data) => api('/ticketing/types', { method: 'POST', body: JSON.stringify(data) }),
+  updateType: (id, data) => api('/ticketing/types/' + id, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteType: (id) => api('/ticketing/types/' + id, { method: 'DELETE' }),
+
+  // Tickets
+  list: ({ status, type_id, q } = {}) => {
+    const p = new URLSearchParams()
+    if (status) p.set('status', status)
+    if (type_id) p.set('type_id', type_id)
+    if (q) p.set('q', q)
+    const qs = p.toString()
+    return api('/ticketing' + (qs ? '?' + qs : ''))
+  },
+  summary: () => api('/ticketing/summary'),
+  get: (id) => api('/ticketing/' + id),
+  create: (data) => api('/ticketing', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, patch) => api('/ticketing/' + id, { method: 'PATCH', body: JSON.stringify(patch) }),
+  addComment: (id, body) => api('/ticketing/' + id + '/comments', { method: 'POST', body: JSON.stringify({ body }) }),
+  uploadAttachment: (id, file, commentId) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    if (commentId) fd.append('comment_id', commentId)
+    return api('/ticketing/' + id + '/attachments', { method: 'POST', body: fd })
+  },
+  attachmentUrl: (attachmentId) => api('/ticketing/attachments/' + attachmentId + '/url'),
+}
+
 // App Settings
 export async function getAppSettings(prefix) {
   const qs = prefix ? '?prefix=' + prefix : ''
