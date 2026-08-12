@@ -429,6 +429,51 @@ router.get('/paychex-companies', requireRole('admin'), async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
+// GET /hr-documents/:id/pdf  (manager+)
+// Streams the document as a PDF. Uses the stored pdf_url when present,
+// otherwise renders it on the fly (and stores it) so older documents that
+// never got a PDF are still downloadable.
+// ---------------------------------------------------------------------------
+router.get('/:id/pdf', requireRole('manager'), async (req, res) => {
+  try {
+    const { data: doc, error } = await supabaseAdmin
+      .from('hr_documents')
+      .select('*')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!doc) return res.status(404).json({ error: 'Document not found' })
+
+    let pdfBuffer = null
+
+    if (doc.pdf_url && doc.pdf_url.startsWith('data:application/pdf;base64,')) {
+      pdfBuffer = Buffer.from(doc.pdf_url.replace(/^data:application\/pdf;base64,/, ''), 'base64')
+    } else {
+      pdfBuffer = await generatePDF(buildDocumentHTML(doc))
+      if (!pdfBuffer) {
+        return res.status(501).json({ error: 'PDF generation is not configured (PDFSHIFT_API_KEY missing)' })
+      }
+      const { error: updateErr } = await supabaseAdmin
+        .from('hr_documents')
+        .update({ pdf_url: 'data:application/pdf;base64,' + pdfBuffer.toString('base64') })
+        .eq('id', doc.id)
+      if (updateErr) console.error('[HRDocuments] Failed to cache generated PDF:', updateErr.message)
+    }
+
+    const safeName = `${doc.reason}_${(doc.employee_name || 'employee').replace(/[^a-zA-Z0-9]+/g, '_')}_${new Date(doc.created_at || Date.now()).toISOString().slice(0, 10)}.pdf`
+
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`)
+    res.setHeader('Content-Length', pdfBuffer.length)
+    res.send(pdfBuffer)
+  } catch (err) {
+    console.error('[HRDocuments] PDF download failed:', err.message)
+    res.status(500).json({ error: 'Failed to build PDF: ' + err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
 // GET /hr-documents/:id  (manager+)
 // ---------------------------------------------------------------------------
 router.get('/:id', requireRole('manager'), async (req, res) => {
