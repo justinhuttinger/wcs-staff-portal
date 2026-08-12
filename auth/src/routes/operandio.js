@@ -214,44 +214,18 @@ router.post('/webhook', upload.any(), async (req, res) => {
   const html = req.body?.html || ''
   const from = req.body?.from || ''
 
-  // Audit submission (QA-Cleaning, department audits, ...) — parsed into
-  // operandio_qa_reports for the KPI report + Audits report. Only emails with
-  // a scored "Overall score" are audits; daily-checklist submission emails
-  // have no score and fall through to the raw capture.
-  const audit = parseAuditSubject(subject)
-  const auditScore = audit ? parseQaScore(text) : null
-  if (audit && auditScore) {
-    const items = parseQaItems(html)
-    const reportUrl = await resolveReportUrl(text)
-    const attachments = await storeAttachments(req.files)
-    const rawId = await captureRawEmail({ subject, text, html, from, reason: 'audit', attachments })
-    const { error: qaErr } = await supabaseAdmin
-      .from('operandio_qa_reports')
-      .upsert({
-        location_slug: audit.locationSlug,
-        job_name: audit.jobName,
-        department: audit.department,
-        score_possible: auditScore.possible,
-        score_achieved: auditScore.achieved,
-        score_pct: auditScore.pct,
-        report_url: reportUrl,
-        items,
-        raw_email_id: rawId,
-        submitted_date: pacificToday(),
-      }, { onConflict: 'location_slug,job_name,submitted_date', ignoreDuplicates: true })
-    if (qaErr) {
-      console.error('[Operandio] Audit upsert failed:', qaErr.message)
-      return res.status(500).json({ error: 'Audit upsert failed' })
-    }
-    console.log('[Operandio] Audit stored:', audit.locationSlug, '-', audit.jobName, '-', `${auditScore.pct}%`)
-    return res.json({ audit: true, location: audit.locationSlug, department: audit.department, score_pct: auditScore.pct })
-  }
-
   // Till drawer counts ("Drawer Open/Close Count submitted at <Loc>"). These are
   // denomination-breakdown submissions; we sum count*denomination into till_counts
   // for the reconciliation report. Detected before the generic job parse so a
   // drawer count does not also land as a generic checklist. The raw email is
   // retained (reason 'till_count') as a real sample for verification.
+  //
+  // Checked BEFORE the audit branch: a drawer count is identified by its job name
+  // plus parsable denomination rows, which the audit branch cannot see. When a
+  // scored step was added to the Drawer Close Count job in Operandio (Jul 2026),
+  // its emails started carrying a real "Overall score 1 1 100%" and the audit
+  // branch swallowed every close count. Job scoring must not decide where a
+  // drawer count lands.
   const till = classifyTillCount({ subject, html, receivedAt: new Date().toISOString() })
   if (till) {
     const clubNumber = SLUG_CLUB_MAP[till.location_slug]
@@ -294,6 +268,39 @@ router.post('/webhook', upload.any(), async (req, res) => {
       }).catch(e => console.error('[print] enqueue error:', e.message))
     }
     return res.json({ tillCount: true, location: till.location_slug, count_type: till.count_type, counted_amount: till.counted_amount })
+  }
+
+  // Audit submission (QA-Cleaning, department audits, ...) — parsed into
+  // operandio_qa_reports for the KPI report + Audits report. Only emails with
+  // a scored "Overall score" are audits; daily-checklist submission emails
+  // have no score and fall through to the raw capture.
+  const audit = parseAuditSubject(subject)
+  const auditScore = audit ? parseQaScore(text) : null
+  if (audit && auditScore) {
+    const items = parseQaItems(html)
+    const reportUrl = await resolveReportUrl(text)
+    const attachments = await storeAttachments(req.files)
+    const rawId = await captureRawEmail({ subject, text, html, from, reason: 'audit', attachments })
+    const { error: qaErr } = await supabaseAdmin
+      .from('operandio_qa_reports')
+      .upsert({
+        location_slug: audit.locationSlug,
+        job_name: audit.jobName,
+        department: audit.department,
+        score_possible: auditScore.possible,
+        score_achieved: auditScore.achieved,
+        score_pct: auditScore.pct,
+        report_url: reportUrl,
+        items,
+        raw_email_id: rawId,
+        submitted_date: pacificToday(),
+      }, { onConflict: 'location_slug,job_name,submitted_date', ignoreDuplicates: true })
+    if (qaErr) {
+      console.error('[Operandio] Audit upsert failed:', qaErr.message)
+      return res.status(500).json({ error: 'Audit upsert failed' })
+    }
+    console.log('[Operandio] Audit stored:', audit.locationSlug, '-', audit.jobName, '-', `${auditScore.pct}%`)
+    return res.json({ audit: true, location: audit.locationSlug, department: audit.department, score_pct: auditScore.pct })
   }
 
   // Per-job submission / overdue events (Phase 2). A checklist submission
