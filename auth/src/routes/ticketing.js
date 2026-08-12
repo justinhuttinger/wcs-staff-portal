@@ -413,9 +413,11 @@ router.post('/', async (req, res) => {
     // Creation notice to whoever this type lists, DM'd from the portal's own
     // Google account (noreply@) rather than the submitter. Fire-and-forget:
     // a notification problem must never fail the submission.
-    const notifyIds = await activeStaffIds(
-      Array.isArray(type.notify_on_create_ids) ? type.notify_on_create_ids : [],
-    )
+    // activeStaffIds returns a SET of the ids that are still active staff, so
+    // filter the configured list through it rather than treating it as an array.
+    const configured = Array.isArray(type.notify_on_create_ids) ? type.notify_on_create_ids : []
+    const stillActive = await activeStaffIds(configured)
+    const notifyIds = configured.filter(id => stillActive.has(id))
     if (notifyIds.length) {
       const submitterName = req.staff.display_name
         || [req.staff.first_name, req.staff.last_name].filter(Boolean).join(' ')
