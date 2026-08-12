@@ -4,6 +4,7 @@ import {
   getPaychexWorkers,
   getPaychexWorkerDocuments,
   getPaychexLocations,
+  downloadHRDocumentPdf,
 } from '../lib/api'
 import SignaturePad from './SignaturePad'
 
@@ -48,6 +49,47 @@ function formatDate(dateStr) {
   if (!dateStr) return ''
   const d = new Date(dateStr)
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function pdfFileName(doc) {
+  const who = (doc.employee_name || 'employee').replace(/[^a-zA-Z0-9]+/g, '_')
+  const when = (doc.created_at || new Date().toISOString()).slice(0, 10)
+  return `${doc.reason}_${who}_${when}.pdf`
+}
+
+// Downloads the rendered PDF for a portal HR document. The server generates it
+// on demand for older documents that never had one stored.
+function DownloadPdfButton({ doc }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function handleDownload() {
+    setBusy(true)
+    setError(null)
+    try {
+      await downloadHRDocumentPdf(doc.id, pdfFileName(doc))
+    } catch (err) {
+      setError(err.message || 'Download failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3">
+      <button
+        onClick={handleDownload}
+        disabled={busy}
+        className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+        </svg>
+        {busy ? 'Preparing PDF...' : 'Download PDF'}
+      </button>
+      {error && <span className="text-xs text-red-600">{error}</span>}
+    </div>
+  )
 }
 
 function DocumentPreview({ employeeName, reason, shortReason, description, actionPlan, managerName, managerSignature, employeeSignature, date }) {
@@ -620,6 +662,9 @@ function WorkerDocuments({ worker }) {
                             employeeSignature={doc.employee_signature}
                             date={formatDate(doc.created_at)}
                           />
+                          <div className="mt-4">
+                            <DownloadPdfButton doc={doc} />
+                          </div>
                         </div>
                       )}
                     </div>

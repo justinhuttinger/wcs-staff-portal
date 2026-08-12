@@ -1582,6 +1582,27 @@ export async function getPaychexLocations() {
   return api('/hr-documents/paychex-locations')
 }
 
+// Download a portal HR document as a PDF. The server renders it on demand if
+// no PDF was stored at creation time.
+export async function downloadHRDocumentPdf(docId, filename) {
+  const res = await fetch(API_URL + '/hr-documents/' + encodeURIComponent(docId) + '/pdf', {
+    headers: authToken ? { Authorization: 'Bearer ' + authToken } : {},
+  })
+  if (!res.ok) {
+    let msg = `Failed to download PDF (HTTP ${res.status})`
+    try { const j = await res.json(); msg = j.error || msg } catch {}
+    throw new Error(msg)
+  }
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename || 'hr-document.pdf'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 // Help Center
 export async function getHelpCategories() {
   return api('/help-center/categories')
