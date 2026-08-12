@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ticketing, googleChat } from '../../../lib/api'
+import { connectGoogleChat } from '../../../lib/googleChatConnect'
 import { DynamicAnswers } from './DynamicFields'
 import { STATUSES, STATUS_BY_KEY, fmtDate, fmtBytes } from './shared'
-import { MentionComposer, MentionText } from './mentions'
+import { MentionComposer, MentionText, parseMentions } from './mentions'
 
 function StatusBadge({ status }) {
   const s = STATUS_BY_KEY[status] || STATUS_BY_KEY.open
@@ -37,6 +38,18 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
     googleChat.status().then(setChat).catch(() => {})
   }, [])
 
+  // Is the current user unable to send Chat DMs yet? (loaded status says so.)
+  const chatUnready = () => chat && (!chat.connected || !chat.has_chat)
+
+  // Fire the connect request the moment someone tries to notify a coworker.
+  // Returns once the popup resolves (connected or dismissed); the ticket action
+  // then proceeds either way — Chat is a side effect, never a blocker.
+  async function ensureChatConnected() {
+    if (!chatUnready()) return
+    await connectGoogleChat()
+    try { setChat(await googleChat.status()) } catch { /* ignore */ }
+  }
+
   async function setStatus(status) {
     setBusy(true)
     try { await ticketing.update(ticketId, { status }); await load(); onChanged?.() }
@@ -44,6 +57,9 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
   }
 
   async function setAssignee(assigned_to) {
+    // Assigning someone else DMs them from you — connect Chat first if needed.
+    const me = detail?.current_user_id
+    if (assigned_to && assigned_to !== me) await ensureChatConnected()
     setBusy(true)
     try { await ticketing.update(ticketId, { assigned_to: assigned_to || null }); await load(); onChanged?.() }
     catch (err) { setError(err.message) } finally { setBusy(false) }
@@ -51,6 +67,10 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
 
   async function postComment() {
     if (!comment.trim() && commentFiles.length === 0) return
+    // @mentioning someone else DMs them from you — connect Chat first if needed.
+    const me = String(detail?.current_user_id || '').toLowerCase()
+    const mentionsOthers = comment.trim() && parseMentions(comment).some(p => p.id !== me)
+    if (mentionsOthers) await ensureChatConnected()
     setPosting(true)
     try {
       let commentId = null
@@ -76,7 +96,6 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
   const { ticket, type, comments = [], attachments = [], watchers = [], can_handle = false, is_submitter = false, current_user_id } = detail
   const submitAttachments = attachments.filter(a => !a.comment_id)
   const canComment = can_handle || is_submitter
-  const chatUnready = chat && (!chat.connected || !chat.has_chat)
 
   return (
     <div className="max-w-3xl space-y-4">
@@ -132,13 +151,17 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
         )}
       </div>
 
-      {/* Chat-connect nudge: assign/mention DMs send as YOU, so you must connect. */}
-      {canComment && chatUnready && (
+      {/* Chat-connect nudge: assign/mention DMs send as YOU, so you must connect.
+          (Assigning/@mentioning also fires this request on the spot.) */}
+      {canComment && chatUnready() && (
         <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
           <p className="text-xs text-amber-800 dark:text-amber-300">
             Connect Google Chat so your assignments and @mentions notify people as a DM from you.
           </p>
-          <ConnectChatButton onDone={() => googleChat.status().then(setChat).catch(() => {})} />
+          <button onClick={ensureChatConnected}
+            className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90">
+            Connect Google Chat
+          </button>
         </div>
       )}
 
@@ -233,31 +256,6 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
         </div>
       )}
     </div>
-  )
-}
-
-function ConnectChatButton({ onDone }) {
-  const [busy, setBusy] = useState(false)
-  async function connect() {
-    setBusy(true)
-    try {
-      const { url } = await googleChat.authorizeUrl()
-      const popup = window.open(url, 'google-chat-auth', 'width=520,height=640')
-      const onMsg = (e) => {
-        if (e.data?.type === 'google-chat-auth') {
-          window.removeEventListener('message', onMsg)
-          try { popup && popup.close() } catch { /* ignore */ }
-          onDone?.()
-        }
-      }
-      window.addEventListener('message', onMsg)
-    } catch { /* ignore */ } finally { setBusy(false) }
-  }
-  return (
-    <button onClick={connect} disabled={busy}
-      className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 disabled:opacity-40">
-      {busy ? 'Opening…' : 'Connect Google Chat'}
-    </button>
   )
 }
 

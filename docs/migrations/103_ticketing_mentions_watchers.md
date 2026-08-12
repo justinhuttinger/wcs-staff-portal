@@ -1,3 +1,46 @@
+# Migration 103 — Ticket assignment + @mentions (Google Chat bridge)
+
+This migration backs the ticket **assign** and **@mention** features and the
+ticket → Google Chat DM bridge. When a handler assigns a ticket or @mentions
+someone in a ticket comment, the target gets a Google Chat DM sent **as the
+actor** (the assigner / the person who wrote the @mention), with a deep link
+back to the ticket.
+
+- **File:** `auth/migrations/103_ticketing_mentions_watchers.sql`
+- **Depends on:** migration `100_ticketing.sql` (tickets, ticket_comments) and
+  the existing `staff` table.
+- **Safe to re-run:** yes — every statement is `if not exists` / `on conflict`
+  guarded, including the watcher backfill.
+
+## How to apply
+
+The portal applies migrations by hand (numbered SQL files, no runner). Apply
+this one in the **Supabase SQL editor**:
+
+1. Open your project → **SQL Editor** → **New query**.
+2. Paste the SQL below (or the contents of the `.sql` file) and **Run**.
+3. Confirm the three new tables exist under **Table editor**:
+   `ticket_mentions`, `ticket_watchers`, `chat_ticket_notifications`.
+
+No environment variables are required for the schema itself. The Chat DM
+delivery uses the actor's own Google OAuth token — see
+`auth/.env.example` (the *Ticket → Google Chat bridge* block) for the one-time
+Google Cloud setup.
+
+## What it creates
+
+| Table | Purpose |
+| --- | --- |
+| `ticket_mentions` | One row per assign/@mention notification intent. `source` = `comment` \| `body` \| `assignment`; `notified_at` / `notify_channel` / `chat_message_name` / `notify_error` capture the DM outcome. |
+| `ticket_watchers` | Everyone kept in the loop on a ticket (`creator` \| `assignee` \| `mentioned` \| `manual`), unique per (ticket, staff). |
+| `chat_ticket_notifications` | Audit / outbox for each DM attempt — status, channel, payload, error — kept separate so retries and future Chat payloads don't bloat the mention row. |
+
+It also **backfills** `ticket_watchers` for existing tickets: every submitter
+watches their own ticket, every current assignee watches theirs.
+
+## SQL
+
+```sql
 -- Ticket assignment + @mentions.
 --
 -- Two related capabilities layered onto the native ticketing module:
@@ -12,9 +55,8 @@
 --     change without rewriting history. On save, newly-added mentions are
 --     recorded here and the mentioned staff become watchers.
 --
--- Both feed a single notify seam (src/services/ticketNotify.js), which sends a
--- Google Chat DM as the actor (services/googleChat.js) and records the outcome
--- to chat_ticket_notifications as the audit trail.
+-- Both feed a single notify seam (src/services/ticketNotify.js). Today that
+-- seam sends a Google Chat DM as the actor; the outbox row is the audit trail.
 --
 -- Tables are service-role only (RLS enabled, no policies), matching the
 -- 035 / 078 / 100 convention. All access is brokered by src/routes/ticketing.js.
@@ -96,3 +138,12 @@ on conflict (ticket_id, staff_user_id) do nothing;
 insert into ticket_watchers (ticket_id, staff_user_id, reason)
   select id, assigned_to, 'assignee' from tickets where assigned_to is not null
 on conflict (ticket_id, staff_user_id) do nothing;
+```
+
+## Rollback
+
+```sql
+drop table if exists chat_ticket_notifications;
+drop table if exists ticket_mentions;
+drop table if exists ticket_watchers;
+```
