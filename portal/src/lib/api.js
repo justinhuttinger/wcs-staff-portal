@@ -1,4 +1,5 @@
 import * as apiCache from './apiCache'
+import { downscaleImage } from './downscaleImage'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 // Second backend service — prospects-documents (Render). Hosts the Online
@@ -1735,9 +1736,12 @@ export const ticketing = {
   create: (data) => api('/ticketing', { method: 'POST', body: JSON.stringify(data) }),
   update: (id, patch) => api('/ticketing/' + id, { method: 'PATCH', body: JSON.stringify(patch) }),
   addComment: (id, body) => api('/ticketing/' + id + '/comments', { method: 'POST', body: JSON.stringify({ body }) }),
-  uploadAttachment: (id, file, commentId) => {
+  // Photos are shrunk here rather than at each call site, so every path that
+  // attaches a file (submit form, comment box, desktop or mobile) gets it.
+  uploadAttachment: async (id, file, commentId) => {
+    const payload = await downscaleImage(file)
     const fd = new FormData()
-    fd.append('file', file)
+    fd.append('file', payload)
     if (commentId) fd.append('comment_id', commentId)
     return api('/ticketing/' + id + '/attachments', { method: 'POST', body: fd })
   },
