@@ -1683,33 +1683,7 @@ export async function getABCMembershipBreakdown(clubNumber) {
   return api('/abc-sync/membership-breakdown' + qs)
 }
 
-// Ticket Embeds
-export async function getTicketEmbeds() {
-  return api('/ticket-embeds')
-}
-
-export async function createTicketEmbed(data) {
-  return api('/ticket-embeds', { method: 'POST', body: JSON.stringify(data) })
-}
-
-export async function updateTicketEmbed(id, data) {
-  return api('/ticket-embeds/' + id, { method: 'PUT', body: JSON.stringify(data) })
-}
-
-export async function deleteTicketEmbed(id) {
-  return api('/ticket-embeds/' + id, { method: 'DELETE' })
-}
-
-// Ticket Status (ClickUp)
-export async function getTicketStatus() {
-  return api('/tickets/status')
-}
-
-export async function refreshTicketStatus() {
-  return api('/tickets/refresh', { method: 'POST' })
-}
-
-// Ticketing (native ticketing tool — admin)
+// Ticketing (the portal's ticket system)
 export const ticketing = {
   // Types (the ticket "form builder")
   listTypes: (activeOnly) => api('/ticketing/types' + (activeOnly ? '?active=1' : '')),

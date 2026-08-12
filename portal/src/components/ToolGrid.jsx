@@ -113,7 +113,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTickets, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onTourCheckin, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onTourCheckin, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [showOrdering, setShowOrdering] = useState(false)
@@ -295,10 +295,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           return onHelpCenter && <SvgTileButton key={key} onClick={onHelpCenter} iconPath={TILE_ICONS.helpCenter} label="Help Center" desc="Guides" />
         case 'ordering':
           return <SvgTileButton key={key} onClick={() => setShowOrdering(true)} iconPath={TILE_ICONS.ordering} label="Ordering" desc="Vendors" />
-        case 'tickets':
-          return onTickets && <SvgTileButton key={key} onClick={onTickets} iconPath={TILE_ICONS.tickets} label="Tickets/Support" desc="Help Desk" />
         case 'ticketing':
-          return onTicketsBoard && <SvgTileButton key={key} onClick={onTicketsBoard} iconPath={TILE_ICONS.tickets} label="Ticketing" desc="Submit & Track" />
+          return onTicketsBoard && <SvgTileButton key={key} onClick={onTicketsBoard} iconPath={TILE_ICONS.tickets} label="Tickets" desc="Submit & Track" />
         case 'trainerAvail':
           return onTrainerAvail && <SvgTileButton key={key} onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />
         case 'reporting':
@@ -609,10 +607,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {onHelpCenter && <SvgTileButton onClick={onHelpCenter} iconPath={TILE_ICONS.helpCenter} label="Help Center" desc="Guides" />}
           {/* 4.8. Ordering — lead+ only */}
           {roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={() => setShowOrdering(true)} iconPath={TILE_ICONS.ordering} label="Ordering" desc="Vendors" />}
-          {/* 4.9. Tickets — lead+ */}
-          {onTickets && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onTickets} iconPath={TILE_ICONS.tickets} label="Tickets/Support" desc="Help Desk" />}
-          {/* 4.95. Ticketing (native maker board) — lead+ or granted 'ticketing' */}
-          {onTicketsBoard && (roleIdx >= ROLE_LEVELS.lead || (visibleTools || []).includes('ticketing')) && <SvgTileButton onClick={onTicketsBoard} iconPath={TILE_ICONS.tickets} label="Ticketing" desc="Submit & Track" />}
+          {/* 4.9. Tickets (native module) — role/override-driven via 'ticketing' */}
+          {onTicketsBoard && (visibleTools || []).includes('ticketing') && <SvgTileButton onClick={onTicketsBoard} iconPath={TILE_ICONS.tickets} label="Tickets" desc="Submit & Track" />}
           {/* (Day One Tracking merged into Calendar) */}
           {/* 6. Trainer Availability — role/override-driven (seeded manager+ in migration 086) */}
           {onTrainerAvail && (visibleTools || []).includes('trainerAvail') && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}

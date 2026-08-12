@@ -43,7 +43,7 @@ const MARKETING_TYPE_SLUGS = new Set([
 // custom tier) are intentionally absent from the custom tile picker.
 const CUSTOM_TILE_KEYS = new Set([
   'grow', 'abc', 'wheniwork', 'paychex', 'gmail', 'drive', 'insights', 'notifications',
-  'calendar', 'leaderboard', 'helpCenter', 'ordering', 'tickets',
+  'calendar', 'leaderboard', 'helpCenter', 'ordering', 'ticketing',
   'trainerAvail', 'reporting', 'forms',
 ])
 // Reports an admin may grant to a custom-role member. Lead-tier reports the

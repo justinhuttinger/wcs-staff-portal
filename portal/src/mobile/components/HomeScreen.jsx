@@ -102,6 +102,7 @@ export default function HomeScreen({ user, navigate, onLogout }) {
   const staff = user?.staff || {}
   const displayName = staff.display_name || staff.first_name || staff.email || 'Staff'
   const role = staff.role || ''
+  const visibleTools = user?.visible_tools || []
   const email = staff.email || ''
   const locations = staff.locations || []
   const primaryLocation = locations.find(l => l.is_primary)?.name || locations[0]?.name || ''
@@ -145,8 +146,7 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     { label: 'Leaderboard', icon: <PodiumIcon />, route: 'leaderboard', desc: 'Top performers' },
     { label: 'Marketing', icon: <MegaphoneIcon />, route: 'marketing-tracker', desc: 'Campaign tracker' },
     { label: 'Inventory', icon: <BoxIcon />, route: 'inventory', desc: 'Scan & track stock' },
-    { label: 'Tickets', icon: <TicketIcon />, route: 'tickets', desc: 'Status & support' },
-    { label: 'Ticketing', icon: <TicketIcon />, route: 'ticketing', desc: 'Submit & track tickets' },
+    { label: 'Tickets', icon: <TicketIcon />, route: 'ticketing', desc: 'Submit & track tickets' },
     { label: 'HR', icon: <HRIcon />, route: 'hr', desc: 'Resources & docs' },
   ]
 
@@ -157,10 +157,9 @@ export default function HomeScreen({ user, navigate, onLogout }) {
   const tiles = allTiles.filter(tile => {
     // Reports tile is manager+ (leads get Inventory, Calendar, Tickets, Leaderboard)
     if (tile.label === 'Reports' && roleIdx < ROLE_LEVELS.manager) return false
-    // Tickets tile only for lead+ (matches desktop role gate)
-    if (tile.label === 'Tickets' && roleIdx < ROLE_LEVELS.lead) return false
-    // Ticketing (native maker board) — lead+ (matches desktop tile gate)
-    if (tile.label === 'Ticketing' && roleIdx < ROLE_LEVELS.lead) return false
+    // Tickets (native module) — role/override-driven via the 'ticketing' key,
+    // same as desktop, so the Roles grid governs it on both platforms.
+    if (tile.label === 'Tickets' && !(visibleTools || []).includes('ticketing')) return false
     // HR tile only for manager+
     if (tile.label === 'HR' && roleIdx < ROLE_LEVELS.manager) return false
     // Marketing Tracker: effective tracker capability (corporate/admin, add-on,
