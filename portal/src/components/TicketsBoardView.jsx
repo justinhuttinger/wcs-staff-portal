@@ -48,7 +48,7 @@ export default function TicketsBoardView({ onBack }) {
               <button onClick={() => setTab('queue')} className={`px-3 py-1.5 text-xs font-semibold rounded-md ${tab === 'queue' ? 'bg-surface text-text-primary shadow-sm' : 'text-text-muted'}`}>My Queue</button>
             </div>
           )}
-          <button onClick={() => setView('submit')} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90">+ New Ticket</button>
+          <button onClick={() => setView('submit')} className="px-5 py-2.5 text-sm font-bold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 shadow-sm">+ New Ticket</button>
         </div>
       </div>
 

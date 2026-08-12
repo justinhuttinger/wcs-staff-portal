@@ -68,12 +68,12 @@ export default function TicketSubmit({ onDone, onCancel }) {
             No active ticket types. Create one in the “Ticket Types” tab first.
           </p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {types.map(t => (
               <button key={t.id} onClick={() => pick(t)}
-                className="text-left rounded-xl border border-border bg-surface p-4 hover:-translate-y-px hover:shadow-md transition-all">
-                <p className="text-sm font-bold text-text-primary">{t.name}</p>
-                {t.description && <p className="text-xs text-text-muted mt-1">{t.description}</p>}
+                className="flex flex-col justify-center text-left rounded-xl border border-border bg-surface p-6 min-h-[120px] hover:-translate-y-px hover:shadow-md transition-all">
+                <p className="text-lg font-bold text-text-primary">{t.name}</p>
+                {t.description && <p className="text-sm text-text-muted mt-1.5">{t.description}</p>}
               </button>
             ))}
           </div>

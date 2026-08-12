@@ -42,7 +42,7 @@ function List({ onOpen, onNew }) {
   return (
     <div className="pt-4 px-4 space-y-3">
       <MobileHeader title="Ticketing" subtitle="Submit & track" rightAction={
-        <button onClick={onNew} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-wcs-red text-white">+ New</button>
+        <button onClick={onNew} className="px-4 py-2.5 text-sm font-bold rounded-lg bg-wcs-red text-white shadow-sm">+ New</button>
       } />
 
       <div className="flex gap-1.5 overflow-x-auto pb-1">
@@ -237,9 +237,9 @@ function Submit({ onCancel, onDone }) {
           <p className="text-sm text-text-muted text-center py-10 bg-surface border border-border rounded-2xl">No active ticket types.</p>
         ) : types.map(t => (
           <button key={t.id} onClick={() => { setType(t); setValues({}); setErrors({}) }}
-            className="w-full text-left bg-surface border border-border rounded-2xl p-4 active:scale-[0.99] transition-transform">
-            <p className="text-sm font-bold text-text-primary">{t.name}</p>
-            {t.description && <p className="text-xs text-text-muted mt-1">{t.description}</p>}
+            className="w-full flex flex-col justify-center text-left bg-surface border border-border rounded-2xl p-5 min-h-[92px] active:scale-[0.99] transition-transform">
+            <p className="text-base font-bold text-text-primary">{t.name}</p>
+            {t.description && <p className="text-sm text-text-muted mt-1">{t.description}</p>}
           </button>
         ))}
       </div>
