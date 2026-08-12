@@ -43,9 +43,22 @@ function composeMessage({ kind, ticket, commentExcerpt }) {
 // Per-user opt-out. Returns email + enabled flag; defaults to enabled if the
 // column is absent so this is safe before any profile flag ships.
 async function targetProfile(staffId) {
-  const { data } = await supabaseAdmin
+  // PostgREST fails the WHOLE query when a selected column doesn't exist, so
+  // asking for the opt-out flag before migration 104 landed returned null and
+  // every DM was reported as "recipient has no Google email on file". Fall back
+  // to the columns that are guaranteed to exist, and treat a missing flag as
+  // opted in.
+  const full = await supabaseAdmin
     .from('staff').select('id, email, chat_notifications_enabled').eq('id', staffId).maybeSingle()
-  return data || null
+  if (!full.error) return full.data || null
+
+  console.warn('[TicketNotify] staff lookup with opt-out flag failed, retrying without it:', full.error.message)
+  const basic = await supabaseAdmin
+    .from('staff').select('id, email').eq('id', staffId).maybeSingle()
+  if (basic.error) {
+    throw new Error(`could not load recipient: ${basic.error.message}`)
+  }
+  return basic.data || null
 }
 
 // Record and deliver a batch of notifications for one ticket.
@@ -65,13 +78,25 @@ async function notify({ ticket, actorId, targets }) {
 }
 
 async function deliverOne({ ticket, actorId, target }) {
-  const profile = await targetProfile(target.targetUserId)
   const message = composeMessage({ kind: target.kind, ticket, commentExcerpt: target.commentExcerpt })
+
+  // Each miss gets its own wording — a lookup that blew up must never be
+  // reported as "no email on file", which is what sent us chasing the wrong
+  // problem when the opt-out column was missing.
+  let profile
+  try {
+    profile = await targetProfile(target.targetUserId)
+  } catch (err) {
+    return finish({ ticket, actorId, target, status: 'failed', channel: null, message, error: err.message })
+  }
 
   if (profile && profile.chat_notifications_enabled === false) {
     return finish({ ticket, actorId, target, status: 'skipped', channel: null, message, error: 'recipient disabled chat notifications' })
   }
-  if (!profile || !profile.email) {
+  if (!profile) {
+    return finish({ ticket, actorId, target, status: 'failed', channel: null, message, error: 'recipient is not an active staff record' })
+  }
+  if (!profile.email) {
     return finish({ ticket, actorId, target, status: 'failed', channel: null, message, error: 'recipient has no Google email on file' })
   }
 
