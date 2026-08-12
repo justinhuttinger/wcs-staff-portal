@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ticketing } from '../../../lib/api'
-import { FIELD_PALETTE, FIELD_LABEL, OPTION_TYPES, newFieldId } from './shared'
+import { FIELD_PALETTE, FIELD_LABEL, OPTION_TYPES, DISPLAY_TYPES, newFieldId } from './shared'
 
 const inputClass = 'w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red'
 
@@ -54,12 +54,50 @@ function FieldRow({ field, index, count, onChange, onMove, onRemove }) {
   )
 }
 
+// Ticket title format: literal words plus {{field_id}} tokens, e.g.
+// "Ticket for {{f_a1b2c3}}". Left blank, the title falls back to the first
+// text answer (the original behavior).
+function TitleFormat({ schema, value, onChange }) {
+  const fields = (schema || []).filter(f => !DISPLAY_TYPES.includes(f.type))
+  const labelById = Object.fromEntries(fields.map(f => [f.id, f.label || FIELD_LABEL[f.type] || f.id]))
+
+  // Preview with each token swapped for its field label, so an admin sees the
+  // shape of the title without submitting a ticket.
+  const preview = String(value || '').replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g,
+    (_, id) => labelById[id] ? `[${labelById[id]}]` : '[unknown field]')
+
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-text-muted mb-1">
+        Ticket title format <span className="font-normal">— optional. Mix words with fields, e.g. “Ticket for {'{{name}}'}”. Leave blank to use the first text answer.</span>
+      </label>
+      <input value={value} onChange={e => onChange(e.target.value)}
+        placeholder="Ticket for {{field}}" className={inputClass} />
+      {fields.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          <span className="text-[11px] text-text-muted py-1">Insert field:</span>
+          {fields.map(f => (
+            <button key={f.id} type="button" onClick={() => onChange(`${value}${value && !value.endsWith(' ') ? ' ' : ''}{{${f.id}}}`)}
+              className="px-2 py-0.5 text-[11px] font-semibold rounded-lg border border-border bg-bg text-text-primary hover:border-wcs-red hover:text-wcs-red transition-colors">
+              + {f.label || FIELD_LABEL[f.type] || 'Field'}
+            </button>
+          ))}
+        </div>
+      )}
+      {value.trim() && (
+        <p className="text-[11px] text-text-muted mt-1">Preview: <span className="font-semibold text-text-primary">{preview}</span></p>
+      )}
+    </div>
+  )
+}
+
 // Create/edit modal for a ticket type.
 function TypeEditor({ initial, onClose, onSaved }) {
   const [name, setName] = useState(initial?.name || '')
   const [description, setDescription] = useState(initial?.description || '')
   const [active, setActive] = useState(initial?.active ?? true)
   const [schema, setSchema] = useState(initial?.schema || [])
+  const [titleTemplate, setTitleTemplate] = useState(initial?.title_template || '')
   const [handlerIds, setHandlerIds] = useState(initial?.handler_ids || [])
   const [staff, setStaff] = useState([])
   const [staffQuery, setStaffQuery] = useState('')
@@ -107,7 +145,7 @@ function TypeEditor({ initial, onClose, onSaved }) {
     }
     setSaving(true); setError('')
     try {
-      const payload = { name, description, active, schema, handler_ids: handlerIds }
+      const payload = { name, description, active, schema, handler_ids: handlerIds, title_template: titleTemplate.trim() || null }
       if (initial?.id) await ticketing.updateType(initial.id, payload)
       else await ticketing.createType(payload)
       onSaved()
@@ -188,6 +226,8 @@ function TypeEditor({ initial, onClose, onSaved }) {
             )}
           </div>
 
+          <TitleFormat schema={schema} value={titleTemplate} onChange={setTitleTemplate} />
+
           {error && <p className="text-sm text-wcs-red">{error}</p>}
         </div>
 
@@ -234,7 +274,7 @@ export default function TicketTypeBuilder() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 bg-surface border border-border rounded-xl px-4 py-3">
         <p className="text-sm text-text-muted">Build the ticket types people can submit. Inactive types are hidden from submitters but keep their history.</p>
         <button onClick={() => setEditing({})} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 shrink-0">
           + New Type

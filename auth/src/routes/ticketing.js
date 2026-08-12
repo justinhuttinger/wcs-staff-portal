@@ -6,7 +6,8 @@ const { requireRole } = require('../middleware/role')
 const {
   validateSchema,
   validateSubmission,
-  deriveTitle,
+  renderTitle,
+  titleTemplateTokens,
   makeSlug,
 } = require('../services/ticketingSchema')
 
@@ -87,6 +88,21 @@ function normHandlerIds(v) {
   return [...new Set(v.filter(x => typeof x === 'string' && x))]
 }
 
+// A title template is literal text plus {{field_id}} tokens. Every token must
+// name a field in this type's own schema, otherwise it would silently render
+// blank for every ticket.
+function checkTitleTemplate(template, schema) {
+  const tpl = template == null ? '' : String(template).trim()
+  if (!tpl) return { ok: true, value: null }
+  if (tpl.length > 200) return { ok: false, error: 'Title format is too long (200 characters max)' }
+  const known = new Set((Array.isArray(schema) ? schema : []).map(f => f.id))
+  const unknown = titleTemplateTokens(tpl).filter(id => !known.has(id))
+  if (unknown.length > 0) {
+    return { ok: false, error: `Title format references unknown field(s): ${unknown.join(', ')}` }
+  }
+  return { ok: true, value: tpl }
+}
+
 // GET /ticketing/types — list types. Any staff (needed to submit); ?active=1
 // restricts to active. Non-admins still see the list (names only matter).
 router.get('/types', async (req, res) => {
@@ -124,10 +140,12 @@ router.get('/assignable-staff', requireRole('admin'), async (req, res) => {
 
 router.post('/types', requireRole('admin'), async (req, res) => {
   try {
-    const { name, description, icon, schema = [], active = true, sort_order = 0, handler_ids } = req.body || {}
+    const { name, description, icon, schema = [], active = true, sort_order = 0, handler_ids, title_template } = req.body || {}
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required' })
     const check = validateSchema(schema)
     if (!check.ok) return res.status(400).json({ error: check.error })
+    const title = checkTitleTemplate(title_template, schema)
+    if (!title.ok) return res.status(400).json({ error: title.error })
 
     let slug = makeSlug(name)
     const { data: existing } = await supabaseAdmin.from('ticket_types').select('slug').like('slug', `${slug}%`)
@@ -142,6 +160,7 @@ router.post('/types', requireRole('admin'), async (req, res) => {
       schema,
       active: !!active,
       sort_order: Number(sort_order) || 0,
+      title_template: title.value,
       created_by: req.staff.id,
     }
     const h = normHandlerIds(handler_ids)
@@ -173,6 +192,13 @@ router.patch('/types/:id', requireRole('admin'), async (req, res) => {
     if (b.active !== undefined) patch.active = !!b.active
     if (b.sort_order !== undefined) patch.sort_order = Number(b.sort_order) || 0
     if (b.handler_ids !== undefined) { const h = normHandlerIds(b.handler_ids); if (h) patch.handler_ids = h }
+    if (b.title_template !== undefined) {
+      // Validate tokens against the schema this update leaves in place.
+      const effectiveSchema = b.schema !== undefined ? b.schema : (await getType(req.params.id))?.schema || []
+      const title = checkTitleTemplate(b.title_template, effectiveSchema)
+      if (!title.ok) return res.status(400).json({ error: title.error })
+      patch.title_template = title.value
+    }
     if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'Nothing to update' })
 
     const { data, error } = await supabaseAdmin.from('ticket_types').update(patch).eq('id', req.params.id).select().single()
@@ -323,7 +349,7 @@ router.post('/', async (req, res) => {
 
     const insert = {
       type_id,
-      title: deriveTitle(type.schema || [], v.cleaned, type.name),
+      title: renderTitle(type.title_template, type.schema || [], v.cleaned, type.name),
       data: v.cleaned,
       submitter_id: req.staff.id,
       location_id: location_id || null,

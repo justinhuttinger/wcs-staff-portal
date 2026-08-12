@@ -1,4 +1,4 @@
-import { OPTION_TYPES, DISPLAY_TYPES } from './shared'
+import { OPTION_TYPES, DISPLAY_TYPES, asFileList, fmtBytes } from './shared'
 
 // Only allow http(s) links so a schema can't smuggle a javascript: URL.
 function safeHref(url) {
@@ -87,12 +87,7 @@ export default function DynamicFields({ schema = [], values = {}, onChange, erro
                 })}
               </div>
             ) : field.type === 'file' ? (
-              <div>
-                <input type="file"
-                  onChange={e => setVal(e.target.files?.[0] || null)}
-                  className="block w-full text-xs text-text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-wcs-red/10 file:text-wcs-red hover:file:bg-wcs-red/20" />
-                {val instanceof File && <p className="text-[11px] text-text-muted mt-1">Selected: {val.name}</p>}
-              </div>
+              <FileField files={asFileList(val)} onChange={setVal} />
             ) : (
               <input
                 type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'email' ? 'email' : 'text'}
@@ -105,6 +100,36 @@ export default function DynamicFields({ schema = [], values = {}, onChange, erro
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// Multi-file picker. Each pick appends to the list (rather than replacing it),
+// so several documents can be added in separate trips through the file dialog.
+function FileField({ files, onChange }) {
+  function add(picked) {
+    const next = [...files]
+    for (const f of picked) {
+      if (!next.some(x => x.name === f.name && x.size === f.size)) next.push(f)
+    }
+    onChange(next)
+  }
+  return (
+    <div>
+      <input type="file" multiple
+        onChange={e => { add(Array.from(e.target.files || [])); e.target.value = '' }}
+        className="block w-full text-xs text-text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-wcs-red/10 file:text-wcs-red hover:file:bg-wcs-red/20" />
+      {files.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {files.map((f, i) => (
+            <li key={`${f.name}-${f.size}-${i}`} className="flex items-center justify-between gap-2 text-xs bg-bg border border-border rounded-lg px-2.5 py-1.5">
+              <span className="truncate text-text-primary">{f.name} <span className="text-text-muted">({fmtBytes(f.size)})</span></span>
+              <button type="button" onClick={() => onChange(files.filter((_, idx) => idx !== i))}
+                className="text-red-500 shrink-0" aria-label={`Remove ${f.name}`}>✕</button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

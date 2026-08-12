@@ -172,7 +172,7 @@ export default function TicketsStatusView({ onBack }) {
           <div className="space-y-4">
             {data.lists.map(list => <ListCard key={list.name} list={list} />)}
           </div>
-          <p className="text-center text-xs text-text-muted mt-6">Auto-refreshes every hour</p>
+          <p className="mx-auto mt-6 w-fit bg-surface border border-border rounded-lg px-3 py-1 text-center text-xs text-text-muted">Auto-refreshes every hour</p>
         </>
       )}
     </div>

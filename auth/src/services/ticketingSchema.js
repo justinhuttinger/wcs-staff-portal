@@ -123,6 +123,51 @@ function deriveTitle(schema, data, fallback) {
   return (fallback || 'Ticket').slice(0, 140)
 }
 
+// A type can define its own title as literal words plus {{field_id}} tokens,
+// e.g. "Ticket for {{f_a1b2c3}}". Tokens pull from the submitted answers;
+// anything unfilled renders empty and the leftover whitespace is collapsed.
+// A template that renders to nothing falls back to the derived title, so a
+// half-filled form still lands with a usable title.
+const TITLE_TOKEN_RE = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g
+
+function renderTitle(template, schema, data, fallback) {
+  const tpl = typeof template === 'string' ? template.trim() : ''
+  if (!tpl) return deriveTitle(schema, data, fallback)
+
+  let tokens = 0
+  let filled = 0
+  const rendered = tpl.replace(TITLE_TOKEN_RE, (_, id) => {
+    tokens++
+    const v = data?.[id]
+    if (v === undefined || v === null) return ''
+    const text = Array.isArray(v) ? v.join(', ') : String(v)
+    if (text.trim()) filled++
+    return text
+  })
+
+  // A template whose fields are all blank would leave only its scaffolding
+  // ("Ticket for"), so fall back to the derived title instead.
+  if (tokens > 0 && filled === 0) return deriveTitle(schema, data, fallback)
+
+  // Collapse the gaps left by empty tokens, and trim stray separators.
+  const cleaned = rendered
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,;:.])/g, '$1')
+    .replace(/[\s\-—–,;:]+$/, '')
+    .trim()
+  if (!cleaned) return deriveTitle(schema, data, fallback)
+  return cleaned.slice(0, 140)
+}
+
+// Field ids referenced by a title template, so the builder can be told when a
+// template points at a field that no longer exists.
+function titleTemplateTokens(template) {
+  const out = []
+  const tpl = typeof template === 'string' ? template : ''
+  for (const m of tpl.matchAll(TITLE_TOKEN_RE)) out.push(m[1])
+  return [...new Set(out)]
+}
+
 function makeSlug(name) {
   const base = String(name || 'ticket').toLowerCase()
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'ticket'
@@ -137,5 +182,7 @@ module.exports = {
   validateSchema,
   validateSubmission,
   deriveTitle,
+  renderTitle,
+  titleTemplateTokens,
   makeSlug,
 }

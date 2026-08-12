@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ticketing } from '../../../lib/api'
 import { DynamicAnswers } from './DynamicFields'
-import { STATUSES, STATUS_BY_KEY, PRIORITIES, PRIORITY_BY_KEY, fmtDate, fmtBytes } from './shared'
+import { STATUSES, STATUS_BY_KEY, fmtDate, fmtBytes } from './shared'
 
 function StatusBadge({ status }) {
   const s = STATUS_BY_KEY[status] || STATUS_BY_KEY.open
@@ -32,11 +32,6 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
     try { await ticketing.update(ticketId, { status }); await load(); onChanged?.() }
     catch (err) { setError(err.message) } finally { setBusy(false) }
   }
-  async function setPriority(priority) {
-    setBusy(true)
-    try { await ticketing.update(ticketId, { priority }); await load(); onChanged?.() }
-    catch (err) { setError(err.message) } finally { setBusy(false) }
-  }
 
   async function postComment() {
     if (!comment.trim() && commentFiles.length === 0) return
@@ -54,7 +49,12 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
   }
 
   if (loading) return <p className="loading-card mx-auto block my-6">Loading…</p>
-  if (error && !detail) return <div className="space-y-3"><button onClick={onBack} className="text-sm text-text-muted hover:text-text-primary">← Back</button><p className="text-sm text-wcs-red">{error}</p></div>
+  if (error && !detail) return (
+    <div className="bg-surface border border-border rounded-xl p-5 space-y-2">
+      <button onClick={onBack} className="text-sm text-text-muted hover:text-text-primary">← Back</button>
+      <p className="text-sm text-wcs-red">{error}</p>
+    </div>
+  )
   if (!detail) return null
 
   const { ticket, type, comments = [], attachments = [], can_handle = false, is_submitter = false } = detail
@@ -63,7 +63,7 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
 
   return (
     <div className="max-w-3xl space-y-4">
-      <button onClick={onBack} className="text-sm text-text-muted hover:text-text-primary">← All tickets</button>
+      <button onClick={onBack} className="inline-flex bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-text-muted hover:text-text-primary">← All tickets</button>
 
       {/* Header */}
       <div className="bg-surface border border-border rounded-xl p-5">
@@ -80,32 +80,21 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
 
         {/* Status controls — handlers only. Makers see the badge above, read-only. */}
         {can_handle ? (
-          <>
-            <div className="mt-4 pt-4 border-t border-border flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold text-text-muted mr-1">Set status:</span>
-              {STATUSES.map(s => (
-                <button key={s.key} disabled={busy || ticket.status === s.key} onClick={() => setStatus(s.key)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-lg border transition-colors ${ticket.status === s.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary disabled:opacity-40'}`}>
-                  {s.label}
-                </button>
-              ))}
-              {ticket.status !== 'complete' && (
-                <button disabled={busy} onClick={() => setStatus('complete')}
-                  className="ml-auto px-3 py-1 text-xs font-bold rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-40">
-                  ✓ Mark Complete
-                </button>
-              )}
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold text-text-muted mr-1">Priority:</span>
-              {PRIORITIES.map(p => (
-                <button key={p.key} disabled={busy || ticket.priority === p.key} onClick={() => setPriority(p.key)}
-                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors ${ticket.priority === p.key ? `${p.chip}` : 'bg-bg text-text-muted border-border hover:text-text-primary disabled:opacity-40'}`}>
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </>
+          <div className="mt-4 pt-4 border-t border-border flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-text-muted mr-1">Set status:</span>
+            {STATUSES.map(s => (
+              <button key={s.key} disabled={busy || ticket.status === s.key} onClick={() => setStatus(s.key)}
+                className={`px-3 py-1 text-xs font-semibold rounded-lg border transition-colors ${ticket.status === s.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary disabled:opacity-40'}`}>
+                {s.label}
+              </button>
+            ))}
+            {ticket.status !== 'complete' && (
+              <button disabled={busy} onClick={() => setStatus('complete')}
+                className="ml-auto px-3 py-1 text-xs font-bold rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-40">
+                ✓ Mark Complete
+              </button>
+            )}
+          </div>
         ) : (
           <p className="mt-4 pt-4 border-t border-border text-xs text-text-muted">
             You can view this ticket's progress. Only its handlers can change the status.
