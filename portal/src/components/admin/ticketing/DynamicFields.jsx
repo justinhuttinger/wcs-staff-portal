@@ -1,4 +1,5 @@
 import { OPTION_TYPES, DISPLAY_TYPES, asFileList, fmtBytes } from './shared'
+import { isDownscalable } from '../../../lib/downscaleImage'
 
 // Only allow http(s) links so a schema can't smuggle a javascript: URL.
 function safeHref(url) {
@@ -123,7 +124,10 @@ function FileField({ files, onChange }) {
         <ul className="mt-2 space-y-1">
           {files.map((f, i) => (
             <li key={`${f.name}-${f.size}-${i}`} className="flex items-center justify-between gap-2 text-xs bg-bg border border-border rounded-lg px-2.5 py-1.5">
-              <span className="truncate text-text-primary">{f.name} <span className="text-text-muted">({fmtBytes(f.size)})</span></span>
+              <span className="truncate text-text-primary">
+                {f.name} <span className="text-text-muted">({fmtBytes(f.size)})</span>
+                {isDownscalable(f) && <span className="text-text-muted"> · will be resized</span>}
+              </span>
               <button type="button" onClick={() => onChange(files.filter((_, idx) => idx !== i))}
                 className="text-red-500 shrink-0" aria-label={`Remove ${f.name}`}>✕</button>
             </li>
