@@ -10,6 +10,8 @@ const {
   titleTemplateTokens,
   makeSlug,
 } = require('../services/ticketingSchema')
+const { notifiableMentionIds } = require('../services/ticketMentions')
+const ticketNotify = require('../services/ticketNotify')
 
 const router = Router()
 router.use(authenticate)
@@ -62,6 +64,23 @@ async function nameMap(ids) {
 async function signAttachment(path) {
   const { data } = await supabaseAdmin.storage.from(BUCKET).createSignedUrl(path, 60 * 60)
   return data?.signedUrl || null
+}
+
+// Add someone to a ticket's watcher list (idempotent via the unique index).
+// `reason` is kept only for the first insert.
+async function addWatcher(ticketId, staffUserId, reason) {
+  if (!ticketId || !staffUserId) return
+  await supabaseAdmin.from('ticket_watchers')
+    .upsert({ ticket_id: ticketId, staff_user_id: staffUserId, reason }, { onConflict: 'ticket_id,staff_user_id', ignoreDuplicates: true })
+}
+
+// Which of these staff ids are real, active staff? Guards against a mention
+// token carrying a stale/foreign uuid before we notify or watch them.
+async function activeStaffIds(ids) {
+  const uniq = [...new Set((ids || []).filter(Boolean))]
+  if (!uniq.length) return new Set()
+  const { data } = await supabaseAdmin.from('staff').select('id').eq('is_active', true).in('id', uniq)
+  return new Set((data || []).map(r => r.id))
 }
 
 // Load a type by id (cached-per-request would be nice; kept simple).
@@ -134,6 +153,32 @@ router.get('/assignable-staff', requireRole('admin'), async (req, res) => {
     })
   } catch (err) {
     console.error('[Ticketing] assignable-staff failed:', err.message)
+    res.status(500).json({ error: 'Failed to load staff' })
+  }
+})
+
+// GET /ticketing/staff-directory — active staff for the assignee + @mention
+// pickers. Unlike /assignable-staff (admin-only, for the type builder) this is
+// open to any authenticated staff, because a handler needs to assign and a
+// commenter needs to @mention. Returns name + email + role; email drives the
+// Chat DM but is otherwise low-sensitivity within the org.
+router.get('/staff-directory', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('staff')
+      .select('id, display_name, first_name, last_name, email, role, is_active')
+      .eq('is_active', true).order('display_name')
+    if (error) throw error
+    const term = String(req.query.q || '').trim().toLowerCase()
+    let rows = (data || []).map(s => ({
+      id: s.id,
+      name: s.display_name || [s.first_name, s.last_name].filter(Boolean).join(' ') || 'Unknown',
+      email: s.email || null,
+      role: s.role,
+    }))
+    if (term) rows = rows.filter(s => s.name.toLowerCase().includes(term) || (s.email || '').toLowerCase().includes(term))
+    res.json({ staff: rows.slice(0, 200) })
+  } catch (err) {
+    console.error('[Ticketing] staff-directory failed:', err.message)
     res.status(500).json({ error: 'Failed to load staff' })
   }
 })
@@ -293,7 +338,11 @@ router.get('/', async (req, res) => {
     let q = supabaseAdmin.from('tickets').select('*').order('created_at', { ascending: false }).limit(500)
     if (req.query.status) q = q.eq('status', req.query.status)
     if (req.query.type_id) q = q.eq('type_id', req.query.type_id)
-    if (req.query.handling === '1') {
+    if (req.query.assigned === 'me') {
+      // "Assigned to me": tickets handed to the caller, regardless of who
+      // submitted them. Anyone can view their own assignments.
+      q = q.eq('assigned_to', req.staff.id)
+    } else if (req.query.handling === '1') {
       // Handler queue: tickets of the types the caller handles.
       const ids = await handledTypeIds(req.staff)
       if (ids.length === 0) return res.json({ tickets: [] })
@@ -372,15 +421,17 @@ router.get('/:id', async (req, res) => {
     if (error) throw error
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' })
 
-    const [type, { data: comments }, { data: attachments }] = await Promise.all([
+    const [type, { data: comments }, { data: attachments }, { data: watchers }] = await Promise.all([
       getType(ticket.type_id),
       supabaseAdmin.from('ticket_comments').select('*').eq('ticket_id', ticket.id).order('created_at'),
       supabaseAdmin.from('ticket_attachments').select('*').eq('ticket_id', ticket.id).order('created_at'),
+      supabaseAdmin.from('ticket_watchers').select('staff_user_id, reason').eq('ticket_id', ticket.id),
     ])
     const names = await nameMap(
       [ticket.submitter_id, ticket.assigned_to]
         .concat((comments || []).map(c => c.author_id))
         .concat((attachments || []).map(a => a.uploaded_by))
+        .concat((watchers || []).map(w => w.staff_user_id))
     )
     const canHandle = canHandleType(req.staff, type)
     // A regular person can only view tickets they submitted; handlers/admins can
@@ -400,8 +451,10 @@ router.get('/:id', async (req, res) => {
       type: type || null,
       can_handle: canHandle,
       is_submitter: ticket.submitter_id === req.staff.id,
+      current_user_id: req.staff.id,
       comments: (comments || []).map(c => ({ ...c, author_name: c.author_id ? (names[c.author_id] || 'Unknown') : 'System' })),
       attachments: (attachments || []).map((a, i) => ({ ...a, uploader_name: names[a.uploaded_by] || 'Unknown', url: signed[i] })),
+      watchers: (watchers || []).map(w => ({ staff_user_id: w.staff_user_id, reason: w.reason, name: names[w.staff_user_id] || 'Unknown' })),
     })
   } catch (err) {
     console.error('[Ticketing] get ticket failed:', err.message)
@@ -445,15 +498,38 @@ router.patch('/:id', requireHandler, async (req, res) => {
       patch.priority = b.priority
       logs.push(`Priority set to ${b.priority}`)
     }
+    // Track a *new* assignee so we can watch + DM them after the write.
+    let newAssignee = null
     if (b.assigned_to !== undefined && b.assigned_to !== ticket.assigned_to) {
       patch.assigned_to = b.assigned_to || null
       logs.push(b.assigned_to ? 'Ticket assigned' : 'Ticket unassigned')
+      if (b.assigned_to) newAssignee = b.assigned_to
     }
     if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'Nothing to update' })
     const { data: updated, error } = await supabaseAdmin.from('tickets').update(patch).eq('id', ticket.id).select().single()
     if (error) throw error
     for (const body of logs) {
       await supabaseAdmin.from('ticket_comments').insert({ ticket_id: ticket.id, author_id: req.staff.id, body, system: true })
+    }
+
+    // Assignment bridge: the new assignee starts watching, and — unless they
+    // assigned it to themselves — gets a Chat DM from the assigner. Fire-and-
+    // forget so a Chat hiccup never fails the assignment.
+    if (newAssignee) {
+      const valid = await activeStaffIds([newAssignee])
+      if (valid.has(newAssignee)) {
+        await addWatcher(ticket.id, newAssignee, 'assignee')
+        if (newAssignee !== req.staff.id) {
+          const { data: mention } = await supabaseAdmin.from('ticket_mentions').insert({
+            ticket_id: ticket.id, comment_id: null, mentioned_user_id: newAssignee,
+            actor_id: req.staff.id, source: 'assignment',
+          }).select('id').single()
+          ticketNotify.notify({
+            ticket: updated, actorId: req.staff.id,
+            targets: [{ mentionId: mention?.id || null, targetUserId: newAssignee, kind: 'assigned' }],
+          }).catch(() => {})
+        }
+      }
     }
     res.json({ ticket: updated })
   } catch (err) {
@@ -478,6 +554,29 @@ router.post('/:id/comments', async (req, res) => {
       .insert({ ticket_id: ticket.id, author_id: req.staff.id, body, system: false }).select().single()
     if (error) throw error
     await supabaseAdmin.from('tickets').update({ updated_at: new Date().toISOString() }).eq('id', ticket.id)
+
+    // The commenter starts watching this ticket, and everyone they @mentioned
+    // (except themselves) is recorded, added as a watcher, and DM'd from the
+    // commenter's own Google account. Fire-and-forget: a Chat failure never
+    // fails the comment.
+    await addWatcher(ticket.id, req.staff.id, 'manual')
+    const mentionedIds = notifiableMentionIds(body, req.staff.id)
+    if (mentionedIds.length) {
+      const valid = await activeStaffIds(mentionedIds)
+      const targets = []
+      for (const uid of mentionedIds) {
+        if (!valid.has(uid)) continue
+        await addWatcher(ticket.id, uid, 'mentioned')
+        const { data: mention } = await supabaseAdmin.from('ticket_mentions').insert({
+          ticket_id: ticket.id, comment_id: data.id, mentioned_user_id: uid,
+          actor_id: req.staff.id, source: 'comment',
+        }).select('id').single()
+        targets.push({ mentionId: mention?.id || null, targetUserId: uid, kind: 'mentioned_comment', commentExcerpt: body })
+      }
+      if (targets.length) {
+        ticketNotify.notify({ ticket, actorId: req.staff.id, targets }).catch(() => {})
+      }
+    }
     res.status(201).json({ comment: { ...data, author_name: req.staff.display_name || 'You' } })
   } catch (err) {
     console.error('[Ticketing] add comment failed:', err.message)
