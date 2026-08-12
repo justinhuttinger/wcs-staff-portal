@@ -23,11 +23,13 @@ select 'ticketing', 'Ticketing', 'Tools', 'team_member'
 delete from permission_catalog        where perm_key = 'tickets';
 delete from role_tool_visibility      where tool_key = 'tickets';
 delete from staff_permission_overrides where perm_key = 'tickets';
+-- staff.custom_tiles is a text[] (NOT jsonb), so strip the retired key with
+-- array_remove. The jsonb form this originally shipped with would have thrown
+-- on any matching row; it only escaped notice because no staff member had the
+-- old 'tickets' tile when it ran.
 update staff
-   set custom_tiles = (select coalesce(jsonb_agg(t), '[]'::jsonb)
-                         from jsonb_array_elements(custom_tiles::jsonb) t
-                        where t::text <> '"tickets"')::jsonb
- where custom_tiles::text like '%tickets%';
+   set custom_tiles = array_remove(custom_tiles, 'tickets')
+ where custom_tiles is not null and 'tickets' = any(custom_tiles);
 
 -- 3. Turn the tile on for every role that exists today, so the replacement is
 --    visible immediately rather than requiring a pass through the grid. Admins
