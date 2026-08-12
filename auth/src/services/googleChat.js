@@ -20,6 +20,7 @@
 // project, and add the chat scopes below to the OAuth consent screen.
 
 const { getStaffGoogleAccessToken } = require('./googleUserToken')
+const { getSystemToken } = require('./systemGoogleToken')
 
 const CHAT_BASE = 'https://chat.googleapis.com/v1'
 
@@ -115,7 +116,6 @@ async function createMessage(accessToken, spaceName, text) {
 // ( .notConnected | .insufficientScope | .targetUnreachable | generic ).
 async function sendTicketDm({ actorStaffId, targetEmail, text }) {
   if (!actorStaffId) throw chatError('actorStaffId required')
-  if (!targetEmail) throw chatError('No Google email for the recipient.', 'targetUnreachable')
 
   let accessToken
   try {
@@ -127,6 +127,29 @@ async function sendTicketDm({ actorStaffId, targetEmail, text }) {
     throw err
   }
 
+  return sendWithToken(accessToken, targetEmail, text)
+}
+
+// Same send, but from the portal's own account (noreply@) rather than a person.
+// Used for ticket-creation notices, which have no human sender.
+async function sendTicketDmAsSystem({ targetEmail, text }) {
+  let accessToken
+  try {
+    const tok = await getSystemToken()
+    accessToken = tok.accessToken
+  } catch (err) {
+    if (err.notConnected) {
+      throw chatError('The portal notification account has not been connected to Google Chat.', 'notConnected')
+    }
+    throw err
+  }
+
+  return sendWithToken(accessToken, targetEmail, text)
+}
+
+// Shared tail of both send paths: find or open the DM, post the text.
+async function sendWithToken(accessToken, targetEmail, text) {
+  if (!targetEmail) throw chatError('No Google email for the recipient.', 'targetUnreachable')
   const spaceName = await resolveDmSpace(accessToken, targetEmail)
   if (!spaceName) throw chatError('Could not open a Chat with this person.', 'targetUnreachable')
   const messageName = await createMessage(accessToken, spaceName, text)
@@ -136,6 +159,7 @@ async function sendTicketDm({ actorStaffId, targetEmail, text }) {
 module.exports = {
   CHAT_SCOPES,
   sendTicketDm,
+  sendTicketDmAsSystem,
   // exported for tests / reuse
   userResource,
   resolveDmSpace,

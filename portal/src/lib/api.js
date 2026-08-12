@@ -1731,6 +1731,9 @@ export const googleChat = {
   status: () => api('/google-chat/status'),
   authorizeUrl: () => api('/google-chat/authorize-url', { method: 'POST' }),
   disconnect: () => api('/google-chat/disconnect', { method: 'POST' }),
+  // The shared sender used for ticket-creation notices (noreply@), admin only.
+  systemStatus: () => api('/google-chat/system/status'),
+  systemAuthorizeUrl: () => api('/google-chat/system/authorize-url', { method: 'POST' }),
 }
 
 // App Settings

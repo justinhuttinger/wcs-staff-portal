@@ -13,7 +13,7 @@
 // chat_ticket_notifications; callers fire-and-forget.
 
 const { supabaseAdmin } = require('./supabase')
-const { sendTicketDm } = require('./googleChat')
+const { sendTicketDm, sendTicketDmAsSystem } = require('./googleChat')
 const { toPlainText } = require('./ticketMentions')
 
 const PORTAL_BASE_URL = process.env.PORTAL_BASE_URL || process.env.PORTAL_URL || 'https://app.westcoaststrength.com'
@@ -33,7 +33,7 @@ function ticketLink(ticket) {
 // /tickets/<uuid> URL just opened the home screen. The ticket NAME is what
 // makes the DM actionable, so every kind leads with it, quoted so a title with
 // spaces reads as one thing.
-function composeMessage({ kind, ticket, commentExcerpt }) {
+function composeMessage({ kind, ticket, commentExcerpt, submitterName }) {
   const urgent = ticket.priority === 'urgent' ? '⚠️ ' : ''
   const title = `"${ticket.title || 'a ticket'}"`
   if (kind === 'assigned') return `${urgent}Assigned you ${title}.`
@@ -43,6 +43,12 @@ function composeMessage({ kind, ticket, commentExcerpt }) {
     return excerpt
       ? `${urgent}Mentioned you on ${title}: ${excerpt}`
       : `${urgent}Mentioned you on ${title}.`
+  }
+  if (kind === 'created') {
+    // Sent by the portal account, so it names the submitter rather than relying
+    // on who the DM appears to come from.
+    const who = submitterName ? ` from ${submitterName}` : ''
+    return `${urgent}New ticket${who}: ${title}.`
   }
   if (kind === 'mentioned_body') return `${urgent}Tagged you on ${title}.`
   return `${urgent}Update on ${title}.`
@@ -74,19 +80,22 @@ async function targetProfile(staffId) {
 // targets: [{ mentionId, targetUserId, kind, commentExcerpt }]
 // Skips the actor themselves (no self-notify) and opted-out users. Returns
 // nothing — this is a side effect and must never throw into the request path.
-async function notify({ ticket, actorId, targets }) {
+async function notify({ ticket, actorId, targets, fromSystem = false, submitterName = null }) {
   if (!ticket || !Array.isArray(targets) || targets.length === 0) return
   for (const t of targets) {
     if (!t || !t.targetUserId) continue
-    if (actorId && String(t.targetUserId) === String(actorId)) continue // no self-notify
-    await deliverOne({ ticket, actorId, target: t }).catch(err => {
+    // Person-to-person DMs never ping the actor. A creation notice comes from
+    // the portal account, so someone who put themselves on a type's notify
+    // list still hears about their own ticket.
+    if (!fromSystem && actorId && String(t.targetUserId) === String(actorId)) continue
+    await deliverOne({ ticket, actorId, target: t, fromSystem, submitterName }).catch(err => {
       console.error('[TicketNotify] deliver failed:', err.message)
     })
   }
 }
 
-async function deliverOne({ ticket, actorId, target }) {
-  const message = composeMessage({ kind: target.kind, ticket, commentExcerpt: target.commentExcerpt })
+async function deliverOne({ ticket, actorId, target, fromSystem = false, submitterName = null }) {
+  const message = composeMessage({ kind: target.kind, ticket, commentExcerpt: target.commentExcerpt, submitterName })
 
   // Each miss gets its own wording — a lookup that blew up must never be
   // reported as "no email on file", which is what sent us chasing the wrong
@@ -109,14 +118,18 @@ async function deliverOne({ ticket, actorId, target }) {
   }
 
   try {
-    const sent = await sendTicketDm({ actorStaffId: actorId, targetEmail: profile.email, text: message })
+    const sent = fromSystem
+      ? await sendTicketDmAsSystem({ targetEmail: profile.email, text: message })
+      : await sendTicketDm({ actorStaffId: actorId, targetEmail: profile.email, text: message })
     return finish({
       ticket, actorId, target, status: 'sent', channel: 'chat', message,
       messageName: sent.messageName,
     })
   } catch (err) {
     // Typed reasons from googleChat: notConnected | insufficientScope | targetUnreachable.
-    const reason = err.notConnected ? 'actor has not connected Google Chat'
+    const reason = err.notConnected ? (fromSystem
+        ? 'the portal notification account is not connected to Google Chat'
+        : 'actor has not connected Google Chat')
       : err.insufficientScope ? 'actor is missing Google Chat permission'
       : err.targetUnreachable ? 'recipient is not reachable on Google Chat'
       : err.message
