@@ -18,26 +18,34 @@ const { toPlainText } = require('./ticketMentions')
 
 const PORTAL_BASE_URL = process.env.PORTAL_BASE_URL || process.env.PORTAL_URL || 'https://app.westcoaststrength.com'
 
-// Deep link into the ticket. Ships with the uuid until a public ticket_number
-// route exists; stable either way.
+// Ticket URL recorded on the audit row only — it is deliberately NOT in the DM
+// copy, because nothing serves this path yet (see composeMessage). Becomes a
+// real deep link the day the portal routes /tickets/<id>.
 function ticketLink(ticket) {
   return `${PORTAL_BASE_URL}/tickets/${ticket.id}`
 }
 
-// One-line DM copy per kind (spec §8.2). Kept here so every path uses identical
-// wording. Urgent tickets get a warning glyph.
+// One-line DM copy per kind. Kept here so every path uses identical wording.
+// Urgent tickets get a warning glyph.
+//
+// No link: the portal has no path-based routing (public/_redirects rewrites
+// every path to index.html and the app reads only query params), so a
+// /tickets/<uuid> URL just opened the home screen. The ticket NAME is what
+// makes the DM actionable, so every kind leads with it, quoted so a title with
+// spaces reads as one thing.
 function composeMessage({ kind, ticket, commentExcerpt }) {
   const urgent = ticket.priority === 'urgent' ? '⚠️ ' : ''
-  const link = ticketLink(ticket)
-  const title = ticket.title || 'a ticket'
-  if (kind === 'assigned') return `${urgent}Assigned you ${title}. ${link}`
+  const title = `"${ticket.title || 'a ticket'}"`
+  if (kind === 'assigned') return `${urgent}Assigned you ${title}.`
   if (kind === 'mentioned_comment') {
     // Render mention tokens as "@Name" so the DM excerpt reads cleanly.
     const excerpt = toPlainText(commentExcerpt || '').replace(/\s+/g, ' ').trim().slice(0, 120)
-    return `${urgent}Mentioned you on ${title}: "${excerpt}" ${link}`
+    return excerpt
+      ? `${urgent}Mentioned you on ${title}: ${excerpt}`
+      : `${urgent}Mentioned you on ${title}.`
   }
-  if (kind === 'mentioned_body') return `${urgent}Tagged you on ${title}. ${link}`
-  return `${urgent}Update on ${title}. ${link}`
+  if (kind === 'mentioned_body') return `${urgent}Tagged you on ${title}.`
+  return `${urgent}Update on ${title}.`
 }
 
 // Per-user opt-out. Returns email + enabled flag; defaults to enabled if the
