@@ -22,7 +22,7 @@ export const PORTAL_TILE_CATALOG = [
   // custom role's tier, so it can't be granted to a custom member.
   { key: 'helpCenter',      label: 'Help Center',      desc: 'Guides',        group: 'tools' },
   { key: 'ordering',        label: 'Ordering',         desc: 'Vendors',       group: 'tools' },
-  { key: 'tickets',         label: 'Tickets/Support',  desc: 'Help Desk',     group: 'tools' },
+  { key: 'ticketing',       label: 'Tickets',          desc: 'Submit & Track', group: 'tools' },
   { key: 'trainerAvail',    label: 'D1 Availability',  desc: 'Trainers',      group: 'tools' },
   { key: 'reporting',       label: 'Reporting',        desc: 'Reports',       group: 'tools' },
   { key: 'forms',           label: 'Forms',            desc: 'Signups',       group: 'tools' },

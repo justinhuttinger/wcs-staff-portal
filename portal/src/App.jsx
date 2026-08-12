@@ -14,7 +14,6 @@ import LeaderboardView from './components/LeaderboardView'
 import CommunicationNotesView from './components/CommunicationNotesView'
 import HRView from './components/HRView'
 import HelpCenterView from './components/HelpCenterView'
-import TicketsView from './components/TicketsView'
 import TicketsBoardView from './components/TicketsBoardView'
 import DriveView from './components/DriveView'
 import DriveHub from './components/DriveHub'
@@ -60,7 +59,6 @@ export default function App() {
   const [showCommunicationNotes, setShowCommunicationNotes] = useState(false)
   const [showHR, setShowHR] = useState(false)
   const [showHelpCenter, setShowHelpCenter] = useState(false)
-  const [showTickets, setShowTickets] = useState(false)
   const [showTicketsBoard, setShowTicketsBoard] = useState(false)
   const [showDrive, setShowDrive] = useState(false)
   const [showDriveHub, setShowDriveHub] = useState(false)
@@ -96,7 +94,7 @@ export default function App() {
   useEffect(() => { if (showCommunicationNotes) logEvent('view.communication_notes') }, [showCommunicationNotes])
   useEffect(() => { if (showHR) logEvent('view.hr') }, [showHR])
   useEffect(() => { if (showHelpCenter) logEvent('view.help_center') }, [showHelpCenter])
-  useEffect(() => { if (showTickets) logEvent('view.tickets') }, [showTickets])
+  useEffect(() => { if (showTicketsBoard) logEvent('view.tickets') }, [showTicketsBoard])
   useEffect(() => { if (showDrive) logEvent('view.drive') }, [showDrive])
   useEffect(() => { if (showForms) logEvent('view.forms') }, [showForms])
 
@@ -301,7 +299,7 @@ export default function App() {
     )
   }
 
-  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTickets && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms && !showTourCheckin
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms && !showTourCheckin
 
   function exitImpersonation() {
     setImpersonateId(null)
@@ -394,8 +392,6 @@ export default function App() {
         <CalendarView user={user} onBack={() => setShowCalendar(false)} location={location} isAdmin={isAdmin} />
       ) : showTrainerAvail ? (
         <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={seesAllClubs} />
-      ) : showTickets ? (
-        <TicketsView onBack={() => setShowTickets(false)} user={user} />
       ) : showTicketsBoard ? (
         <TicketsBoardView onBack={() => setShowTicketsBoard(false)} user={user} />
       ) : showDriveHub ? (
@@ -429,7 +425,7 @@ export default function App() {
         <TourCheckinQueueView location={location} />
       ) : (
         <main className="flex-1 flex items-start pt-1 pb-12">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTickets={() => setShowTickets(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onTourCheckin={() => setShowTourCheckin(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
+          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onTourCheckin={() => setShowTourCheckin(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>

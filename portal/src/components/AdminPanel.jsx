@@ -10,7 +10,6 @@ import BulkImportTab from './admin/BulkImportTab'
 import EmployeeRosterTab from './admin/EmployeeRosterTab'
 import SMSHistoryTab from './admin/SMSHistoryTab'
 import PaychexAdmin from './admin/PaychexAdmin'
-import TicketEmbedsAdmin from './admin/TicketEmbedsAdmin'
 import TicketingAdmin from './admin/TicketingAdmin'
 import DriveFoldersAdmin from './admin/DriveFoldersAdmin'
 import GoogleConnections from './admin/GoogleConnections'
@@ -64,7 +63,6 @@ const SETUP_TILES = [
   { key: 'roles-v2', label: 'Roles', desc: 'Roles & Permissions', icon: 'M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z' },
   { key: 'config', label: 'App Config', desc: 'Kiosk Settings', icon: 'M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.431.992a7.723 7.723 0 0 1 0 .255c-.007.378.138.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z' },
   { key: 'ticketing', label: 'Ticketing', desc: 'Submit & Track Tickets', icon: 'M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 0 1 0 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 0 1 0-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375Z' },
-  { key: 'tickets', label: 'Ticket Embeds', desc: 'ClickUp Embed Config', icon: 'M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 0 1 0 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 0 1 0-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375Z' },
   { key: 'drive-folders', label: 'Drive Folders', desc: 'Shared Drive Tiles', icon: 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z' },
   { key: 'forms', label: 'Forms', desc: 'Drive folder + sync', icon: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z' },
   { key: 'layouts', label: 'Layouts', desc: 'Explore UI Options', icon: 'M2.25 7.125C2.25 6.504 2.754 6 3.375 6h6c.621 0 1.125.504 1.125 1.125v3.75c0 .621-.504 1.125-1.125 1.125h-6a1.125 1.125 0 0 1-1.125-1.125v-3.75ZM14.25 8.625c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v8.25c0 .621-.504 1.125-1.125 1.125h-5.25a1.125 1.125 0 0 1-1.125-1.125v-8.25ZM3.75 16.125c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v2.25c0 .621-.504 1.125-1.125 1.125h-5.25a1.125 1.125 0 0 1-1.125-1.125v-2.25Z' },
@@ -128,7 +126,7 @@ const TILE_BY_KEY = Object.fromEntries(ALL_TILES.map(t => [t.key, t]))
 // and its list of tools — no more one long scrolling list.
 const CATEGORIES = [
   { title: 'Staff & HR', keys: ['staff', 'import', 'employee-roster', 'roles-v2', 'paychex', 'paychex-training'] },
-  { title: 'Portal Setup', keys: ['tiles', 'appearance', 'layouts', 'config', 'drive-folders', 'forms', 'ticketing', 'action-links', 'references', 'tickets', 'portal-refresh'] },
+  { title: 'Portal Setup', keys: ['tiles', 'appearance', 'layouts', 'config', 'drive-folders', 'forms', 'ticketing', 'action-links', 'references', 'portal-refresh'] },
   { title: 'Reports & KPIs', keys: ['kpi-goals', 'trends-12mo', 'daily-snapshot', 'spotlight', 'membership-audit', 'speed-to-lead-audit', 'business-hours-stl', 'revenue-backfill', 'payroll-commissions'] },
   { title: 'Members & Sales', keys: ['online-join', 'vip-referrals', 'tour-checkin', 'membership-skip', 'referral-rewards', 'audit-toggles', 'vendor-price-list', 'till-settings', 'lapsed-checkins'] },
   { title: 'Integrations & Sync', keys: ['sync', 'abc-sync', 'custom-fields', 'google-connections', 'shared-credentials'] },
@@ -191,7 +189,6 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'webhooks' && <WebhookLogs />}
         {activeSection === 'sync' && <SyncStatusTile />}
         {activeSection === 'ticketing' && <TicketingAdmin />}
-        {activeSection === 'tickets' && <TicketEmbedsAdmin />}
         {activeSection === 'drive-folders' && <DriveFoldersAdmin />}
         {activeSection === 'forms' && <FormsAdmin />}
         {activeSection === 'google-connections' && <GoogleConnections />}

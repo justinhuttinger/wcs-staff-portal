@@ -17,7 +17,6 @@ import MobileCalendar from './components/MobileCalendar'
 import MobileLeaderboard from './components/MobileLeaderboard'
 import MobileCommunicationNotes from './components/MobileCommunicationNotes'
 import MobileHR from './components/MobileHR'
-import MobileTickets from './components/MobileTickets'
 import MobileTicketing from './components/MobileTicketing'
 import MobilePTRoster from './components/reports/MobilePTRoster'
 import MobileCheckins from './components/reports/MobileCheckins'
@@ -498,8 +497,6 @@ export default function MobileApp() {
         return <MobileCommunicationNotes user={user} />
       case 'hr':
         return <MobileHR user={user} />
-      case 'tickets':
-        return <MobileTickets user={user} />
       case 'ticketing':
         // Native ticketing (maker board + handler queue). Any lead+ can open it;
         // handler controls appear only for the ticket type's handlers.
