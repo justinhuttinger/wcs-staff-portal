@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import MobileHeader from './MobileHeader'
 import MobileLoading from './MobileLoading'
-import { ticketing } from '../../lib/api'
+import { ticketing, googleChat } from '../../lib/api'
+import { connectGoogleChat } from '../../lib/googleChatConnect'
 import DynamicFields, { DynamicAnswers } from '../../components/admin/ticketing/DynamicFields'
 import { STATUSES, STATUS_BY_KEY, fmtDate, fmtBytes, buildSubmission, summarizeErrors, findMissingRequired } from '../../components/admin/ticketing/shared'
+import { MentionComposer, MentionText, parseMentions } from '../../components/admin/ticketing/mentions'
 
 // Native ticketing tool for mobile (admin-only). Mirrors the desktop admin
 // tool: inbox -> detail (status + activity) and a submit flow.
@@ -83,22 +85,42 @@ function Detail({ id, onBack }) {
   const [loading, setLoading] = useState(true)
   const [comment, setComment] = useState('')
   const [busy, setBusy] = useState(false)
+  const [staff, setStaff] = useState([])
+  const [chat, setChat] = useState(null)
 
   const load = useCallback(async () => {
     try { setDetail(await ticketing.get(id)) } catch { /* silent */ } finally { setLoading(false) }
   }, [id])
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    ticketing.staffDirectory().then(r => setStaff(r.staff || [])).catch(() => {})
+    googleChat.status().then(setChat).catch(() => {})
+  }, [])
+
+  // Fire the connect request the moment someone tries to notify a coworker.
+  async function ensureChatConnected() {
+    if (!chat || (chat.connected && chat.has_chat)) return
+    await connectGoogleChat()
+    try { setChat(await googleChat.status()) } catch { /* ignore */ }
+  }
 
   async function setStatus(s) { setBusy(true); try { await ticketing.update(id, { status: s }); await load() } finally { setBusy(false) } }
+  async function setAssignee(assigned_to) {
+    const me = detail?.current_user_id
+    if (assigned_to && assigned_to !== me) await ensureChatConnected()
+    setBusy(true); try { await ticketing.update(id, { assigned_to: assigned_to || null }); await load() } finally { setBusy(false) }
+  }
   async function post() {
     if (!comment.trim()) return
+    const me = String(detail?.current_user_id || '').toLowerCase()
+    if (parseMentions(comment).some(p => p.id !== me)) await ensureChatConnected()
     setBusy(true)
     try { await ticketing.addComment(id, comment.trim()); setComment(''); await load() } finally { setBusy(false) }
   }
 
   if (loading) return <div className="pt-4 px-4"><MobileHeader title="Ticket" onBack={onBack} /><MobileLoading /></div>
   if (!detail) return null
-  const { ticket, type, comments = [], attachments = [], can_handle = false, is_submitter = false } = detail
+  const { ticket, type, comments = [], attachments = [], can_handle = false, is_submitter = false, current_user_id } = detail
   const submitAtt = attachments.filter(a => !a.comment_id)
   const canComment = can_handle || is_submitter
 
@@ -111,7 +133,10 @@ function Detail({ id, onBack }) {
           <h2 className="text-base font-bold text-text-primary">{ticket.title}</h2>
           <StatusPill status={ticket.status} />
         </div>
-        <p className="text-[11px] text-text-muted mt-1">{ticket.submitter_name} · {fmtDate(ticket.created_at)}</p>
+        <p className="text-[11px] text-text-muted mt-1">
+          {ticket.submitter_name} · {fmtDate(ticket.created_at)}
+          {ticket.assignee_name && <> · Assigned to <span className="font-semibold text-text-primary">{ticket.assignee_name}</span></>}
+        </p>
 
         {can_handle ? (
           <>
@@ -122,6 +147,14 @@ function Detail({ id, onBack }) {
                   {s.label}
                 </button>
               ))}
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <label className="text-[11px] font-semibold text-text-muted shrink-0">Assign to</label>
+              <select value={ticket.assigned_to || ''} disabled={busy} onChange={e => setAssignee(e.target.value)}
+                className="flex-1 px-2.5 py-1.5 text-sm bg-bg border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red disabled:opacity-40">
+                <option value="">Unassigned</option>
+                {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
             </div>
             {ticket.status !== 'complete' && (
               <button disabled={busy} onClick={() => setStatus('complete')}
@@ -157,17 +190,24 @@ function Detail({ id, onBack }) {
                     <span className="text-xs font-semibold text-text-primary">{c.author_name}</span>
                     <span className="text-[10px] text-text-muted">{fmtDate(c.created_at)}</span>
                   </div>
-                  <p className="text-sm text-text-primary whitespace-pre-wrap">{c.body}</p>
+                  <p className="text-sm text-text-primary"><MentionText body={c.body} currentUserId={current_user_id} /></p>
                 </>
               )}
             </div>
           ))}
         </div>
         {canComment && (
-          <div className="mt-3 flex gap-2">
-            <input value={comment} onChange={e => setComment(e.target.value)} placeholder="Add a note…"
-              className="flex-1 px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red" />
-            <button onClick={post} disabled={busy || !comment.trim()} className="px-3 py-2 text-sm font-semibold rounded-lg bg-wcs-red text-white disabled:opacity-40">Post</button>
+          <div className="mt-3 space-y-2">
+            <MentionComposer
+              value={comment}
+              onChange={setComment}
+              staff={staff}
+              currentUserId={current_user_id}
+              rows={2}
+              placeholder="Add a note… use @ to mention someone"
+              onEnter={post}
+            />
+            <button onClick={post} disabled={busy || !comment.trim()} className="w-full py-2 text-sm font-semibold rounded-lg bg-wcs-red text-white disabled:opacity-40">Post</button>
           </div>
         )}
       </div>

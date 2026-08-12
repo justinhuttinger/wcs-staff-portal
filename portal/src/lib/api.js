@@ -1718,6 +1718,8 @@ export const ticketing = {
   deleteType: (id) => api('/ticketing/types/' + id, { method: 'DELETE' }),
 
   assignableStaff: () => api('/ticketing/assignable-staff'),
+  // Active staff for the assignee + @mention pickers (open to handlers, not just admins).
+  staffDirectory: (q) => api('/ticketing/staff-directory' + (q ? '?q=' + encodeURIComponent(q) : '')),
 
   // Tickets
   list: ({ status, type_id, q, handling } = {}) => {
@@ -1746,6 +1748,15 @@ export const ticketing = {
     return api('/ticketing/' + id + '/attachments', { method: 'POST', body: fd })
   },
   attachmentUrl: (attachmentId) => api('/ticketing/attachments/' + attachmentId + '/url'),
+}
+
+// Google Chat connection for the ticket bridge. When a staff member assigns or
+// @mentions someone, the target gets a Chat DM sent as the actor — which needs
+// the actor's Google token to carry the Chat scopes granted here.
+export const googleChat = {
+  status: () => api('/google-chat/status'),
+  authorizeUrl: () => api('/google-chat/authorize-url', { method: 'POST' }),
+  disconnect: () => api('/google-chat/disconnect', { method: 'POST' }),
 }
 
 // App Settings

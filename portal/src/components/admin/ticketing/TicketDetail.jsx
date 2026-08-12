@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ticketing } from '../../../lib/api'
+import { ticketing, googleChat } from '../../../lib/api'
+import { connectGoogleChat } from '../../../lib/googleChatConnect'
 import { DynamicAnswers } from './DynamicFields'
 import { STATUSES, STATUS_BY_KEY, fmtDate, fmtBytes } from './shared'
+import { MentionComposer, MentionText, parseMentions } from './mentions'
 
 function StatusBadge({ status }) {
   const s = STATUS_BY_KEY[status] || STATUS_BY_KEY.open
@@ -18,6 +20,8 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
   const [posting, setPosting] = useState(false)
   const [commentFiles, setCommentFiles] = useState([])
   const [busy, setBusy] = useState(false)
+  const [staff, setStaff] = useState([])
+  const [chat, setChat] = useState(null)
 
   const load = useCallback(async () => {
     try {
@@ -27,14 +31,46 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
   }, [ticketId])
   useEffect(() => { load() }, [load])
 
+  // Directory powers the assignee + @mention pickers; chat status tells the
+  // actor whether their assign/mention DMs will actually send as them.
+  useEffect(() => {
+    ticketing.staffDirectory().then(r => setStaff(r.staff || [])).catch(() => {})
+    googleChat.status().then(setChat).catch(() => {})
+  }, [])
+
+  // Is the current user unable to send Chat DMs yet? (loaded status says so.)
+  const chatUnready = () => chat && (!chat.connected || !chat.has_chat)
+
+  // Fire the connect request the moment someone tries to notify a coworker.
+  // Returns once the popup resolves (connected or dismissed); the ticket action
+  // then proceeds either way — Chat is a side effect, never a blocker.
+  async function ensureChatConnected() {
+    if (!chatUnready()) return
+    await connectGoogleChat()
+    try { setChat(await googleChat.status()) } catch { /* ignore */ }
+  }
+
   async function setStatus(status) {
     setBusy(true)
     try { await ticketing.update(ticketId, { status }); await load(); onChanged?.() }
     catch (err) { setError(err.message) } finally { setBusy(false) }
   }
 
+  async function setAssignee(assigned_to) {
+    // Assigning someone else DMs them from you — connect Chat first if needed.
+    const me = detail?.current_user_id
+    if (assigned_to && assigned_to !== me) await ensureChatConnected()
+    setBusy(true)
+    try { await ticketing.update(ticketId, { assigned_to: assigned_to || null }); await load(); onChanged?.() }
+    catch (err) { setError(err.message) } finally { setBusy(false) }
+  }
+
   async function postComment() {
     if (!comment.trim() && commentFiles.length === 0) return
+    // @mentioning someone else DMs them from you — connect Chat first if needed.
+    const me = String(detail?.current_user_id || '').toLowerCase()
+    const mentionsOthers = comment.trim() && parseMentions(comment).some(p => p.id !== me)
+    if (mentionsOthers) await ensureChatConnected()
     setPosting(true)
     try {
       let commentId = null
@@ -57,7 +93,7 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
   )
   if (!detail) return null
 
-  const { ticket, type, comments = [], attachments = [], can_handle = false, is_submitter = false } = detail
+  const { ticket, type, comments = [], attachments = [], watchers = [], can_handle = false, is_submitter = false, current_user_id } = detail
   const submitAttachments = attachments.filter(a => !a.comment_id)
   const canComment = can_handle || is_submitter
 
@@ -73,34 +109,61 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
             <h2 className="text-lg font-bold text-text-primary mt-0.5">{ticket.title}</h2>
             <p className="text-xs text-text-muted mt-1">
               Submitted by <span className="font-semibold text-text-primary">{ticket.submitter_name}</span> · {fmtDate(ticket.created_at)}
+              {ticket.assignee_name && <> · Assigned to <span className="font-semibold text-text-primary">{ticket.assignee_name}</span></>}
             </p>
           </div>
           <StatusBadge status={ticket.status} />
         </div>
 
-        {/* Status controls — handlers only. Makers see the badge above, read-only. */}
+        {/* Status + assignment controls — handlers only. */}
         {can_handle ? (
-          <div className="mt-4 pt-4 border-t border-border flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold text-text-muted mr-1">Set status:</span>
-            {STATUSES.map(s => (
-              <button key={s.key} disabled={busy || ticket.status === s.key} onClick={() => setStatus(s.key)}
-                className={`px-3 py-1 text-xs font-semibold rounded-lg border transition-colors ${ticket.status === s.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary disabled:opacity-40'}`}>
-                {s.label}
-              </button>
-            ))}
-            {ticket.status !== 'complete' && (
-              <button disabled={busy} onClick={() => setStatus('complete')}
-                className="ml-auto px-3 py-1 text-xs font-bold rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-40">
-                ✓ Mark Complete
-              </button>
-            )}
+          <div className="mt-4 pt-4 border-t border-border space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-text-muted mr-1">Set status:</span>
+              {STATUSES.map(s => (
+                <button key={s.key} disabled={busy || ticket.status === s.key} onClick={() => setStatus(s.key)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg border transition-colors ${ticket.status === s.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary disabled:opacity-40'}`}>
+                  {s.label}
+                </button>
+              ))}
+              {ticket.status !== 'complete' && (
+                <button disabled={busy} onClick={() => setStatus('complete')}
+                  className="ml-auto px-3 py-1 text-xs font-bold rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-40">
+                  ✓ Mark Complete
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-xs font-semibold text-text-muted mr-1">Assign to:</label>
+              <select value={ticket.assigned_to || ''} disabled={busy}
+                onChange={e => setAssignee(e.target.value)}
+                className="px-3 py-1.5 text-sm bg-bg border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red disabled:opacity-40">
+                <option value="">Unassigned</option>
+                {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <span className="text-[11px] text-text-muted">The assignee gets a Google Chat DM from you.</span>
+            </div>
           </div>
         ) : (
           <p className="mt-4 pt-4 border-t border-border text-xs text-text-muted">
-            You can view this ticket's progress. Only its handlers can change the status.
+            You can view this ticket's progress. Only its handlers can change the status or assignment.
           </p>
         )}
       </div>
+
+      {/* Chat-connect nudge: assign/mention DMs send as YOU, so you must connect.
+          (Assigning/@mentioning also fires this request on the spot.) */}
+      {canComment && chatUnready() && (
+        <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+          <p className="text-xs text-amber-800 dark:text-amber-300">
+            Connect Google Chat so your assignments and @mentions notify people as a DM from you.
+          </p>
+          <button onClick={ensureChatConnected}
+            className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90">
+            Connect Google Chat
+          </button>
+        </div>
+      )}
 
       {/* Answers */}
       <div className="bg-surface border border-border rounded-xl p-5">
@@ -135,7 +198,7 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
                       <span className="text-xs font-semibold text-text-primary">{c.author_name}</span>
                       <span className="text-[11px] text-text-muted">{fmtDate(c.created_at)}</span>
                     </div>
-                    <p className="text-sm text-text-primary whitespace-pre-wrap">{c.body}</p>
+                    <p className="text-sm text-text-primary"><MentionText body={c.body} currentUserId={current_user_id} /></p>
                     {catt.length > 0 && <ul className="mt-2 space-y-1">{catt.map(a => <AttachmentRow key={a.id} att={a} />)}</ul>}
                   </>
                 )}
@@ -144,11 +207,18 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
           })}
         </div>
 
-        {/* Add comment — handlers or the submitter */}
+        {/* Add comment — handlers or the submitter. @ mentions someone. */}
         {canComment && (
         <div className="mt-4 pt-4 border-t border-border space-y-2">
-          <textarea value={comment} onChange={e => setComment(e.target.value)} rows={2} placeholder="Add a progress note…"
-            className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red" />
+          <MentionComposer
+            value={comment}
+            onChange={setComment}
+            staff={staff}
+            currentUserId={current_user_id}
+            rows={2}
+            placeholder="Add a progress note… use @ to mention someone"
+            onEnter={postComment}
+          />
           <div className="flex items-center justify-between gap-2">
             <input type="file" multiple onChange={e => setCommentFiles(prev => [...prev, ...Array.from(e.target.files)])}
               className="block text-xs text-text-muted file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-wcs-red/10 file:text-wcs-red" />
@@ -170,6 +240,21 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
         </div>
         )}
       </div>
+
+      {/* Watchers */}
+      {watchers.length > 0 && (
+        <div className="bg-surface border border-border rounded-xl p-5">
+          <h3 className="text-sm font-bold text-text-primary mb-2">Watchers</h3>
+          <div className="flex flex-wrap gap-1.5">
+            {watchers.map(w => (
+              <span key={w.staff_user_id} className="inline-flex items-center gap-1 rounded-full border border-border bg-bg px-2.5 py-1 text-xs text-text-primary">
+                {w.name}
+                <span className="text-[10px] text-text-muted">· {w.reason}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
