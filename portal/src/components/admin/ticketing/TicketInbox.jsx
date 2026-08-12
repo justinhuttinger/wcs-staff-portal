@@ -37,25 +37,27 @@ export default function TicketInbox({ onOpen, refreshKey, handling = false }) {
 
   return (
     <div className="space-y-4">
-      {/* Filter chips */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        {filters.map(f => (
-          <button key={f.key || 'all'} onClick={() => setStatus(f.key)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg border transition-colors ${status === f.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}>
-            {f.dot && <span className={`w-1.5 h-1.5 rounded-full ${f.dot}`} />}
-            {f.label}
-          </button>
-        ))}
-      </div>
+      {/* Filter chips + search, on a surface card so they read against the backdrop */}
+      <div className="bg-surface border border-border rounded-xl p-3 space-y-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {filters.map(f => (
+            <button key={f.key || 'all'} onClick={() => setStatus(f.key)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg border transition-colors ${status === f.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}>
+              {f.dot && <span className={`w-1.5 h-1.5 rounded-full ${f.dot}`} />}
+              {f.label}
+            </button>
+          ))}
+        </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <select value={typeId} onChange={e => setTypeId(e.target.value)}
-          className="px-3 py-1.5 text-sm bg-bg border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red">
-          <option value="">All types</option>
-          {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search title…"
-          className="px-3 py-1.5 text-sm bg-bg border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red flex-1 min-w-[160px]" />
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={typeId} onChange={e => setTypeId(e.target.value)}
+            className="px-3 py-1.5 text-sm bg-bg border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red">
+            <option value="">All types</option>
+            {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search title…"
+            className="px-3 py-1.5 text-sm bg-bg border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red flex-1 min-w-[160px]" />
+        </div>
       </div>
 
       {loading ? (

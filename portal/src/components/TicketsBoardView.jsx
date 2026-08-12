@@ -106,11 +106,12 @@ function Board({ onOpen, refreshKey }) {
   useEffect(() => { load() }, [load, refreshKey])
 
   if (loading && !data) return <p className="loading-card mx-auto block my-6">Loading…</p>
-  if (!data) return <p className="text-sm text-text-muted">Could not load tickets.</p>
+  if (!data) return <p className="empty-card mx-auto block my-6">Could not load tickets.</p>
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-text-muted">Tickets you've submitted.</p>
+      {/* Backed by a surface card — bare text is unreadable on the photo backdrop. */}
+      <p className="bg-surface border border-border rounded-xl px-4 py-2 text-xs text-text-muted">Tickets you've submitted.</p>
       <Section title="New" tint={STATUS_BY_KEY.open.dot} tickets={data.open || []} onOpen={onOpen} emptyMsg="You haven't submitted any tickets yet." />
       <Section title="In Progress" tint={STATUS_BY_KEY.in_progress.dot} tickets={data.in_progress || []} onOpen={onOpen} emptyMsg="Nothing in progress." />
       <Section title={`Recently Completed`} tint={STATUS_BY_KEY.complete.dot} tickets={data.recently_completed || []} onOpen={onOpen} emptyMsg={`Nothing completed in the last ${data.window_days || 7} days.`} />

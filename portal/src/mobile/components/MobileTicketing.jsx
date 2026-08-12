@@ -3,7 +3,7 @@ import MobileHeader from './MobileHeader'
 import MobileLoading from './MobileLoading'
 import { ticketing } from '../../lib/api'
 import DynamicFields, { DynamicAnswers } from '../../components/admin/ticketing/DynamicFields'
-import { STATUSES, STATUS_BY_KEY, PRIORITIES, fmtDate, fmtBytes, buildSubmission } from '../../components/admin/ticketing/shared'
+import { STATUSES, STATUS_BY_KEY, fmtDate, fmtBytes, buildSubmission, summarizeErrors, findMissingRequired } from '../../components/admin/ticketing/shared'
 
 // Native ticketing tool for mobile (admin-only). Mirrors the desktop admin
 // tool: inbox -> detail (status + activity) and a submit flow.
@@ -55,7 +55,7 @@ function List({ onOpen, onNew }) {
       </div>
 
       {loading ? <MobileLoading /> : tickets.length === 0 ? (
-        <p className="text-sm text-text-muted text-center py-10">No tickets yet.</p>
+        <p className="text-sm text-text-muted text-center py-10 bg-surface border border-border rounded-2xl">No tickets yet.</p>
       ) : (
         <div className="space-y-2">
           {tickets.map(t => {
@@ -195,7 +195,6 @@ function Submit({ onCancel, onDone }) {
   const [loading, setLoading] = useState(true)
   const [type, setType] = useState(null)
   const [values, setValues] = useState({})
-  const [priority, setPriority] = useState('normal')
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -205,15 +204,26 @@ function Submit({ onCancel, onDone }) {
   }, [])
 
   async function submit() {
+    // Catch blank required fields here so the message names them right away.
+    const missing = findMissingRequired(type.schema || [], values)
+    if (Object.keys(missing).length > 0) {
+      setErrors(missing)
+      setError(summarizeErrors(type.schema || [], missing))
+      return
+    }
     setSubmitting(true); setError(''); setErrors({})
     try {
       const { data, files } = buildSubmission(type.schema || [], values)
-      const res = await ticketing.create({ type_id: type.id, data, priority })
+      const res = await ticketing.create({ type_id: type.id, data })
       for (const f of files) await ticketing.uploadAttachment(res.ticket.id, f)
       onDone(res.ticket.id)
     } catch (err) {
-      if (err.errors) setErrors(err.errors)
-      setError(err.message || 'Could not submit')
+      if (err.errors) {
+        setErrors(err.errors)
+        setError(summarizeErrors(type.schema || [], err.errors) || err.message)
+      } else {
+        setError(err.message || 'Could not submit')
+      }
     } finally { setSubmitting(false) }
   }
 
@@ -224,7 +234,7 @@ function Submit({ onCancel, onDone }) {
       <div className="pt-4 px-4 space-y-3">
         <MobileHeader title="New Ticket" subtitle="Choose a type" onBack={onCancel} />
         {types.length === 0 ? (
-          <p className="text-sm text-text-muted text-center py-10">No active ticket types.</p>
+          <p className="text-sm text-text-muted text-center py-10 bg-surface border border-border rounded-2xl">No active ticket types.</p>
         ) : types.map(t => (
           <button key={t.id} onClick={() => { setType(t); setValues({}); setErrors({}) }}
             className="w-full text-left bg-surface border border-border rounded-2xl p-4 active:scale-[0.99] transition-transform">
@@ -242,16 +252,6 @@ function Submit({ onCancel, onDone }) {
       <div className="bg-surface border border-border rounded-2xl p-4 space-y-4">
         <DynamicFields schema={type.schema || []} values={values} errors={errors}
           onChange={(id, v) => setValues(prev => ({ ...prev, [id]: v }))} />
-
-        <div>
-          <label className="block text-sm font-semibold text-text-primary mb-1">Priority</label>
-          <div className="flex flex-wrap gap-1.5">
-            {PRIORITIES.map(p => (
-              <button key={p.key} onClick={() => setPriority(p.key)}
-                className={`px-3 py-1 text-xs font-semibold rounded-lg border ${priority === p.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border'}`}>{p.label}</button>
-            ))}
-          </div>
-        </div>
 
         {error && <p className="text-sm text-wcs-red">{error}</p>}
         <button onClick={submit} disabled={submitting} className="w-full py-2.5 text-sm font-semibold rounded-lg bg-wcs-red text-white disabled:opacity-40">

@@ -60,9 +60,16 @@ export function newFieldId() {
   return 'f_' + Math.random().toString(36).slice(2, 10)
 }
 
+// Normalize a file field's value to an array — the field holds a File[], but
+// tolerate a bare File from older state.
+export function asFileList(v) {
+  if (Array.isArray(v)) return v.filter(f => f instanceof File)
+  return v instanceof File ? [v] : []
+}
+
 // Split a submit form's `values` into the JSON `data` payload and the list of
 // File objects to upload after the ticket is created. File fields store their
-// filename in `data` (for the record) and their bytes go up as attachments.
+// filenames in `data` (for the record) and their bytes go up as attachments.
 export function buildSubmission(schema = [], values = {}) {
   const data = {}
   const files = []
@@ -70,10 +77,42 @@ export function buildSubmission(schema = [], values = {}) {
     if (DISPLAY_TYPES.includes(f.type)) continue
     const v = values[f.id]
     if (f.type === 'file') {
-      if (v instanceof File) { data[f.id] = v.name; files.push(v) }
+      const picked = asFileList(v)
+      if (picked.length > 0) {
+        data[f.id] = picked.map(file => file.name).join(', ')
+        files.push(...picked)
+      }
     } else if (v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0)) {
       data[f.id] = v
     }
   }
   return { data, files }
+}
+
+// Turn the server's { field_id: message } validation map into one sentence that
+// names the fields, so a submitter isn't left hunting for what "Validation
+// failed" meant. Falls back to the raw id for fields not in the schema.
+export function summarizeErrors(schema = [], errors = {}) {
+  const labelById = Object.fromEntries((schema || []).map(f => [f.id, f.label || FIELD_LABEL[f.type] || f.id]))
+  const parts = Object.entries(errors || {}).map(([id, msg]) => {
+    const label = labelById[id] || id
+    return `${label} (${String(msg || '').toLowerCase()})`
+  })
+  if (parts.length === 0) return ''
+  return `Please fix ${parts.length === 1 ? 'this field' : `these ${parts.length} fields`}: ${parts.join(', ')}.`
+}
+
+// Client-side required check so an incomplete form names its gaps immediately,
+// without a round trip. Mirrors the server's blank rule.
+export function findMissingRequired(schema = [], values = {}) {
+  const missing = {}
+  for (const f of schema) {
+    if (DISPLAY_TYPES.includes(f.type) || !f.required) continue
+    const v = values[f.id]
+    const blank = f.type === 'file'
+      ? asFileList(v).length === 0
+      : v === undefined || v === null || String(v).trim() === '' || (Array.isArray(v) && v.length === 0)
+    if (blank) missing[f.id] = 'This field is required'
+  }
+  return missing
 }
