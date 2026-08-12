@@ -99,6 +99,8 @@ function TypeEditor({ initial, onClose, onSaved }) {
   const [schema, setSchema] = useState(initial?.schema || [])
   const [titleTemplate, setTitleTemplate] = useState(initial?.title_template || '')
   const [handlerIds, setHandlerIds] = useState(initial?.handler_ids || [])
+  const [notifyIds, setNotifyIds] = useState(initial?.notify_on_create_ids || [])
+  const [notifyQuery, setNotifyQuery] = useState('')
   const [staff, setStaff] = useState([])
   const [staffQuery, setStaffQuery] = useState('')
   const [saving, setSaving] = useState(false)
@@ -109,6 +111,10 @@ function TypeEditor({ initial, onClose, onSaved }) {
   function toggleHandler(id) {
     setHandlerIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id])
   }
+  function toggleNotify(id) {
+    setNotifyIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id])
+  }
+  const notifyFiltered = staff.filter(s => s.name.toLowerCase().includes(notifyQuery.trim().toLowerCase()))
 
   function addField(type) {
     const f = { id: newFieldId(), type }
@@ -145,7 +151,12 @@ function TypeEditor({ initial, onClose, onSaved }) {
     }
     setSaving(true); setError('')
     try {
-      const payload = { name, description, active, schema, handler_ids: handlerIds, title_template: titleTemplate.trim() || null }
+      const payload = {
+        name, description, active, schema,
+        handler_ids: handlerIds,
+        notify_on_create_ids: notifyIds,
+        title_template: titleTemplate.trim() || null,
+      }
       if (initial?.id) await ticketing.updateType(initial.id, payload)
       else await ticketing.createType(payload)
       onSaved()
@@ -198,6 +209,26 @@ function TypeEditor({ initial, onClose, onSaved }) {
               ))}
             </div>
             {handlerIds.length > 0 && <p className="text-[11px] text-text-muted mt-1">{handlerIds.length} handler{handlerIds.length === 1 ? '' : 's'} assigned</p>}
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-text-muted mb-1">
+              Notify on new ticket <span className="font-normal">— these people get a Google Chat DM from the portal account the moment one is submitted. Leave empty for no notice.</span>
+            </label>
+            <input value={notifyQuery} onChange={e => setNotifyQuery(e.target.value)} placeholder="Search staff…"
+              className={inputClass + ' mb-2'} />
+            <div className="max-h-40 overflow-y-auto border border-border rounded-lg divide-y divide-border">
+              {notifyFiltered.length === 0 ? (
+                <p className="text-xs text-text-muted px-3 py-2">No staff match.</p>
+              ) : notifyFiltered.map(s => (
+                <label key={s.id} className="flex items-center gap-2 px-3 py-1.5 text-sm text-text-primary cursor-pointer hover:bg-bg">
+                  <input type="checkbox" checked={notifyIds.includes(s.id)} onChange={() => toggleNotify(s.id)} className="w-4 h-4 accent-wcs-red" />
+                  <span className="flex-1">{s.name}</span>
+                  <span className="text-[10px] text-text-muted uppercase tracking-wide">{s.role}</span>
+                </label>
+              ))}
+            </div>
+            {notifyIds.length > 0 && <p className="text-[11px] text-text-muted mt-1">{notifyIds.length} person{notifyIds.length === 1 ? '' : 's'} notified on creation</p>}
           </div>
 
           <div>

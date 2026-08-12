@@ -185,7 +185,7 @@ router.get('/staff-directory', async (req, res) => {
 
 router.post('/types', requireRole('admin'), async (req, res) => {
   try {
-    const { name, description, icon, schema = [], active = true, sort_order = 0, handler_ids, title_template } = req.body || {}
+    const { name, description, icon, schema = [], active = true, sort_order = 0, handler_ids, title_template, notify_on_create_ids } = req.body || {}
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required' })
     const check = validateSchema(schema)
     if (!check.ok) return res.status(400).json({ error: check.error })
@@ -210,6 +210,8 @@ router.post('/types', requireRole('admin'), async (req, res) => {
     }
     const h = normHandlerIds(handler_ids)
     if (h) insert.handler_ids = h
+    const n = normHandlerIds(notify_on_create_ids)
+    if (n) insert.notify_on_create_ids = n
     const { data, error } = await supabaseAdmin.from('ticket_types').insert(insert).select().single()
     if (error) throw error
     res.status(201).json({ type: data })
@@ -237,6 +239,7 @@ router.patch('/types/:id', requireRole('admin'), async (req, res) => {
     if (b.active !== undefined) patch.active = !!b.active
     if (b.sort_order !== undefined) patch.sort_order = Number(b.sort_order) || 0
     if (b.handler_ids !== undefined) { const h = normHandlerIds(b.handler_ids); if (h) patch.handler_ids = h }
+    if (b.notify_on_create_ids !== undefined) { const n = normHandlerIds(b.notify_on_create_ids); if (n) patch.notify_on_create_ids = n }
     if (b.title_template !== undefined) {
       // Validate tokens against the schema this update leaves in place.
       const effectiveSchema = b.schema !== undefined ? b.schema : (await getType(req.params.id))?.schema || []
@@ -406,6 +409,26 @@ router.post('/', async (req, res) => {
     if (['low', 'normal', 'high', 'urgent'].includes(priority)) insert.priority = priority
     const { data: ticket, error } = await supabaseAdmin.from('tickets').insert(insert).select().single()
     if (error) throw error
+
+    // Creation notice to whoever this type lists, DM'd from the portal's own
+    // Google account (noreply@) rather than the submitter. Fire-and-forget:
+    // a notification problem must never fail the submission.
+    const notifyIds = await activeStaffIds(
+      Array.isArray(type.notify_on_create_ids) ? type.notify_on_create_ids : [],
+    )
+    if (notifyIds.length) {
+      const submitterName = req.staff.display_name
+        || [req.staff.first_name, req.staff.last_name].filter(Boolean).join(' ')
+        || null
+      ticketNotify.notify({
+        ticket,
+        actorId: req.staff.id,
+        fromSystem: true,
+        submitterName,
+        targets: notifyIds.map(uid => ({ mentionId: null, targetUserId: uid, kind: 'created' })),
+      }).catch(() => {})
+    }
+
     res.status(201).json({ ticket })
   } catch (err) {
     console.error('[Ticketing] create ticket failed:', err.message)

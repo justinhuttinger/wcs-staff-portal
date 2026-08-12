@@ -22,8 +22,10 @@
 const { Router } = require('express')
 const crypto = require('crypto')
 const authenticate = require('../middleware/auth')
+const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { CHAT_SCOPES } = require('../services/googleChat')
+const { TICKET_NOTIFIER, TICKET_NOTIFIER_EMAIL, getSystemTokenStatus } = require('../services/systemGoogleToken')
 
 const router = Router()
 
@@ -44,9 +46,9 @@ function hasChatScope(scope) {
 // the staff member who started the flow.
 const STATE_TTL_MS = 10 * 60 * 1000
 const stateMap = new Map()
-function setState(staffId) {
+function setState(staffId, system = false) {
   const state = crypto.randomBytes(24).toString('base64url')
-  stateMap.set(state, { staffId, expires: Date.now() + STATE_TTL_MS })
+  stateMap.set(state, { staffId, system, expires: Date.now() + STATE_TTL_MS })
   for (const [k, v] of stateMap) if (v.expires < Date.now()) stateMap.delete(k)
   return state
 }
@@ -106,6 +108,32 @@ router.post('/authorize-url', authenticate, (req, res) => {
   res.json({ url })
 })
 
+// GET /google-chat/system/status — is the portal's notification sender linked?
+router.get('/system/status', authenticate, requireRole('admin'), async (req, res) => {
+  try {
+    res.json(await getSystemTokenStatus())
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /google-chat/system/authorize-url — start the connect flow for the
+// shared sender. Sign in as noreply@ in the popup, NOT as yourself.
+router.post('/system/authorize-url', authenticate, requireRole('admin'), (req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'Google OAuth not configured' })
+  const state = setState(req.staff.id, true)
+  const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: REDIRECT_URI,
+    response_type: 'code',
+    scope: SCOPES,
+    access_type: 'offline',
+    prompt: 'consent select_account',
+    state,
+  })
+  res.json({ url, expected_email: TICKET_NOTIFIER_EMAIL })
+})
+
 // GET /google-chat/callback — Google redirects here (public; bound via state).
 router.get('/callback', async (req, res) => {
   const { code, error, state } = req.query
@@ -153,25 +181,38 @@ router.get('/callback', async (req, res) => {
     const email = userinfo.email || ''
     const expiresAt = new Date(Date.now() + (tokens.expires_in || 3600) * 1000).toISOString()
 
-    const { error: upErr } = await supabaseAdmin
-      .from('staff_google_tokens')
-      .upsert(
-        {
-          staff_id: stateEntry.staffId,
-          email,
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
-          expires_at: expiresAt,
-          scope: tokens.scope || SCOPES,
-        },
-        { onConflict: 'staff_id' }
-      )
+    const row = {
+      email,
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_at: expiresAt,
+      scope: tokens.scope || SCOPES,
+    }
+
+    const { error: upErr } = stateEntry.system
+      ? await supabaseAdmin.from('system_google_tokens').upsert(
+          { ...row, purpose: TICKET_NOTIFIER, connected_by: stateEntry.staffId, updated_at: new Date().toISOString() },
+          { onConflict: 'purpose' },
+        )
+      : await supabaseAdmin.from('staff_google_tokens').upsert(
+          { ...row, staff_id: stateEntry.staffId },
+          { onConflict: 'staff_id' },
+        )
     if (upErr) throw upErr
 
     if (!hasChatScope(tokens.scope)) {
       return res.send(closeHtml('Connected, but Chat permission was not granted. Reconnect and allow Google Chat access.', false))
     }
-    res.send(closeHtml(`Signed in as ${email || 'your Google account'}.`, true))
+    if (stateEntry.system && email && email.toLowerCase() !== TICKET_NOTIFIER_EMAIL.toLowerCase()) {
+      return res.send(closeHtml(
+        `Linked ${email}, but ticket notices are configured to come from ${TICKET_NOTIFIER_EMAIL}. ` +
+        'Reconnect and choose that account if this was not intended.', true))
+    }
+    res.send(closeHtml(
+      stateEntry.system
+        ? `Ticket notifications will now come from ${email}.`
+        : `Signed in as ${email || 'your Google account'}.`,
+      true))
   } catch (err) {
     res.status(500).send(closeHtml(err.message || 'Token exchange failed', false))
   }
