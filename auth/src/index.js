@@ -62,6 +62,9 @@ app.use('/config', require('./routes/config'))
 app.use('/launcher', require('./routes/launcher'))
 app.use('/webhooks', require('./routes/webhooks'))
 app.use('/webhooks', require('./routes/metaCapi'))
+// Same module, second mount: the Gravity Forms lead route answers at
+// /meta/lead. One CAPI implementation, one place hashing happens.
+app.use('/meta', require('./routes/metaCapi'))
 app.use('/appointments', require('./routes/appointments'))
 app.use('/tours', require('./routes/tours'))
 app.use('/tour-intake', require('./routes/tourIntake'))
