@@ -917,6 +917,141 @@ router.get('/shrinkage', requireReportAccess('manager', ['pos-sales']), async (r
   }
 })
 
+// GET /received?location_slug=&from=&to=&source= — how much stock CAME IN over
+// a date range, valued two ways: what we paid (cost) and what it will ring up
+// for (retail). Rolled up per category so a manager can read "$6,000 of Drinks,
+// $100 of Supplements in July" at a glance, with a per-item drilldown.
+//
+// Source rows are the stock-in movements: kind='received' (an invoice was
+// received into stock) plus positive kind='adjustment' (someone added stock by
+// hand / mobile without an invoice). Counts are NOT receipts — a count is a
+// correction of what was already there, and it's already measured by
+// /shrinkage — so kind='count' is excluded on purpose.
+//
+// Valuation per unit: cost = the cost stamped on the movement (what that
+// specific receipt actually cost) falling back to the item's current
+// avg/last cost; retail = the item's current ABC sale price. Units whose cost
+// or price is unknown are counted separately so a total is never quietly
+// understated. Financial data → manager+.
+router.get('/received', requireRole('manager'), async (req, res) => {
+  try {
+    const { clubs, error: cErr } = await clubFilter(req)
+    if (cErr) return res.status(400).json({ error: cErr })
+
+    // 'invoice' = received off a vendor invoice, 'manual' = hand-added stock.
+    const source = ['invoice', 'manual'].includes(req.query.source) ? req.query.source : null
+    const kinds = source === 'invoice' ? ['received'] : source === 'manual' ? ['adjustment'] : ['received', 'adjustment']
+
+    const makeQuery = () => {
+      let q = supabaseAdmin
+        .from('inventory_movements')
+        .select('id, item_id, club_number, kind, qty_delta, unit_cost, source, note, created_by_name, occurred_at, inventory_items(item_name, upc, category, abc_unit_price, avg_unit_cost, last_unit_cost)')
+        .in('kind', kinds)
+        .gt('qty_delta', 0) // stock IN only; a negative adjustment is a removal
+        .order('occurred_at', { ascending: false })
+      if (clubs) q = q.in('club_number', clubs)
+      if (req.query.from) q = q.gte('occurred_at', `${req.query.from}T00:00:00Z`)
+      if (req.query.to) q = q.lte('occurred_at', `${req.query.to}T23:59:59Z`)
+      return q
+    }
+    const rows = await fetchAllRows(makeQuery)
+
+    const events = []
+    for (const m of rows || []) {
+      const item = m.inventory_items || null
+      // Same sellable gate as the rest of the module: retail product only, no
+      // dues / fees / passes that may have picked up a stray movement.
+      if (!item || !isSellableItem(item)) continue
+      const units = num(m.qty_delta) || 0
+      const unitCost = num(m.unit_cost) ?? num(item.avg_unit_cost) ?? num(item.last_unit_cost)
+      const unitPrice = num(item.abc_unit_price)
+      events.push({
+        id: m.id,
+        item_id: m.item_id,
+        item_name: item.item_name || null,
+        item_upc: item.upc || null,
+        category: item.category || null,
+        location_slug: m.club_number ? CLUB_TO_SLUG[m.club_number] || null : null,
+        source: m.kind === 'received' ? 'invoice' : 'manual',
+        vendor_note: m.note || null,
+        created_by_name: m.created_by_name || null,
+        occurred_at: m.occurred_at,
+        units: +units.toFixed(2),
+        unit_cost: unitCost,
+        unit_price: unitPrice,
+        cost_value: unitCost != null ? +(units * unitCost).toFixed(2) : null,
+        retail_value: unitPrice != null ? +(units * unitPrice).toFixed(2) : null,
+      })
+    }
+
+    const round = (v) => +Number(v).toFixed(2)
+    const blankRoll = (extra) => ({
+      units: 0, cost_value: 0, retail_value: 0,
+      units_no_cost: 0, units_no_price: 0, receipts: 0, ...extra,
+    })
+    const addTo = (roll, e) => {
+      roll.receipts++
+      roll.units += e.units
+      if (e.cost_value != null) roll.cost_value += e.cost_value; else roll.units_no_cost += e.units
+      if (e.retail_value != null) roll.retail_value += e.retail_value; else roll.units_no_price += e.units
+    }
+    const finish = (roll) => {
+      const cost = round(roll.cost_value)
+      const retail = round(roll.retail_value)
+      return {
+        ...roll,
+        units: round(roll.units),
+        cost_value: cost,
+        retail_value: retail,
+        markup_value: round(retail - cost),
+        margin_pct: retail > 0 ? +(((retail - cost) / retail) * 100).toFixed(1) : null,
+        units_no_cost: round(roll.units_no_cost),
+        units_no_price: round(roll.units_no_price),
+      }
+    }
+
+    const catMap = new Map()
+    const itemMap = new Map()
+    const locMap = new Map()
+    const totals = blankRoll()
+    for (const e of events) {
+      const catKey = e.category || 'Uncategorized'
+      if (!catMap.has(catKey)) catMap.set(catKey, blankRoll({ category: catKey }))
+      addTo(catMap.get(catKey), e)
+
+      const itemKey = e.item_id || `unmatched:${e.item_name}`
+      if (!itemMap.has(itemKey)) {
+        itemMap.set(itemKey, blankRoll({
+          item_id: e.item_id, item_name: e.item_name, item_upc: e.item_upc,
+          category: catKey, location_slug: e.location_slug,
+        }))
+      }
+      const itemRoll = itemMap.get(itemKey)
+      // An item received at more than one club rolls up across them.
+      if (itemRoll.location_slug && itemRoll.location_slug !== e.location_slug) itemRoll.location_slug = 'multiple'
+      addTo(itemRoll, e)
+
+      const locKey = e.location_slug || '—'
+      if (!locMap.has(locKey)) locMap.set(locKey, blankRoll({ location_slug: locKey }))
+      addTo(locMap.get(locKey), e)
+
+      addTo(totals, e)
+    }
+
+    const byCost = (a, b) => b.cost_value - a.cost_value
+    res.json({
+      by_category: [...catMap.values()].map(finish).sort(byCost),
+      by_item: [...itemMap.values()].map(finish).sort(byCost),
+      by_location: [...locMap.values()].map(finish).sort(byCost),
+      events,
+      totals: { ...finish(totals), events: events.length },
+    })
+  } catch (err) {
+    console.error('[Inventory] received error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // GET /compliance?location_slug=&overdue_days=30 — per-club "how long since we
 // last counted / restocked" scoreboard so managers can see which teams are
 // letting physical counts slip. Status keys off COUNT age (the discipline being

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, Fragment } from 'react'
 import {
   getInventoryItems, getInventoryCategories, getInventoryItemMovements,
   adjustInventoryItem, updateInventoryItem, lookupInventoryUpc,
@@ -6,7 +6,7 @@ import {
   deleteInventoryInvoiceFile, addInventoryInvoiceItem,
   deleteInventoryInvoiceItem, receiveInventoryInvoice, deleteInventoryInvoice,
   startInventorySync, getInventorySyncStatus, getInventoryAudit, importInventoryCosts,
-  getReorderLevels, setReorderLevel,
+  getReorderLevels, setReorderLevel, getInventoryReceived,
 } from '../lib/api'
 import { LOCATION_OPTIONS } from '../config/locations'
 import { exportCSV } from '../lib/export'
@@ -54,6 +54,9 @@ function daysAgoStr(n) {
   const d = new Date()
   d.setDate(d.getDate() - n)
   return toLocalDateStr(d)
+}
+function monthStartStr(d = new Date()) {
+  return toLocalDateStr(new Date(d.getFullYear(), d.getMonth(), 1))
 }
 
 const MOVEMENT_LABELS = {
@@ -739,6 +742,12 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   const [restockMode, setRestockMode] = useState('restock') // 'restock' | 'count'
   const [restockSearch, setRestockSearch] = useState('')
   const [restockHistoryOpen, setRestockHistoryOpen] = useState(false) // collapsed history dropdown
+  // Received tab: what came IN over a date range, valued at cost and at retail.
+  const [received, setReceived] = useState(null) // { by_category, by_item, by_location, totals }
+  const [receivedFrom, setReceivedFrom] = useState(monthStartStr())
+  const [receivedTo, setReceivedTo] = useState(toLocalDateStr(new Date()))
+  const [receivedSource, setReceivedSource] = useState('') // '' | invoice | manual
+  const [receivedOpenCat, setReceivedOpenCat] = useState('') // expanded category drilldown
 
   const loadItems = useCallback(() => {
     setItemsLoading(true)
@@ -788,8 +797,17 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
         .then(([inv, mv]) => { setInvoices(inv.invoices || []); setMovements(mv.movements || []) })
         .catch(err => setError(err.message))
         .finally(() => setLoading(false))
+    } else if (tab === 'received') {
+      setLoading(true)
+      getInventoryReceived({
+        location_slug: slug === 'all' ? '' : slug,
+        from: receivedFrom, to: receivedTo, source: receivedSource,
+      })
+        .then(setReceived)
+        .catch(err => setError(err.message))
+        .finally(() => setLoading(false))
     }
-  }, [tab, slug])
+  }, [tab, slug, receivedFrom, receivedTo, receivedSource])
 
   async function syncNow() {
     setSyncBusy(true); setError('')
@@ -1070,6 +1088,20 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
     exportCSV(rows, `inventory-audit-${scope}-${slug}-${toLocalDateStr(new Date())}`)
   }
 
+  // Export the Received rollup: one line per category, then one per item, so the
+  // category totals Justin reads off the screen are the same ones in the file.
+  function exportReceived() {
+    const header = ['level', 'category', 'item', 'upc', 'club', 'units', 'cost_value', 'retail_value', 'markup_value', 'margin_pct', 'units_missing_cost', 'units_missing_price']
+    const rows = [header]
+    for (const c of received?.by_category || []) {
+      rows.push(['category', c.category, '', '', '', c.units, c.cost_value, c.retail_value, c.markup_value, c.margin_pct ?? '', c.units_no_cost, c.units_no_price])
+    }
+    for (const i of received?.by_item || []) {
+      rows.push(['item', i.category, i.item_name || '', i.item_upc || '', i.location_slug || '', i.units, i.cost_value, i.retail_value, i.markup_value, i.margin_pct ?? '', i.units_no_cost, i.units_no_price])
+    }
+    exportCSV(rows, `inventory-received-${slug}-${receivedFrom}-to-${receivedTo}`)
+  }
+
   // Re-upload a filled-in audit CSV to set costs in bulk. Reads item_id + new_cost.
   async function handleCostImport(e) {
     const file = e.target.files?.[0]
@@ -1125,6 +1157,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                 { key: 'items', label: 'Inventory' },
                 { key: 'order', label: 'To Order' },
                 { key: 'restock', label: 'Restock' },
+                { key: 'received', label: 'Received' },
                 ...(isAdmin ? [{ key: 'audit', label: 'Audit' }] : []),
               ].map(m => (
                 <button key={m.key} onClick={() => setTab(m.key)}
@@ -1150,6 +1183,38 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
               <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Search</span>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or UPC..." className={inputCls} />
             </div>
+          )}
+          {tab === 'received' && (
+            <>
+              <div>
+                <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">From</span>
+                <input type="date" value={receivedFrom} onChange={e => setReceivedFrom(e.target.value)} className={inputCls + ' w-40'} />
+              </div>
+              <div>
+                <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">To</span>
+                <input type="date" value={receivedTo} onChange={e => setReceivedTo(e.target.value)} className={inputCls + ' w-40'} />
+              </div>
+              <div>
+                <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Source</span>
+                <select value={receivedSource} onChange={e => setReceivedSource(e.target.value)} className={inputCls + ' w-44'}>
+                  <option value="">All stock in</option>
+                  <option value="invoice">Invoices only</option>
+                  <option value="manual">Hand-added only</option>
+                </select>
+              </div>
+              <div className="flex gap-2">
+                {[
+                  { label: 'This month', from: monthStartStr(), to: toLocalDateStr(new Date()) },
+                  { label: 'Last month', from: monthStartStr(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1)), to: toLocalDateStr(new Date(new Date().getFullYear(), new Date().getMonth(), 0)) },
+                  { label: 'Last 90 days', from: daysAgoStr(90), to: toLocalDateStr(new Date()) },
+                ].map(p => (
+                  <button key={p.label} onClick={() => { setReceivedFrom(p.from); setReceivedTo(p.to) }}
+                    className={`${btnGhost} ${receivedFrom === p.from && receivedTo === p.to ? 'border-wcs-red text-wcs-red' : ''}`}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
         </div>
 
@@ -1460,6 +1525,143 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                   </div>
                 )}
               </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* === Received tab === how much stock came IN over a date range, valued
+          at what we paid (cost) and what it will ring up for (retail). */}
+      {tab === 'received' && (
+        <div className="space-y-4">
+          {loading ? (
+            <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-8 text-center">
+              <p className="text-sm text-text-muted">Loading received stock...</p>
+            </div>
+          ) : !received || (received.by_category || []).length === 0 ? (
+            <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-8 text-center">
+              <p className="text-sm text-text-muted">No stock was received in this range.</p>
+            </div>
+          ) : (
+            <>
+              {/* Headline numbers */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: 'Cost value', value: fmtMoney(received.totals.cost_value), hint: 'What we paid' },
+                  { label: 'Retail value', value: fmtMoney(received.totals.retail_value), hint: 'At sale price' },
+                  { label: 'Built-in markup', value: fmtMoney(received.totals.markup_value), hint: received.totals.margin_pct != null ? `${received.totals.margin_pct}% margin` : '' },
+                  { label: 'Units received', value: fmtQty(received.totals.units), hint: `${received.totals.receipts} receipt${received.totals.receipts === 1 ? '' : 's'}` },
+                ].map(t => (
+                  <div key={t.label} className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">{t.label}</p>
+                    <p className="text-2xl font-bold text-text-primary mt-1">{t.value}</p>
+                    {t.hint && <p className="text-[11px] text-text-muted mt-0.5">{t.hint}</p>}
+                  </div>
+                ))}
+              </div>
+
+              {/* Coverage caveat — never let an unknown cost/price quietly
+                  understate a total. */}
+              {(received.totals.units_no_cost > 0 || received.totals.units_no_price > 0) && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-xs text-amber-800">
+                  {received.totals.units_no_cost > 0 && <span>{fmtQty(received.totals.units_no_cost)} units have no cost on file (not in the cost value). </span>}
+                  {received.totals.units_no_price > 0 && <span>{fmtQty(received.totals.units_no_price)} units have no ABC sale price (not in the retail value).</span>}
+                </div>
+              )}
+
+              {/* Per-category rollup — the headline answer. Click a row to see
+                  which items made it up. */}
+              <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                  <h3 className="text-sm font-bold text-text-primary">By category</h3>
+                  <button onClick={exportReceived} className={btnGhost}>Export CSV</button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
+                        <th className="py-2.5 px-4">Category</th>
+                        <th className="py-2.5 px-2 text-right">Units</th>
+                        <th className="py-2.5 px-2 text-right">Cost Value</th>
+                        <th className="py-2.5 px-2 text-right">Retail Value</th>
+                        <th className="py-2.5 px-2 text-right">Markup</th>
+                        <th className="py-2.5 px-4 text-right">Margin</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {received.by_category.map(c => {
+                        const open = receivedOpenCat === c.category
+                        const catItems = (received.by_item || []).filter(i => i.category === c.category)
+                        return (
+                          <Fragment key={c.category}>
+                            <tr onClick={() => setReceivedOpenCat(open ? '' : c.category)}
+                              className="border-b border-border/50 hover:bg-bg/40 cursor-pointer">
+                              <td className="py-2.5 px-4 font-semibold text-text-primary">
+                                <span className="inline-block w-3 text-text-muted">{open ? '▾' : '▸'}</span> {c.category}
+                              </td>
+                              <td className="py-2.5 px-2 text-right text-text-muted">{fmtQty(c.units)}</td>
+                              <td className="py-2.5 px-2 text-right font-bold text-text-primary">{fmtMoney(c.cost_value)}</td>
+                              <td className="py-2.5 px-2 text-right font-semibold text-text-primary">{fmtMoney(c.retail_value)}</td>
+                              <td className="py-2.5 px-2 text-right text-emerald-700 font-semibold">{fmtMoney(c.markup_value)}</td>
+                              <td className="py-2.5 px-4 text-right text-text-muted">{c.margin_pct != null ? `${c.margin_pct}%` : '—'}</td>
+                            </tr>
+                            {open && catItems.map(i => (
+                              <tr key={`${c.category}-${i.item_id || i.item_name}`} className="border-b border-border/50 bg-bg/30">
+                                <td className="py-1.5 px-4 pl-10 text-xs text-text-primary">
+                                  {i.item_name || '—'}
+                                  {slug === 'all' && i.location_slug && <span className="ml-2 text-[10px] text-text-muted capitalize">· {i.location_slug}</span>}
+                                </td>
+                                <td className="py-1.5 px-2 text-right text-xs text-text-muted">{fmtQty(i.units)}</td>
+                                <td className="py-1.5 px-2 text-right text-xs font-semibold text-text-primary">{fmtMoney(i.cost_value)}</td>
+                                <td className="py-1.5 px-2 text-right text-xs text-text-primary">{fmtMoney(i.retail_value)}</td>
+                                <td className="py-1.5 px-2 text-right text-xs text-emerald-700">{fmtMoney(i.markup_value)}</td>
+                                <td className="py-1.5 px-4 text-right text-xs text-text-muted">{i.margin_pct != null ? `${i.margin_pct}%` : '—'}</td>
+                              </tr>
+                            ))}
+                          </Fragment>
+                        )
+                      })}
+                      <tr className="bg-bg/60">
+                        <td className="py-2.5 px-4 font-bold text-text-primary">Total</td>
+                        <td className="py-2.5 px-2 text-right font-bold text-text-primary">{fmtQty(received.totals.units)}</td>
+                        <td className="py-2.5 px-2 text-right font-bold text-text-primary">{fmtMoney(received.totals.cost_value)}</td>
+                        <td className="py-2.5 px-2 text-right font-bold text-text-primary">{fmtMoney(received.totals.retail_value)}</td>
+                        <td className="py-2.5 px-2 text-right font-bold text-emerald-700">{fmtMoney(received.totals.markup_value)}</td>
+                        <td className="py-2.5 px-4 text-right font-bold text-text-muted">{received.totals.margin_pct != null ? `${received.totals.margin_pct}%` : '—'}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Per-club split, only useful when looking at more than one club. */}
+              {slug === 'all' && (received.by_location || []).length > 1 && (
+                <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
+                  <h3 className="text-sm font-bold text-text-primary px-4 py-3 border-b border-border">By club</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-border bg-bg/50">
+                          <th className="py-2.5 px-4">Club</th>
+                          <th className="py-2.5 px-2 text-right">Units</th>
+                          <th className="py-2.5 px-2 text-right">Cost Value</th>
+                          <th className="py-2.5 px-4 text-right">Retail Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {received.by_location.map(l => (
+                          <tr key={l.location_slug} className="border-b border-border/50 hover:bg-bg/40">
+                            <td className="py-2 px-4 font-medium text-text-primary capitalize">{l.location_slug}</td>
+                            <td className="py-2 px-2 text-right text-text-muted">{fmtQty(l.units)}</td>
+                            <td className="py-2 px-2 text-right font-semibold text-text-primary">{fmtMoney(l.cost_value)}</td>
+                            <td className="py-2 px-4 text-right text-text-primary">{fmtMoney(l.retail_value)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
