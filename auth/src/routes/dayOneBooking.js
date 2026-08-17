@@ -24,6 +24,7 @@
 // into the portal. Wiring it into the tour check-in flow is a separate change.
 const { Router } = require('express')
 const path = require('path')
+const fs = require('fs')
 const rateLimit = require('express-rate-limit')
 const { LOCATIONS, getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
@@ -142,8 +143,33 @@ async function trainerRoster(loc) {
 
 // The standalone page. No secret needed to view it; it prompts for one and sends
 // it on every API call.
+// Each location gets its own link (/day-one-booking/salem). The page is served
+// with the mount base and location baked in rather than letting the client infer
+// them from the URL — with a location segment in the path, any client-side
+// guess at the API base is wrong the moment the route shape changes.
+const PAGE_PATH = path.join(__dirname, '..', 'public', 'dayOneBooking.html')
+let pageTemplate = null
+
+function renderPage(req, res, slug) {
+  try {
+    if (!pageTemplate || process.env.NODE_ENV !== 'production') {
+      pageTemplate = fs.readFileSync(PAGE_PATH, 'utf8')
+    }
+    const html = pageTemplate
+      .split('{{WIDGET_BASE}}').join(req.baseUrl || '/day-one-booking')
+      .split('{{WIDGET_LOCATION}}').join(slug || '')
+    res.type('html').send(html)
+  } catch (e) {
+    console.error('[DayOneWidget] page render failed:', e.message)
+    res.status(500).send('Booking page unavailable')
+  }
+}
+
+// /day-one-booking/ — no location; the page offers the per-location links.
+// ?location=salem is also honored so an existing link keeps working.
 router.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'public', 'dayOneBooking.html'))
+  const slug = String(req.query.location || '').toLowerCase()
+  renderPage(req, res, getLocationBySlug(slug) ? slug : '')
 })
 
 // Served from the mount point so the page can reference it relatively.
@@ -390,6 +416,15 @@ router.post('/api/book', requireWidgetSecret, bookLimiter, async (req, res) => {
     console.error('[DayOneWidget] booking failed:', e.message)
     res.status(502).json({ error: e.message })
   }
+})
+
+// Per-location link: /day-one-booking/salem. Declared LAST so it can never
+// shadow /logo.png or the /api/* routes above it, and it only matches a real
+// location slug so a typo 404s instead of silently serving a locationless page.
+router.get('/:location', (req, res, next) => {
+  const slug = String(req.params.location || '').toLowerCase()
+  if (!getLocationBySlug(slug)) return next()
+  renderPage(req, res, slug)
 })
 
 module.exports = router

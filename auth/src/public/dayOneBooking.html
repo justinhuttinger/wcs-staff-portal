@@ -141,6 +141,11 @@
   /* ---- gate ---- */
   .gate { max-width: 380px; margin: 60px auto; }
   .gate h2 { margin-bottom: 16px; }
+  .loclink {
+    display: block; border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px 14px; margin-bottom: 9px; color: var(--ink); text-decoration: none; font-weight: 500;
+  }
+  .loclink:hover { background: var(--fill); }
 
   @media (max-width: 900px) {
     .shell { grid-template-columns: 1fr; }
@@ -168,10 +173,17 @@
     <div class="err hide" id="gate-err"></div>
   </div>
 
+  <!-- Reached without a location: hand over the per-location links. -->
+  <div class="gate hide" id="picker">
+    <h2>Pick a location</h2>
+    <p class="muted" style="margin-top:-8px">Each location has its own booking link.</p>
+    <div id="links"></div>
+  </div>
+
   <div class="shell hide" id="shell">
     <!-- LEFT -->
     <div class="pane pane-left">
-      <img class="logo" id="logo" src="logo.png" alt="West Coast Strength">
+      <img class="logo" id="logo" alt="West Coast Strength">
       <div class="eyebrow">Day One</div>
       <h1>Day One</h1>
 
@@ -185,11 +197,11 @@
       </div>
       <div class="meta">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M4.5 20c0-3.6 3.4-5.6 7.5-5.6s7.5 2 7.5 5.6"/></svg>
-        <select class="trainer" id="trainer"><option>Loading…</option></select>
+        <select class="trainer" id="trainer"><option value="">Anyone</option></select>
       </div>
       <div class="meta">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-7-4.5-7-10a7 7 0 1114 0c0 5.5-7 10-7 10z"/><circle cx="12" cy="11" r="2.5"/></svg>
-        <select class="trainer" id="location"><option value="">Select location…</option></select>
+        <span id="location-name">—</span>
       </div>
 
       <p class="blurb">
@@ -275,16 +287,22 @@
 <script>
 (function () {
   'use strict'
-  // Base for API calls. Must be derived from the page's own path: this page is
-  // served from the router's mount point, so a root-absolute '/api/...' would
-  // miss the mount and 404.
-  var API = window.location.pathname.replace(/\/+$/, '') || '/day-one-booking'
+  // Injected by the server. The API base cannot be inferred from the page path
+  // here, because a per-location link (/day-one-booking/salem) has an extra
+  // segment that is not part of the mount point.
+  var API = '{{WIDGET_BASE}}'
   var secret = localStorage.getItem('dayOneWidgetSecret') || ''
   var S = {
-    location: '', userId: '', date: '', startTime: '',
+    // One link per location, so this is fixed for the life of the page.
+    location: '{{WIDGET_LOCATION}}',
+    // Defaults to "Anyone" — the round-robin path is the normal case.
+    userId: '', date: '', startTime: '',
     cfg: null, days: {}, view: null, tz: 'America/Los_Angeles',
   }
   var $ = function (id) { return document.getElementById(id) }
+  // Absolute against the mount base: a relative "logo.png" would break on a
+  // per-location link visited with a trailing slash.
+  $('logo').src = API + '/logo.png'
   function show(el, on) { el.classList.toggle('hide', !on) }
   function fail(el, msg) { el.textContent = msg || ''; show(el, !!msg) }
   function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;') }
@@ -336,23 +354,30 @@
     fail($('gate-err'), '')
     api('/api/locations').then(function (d) {
       localStorage.setItem('dayOneWidgetSecret', secret)
-      show($('gate'), false); show($('shell'), true)
-      $('location').innerHTML = '<option value="">Select location…</option>' +
-        d.locations.map(function (l) {
-          return '<option value="' + esc(l.slug) + '">' + esc(l.name) + '</option>'
-        }).join('')
+      show($('gate'), false)
+      if (!S.location) return offerLinks(d.locations)
+      show($('shell'), true)
+      loadConfig()
     }).catch(function (e) { fail($('gate-err'), e.message) })
   }
   $('unlock').addEventListener('click', unlock)
   $('secret').addEventListener('keydown', function (e) { if (e.key === 'Enter') unlock() })
 
-  // --- location -----------------------------------------------------------
-  $('location').addEventListener('change', function () {
-    S.location = this.value; S.userId = ''; S.date = ''; S.startTime = ''; S.cfg = null
-    $('trainer').innerHTML = '<option>Loading…</option>'
+  // Opened without a location: this page is meant to be reached by a
+  // per-location link, so hand over the links rather than showing a picker
+  // that would not exist in real use.
+  function offerLinks(locations) {
+    show($('picker'), true)
+    $('links').innerHTML = locations.map(function (l) {
+      return '<a class="loclink" href="' + esc(API + '/' + l.slug) + '">' + esc(l.name) + '</a>'
+    }).join('')
+  }
+
+  // --- location config ----------------------------------------------------
+  function loadConfig() {
     $('times').innerHTML = '<span class="muted"><span class="spin"></span> Loading…</span>'
-    if (!S.location) return
     api('/api/config?location=' + encodeURIComponent(S.location)).then(function (cfg) {
+      $('location-name').textContent = cfg.location.name
       S.cfg = cfg
       $('duration').textContent = cfg.calendar.slotDuration + ' ' +
         (cfg.calendar.slotDurationUnit === 'hours' ? 'hr' : 'min')
@@ -366,7 +391,7 @@
         }).join('')
       loadSlots()
     }).catch(function (e) { fail($('cal-err'), e.message) })
-  })
+  }
 
   $('trainer').addEventListener('change', function () {
     S.userId = this.value; S.startTime = ''
