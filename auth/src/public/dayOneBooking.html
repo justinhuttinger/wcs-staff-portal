@@ -169,7 +169,10 @@
 <script>
 (function () {
   'use strict'
-  var API = ''            // same origin as this page
+  // Base for API calls. Must be derived from the page's own path, not left empty:
+  // this page is served from the router's mount point (/day-one-booking/), so a
+  // root-absolute '/api/...' would miss the mount entirely and 404.
+  var API = window.location.pathname.replace(/\/+$/, '') || '/day-one-booking'
   var secret = localStorage.getItem('dayOneWidgetSecret') || ''
   var state = { location: '', userId: '', startTime: '', config: null }
 
