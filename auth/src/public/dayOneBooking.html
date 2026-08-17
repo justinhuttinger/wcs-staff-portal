@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Day One Booking</title>
+<style>
+  :root {
+    --bg: #0d0f12;
+    --surface: #16191f;
+    --surface-2: #1e222a;
+    --border: #2a2f3a;
+    --text: #e8eaed;
+    --text-muted: #9aa1ad;
+    --red: #c8202e;
+    --red-hover: #e02a39;
+    --green: #2f9e5f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+  .tag { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin: 0 0 12px; font-weight: 600; }
+  label { display: block; font-size: 13px; color: var(--text-muted); margin: 0 0 5px; }
+  input, select, textarea {
+    width: 100%; background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+    font: inherit; outline: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--red); }
+  textarea { resize: vertical; min-height: 68px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field { margin-bottom: 12px; }
+  button {
+    background: var(--red); color: #fff; border: 0; border-radius: 8px;
+    padding: 11px 18px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: var(--red-hover); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); font-weight: 500; }
+  button.ghost:hover:not(:disabled) { background: var(--surface-2); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 999px; padding: 7px 14px; font-size: 14px; cursor: pointer;
+  }
+  .chip:hover { border-color: #3d4453; }
+  .chip[aria-pressed="true"] { background: var(--red); border-color: var(--red); color: #fff; }
+  .day { margin-bottom: 14px; }
+  .day-label { font-size: 13px; font-weight: 600; margin-bottom: 7px; color: var(--text); }
+  .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 7px; }
+  .slot {
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 9px 6px; font-size: 13px; cursor: pointer; text-align: center;
+  }
+  .slot:hover { border-color: #3d4453; }
+  .slot[aria-pressed="true"] { background: var(--red); border-color: var(--red); color: #fff; }
+  .muted { color: var(--text-muted); font-size: 13px; }
+  .err { color: #ff8189; font-size: 13px; margin-top: 10px; white-space: pre-wrap; }
+  .ok { border-color: var(--green); }
+  .ok h2 { color: var(--green); }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; font-size: 14px; }
+  dt { color: var(--text-muted); }
+  dd { margin: 0; }
+  code { background: var(--surface-2); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
+  .hide { display: none; }
+  .spin { display: inline-block; width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--red); border-radius: 50%; animation: s .7s linear infinite; vertical-align: -2px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Day One Booking</h1>
+    <span class="tag">Standalone test widget</span>
+  </header>
+
+  <!-- Secret gate -->
+  <div class="card" id="gate">
+    <h2>Access</h2>
+    <div class="field">
+      <label for="secret">Widget secret</label>
+      <input id="secret" type="password" placeholder="DAYONE_WIDGET_SECRET" autocomplete="off">
+    </div>
+    <div class="actions">
+      <button id="unlock">Unlock</button>
+      <span class="muted">Stored in this browser only.</span>
+    </div>
+    <div class="err hide" id="gate-err"></div>
+  </div>
+
+  <div id="app" class="hide">
+    <!-- Step 1: location + trainer -->
+    <div class="card">
+      <h2>1 &middot; Location &amp; trainer</h2>
+      <div class="field">
+        <label for="location">Location</label>
+        <select id="location"></select>
+      </div>
+      <div class="field">
+        <label>Trainer</label>
+        <div class="chips" id="trainers"><span class="muted">Pick a location first.</span></div>
+      </div>
+      <div class="muted" id="cal-info"></div>
+    </div>
+
+    <!-- Step 2: slot -->
+    <div class="card">
+      <h2>2 &middot; Pick a time</h2>
+      <div id="slots"><span class="muted">Pick a location first.</span></div>
+    </div>
+
+    <!-- Step 3: details -->
+    <div class="card">
+      <h2>3 &middot; Member details</h2>
+      <div class="row">
+        <div class="field">
+          <label for="firstName">First name</label>
+          <input id="firstName" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="lastName">Last name</label>
+          <input id="lastName" autocomplete="off">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="phone">Phone</label>
+          <input id="phone" type="tel" autocomplete="off">
+        </div>
+      </div>
+      <div class="field">
+        <label for="tourMember">Tour member (who ran the tour)</label>
+        <select id="tourMember"></select>
+      </div>
+      <div class="field">
+        <label for="notes">Notes for trainer</label>
+        <textarea id="notes" placeholder="Optional"></textarea>
+      </div>
+      <div class="actions">
+        <button id="book" disabled>Book Day One</button>
+        <span class="muted" id="book-state"></span>
+      </div>
+      <div class="err hide" id="book-err"></div>
+    </div>
+
+    <!-- Result -->
+    <div class="card ok hide" id="result">
+      <h2>Booked</h2>
+      <dl id="result-dl"></dl>
+      <div class="actions" style="margin-top:14px">
+        <button class="ghost" id="again">Book another</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict'
+  var API = ''            // same origin as this page
+  var secret = localStorage.getItem('dayOneWidgetSecret') || ''
+  var state = { location: '', userId: '', startTime: '', config: null }
+
+  var $ = function (id) { return document.getElementById(id) }
+  function show(el, on) { el.classList.toggle('hide', !on) }
+  function fail(el, msg) { el.textContent = msg || ''; show(el, !!msg) }
+
+  function api(path, opts) {
+    opts = opts || {}
+    return fetch(API + path, {
+      method: opts.method || 'GET',
+      headers: Object.assign({ 'x-widget-secret': secret },
+        opts.body ? { 'Content-Type': 'application/json' } : {}),
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    }).then(function (r) {
+      return r.json().catch(function () { return {} }).then(function (b) {
+        if (!r.ok) throw new Error(b.error || ('HTTP ' + r.status))
+        return b
+      })
+    })
+  }
+
+  // --- gate ---------------------------------------------------------------
+  function unlock() {
+    secret = $('secret').value.trim()
+    if (!secret) return
+    fail($('gate-err'), '')
+    api('/api/locations').then(function (d) {
+      localStorage.setItem('dayOneWidgetSecret', secret)
+      show($('gate'), false)
+      show($('app'), true)
+      var sel = $('location')
+      sel.innerHTML = '<option value="">Select…</option>' +
+        d.locations.map(function (l) {
+          return '<option value="' + l.slug + '">' + l.name + '</option>'
+        }).join('')
+    }).catch(function (e) { fail($('gate-err'), e.message) })
+  }
+  $('unlock').addEventListener('click', unlock)
+  $('secret').addEventListener('keydown', function (e) { if (e.key === 'Enter') unlock() })
+
+  // --- location -> config -------------------------------------------------
+  $('location').addEventListener('change', function () {
+    state.location = this.value
+    state.userId = ''
+    state.startTime = ''
+    state.config = null
+    $('trainers').innerHTML = '<span class="muted"><span class="spin"></span> Loading…</span>'
+    $('slots').innerHTML = ''
+    $('cal-info').textContent = ''
+    if (!state.location) return
+    api('/api/config?location=' + encodeURIComponent(state.location)).then(function (cfg) {
+      state.config = cfg
+      renderTrainers(cfg)
+      renderTourMembers(cfg)
+      var c = cfg.calendar
+      $('cal-info').textContent = c.name + ' · ' + c.slotDuration + ' ' +
+        (c.slotDurationUnit || 'mins') + ' slots · bookable ' +
+        (c.allowBookingFor ? c.allowBookingFor + ' ' + (c.allowBookingForUnit || '') : 'n/a') + ' out'
+      loadSlots()
+    }).catch(function (e) {
+      $('trainers').innerHTML = '<span class="err">' + e.message + '</span>'
+    })
+  })
+
+  function renderTrainers(cfg) {
+    var html = '<button class="chip" data-uid="" aria-pressed="true">Anyone (round robin)</button>'
+    html += cfg.trainers.map(function (t) {
+      return '<button class="chip" data-uid="' + t.userId + '" aria-pressed="false">' + t.name + '</button>'
+    }).join('')
+    $('trainers').innerHTML = html
+    Array.prototype.forEach.call($('trainers').querySelectorAll('.chip'), function (btn) {
+      btn.addEventListener('click', function () {
+        Array.prototype.forEach.call($('trainers').querySelectorAll('.chip'), function (b) {
+          b.setAttribute('aria-pressed', String(b === btn))
+        })
+        state.userId = btn.getAttribute('data-uid')
+        state.startTime = ''
+        loadSlots()
+      })
+    })
+  }
+
+  function renderTourMembers(cfg) {
+    $('tourMember').innerHTML = '<option value="">Select…</option>' +
+      (cfg.tourMembers || []).map(function (n) {
+        return '<option value="' + n.replace(/"/g, '&quot;') + '">' + n + '</option>'
+      }).join('')
+  }
+
+  // --- slots --------------------------------------------------------------
+  function loadSlots() {
+    if (!state.location) return
+    $('slots').innerHTML = '<span class="muted"><span class="spin"></span> Loading availability…</span>'
+    var q = '/api/slots?location=' + encodeURIComponent(state.location) + '&days=14'
+    if (state.userId) q += '&userId=' + encodeURIComponent(state.userId)
+    api(q).then(function (d) {
+      var dates = Object.keys(d.days).sort()
+      if (!dates.length) {
+        $('slots').innerHTML = '<span class="muted">No open slots in the next 14 days' +
+          (state.userId ? ' for this trainer.' : '.') + '</span>'
+        syncBookButton()
+        return
+      }
+      $('slots').innerHTML = dates.map(function (date) {
+        return '<div class="day"><div class="day-label">' + prettyDate(date) + '</div><div class="slots">' +
+          d.days[date].map(function (iso) {
+            return '<button class="slot" data-iso="' + iso + '" aria-pressed="false">' + prettyTime(iso) + '</button>'
+          }).join('') + '</div></div>'
+      }).join('')
+      Array.prototype.forEach.call($('slots').querySelectorAll('.slot'), function (btn) {
+        btn.addEventListener('click', function () {
+          Array.prototype.forEach.call($('slots').querySelectorAll('.slot'), function (b) {
+            b.setAttribute('aria-pressed', String(b === btn))
+          })
+          state.startTime = btn.getAttribute('data-iso')
+          syncBookButton()
+        })
+      })
+      syncBookButton()
+    }).catch(function (e) {
+      $('slots').innerHTML = '<span class="err">' + e.message + '</span>'
+    })
+  }
+
+  function prettyDate(d) {
+    // d is YYYY-MM-DD; build a local date so it never shifts a day via UTC parse.
+    var p = d.split('-')
+    var dt = new Date(+p[0], +p[1] - 1, +p[2])
+    return dt.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+  }
+  function prettyTime(iso) {
+    return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  }
+
+  // --- book ---------------------------------------------------------------
+  function syncBookButton() {
+    var ready = !!(state.startTime && $('firstName').value.trim() &&
+      ($('email').value.trim() || $('phone').value.trim()))
+    $('book').disabled = !ready
+    $('book-state').textContent = state.startTime
+      ? ('Selected ' + prettyTime(state.startTime) + ' on ' + prettyDate(state.startTime.slice(0, 10)))
+      : 'Pick a time above.'
+  }
+  ;['firstName', 'email', 'phone'].forEach(function (id) {
+    $(id).addEventListener('input', syncBookButton)
+  })
+
+  $('book').addEventListener('click', function () {
+    fail($('book-err'), '')
+    $('book').disabled = true
+    $('book-state').innerHTML = '<span class="spin"></span> Booking…'
+    api('/api/book', { method: 'POST', body: {
+      location: state.location,
+      userId: state.userId || undefined,
+      startTime: state.startTime,
+      firstName: $('firstName').value.trim(),
+      lastName: $('lastName').value.trim(),
+      email: $('email').value.trim(),
+      phone: $('phone').value.trim(),
+      tourMember: $('tourMember').value,
+      notes: $('notes').value.trim(),
+    }}).then(function (r) {
+      var trainer = '—'
+      if (r.assignedUserId && state.config) {
+        var t = state.config.trainers.filter(function (x) { return x.userId === r.assignedUserId })[0]
+        trainer = t ? t.name : r.assignedUserId
+      }
+      $('result-dl').innerHTML =
+        row('When', prettyDate(String(r.startTime).slice(0, 10)) + ' at ' + prettyTime(r.startTime)) +
+        row('Trainer', trainer + (state.userId ? '' : ' (round robin)')) +
+        row('Appointment', '<code>' + r.appointmentId + '</code>') +
+        row('Contact', '<code>' + r.contactId + '</code>') +
+        row('Custom fields', r.customFieldsWritten ? 'written'
+          : '<span class="err">failed: ' + (r.customFieldError || '') + '</span>')
+      show($('result'), true)
+      $('book-state').textContent = 'Done. Confirmation SMS should arrive shortly.'
+      $('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }).catch(function (e) {
+      fail($('book-err'), e.message)
+      $('book-state').textContent = ''
+      $('book').disabled = false
+    })
+  })
+
+  function row(k, v) { return '<dt>' + k + '</dt><dd>' + v + '</dd>' }
+
+  $('again').addEventListener('click', function () {
+    show($('result'), false)
+    state.startTime = ''
+    ;['firstName', 'lastName', 'email', 'phone', 'notes'].forEach(function (id) { $(id).value = '' })
+    loadSlots()
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+
+  // Auto-unlock if a secret is already stored.
+  if (secret) { $('secret').value = secret; unlock() }
+})()
+</script>
+</body>
+</html>

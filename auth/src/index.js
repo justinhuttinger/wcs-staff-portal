@@ -69,6 +69,9 @@ app.use('/appointments', require('./routes/appointments'))
 app.use('/tours', require('./routes/tours'))
 app.use('/tour-intake', require('./routes/tourIntake'))
 app.use('/public/tour', require('./routes/publicTour'))
+// Standalone API-driven Day One booking widget (replaces the embedded GHL
+// booking iframe, which trips a captcha). Not wired into the portal yet.
+app.use('/day-one-booking', require('./routes/dayOneBooking'))
 app.use('/public/group-x', require('./routes/publicGroupX'))
 app.use('/public/facility', require('./routes/publicFacility'))
 app.use('/oidc', require('./routes/oidc'))
