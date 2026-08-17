@@ -55,6 +55,16 @@ function daysAgoStr(n) {
   d.setDate(d.getDate() - n)
   return toLocalDateStr(d)
 }
+// Role tiers, mirroring auth/src/middleware/role.js. 'custom' sits above lead
+// but below manager, so custom-role members are blocked from the money views.
+const ROLE_LEVELS = {
+  front_desk: 0, personal_trainer: 0, team_member: 0,
+  lead: 1,
+  custom: 1,
+  manager: 2,
+  director: 3, corporate: 3, marketing: 3,
+  admin: 4,
+}
 function monthStartStr(d = new Date()) {
   return toLocalDateStr(new Date(d.getFullYear(), d.getMonth(), 1))
 }
@@ -680,6 +690,11 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   // All-location roles see every club; everyone else is locked to the locations
   // on their staff profile (matches the backend scoping in routes/inventory.js).
   const canSeeAllClubs = isAdmin || ['corporate', 'marketing'].includes(user?.staff?.role)
+  // The Inventory tile is lead+, but cost/margin data is manager+ on the server
+  // (requireRole('manager') on /received, /summary, /shrinkage). Mirror that here
+  // so a lead never sees a tab that would only 403. Unknown role names (an
+  // admin-created custom role) fail closed, same as every other tile gate.
+  const canSeeFinancials = ROLE_LEVELS[user?.staff?.role] >= ROLE_LEVELS.manager
   // Clubs this user may view/restock into. Invoices are always single-club.
   const accessibleSlugs = useMemo(() => {
     const all = LOCATION_OPTIONS.filter(o => o.slug !== 'all').map(o => o.slug)
@@ -797,7 +812,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
         .then(([inv, mv]) => { setInvoices(inv.invoices || []); setMovements(mv.movements || []) })
         .catch(err => setError(err.message))
         .finally(() => setLoading(false))
-    } else if (tab === 'received') {
+    } else if (tab === 'received' && canSeeFinancials) {
       setLoading(true)
       getInventoryReceived({
         location_slug: slug === 'all' ? '' : slug,
@@ -807,7 +822,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
         .catch(err => setError(err.message))
         .finally(() => setLoading(false))
     }
-  }, [tab, slug, receivedFrom, receivedTo, receivedSource])
+  }, [tab, slug, receivedFrom, receivedTo, receivedSource, canSeeFinancials])
 
   async function syncNow() {
     setSyncBusy(true); setError('')
@@ -1157,7 +1172,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                 { key: 'items', label: 'Inventory' },
                 { key: 'order', label: 'To Order' },
                 { key: 'restock', label: 'Restock' },
-                { key: 'received', label: 'Received' },
+                ...(canSeeFinancials ? [{ key: 'received', label: 'Received' }] : []),
                 ...(isAdmin ? [{ key: 'audit', label: 'Audit' }] : []),
               ].map(m => (
                 <button key={m.key} onClick={() => setTab(m.key)}
@@ -1532,7 +1547,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
 
       {/* === Received tab === how much stock came IN over a date range, valued
           at what we paid (cost) and what it will ring up for (retail). */}
-      {tab === 'received' && (
+      {tab === 'received' && canSeeFinancials && (
         <div className="space-y-4">
           {loading ? (
             <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-8 text-center">
