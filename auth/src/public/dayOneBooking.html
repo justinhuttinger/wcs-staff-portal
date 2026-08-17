@@ -6,162 +6,268 @@
 <title>Day One Booking</title>
 <style>
   :root {
-    --bg: #0d0f12;
-    --surface: #16191f;
-    --surface-2: #1e222a;
-    --border: #2a2f3a;
-    --text: #e8eaed;
-    --text-muted: #9aa1ad;
-    --red: #c8202e;
-    --red-hover: #e02a39;
-    --green: #2f9e5f;
+    --ink: #111213;
+    --text: #1f2328;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --fill: #f3f4f6;
+    --fill-2: #9ca3af;
+    --danger: #b42318;
   }
   * { box-sizing: border-box; }
+  html, body { background: #fff; }
   body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0; color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
-  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
-  h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
-  .tag { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 14px; }
-  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin: 0 0 12px; font-weight: 600; }
-  label { display: block; font-size: 13px; color: var(--text-muted); margin: 0 0 5px; }
-  input, select, textarea {
-    width: 100%; background: var(--surface-2); color: var(--text);
-    border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
-    font: inherit; outline: none;
+  .page { padding: 28px 20px 60px; }
+  .shell {
+    max-width: 1120px; margin: 0 auto;
+    border: 1px solid var(--line); border-radius: 14px; background: #fff;
+    display: grid; grid-template-columns: 330px 1fr 268px;
+    min-height: 620px; overflow: hidden;
   }
-  input:focus, select:focus, textarea:focus { border-color: var(--red); }
-  textarea { resize: vertical; min-height: 68px; }
-  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .field { margin-bottom: 12px; }
-  button {
-    background: var(--red); color: #fff; border: 0; border-radius: 8px;
-    padding: 11px 18px; font: inherit; font-weight: 600; cursor: pointer;
+  .pane { padding: 26px 28px; }
+  .pane-left { border-right: 1px solid var(--line); }
+  .pane-right { padding: 26px 24px 26px 8px; }
+
+  /* ---- left ---- */
+  .logo { width: 92px; height: 92px; display: block; margin-bottom: 18px; }
+  .eyebrow { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  h1 { font-size: 27px; line-height: 1.15; margin: 0 0 18px; letter-spacing: -0.02em; color: var(--ink); }
+  .meta { display: flex; align-items: center; gap: 11px; margin-bottom: 13px; font-size: 14px; }
+  .meta svg { flex: none; color: var(--ink); }
+  .meta.pending { color: var(--muted); }
+  .blurb { margin-top: 22px; font-size: 14px; color: var(--muted); }
+  .blurb strong { color: var(--text); }
+  .blurb em { font-style: italic; }
+  select.trainer {
+    appearance: none; border: 0; background: transparent; font: inherit; color: inherit;
+    padding: 2px 22px 2px 0; cursor: pointer; width: 100%;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23111213' stroke-width='2.5'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat: no-repeat; background-position: right center;
   }
-  button:hover:not(:disabled) { background: var(--red-hover); }
-  button:disabled { opacity: .5; cursor: not-allowed; }
-  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); font-weight: 500; }
-  button.ghost:hover:not(:disabled) { background: var(--surface-2); }
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-  .chip {
-    background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
-    border-radius: 999px; padding: 7px 14px; font-size: 14px; cursor: pointer;
+  select.trainer:focus { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 3px; }
+
+  /* ---- center ---- */
+  h2 { font-size: 19px; margin: 0 0 22px; color: var(--ink); font-weight: 600; letter-spacing: -0.01em; }
+  .month-bar { display: flex; align-items: center; justify-content: center; gap: 18px; margin-bottom: 18px; }
+  .month-label { font-size: 16px; min-width: 168px; text-align: center; }
+  .nav {
+    width: 38px; height: 38px; border-radius: 50%; border: 0; background: transparent;
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink);
   }
-  .chip:hover { border-color: #3d4453; }
-  .chip[aria-pressed="true"] { background: var(--red); border-color: var(--red); color: #fff; }
-  .day { margin-bottom: 14px; }
-  .day-label { font-size: 13px; font-weight: 600; margin-bottom: 7px; color: var(--text); }
-  .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 7px; }
-  .slot {
-    background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
-    border-radius: 8px; padding: 9px 6px; font-size: 13px; cursor: pointer; text-align: center;
+  .nav:hover:not(:disabled) { background: var(--fill); }
+  .nav.filled { background: var(--fill); }
+  .nav:disabled { color: #d1d5db; cursor: default; }
+  .dow, .grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+  .dow div { text-align: center; font-size: 13px; color: var(--muted); padding-bottom: 10px; }
+  .grid { row-gap: 6px; }
+  .cell { display: flex; flex-direction: column; align-items: center; }
+  .date {
+    width: 42px; height: 42px; border-radius: 50%; border: 0; background: transparent;
+    font: inherit; font-size: 15px; color: #c8ccd2; cursor: default;
+    display: inline-flex; align-items: center; justify-content: center;
   }
-  .slot:hover { border-color: #3d4453; }
-  .slot[aria-pressed="true"] { background: var(--red); border-color: var(--red); color: #fff; }
-  .muted { color: var(--text-muted); font-size: 13px; }
-  .err { color: #ff8189; font-size: 13px; margin-top: 10px; white-space: pre-wrap; }
-  .ok { border-color: var(--green); }
-  .ok h2 { color: var(--green); }
-  dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; font-size: 14px; }
-  dt { color: var(--text-muted); }
-  dd { margin: 0; }
-  code { background: var(--surface-2); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
-  .actions { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
-  .hide { display: none; }
-  .spin { display: inline-block; width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--red); border-radius: 50%; animation: s .7s linear infinite; vertical-align: -2px; }
+  .date.open { background: var(--fill); color: var(--text); cursor: pointer; }
+  .date.open:hover { background: #e6e8eb; }
+  .date.sel { background: var(--ink); color: #fff; }
+  .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--ink); margin-top: 3px; }
+  .dot.hidden { visibility: hidden; }
+  .tz { margin-top: 30px; }
+  .tz-label { font-size: 15px; color: var(--ink); margin-bottom: 8px; }
+  .tz-row { display: flex; align-items: center; gap: 9px; }
+  .tz-row select {
+    appearance: none; border: 0; background: transparent; font: inherit; color: var(--text);
+    padding: 2px 22px 2px 0; cursor: pointer;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat: no-repeat; background-position: right center;
+  }
+
+  /* ---- right (times) ---- */
+  .times { display: flex; flex-direction: column; gap: 11px; max-height: 560px; overflow-y: auto; padding-right: 6px; }
+  .times::-webkit-scrollbar { width: 7px; }
+  .times::-webkit-scrollbar-thumb { background: #9ca3af; border-radius: 4px; }
+  .time {
+    border: 1px solid var(--ink); border-radius: 8px; background: #fff; color: var(--ink);
+    padding: 13px 8px; font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; width: 100%;
+  }
+  .time:hover { background: #fafafa; }
+  .time-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .time-pair .chosen {
+    background: var(--fill-2); color: #fff; border: 0; border-radius: 8px;
+    padding: 13px 8px; font: inherit; font-size: 15px; font-weight: 500; text-align: center;
+  }
+  .time-pair .confirm {
+    background: var(--ink); color: #fff; border: 0; border-radius: 8px;
+    padding: 13px 8px; font: inherit; font-size: 15px; font-weight: 500; cursor: pointer;
+  }
+  .time-pair .confirm:hover { background: #000; }
+
+  /* ---- form step ---- */
+  .form-pane { grid-column: 2 / span 2; padding: 26px 28px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 5px; }
+  .field input, .field select, .field textarea {
+    width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+    font: inherit; color: var(--text); background: #fff; outline: none;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--ink); }
+  .field textarea { min-height: 74px; resize: vertical; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .who {
+    border: 1px solid var(--line); border-radius: 10px; background: var(--fill);
+    padding: 12px 14px; font-size: 14px; margin-bottom: 18px;
+  }
+  .who b { color: var(--ink); }
+  .who .hint { color: var(--muted); font-size: 13px; display: block; margin-top: 3px; }
+  .row-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+  .btn { background: var(--ink); color: #fff; border: 0; border-radius: 8px; padding: 12px 22px; font: inherit; font-weight: 600; cursor: pointer; }
+  .btn:hover:not(:disabled) { background: #000; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.link { background: transparent; color: var(--muted); font-weight: 500; padding: 12px 4px; }
+  .btn.link:hover { color: var(--ink); background: transparent; }
+  .err { color: var(--danger); font-size: 13px; margin-top: 10px; white-space: pre-wrap; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .hide { display: none !important; }
+  .spin { display: inline-block; width: 13px; height: 13px; border: 2px solid var(--line); border-top-color: var(--ink); border-radius: 50%; animation: s .7s linear infinite; vertical-align: -2px; }
   @keyframes s { to { transform: rotate(360deg); } }
+  dl.summary { display: grid; grid-template-columns: auto 1fr; gap: 7px 18px; margin: 0 0 18px; font-size: 14px; }
+  dl.summary dt { color: var(--muted); }
+  dl.summary dd { margin: 0; }
+  code { background: var(--fill); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+  /* ---- gate ---- */
+  .gate { max-width: 380px; margin: 60px auto; }
+  .gate h2 { margin-bottom: 16px; }
+
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: 1fr; }
+    .pane-left { border-right: 0; border-bottom: 1px solid var(--line); }
+    .pane-right { padding: 0 28px 26px; }
+    .times { max-height: none; }
+    .form-pane { grid-column: 1; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>Day One Booking</h1>
-    <span class="tag">Standalone test widget</span>
-  </header>
+<div class="page">
 
   <!-- Secret gate -->
-  <div class="card" id="gate">
-    <h2>Access</h2>
+  <div class="gate" id="gate">
+    <h2>Day One Booking</h2>
     <div class="field">
       <label for="secret">Widget secret</label>
-      <input id="secret" type="password" placeholder="DAYONE_WIDGET_SECRET" autocomplete="off">
+      <input id="secret" type="password" autocomplete="off" placeholder="DAYONE_WIDGET_SECRET">
     </div>
-    <div class="actions">
-      <button id="unlock">Unlock</button>
+    <div class="row-actions">
+      <button class="btn" id="unlock">Unlock</button>
       <span class="muted">Stored in this browser only.</span>
     </div>
     <div class="err hide" id="gate-err"></div>
   </div>
 
-  <div id="app" class="hide">
-    <!-- Step 1: location + trainer -->
-    <div class="card">
-      <h2>1 &middot; Location &amp; trainer</h2>
-      <div class="field">
-        <label for="location">Location</label>
-        <select id="location"></select>
+  <div class="shell hide" id="shell">
+    <!-- LEFT -->
+    <div class="pane pane-left">
+      <img class="logo" id="logo" src="logo.png" alt="West Coast Strength">
+      <div class="eyebrow">Day One</div>
+      <h1>Day One</h1>
+
+      <div class="meta">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <span id="duration">1 hr</span>
       </div>
-      <div class="field">
-        <label>Trainer</label>
-        <div class="chips" id="trainers"><span class="muted">Pick a location first.</span></div>
+      <div class="meta pending" id="when-row">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+        <span id="when">Select a date and time</span>
       </div>
-      <div class="muted" id="cal-info"></div>
+      <div class="meta">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M4.5 20c0-3.6 3.4-5.6 7.5-5.6s7.5 2 7.5 5.6"/></svg>
+        <select class="trainer" id="trainer"><option>Loading…</option></select>
+      </div>
+      <div class="meta">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-7-4.5-7-10a7 7 0 1114 0c0 5.5-7 10-7 10z"/><circle cx="12" cy="11" r="2.5"/></svg>
+        <select class="trainer" id="location"><option value="">Select location…</option></select>
+      </div>
+
+      <p class="blurb">
+        <strong>Ready to get started?</strong> Book your <em>free Day One</em> today and take the first
+        step toward your goals. In this session, we'll go over your fitness background, goals, and
+        challenges, then create a customized plan to help you get results faster. Pick a time that
+        works best for you — no pressure, just a conversation about how we can help you reach your
+        potential.
+      </p>
     </div>
 
-    <!-- Step 2: slot -->
-    <div class="card">
-      <h2>2 &middot; Pick a time</h2>
-      <div id="slots"><span class="muted">Pick a location first.</span></div>
+    <!-- CENTER: calendar -->
+    <div class="pane" id="pane-cal">
+      <h2>Select Date &amp; Time</h2>
+      <div class="month-bar">
+        <button class="nav" id="prev" aria-label="Previous month">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <div class="month-label" id="month-label">—</div>
+        <button class="nav filled" id="next" aria-label="Next month">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+      <div class="dow"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div>
+      <div class="grid" id="grid"></div>
+      <div class="tz">
+        <div class="tz-label">Time zone</div>
+        <div class="tz-row">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18"/></svg>
+          <select id="tz">
+            <option value="America/Los_Angeles">GMT-07:00 America/Los_Angeles (PDT)</option>
+            <option value="America/Denver">GMT-06:00 America/Denver (MDT)</option>
+            <option value="America/Chicago">GMT-05:00 America/Chicago (CDT)</option>
+            <option value="America/New_York">GMT-04:00 America/New_York (EDT)</option>
+          </select>
+        </div>
+      </div>
+      <div class="err hide" id="cal-err"></div>
     </div>
 
-    <!-- Step 3: details -->
-    <div class="card">
-      <h2>3 &middot; Member details</h2>
-      <div class="row">
-        <div class="field">
-          <label for="firstName">First name</label>
-          <input id="firstName" autocomplete="off">
-        </div>
-        <div class="field">
-          <label for="lastName">Last name</label>
-          <input id="lastName" autocomplete="off">
-        </div>
+    <!-- RIGHT: times -->
+    <div class="pane pane-right" id="pane-times">
+      <div class="times" id="times"><span class="muted">Pick a location to see availability.</span></div>
+    </div>
+
+    <!-- FORM STEP -->
+    <div class="form-pane hide" id="pane-form">
+      <h2>Member details</h2>
+      <div class="who" id="who"></div>
+      <div class="two">
+        <div class="field"><label for="firstName">First name</label><input id="firstName" autocomplete="off"></div>
+        <div class="field"><label for="lastName">Last name</label><input id="lastName" autocomplete="off"></div>
       </div>
-      <div class="row">
-        <div class="field">
-          <label for="email">Email</label>
-          <input id="email" type="email" autocomplete="off">
-        </div>
-        <div class="field">
-          <label for="phone">Phone</label>
-          <input id="phone" type="tel" autocomplete="off">
-        </div>
+      <div class="two">
+        <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="off"></div>
+        <div class="field"><label for="phone">Phone</label><input id="phone" type="tel" autocomplete="off"></div>
       </div>
       <div class="field">
-        <label for="tourMember">Tour member (who ran the tour)</label>
+        <label for="tourMember">Booking Team Member</label>
         <select id="tourMember"></select>
       </div>
       <div class="field">
         <label for="notes">Notes for trainer</label>
         <textarea id="notes" placeholder="Optional"></textarea>
       </div>
-      <div class="actions">
-        <button id="book" disabled>Book Day One</button>
+      <div class="row-actions">
+        <button class="btn" id="book" disabled>Book Day One</button>
+        <button class="btn link" id="back">Back to times</button>
         <span class="muted" id="book-state"></span>
       </div>
       <div class="err hide" id="book-err"></div>
     </div>
 
-    <!-- Result -->
-    <div class="card ok hide" id="result">
+    <!-- DONE STEP -->
+    <div class="form-pane hide" id="pane-done">
       <h2>Booked</h2>
-      <dl id="result-dl"></dl>
-      <div class="actions" style="margin-top:14px">
-        <button class="ghost" id="again">Book another</button>
-      </div>
+      <dl class="summary" id="done-dl"></dl>
+      <button class="btn" id="again">Book another</button>
     </div>
   </div>
 </div>
@@ -169,16 +275,19 @@
 <script>
 (function () {
   'use strict'
-  // Base for API calls. Must be derived from the page's own path, not left empty:
-  // this page is served from the router's mount point (/day-one-booking/), so a
-  // root-absolute '/api/...' would miss the mount entirely and 404.
+  // Base for API calls. Must be derived from the page's own path: this page is
+  // served from the router's mount point, so a root-absolute '/api/...' would
+  // miss the mount and 404.
   var API = window.location.pathname.replace(/\/+$/, '') || '/day-one-booking'
   var secret = localStorage.getItem('dayOneWidgetSecret') || ''
-  var state = { location: '', userId: '', startTime: '', config: null }
-
+  var S = {
+    location: '', userId: '', date: '', startTime: '',
+    cfg: null, days: {}, view: null, tz: 'America/Los_Angeles',
+  }
   var $ = function (id) { return document.getElementById(id) }
   function show(el, on) { el.classList.toggle('hide', !on) }
   function fail(el, msg) { el.textContent = msg || ''; show(el, !!msg) }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;') }
 
   function api(path, opts) {
     opts = opts || {}
@@ -195,6 +304,31 @@
     })
   }
 
+  // --- formatting (render in the SELECTED zone, not the browser's) ---------
+  function fmtTime(iso) {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: S.tz,
+    }).format(new Date(iso))
+  }
+  function fmtLongDate(key) {
+    var p = key.split('-')
+    return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+  }
+  function endOf(iso) {
+    var mins = durationMinutes()
+    return new Date(new Date(iso).getTime() + mins * 60000).toISOString()
+  }
+  function durationMinutes() {
+    var c = S.cfg && S.cfg.calendar
+    if (!c) return 60
+    return c.slotDurationUnit === 'hours' ? (c.slotDuration || 1) * 60 : (c.slotDuration || 60)
+  }
+  function dateKey(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0')
+  }
+
   // --- gate ---------------------------------------------------------------
   function unlock() {
     secret = $('secret').value.trim()
@@ -202,123 +336,191 @@
     fail($('gate-err'), '')
     api('/api/locations').then(function (d) {
       localStorage.setItem('dayOneWidgetSecret', secret)
-      show($('gate'), false)
-      show($('app'), true)
-      var sel = $('location')
-      sel.innerHTML = '<option value="">Select…</option>' +
+      show($('gate'), false); show($('shell'), true)
+      $('location').innerHTML = '<option value="">Select location…</option>' +
         d.locations.map(function (l) {
-          return '<option value="' + l.slug + '">' + l.name + '</option>'
+          return '<option value="' + esc(l.slug) + '">' + esc(l.name) + '</option>'
         }).join('')
     }).catch(function (e) { fail($('gate-err'), e.message) })
   }
   $('unlock').addEventListener('click', unlock)
   $('secret').addEventListener('keydown', function (e) { if (e.key === 'Enter') unlock() })
 
-  // --- location -> config -------------------------------------------------
+  // --- location -----------------------------------------------------------
   $('location').addEventListener('change', function () {
-    state.location = this.value
-    state.userId = ''
-    state.startTime = ''
-    state.config = null
-    $('trainers').innerHTML = '<span class="muted"><span class="spin"></span> Loading…</span>'
-    $('slots').innerHTML = ''
-    $('cal-info').textContent = ''
-    if (!state.location) return
-    api('/api/config?location=' + encodeURIComponent(state.location)).then(function (cfg) {
-      state.config = cfg
-      renderTrainers(cfg)
-      renderTourMembers(cfg)
-      var c = cfg.calendar
-      $('cal-info').textContent = c.name + ' · ' + c.slotDuration + ' ' +
-        (c.slotDurationUnit || 'mins') + ' slots · bookable ' +
-        (c.allowBookingFor ? c.allowBookingFor + ' ' + (c.allowBookingForUnit || '') : 'n/a') + ' out'
+    S.location = this.value; S.userId = ''; S.date = ''; S.startTime = ''; S.cfg = null
+    $('trainer').innerHTML = '<option>Loading…</option>'
+    $('times').innerHTML = '<span class="muted"><span class="spin"></span> Loading…</span>'
+    if (!S.location) return
+    api('/api/config?location=' + encodeURIComponent(S.location)).then(function (cfg) {
+      S.cfg = cfg
+      $('duration').textContent = cfg.calendar.slotDuration + ' ' +
+        (cfg.calendar.slotDurationUnit === 'hours' ? 'hr' : 'min')
+      $('trainer').innerHTML = '<option value="">Anyone</option>' +
+        cfg.trainers.map(function (t) {
+          return '<option value="' + esc(t.userId) + '">' + esc(t.name) + '</option>'
+        }).join('')
+      $('tourMember').innerHTML = '<option value="">Select…</option>' +
+        (cfg.tourMembers || []).map(function (n) {
+          return '<option value="' + esc(n) + '">' + esc(n) + '</option>'
+        }).join('')
       loadSlots()
-    }).catch(function (e) {
-      $('trainers').innerHTML = '<span class="err">' + e.message + '</span>'
-    })
+    }).catch(function (e) { fail($('cal-err'), e.message) })
   })
 
-  function renderTrainers(cfg) {
-    var html = '<button class="chip" data-uid="" aria-pressed="true">Anyone (round robin)</button>'
-    html += cfg.trainers.map(function (t) {
-      return '<button class="chip" data-uid="' + t.userId + '" aria-pressed="false">' + t.name + '</button>'
-    }).join('')
-    $('trainers').innerHTML = html
-    Array.prototype.forEach.call($('trainers').querySelectorAll('.chip'), function (btn) {
-      btn.addEventListener('click', function () {
-        Array.prototype.forEach.call($('trainers').querySelectorAll('.chip'), function (b) {
-          b.setAttribute('aria-pressed', String(b === btn))
-        })
-        state.userId = btn.getAttribute('data-uid')
-        state.startTime = ''
-        loadSlots()
-      })
-    })
-  }
+  $('trainer').addEventListener('change', function () {
+    S.userId = this.value; S.startTime = ''
+    loadSlots()
+  })
+  $('tz').addEventListener('change', function () { S.tz = this.value; loadSlots() })
 
-  function renderTourMembers(cfg) {
-    $('tourMember').innerHTML = '<option value="">Select…</option>' +
-      (cfg.tourMembers || []).map(function (n) {
-        return '<option value="' + n.replace(/"/g, '&quot;') + '">' + n + '</option>'
-      }).join('')
-  }
-
-  // --- slots --------------------------------------------------------------
+  // --- slots + calendar ---------------------------------------------------
   function loadSlots() {
-    if (!state.location) return
-    $('slots').innerHTML = '<span class="muted"><span class="spin"></span> Loading availability…</span>'
-    var q = '/api/slots?location=' + encodeURIComponent(state.location) + '&days=14'
-    if (state.userId) q += '&userId=' + encodeURIComponent(state.userId)
+    if (!S.location) return
+    fail($('cal-err'), '')
+    $('times').innerHTML = '<span class="muted"><span class="spin"></span> Loading…</span>'
+    var q = '/api/slots?location=' + encodeURIComponent(S.location) +
+      '&days=31&timezone=' + encodeURIComponent(S.tz)
+    if (S.userId) q += '&userId=' + encodeURIComponent(S.userId)
     api(q).then(function (d) {
-      var dates = Object.keys(d.days).sort()
-      if (!dates.length) {
-        $('slots').innerHTML = '<span class="muted">No open slots in the next 14 days' +
-          (state.userId ? ' for this trainer.' : '.') + '</span>'
-        syncBookButton()
-        return
-      }
-      $('slots').innerHTML = dates.map(function (date) {
-        return '<div class="day"><div class="day-label">' + prettyDate(date) + '</div><div class="slots">' +
-          d.days[date].map(function (iso) {
-            return '<button class="slot" data-iso="' + iso + '" aria-pressed="false">' + prettyTime(iso) + '</button>'
-          }).join('') + '</div></div>'
-      }).join('')
-      Array.prototype.forEach.call($('slots').querySelectorAll('.slot'), function (btn) {
-        btn.addEventListener('click', function () {
-          Array.prototype.forEach.call($('slots').querySelectorAll('.slot'), function (b) {
-            b.setAttribute('aria-pressed', String(b === btn))
-          })
-          state.startTime = btn.getAttribute('data-iso')
-          syncBookButton()
-        })
-      })
-      syncBookButton()
+      S.days = d.days || {}
+      var keys = Object.keys(S.days).sort()
+      if (!S.date || !S.days[S.date]) S.date = keys[0] || ''
+      var anchor = S.date ? new Date(+S.date.split('-')[0], +S.date.split('-')[1] - 1, 1) : new Date()
+      S.view = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
+      renderMonth(); renderTimes()
     }).catch(function (e) {
-      $('slots').innerHTML = '<span class="err">' + e.message + '</span>'
+      fail($('cal-err'), e.message)
+      $('times').innerHTML = ''
     })
   }
 
-  function prettyDate(d) {
-    // d is YYYY-MM-DD; build a local date so it never shifts a day via UTC parse.
-    var p = d.split('-')
-    var dt = new Date(+p[0], +p[1] - 1, +p[2])
-    return dt.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
-  }
-  function prettyTime(iso) {
-    return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  function renderMonth() {
+    if (!S.view) return
+    $('month-label').textContent = S.view.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    var y = S.view.getFullYear(), m = S.view.getMonth()
+    var first = new Date(y, m, 1).getDay()
+    var count = new Date(y, m + 1, 0).getDate()
+    var todayKey = dateKey(new Date())
+    var html = ''
+    for (var i = 0; i < first; i++) html += '<div class="cell"></div>'
+    for (var d = 1; d <= count; d++) {
+      var key = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0')
+      var open = !!S.days[key]
+      var cls = 'date' + (open ? ' open' : '') + (key === S.date ? ' sel' : '')
+      html += '<div class="cell"><button class="' + cls + '" data-key="' + key + '"' +
+        (open ? '' : ' disabled') + '>' + d + '</button>' +
+        '<span class="dot' + (key === todayKey ? '' : ' hidden') + '"></span></div>'
+    }
+    $('grid').innerHTML = html
+    Array.prototype.forEach.call($('grid').querySelectorAll('.date.open'), function (b) {
+      b.addEventListener('click', function () {
+        S.date = b.getAttribute('data-key'); S.startTime = ''
+        renderMonth(); renderTimes()
+      })
+    })
+    // Only allow navigating months that can contain bookable days.
+    var keys = Object.keys(S.days).sort()
+    var minM = keys.length ? keys[0].slice(0, 7) : null
+    var maxM = keys.length ? keys[keys.length - 1].slice(0, 7) : null
+    var viewM = y + '-' + String(m + 1).padStart(2, '0')
+    $('prev').disabled = !minM || viewM <= minM
+    $('next').disabled = !maxM || viewM >= maxM
   }
 
-  // --- book ---------------------------------------------------------------
-  function syncBookButton() {
-    var ready = !!(state.startTime && $('firstName').value.trim() &&
+  $('prev').addEventListener('click', function () {
+    S.view = new Date(S.view.getFullYear(), S.view.getMonth() - 1, 1); renderMonth()
+  })
+  $('next').addEventListener('click', function () {
+    S.view = new Date(S.view.getFullYear(), S.view.getMonth() + 1, 1); renderMonth()
+  })
+
+  function renderTimes() {
+    var list = (S.date && S.days[S.date]) || []
+    if (!list.length) {
+      $('times').innerHTML = '<span class="muted">No open times' +
+        (S.userId ? ' for this trainer' : '') + '.</span>'
+      return
+    }
+    $('times').innerHTML = list.map(function (iso) {
+      if (iso === S.startTime) {
+        return '<div class="time-pair"><div class="chosen">' + fmtTime(iso) + '</div>' +
+          '<button class="confirm" data-iso="' + iso + '">Select</button></div>'
+      }
+      return '<button class="time" data-iso="' + iso + '">' + fmtTime(iso) + '</button>'
+    }).join('')
+    Array.prototype.forEach.call($('times').querySelectorAll('.time'), function (b) {
+      b.addEventListener('click', function () {
+        S.startTime = b.getAttribute('data-iso'); renderTimes(); updateWhen()
+      })
+    })
+    var confirm = $('times').querySelector('.confirm')
+    if (confirm) confirm.addEventListener('click', goToForm)
+  }
+
+  function updateWhen() {
+    if (!S.startTime) {
+      $('when').textContent = 'Select a date and time'
+      $('when-row').classList.add('pending')
+      return
+    }
+    $('when-row').classList.remove('pending')
+    $('when').textContent = fmtTime(S.startTime) + ' - ' + fmtTime(endOf(S.startTime)) +
+      ', ' + fmtLongDate(S.date)
+  }
+
+  // --- form step ----------------------------------------------------------
+  function goToForm() {
+    show($('pane-cal'), false); show($('pane-times'), false)
+    show($('pane-form'), true)
+    resolveWho()
+    syncBook()
+  }
+  $('back').addEventListener('click', function () {
+    show($('pane-form'), false)
+    show($('pane-cal'), true); show($('pane-times'), true)
+  })
+
+  // Who will they actually be with? For a named trainer it is simply that
+  // person. For "Anyone", GHL does not publish its round-robin decision up
+  // front, so ask the server which members are actually free at this slot and
+  // say so honestly rather than promising a name we cannot guarantee.
+  function resolveWho() {
+    if (S.userId) {
+      var t = (S.cfg.trainers || []).filter(function (x) { return x.userId === S.userId })[0]
+      $('who').innerHTML = 'Day One with <b>' + esc(t ? t.name : 'selected trainer') + '</b>'
+      return
+    }
+    $('who').innerHTML = '<span class="spin"></span> Checking who is available…'
+    api('/api/slot-trainers?location=' + encodeURIComponent(S.location) +
+        '&startTime=' + encodeURIComponent(S.startTime) +
+        '&timezone=' + encodeURIComponent(S.tz))
+      .then(function (d) {
+        var free = d.trainers || []
+        if (!free.length) {
+          $('who').innerHTML = '<b>Trainer assigned at booking.</b>' +
+            '<span class="hint">Could not determine availability for this slot.</span>'
+        } else if (free.length === 1) {
+          $('who').innerHTML = 'Day One with <b>' + esc(free[0].name) + '</b>' +
+            '<span class="hint">Only trainer open at this time.</span>'
+        } else {
+          $('who').innerHTML = 'Likely <b>' + esc(free[0].name) + '</b>' +
+            '<span class="hint">' + free.length + ' trainers are open at this time (' +
+            free.map(function (t) { return esc(t.name) }).join(', ') +
+            '). GHL picks by priority at booking, so this is a best guess — the confirmation shows who was actually assigned.</span>'
+        }
+      })
+      .catch(function () {
+        $('who').innerHTML = '<b>Trainer assigned at booking.</b>'
+      })
+  }
+
+  function syncBook() {
+    $('book').disabled = !(S.startTime && $('firstName').value.trim() &&
       ($('email').value.trim() || $('phone').value.trim()))
-    $('book').disabled = !ready
-    $('book-state').textContent = state.startTime
-      ? ('Selected ' + prettyTime(state.startTime) + ' on ' + prettyDate(state.startTime.slice(0, 10)))
-      : 'Pick a time above.'
   }
   ;['firstName', 'email', 'phone'].forEach(function (id) {
-    $(id).addEventListener('input', syncBookButton)
+    $(id).addEventListener('input', syncBook)
   })
 
   $('book').addEventListener('click', function () {
@@ -326,9 +528,9 @@
     $('book').disabled = true
     $('book-state').innerHTML = '<span class="spin"></span> Booking…'
     api('/api/book', { method: 'POST', body: {
-      location: state.location,
-      userId: state.userId || undefined,
-      startTime: state.startTime,
+      location: S.location,
+      userId: S.userId || undefined,
+      startTime: S.startTime,
       firstName: $('firstName').value.trim(),
       lastName: $('lastName').value.trim(),
       email: $('email').value.trim(),
@@ -336,21 +538,20 @@
       tourMember: $('tourMember').value,
       notes: $('notes').value.trim(),
     }}).then(function (r) {
-      var trainer = '—'
-      if (r.assignedUserId && state.config) {
-        var t = state.config.trainers.filter(function (x) { return x.userId === r.assignedUserId })[0]
-        trainer = t ? t.name : r.assignedUserId
-      }
-      $('result-dl').innerHTML =
-        row('When', prettyDate(String(r.startTime).slice(0, 10)) + ' at ' + prettyTime(r.startTime)) +
-        row('Trainer', trainer + (state.userId ? '' : ' (round robin)')) +
-        row('Appointment', '<code>' + r.appointmentId + '</code>') +
-        row('Contact', '<code>' + r.contactId + '</code>') +
-        row('Custom fields', r.customFieldsWritten ? 'written'
-          : '<span class="err">failed: ' + (r.customFieldError || '') + '</span>')
-      show($('result'), true)
-      $('book-state').textContent = 'Done. Confirmation SMS should arrive shortly.'
-      $('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      var name = r.assignedUserId
+        ? ((S.cfg.trainers || []).filter(function (x) { return x.userId === r.assignedUserId })[0] || {}).name
+        : null
+      $('done-dl').innerHTML =
+        '<dt>When</dt><dd>' + fmtTime(r.startTime) + ' - ' + fmtTime(r.endTime) + ', ' +
+          fmtLongDate(String(r.startTime).slice(0, 10)) + '</dd>' +
+        '<dt>Trainer</dt><dd>' + esc(name || r.assignedUserId || 'unassigned') +
+          (S.userId ? '' : ' <span class="muted">(round robin)</span>') + '</dd>' +
+        '<dt>Appointment</dt><dd><code>' + esc(r.appointmentId) + '</code></dd>' +
+        '<dt>Contact</dt><dd><code>' + esc(r.contactId) + '</code></dd>' +
+        '<dt>Custom fields</dt><dd>' + (r.customFieldsWritten
+          ? esc((r.customFieldsSet || []).join(', ') || 'none matched')
+          : '<span class="err">failed: ' + esc(r.customFieldError || '') + '</span>') + '</dd>'
+      show($('pane-form'), false); show($('pane-done'), true)
     }).catch(function (e) {
       fail($('book-err'), e.message)
       $('book-state').textContent = ''
@@ -358,17 +559,14 @@
     })
   })
 
-  function row(k, v) { return '<dt>' + k + '</dt><dd>' + v + '</dd>' }
-
   $('again').addEventListener('click', function () {
-    show($('result'), false)
-    state.startTime = ''
+    show($('pane-done'), false); show($('pane-cal'), true); show($('pane-times'), true)
+    S.startTime = ''
     ;['firstName', 'lastName', 'email', 'phone', 'notes'].forEach(function (id) { $(id).value = '' })
-    loadSlots()
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    $('book-state').textContent = ''
+    updateWhen(); loadSlots()
   })
 
-  // Auto-unlock if a secret is already stored.
   if (secret) { $('secret').value = secret; unlock() }
 })()
 </script>
