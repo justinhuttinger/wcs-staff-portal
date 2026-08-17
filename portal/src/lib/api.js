@@ -1054,6 +1054,10 @@ export async function getInventoryShrinkage(params = {}) {
   return api('/inventory/shrinkage' + inventoryQs(params))
 }
 
+export async function getInventoryReceived(params = {}) {
+  return api('/inventory/received' + inventoryQs(params))
+}
+
 export async function getInventoryCompliance(params = {}) {
   return api('/inventory/compliance' + inventoryQs(params))
 }
