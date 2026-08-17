@@ -243,6 +243,118 @@ router.get('/api/slots', requireWidgetSecret, async (req, res) => {
   }
 })
 
+// --- "Anyone" assignment ----------------------------------------------------
+//
+// GHL never reveals its round-robin decision until the appointment exists, so
+// as long as we omit assignedUserId the best we can ever say is "likely". To
+// state the trainer as FACT before submitting, we make the choice ourselves and
+// send assignedUserId explicitly — the assignment is then ours, not GHL's.
+//
+// That means we owe the roster a fair distribution, because always taking the
+// highest priority would dump every Day One on one person. The rule:
+//   1. only trainers actually free at that slot are eligible
+//   2. among those, keep the highest priority tier present — this preserves the
+//      calendar's own config, so a priority-0 member is only reached when they
+//      are the only one open
+//   3. within that tier, pick whoever has the fewest upcoming Day Ones
+//   4. tie-break on name so the result is deterministic and testable
+
+// Who is genuinely free at this exact instant?
+async function freeTrainersForSlot(loc, calendar, roster, startTime, timezone) {
+  const target = new Date(startTime).getTime()
+  const params = {
+    // Narrow window keeps this to one cheap call per trainer.
+    startDate: target - 60 * 60000,
+    endDate: target + 60 * 60000,
+    timezone: timezone || 'America/Los_Angeles',
+  }
+  const checks = await Promise.all(roster.map(async t => {
+    try {
+      const data = await ghlFetch(`/calendars/${calendar.id}/free-slots`, loc.apiKey, {
+        params: { ...params, userId: t.userId }, version: CAL_VERSION,
+      })
+      // Compare instants, not strings: the same moment can be spelled with a
+      // different UTC offset than the client sent.
+      const free = Object.entries(data).some(([key, val]) =>
+        key !== 'traceId' && Array.isArray(val?.slots) &&
+        val.slots.some(s => new Date(s).getTime() === target))
+      return free ? t : null
+    } catch (e) {
+      console.warn(`[DayOneWidget] availability check failed for ${t.name}:`, e.message)
+      return null
+    }
+  }))
+  return checks.filter(Boolean)
+}
+
+// Upcoming Day One count per trainer, for load balancing. Short TTL: it changes
+// with every booking, and a stale count would skew the rotation.
+const loadCache = {} // slug -> { counts, at }
+const LOAD_TTL = 60 * 1000
+
+async function upcomingCounts(loc, calendar) {
+  const hit = loadCache[loc.slug]
+  if (hit && (Date.now() - hit.at) < LOAD_TTL) return hit.counts
+  const counts = {}
+  try {
+    const data = await ghlFetch('/calendars/events', loc.apiKey, {
+      params: {
+        locationId: loc.id, calendarId: calendar.id,
+        startTime: Date.now(), endTime: Date.now() + 30 * 86400000,
+      },
+      version: CAL_VERSION,
+    })
+    for (const e of (data.events || [])) {
+      if (e.assignedUserId) counts[e.assignedUserId] = (counts[e.assignedUserId] || 0) + 1
+    }
+  } catch (e) {
+    // Balancing is an optimization; an empty map just falls back to name order.
+    console.warn('[DayOneWidget] upcoming counts failed, balancing skipped:', e.message)
+  }
+  loadCache[loc.slug] = { counts, at: Date.now() }
+  return counts
+}
+
+function chooseTrainer(free, counts) {
+  if (!free.length) return null
+  const topPriority = Math.max(...free.map(t => t.priority ?? 0))
+  return free
+    .filter(t => (t.priority ?? 0) === topPriority)
+    .slice()
+    .sort((a, b) =>
+      (counts[a.userId] || 0) - (counts[b.userId] || 0) ||
+      a.name.localeCompare(b.name))[0]
+}
+
+// Resolve who gets an "Anyone" booking. Used by both the pre-submit preview and
+// the booking itself, so the name shown is produced by the same code that
+// assigns it.
+async function resolveAssignment(loc, startTime, timezone) {
+  const [calendar, roster] = await Promise.all([getDayOneCalendar(loc), trainerRoster(loc)])
+  const free = await freeTrainersForSlot(loc, calendar, roster, startTime, timezone)
+  const counts = await upcomingCounts(loc, calendar)
+  return { calendar, free, pick: chooseTrainer(free, counts), counts }
+}
+
+// Pre-submit: who WILL take this slot. `pick` is the trainer we will actually
+// send, not a guess — the booking assigns explicitly.
+router.get('/api/slot-trainers', requireWidgetSecret, async (req, res) => {
+  const loc = getLocationBySlug(String(req.query.location || '').toLowerCase())
+  if (!loc) return res.status(400).json({ error: 'Unknown location' })
+  const startTime = String(req.query.startTime || '')
+  if (!startTime) return res.status(400).json({ error: 'startTime is required' })
+  if (!Number.isFinite(new Date(startTime).getTime())) {
+    return res.status(400).json({ error: 'Invalid startTime' })
+  }
+  try {
+    const { free, pick } = await resolveAssignment(loc, startTime, req.query.timezone)
+    res.json({ trainers: free, pick: pick || null })
+  } catch (e) {
+    console.error('[DayOneWidget] slot-trainers failed:', e.message)
+    res.status(502).json({ error: e.message })
+  }
+})
+
 // Book. Three steps, in this order:
 //   1. upsert the contact (so we have a contactId and the notification merge
 //      fields resolve to a real person)
@@ -266,6 +378,27 @@ router.post('/api/book', requireWidgetSecret, bookLimiter, async (req, res) => {
 
   try {
     const calendar = await getDayOneCalendar(loc)
+
+    // 0. Decide the trainer BEFORE writing anything. "Anyone" is resolved here,
+    // at booking time, by the same code that produced the pre-submit preview —
+    // so the name the user saw is the name that gets assigned. `expectedUserId`
+    // is what the page displayed; if availability shifted in the seconds since,
+    // we re-pick and say so rather than silently assigning someone else.
+    let assignTo = userId || null
+    let autoAssigned = false
+    let reassignedFrom = null
+    if (!assignTo) {
+      const { pick } = await resolveAssignment(loc, startTime, req.body.timezone)
+      if (!pick) {
+        return res.status(409).json({
+          error: 'No trainer is available at that time. Please pick another slot.',
+        })
+      }
+      autoAssigned = true
+      assignTo = pick.userId
+      const expected = req.body.expectedUserId
+      if (expected && expected !== pick.userId) reassignedFrom = expected
+    }
 
     // 1. Contact. upsert matches on email/phone so re-booking an existing member
     // updates them instead of creating a duplicate.
@@ -301,8 +434,10 @@ router.post('/api/book', requireWidgetSecret, bookLimiter, async (req, res) => {
       toNotify: true,
       ignoreDateRange: false,
     }
-    // Omitted entirely for "anyone" so GHL runs its round-robin rotation.
-    if (userId) apptBody.assignedUserId = userId
+    // Always explicit. Leaving this off would hand the choice back to GHL's
+    // opaque rotation, which is exactly what makes the trainer unknowable
+    // before submit.
+    apptBody.assignedUserId = assignTo
 
     const appt = await ghlFetch('/calendars/events/appointments', loc.apiKey, {
       method: 'POST', body: apptBody, version: CAL_VERSION,
@@ -355,7 +490,9 @@ router.post('/api/book', requireWidgetSecret, bookLimiter, async (req, res) => {
       ok: true,
       appointmentId: appt.id,
       contactId,
-      assignedUserId: appt.assignedUserId || null,
+      assignedUserId: appt.assignedUserId || assignTo || null,
+      autoAssigned,
+      reassignedFrom,
       startTime: appt.startTime || startTime,
       endTime: appt.endTime || endTime,
       notes: notes || null,
@@ -380,3 +517,7 @@ router.get('/:location', (req, res, next) => {
 })
 
 module.exports = router
+// Exported for unit tests: the selection rule is the part that must stay
+// deterministic and fair, and it cannot be exercised through the live API when
+// the roster has no upcoming appointments to balance against.
+module.exports.chooseTrainer = chooseTrainer
