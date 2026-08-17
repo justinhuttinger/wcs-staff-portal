@@ -506,38 +506,15 @@
     show($('pane-cal'), true); show($('pane-times'), true)
   })
 
-  // Who will they actually be with? For a named trainer it is simply that
-  // person. For "Anyone", GHL does not publish its round-robin decision up
-  // front, so ask the server which members are actually free at this slot and
-  // say so honestly rather than promising a name we cannot guarantee.
+  // A named trainer is a certainty, so it is worth confirming. "Anyone" is not:
+  // GHL does not publish its round-robin decision until the appointment exists,
+  // so anything shown here would be a guess. Show nothing rather than a name
+  // that may not be who turns up — the confirmation reports the real assignment.
   function resolveWho() {
-    if (S.userId) {
-      var t = (S.cfg.trainers || []).filter(function (x) { return x.userId === S.userId })[0]
-      $('who').innerHTML = 'Day One with <b>' + esc(t ? t.name : 'selected trainer') + '</b>'
-      return
-    }
-    $('who').innerHTML = '<span class="spin"></span> Checking who is available…'
-    api('/api/slot-trainers?location=' + encodeURIComponent(S.location) +
-        '&startTime=' + encodeURIComponent(S.startTime) +
-        '&timezone=' + encodeURIComponent(S.tz))
-      .then(function (d) {
-        var free = d.trainers || []
-        if (!free.length) {
-          $('who').innerHTML = '<b>Trainer assigned at booking.</b>' +
-            '<span class="hint">Could not determine availability for this slot.</span>'
-        } else if (free.length === 1) {
-          $('who').innerHTML = 'Day One with <b>' + esc(free[0].name) + '</b>' +
-            '<span class="hint">Only trainer open at this time.</span>'
-        } else {
-          $('who').innerHTML = 'Likely <b>' + esc(free[0].name) + '</b>' +
-            '<span class="hint">' + free.length + ' trainers are open at this time (' +
-            free.map(function (t) { return esc(t.name) }).join(', ') +
-            '). GHL picks by priority at booking, so this is a best guess — the confirmation shows who was actually assigned.</span>'
-        }
-      })
-      .catch(function () {
-        $('who').innerHTML = '<b>Trainer assigned at booking.</b>'
-      })
+    if (!S.userId) { show($('who'), false); return }
+    var t = (S.cfg.trainers || []).filter(function (x) { return x.userId === S.userId })[0]
+    $('who').innerHTML = 'Day One with <b>' + esc(t ? t.name : 'selected trainer') + '</b>'
+    show($('who'), true)
   }
 
   function syncBook() {

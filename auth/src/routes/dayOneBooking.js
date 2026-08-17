@@ -243,54 +243,6 @@ router.get('/api/slots', requireWidgetSecret, async (req, res) => {
   }
 })
 
-// Who could actually take a given slot?
-//
-// GHL does not publish its round-robin decision before the appointment exists,
-// so this cannot promise a name. What it CAN do honestly is report which team
-// members are genuinely free at that exact time, by asking free-slots per
-// trainer and keeping the ones whose availability contains the slot. Sorted by
-// the calendar's own priority, so the first entry is the most likely pick.
-// The caller is expected to present multiple matches as a guess, not a promise.
-router.get('/api/slot-trainers', requireWidgetSecret, async (req, res) => {
-  const loc = getLocationBySlug(String(req.query.location || '').toLowerCase())
-  if (!loc) return res.status(400).json({ error: 'Unknown location' })
-  const startTime = String(req.query.startTime || '')
-  if (!startTime) return res.status(400).json({ error: 'startTime is required' })
-
-  try {
-    const [calendar, roster] = await Promise.all([getDayOneCalendar(loc), trainerRoster(loc)])
-    const target = new Date(startTime).getTime()
-    if (!Number.isFinite(target)) return res.status(400).json({ error: 'Invalid startTime' })
-
-    // Narrow window around the slot keeps this to one cheap call per trainer.
-    const params = {
-      startDate: target - 60 * 60000,
-      endDate: target + 60 * 60000,
-      timezone: req.query.timezone || 'America/Los_Angeles',
-    }
-    const checks = await Promise.all(roster.map(async t => {
-      try {
-        const data = await ghlFetch(`/calendars/${calendar.id}/free-slots`, loc.apiKey, {
-          params: { ...params, userId: t.userId }, version: CAL_VERSION,
-        })
-        // Compare instants, not strings: the same moment can be spelled with a
-        // different offset than the client sent.
-        const free = Object.entries(data).some(([key, val]) =>
-          key !== 'traceId' && Array.isArray(val?.slots) &&
-          val.slots.some(s => new Date(s).getTime() === target))
-        return free ? t : null
-      } catch (e) {
-        console.warn(`[DayOneWidget] slot-trainers check failed for ${t.name}:`, e.message)
-        return null
-      }
-    }))
-    res.json({ trainers: checks.filter(Boolean) })
-  } catch (e) {
-    console.error('[DayOneWidget] slot-trainers failed:', e.message)
-    res.status(502).json({ error: e.message })
-  }
-})
-
 // Book. Three steps, in this order:
 //   1. upsert the contact (so we have a contactId and the notification merge
 //      fields resolve to a real person)
