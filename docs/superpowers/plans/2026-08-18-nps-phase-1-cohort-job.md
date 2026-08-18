@@ -857,7 +857,7 @@ module.exports = {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd ghl-sync && node --test src/nps/npsCohort.test.js`
-Expected: PASS, 5 tests
+Expected: PASS, 6 tests
 
 - [ ] **Step 5: Commit**
 
@@ -1129,7 +1129,7 @@ Expected: PASS, 4 tests
 - [ ] **Step 5: Run the whole nps suite**
 
 Run: `cd ghl-sync && node --test src/nps/`
-Expected: PASS, 23 tests total
+Expected: PASS, 24 tests total
 
 - [ ] **Step 6: Commit**
 
