@@ -224,3 +224,26 @@ test('a metric can be retired without being deleted', async () => {
   const upd = db.writes.find(w => w.op === 'update' && w.table === 'nps_metrics');
   assert.equal(upd.patch.active, false);
 });
+
+test('a gym cannot end up with two live codes for one survey', async () => {
+  // Two live codes on one wall make rotation meaningless: retiring one leaves
+  // the other working, so a poster you thought you killed keeps collecting.
+  const db = fakeDb({
+    surveys: [{ ...SURVEY, trigger_type: 'walkup' }],
+    qr: [{ id: 'qr-1', survey_id: 'srv-1', club_number: '30935', key: 'live', active: true }],
+  });
+  const r = await createQrKey({ db, surveyId: 'srv-1', clubNumber: '30935' });
+
+  assert.equal(r.ok, false);
+  assert.equal(r.status, 409);
+  assert.equal(db.writes.filter(w => w.op === 'insert').length, 0);
+});
+
+test('a gym whose only code is retired can get a new one', async () => {
+  const db = fakeDb({
+    surveys: [{ ...SURVEY, trigger_type: 'walkup' }],
+    qr: [{ id: 'qr-1', survey_id: 'srv-1', club_number: '30935', key: 'old', active: false }],
+  });
+  const r = await createQrKey({ db, surveyId: 'srv-1', clubNumber: '30935' });
+  assert.equal(r.ok, true);
+});
