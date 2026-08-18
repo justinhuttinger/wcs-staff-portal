@@ -1,0 +1,773 @@
+// Meta Ads Manager — write API.
+//
+// This is the create/edit counterpart to routes/metaAds.js (which is read-only
+// reporting). Everything here is admin-only: it spends real money and edits a
+// live ad account, so it is deliberately NOT wired into the roles grid or the
+// report-grant system. requireRole('admin') is the whole gate.
+//
+// Meta's own token already carries ads_management + business_management (it is
+// a never-expiring system-user token), so there is no per-user OAuth dance.
+const { Router } = require('express')
+const multer = require('multer')
+const authenticate = require('../middleware/auth')
+const { requireRole } = require('../middleware/role')
+
+const router = Router()
+router.use(authenticate)
+router.use(requireRole('admin'))
+
+const META_API = 'https://graph.facebook.com/v21.0'
+
+// Images are capped well under Meta's own 30MB limit; video gets the full 1GB
+// Meta allows for a resumable-free simple upload.
+const uploadImage = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } })
+const uploadVideo = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 * 1024 } })
+
+function getConfig() {
+  const token = process.env.META_ACCESS_TOKEN
+  const adAccountId = process.env.META_AD_ACCOUNT_ID
+  if (!token || !adAccountId) throw new Error('Meta Ads not configured (META_ACCESS_TOKEN / META_AD_ACCOUNT_ID)')
+  const accountId = adAccountId.startsWith('act_') ? adAccountId : 'act_' + adAccountId
+  return { token, accountId }
+}
+
+// Meta returns its real complaint inside error.error_user_msg far more often
+// than in error.message ("Invalid parameter" is the useless default). Surface
+// the most specific string available or the UI is unusable.
+function metaError(data, res) {
+  const e = data && data.error
+  const msg = (e && (e.error_user_msg || e.message)) || 'Meta API error'
+  const detail = e && e.error_user_title ? `${e.error_user_title}: ${msg}` : msg
+  const err = new Error(detail)
+  err.meta = e || null
+  return err
+}
+
+async function metaFetch(path, params, token) {
+  const url = new URL(`${META_API}${path}`)
+  url.searchParams.set('access_token', token)
+  for (const [key, val] of Object.entries(params || {})) {
+    if (val === undefined || val === null) continue
+    url.searchParams.set(key, typeof val === 'object' ? JSON.stringify(val) : String(val))
+  }
+  const res = await fetch(url.toString())
+  const data = await res.json()
+  if (data.error) throw metaError(data)
+  return data
+}
+
+// Every write goes through here. Object/array values must be JSON-encoded —
+// Meta rejects bracket-notation form fields for things like targeting.
+async function metaWrite(path, body, token, method = 'POST') {
+  const form = new URLSearchParams()
+  form.set('access_token', token)
+  for (const [key, val] of Object.entries(body || {})) {
+    if (val === undefined || val === null) continue
+    form.set(key, typeof val === 'object' ? JSON.stringify(val) : String(val))
+  }
+  const res = await fetch(`${META_API}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form,
+  })
+  const data = await res.json()
+  if (data.error) throw metaError(data)
+  return data
+}
+
+function fail(res, err, label) {
+  console.error(`[Meta Ads Manager] ${label}:`, err.message)
+  const status = err.meta && err.meta.code === 190 ? 502 : 400
+  res.status(status).json({ error: err.message, meta: err.meta || undefined })
+}
+
+// Budgets cross the wire as dollars and live at Meta as minor units. Doing the
+// conversion in one place keeps the UI free of cents arithmetic.
+function toMinorUnits(dollars) {
+  if (dollars === undefined || dollars === null || dollars === '') return undefined
+  const n = Number(dollars)
+  if (!Number.isFinite(n) || n < 0) throw new Error('Budget must be a positive number')
+  return String(Math.round(n * 100))
+}
+
+// ---------------------------------------------------------------------------
+// Account / pages
+// ---------------------------------------------------------------------------
+
+// GET /meta-ads-manager/account
+// Everything the create forms need to populate their dropdowns: the account
+// itself plus every Page the business owns and its linked Instagram actor.
+router.get('/account', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const account = await metaFetch(`/${accountId}`, {
+      fields: 'name,account_id,account_status,currency,timezone_name,business,funding_source_details',
+    }, token)
+
+    let pages = []
+    if (account.business && account.business.id) {
+      try {
+        const owned = await metaFetch(`/${account.business.id}/owned_pages`, {
+          fields: 'name,id,instagram_business_account{id,username}',
+          limit: 100,
+        }, token)
+        pages = (owned.data || []).map(p => ({
+          id: p.id,
+          name: p.name,
+          instagram_id: p.instagram_business_account ? p.instagram_business_account.id : null,
+          instagram_username: p.instagram_business_account ? p.instagram_business_account.username : null,
+        }))
+      } catch (err) {
+        // A page-permission gap should degrade the form, not break the screen.
+        console.error('[Meta Ads Manager] owned_pages failed:', err.message)
+      }
+    }
+
+    res.json({
+      id: account.id,
+      account_id: account.account_id,
+      name: account.name,
+      currency: account.currency,
+      timezone: account.timezone_name,
+      status: account.account_status,
+      business: account.business || null,
+      pixel_id: process.env.META_PIXEL_ID || null,
+      pages,
+    })
+  } catch (err) {
+    fail(res, err, 'account')
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Campaigns
+// ---------------------------------------------------------------------------
+
+const CAMPAIGN_FIELDS = 'id,name,objective,status,effective_status,daily_budget,lifetime_budget,' +
+  'buying_type,bid_strategy,special_ad_categories,start_time,stop_time,created_time,updated_time'
+
+router.get('/campaigns', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const params = { fields: CAMPAIGN_FIELDS, limit: 200 }
+    // Default view hides the graveyard; ?status=all shows everything.
+    if (req.query.status !== 'all') {
+      params.effective_status = ['ACTIVE', 'PAUSED', 'IN_PROCESS', 'WITH_ISSUES']
+    }
+    const data = await metaFetch(`/${accountId}/campaigns`, params, token)
+    res.json({ data: (data.data || []).filter(c => c.status !== 'DELETED') })
+  } catch (err) {
+    fail(res, err, 'campaigns list')
+  }
+})
+
+router.post('/campaigns', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const { name, objective, status, daily_budget, lifetime_budget, special_ad_categories, bid_strategy } = req.body || {}
+    if (!name) return res.status(400).json({ error: 'Campaign name is required' })
+    if (!objective) return res.status(400).json({ error: 'Objective is required' })
+
+    const body = {
+      name,
+      objective,
+      // New campaigns start paused unless explicitly activated — nobody should
+      // be able to start spending by mis-clicking Save.
+      status: status === 'ACTIVE' ? 'ACTIVE' : 'PAUSED',
+      // Required by Meta on every create, even when empty.
+      special_ad_categories: Array.isArray(special_ad_categories) ? special_ad_categories : [],
+    }
+    const daily = toMinorUnits(daily_budget)
+    const lifetime = toMinorUnits(lifetime_budget)
+    // Campaign-level budget (CBO) is optional; when set, the ad sets under it
+    // must NOT carry their own budget, so the UI keeps these mutually exclusive.
+    if (daily) body.daily_budget = daily
+    else if (lifetime) body.lifetime_budget = lifetime
+    if (daily || lifetime) body.bid_strategy = bid_strategy || 'LOWEST_COST_WITHOUT_CAP'
+
+    const created = await metaWrite(`/${accountId}/campaigns`, body, token)
+    const full = await metaFetch(`/${created.id}`, { fields: CAMPAIGN_FIELDS }, token)
+    res.json(full)
+  } catch (err) {
+    fail(res, err, 'campaign create')
+  }
+})
+
+router.put('/campaigns/:id', async (req, res) => {
+  try {
+    const { token } = getConfig()
+    const { name, status, daily_budget, lifetime_budget, bid_strategy } = req.body || {}
+    const body = {}
+    if (name !== undefined) body.name = name
+    if (status !== undefined) body.status = status
+    const daily = toMinorUnits(daily_budget)
+    const lifetime = toMinorUnits(lifetime_budget)
+    if (daily) body.daily_budget = daily
+    if (lifetime) body.lifetime_budget = lifetime
+    if (bid_strategy) body.bid_strategy = bid_strategy
+    if (!Object.keys(body).length) return res.status(400).json({ error: 'Nothing to update' })
+
+    await metaWrite(`/${req.params.id}`, body, token)
+    const full = await metaFetch(`/${req.params.id}`, { fields: CAMPAIGN_FIELDS }, token)
+    res.json(full)
+  } catch (err) {
+    fail(res, err, 'campaign update')
+  }
+})
+
+// Meta's "delete" is a soft status change — the object stays recoverable in
+// Ads Manager, which is what we want for an admin panel.
+router.delete('/campaigns/:id', async (req, res) => {
+  try {
+    const { token } = getConfig()
+    await metaWrite(`/${req.params.id}`, { status: 'DELETED' }, token)
+    res.json({ ok: true, id: req.params.id })
+  } catch (err) {
+    fail(res, err, 'campaign delete')
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Ad sets
+// ---------------------------------------------------------------------------
+
+const ADSET_FIELDS = 'id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,' +
+  'billing_event,optimization_goal,bid_strategy,bid_amount,targeting,promoted_object,' +
+  'destination_type,start_time,end_time,created_time,updated_time'
+
+router.get('/adsets', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const { campaign_id } = req.query
+    const params = { fields: ADSET_FIELDS, limit: 200 }
+    if (req.query.status !== 'all') {
+      params.effective_status = ['ACTIVE', 'PAUSED', 'IN_PROCESS', 'WITH_ISSUES']
+    }
+    // Scoped to a campaign when given, otherwise the whole account.
+    const path = campaign_id ? `/${campaign_id}/adsets` : `/${accountId}/adsets`
+    const data = await metaFetch(path, params, token)
+    res.json({ data: (data.data || []).filter(a => a.status !== 'DELETED') })
+  } catch (err) {
+    fail(res, err, 'adsets list')
+  }
+})
+
+router.get('/adsets/:id', async (req, res) => {
+  try {
+    const { token } = getConfig()
+    res.json(await metaFetch(`/${req.params.id}`, { fields: ADSET_FIELDS }, token))
+  } catch (err) {
+    fail(res, err, 'adset get')
+  }
+})
+
+function buildAdsetBody(input) {
+  const {
+    name, campaign_id, status, daily_budget, lifetime_budget, billing_event,
+    optimization_goal, bid_strategy, bid_amount, targeting, promoted_object,
+    destination_type, start_time, end_time,
+  } = input || {}
+
+  const body = {}
+  if (name !== undefined) body.name = name
+  if (campaign_id) body.campaign_id = campaign_id
+  if (status !== undefined) body.status = status === 'ACTIVE' ? 'ACTIVE' : 'PAUSED'
+  if (billing_event) body.billing_event = billing_event
+  if (optimization_goal) body.optimization_goal = optimization_goal
+  if (destination_type) body.destination_type = destination_type
+  if (start_time) body.start_time = start_time
+  if (end_time) body.end_time = end_time
+  if (targeting) body.targeting = targeting
+  if (promoted_object) body.promoted_object = promoted_object
+
+  const daily = toMinorUnits(daily_budget)
+  const lifetime = toMinorUnits(lifetime_budget)
+  if (daily) body.daily_budget = daily
+  else if (lifetime) body.lifetime_budget = lifetime
+
+  if (bid_strategy) body.bid_strategy = bid_strategy
+  // bid_amount is only legal on capped strategies; sending it with
+  // LOWEST_COST_WITHOUT_CAP is an outright error from Meta.
+  if (bid_amount && bid_strategy && bid_strategy !== 'LOWEST_COST_WITHOUT_CAP') {
+    body.bid_amount = toMinorUnits(bid_amount)
+  }
+  return body
+}
+
+router.post('/adsets', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const { name, campaign_id, targeting } = req.body || {}
+    if (!name) return res.status(400).json({ error: 'Ad set name is required' })
+    if (!campaign_id) return res.status(400).json({ error: 'Campaign is required' })
+    if (!targeting) return res.status(400).json({ error: 'Targeting is required' })
+
+    const body = buildAdsetBody(req.body)
+    if (!body.status) body.status = 'PAUSED'
+    if (!body.billing_event) body.billing_event = 'IMPRESSIONS'
+    if (!body.bid_strategy && (body.daily_budget || body.lifetime_budget)) {
+      body.bid_strategy = 'LOWEST_COST_WITHOUT_CAP'
+    }
+
+    const created = await metaWrite(`/${accountId}/adsets`, body, token)
+    const full = await metaFetch(`/${created.id}`, { fields: ADSET_FIELDS }, token)
+    res.json(full)
+  } catch (err) {
+    fail(res, err, 'adset create')
+  }
+})
+
+router.put('/adsets/:id', async (req, res) => {
+  try {
+    const { token } = getConfig()
+    const body = buildAdsetBody(req.body)
+    // campaign_id is immutable after creation — sending it back errors.
+    delete body.campaign_id
+    if (!Object.keys(body).length) return res.status(400).json({ error: 'Nothing to update' })
+    await metaWrite(`/${req.params.id}`, body, token)
+    const full = await metaFetch(`/${req.params.id}`, { fields: ADSET_FIELDS }, token)
+    res.json(full)
+  } catch (err) {
+    fail(res, err, 'adset update')
+  }
+})
+
+router.delete('/adsets/:id', async (req, res) => {
+  try {
+    const { token } = getConfig()
+    await metaWrite(`/${req.params.id}`, { status: 'DELETED' }, token)
+    res.json({ ok: true, id: req.params.id })
+  } catch (err) {
+    fail(res, err, 'adset delete')
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Ads + creatives
+// ---------------------------------------------------------------------------
+
+const AD_FIELDS = 'id,name,adset_id,campaign_id,status,effective_status,created_time,updated_time,' +
+  'creative{id,name,object_story_spec,effective_object_story_id,thumbnail_url,image_url,' +
+  'degrees_of_freedom_spec,asset_feed_spec}'
+
+router.get('/ads', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const { adset_id, campaign_id } = req.query
+    const params = { fields: AD_FIELDS, limit: 200 }
+    if (req.query.status !== 'all') {
+      params.effective_status = ['ACTIVE', 'PAUSED', 'IN_PROCESS', 'WITH_ISSUES', 'PENDING_REVIEW', 'DISAPPROVED']
+    }
+    const path = adset_id ? `/${adset_id}/ads` : campaign_id ? `/${campaign_id}/ads` : `/${accountId}/ads`
+    const data = await metaFetch(path, params, token)
+    res.json({ data: (data.data || []).filter(a => a.status !== 'DELETED') })
+  } catch (err) {
+    fail(res, err, 'ads list')
+  }
+})
+
+router.get('/ads/:id', async (req, res) => {
+  try {
+    const { token } = getConfig()
+    res.json(await metaFetch(`/${req.params.id}`, { fields: AD_FIELDS }, token))
+  } catch (err) {
+    fail(res, err, 'ad get')
+  }
+})
+
+// Turn one variant's flat form fields into a Meta object_story_spec. Image and
+// video creatives are different enough shapes that they get separate branches,
+// but the caller only ever supplies image_hash OR video_id.
+function buildObjectStorySpec(variant, shared) {
+  const page_id = variant.page_id || shared.page_id
+  if (!page_id) throw new Error('A Facebook Page is required')
+
+  const link = variant.link || shared.link
+  if (!link) throw new Error('A destination link is required')
+
+  const ctaType = variant.call_to_action || shared.call_to_action || 'LEARN_MORE'
+  const call_to_action = { type: ctaType, value: { link } }
+
+  const spec = { page_id }
+  const igId = variant.instagram_user_id || shared.instagram_user_id
+  if (igId) spec.instagram_user_id = igId
+
+  if (variant.video_id) {
+    spec.video_data = {
+      video_id: variant.video_id,
+      message: variant.message || '',
+      title: variant.headline || undefined,
+      link_description: variant.description || undefined,
+      call_to_action,
+    }
+    // Meta requires a poster frame on every video creative. The upload
+    // endpoint hands back an auto-generated one when the caller has none.
+    if (variant.thumbnail_url) spec.video_data.image_url = variant.thumbnail_url
+    else if (variant.thumbnail_hash) spec.video_data.image_hash = variant.thumbnail_hash
+  } else {
+    if (!variant.image_hash) throw new Error('An image or video is required')
+    spec.link_data = {
+      image_hash: variant.image_hash,
+      link,
+      message: variant.message || '',
+      name: variant.headline || undefined,
+      description: variant.description || undefined,
+      call_to_action,
+    }
+  }
+  return spec
+}
+
+// Advantage+ creative enhancements silently rewrite copy and crop images.
+// That defeats the whole point of hand-authored A/B variants, so we default to
+// opting out and let the caller turn it back on per batch.
+function degreesOfFreedom(advantagePlus) {
+  return {
+    creative_features_spec: {
+      standard_enhancements: { enroll_status: advantagePlus ? 'OPT_IN' : 'OPT_OUT' },
+    },
+  }
+}
+
+async function createOneAd(variant, shared, token, accountId) {
+  const spec = buildObjectStorySpec(variant, shared)
+  const creativeBody = {
+    name: (variant.name || 'Ad') + ' — creative',
+    object_story_spec: spec,
+    degrees_of_freedom_spec: degreesOfFreedom(shared.advantage_plus),
+  }
+  const creative = await metaWrite(`/${accountId}/adcreatives`, creativeBody, token)
+
+  const ad = await metaWrite(`/${accountId}/ads`, {
+    name: variant.name,
+    adset_id: shared.adset_id,
+    creative: { creative_id: creative.id },
+    status: shared.status === 'ACTIVE' ? 'ACTIVE' : 'PAUSED',
+  }, token)
+
+  return { ad_id: ad.id, creative_id: creative.id }
+}
+
+// POST /meta-ads-manager/ads
+// The core of this feature: N variants sharing one ad set, one link and one
+// CTA, each with its own name, copy and media. Variants are created
+// sequentially so Meta's per-account write throttle stays happy, and one bad
+// variant reports itself without taking down the rest of the batch.
+router.post('/ads', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const {
+      adset_id, page_id, instagram_user_id, link, call_to_action,
+      status, advantage_plus, variants,
+    } = req.body || {}
+
+    if (!adset_id) return res.status(400).json({ error: 'Ad set is required' })
+    if (!Array.isArray(variants) || !variants.length) {
+      return res.status(400).json({ error: 'At least one ad variant is required' })
+    }
+    if (variants.length > 25) {
+      return res.status(400).json({ error: 'Create at most 25 variants at a time' })
+    }
+    if (variants.some(v => !v || !v.name)) {
+      return res.status(400).json({ error: 'Every variant needs a name' })
+    }
+
+    const shared = { adset_id, page_id, instagram_user_id, link, call_to_action, status, advantage_plus }
+    const results = []
+    for (const variant of variants) {
+      try {
+        const created = await createOneAd(variant, shared, token, accountId)
+        results.push({ ok: true, name: variant.name, ...created })
+      } catch (err) {
+        console.error(`[Meta Ads Manager] variant "${variant.name}" failed:`, err.message)
+        results.push({ ok: false, name: variant.name, error: err.message })
+      }
+    }
+
+    const created = results.filter(r => r.ok).length
+    res.json({ created, failed: results.length - created, results })
+  } catch (err) {
+    fail(res, err, 'ads create')
+  }
+})
+
+// PUT /meta-ads-manager/ads/:id
+// Renaming and pausing edit the ad in place. Changing any creative field can't
+// — Meta creatives are immutable — so we mint a fresh creative and point the
+// existing ad at it, which is exactly what Ads Manager does under the hood.
+router.put('/ads/:id', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const { name, status, creative } = req.body || {}
+    const body = {}
+    if (name !== undefined) body.name = name
+    if (status !== undefined) body.status = status
+
+    if (creative) {
+      const spec = buildObjectStorySpec(creative, creative)
+      const newCreative = await metaWrite(`/${accountId}/adcreatives`, {
+        name: (name || creative.name || 'Ad') + ' — creative',
+        object_story_spec: spec,
+        degrees_of_freedom_spec: degreesOfFreedom(creative.advantage_plus),
+      }, token)
+      body.creative = { creative_id: newCreative.id }
+    }
+
+    if (!Object.keys(body).length) return res.status(400).json({ error: 'Nothing to update' })
+    await metaWrite(`/${req.params.id}`, body, token)
+    const full = await metaFetch(`/${req.params.id}`, { fields: AD_FIELDS }, token)
+    res.json(full)
+  } catch (err) {
+    fail(res, err, 'ad update')
+  }
+})
+
+router.delete('/ads/:id', async (req, res) => {
+  try {
+    const { token } = getConfig()
+    await metaWrite(`/${req.params.id}`, { status: 'DELETED' }, token)
+    res.json({ ok: true, id: req.params.id })
+  } catch (err) {
+    fail(res, err, 'ad delete')
+  }
+})
+
+// POST /meta-ads-manager/ads/:id/duplicate
+// Copies an existing ad's creative into new ads — the fast path for "same ad,
+// three more headlines". Overrides let the caller vary copy or media per copy.
+router.post('/ads/:id/duplicate', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const { adset_id, variants } = req.body || {}
+    if (!Array.isArray(variants) || !variants.length) {
+      return res.status(400).json({ error: 'At least one variant is required' })
+    }
+
+    const source = await metaFetch(`/${req.params.id}`, { fields: AD_FIELDS }, token)
+    const srcSpec = (source.creative && source.creative.object_story_spec) || {}
+    const srcLink = srcSpec.link_data || srcSpec.video_data || {}
+
+    // Seed each new variant from the source ad, then apply overrides.
+    const shared = {
+      adset_id: adset_id || source.adset_id,
+      page_id: srcSpec.page_id,
+      instagram_user_id: srcSpec.instagram_user_id,
+      link: srcLink.link || (srcLink.call_to_action && srcLink.call_to_action.value && srcLink.call_to_action.value.link),
+      call_to_action: srcLink.call_to_action && srcLink.call_to_action.type,
+      status: req.body.status,
+      advantage_plus: req.body.advantage_plus,
+    }
+
+    const results = []
+    for (const v of variants) {
+      const merged = {
+        name: v.name || `${source.name} (copy)`,
+        message: v.message !== undefined ? v.message : srcLink.message,
+        headline: v.headline !== undefined ? v.headline : (srcLink.name || srcLink.title),
+        description: v.description !== undefined ? v.description : (srcLink.description || srcLink.link_description),
+        image_hash: v.image_hash !== undefined ? v.image_hash : srcLink.image_hash,
+        video_id: v.video_id !== undefined ? v.video_id : srcLink.video_id,
+        thumbnail_url: v.thumbnail_url,
+        link: v.link,
+        call_to_action: v.call_to_action,
+      }
+      try {
+        const created = await createOneAd(merged, shared, token, accountId)
+        results.push({ ok: true, name: merged.name, ...created })
+      } catch (err) {
+        results.push({ ok: false, name: merged.name, error: err.message })
+      }
+    }
+
+    const created = results.filter(r => r.ok).length
+    res.json({ created, failed: results.length - created, results })
+  } catch (err) {
+    fail(res, err, 'ad duplicate')
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Media
+// ---------------------------------------------------------------------------
+
+// POST /meta-ads-manager/media/image — one or more images in a single request.
+// Meta keys its response by filename, so the mapping back to each upload runs
+// off the name we send rather than the array order.
+router.post('/media/image', uploadImage.array('files', 20), async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const files = req.files || []
+    if (!files.length) return res.status(400).json({ error: 'No image uploaded' })
+
+    const form = new FormData()
+    form.set('access_token', token)
+    const names = []
+    files.forEach((file, i) => {
+      // Meta collides on duplicate filenames within one request; index them.
+      const name = `${i}_${(file.originalname || 'image.jpg').replace(/[^\w.\-]/g, '_')}`
+      names.push({ name, originalname: file.originalname })
+      form.set(name, new Blob([file.buffer], { type: file.mimetype }), name)
+    })
+
+    const upstream = await fetch(`${META_API}/${accountId}/adimages`, { method: 'POST', body: form })
+    const data = await upstream.json()
+    if (data.error) throw metaError(data)
+
+    const images = data.images || {}
+    const out = names.map(({ name, originalname }) => {
+      const img = images[name] || {}
+      return { name: originalname, hash: img.hash || null, url: img.url || null }
+    })
+    res.json({ images: out })
+  } catch (err) {
+    fail(res, err, 'image upload')
+  }
+})
+
+// POST /meta-ads-manager/media/video
+// Videos are not usable the instant they upload — Meta transcodes first. The
+// response carries the id plus a poster frame; the UI polls /media/video/:id.
+router.post('/media/video', uploadVideo.single('file'), async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    if (!req.file) return res.status(400).json({ error: 'No video uploaded' })
+
+    const form = new FormData()
+    form.set('access_token', token)
+    form.set('name', req.file.originalname || 'video.mp4')
+    form.set('source', new Blob([req.file.buffer], { type: req.file.mimetype }), req.file.originalname || 'video.mp4')
+
+    const upstream = await fetch(`${META_API}/${accountId}/advideos`, { method: 'POST', body: form })
+    const data = await upstream.json()
+    if (data.error) throw metaError(data)
+
+    res.json({ id: data.id, name: req.file.originalname, status: 'processing' })
+  } catch (err) {
+    fail(res, err, 'video upload')
+  }
+})
+
+// Poll target for the transcode above. `ready` gates the Create button so an
+// ad is never submitted against a video Meta cannot render yet.
+router.get('/media/video/:id', async (req, res) => {
+  try {
+    const { token } = getConfig()
+    const data = await metaFetch(`/${req.params.id}`, {
+      fields: 'id,status,picture,thumbnails{uri,is_preferred}',
+    }, token)
+    const phase = (data.status && data.status.video_status) || 'processing'
+    const thumbs = (data.thumbnails && data.thumbnails.data) || []
+    const preferred = thumbs.find(t => t.is_preferred) || thumbs[0]
+    res.json({
+      id: data.id,
+      status: phase,
+      ready: phase === 'ready',
+      thumbnail_url: (preferred && preferred.uri) || data.picture || null,
+    })
+  } catch (err) {
+    fail(res, err, 'video status')
+  }
+})
+
+// Images already in the ad account, newest first — lets a second variant reuse
+// media uploaded moments earlier without a re-upload.
+router.get('/media/images', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const data = await metaFetch(`/${accountId}/adimages`, {
+      fields: 'hash,url,name,width,height,created_time',
+      limit: Number(req.query.limit) || 100,
+    }, token)
+    res.json({ data: data.data || [] })
+  } catch (err) {
+    fail(res, err, 'images list')
+  }
+})
+
+router.get('/media/videos', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const data = await metaFetch(`/${accountId}/advideos`, {
+      fields: 'id,title,picture,created_time,length',
+      limit: Number(req.query.limit) || 50,
+    }, token)
+    res.json({ data: data.data || [] })
+  } catch (err) {
+    fail(res, err, 'videos list')
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Targeting search + previews
+// ---------------------------------------------------------------------------
+
+// Typeahead for the ad set geo picker. Cities carry a radius; regions and
+// countries do not, which the UI reflects.
+router.get('/targeting/locations', async (req, res) => {
+  try {
+    const { token } = getConfig()
+    const q = (req.query.q || '').trim()
+    if (!q) return res.json({ data: [] })
+    const data = await metaFetch('/search', {
+      type: 'adgeolocation',
+      q,
+      location_types: ['city', 'region', 'zip', 'country'],
+      limit: 25,
+    }, token)
+    res.json({ data: data.data || [] })
+  } catch (err) {
+    fail(res, err, 'location search')
+  }
+})
+
+router.get('/targeting/interests', async (req, res) => {
+  try {
+    const { token } = getConfig()
+    const q = (req.query.q || '').trim()
+    if (!q) return res.json({ data: [] })
+    const data = await metaFetch('/search', {
+      type: 'adinterest', q, limit: 25,
+    }, token)
+    res.json({ data: data.data || [] })
+  } catch (err) {
+    fail(res, err, 'interest search')
+  }
+})
+
+// Saved + lookalike audiences, for ad sets that reuse an existing audience.
+router.get('/targeting/audiences', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const data = await metaFetch(`/${accountId}/customaudiences`, {
+      fields: 'id,name,subtype,approximate_count_lower_bound,delivery_status',
+      limit: 100,
+    }, token)
+    res.json({ data: data.data || [] })
+  } catch (err) {
+    fail(res, err, 'audiences list')
+  }
+})
+
+// POST /meta-ads-manager/previews
+// Renders an unsaved variant exactly as Meta will show it. Takes the same
+// variant shape as the create call so the builder can preview before writing.
+router.post('/previews', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const { variant, shared, ad_format } = req.body || {}
+    if (!variant) return res.status(400).json({ error: 'A variant is required' })
+
+    const spec = buildObjectStorySpec(variant, shared || {})
+    // generatepreviews is a read edge — the creative rides in the query string.
+    const data = await metaFetch(`/${accountId}/generatepreviews`, {
+      creative: { object_story_spec: spec },
+      ad_format: ad_format || 'MOBILE_FEED_STANDARD',
+    }, token)
+    const body = (data.data && data.data[0] && data.data[0].body) || null
+    res.json({ html: body })
+  } catch (err) {
+    fail(res, err, 'preview')
+  }
+})
+
+module.exports = router
