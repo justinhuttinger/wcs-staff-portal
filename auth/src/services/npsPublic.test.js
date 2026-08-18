@@ -278,3 +278,35 @@ test('the cap does not apply to the invited path', async () => {
   const r = await submitResponse({ db, slug: '6mo', token: 'tok-live', answers: { q_nps: 7 }, now: NOW });
   assert.equal(r.ok, true);
 });
+
+// --- name display -----------------------------------------------------------
+
+const { displayName } = require('./npsPublic');
+
+test('a shouted name is calmed down', () => {
+  // ABC has this member as "Justin" at one club and "JUSTIN" at another.
+  assert.equal(displayName('JUSTIN'), 'Justin');
+  assert.equal(displayName('JUSTIN HUTTINGER'), 'Justin Huttinger');
+});
+
+test('a lowercase name is capitalised', () => {
+  assert.equal(displayName('justin'), 'Justin');
+});
+
+test('a correctly cased name is left exactly alone', () => {
+  // Naive title-casing turns these into Mcdonald and Deangelo, which is a
+  // different kind of wrong from shouting.
+  assert.equal(displayName('McDonald'), 'McDonald');
+  assert.equal(displayName('DeAngelo'), 'DeAngelo');
+  assert.equal(displayName("O'Brien"), "O'Brien");
+});
+
+test('hyphens and apostrophes get their capitals too', () => {
+  assert.equal(displayName('MARY-JANE'), 'Mary-Jane');
+  assert.equal(displayName("O'BRIEN"), "O'Brien");
+});
+
+test('an empty name is null rather than an empty greeting', () => {
+  assert.equal(displayName(''), null);
+  assert.equal(displayName(null), null);
+});
