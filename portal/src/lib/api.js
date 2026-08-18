@@ -1372,6 +1372,20 @@ export async function getAdsManagerAudiences() {
   return api(MAM + '/targeting/audiences')
 }
 
+// Stranded ads: switched on inside a paused campaign or ad set. Harmless
+// until the parent is reactivated, at which point they all resume at once.
+export async function getAdsManagerStrandedAds() {
+  return api(MAM + '/audit/stranded-ads')
+}
+
+// Omit ad_ids to sweep every stranded ad; pass a subset to pause just those.
+export async function pauseAdsManagerStrandedAds(adIds) {
+  return api(MAM + '/audit/stranded-ads/pause', {
+    method: 'POST',
+    body: JSON.stringify(adIds ? { ad_ids: adIds } : {}),
+  })
+}
+
 export async function getAdsManagerSavedAudiences() {
   return api(MAM + '/targeting/saved-audiences')
 }

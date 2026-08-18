@@ -40,6 +40,23 @@ test('a paused ad is not active, whatever its parent is doing', () => {
   assert.equal(isActive({ status: 'ACTIVE', effective_status: 'CAMPAIGN_PAUSED' }), false)
 })
 
+test('IN_PROCESS counts as active', () => {
+  // A scheduled or still-publishing object will deliver on its own, so it
+  // belongs with the live ones rather than the switched-off ones.
+  assert.equal(isActive({ effective_status: 'IN_PROCESS' }), true)
+  assert.equal(matchesStatusFilter({ effective_status: 'IN_PROCESS' }, 'active'), true)
+  assert.equal(matchesStatusFilter({ effective_status: 'IN_PROCESS' }, 'inactive'), false)
+  // WITH_ISSUES is not delivering, so it stays on the inactive side.
+  assert.equal(isActive({ effective_status: 'WITH_ISSUES' }), false)
+})
+
+test('an ad left ACTIVE under a paused parent still reads as inactive', () => {
+  // This is the stranded case the audit sweeps up: own status ACTIVE, but
+  // Meta reports the parent's pause through effective_status.
+  assert.equal(isActive({ status: 'ACTIVE', effective_status: 'ADSET_PAUSED' }), false)
+  assert.equal(isActive({ status: 'ACTIVE', effective_status: 'CAMPAIGN_PAUSED' }), false)
+})
+
 test('status filter splits active / inactive / all', () => {
   const active = { effective_status: 'ACTIVE' }
   const paused = { effective_status: 'PAUSED' }

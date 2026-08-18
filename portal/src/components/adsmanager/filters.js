@@ -58,11 +58,15 @@ export function classifyCampaign(campaign) {
   }
 }
 
-// "Active" means Meta is actually able to deliver it. Anything paused,
-// archived, out of budget or still in review counts as inactive — a paused ad
-// is not an active one, whatever its parent is doing.
+// "Active" means switched on and heading for delivery. IN_PROCESS is included
+// because it is a scheduled or still-publishing object that will deliver on its
+// own — it belongs with the live ones, not the off ones. Everything else
+// (paused, archived, out of budget, rejected, WITH_ISSUES) reads as inactive:
+// a paused ad is not an active one, whatever its parent is doing.
+const ACTIVE_STATUSES = ['ACTIVE', 'IN_PROCESS']
+
 export function isActive(entity) {
-  return (entity.effective_status || entity.status) === 'ACTIVE'
+  return ACTIVE_STATUSES.includes(entity.effective_status || entity.status)
 }
 
 export function matchesLocationFilter(campaign, filter) {

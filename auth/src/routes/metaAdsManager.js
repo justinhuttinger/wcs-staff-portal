@@ -75,6 +75,66 @@ async function metaWrite(path, body, token, method = 'POST') {
   return data
 }
 
+// Graph's batch endpoint, chunked at its 50-per-request ceiling. Pausing a
+// sweep of 150 ads one call at a time would take minutes and risk the
+// per-account write throttle; batched it is a handful of requests.
+async function metaBatch(operations, token) {
+  const results = []
+  for (let i = 0; i < operations.length; i += 50) {
+    const chunk = operations.slice(i, i + 50)
+    const form = new URLSearchParams()
+    form.set('access_token', token)
+    form.set('batch', JSON.stringify(chunk.map(op => ({
+      method: op.method || 'POST',
+      relative_url: op.relative_url,
+      body: op.body,
+    }))))
+    const res = await fetch(`${META_API}/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form,
+    })
+    const data = await res.json()
+    if (data.error) throw metaError(data)
+    // Batch replies are positional, and a failed sub-request reports inside
+    // its own envelope rather than failing the whole batch.
+    chunk.forEach((op, idx) => {
+      const reply = (data || [])[idx]
+      let error = null
+      if (!reply) error = 'No response from Meta'
+      else if (reply.code >= 300) {
+        try {
+          const parsed = JSON.parse(reply.body || '{}')
+          error = (parsed.error && (parsed.error.error_user_msg || parsed.error.message)) || `HTTP ${reply.code}`
+        } catch { error = `HTTP ${reply.code}` }
+      }
+      results.push({ ...op.meta, id: op.id, ok: !error, error })
+    })
+  }
+  return results
+}
+
+// Walk every page of an edge. The ad account is past 500 ads, so anything
+// that reasons about "all ads" has to page or it silently works on a subset.
+async function metaFetchAll(path, params, token, maxPages = 25) {
+  const out = []
+  let url = new URL(`${META_API}${path}`)
+  url.searchParams.set('access_token', token)
+  for (const [key, val] of Object.entries(params || {})) {
+    if (val === undefined || val === null) continue
+    url.searchParams.set(key, typeof val === 'object' ? JSON.stringify(val) : String(val))
+  }
+  let next = url.toString()
+  for (let page = 0; page < maxPages && next; page++) {
+    const res = await fetch(next)
+    const data = await res.json()
+    if (data.error) throw metaError(data)
+    out.push(...(data.data || []))
+    next = (data.paging && data.paging.next) || null
+  }
+  return out
+}
+
 function fail(res, err, label) {
   console.error(`[Meta Ads Manager] ${label}:`, err.message)
   const status = err.meta && err.meta.code === 190 ? 502 : 400
@@ -136,6 +196,124 @@ router.get('/account', async (req, res) => {
     })
   } catch (err) {
     fail(res, err, 'account')
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Cascading pause
+// ---------------------------------------------------------------------------
+//
+// Meta stops *delivering* children of a paused parent, but it does not change
+// their own status — they sit at ACTIVE with an effective_status of
+// CAMPAIGN_PAUSED / ADSET_PAUSED. The moment the parent is switched back on,
+// every one of them resumes at once, which is rarely what anyone intended.
+// Pausing here therefore pauses the whole subtree so "off" means off.
+//
+// Deliberately one-way: reactivating a parent does NOT reactivate children.
+// Turning a campaign on should not silently start spending on every ad that
+// ever lived under it.
+
+async function pauseChildren(level, id, token) {
+  const paused = { adsets: [], ads: [] }
+
+  if (level === 'campaign') {
+    const adsets = await metaFetchAll(`/${id}/adsets`, { fields: 'id,name,status', limit: 200 }, token)
+    const liveAdsets = adsets.filter(a => a.status === 'ACTIVE')
+    if (liveAdsets.length) {
+      paused.adsets = await metaBatch(liveAdsets.map(a => ({
+        relative_url: a.id, body: 'status=PAUSED', id: a.id, meta: { name: a.name },
+      })), token)
+    }
+  }
+
+  // The campaign edge returns every ad beneath it, so one call covers all of
+  // its ad sets rather than one call per ad set.
+  const ads = await metaFetchAll(`/${id}/ads`, { fields: 'id,name,status', limit: 200 }, token)
+  const liveAds = ads.filter(a => a.status === 'ACTIVE')
+  if (liveAds.length) {
+    paused.ads = await metaBatch(liveAds.map(a => ({
+      relative_url: a.id, body: 'status=PAUSED', id: a.id, meta: { name: a.name },
+    })), token)
+  }
+
+  return {
+    adsets_paused: paused.adsets.filter(r => r.ok).length,
+    ads_paused: paused.ads.filter(r => r.ok).length,
+    failures: [...paused.adsets, ...paused.ads].filter(r => !r.ok),
+  }
+}
+
+// An ad whose own status is ACTIVE but whose parent is paused. Harmless while
+// the parent stays off, a mass reactivation the moment it does not.
+const STRANDED_STATUSES = ['CAMPAIGN_PAUSED', 'ADSET_PAUSED']
+
+async function findStrandedAds(token, accountId) {
+  const ads = await metaFetchAll(`/${accountId}/ads`, {
+    fields: 'id,name,status,effective_status,adset{id,name,status},campaign{id,name,status}',
+    limit: 200,
+  }, token)
+  return ads.filter(a => a.status === 'ACTIVE' && STRANDED_STATUSES.includes(a.effective_status))
+}
+
+// GET /meta-ads-manager/audit/stranded-ads
+// The sweep: every ad switched on inside a paused parent, grouped by campaign.
+router.get('/audit/stranded-ads', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const stranded = await findStrandedAds(token, accountId)
+
+    const groups = new Map()
+    for (const ad of stranded) {
+      const campaign = ad.campaign || {}
+      const key = campaign.id || 'unknown'
+      if (!groups.has(key)) {
+        groups.set(key, { campaign_id: campaign.id, campaign_name: campaign.name || 'Unknown campaign', campaign_status: campaign.status, ads: [] })
+      }
+      groups.get(key).ads.push({
+        id: ad.id,
+        name: ad.name,
+        effective_status: ad.effective_status,
+        adset_id: (ad.adset || {}).id,
+        adset_name: (ad.adset || {}).name,
+        adset_status: (ad.adset || {}).status,
+      })
+    }
+
+    res.json({
+      total: stranded.length,
+      by_paused_adset: stranded.filter(a => a.effective_status === 'ADSET_PAUSED').length,
+      by_paused_campaign: stranded.filter(a => a.effective_status === 'CAMPAIGN_PAUSED').length,
+      groups: [...groups.values()].sort((a, b) => b.ads.length - a.ads.length),
+    })
+  } catch (err) {
+    fail(res, err, 'stranded audit')
+  }
+})
+
+// POST /meta-ads-manager/audit/stranded-ads/pause
+// Switches them off. Pass ad_ids to pause a subset; omit it to sweep the lot.
+// Re-derives the stranded set server-side either way, so a stale browser list
+// can never pause an ad that has since become legitimately active.
+router.post('/audit/stranded-ads/pause', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const { ad_ids } = req.body || {}
+
+    const stranded = await findStrandedAds(token, accountId)
+    const wanted = Array.isArray(ad_ids) && ad_ids.length ? new Set(ad_ids) : null
+    const targets = wanted ? stranded.filter(a => wanted.has(a.id)) : stranded
+
+    if (!targets.length) return res.json({ paused: 0, failed: 0, results: [] })
+
+    const results = await metaBatch(targets.map(a => ({
+      relative_url: a.id, body: 'status=PAUSED', id: a.id, meta: { name: a.name },
+    })), token)
+
+    const paused = results.filter(r => r.ok).length
+    console.log(`[Meta Ads Manager] stranded sweep paused ${paused}/${targets.length} ads`)
+    res.json({ paused, failed: results.length - paused, results })
+  } catch (err) {
+    fail(res, err, 'stranded sweep')
   }
 })
 
@@ -208,8 +386,16 @@ router.put('/campaigns/:id', async (req, res) => {
     if (!Object.keys(body).length) return res.status(400).json({ error: 'Nothing to update' })
 
     await metaWrite(`/${req.params.id}`, body, token)
+
+    // Pausing a campaign pauses everything under it. Opt out with
+    // cascade:false; reactivation never cascades.
+    let cascade
+    if (status === 'PAUSED' && req.body.cascade !== false) {
+      cascade = await pauseChildren('campaign', req.params.id, token)
+    }
+
     const full = await metaFetch(`/${req.params.id}`, { fields: CAMPAIGN_FIELDS }, token)
-    res.json(full)
+    res.json({ ...full, cascade })
   } catch (err) {
     fail(res, err, 'campaign update')
   }
@@ -325,8 +511,15 @@ router.put('/adsets/:id', async (req, res) => {
     delete body.campaign_id
     if (!Object.keys(body).length) return res.status(400).json({ error: 'Nothing to update' })
     await metaWrite(`/${req.params.id}`, body, token)
+
+    // Same one-way cascade as campaigns: pausing an ad set pauses its ads.
+    let cascade
+    if (req.body.status === 'PAUSED' && req.body.cascade !== false) {
+      cascade = await pauseChildren('adset', req.params.id, token)
+    }
+
     const full = await metaFetch(`/${req.params.id}`, { fields: ADSET_FIELDS }, token)
-    res.json(full)
+    res.json({ ...full, cascade })
   } catch (err) {
     fail(res, err, 'adset update')
   }
