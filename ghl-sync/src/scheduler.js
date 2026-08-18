@@ -11,6 +11,7 @@ const { checkRevenueGaps } = require('./revenue/gapCheck');
 const { emailStatsSync } = require('./sync/emailStatsSync');
 const { enrichAll: enrichAttributionAll } = require('./sync/attributionEnrich');
 const { runLapsedTaggingAll } = require('./abc/lapsedTaggingJob');
+const { runNpsAll } = require('./nps/npsJob');
 
 function startScheduler() {
   const intervalMinutes = process.env.SYNC_INTERVAL_MINUTES || 10;
@@ -197,6 +198,36 @@ function startScheduler() {
       }
     });
     console.log(`[Scheduler] Lapsed tagging scheduled daily at ${lapsedTaggingHour}:00 PST (${lapsedTaggingHourUTC}:00 UTC), dryRun=${lapsedTaggingDryRun}`);
+  }
+
+  // NPS lifecycle surveys — nightly, dark-launched behind NPS_ENABLED (default
+  // off). Creates nps_invites rows for members hitting a milestone and tags
+  // them in GHL so a workflow sends the email. Defaults to dry-run (invites
+  // recorded, no GHL writes) until the rollout flips NPS_TAGGING_DRY_RUN=false.
+  // See ghl-sync/src/nps/npsJob.js.
+  if (process.env.NPS_ENABLED === 'true') {
+    const npsHour = Number(process.env.NPS_HOUR || 7); // PST
+    const npsHourUTC = (npsHour + 8) % 24;
+    const npsDryRun = process.env.NPS_TAGGING_DRY_RUN !== 'false'; // default true
+    let npsRunning = false;
+    cron.schedule(`0 ${npsHourUTC} * * *`, async () => {
+      if (npsRunning) {
+        console.warn('[Scheduler] Previous NPS run still running — skipping');
+        return;
+      }
+      npsRunning = true;
+      console.log('[Scheduler] Starting NPS cohort job...');
+      try {
+        const summary = await runNpsAll({ dryRun: npsDryRun });
+        console.log('[Scheduler] NPS results:', JSON.stringify(summary));
+      } catch (err) {
+        console.error('[Scheduler] NPS job failed:', err.message);
+        await alertSyncFailed(err).catch(() => {});
+      } finally {
+        npsRunning = false;
+      }
+    });
+    console.log(`[Scheduler] NPS scheduled daily at ${npsHour}:00 PST (${npsHourUTC}:00 UTC), dryRun=${npsDryRun}`);
   }
 
   console.log(`[Scheduler] Delta sync every ${intervalMinutes}m, full sync daily at ${fullSyncHour}:00 PST (${fullSyncHourUTC}:00 UTC)`);
