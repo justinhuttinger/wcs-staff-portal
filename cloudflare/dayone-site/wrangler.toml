@@ -1,0 +1,15 @@
+# Rename to whatever Worker name Cloudflare creates when the repo is connected,
+# or run `wrangler deploy` first and let it create this one.
+name = "wcs-dayone-site"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+
+# The subdomain. join.westcoaststrength.com is already taken by the online-join
+# worker, so Day One gets its own. Uncomment after the DNS record exists, or add
+# the domain in the dashboard under Worker -> Settings -> Domains & Routes.
+#
+# routes = [
+#   { pattern = "book.westcoaststrength.com", custom_domain = true }
+# ]
+
+# No build step and no dependencies — the Worker is a single file.
