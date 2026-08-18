@@ -222,6 +222,23 @@ async function createQrKey({ db = getDb(), surveyId, clubNumber }) {
   if (!survey) return { ok: false, status: 404, error: 'survey not found' };
   if (!String(clubNumber || '').trim()) return { ok: false, status: 400, error: 'clubNumber is required' };
 
+  // One active code per gym per survey. Two live codes for the same wall make
+  // rotation meaningless: retiring one leaves the other working, so a poster
+  // you thought you had killed keeps collecting.
+  const { data: existing } = await db.from('nps_club_qr')
+    .select('id, key')
+    .eq('survey_id', surveyId)
+    .eq('club_number', String(clubNumber).trim())
+    .eq('active', true)
+    .maybeSingle();
+  if (existing) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'that gym already has a live code for this survey; rotate it instead of adding a second',
+    };
+  }
+
   const row = {
     club_number: String(clubNumber).trim(),
     key: opaqueKey(),
