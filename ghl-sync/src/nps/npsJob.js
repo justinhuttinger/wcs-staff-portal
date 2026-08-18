@@ -105,6 +105,12 @@ async function applyGhlForInvites(survey, invites, options = {}) {
 
     const index = buildContactIndex(contacts, fieldDefs || []);
 
+    // One lookup per location per run, not per member.
+    const fieldId = await resolveSurveyFieldId(db, location, survey.ghl_field_key);
+    if (!fieldId) {
+      result.errors.push(`no GHL custom field ${survey.ghl_field_key} in ${location.name}`);
+    }
+
     for (const inv of clubInvites) {
       const match = matchContact(index, {
         member_id: inv.member_id,
@@ -124,15 +130,28 @@ async function applyGhlForInvites(survey, invites, options = {}) {
 
       const url = surveyUrl(baseUrl, survey.slug, inv.token);
       try {
-        // Field FIRST. The workflow triggers on the tag, so tagging before the
-        // URL exists would send an email with an empty link.
+        // Field FIRST, and addressed by ID.
+        //
+        // GHL answers 200 to { key, field_value } and silently discards it;
+        // only { id, value } persists. Getting this wrong is the single worst
+        // failure this job has, because the tag below fires the workflow: the
+        // member would receive a real email containing an empty link.
+        if (!fieldId) {
+          throw new Error(`no GHL custom field ${survey.ghl_field_key} in ${location.name}`);
+        }
         await putFn(`/contacts/${match.contact.id}`, {
-          customFields: [{ key: survey.ghl_field_key, field_value: url }],
+          customFields: [{ id: fieldId, value: url }],
         }, location.apiKey);
 
-        // Re-read so the tag write is a read-modify-write against live tags and
-        // does not clobber tags added since the last sync.
+        // Re-read for two reasons: to confirm the URL actually stored, and so
+        // the tag write is a read-modify-write against live tags rather than
+        // clobbering tags added since the last sync.
         const live = await getFn(`/contacts/${match.contact.id}`, {}, location.apiKey);
+        const stored = (live?.contact?.customFields || []).find(f => f.id === fieldId);
+        if (!stored || String(stored.value || '') !== url) {
+          throw new Error('GHL did not store the survey URL; not tagging, so no email goes out with a dead link');
+        }
+
         const existing = live?.contact?.tags ?? match.contact.tags ?? [];
         if (!existing.includes(survey.ghl_tag)) {
           await putFn(`/contacts/${match.contact.id}`, {
@@ -215,6 +234,28 @@ async function runNpsAll(options = {}) {
   return { surveys: results };
 }
 
+/**
+ * The GHL custom field id for a survey's field key in one location.
+ *
+ * Reads the cached defs first, falls back to asking GHL, since a field created
+ * after the last sync would otherwise look missing and stall the whole club.
+ */
+async function resolveSurveyFieldId(db, location, fieldKey) {
+  if (!fieldKey) return null;
+
+  const { data: cached } = await db.from('ghl_custom_field_defs')
+    .select('id, field_key')
+    .eq('location_id', location.id)
+    .eq('field_key', fieldKey)
+    .limit(1);
+  if (cached && cached.length) return cached[0].id;
+
+  const { fetchCustomFields } = require('../ghl/customFields');
+  const fresh = await fetchCustomFields(location.id, location.apiKey);
+  return fresh.find(f => f.field_key === fieldKey)?.id || null;
+}
+
 module.exports = {
   loadActiveSurveys, insertInvites, applyGhlForInvites, runNpsSurvey, runNpsAll,
+  resolveSurveyFieldId,
 };
