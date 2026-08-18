@@ -119,3 +119,97 @@ test('runNpsAll skips walkup and non-active surveys', async () => {
   assert.equal(out.surveys.length, 1);
   assert.equal(out.surveys[0].slug, '6mo');
 });
+
+const { applyGhlForInvites } = require('./npsJob');
+
+test('applyGhlForInvites writes the URL field before adding the tag', async () => {
+  const order = [];
+  const contacts = [
+    { id: 'C1', email: 'a@x.com', first_name: 'Jo', last_name: 'Doe', tags: [], custom_fields: [] },
+  ];
+  const db = {
+    from(table) {
+      const builder = {
+        select: () => builder,
+        eq: () => builder,
+        limit: () => Promise.resolve({ data: [], error: null }),
+        range: () => Promise.resolve({
+          data: table === 'ghl_contacts_v2' ? contacts : [], error: null,
+        }),
+        update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+      };
+      return builder;
+    },
+  };
+
+  const invites = [{
+    id: 'INV1', member_id: 'M1', club_number: '30935',
+    member_email: 'a@x.com', member_name: 'Jo Doe', token: 'tok123',
+  }];
+  const survey = { id: 'srv-6mo', slug: '6mo', ghl_tag: 'nps-6mo', ghl_field_key: 'contact.nps_survey_url' };
+
+  const out = await applyGhlForInvites(survey, invites, {
+    db,
+    now: new Date('2026-08-18T14:00:00Z'),
+    locations: [{ id: 'LOC1', name: 'Salem', slug: 'salem', clubNumber: '30935', apiKey: 'k' }],
+    get: async () => ({ contact: { id: 'C1', tags: [] } }),
+    put: async (path, body) => {
+      // The workflow fires on the tag, so an empty URL field at tag time would
+      // send a broken email. Record which landed first.
+      if (body.customFields) order.push('field');
+      if (body.tags) order.push('tag');
+      return { contact: { id: 'C1' } };
+    },
+    sleepFn: async () => {},
+    baseUrl: 'https://survey.westcoaststrength.com',
+  });
+
+  assert.equal(out.tagged, 1);
+  assert.deepEqual(out.errors, []);
+  assert.equal(order[0], 'field', 'custom field must be written before the tag');
+  assert.equal(order[1], 'tag');
+});
+
+test('applyGhlForInvites records an error and keeps going when one contact fails', async () => {
+  const contacts = [
+    { id: 'C1', email: 'a@x.com', first_name: 'A', last_name: 'A', tags: [], custom_fields: [] },
+    { id: 'C2', email: 'b@x.com', first_name: 'B', last_name: 'B', tags: [], custom_fields: [] },
+  ];
+  const db = {
+    from(table) {
+      const builder = {
+        select: () => builder,
+        eq: () => builder,
+        limit: () => Promise.resolve({ data: [], error: null }),
+        range: () => Promise.resolve({
+          data: table === 'ghl_contacts_v2' ? contacts : [], error: null,
+        }),
+        update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+      };
+      return builder;
+    },
+  };
+
+  const invites = [
+    { id: 'INV1', member_id: 'M1', club_number: '30935', member_email: 'a@x.com', token: 't1' },
+    { id: 'INV2', member_id: 'M2', club_number: '30935', member_email: 'b@x.com', token: 't2' },
+  ];
+  const survey = { id: 's', slug: '6mo', ghl_tag: 'nps-6mo', ghl_field_key: 'contact.nps_survey_url' };
+
+  const out = await applyGhlForInvites(survey, invites, {
+    db,
+    now: new Date('2026-08-18T14:00:00Z'),
+    locations: [{ id: 'LOC1', name: 'Salem', slug: 'salem', clubNumber: '30935', apiKey: 'k' }],
+    get: async () => ({ contact: { id: 'C1', tags: [] } }),
+    put: async (path) => {
+      if (path.includes('C2')) throw new Error('GHL 500');
+      return { contact: {} };
+    },
+    sleepFn: async () => {},
+    baseUrl: 'https://survey.westcoaststrength.com',
+  });
+
+  assert.equal(out.tagged, 1);
+  assert.equal(out.errors.length, 1);
+  assert.match(out.errors[0], /GHL 500/);
+});
