@@ -93,13 +93,15 @@ async function submitResponse({
 
   if (!invited) {
     const hourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+    // head:true is an option on select(), not a builder method. There is no
+    // .head() to call, so the old form threw a TypeError and every walk-up
+    // submission came back as "Something went wrong".
     const { count } = await db.from('nps_responses')
-      .select('id', { count: 'exact' })
+      .select('id', { count: 'exact', head: true })
       .eq('survey_id', survey.id)
       .eq('club_number', ctx.clubNumber)
       .eq('source', 'walkup')
-      .gte('submitted_at', hourAgo)
-      .head();
+      .gte('submitted_at', hourAgo);
     if ((count || 0) >= WALKUP_HOURLY_CAP) {
       return { ok: false, status: 409, reason: 'rate_limited' };
     }
