@@ -3,6 +3,7 @@ const authenticate = require('../middleware/auth');
 const { requireRole } = require('../middleware/role');
 const { testFire } = require('../services/npsTestFire');
 const npsAdmin = require('../services/npsAdmin');
+const { loadSentLog } = require('../services/npsSentLog');
 const auditLog = require('../services/auditLog');
 
 // Admin-only NPS tooling. The public render/submit endpoints live in
@@ -66,6 +67,30 @@ router.get('/members/search', async (req, res) => {
   } catch (err) {
     console.error('[nps] member search failed:', err.message);
     res.status(500).json({ error: 'Failed to search members' });
+  }
+});
+
+// --- sent log --------------------------------------------------------------
+
+// GET /nps/sent?date=YYYY-MM-DD&survey=<id>
+//
+// What the nightly job did on one Pacific day. Includes dry-run and test rows,
+// flagged, because during rollout those are the rows worth looking at.
+router.get('/sent', async (req, res) => {
+  try {
+    const date = String(req.query.date || '').trim()
+      || new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).format(new Date());
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+    }
+
+    res.json(await loadSentLog({ date, surveyId: req.query.survey || null }));
+  } catch (err) {
+    console.error('[nps] sent log failed:', err.message);
+    res.status(500).json({ error: 'Failed to load the sent log' });
   }
 });
 

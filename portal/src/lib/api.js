@@ -1177,6 +1177,7 @@ export const nps = {
   setMetricActive: (id, active) => api(`/nps/metrics/${id}`, { method: 'PATCH', body: JSON.stringify({ active }) }),
   searchMembers: (q) => api(`/nps/members/search?q=${encodeURIComponent(q)}`),
   testFire: (body) => api('/nps/test-fire', { method: 'POST', body: JSON.stringify(body) }),
+  sentLog: (date) => api('/nps/sent?date=' + encodeURIComponent(date)),
 }
 
 // Lapsed Check-in Tagging — admin exclusions + at-risk dashboard
