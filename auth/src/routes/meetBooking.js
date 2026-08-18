@@ -210,6 +210,9 @@ router.post('/api/book', bookLimiter, async (req, res) => {
     const endTime = new Date(new Date(startTime).getTime() + option.minutes * 60000).toISOString()
     const name = [firstName, lastName].filter(Boolean).join(' ').trim()
 
+    // Free text from a public page, so capped before it goes anywhere.
+    const topic = String(notes || '').trim().slice(0, 1000)
+
     const appt = await ghlFetch('/calendars/events/appointments', loc.apiKey, {
       method: 'POST',
       body: {
@@ -222,19 +225,24 @@ router.post('/api/book', bookLimiter, async (req, res) => {
         appointmentStatus: 'confirmed',
         toNotify: true,
         ignoreDateRange: false,
+        // What they want to talk about, ON THE APPOINTMENT. A contact note
+        // alone is not enough: opening the meeting in the calendar showed
+        // nothing, which is exactly where you look before a call. Both fields
+        // are sent because GHL surfaces them in different views, and both were
+        // verified to persist.
+        ...(topic ? { notes: topic, description: topic } : {}),
       },
       version: CAL_VERSION,
     })
 
-    // What they wanted to talk about. Free text from a public page, so capped
-    // before it reaches the contact record or an SMS.
+    // Also kept on the contact, where it survives the appointment and builds a
+    // history of what someone has wanted to discuss over time.
     let noteWritten = false
-    const trimmed = String(notes || '').trim().slice(0, 1000)
-    if (trimmed) {
+    if (topic) {
       try {
         await ghlFetch(`/contacts/${contactId}/notes`, loc.apiKey, {
           method: 'POST',
-          body: { body: `Booked ${option.label || option.minutes + ' min'}: ${trimmed}` },
+          body: { body: `Booked ${option.label || option.minutes + ' min'}: ${topic}` },
         })
         noteWritten = true
       } catch (e) {
