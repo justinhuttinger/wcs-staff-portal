@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { nps as npsApi } from '../../lib/api'
 import SurveyBuilder from './SurveyBuilder'
+import SentLog from './SentLog'
 
 const STATUS_STYLES = {
   draft: 'bg-gray-100 border border-gray-200 text-gray-600',
@@ -244,7 +245,7 @@ export default function NpsView({ onBack }) {
         </div>
 
         <div className="flex rounded-lg border border-border overflow-hidden w-fit">
-          {[['surveys', 'Surveys'], ['metrics', 'What we measure']].map(([key, label]) => (
+          {[['surveys', 'Surveys'], ['sent', 'Who got tagged'], ['metrics', 'What we measure']].map(([key, label]) => (
             <button
               key={key} type="button" onClick={() => setTab(key)}
               className={`px-4 py-2 text-sm font-medium transition-colors ${
@@ -262,7 +263,9 @@ export default function NpsView({ onBack }) {
         </div>
       )}
 
-      {tab === 'metrics' ? (
+      {tab === 'sent' ? (
+        <SentLog />
+      ) : tab === 'metrics' ? (
         <MetricsTab metrics={metrics} onChanged={load} />
       ) : (
         <>
