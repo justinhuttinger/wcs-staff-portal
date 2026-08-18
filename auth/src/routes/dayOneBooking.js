@@ -37,6 +37,9 @@ const CALENDAR_NAME = 'day one'
 const DAY_ONE_TEAM_FIELD = 'contact.day_one_booking_team_member'
 const DAY_ONE_DATE_FIELD = 'contact.day_one_booking_date'
 const DAY_ONE_BOOKED_FIELD = 'contact.day_one_booked'
+// The trainer's "Day One Booked!" SMS ends with `Notes: {{contact.notes_for_trainer}}`,
+// so this is how what the front desk types actually reaches the trainer.
+const NOTES_FIELD = 'contact.notes_for_trainer'
 // Created by scripts/create-cancel-reason-field.js --name="Day One Cancel Reason".
 // Distinct from contact.cancel_reason, which is MEMBERSHIP cancellation.
 const DAY_ONE_CANCEL_REASON_FIELD = 'contact.day_one_cancel_reason'
@@ -612,6 +615,10 @@ router.post('/api/book', bookLimiter, async (req, res) => {
       // made — if reports look off, check the workflow before this line.
       push(DAY_ONE_DATE_FIELD, String(startTime).slice(0, 10))
       push(DAY_ONE_BOOKED_FIELD, 'Yes')
+      // Free text from a public page, so it is capped before it reaches the
+      // contact record — and before it reaches an SMS, where a huge value would
+      // be split into a pile of segments.
+      push(NOTES_FIELD, String(notes || '').trim().slice(0, 1000))
       if (customFields.length) {
         await ghlFetch(`/contacts/${contactId}`, loc.apiKey, {
           method: 'PUT', body: { customFields },
