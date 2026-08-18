@@ -734,7 +734,26 @@ router.get('/targeting/interests', async (req, res) => {
   }
 })
 
-// Saved + lookalike audiences, for ad sets that reuse an existing audience.
+// Saved audiences are whole targeting specs (geo + age + interests + audience
+// exclusions) that Meta stores under the account — distinct from the custom
+// audiences below, which are just people lists. The ad set form loads one as a
+// starting point, so the full targeting object rides along.
+router.get('/targeting/saved-audiences', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const data = await metaFetch(`/${accountId}/saved_audiences`, {
+      fields: 'id,name,description,targeting,run_status',
+      limit: 200,
+    }, token)
+    // Meta keeps deleted saved audiences addressable; only offer live ones.
+    const usable = (data.data || []).filter(a => a.targeting && a.run_status !== 'DELETED')
+    res.json({ data: usable })
+  } catch (err) {
+    fail(res, err, 'saved audiences list')
+  }
+})
+
+// Custom + lookalike audiences — the people lists themselves.
 router.get('/targeting/audiences', async (req, res) => {
   try {
     const { token, accountId } = getConfig()
