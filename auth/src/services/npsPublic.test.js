@@ -132,6 +132,13 @@ function fakeSubmitDb({ invites = [], surveys = [SURVEY], qr = [] } = {}) {
             then: (res) => res({ data: list, error: null }),
           };
         },
+        upsert(rows, opts = {}) {
+          const list = Array.isArray(rows) ? rows : [rows];
+          list.forEach(r => inserted.push({ table, row: r, conflictTarget: opts.onConflict }));
+          return {
+            select: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'resp-1', ...list[0] }, error: null }) }),
+          };
+        },
       };
       return builder;
     },
@@ -197,4 +204,44 @@ test('submitting on an already-answered token is refused', async () => {
   assert.equal(r.ok, false);
   assert.equal(r.status, 404);
   assert.equal(db.inserted.length, 0);
+});
+
+const { recordPreScore } = require('./npsPublic');
+
+test('a pre-score writes the response immediately so an abandon still counts', async () => {
+  const db = fakeSubmitDb({ invites: [LIVE] });
+  await recordPreScore({ db, slug: '6mo', token: 'tok-live', score: 9, now: NOW });
+
+  const resp = db.inserted.find(i => i.table === 'nps_responses').row;
+  assert.equal(resp.nps_score, 9);
+  assert.equal(resp.answers.q_nps, 9);
+  assert.equal(resp.invite_id, 'inv-1');
+
+  const score = db.inserted.find(i => i.table === 'nps_response_scores').row;
+  assert.equal(score.metric_key, 'nps');
+  assert.equal(score.score, 9);
+});
+
+test('a pre-score does NOT burn the token - they still have questions to answer', async () => {
+  const db = fakeSubmitDb({ invites: [LIVE] });
+  await recordPreScore({ db, slug: '6mo', token: 'tok-live', score: 9, now: NOW });
+  assert.equal(db.updates.filter(u => u.patch.status === 'responded').length, 0);
+});
+
+test('an out-of-range pre-score is ignored rather than throwing', async () => {
+  // It arrives from a URL an email client may have mangled. A bad ?s must not
+  // stop the survey rendering.
+  const db = fakeSubmitDb({ invites: [LIVE] });
+  await recordPreScore({ db, slug: '6mo', token: 'tok-live', score: 99, now: NOW });
+  assert.equal(db.inserted.length, 0);
+});
+
+test('finishing after a pre-score updates the same response row', async () => {
+  const db = fakeSubmitDb({ invites: [LIVE] });
+  await submitResponse({ db, slug: '6mo', token: 'tok-live', answers: { q_nps: 4 }, now: NOW });
+
+  const writes = db.inserted.filter(i => i.table === 'nps_responses');
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].conflictTarget, 'invite_id',
+    'one response per invite: the pre-score row and the final row are the same row');
 });

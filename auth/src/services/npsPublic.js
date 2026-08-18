@@ -95,7 +95,7 @@ async function submitResponse({
   // Denormalised for report speed, per the parent spec.
   const npsScore = v.scores.find(s => s.metric_key === 'nps')?.score ?? null;
 
-  const { data: response, error } = await db.from('nps_responses').insert({
+  const { data: response, error } = await db.from('nps_responses').upsert({
     invite_id: invited ? invite.id : null,
     survey_id: survey.id,
     member_id: invited ? invite.member_id : null,
@@ -109,7 +109,7 @@ async function submitResponse({
     user_agent: userAgent,
     submitted_at: submittedAt,
     is_test: isTest,
-  }).select().maybeSingle();
+  }, { onConflict: 'invite_id' }).select().maybeSingle();
   if (error) throw new Error(`[NPS] failed to write nps_responses: ${error.message}`);
 
   if (v.scores.length) {
@@ -137,4 +137,58 @@ async function submitResponse({
   return { ok: true, status: 200, responseId: response.id };
 }
 
-module.exports = { loadByToken, loadByQr, submitResponse };
+/**
+ * Record the score a member clicked straight from the invite email.
+ *
+ * Written immediately rather than held in the browser so an abandoned survey
+ * still yields its NPS score. Safe to call repeatedly: the response row is
+ * keyed on invite_id, so a reload overwrites rather than duplicates.
+ *
+ * A malformed score is ignored, never thrown. It arrives from a URL that an
+ * email client may have rewritten, and a bad ?s must not stop the survey from
+ * rendering.
+ */
+async function recordPreScore({ db = getDb(), slug, token, score, now = new Date() }) {
+  const n = Number(score);
+  if (!Number.isInteger(n) || n < 0 || n > 10) return;
+
+  const ctx = await loadByToken({ db, slug, token, now });
+  if (!ctx.ok) return;
+
+  const { survey, invite } = ctx;
+  const npsQuestion = (survey.schema || []).find(q => q.type === 'nps');
+  if (!npsQuestion) return;
+
+  const submittedAt = now.toISOString();
+  const isTest = Boolean(invite.is_test);
+
+  const { data: response, error } = await db.from('nps_responses').upsert({
+    invite_id: invite.id,
+    survey_id: survey.id,
+    member_id: invite.member_id,
+    club_number: invite.club_number,
+    source: 'invited',
+    nps_score: n,
+    answers: { [npsQuestion.id]: n },
+    contact_name: null,
+    contact_email: null,
+    ip_hash: null,
+    user_agent: null,
+    submitted_at: submittedAt,
+    is_test: isTest,
+  }, { onConflict: 'invite_id' }).select().maybeSingle();
+  if (error) throw new Error(`[NPS] failed to pre-record response: ${error.message}`);
+
+  await db.from('nps_response_scores').insert({
+    response_id: response.id,
+    survey_id: survey.id,
+    metric_key: npsQuestion.metric_key,
+    score: n,
+    club_number: invite.club_number,
+    source: 'invited',
+    submitted_at: submittedAt,
+    is_test: isTest,
+  });
+}
+
+module.exports = { loadByToken, loadByQr, submitResponse, recordPreScore };

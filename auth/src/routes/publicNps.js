@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
-const { loadByToken, loadByQr, submitResponse } = require('../services/npsPublic');
+const { loadByToken, loadByQr, submitResponse, recordPreScore } = require('../services/npsPublic');
 
 // Public survey renderer endpoints. Intentionally NOT behind authenticate:
 // the invite token or the QR key IS the credential. Mirrors routes/publicForms.js.
@@ -52,6 +52,13 @@ router.get('/:slug', readLimiter, async (req, res) => {
         reason: result.reason || undefined,
       });
     }
+
+    // ?s= carries the score clicked straight from the email. Record it before
+    // responding so an abandoned survey still counts.
+    if (t && req.query.s !== undefined) {
+      await recordPreScore({ slug: req.params.slug, token: String(t), score: req.query.s });
+    }
+
     res.json({
       survey: publicSurvey(result.survey),
       member: result.member || null,
