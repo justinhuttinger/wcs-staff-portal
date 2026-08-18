@@ -70,6 +70,7 @@ test('a forced fire writes the field before the tag and marks the invite as a te
         assert.equal(typeof options.body, 'object', 'body must be an object, not pre-stringified');
       }
       const body = options.body || {};
+      if (path.includes('/contacts/search/duplicate')) return { contact: CONTACT };
       if (options.method === 'PUT' && body.customFields) order.push('field');
       if (options.method === 'PUT' && body.tags) order.push('tag');
       return { contact: { id: 'C1', tags: [] } };
@@ -93,7 +94,9 @@ test('two forced fires on the same member and day both succeed', async () => {
   const db = fakeDb({ contacts: [CONTACT] });
   const opts = {
     db, slug: '6mo', memberId: 'M1', force: true, now: NOW, locations: LOCATIONS,
-    ghlFetchFn: async () => ({ contact: { id: 'C1', tags: [] } }),
+    ghlFetchFn: async (path) => (path.includes('/contacts/search/duplicate')
+      ? { contact: CONTACT }
+      : { contact: { id: 'C1', tags: [] } }),
   };
 
   assert.equal((await testFire(opts)).ok, true);
@@ -109,7 +112,9 @@ test('without force, a member inside the cooldown is refused', async () => {
 
   const out = await testFire({
     db, slug: '6mo', memberId: 'M1', force: false, now: NOW, locations: LOCATIONS,
-    ghlFetchFn: async () => ({ contact: { id: 'C1', tags: [] } }),
+    ghlFetchFn: async (path) => (path.includes('/contacts/search/duplicate')
+      ? { contact: CONTACT }
+      : { contact: { id: 'C1', tags: [] } }),
   });
 
   assert.equal(out.ok, false);
@@ -158,8 +163,28 @@ test('a module-shaped locations object still resolves a club', async () => {
     db, slug: '6mo', memberId: 'M1', force: true, now: NOW,
     // Deliberately the module shape rather than a bare array.
     locations: { LOCATIONS },
-    ghlFetchFn: async () => ({ contact: { id: 'C1', tags: [] } }),
+    ghlFetchFn: async (path) => (path.includes('/contacts/search/duplicate')
+      ? { contact: CONTACT }
+      : { contact: { id: 'C1', tags: [] } }),
   });
   assert.equal(out.ok, true);
   assert.equal(out.contact.location, 'Salem');
+});
+
+
+test('a contact missing from GHL is reported, not written to', async () => {
+  // ghl_contacts_v2 goes stale: a contact deleted in GHL keeps its cached row,
+  // and writing to that id returns "Contact not found". The lookup is live for
+  // exactly this reason.
+  const db = fakeDb();
+  const out = await testFire({
+    db, slug: '6mo', memberId: 'M1', force: true, now: NOW, locations: LOCATIONS,
+    ghlFetchFn: async (path) => {
+      if (path.includes('/contacts/search/duplicate')) return { contact: null };
+      throw new Error('must not write when no contact resolved');
+    },
+  });
+  assert.equal(out.ok, false);
+  assert.equal(out.status, 404);
+  assert.match(out.error, /no GHL contact/);
 });
