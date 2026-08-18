@@ -46,6 +46,7 @@ export const CUSTOM_REPORT_CATALOG = [
   { key: 'pt',                label: 'Day One' },
   { key: 'pt-roster',         label: 'PT Roster' },
   { key: 'pt-projections',   label: 'PT Projections' },
+  { key: 'nps',               label: 'NPS' },
   { key: 'checkins',          label: 'Check-ins' },
   { key: 'pt-sessions',       label: 'Trainer Load' },
   { key: 'pt-new-clients',    label: 'New Clients' },

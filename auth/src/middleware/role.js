@@ -74,6 +74,7 @@ const REPORT_ACCESS = {
   marketing:    ['marketing', 'corporate', 'admin'],
   'daily-snapshot': ['manager', 'marketing', 'corporate', 'admin'],
   'pt-projections': ['manager', 'marketing', 'corporate', 'admin'],
+  nps:          ['manager', 'marketing', 'corporate', 'admin'],
 }
 
 // Roles that can see all locations (not locked to home club). 'custom' is

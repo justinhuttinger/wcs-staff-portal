@@ -1155,6 +1155,14 @@ export const forms = {
   staffDirectory: () => api('/forms/staff-directory'),
 }
 
+// NPS report — scores, metrics, response rates and the comment feed
+export async function npsReport({ startDate, endDate, locationSlug, combine }) {
+  const params = new URLSearchParams({ start: startDate, end: endDate })
+  if (locationSlug && locationSlug !== 'all') params.set('location_slug', locationSlug)
+  if (combine) params.set('combine', 'true')
+  return api('/reports/nps?' + params.toString())
+}
+
 // NPS / member feedback — admin survey management + manual test fire
 export const nps = {
   listSurveys: () => api('/nps/surveys'),
