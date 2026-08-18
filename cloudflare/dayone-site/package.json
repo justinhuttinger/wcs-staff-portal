@@ -1,0 +1,10 @@
+{
+  "name": "wcs-dayone-site",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker proxying the Day One booking/cancel/reschedule pages onto book.westcoaststrength.com",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  }
+}
