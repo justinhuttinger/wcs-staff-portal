@@ -3,7 +3,7 @@ import {
   getAdsManagerAccount, getAdsManagerCampaigns, getAdsManagerAdsets, getAdsManagerAds,
   updateAdsManagerCampaign, updateAdsManagerAdset, updateAdsManagerAd,
   deleteAdsManagerCampaign, deleteAdsManagerAdset, deleteAdsManagerAd,
-  duplicateAdsManagerAd,
+  duplicateAdsManagerAd, getAdsManagerStrandedAds,
 } from '../lib/api'
 import { formatBudget, prettyStatus } from './adsmanager/constants'
 import {
@@ -16,6 +16,7 @@ import CampaignModal from './adsmanager/CampaignModal'
 import AdsetModal from './adsmanager/AdsetModal'
 import AdVariantsModal from './adsmanager/AdVariantsModal'
 import AdEditModal from './adsmanager/AdEditModal'
+import StrandedAdsModal from './adsmanager/StrandedAdsModal'
 
 // Admin-only Meta ad builder. Three linked columns mirroring Meta's own
 // hierarchy — campaign → ad set → ad — because that is the structure the API
@@ -102,6 +103,11 @@ export default function AdsManagerView({ onBack }) {
   const [selectedAdset, setSelectedAdset] = useState(null)
   const [modal, setModal] = useState(null)
   const [confirm, setConfirm] = useState(null)
+  // Ads switched on inside a paused parent — see StrandedAdsModal.
+  const [stranded, setStranded] = useState(null)
+  const [showStranded, setShowStranded] = useState(false)
+  // Short-lived note after a cascading pause, so the knock-on effect is visible.
+  const [notice, setNotice] = useState('')
 
   // Always pull the full (non-deleted) set and filter in the browser — the
   // three-way Active/Inactive/All split does not map onto a single Meta
@@ -141,7 +147,16 @@ export default function AdsManagerView({ onBack }) {
       .finally(() => setLoading(l => ({ ...l, ads: false })))
   }, [statusParam])
 
+  const loadStranded = useCallback(() => {
+    return getAdsManagerStrandedAds()
+      .then(setStranded)
+      // A failed audit must not take the whole screen down; the banner just
+      // stays hidden.
+      .catch(() => setStranded(null))
+  }, [])
+
   useEffect(() => { loadCampaigns() }, [loadCampaigns])
+  useEffect(() => { loadStranded() }, [loadStranded])
   useEffect(() => { loadAdsets(selectedCampaign && selectedCampaign.id) }, [selectedCampaign, loadAdsets])
   useEffect(() => { loadAds(selectedAdset && selectedAdset.id) }, [selectedAdset, loadAds])
 
@@ -183,10 +198,35 @@ export default function AdsManagerView({ onBack }) {
   // that needs to be one click and not a modal.
   async function toggleStatus(level, entity) {
     const next = entity.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE'
+    setNotice('')
     try {
-      if (level === 'campaign') { await updateAdsManagerCampaign(entity.id, { status: next }); loadCampaigns() }
-      else if (level === 'adset') { await updateAdsManagerAdset(entity.id, { status: next }); loadAdsets(selectedCampaign.id) }
-      else { await updateAdsManagerAd(entity.id, { status: next }); loadAds(selectedAdset.id) }
+      let res
+      if (level === 'campaign') {
+        res = await updateAdsManagerCampaign(entity.id, { status: next })
+        loadCampaigns()
+        if (selectedCampaign && selectedCampaign.id === entity.id) loadAdsets(entity.id)
+      } else if (level === 'adset') {
+        res = await updateAdsManagerAdset(entity.id, { status: next })
+        loadAdsets(selectedCampaign.id)
+      } else {
+        res = await updateAdsManagerAd(entity.id, { status: next })
+      }
+      // Children may have changed underneath the selection, so refresh the ads
+      // column whenever one is open.
+      if (selectedAdset) loadAds(selectedAdset.id)
+
+      const c = res && res.cascade
+      if (c && (c.adsets_paused || c.ads_paused)) {
+        const bits = []
+        if (c.adsets_paused) bits.push(`${c.adsets_paused} ad set${c.adsets_paused === 1 ? '' : 's'}`)
+        if (c.ads_paused) bits.push(`${c.ads_paused} ad${c.ads_paused === 1 ? '' : 's'}`)
+        setNotice(`Paused “${entity.name}” and everything under it — ${bits.join(' and ')}.`)
+      }
+      if (c && c.failures && c.failures.length) {
+        setError(`${c.failures.length} child object(s) could not be paused: ${c.failures[0].error}`)
+      }
+      // The audit is only meaningful against current statuses.
+      loadStranded()
     } catch (err) {
       setError(err.message)
     }
@@ -308,6 +348,27 @@ export default function AdsManagerView({ onBack }) {
       </div>
 
       {error && <div className="mb-4 shrink-0"><ErrorBanner error={error} onDismiss={() => setError('')} /></div>}
+
+      {notice && (
+        <div className="mb-4 shrink-0 flex items-start justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+          <p className="text-sm text-emerald-700">{notice}</p>
+          <button onClick={() => setNotice('')} className="text-emerald-700/60 hover:text-emerald-700 text-lg leading-none">×</button>
+        </div>
+      )}
+
+      {stranded && stranded.total > 0 && (
+        <div className="mb-4 shrink-0 flex items-center justify-between gap-4 flex-wrap rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-amber-900">
+              {stranded.total} ad{stranded.total === 1 ? ' is' : 's are'} still switched on inside a paused campaign or ad set
+            </p>
+            <p className="text-xs text-amber-800 mt-0.5">
+              Not delivering now, but turning the parent back on would start every one of them spending at once.
+            </p>
+          </div>
+          <Button onClick={() => setShowStranded(true)} className="shrink-0">Review &amp; pause</Button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_1.3fr] gap-4 flex-1 min-h-0">
         {/* Campaigns */}
@@ -477,6 +538,19 @@ export default function AdsManagerView({ onBack }) {
           account={account}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); loadAds(selectedAdset.id) }}
+        />
+      )}
+
+      {showStranded && stranded && (
+        <StrandedAdsModal
+          audit={stranded}
+          onClose={() => setShowStranded(false)}
+          onSwept={() => {
+            loadStranded()
+            loadCampaigns()
+            if (selectedCampaign) loadAdsets(selectedCampaign.id)
+            if (selectedAdset) loadAds(selectedAdset.id)
+          }}
         />
       )}
 
