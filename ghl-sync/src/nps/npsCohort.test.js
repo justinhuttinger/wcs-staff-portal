@@ -119,3 +119,21 @@ test('selectCohort narrows to the audience club list when set', async () => {
   assert.equal(out.candidates.length, 1);
   assert.equal(out.candidates[0].member.club_number, '7655');
 });
+
+test('selectCohort does NOT suppress a member whose only invite predates the cooldown', async () => {
+  const db = fakeDb({
+    abc_members: [
+      { member_id: 'M1', club_number: '30935', email: 'a@x.com', begin_date: '2026-02-18', is_active: true },
+    ],
+    // Years old — far outside the 60-day cooldown. If the .gte cutoff were
+    // dropped, this member would be wrongly suppressed forever and this test
+    // is the only thing that would notice.
+    nps_invites: [{ member_id: 'M1', survey_id: 'srv-other', created_at: '2020-01-01T00:00:00Z' }],
+  });
+
+  const out = await selectCohort({ db, survey: SURVEY_6MO, now: new Date('2026-08-18T14:00:00Z') });
+
+  assert.equal(out.candidates.length, 1);
+  assert.equal(out.candidates[0].member.member_id, 'M1');
+  assert.equal(out.skipped.cooldown, 0);
+});
