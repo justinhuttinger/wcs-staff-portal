@@ -2,6 +2,7 @@ const { Router } = require('express');
 const authenticate = require('../middleware/auth');
 const { requireRole } = require('../middleware/role');
 const { testFire } = require('../services/npsTestFire');
+const npsAdmin = require('../services/npsAdmin');
 const auditLog = require('../services/auditLog');
 
 // Admin-only NPS tooling. The public render/submit endpoints live in
@@ -35,6 +36,155 @@ router.post('/test-fire', async (req, res) => {
   } catch (err) {
     console.error('[nps] test-fire failed:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// --- surveys ---------------------------------------------------------------
+
+router.get('/surveys', async (req, res) => {
+  try {
+    res.json({ surveys: await npsAdmin.listSurveys() });
+  } catch (err) {
+    console.error('[nps] list surveys failed:', err.message);
+    res.status(500).json({ error: 'Failed to load surveys' });
+  }
+});
+
+router.get('/surveys/:id', async (req, res) => {
+  try {
+    const survey = await npsAdmin.getSurvey({ id: req.params.id });
+    if (!survey) return res.status(404).json({ error: 'Not found' });
+    res.json({ survey, qr: await npsAdmin.listQrKeys({ surveyId: survey.id }) });
+  } catch (err) {
+    console.error('[nps] get survey failed:', err.message);
+    res.status(500).json({ error: 'Failed to load survey' });
+  }
+});
+
+router.post('/surveys', async (req, res) => {
+  try {
+    const result = await npsAdmin.createSurvey({ input: req.body || {} });
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    auditLog.record(req.staff?.id, 'nps_survey_created', {
+      target: result.survey.id,
+      metadata: { slug: result.survey.slug, title: result.survey.title },
+      ip: req.ip,
+    });
+    res.json({ survey: result.survey });
+  } catch (err) {
+    console.error('[nps] create survey failed:', err.message);
+    res.status(500).json({ error: 'Failed to create survey' });
+  }
+});
+
+router.patch('/surveys/:id', async (req, res) => {
+  try {
+    const { known_updated_at: knownUpdatedAt, ...patch } = req.body || {};
+    const result = await npsAdmin.updateSurvey({ id: req.params.id, patch, knownUpdatedAt });
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    auditLog.record(req.staff?.id, 'nps_survey_updated', {
+      target: req.params.id,
+      metadata: { fields: Object.keys(patch) },
+      ip: req.ip,
+    });
+    res.json({ survey: result.survey });
+  } catch (err) {
+    console.error('[nps] update survey failed:', err.message);
+    res.status(500).json({ error: 'Failed to update survey' });
+  }
+});
+
+router.delete('/surveys/:id', async (req, res) => {
+  try {
+    const result = await npsAdmin.deleteSurvey({ id: req.params.id });
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    auditLog.record(req.staff?.id, 'nps_survey_deleted', { target: req.params.id, ip: req.ip });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[nps] delete survey failed:', err.message);
+    res.status(500).json({ error: 'Failed to delete survey' });
+  }
+});
+
+// --- QR keys ---------------------------------------------------------------
+
+router.post('/surveys/:id/qr', async (req, res) => {
+  try {
+    const result = await npsAdmin.createQrKey({
+      surveyId: req.params.id,
+      clubNumber: (req.body || {}).club_number,
+    });
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    auditLog.record(req.staff?.id, 'nps_qr_created', {
+      target: req.params.id,
+      metadata: { club_number: result.qr.club_number },
+      ip: req.ip,
+    });
+    res.json({ qr: result.qr });
+  } catch (err) {
+    console.error('[nps] create qr failed:', err.message);
+    res.status(500).json({ error: 'Failed to create QR key' });
+  }
+});
+
+// Rotation is deliberate and audited: it invalidates whatever is already
+// printed and hanging on a wall.
+router.post('/qr/:id/rotate', async (req, res) => {
+  try {
+    const result = await npsAdmin.rotateQrKey({ id: req.params.id });
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    auditLog.record(req.staff?.id, 'nps_qr_rotated', {
+      target: req.params.id,
+      metadata: { club_number: result.qr.club_number, new_id: result.qr.id },
+      ip: req.ip,
+    });
+    res.json({ qr: result.qr });
+  } catch (err) {
+    console.error('[nps] rotate qr failed:', err.message);
+    res.status(500).json({ error: 'Failed to rotate QR key' });
+  }
+});
+
+// --- metrics ---------------------------------------------------------------
+
+router.get('/metrics', async (req, res) => {
+  try {
+    res.json({ metrics: await npsAdmin.listMetrics() });
+  } catch (err) {
+    console.error('[nps] list metrics failed:', err.message);
+    res.status(500).json({ error: 'Failed to load metrics' });
+  }
+});
+
+router.post('/metrics', async (req, res) => {
+  try {
+    const { key, label, description } = req.body || {};
+    const result = await npsAdmin.createMetric({ key, label, description });
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    auditLog.record(req.staff?.id, 'nps_metric_created', {
+      target: result.metric.id, metadata: { key: result.metric.key }, ip: req.ip,
+    });
+    res.json({ metric: result.metric });
+  } catch (err) {
+    console.error('[nps] create metric failed:', err.message);
+    res.status(500).json({ error: 'Failed to create metric' });
+  }
+});
+
+// Retire, never delete: every score row is keyed to this by string.
+router.patch('/metrics/:id', async (req, res) => {
+  try {
+    const result = await npsAdmin.setMetricActive({
+      id: req.params.id, active: (req.body || {}).active,
+    });
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    auditLog.record(req.staff?.id, 'nps_metric_updated', {
+      target: req.params.id, metadata: { active: Boolean((req.body || {}).active) }, ip: req.ip,
+    });
+    res.json({ metric: result.metric });
+  } catch (err) {
+    console.error('[nps] update metric failed:', err.message);
+    res.status(500).json({ error: 'Failed to update metric' });
   }
 });
 
