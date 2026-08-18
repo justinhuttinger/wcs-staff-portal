@@ -12,6 +12,7 @@ import SessionFrequencyReport from './reports/SessionFrequencyReport'
 import DeactivatedPTReport from './reports/DeactivatedPTReport'
 import PTHealthReport from './reports/PTHealthReport'
 import PTProjectionsReport from './reports/PTProjectionsReport'
+import NpsReport from './reports/NpsReport'
 import PayrollReport from './reports/PayrollReport'
 import RevenueReport from './reports/RevenueReport'
 import PosSalesReport from './reports/PosSalesReport'
@@ -42,6 +43,7 @@ const REPORT_ICONS = {
   'session-frequency': 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z',
   'deactivated-pt': 'M18.364 18.364A9 9 0 0 0 5.636 5.636m12.728 12.728A9 9 0 0 1 5.636 5.636m12.728 12.728L5.636 5.636',
   'pt-projections': 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5',
+  nps: 'M8 10.5h8m-8 3h5m-5 6.5 -3 2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8z',
   'pt-health': 'M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z',
   payroll: 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z',
   revenue: 'M2.25 18 9 11.25l4.306 4.307a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941',
@@ -67,6 +69,7 @@ const ALL_REPORT_TILES = [
   { key: 'session-frequency', label: 'Session Frequency', desc: 'Sessions / Member / Week' },
   { key: 'deactivated-pt', label: 'Deactivated PT', desc: 'Cancels + Burned PIFs' },
   { key: 'pt-projections', label: 'PT Projections', desc: 'Expected vs Collected' },
+  { key: 'nps', label: 'NPS', desc: 'Member Feedback' },
   { key: 'pt-health', label: 'PT Health', desc: 'Overview Dashboard' },
   { key: 'payroll', label: 'Payroll', desc: 'Monthly Commissions' },
   { key: 'revenue', label: 'Revenue', desc: 'Dollars & Profit Centers' },
@@ -603,6 +606,9 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           )}
           {activeReport === 'pt-projections' && (
             <PTProjectionsReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+          )}
+          {activeReport === 'nps' && (
+            <NpsReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
           )}
           {activeReport === 'checkins' && (
             <CheckinsReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
