@@ -1371,6 +1371,10 @@ export async function getAdsManagerAudiences() {
   return api(MAM + '/targeting/audiences')
 }
 
+export async function getAdsManagerSavedAudiences() {
+  return api(MAM + '/targeting/saved-audiences')
+}
+
 export async function previewAdsManagerVariant(body) {
   return api(MAM + '/previews', { method: 'POST', body: JSON.stringify(body) })
 }
