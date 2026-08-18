@@ -124,15 +124,24 @@ const { applyGhlForInvites } = require('./npsJob');
 
 test('applyGhlForInvites writes the URL field before adding the tag', async () => {
   const order = [];
+  let written = null;
   const contacts = [
     { id: 'C1', email: 'a@x.com', first_name: 'Jo', last_name: 'Doe', tags: [], custom_fields: [] },
   ];
+  // Models the real contract: the survey field id is resolved from
+  // ghl_custom_field_defs, and the custom field is addressed by that id.
   const db = {
     from(table) {
+      const eq = {};
       const builder = {
         select: () => builder,
-        eq: () => builder,
-        limit: () => Promise.resolve({ data: [], error: null }),
+        eq: (c, v) => { eq[c] = v; return builder; },
+        limit: () => Promise.resolve({
+          data: (table === 'ghl_custom_field_defs' && eq.field_key === 'contact.nps_survey_url')
+            ? [{ id: 'FIELD1', field_key: 'contact.nps_survey_url' }]
+            : [],
+          error: null,
+        }),
         range: () => Promise.resolve({
           data: table === 'ghl_contacts_v2' ? contacts : [], error: null,
         }),
@@ -152,11 +161,17 @@ test('applyGhlForInvites writes the URL field before adding the tag', async () =
     db,
     now: new Date('2026-08-18T14:00:00Z'),
     locations: [{ id: 'LOC1', name: 'Salem', slug: 'salem', clubNumber: '30935', apiKey: 'k' }],
-    get: async () => ({ contact: { id: 'C1', tags: [] } }),
+    get: async () => ({ contact: { id: 'C1', tags: [], customFields: [{ id: 'FIELD1', value: written }] } }),
     put: async (path, body) => {
       // The workflow fires on the tag, so an empty URL field at tag time would
       // send a broken email. Record which landed first.
-      if (body.customFields) order.push('field');
+      if (body.customFields) {
+        // GHL 200s the { key, field_value } form and drops it on the floor.
+        assert.ok(body.customFields[0].id, 'the custom field must be written by id');
+        assert.equal(body.customFields[0].key, undefined);
+        written = body.customFields[0].value;
+        order.push('field');
+      }
       if (body.tags) order.push('tag');
       return { contact: { id: 'C1' } };
     },
@@ -171,16 +186,25 @@ test('applyGhlForInvites writes the URL field before adding the tag', async () =
 });
 
 test('applyGhlForInvites records an error and keeps going when one contact fails', async () => {
+  const writes = {};
   const contacts = [
     { id: 'C1', email: 'a@x.com', first_name: 'A', last_name: 'A', tags: [], custom_fields: [] },
     { id: 'C2', email: 'b@x.com', first_name: 'B', last_name: 'B', tags: [], custom_fields: [] },
   ];
+  // Models the real contract: the survey field id is resolved from
+  // ghl_custom_field_defs, and the custom field is addressed by that id.
   const db = {
     from(table) {
+      const eq = {};
       const builder = {
         select: () => builder,
-        eq: () => builder,
-        limit: () => Promise.resolve({ data: [], error: null }),
+        eq: (c, v) => { eq[c] = v; return builder; },
+        limit: () => Promise.resolve({
+          data: (table === 'ghl_custom_field_defs' && eq.field_key === 'contact.nps_survey_url')
+            ? [{ id: 'FIELD1', field_key: 'contact.nps_survey_url' }]
+            : [],
+          error: null,
+        }),
         range: () => Promise.resolve({
           data: table === 'ghl_contacts_v2' ? contacts : [], error: null,
         }),
@@ -200,9 +224,10 @@ test('applyGhlForInvites records an error and keeps going when one contact fails
     db,
     now: new Date('2026-08-18T14:00:00Z'),
     locations: [{ id: 'LOC1', name: 'Salem', slug: 'salem', clubNumber: '30935', apiKey: 'k' }],
-    get: async () => ({ contact: { id: 'C1', tags: [] } }),
-    put: async (path) => {
+    get: async (path) => ({ contact: { id: 'C1', tags: [], customFields: [{ id: 'FIELD1', value: writes[path] }] } }),
+    put: async (path, body) => {
       if (path.includes('C2')) throw new Error('GHL 500');
+      if (body.customFields) writes[path] = body.customFields[0].value;
       return { contact: {} };
     },
     sleepFn: async () => {},
@@ -212,4 +237,52 @@ test('applyGhlForInvites records an error and keeps going when one contact fails
   assert.equal(out.tagged, 1);
   assert.equal(out.errors.length, 1);
   assert.match(out.errors[0], /GHL 500/);
+});
+
+test('a URL that does not store blocks the tag, so no dead-link email goes out', async () => {
+  // GHL answers 200 to a custom-field write it never performs. Tagging anyway
+  // fires the workflow and emails a member a link to nowhere. This is the
+  // single worst failure this job has.
+  const db = {
+    from(table) {
+      const eq = {};
+      const builder = {
+        select: () => builder,
+        eq: (c, v) => { eq[c] = v; return builder; },
+        limit: () => Promise.resolve({
+          data: (table === 'ghl_custom_field_defs' && eq.field_key === 'contact.nps_survey_url')
+            ? [{ id: 'FIELD1', field_key: 'contact.nps_survey_url' }] : [],
+          error: null,
+        }),
+        range: () => Promise.resolve({
+          data: table === 'ghl_contacts_v2'
+            ? [{ id: 'C1', email: 'a@x.com', first_name: 'A', last_name: 'A', tags: [], custom_fields: [] }]
+            : [],
+          error: null,
+        }),
+        update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+      };
+      return builder;
+    },
+  };
+
+  const tagged = [];
+  const out = await applyGhlForInvites(
+    { id: 's', slug: '6mo', ghl_tag: 'nps-6mo', ghl_field_key: 'contact.nps_survey_url' },
+    [{ id: 'INV1', member_id: 'M1', club_number: '30935', member_email: 'a@x.com', token: 't1' }],
+    {
+      db,
+      now: new Date('2026-08-18T14:00:00Z'),
+      locations: [{ id: 'LOC1', name: 'Salem', slug: 'salem', clubNumber: '30935', apiKey: 'k' }],
+      // Read-back reports the field empty: the write silently failed.
+      get: async () => ({ contact: { id: 'C1', tags: [], customFields: [] } }),
+      put: async (path, body) => { if (body.tags) tagged.push(path); return { contact: {} }; },
+      sleepFn: async () => {},
+      baseUrl: 'https://survey.westcoaststrength.com',
+    },
+  );
+
+  assert.equal(out.tagged, 0);
+  assert.deepEqual(tagged, [], 'must not tag when the URL did not store');
+  assert.match(out.errors[0], /did not store the survey URL/);
 });
