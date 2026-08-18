@@ -22,25 +22,6 @@ function shared() {
   return { buildInvite, surveyUrl, pacificToday, addDays };
 }
 
-const PAGE_SIZE = 1000;
-
-async function loadContacts(db, locationId) {
-  const rows = [];
-  let from = 0;
-  for (;;) {
-    const { data, error } = await db.from('ghl_contacts_v2')
-      .select('id, email, phone, first_name, last_name, tags, custom_fields')
-      .eq('location_id', locationId)
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`[NPS] failed to load ghl_contacts_v2: ${error.message}`);
-    if (!data || data.length === 0) break;
-    rows.push(...data);
-    if (data.length < PAGE_SIZE) break;
-    from += PAGE_SIZE;
-  }
-  return rows;
-}
-
 /**
  * Fire one chosen member through one chosen survey, for real.
  *
@@ -96,9 +77,25 @@ async function testFire({
     return { ok: false, status: 400, error: `no GHL location configured for club ${member.club_number}` };
   }
 
-  const contacts = await loadContacts(db, location.id);
+  // Resolve the contact LIVE rather than from ghl_contacts_v2.
+  //
+  // The mirror goes stale: a contact deleted in GHL keeps its row here, and
+  // writing to that id returns "Contact not found". This member has 22 cached
+  // rows on one email across locations, so picking one from the cache was
+  // picking a coin flip. /contacts/search/duplicate is what reconcile.js uses
+  // and it answers with whatever GHL believes right now.
   const email = String(member.email).toLowerCase().trim();
-  const contact = contacts.find(c => (c.email || '').toLowerCase().trim() === email);
+  let contact = null;
+  try {
+    const found = await ghlFetchFn(
+      `/contacts/search/duplicate?locationId=${encodeURIComponent(location.id)}&email=${encodeURIComponent(email)}`,
+      location.apiKey,
+      { method: 'GET' },
+    );
+    contact = found?.contact || null;
+  } catch (err) {
+    return { ok: false, status: 502, error: `GHL lookup failed for ${member.email}: ${err.message}` };
+  }
   if (!contact) {
     return { ok: false, status: 404, error: `no GHL contact for ${member.email} in ${location.name}` };
   }
