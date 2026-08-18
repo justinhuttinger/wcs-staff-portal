@@ -117,9 +117,11 @@ async function testFire({
     // Field FIRST. The workflow triggers on the tag, so tagging before the URL
     // exists sends an email with an empty link. npsJob.test.js pins the same
     // ordering on the ghl-sync side; both must fail if either flips.
+    // ghlFetch stringifies `body` itself. Passing a string here double-encodes
+    // it and GHL rejects the whole request as invalid JSON.
     await ghlFetchFn(`/contacts/${contact.id}`, location.apiKey, {
       method: 'PUT',
-      body: JSON.stringify({ customFields: [{ key: survey.ghl_field_key, field_value: url }] }),
+      body: { customFields: [{ key: survey.ghl_field_key, field_value: url }] },
     });
 
     const live = await ghlFetchFn(`/contacts/${contact.id}`, location.apiKey, { method: 'GET' });
@@ -127,7 +129,7 @@ async function testFire({
     if (!existing.includes(survey.ghl_tag)) {
       await ghlFetchFn(`/contacts/${contact.id}`, location.apiKey, {
         method: 'PUT',
-        body: JSON.stringify({ tags: [...existing, survey.ghl_tag] }),
+        body: { tags: [...existing, survey.ghl_tag] },
       });
     }
 

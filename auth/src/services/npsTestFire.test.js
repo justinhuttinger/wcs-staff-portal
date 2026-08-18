@@ -62,7 +62,14 @@ test('a forced fire writes the field before the tag and marks the invite as a te
   const out = await testFire({
     db, slug: '6mo', memberId: 'M1', force: true, now: NOW, locations: LOCATIONS,
     ghlFetchFn: async (path, apiKey, options = {}) => {
-      const body = options.body ? JSON.parse(options.body) : {};
+      // ghlFetch stringifies the body itself, so callers must hand it an
+      // object. Asserting that here is the point: the previous fake called
+      // JSON.parse, which quietly accepted a double-encoded body and let the
+      // bug through to production.
+      if (options.body !== undefined) {
+        assert.equal(typeof options.body, 'object', 'body must be an object, not pre-stringified');
+      }
+      const body = options.body || {};
       if (options.method === 'PUT' && body.customFields) order.push('field');
       if (options.method === 'PUT' && body.tags) order.push('tag');
       return { contact: { id: 'C1', tags: [] } };
