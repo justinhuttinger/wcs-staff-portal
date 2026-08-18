@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your Day One</title>
+<style>
+  :root {
+    --ink: #111213; --text: #1f2328; --muted: #6b7280;
+    --line: #e5e7eb; --fill: #f3f4f6; --fill-2: #9ca3af;
+    --danger: #b42318; --ok: #2f7d4f;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: #fff; }
+  body {
+    margin: 0; color: var(--text);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 32px 20px 64px; }
+  .logo { width: 76px; height: 76px; display: block; margin: 0 auto 22px; }
+  h1 { font-size: 24px; margin: 0 0 6px; letter-spacing: -0.02em; color: var(--ink); text-align: center; }
+  .sub { color: var(--muted); text-align: center; margin: 0 0 26px; font-size: 15px; }
+  .card { border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-bottom: 20px; }
+  .card.appt { background: var(--fill); border-color: transparent; }
+  .row { display: flex; align-items: center; gap: 11px; margin-bottom: 10px; font-size: 15px; }
+  .row:last-child { margin-bottom: 0; }
+  .row svg { flex: none; color: var(--ink); }
+  label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 7px; }
+  .reasons { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+  .reason {
+    display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+    border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--text);
+    padding: 13px 14px; font: inherit; cursor: pointer;
+  }
+  .reason:hover { background: var(--fill); }
+  .reason[aria-pressed="true"] { border-color: var(--ink); background: var(--fill); }
+  .dot-o { flex: none; width: 17px; height: 17px; border-radius: 50%; border: 2px solid var(--fill-2); }
+  .reason[aria-pressed="true"] .dot-o { border-color: var(--ink); border-width: 5px; }
+  textarea, select {
+    width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 11px 13px;
+    font: inherit; color: var(--text); background: #fff; outline: none;
+  }
+  textarea { min-height: 84px; resize: vertical; }
+  textarea:focus, select:focus { border-color: var(--ink); }
+  .btn {
+    width: 100%; background: var(--ink); color: #fff; border: 0; border-radius: 9px;
+    padding: 14px 20px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  .btn:hover:not(:disabled) { background: #000; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.danger { background: var(--danger); }
+  .btn.danger:hover:not(:disabled) { background: #9a1b13; }
+  .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 9px; }
+  .slot {
+    border: 1px solid var(--ink); border-radius: 9px; background: #fff; color: var(--ink);
+    padding: 12px 6px; font: inherit; font-size: 15px; cursor: pointer; text-align: center;
+  }
+  .slot:hover { background: var(--fill); }
+  .slot[aria-pressed="true"] { background: var(--ink); color: #fff; }
+  .day { margin-bottom: 16px; }
+  .day-label { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .err { color: var(--danger); font-size: 14px; margin-top: 12px; }
+  .hide { display: none !important; }
+  .center { text-align: center; }
+  .tick {
+    width: 54px; height: 54px; border-radius: 50%; background: var(--ok); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px;
+  }
+  .callout { border: 1px solid var(--line); border-left: 3px solid var(--ink); border-radius: 8px; padding: 14px 16px; }
+  .spin {
+    display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line);
+    border-top-color: var(--ink); border-radius: 50%; animation: s .7s linear infinite; vertical-align: -2px;
+  }
+  @keyframes s { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img class="logo" id="logo" alt="West Coast Strength">
+
+  <div id="loading" class="center muted"><span class="spin"></span> Finding your appointment…</div>
+
+  <div id="notfound" class="hide">
+    <h1>We couldn't find your Day One</h1>
+    <p class="sub">This link may have already been used, or the appointment may have passed.</p>
+    <div class="callout">Give us a call and we'll sort it out for you.</div>
+  </div>
+
+  <div id="main" class="hide">
+    <h1 id="title">Cancel your Day One</h1>
+    <p class="sub" id="subtitle"></p>
+
+    <div class="card appt">
+      <div class="row">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+        <span id="appt-when"></span>
+      </div>
+      <div class="row">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M4.5 20c0-3.6 3.4-5.6 7.5-5.6s7.5 2 7.5 5.6"/></svg>
+        <span id="appt-trainer"></span>
+      </div>
+    </div>
+
+    <!-- CANCEL -->
+    <div id="cancel-pane" class="hide">
+      <label>Why are you cancelling?</label>
+      <div class="reasons" id="reasons"></div>
+      <label for="notes">Anything else? (optional)</label>
+      <textarea id="notes" placeholder="Tell us more"></textarea>
+      <div style="height:18px"></div>
+      <button class="btn danger" id="do-cancel" disabled>Cancel my Day One</button>
+      <div class="err hide" id="cancel-err"></div>
+    </div>
+
+    <!-- RESCHEDULE -->
+    <div id="resched-pane" class="hide">
+      <div id="resched-slots"><span class="muted"><span class="spin"></span> Loading times…</span></div>
+      <div style="height:6px"></div>
+      <button class="btn" id="do-resched" disabled>Confirm new time</button>
+      <div class="err hide" id="resched-err"></div>
+    </div>
+  </div>
+
+  <!-- DONE -->
+  <div id="done" class="hide center">
+    <div class="tick">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
+    </div>
+    <h1 id="done-title"></h1>
+    <p class="sub" id="done-sub"></p>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict'
+  var API = '{{WIDGET_BASE}}'
+  var LOCATION = '{{WIDGET_LOCATION}}'
+  var MODE = '{{WIDGET_MODE}}'            // 'cancel' | 'reschedule'
+  var CONTACT = new URLSearchParams(location.search).get('c') || ''
+  var TZ = 'America/Los_Angeles'
+
+  var S = { appt: null, trainer: null, reason: '', startTime: '' }
+  var $ = function (id) { return document.getElementById(id) }
+  function show(el, on) { el.classList.toggle('hide', !on) }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;') }
+  function fail(el, m) { el.textContent = m || ''; show(el, !!m) }
+
+  $('logo').src = API + '/logo.png'
+
+  function api(path, opts) {
+    opts = opts || {}
+    return fetch(API + path, {
+      method: opts.method || 'GET',
+      headers: opts.body ? { 'Content-Type': 'application/json' } : {},
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    }).then(function (r) {
+      return r.json().catch(function () { return {} }).then(function (b) {
+        if (!r.ok) throw new Error(b.error || ('HTTP ' + r.status))
+        return b
+      })
+    })
+  }
+
+  function fmtTime(iso) {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZone: TZ,
+    }).format(new Date(iso))
+  }
+  function fmtDate(iso) {
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric', timeZone: TZ,
+    }).format(new Date(iso))
+  }
+  function fmtDayKey(key) {
+    var p = key.split('-')
+    return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('en-US',
+      { weekday: 'long', month: 'short', day: 'numeric' })
+  }
+
+  // --- load ---------------------------------------------------------------
+  if (!CONTACT) {
+    show($('loading'), false); show($('notfound'), true)
+  } else {
+    api('/api/appointment?location=' + encodeURIComponent(LOCATION) + '&c=' + encodeURIComponent(CONTACT))
+      .then(function (d) {
+        S.appt = d.appointment
+        S.trainer = d.trainer
+        show($('loading'), false); show($('main'), true)
+        $('appt-when').textContent = fmtDate(d.appointment.startTime) + ' at ' +
+          fmtTime(d.appointment.startTime)
+        $('appt-trainer').textContent = d.trainer ? 'With ' + d.trainer.name : 'Trainer to be confirmed'
+        if (MODE === 'cancel') startCancel(d)
+        else startReschedule(d)
+      })
+      .catch(function () {
+        show($('loading'), false); show($('notfound'), true)
+      })
+  }
+
+  // --- cancel -------------------------------------------------------------
+  function startCancel(d) {
+    $('title').textContent = 'Cancel your Day One'
+    $('subtitle').textContent = 'Let us know why so we can do better.'
+    show($('cancel-pane'), true)
+    $('reasons').innerHTML = (d.reasons || []).map(function (r) {
+      return '<button type="button" class="reason" aria-pressed="false" data-r="' + esc(r) + '">' +
+        '<span class="dot-o"></span><span>' + esc(r) + '</span></button>'
+    }).join('')
+    Array.prototype.forEach.call($('reasons').querySelectorAll('.reason'), function (b) {
+      b.addEventListener('click', function () {
+        Array.prototype.forEach.call($('reasons').querySelectorAll('.reason'), function (o) {
+          o.setAttribute('aria-pressed', String(o === b))
+        })
+        S.reason = b.getAttribute('data-r')
+        $('do-cancel').disabled = false
+      })
+    })
+  }
+
+  $('do-cancel').addEventListener('click', function () {
+    fail($('cancel-err'), '')
+    $('do-cancel').disabled = true
+    $('do-cancel').innerHTML = '<span class="spin"></span> Cancelling…'
+    api('/api/cancel', { method: 'POST', body: {
+      location: LOCATION, c: CONTACT, reason: S.reason, notes: $('notes').value.trim(),
+    }}).then(function () {
+      show($('main'), false); show($('done'), true)
+      $('done-title').textContent = 'Your Day One is cancelled'
+      $('done-sub').textContent = 'Thanks for letting us know. Come back any time.'
+    }).catch(function (e) {
+      fail($('cancel-err'), e.message)
+      $('do-cancel').disabled = false
+      $('do-cancel').textContent = 'Cancel my Day One'
+    })
+  })
+
+  // --- reschedule ---------------------------------------------------------
+  // Same trainer only: a Day One is a relationship, and quietly swapping the
+  // person is worse than asking them to call.
+  function startReschedule(d) {
+    $('title').textContent = 'Reschedule your Day One'
+    $('subtitle').textContent = d.trainer
+      ? 'Pick a new time with ' + d.trainer.name + '.'
+      : 'Pick a new time.'
+    show($('resched-pane'), true)
+    if (!d.trainer) return noTimes()
+
+    // The server resolves the trainer from the link, so this cannot ask for
+    // anyone else's availability.
+    api('/api/reschedule-slots?location=' + encodeURIComponent(LOCATION) +
+        '&c=' + encodeURIComponent(CONTACT) +
+        '&timezone=' + encodeURIComponent(TZ))
+      .then(function (s) {
+        var dates = Object.keys(s.days || {}).sort()
+        var total = 0
+        var html = dates.map(function (day) {
+          var slots = s.days[day]
+          total += slots.length
+          if (!slots.length) return ''
+          return '<div class="day"><div class="day-label">' + fmtDayKey(day) + '</div><div class="slots">' +
+            slots.map(function (iso) {
+              return '<button class="slot" data-iso="' + iso + '">' + fmtTime(iso) + '</button>'
+            }).join('') + '</div></div>'
+        }).join('')
+        if (!total) return noTimes()
+        $('resched-slots').innerHTML = html
+        Array.prototype.forEach.call($('resched-slots').querySelectorAll('.slot'), function (b) {
+          b.addEventListener('click', function () {
+            Array.prototype.forEach.call($('resched-slots').querySelectorAll('.slot'), function (o) {
+              o.setAttribute('aria-pressed', String(o === b))
+            })
+            S.startTime = b.getAttribute('data-iso')
+            $('do-resched').disabled = false
+          })
+        })
+      })
+      .catch(function () { noTimes() })
+  }
+
+  function noTimes() {
+    var who = S.trainer ? S.trainer.name : 'your trainer'
+    $('resched-slots').innerHTML = '<div class="callout">' +
+      esc(who) + ' has no open times right now. Give us a call and we\'ll find one that works.</div>'
+    show($('do-resched'), false)
+  }
+
+  $('do-resched').addEventListener('click', function () {
+    fail($('resched-err'), '')
+    $('do-resched').disabled = true
+    $('do-resched').innerHTML = '<span class="spin"></span> Rescheduling…'
+    api('/api/reschedule', { method: 'POST', body: {
+      location: LOCATION, c: CONTACT, startTime: S.startTime,
+    }}).then(function (r) {
+      show($('main'), false); show($('done'), true)
+      $('done-title').textContent = 'You\'re rescheduled'
+      $('done-sub').textContent = fmtDate(r.startTime) + ' at ' + fmtTime(r.startTime) +
+        (S.trainer ? ' with ' + S.trainer.name : '')
+    }).catch(function (e) {
+      fail($('resched-err'), e.message)
+      $('do-resched').disabled = false
+      $('do-resched').textContent = 'Confirm new time'
+    })
+  })
+})()
+</script>
+</body>
+</html>

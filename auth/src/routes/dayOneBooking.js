@@ -37,6 +37,9 @@ const CALENDAR_NAME = 'day one'
 const DAY_ONE_TEAM_FIELD = 'contact.day_one_booking_team_member'
 const DAY_ONE_DATE_FIELD = 'contact.day_one_booking_date'
 const DAY_ONE_BOOKED_FIELD = 'contact.day_one_booked'
+// Created by scripts/create-cancel-reason-field.js --name="Day One Cancel Reason".
+// Distinct from contact.cancel_reason, which is MEMBERSHIP cancellation.
+const DAY_ONE_CANCEL_REASON_FIELD = 'contact.day_one_cancel_reason'
 
 // The page itself is harmless to load, but every API call is gated on a shared
 // secret while this is a test artifact. Fail CLOSED: if the env var is missing the
@@ -251,6 +254,26 @@ function renderPage(req, res, slug) {
   } catch (e) {
     console.error('[DayOneWidget] page render failed:', e.message)
     res.status(500).send('Booking page unavailable')
+  }
+}
+
+// Cancel / reschedule share one page; the mode decides what it renders.
+const MANAGE_PATH = path.join(__dirname, '..', 'public', 'dayOneManage.html')
+let managePageTemplate = null
+
+function renderManagePage(req, res, slug, mode) {
+  try {
+    if (!managePageTemplate || process.env.NODE_ENV !== 'production') {
+      managePageTemplate = fs.readFileSync(MANAGE_PATH, 'utf8')
+    }
+    const html = managePageTemplate
+      .split('{{WIDGET_BASE}}').join(req.baseUrl || '/day-one-booking')
+      .split('{{WIDGET_LOCATION}}').join(slug)
+      .split('{{WIDGET_MODE}}').join(mode)
+    res.type('html').send(html)
+  } catch (e) {
+    console.error('[DayOneWidget] manage page render failed:', e.message)
+    res.status(500).send('Page unavailable')
   }
 }
 
@@ -596,6 +619,284 @@ router.post('/api/book', requireWidgetSecret, bookLimiter, async (req, res) => {
     console.error('[DayOneWidget] booking failed:', e.message)
     res.status(502).json({ error: e.message })
   }
+})
+
+// ---------------------------------------------------------------------------
+// Member-facing manage links (cancel / reschedule)
+// ---------------------------------------------------------------------------
+//
+// These replace GHL's own /widget/booking/<calId>/<eventId>[/cancel] links,
+// which route through the same widget that trips the captcha.
+//
+// They CANNOT be secret-gated: members do not have the widget secret. They are
+// keyed on the GHL contact id, which is a 20-char random string — the same
+// security model GHL itself uses, since its links carry a bare eventId. The
+// server still confirms the contact actually has an upcoming Day One at that
+// location before doing anything, and these routes are rate limited.
+
+// Deliberately small and fixed. Free-text alone gives unreportable answers;
+// a list makes "why are Salem Day Ones falling over" a query instead of a read.
+const CANCEL_REASONS = [
+  'Schedule conflict',
+  'Sick / not feeling well',
+  'No longer interested',
+  'Joined somewhere else',
+  'Cost',
+  'Other',
+]
+
+const manageLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please wait a moment' },
+})
+
+// The member's upcoming Day One at this location, or null. Shared by the
+// cancel and reschedule flows so both agree on what "their appointment" means.
+async function upcomingForContact(loc, contactId) {
+  const calendar = await getDayOneCalendar(loc)
+  const data = await ghlFetch('/calendars/events', loc.apiKey, {
+    params: {
+      locationId: loc.id,
+      calendarId: calendar.id,
+      startTime: Date.now(),
+      endTime: Date.now() + 120 * 86400000,
+    },
+    version: CAL_VERSION,
+  })
+  const mine = (data.events || [])
+    .filter(e => e.contactId === contactId && !e.deleted)
+    .filter(e => String(e.appointmentStatus || '').toLowerCase() !== 'cancelled')
+    .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+  const appt = mine[0]
+  if (!appt) return { calendar, appointment: null, trainer: null }
+  const usersById = await getUsersById(loc)
+  return {
+    calendar,
+    appointment: appt,
+    trainer: usersById[appt.assignedUserId] || null,
+  }
+}
+
+// What the manage pages render from.
+router.get('/api/appointment', manageLimiter, async (req, res) => {
+  const loc = getLocationBySlug(String(req.query.location || '').toLowerCase())
+  if (!loc) return res.status(400).json({ error: 'Unknown location' })
+  const contactId = String(req.query.c || '').trim()
+  if (!contactId) return res.status(400).json({ error: 'Missing link id' })
+  try {
+    const { appointment, trainer } = await upcomingForContact(loc, contactId)
+    if (!appointment) {
+      return res.status(404).json({ error: 'No upcoming Day One found for this link.' })
+    }
+    res.json({
+      location: { slug: loc.slug, name: loc.name },
+      appointment: {
+        id: appointment.id,
+        startTime: appointment.startTime,
+        endTime: appointment.endTime,
+        title: appointment.title,
+      },
+      trainer: trainer ? { userId: appointment.assignedUserId, name: trainer.name } : null,
+      reasons: CANCEL_REASONS,
+    })
+  } catch (e) {
+    console.error('[DayOneWidget] appointment lookup failed:', e.message)
+    res.status(502).json({ error: e.message })
+  }
+})
+
+// Open times for a reschedule.
+//
+// A dedicated endpoint rather than reusing /api/slots: that one is secret-gated
+// for staff, and members do not have the secret. Keying on the contact also
+// means the trainer is resolved server-side — the client cannot ask for someone
+// else's availability, and cannot smuggle in a different trainer.
+router.get('/api/reschedule-slots', manageLimiter, async (req, res) => {
+  const loc = getLocationBySlug(String(req.query.location || '').toLowerCase())
+  if (!loc) return res.status(400).json({ error: 'Unknown location' })
+  const contactId = String(req.query.c || '').trim()
+  if (!contactId) return res.status(400).json({ error: 'Missing link id' })
+
+  try {
+    const { calendar, appointment, trainer } = await upcomingForContact(loc, contactId)
+    if (!appointment) {
+      return res.status(404).json({ error: 'No upcoming Day One found for this link.' })
+    }
+    // Same trainer only. Without an assignment there is nobody to hold the
+    // slot for, so send them to the phone rather than silently reassigning.
+    if (!appointment.assignedUserId) {
+      return res.json({ trainer: null, days: {} })
+    }
+
+    const days = Math.min(31, bookableDays(calendar))
+    const startDate = Date.now()
+    const data = await slotsFor(loc, calendar, {
+      startDate,
+      endDate: startDate + days * 86400000,
+      timezone: req.query.timezone || 'America/Los_Angeles',
+      userId: appointment.assignedUserId,
+    })
+
+    const current = new Date(appointment.startTime).getTime()
+    const byDate = {}
+    for (const [key, val] of Object.entries(data)) {
+      if (key === 'traceId' || !Array.isArray(val?.slots)) continue
+      // Their existing slot is already theirs; offering it back reads as a bug.
+      const open = val.slots.filter(s => new Date(s).getTime() !== current)
+      if (open.length) byDate[key] = open
+    }
+    res.json({
+      trainer: trainer ? { userId: appointment.assignedUserId, name: trainer.name } : null,
+      days: byDate,
+    })
+  } catch (e) {
+    console.error('[DayOneWidget] reschedule slots failed:', e.message)
+    res.status(502).json({ error: e.message })
+  }
+})
+
+// Cancel, capturing why.
+//
+// The reason is recorded BEFORE the appointment is cancelled: cancelling first
+// and then failing to record would lose the answer entirely, which is the whole
+// point of the flow. The Supabase row is the reportable copy; the GHL field is
+// for front desk and only ever holds the latest value.
+router.post('/api/cancel', manageLimiter, async (req, res) => {
+  const { location, c: contactId, reason, notes } = req.body || {}
+  const loc = getLocationBySlug(String(location || '').toLowerCase())
+  if (!loc) return res.status(400).json({ error: 'Unknown location' })
+  if (!contactId) return res.status(400).json({ error: 'Missing link id' })
+  if (!CANCEL_REASONS.includes(reason)) {
+    return res.status(400).json({ error: 'Please choose a reason' })
+  }
+
+  try {
+    const { appointment, trainer } = await upcomingForContact(loc, String(contactId))
+    if (!appointment) {
+      return res.status(404).json({ error: 'No upcoming Day One found for this link.' })
+    }
+
+    // Free text from an unauthenticated page: cap it so a bad actor cannot
+    // stuff the contact record or the table with a 100kb payload.
+    const cleanNotes = String(notes || '').trim().slice(0, 1000)
+    const detail = `${reason}${cleanNotes ? ` — ${cleanNotes}` : ''}`
+
+    // 1. Reportable copy. Unique on appointment id, so a double submit updates
+    // rather than inflating the counts.
+    try {
+      // Required lazily: services/supabase builds its client at import time and
+      // throws without SUPABASE_URL, which would make this whole module — and
+      // the pure selection logic its unit tests cover — unimportable without a
+      // database configured.
+      const { supabaseAdmin } = require('../services/supabase')
+      await supabaseAdmin.from('day_one_cancellations').upsert({
+        location_slug: loc.slug,
+        ghl_contact_id: String(contactId),
+        ghl_appointment_id: appointment.id,
+        assigned_user_id: appointment.assignedUserId || null,
+        trainer_name: trainer?.name || null,
+        appointment_start: appointment.startTime || null,
+        reason,
+        notes: cleanNotes || null,
+      }, { onConflict: 'ghl_appointment_id' })
+    } catch (e) {
+      console.error('[DayOneWidget] cancellation record failed:', e.message)
+    }
+
+    // 2. Front-desk visibility on the contact. Skipped without complaint if the
+    // field has not been created yet (scripts/create-cancel-reason-field.js
+    // --name="Day One Cancel Reason").
+    try {
+      const fields = await getFieldsByKey(loc)
+      const field = fields[DAY_ONE_CANCEL_REASON_FIELD]
+      if (field) {
+        await ghlFetch(`/contacts/${contactId}`, loc.apiKey, {
+          method: 'PUT', body: { customFields: [{ id: field.id, value: detail }] },
+        })
+      } else {
+        console.warn(`[DayOneWidget] ${DAY_ONE_CANCEL_REASON_FIELD} missing at ${loc.name}; reason kept in Supabase only`)
+      }
+    } catch (e) {
+      console.error('[DayOneWidget] cancel reason write failed:', e.message)
+    }
+
+    // 3. Cancel in GHL. Status update, NOT DELETE: DELETE removes the
+    // appointment silently and the member and trainer are never told.
+    await ghlFetch(`/calendars/events/appointments/${appointment.id}`, loc.apiKey, {
+      method: 'PUT',
+      body: { appointmentStatus: 'cancelled', toNotify: true },
+      version: CAL_VERSION,
+    })
+
+    res.json({ ok: true, appointmentId: appointment.id, reason })
+  } catch (e) {
+    console.error('[DayOneWidget] cancel failed:', e.message)
+    res.status(502).json({ error: e.message })
+  }
+})
+
+// Reschedule, keeping the same trainer.
+router.post('/api/reschedule', manageLimiter, async (req, res) => {
+  const { location, c: contactId, startTime } = req.body || {}
+  const loc = getLocationBySlug(String(location || '').toLowerCase())
+  if (!loc) return res.status(400).json({ error: 'Unknown location' })
+  if (!contactId) return res.status(400).json({ error: 'Missing link id' })
+  if (!startTime) return res.status(400).json({ error: 'Pick a new time' })
+
+  try {
+    const { calendar, appointment } = await upcomingForContact(loc, String(contactId))
+    if (!appointment) {
+      return res.status(404).json({ error: 'No upcoming Day One found for this link.' })
+    }
+
+    const minutes = calendar.slotDurationUnit === 'hours'
+      ? (calendar.slotDuration || 1) * 60
+      : (calendar.slotDuration || 60)
+    const endTime = new Date(new Date(startTime).getTime() + minutes * 60000).toISOString()
+
+    // assignedUserId is re-sent unchanged. GHL's PUT does not reliably preserve
+    // omitted fields, and silently reassigning someone's trainer on a
+    // reschedule is exactly the surprise this flow exists to avoid.
+    const updated = await ghlFetch(`/calendars/events/appointments/${appointment.id}`, loc.apiKey, {
+      method: 'PUT',
+      body: {
+        calendarId: calendar.id,
+        startTime,
+        endTime,
+        assignedUserId: appointment.assignedUserId,
+        toNotify: true,
+      },
+      version: CAL_VERSION,
+    })
+
+    res.json({
+      ok: true,
+      appointmentId: appointment.id,
+      startTime: updated?.startTime || startTime,
+      endTime: updated?.endTime || endTime,
+      assignedUserId: appointment.assignedUserId || null,
+    })
+  } catch (e) {
+    console.error('[DayOneWidget] reschedule failed:', e.message)
+    res.status(502).json({ error: e.message })
+  }
+})
+
+// Manage pages. Two segments, so they are matched before the one-segment
+// per-location booking link below.
+router.get('/:location/cancel', (req, res, next) => {
+  const slug = String(req.params.location || '').toLowerCase()
+  if (!getLocationBySlug(slug)) return next()
+  renderManagePage(req, res, slug, 'cancel')
+})
+
+router.get('/:location/reschedule', (req, res, next) => {
+  const slug = String(req.params.location || '').toLowerCase()
+  if (!getLocationBySlug(slug)) return next()
+  renderManagePage(req, res, slug, 'reschedule')
 })
 
 // Per-location link: /day-one-booking/salem. Declared LAST so it can never
