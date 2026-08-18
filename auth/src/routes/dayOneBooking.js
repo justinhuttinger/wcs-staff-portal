@@ -65,55 +65,144 @@ const bookLimiter = rateLimit({
 // custom-field IDs differ per location so they must never be hardcoded)
 // ---------------------------------------------------------------------------
 
-const calendarCache = {} // slug -> { calendar, at }
-const fieldCache = {}    // slug -> { byKey, at }
-const userCache = {}     // slug -> { byId, at }
+const calendarCache = {} // slug -> { promise, at }
+const fieldCache = {}    // slug -> { promise, at }
+const userCache = {}     // slug -> { promise, at }
 const CACHE_TTL = 15 * 60 * 1000
 
-function fresh(entry) {
-  return entry && (Date.now() - entry.at) < CACHE_TTL
+// Caches the in-flight PROMISE, not the resolved value, which makes it
+// single-flight: /api/config asks for the calendar, the roster and the fields
+// concurrently, and the roster needs the calendar too. Caching values alone
+// meant all of those raced past an empty cache and each refetched the same
+// calendar — three duplicate round trips on every cold request.
+function cached(store, key, ttl, produce) {
+  const hit = store[key]
+  if (hit && (Date.now() - hit.at) < ttl) return hit.promise
+  // A rejection must not be cached, or one blip poisons the entry for the TTL.
+  const promise = produce().catch(err => { delete store[key]; throw err })
+  store[key] = { promise, at: Date.now() }
+  return promise
 }
 
-async function getDayOneCalendar(loc) {
-  if (fresh(calendarCache[loc.slug])) return calendarCache[loc.slug].calendar
-  const list = await ghlFetch('/calendars/', loc.apiKey, {
-    params: { locationId: loc.id }, version: CAL_VERSION,
+function getDayOneCalendar(loc) {
+  return cached(calendarCache, loc.slug, CACHE_TTL, async () => {
+    const list = await ghlFetch('/calendars/', loc.apiKey, {
+      params: { locationId: loc.id }, version: CAL_VERSION,
+    })
+    const match = (list.calendars || []).find(
+      c => (c.name || '').trim().toLowerCase() === CALENDAR_NAME)
+    if (!match) throw new Error(`No "Day One" calendar found for ${loc.name}`)
+    // The list payload omits teamMembers on some calendars; the detail call is
+    // authoritative for the round-robin roster and slot duration.
+    const detail = await ghlFetch(`/calendars/${match.id}`, loc.apiKey, { version: CAL_VERSION })
+    return detail.calendar || detail || match
   })
-  const match = (list.calendars || []).find(
-    c => (c.name || '').trim().toLowerCase() === CALENDAR_NAME)
-  if (!match) throw new Error(`No "Day One" calendar found for ${loc.name}`)
-  // The list payload omits teamMembers on some calendars; the detail call is
-  // authoritative for the round-robin roster and slot duration.
-  const detail = await ghlFetch(`/calendars/${match.id}`, loc.apiKey, { version: CAL_VERSION })
-  const calendar = detail.calendar || detail || match
-  calendarCache[loc.slug] = { calendar, at: Date.now() }
-  return calendar
 }
 
-async function getUsersById(loc) {
-  if (fresh(userCache[loc.slug])) return userCache[loc.slug].byId
-  const data = await ghlFetch('/users/', loc.apiKey, { params: { locationId: loc.id } })
-  const byId = {}
-  for (const u of (data.users || [])) {
-    byId[u.id] = {
-      id: u.id,
-      name: u.name || [u.firstName, u.lastName].filter(Boolean).join(' '),
-      email: (u.email || '').toLowerCase(),
+function getUsersById(loc) {
+  return cached(userCache, loc.slug, CACHE_TTL, async () => {
+    const data = await ghlFetch('/users/', loc.apiKey, { params: { locationId: loc.id } })
+    const byId = {}
+    for (const u of (data.users || [])) {
+      byId[u.id] = {
+        id: u.id,
+        name: u.name || [u.firstName, u.lastName].filter(Boolean).join(' '),
+        email: (u.email || '').toLowerCase(),
+      }
     }
-  }
-  userCache[loc.slug] = { byId, at: Date.now() }
-  return byId
+    return byId
+  })
 }
 
-async function getFieldsByKey(loc) {
-  if (fresh(fieldCache[loc.slug])) return fieldCache[loc.slug].byKey
-  const data = await ghlFetch(`/locations/${loc.id}/customFields`, loc.apiKey)
-  const byKey = {}
-  for (const f of (data.customFields || [])) {
-    if (f.fieldKey) byKey[f.fieldKey] = f
-  }
-  fieldCache[loc.slug] = { byKey, at: Date.now() }
-  return byKey
+function getFieldsByKey(loc) {
+  return cached(fieldCache, loc.slug, CACHE_TTL, async () => {
+    const data = await ghlFetch(`/locations/${loc.id}/customFields`, loc.apiKey)
+    const byKey = {}
+    for (const f of (data.customFields || [])) {
+      if (f.fieldKey) byKey[f.fieldKey] = f
+    }
+    return byKey
+  })
+}
+
+// How far ahead this calendar will actually accept a booking, in days.
+// free-slots simply stops returning slots past this, so asking wider is waste.
+function bookableDays(calendar) {
+  const n = Number(calendar.allowBookingFor)
+  if (!Number.isFinite(n) || n <= 0) return 31
+  const unit = String(calendar.allowBookingForUnit || 'days').toLowerCase()
+  if (unit.startsWith('hour')) return Math.max(1, Math.ceil(n / 24))
+  if (unit.startsWith('week')) return n * 7
+  if (unit.startsWith('month')) return n * 31
+  return n
+}
+
+// free-slots responses, cached briefly. Availability moves slowly relative to
+// someone toggling between trainers or nudging the timezone, and every one of
+// those was a fresh round trip before.
+const slotsCache = {} // key -> { promise, at }
+const SLOTS_TTL = 45 * 1000
+
+function slotsFor(loc, calendar, params) {
+  // Bucket the window so millisecond-different startDates still share an entry.
+  const key = [
+    loc.slug, calendar.id, params.userId || 'any', params.timezone,
+    Math.floor(params.startDate / 60000), Math.floor(params.endDate / 60000),
+  ].join('|')
+  return cached(slotsCache, key, SLOTS_TTL, () =>
+    ghlFetch(`/calendars/${calendar.id}/free-slots`, loc.apiKey, {
+      params, version: CAL_VERSION,
+    }))
+}
+
+// Run async work with a concurrency ceiling. GHL rate limits per location and
+// ghlClient backs off a full 5s on a 429, so a burst is far more expensive than
+// a queue: two at a time is dramatically faster than six at once.
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length)
+  let next = 0
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++
+      out[i] = await fn(items[i], i)
+    }
+  })
+  await Promise.all(workers)
+  return out
+}
+
+// Every trainer's open instants across the booking window, as Sets keyed by
+// userId. Fetched once per window and cached, which turns "who can take this
+// slot?" into an in-memory lookup instead of an availability call per pick.
+const trainerSlotsCache = {} // key -> { promise, at }
+
+function getTrainerSlots(loc, calendar, timezone, days) {
+  const startDate = Date.now()
+  const endDate = startDate + days * 86400000
+  const key = [loc.slug, calendar.id, timezone, days, Math.floor(startDate / 60000)].join('|')
+  return cached(trainerSlotsCache, key, SLOTS_TTL, async () => {
+    const roster = await trainerRoster(loc)
+    const byUser = {}
+    await mapLimit(roster, 2, async t => {
+      try {
+        const data = await slotsFor(loc, calendar, {
+          startDate, endDate, timezone, userId: t.userId,
+        })
+        const set = new Set()
+        for (const [k, v] of Object.entries(data)) {
+          if (k === 'traceId' || !Array.isArray(v?.slots)) continue
+          // Store instants: the same moment can be spelled with a different
+          // UTC offset than the client sends back.
+          for (const s of v.slots) set.add(new Date(s).getTime())
+        }
+        byUser[t.userId] = set
+      } catch (e) {
+        console.warn(`[DayOneWidget] slot prefetch failed for ${t.name}:`, e.message)
+        byUser[t.userId] = new Set()
+      }
+    })
+    return byUser
+  })
 }
 
 function optionLabel(o) {
@@ -206,6 +295,14 @@ router.get('/api/config', requireWidgetSecret, async (req, res) => {
       tourMembers: (teamField?.picklistOptions || teamField?.options || [])
         .map(optionLabel).filter(Boolean),
     })
+
+    // Warm the per-trainer availability in the background. The user still has
+    // to pick a date and a time before it is needed, so by then it is cached
+    // and the "who will they be with" step is instant instead of a fan-out.
+    // Deliberately not awaited, and failures are the cache's problem, not this
+    // response's.
+    getTrainerSlots(loc, calendar, req.query.timezone || 'America/Los_Angeles',
+      bookableDays(calendar)).catch(() => {})
   } catch (e) {
     console.error('[DayOneWidget] config failed:', e.message)
     res.status(502).json({ error: e.message })
@@ -217,9 +314,14 @@ router.get('/api/config', requireWidgetSecret, async (req, res) => {
 router.get('/api/slots', requireWidgetSecret, async (req, res) => {
   const loc = getLocationBySlug(String(req.query.location || '').toLowerCase())
   if (!loc) return res.status(400).json({ error: 'Unknown location' })
-  const days = Math.min(Math.max(parseInt(req.query.days, 10) || 14, 1), 31)
+  const requested = Math.min(Math.max(parseInt(req.query.days, 10) || 14, 1), 31)
   try {
     const calendar = await getDayOneCalendar(loc)
+    // Never ask for a wider window than the calendar will actually book. The
+    // page asks for a month so it can drive its grid, but Day One caps at
+    // allowBookingFor (10 days) — the extra three weeks are pure latency for
+    // slots GHL will never return.
+    const days = Math.min(requested, bookableDays(calendar))
     const startDate = Date.now()
     const endDate = startDate + days * 86400000
     const params = {
@@ -227,9 +329,7 @@ router.get('/api/slots', requireWidgetSecret, async (req, res) => {
       timezone: req.query.timezone || 'America/Los_Angeles',
     }
     if (req.query.userId) params.userId = req.query.userId
-    const data = await ghlFetch(`/calendars/${calendar.id}/free-slots`, loc.apiKey, {
-      params, version: CAL_VERSION,
-    })
+    const data = await slotsFor(loc, calendar, params)
     // Response is keyed by date with a stray traceId mixed in at the top level.
     const byDate = {}
     for (const [key, val] of Object.entries(data)) {
@@ -258,34 +358,24 @@ router.get('/api/slots', requireWidgetSecret, async (req, res) => {
 //      are the only one open
 //   3. within that tier, pick whoever has the fewest upcoming Day Ones
 //   4. tie-break on name so the result is deterministic and testable
+//
+// PERFORMANCE: this used to check every trainer concurrently and then filter.
+// Six parallel free-slots calls against one location trips GHL's burst limit,
+// and ghlClient backs off for a FULL FIVE SECONDS per 429 — a warm request
+// measured 10.7s with 12 rate-limit retries logged. Ordering the roster first
+// and checking one at a time until someone is free gives the identical answer
+// (the first free trainer in priority order IS the top-tier free one) while
+// normally costing a single call.
 
-// Who is genuinely free at this exact instant?
-async function freeTrainersForSlot(loc, calendar, roster, startTime, timezone) {
-  const target = new Date(startTime).getTime()
-  const params = {
-    // Narrow window keeps this to one cheap call per trainer.
-    startDate: target - 60 * 60000,
-    endDate: target + 60 * 60000,
-    timezone: timezone || 'America/Los_Angeles',
-  }
-  const checks = await Promise.all(roster.map(async t => {
-    try {
-      const data = await ghlFetch(`/calendars/${calendar.id}/free-slots`, loc.apiKey, {
-        params: { ...params, userId: t.userId }, version: CAL_VERSION,
-      })
-      // Compare instants, not strings: the same moment can be spelled with a
-      // different UTC offset than the client sent.
-      const free = Object.entries(data).some(([key, val]) =>
-        key !== 'traceId' && Array.isArray(val?.slots) &&
-        val.slots.some(s => new Date(s).getTime() === target))
-      return free ? t : null
-    } catch (e) {
-      console.warn(`[DayOneWidget] availability check failed for ${t.name}:`, e.message)
-      return null
-    }
-  }))
-  return checks.filter(Boolean)
+// Candidate order: the sequence we would hand the slot to. Pure and total, so
+// the selection rule stays unit-testable without touching the network.
+function orderCandidates(roster, counts) {
+  return roster.slice().sort((a, b) =>
+    (b.priority ?? 0) - (a.priority ?? 0) ||
+    (counts[a.userId] || 0) - (counts[b.userId] || 0) ||
+    a.name.localeCompare(b.name))
 }
+
 
 // Upcoming Day One count per trainer, for load balancing. Short TTL: it changes
 // with every booking, and a stale count would skew the rotation.
@@ -315,25 +405,26 @@ async function upcomingCounts(loc, calendar) {
   return counts
 }
 
-function chooseTrainer(free, counts) {
-  if (!free.length) return null
-  const topPriority = Math.max(...free.map(t => t.priority ?? 0))
-  return free
-    .filter(t => (t.priority ?? 0) === topPriority)
-    .slice()
-    .sort((a, b) =>
-      (counts[a.userId] || 0) - (counts[b.userId] || 0) ||
-      a.name.localeCompare(b.name))[0]
-}
-
 // Resolve who gets an "Anyone" booking. Used by both the pre-submit preview and
 // the booking itself, so the name shown is produced by the same code that
 // assigns it.
+//
+// Availability comes from the prefetched per-trainer window, so this is an
+// in-memory scan. Checking candidates one at a time against GHL instead meant
+// up to six sequential calls per slot, which repeatedly tripped the rate limit
+// and its 5s backoff — a warm pick measured 11.6s.
 async function resolveAssignment(loc, startTime, timezone) {
-  const [calendar, roster] = await Promise.all([getDayOneCalendar(loc), trainerRoster(loc)])
-  const free = await freeTrainersForSlot(loc, calendar, roster, startTime, timezone)
-  const counts = await upcomingCounts(loc, calendar)
-  return { calendar, free, pick: chooseTrainer(free, counts), counts }
+  const tz = timezone || 'America/Los_Angeles'
+  const calendar = await getDayOneCalendar(loc)
+  const [roster, counts, byUser] = await Promise.all([
+    trainerRoster(loc),
+    upcomingCounts(loc, calendar),
+    getTrainerSlots(loc, calendar, tz, bookableDays(calendar)),
+  ])
+  const target = new Date(startTime).getTime()
+  const pick = orderCandidates(roster, counts)
+    .find(t => byUser[t.userId] && byUser[t.userId].has(target)) || null
+  return { calendar, pick, counts }
 }
 
 // Pre-submit: who WILL take this slot. `pick` is the trainer we will actually
@@ -347,8 +438,8 @@ router.get('/api/slot-trainers', requireWidgetSecret, async (req, res) => {
     return res.status(400).json({ error: 'Invalid startTime' })
   }
   try {
-    const { free, pick } = await resolveAssignment(loc, startTime, req.query.timezone)
-    res.json({ trainers: free, pick: pick || null })
+    const { pick } = await resolveAssignment(loc, startTime, req.query.timezone)
+    res.json({ pick: pick || null })
   } catch (e) {
     console.error('[DayOneWidget] slot-trainers failed:', e.message)
     res.status(502).json({ error: e.message })
@@ -520,4 +611,4 @@ module.exports = router
 // Exported for unit tests: the selection rule is the part that must stay
 // deterministic and fair, and it cannot be exercised through the live API when
 // the roster has no upcoming appointments to balance against.
-module.exports.chooseTrainer = chooseTrainer
+module.exports.orderCandidates = orderCandidates

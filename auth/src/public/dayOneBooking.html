@@ -522,7 +522,6 @@
         '&startTime=' + encodeURIComponent(S.startTime) +
         '&timezone=' + encodeURIComponent(S.tz))
       .then(function (d) {
-        var free = d.trainers || []
         if (!d.pick) {
           $('who').innerHTML = '<b>No trainer is open at this time.</b>' +
             '<span class="hint">Pick another time.</span>'
@@ -531,9 +530,7 @@
         }
         S.pick = d.pick.userId
         $('who').innerHTML = 'Day One with <b>' + esc(d.pick.name) + '</b>' +
-          '<span class="hint">' + (free.length > 1
-            ? 'Chosen from ' + free.length + ' trainers open at this time, balancing upcoming Day Ones.'
-            : 'Only trainer open at this time.') + '</span>'
+          '<span class="hint">Assigned by availability, balancing upcoming Day Ones.</span>'
         syncBook()
       })
       .catch(function () {
