@@ -1255,6 +1255,127 @@ export async function getMetaAds(params = {}, options = {}) {
   return api('/meta-ads/ads' + (qs ? '?' + qs : ''), options)
 }
 
+// ---------------------------------------------------------------------------
+// Meta Ads Manager (admin-only write API). Separate from the read-only
+// /meta-ads reporting endpoints above — these create and edit live ads.
+// ---------------------------------------------------------------------------
+
+const MAM = '/meta-ads-manager'
+
+function mamQs(path, params) {
+  const clean = Object.fromEntries(
+    Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== '')
+  )
+  const qs = new URLSearchParams(clean).toString()
+  return MAM + path + (qs ? '?' + qs : '')
+}
+
+export async function getAdsManagerAccount() {
+  return api(MAM + '/account')
+}
+
+export async function getAdsManagerCampaigns(params = {}) {
+  return api(mamQs('/campaigns', params))
+}
+
+export async function createAdsManagerCampaign(body) {
+  return api(MAM + '/campaigns', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export async function updateAdsManagerCampaign(id, body) {
+  return api(`${MAM}/campaigns/${id}`, { method: 'PUT', body: JSON.stringify(body) })
+}
+
+export async function deleteAdsManagerCampaign(id) {
+  return api(`${MAM}/campaigns/${id}`, { method: 'DELETE' })
+}
+
+export async function getAdsManagerAdsets(params = {}) {
+  return api(mamQs('/adsets', params))
+}
+
+export async function getAdsManagerAdset(id) {
+  return api(`${MAM}/adsets/${id}`)
+}
+
+export async function createAdsManagerAdset(body) {
+  return api(MAM + '/adsets', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export async function updateAdsManagerAdset(id, body) {
+  return api(`${MAM}/adsets/${id}`, { method: 'PUT', body: JSON.stringify(body) })
+}
+
+export async function deleteAdsManagerAdset(id) {
+  return api(`${MAM}/adsets/${id}`, { method: 'DELETE' })
+}
+
+export async function getAdsManagerAds(params = {}) {
+  return api(mamQs('/ads', params))
+}
+
+export async function getAdsManagerAd(id) {
+  return api(`${MAM}/ads/${id}`)
+}
+
+// Creates every variant in one call; resolves to { created, failed, results }
+// even when some variants fail, so the caller reports per-variant outcomes.
+export async function createAdsManagerAds(body) {
+  return api(MAM + '/ads', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export async function updateAdsManagerAd(id, body) {
+  return api(`${MAM}/ads/${id}`, { method: 'PUT', body: JSON.stringify(body) })
+}
+
+export async function deleteAdsManagerAd(id) {
+  return api(`${MAM}/ads/${id}`, { method: 'DELETE' })
+}
+
+export async function duplicateAdsManagerAd(id, body) {
+  return api(`${MAM}/ads/${id}/duplicate`, { method: 'POST', body: JSON.stringify(body) })
+}
+
+export async function uploadAdsManagerImages(files) {
+  const fd = new FormData()
+  for (const file of files) fd.append('files', file)
+  return api(MAM + '/media/image', { method: 'POST', body: fd })
+}
+
+export async function uploadAdsManagerVideo(file) {
+  const fd = new FormData()
+  fd.append('file', file)
+  return api(MAM + '/media/video', { method: 'POST', body: fd })
+}
+
+export async function getAdsManagerVideoStatus(id) {
+  return api(`${MAM}/media/video/${id}`)
+}
+
+export async function getAdsManagerImages(params = {}) {
+  return api(mamQs('/media/images', params))
+}
+
+export async function getAdsManagerVideos(params = {}) {
+  return api(mamQs('/media/videos', params))
+}
+
+export async function searchAdsManagerLocations(q) {
+  return api(mamQs('/targeting/locations', { q }))
+}
+
+export async function searchAdsManagerInterests(q) {
+  return api(mamQs('/targeting/interests', { q }))
+}
+
+export async function getAdsManagerAudiences() {
+  return api(MAM + '/targeting/audiences')
+}
+
+export async function previewAdsManagerVariant(body) {
+  return api(MAM + '/previews', { method: 'POST', body: JSON.stringify(body) })
+}
+
 // FB ROAS — own-calculated from GHL 'sale' tag × $990 LTV ÷ Meta spend
 export async function getFbRoas(params = {}) {
   const qs = new URLSearchParams(params).toString()

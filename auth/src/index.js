@@ -110,6 +110,9 @@ app.use('/day-one-program', require('./routes/dayOneProgram'))
 app.use('/day-one-tracker', require('./routes/dayOneTracker'))
 app.use('/trainer-availability', require('./routes/trainerAvailability'))
 app.use('/sms-history', require('./routes/smsHistory'))
+// Mounted before /meta-ads so the longer prefix always wins, regardless of how
+// Express is matching path segments.
+app.use('/meta-ads-manager', require('./routes/metaAdsManager'))
 app.use('/meta-ads', require('./routes/metaAds'))
 app.use('/email-marketing', require('./routes/emailMarketing'))
 app.use('/abc-scheduler', require('./routes/abcScheduler'))
