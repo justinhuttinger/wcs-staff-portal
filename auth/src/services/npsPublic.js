@@ -3,6 +3,11 @@
 
 const { validateSubmission } = require('./npsSchema');
 
+// One poster, one hour. High enough that a genuinely busy club never notices,
+// low enough that idle repeat-tapping stops mattering. The invited path has a
+// token to burn and is one-shot by construction, so this is walk-up only.
+const WALKUP_HOURLY_CAP = 25;
+
 // Lazy: services/supabase.js calls createClient() at import time, so a top
 // level require would make every test need SUPABASE_URL.
 let _db = null;
@@ -85,6 +90,20 @@ async function submitResponse({
   const { survey } = ctx;
   const invited = Boolean(token);
   const invite = ctx.invite || null;
+
+  if (!invited) {
+    const hourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+    const { count } = await db.from('nps_responses')
+      .select('id', { count: 'exact' })
+      .eq('survey_id', survey.id)
+      .eq('club_number', ctx.clubNumber)
+      .eq('source', 'walkup')
+      .gte('submitted_at', hourAgo)
+      .head();
+    if ((count || 0) >= WALKUP_HOURLY_CAP) {
+      return { ok: false, status: 409, reason: 'rate_limited' };
+    }
+  }
 
   const v = validateSubmission(survey.schema || [], answers);
   if (!v.ok) return { ok: false, status: 400, errors: v.errors };

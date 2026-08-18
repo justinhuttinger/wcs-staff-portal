@@ -104,7 +104,7 @@ test('refuses an inactive QR key', async () => {
 const { submitResponse } = require('./npsPublic');
 
 // The submit path inserts, so the fake needs insert() returning the row.
-function fakeSubmitDb({ invites = [], surveys = [SURVEY], qr = [] } = {}) {
+function fakeSubmitDb({ invites = [], surveys = [SURVEY], qr = [], walkupCount = 0 } = {}) {
   const inserted = [];
   const updates = [];
   const tables = { nps_invites: invites, nps_surveys: surveys, nps_club_qr: qr };
@@ -116,6 +116,10 @@ function fakeSubmitDb({ invites = [], surveys = [SURVEY], qr = [] } = {}) {
       const builder = {
         select() { return builder; },
         eq(c, v) { eq[c] = v; return builder; },
+        gte() { return builder; },
+        // Supabase's count query terminates on .head(); the fake returns the
+        // number the test asked for rather than filtering by time.
+        head() { return Promise.resolve({ count: walkupCount, error: null }); },
         maybeSingle() {
           const rows = (tables[table] || []).filter(r =>
             Object.entries(eq).every(([c, v]) => r[c] === v));
@@ -244,4 +248,33 @@ test('finishing after a pre-score updates the same response row', async () => {
   assert.equal(writes.length, 1);
   assert.equal(writes[0].conflictTarget, 'invite_id',
     'one response per invite: the pre-score row and the final row are the same row');
+});
+
+const QR_ROW = { id: 'q1', key: 'abc123', survey_id: 'srv-1', club_number: '31599', active: true };
+
+test('a walk-up key over its hourly cap is refused', async () => {
+  // 30 responses already recorded for this survey+club in the last hour.
+  const db = fakeSubmitDb({ qr: [QR_ROW], walkupCount: 30 });
+
+  const r = await submitResponse({ db, slug: '6mo', key: 'abc123', answers: { q_nps: 7 }, now: NOW });
+
+  assert.equal(r.ok, false);
+  assert.equal(r.status, 409);
+  assert.equal(db.inserted.length, 0);
+});
+
+test('a walk-up key under its hourly cap is allowed', async () => {
+  const db = fakeSubmitDb({ qr: [QR_ROW], walkupCount: 3 });
+
+  const r = await submitResponse({ db, slug: '6mo', key: 'abc123', answers: { q_nps: 7 }, now: NOW });
+  assert.equal(r.ok, true);
+});
+
+test('the cap does not apply to the invited path', async () => {
+  // An invite token is one-shot already; capping it would block a legitimate
+  // member at a busy club.
+  const db = fakeSubmitDb({ invites: [LIVE], walkupCount: 999 });
+
+  const r = await submitResponse({ db, slug: '6mo', token: 'tok-live', answers: { q_nps: 7 }, now: NOW });
+  assert.equal(r.ok, true);
 });

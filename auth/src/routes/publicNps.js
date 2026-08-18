@@ -85,6 +85,9 @@ router.post('/:slug/submit', submitLimiter, async (req, res) => {
     if (!result.ok && result.status === 400) {
       return res.status(400).json({ errors: result.errors });
     }
+    if (!result.ok && result.status === 409) {
+      return res.status(429).json({ error: 'Thanks! We have plenty of responses from here right now.' });
+    }
     if (!result.ok) {
       return res.status(404).json({
         error: 'This survey is not available',
