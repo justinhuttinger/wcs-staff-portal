@@ -82,8 +82,8 @@ export default function TestFirePanel({ survey }) {
       </div>
 
       {!configured && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-          <p className="text-xs text-amber-800">
+        <div className="bg-bg border border-border rounded-lg p-3">
+          <p className="text-xs text-text-primary">
             Add a GHL tag and field key below before sending a test. Without them
             there is no workflow to fire.
           </p>
@@ -158,8 +158,8 @@ export default function TestFirePanel({ survey }) {
       </button>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-          <p className="text-xs text-red-700">{error}</p>
+        <div className="bg-bg border border-border rounded-lg p-3">
+          <p className="text-xs text-wcs-red">{error}</p>
         </div>
       )}
 
@@ -172,7 +172,7 @@ export default function TestFirePanel({ survey }) {
           </p>
 
           {result.ghl?.errors?.length > 0 && (
-            <ul className="text-xs text-red-700 list-disc pl-4">
+            <ul className="text-xs text-wcs-red list-disc pl-4">
               {result.ghl.errors.map((e, i) => <li key={i}>{e}</li>)}
             </ul>
           )}
@@ -191,7 +191,7 @@ export default function TestFirePanel({ survey }) {
               onClick={copyUrl}
               className="text-[10px] font-semibold text-wcs-red hover:text-wcs-red/70 shrink-0"
             >
-              {copied ? <span className="text-green-600 animate-pulse">Copied!</span> : 'Copy'}
+              {copied ? <span className="text-wcs-red animate-pulse">Copied!</span> : 'Copy'}
             </button>
           </div>
 

@@ -52,8 +52,8 @@ function CreateSurvey({ onCreated, onCancel }) {
       <h3 className="text-sm font-bold text-text-primary">New survey</h3>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-          <p className="text-xs text-red-700">{error}</p>
+        <div className="bg-bg border border-border rounded-lg p-3">
+          <p className="text-xs text-wcs-red">{error}</p>
         </div>
       )}
 
@@ -219,34 +219,46 @@ export default function NpsView({ onBack }) {
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-5">
-      <div className="flex items-center justify-between gap-3">
-        <button onClick={onBack} className="text-sm text-wcs-red hover:underline">Back</button>
-        {tab === 'surveys' && !showCreate && (
-          <button
-            type="button" onClick={() => setShowCreate(true)}
-            className="px-4 py-2 text-sm font-medium bg-wcs-red text-white rounded-lg hover:opacity-90 transition-opacity"
-          >
-            New survey
-          </button>
-        )}
-      </div>
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-4 w-full">
+      <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-text-primary">Feedback</h2>
+            <p className="text-xs text-text-muted">
+              Member surveys, what they measure, and the posters that collect them
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={onBack} className="px-4 py-2 text-sm font-medium text-text-primary border border-border rounded-lg hover:bg-bg transition-colors">
+              Back
+            </button>
+            {tab === 'surveys' && !showCreate && (
+              <button
+                type="button" onClick={() => setShowCreate(true)}
+                className="px-4 py-2 text-sm font-medium bg-wcs-red text-white rounded-lg hover:opacity-90 transition-opacity"
+              >
+                New survey
+              </button>
+            )}
+          </div>
+        </div>
 
-      <div className="flex gap-2">
-        {['surveys', 'metrics'].map(t => (
-          <button
-            key={t} type="button" onClick={() => setTab(t)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${
-              tab === t ? 'bg-wcs-red text-white' : 'text-text-primary border border-border hover:bg-bg'}`}
-          >
-            {t}
-          </button>
-        ))}
+        <div className="flex rounded-lg border border-border overflow-hidden w-fit">
+          {[['surveys', 'Surveys'], ['metrics', 'What we measure']].map(([key, label]) => (
+            <button
+              key={key} type="button" onClick={() => setTab(key)}
+              className={`px-4 py-2 text-sm font-medium transition-colors ${
+                tab === key ? 'bg-wcs-red text-white' : 'bg-bg text-text-muted hover:text-text-primary'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-          <p className="text-xs text-red-700">{error}</p>
+        <div className="bg-surface rounded-xl border border-border px-4 py-3">
+          <p className="text-sm text-wcs-red">{error}</p>
         </div>
       )}
 
@@ -262,7 +274,9 @@ export default function NpsView({ onBack }) {
           )}
 
           {surveys === null ? (
-            <p className="text-sm text-text-muted">Loading…</p>
+            <div className="bg-surface rounded-xl border border-border p-8 text-center">
+              <p className="text-sm text-text-muted">Loading…</p>
+            </div>
           ) : surveys.length === 0 ? (
             <div className="bg-surface rounded-xl border border-border p-8 text-center">
               <p className="text-sm text-text-muted">
