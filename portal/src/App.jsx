@@ -324,6 +324,7 @@ export default function App() {
     setShowTicketsBoard(false)
     setShowDrive(false)
     setShowForms(false)
+    setShowNps(false)
     setShowTourCheckin(false)
     if (window.location.hash) window.location.hash = ''
   }
