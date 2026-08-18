@@ -169,6 +169,65 @@
   dl.summary dd { margin: 0; }
   code { background: var(--fill); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
 
+  /* ---- compact / embedded ------------------------------------------------
+     The three-pane layout assumes a full browser window. In an iframe it
+     stacks into a very tall column and the host page has to scroll for ages.
+     Embedded, the page becomes a single narrow column: a slim header instead
+     of the marketing panel, one week of dates instead of a month grid, and
+     times as a wrapping grid instead of a tall list. Combined with the height
+     message it posts, the frame ends up roughly one screen with no inner
+     scrollbar. */
+  body.compact .page { padding: 0; }
+  body.compact .shell {
+    display: block; max-width: none; border: 0; border-radius: 0; min-height: 0;
+  }
+  body.compact .pane { padding: 14px 16px; }
+  body.compact .pane-left { border-right: 0; padding-bottom: 0; }
+  body.compact .pane-right { padding: 0 16px 16px; }
+  body.compact .logo,
+  body.compact .eyebrow,
+  body.compact .blurb,
+  body.compact .tz,
+  body.compact h1 { display: none; }
+  body.compact .month-bar,
+  body.compact .dow,
+  body.compact .grid { display: none; }
+  body.compact h2 { font-size: 15px; margin: 0 0 12px; }
+  /* Header line: title, duration, chosen time, trainer picker */
+  body.compact .meta { margin-bottom: 8px; font-size: 14px; }
+  body.compact .compact-title { display: block; }
+  .compact-title {
+    display: none; font-size: 17px; font-weight: 600; color: var(--ink);
+    letter-spacing: -0.01em; margin-bottom: 10px;
+  }
+  body.compact .times { max-height: none; overflow: visible; padding-right: 0; }
+  /* Times as a wrapping grid — a vertical list is what made the frame tall. */
+  body.compact .times {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px;
+  }
+  body.compact .time { padding: 11px 4px; font-size: 14px; }
+  body.compact .time-pair { grid-column: 1 / -1; }
+  body.compact .form-pane { padding: 14px 16px; }
+  body.compact .two { grid-template-columns: 1fr; gap: 0; }
+
+  /* Week strip: seven day chips with arrows, replacing the month grid. */
+  .week { display: none; align-items: center; gap: 6px; margin-bottom: 14px; }
+  body.compact .week { display: flex; }
+  .week-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; flex: 1; }
+  .wd {
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    border: 1px solid var(--line); border-radius: 9px; background: #fff;
+    padding: 7px 2px; font: inherit; cursor: pointer; color: var(--text);
+  }
+  .wd .dow-s { font-size: 11px; color: var(--muted); }
+  .wd .num { font-size: 15px; font-weight: 600; }
+  .wd:hover:not(:disabled) { background: var(--fill); }
+  .wd:disabled { color: #c8ccd2; border-color: #f0f1f3; cursor: default; }
+  .wd:disabled .dow-s { color: #d5d8dd; }
+  .wd[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .wd[aria-pressed="true"] .dow-s { color: #cfd3d9; }
+  .week .nav { width: 30px; height: 30px; flex: none; }
+
   /* ---- location picker (shown when no location is in the path) ---- */
   .panel { max-width: 380px; margin: 60px auto; }
   .panel h2 { margin-bottom: 16px; }
@@ -240,7 +299,20 @@
 
     <!-- CENTER: calendar -->
     <div class="pane" id="pane-cal">
+      <div class="compact-title" id="compact-title">Book your Day One</div>
       <h2>Select Date &amp; Time</h2>
+
+      <!-- Compact only: one week at a time. -->
+      <div class="week" id="week">
+        <button class="nav" id="week-prev" aria-label="Previous week">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <div class="week-days" id="week-days"></div>
+        <button class="nav" id="week-next" aria-label="Next week">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+
       <div class="month-bar">
         <button class="nav" id="prev" aria-label="Previous month">
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg>
@@ -316,6 +388,16 @@
   // here, because a per-location link (/day-one-booking/salem) has an extra
   // segment that is not part of the mount point.
   var API = '{{WIDGET_BASE}}'
+
+  // Compact mode. Framed pages get it automatically, because the three-pane
+  // layout stacks into something far too tall for an iframe. ?embed=1 forces it
+  // on for previewing outside a frame; ?embed=0 forces it off if a host really
+  // does have room for the full layout.
+  var qp = new URLSearchParams(window.location.search)
+  var COMPACT = qp.get('embed') === '1' ||
+    (qp.get('embed') !== '0' && window.parent !== window)
+  if (COMPACT) document.body.classList.add('compact')
+
   var S = {
     // One link per location, so this is fixed for the life of the page.
     location: '{{WIDGET_LOCATION}}',
@@ -401,6 +483,9 @@
         (opts.refresh ? '&refresh=1' : '')).then(function (cfg) {
       if (opts.refresh) openPicker(false)
       $('location-name').textContent = cfg.location.name
+      // Compact hides the marketing panel, so the location has to appear here
+      // or the visitor cannot tell which gym they are booking.
+      $('compact-title').textContent = 'Day One at ' + cfg.location.name
       S.cfg = cfg
       $('duration').textContent = cfg.calendar.slotDuration + ' ' +
         (cfg.calendar.slotDurationUnit === 'hours' ? 'hr' : 'min')
@@ -500,12 +585,70 @@
       if (!S.date || !S.days[S.date]) S.date = keys[0] || ''
       var anchor = S.date ? new Date(+S.date.split('-')[0], +S.date.split('-')[1] - 1, 1) : new Date()
       S.view = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
-      renderMonth(); renderTimes()
+      // Open the week on the first day that actually has times, so the strip
+      // never lands on an empty week the visitor has to arrow past.
+      S.weekStart = startOfWeek(S.date ? fromKey(S.date) : new Date())
+      renderMonth(); renderWeek(); renderTimes()
     }).catch(function (e) {
       fail($('cal-err'), e.message)
       $('times').innerHTML = ''
     })
   }
+
+  // --- week strip (compact) ------------------------------------------------
+  function fromKey(k) {
+    var p = k.split('-')
+    return new Date(+p[0], +p[1] - 1, +p[2])
+  }
+  function startOfWeek(d) {
+    var x = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+    x.setDate(x.getDate() - x.getDay())     // back to Sunday
+    return x
+  }
+  function addDays(d, n) {
+    var x = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+    x.setDate(x.getDate() + n)
+    return x
+  }
+
+  var DOW_S = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+  function renderWeek() {
+    if (!COMPACT || !S.weekStart) return
+    var html = ''
+    for (var i = 0; i < 7; i++) {
+      var d = addDays(S.weekStart, i)
+      var key = dateKey(d)
+      var open = !!S.days[key]
+      html += '<button class="wd" data-key="' + key + '"' + (open ? '' : ' disabled') +
+        ' aria-pressed="' + (key === S.date) + '">' +
+        '<span class="dow-s">' + DOW_S[d.getDay()] + '</span>' +
+        '<span class="num">' + d.getDate() + '</span></button>'
+    }
+    $('week-days').innerHTML = html
+    Array.prototype.forEach.call($('week-days').querySelectorAll('.wd'), function (b) {
+      if (b.disabled) return
+      b.addEventListener('click', function () {
+        S.date = b.getAttribute('data-key')
+        S.startTime = ''
+        renderWeek(); renderTimes(); updateWhen()
+      })
+    })
+    // Only offer weeks that contain bookable days — the calendar caps at
+    // allowBookingFor, so arrowing beyond it just shows empty rows.
+    var keys = Object.keys(S.days).sort()
+    var first = keys.length ? startOfWeek(fromKey(keys[0])) : null
+    var last = keys.length ? startOfWeek(fromKey(keys[keys.length - 1])) : null
+    $('week-prev').disabled = !first || S.weekStart <= first
+    $('week-next').disabled = !last || S.weekStart >= last
+  }
+
+  $('week-prev').addEventListener('click', function () {
+    S.weekStart = addDays(S.weekStart, -7); renderWeek()
+  })
+  $('week-next').addEventListener('click', function () {
+    S.weekStart = addDays(S.weekStart, 7); renderWeek()
+  })
 
   function renderMonth() {
     if (!S.view) return
@@ -685,6 +828,32 @@
     $('book-state').textContent = ''
     updateWhen(); loadSlots()
   })
+
+  // --- tell the host page how tall we are ----------------------------------
+  // Without this an embed has to guess: a fixed pixel height clips the times on
+  // some screens and leaves a gap on others, and height:100% silently collapses
+  // to ~150px whenever the container only has a min-height. The host listens for
+  // this message and sets the iframe height. Snippet in the Worker README.
+  if (window.parent !== window) {
+    var lastHeight = 0
+    var postHeight = function () {
+      var h = Math.max(
+        document.body ? document.body.scrollHeight : 0,
+        document.documentElement ? document.documentElement.scrollHeight : 0)
+      if (!h || Math.abs(h - lastHeight) < 2) return   // ignore jitter
+      lastHeight = h
+      // '*' because the embedding origin is not fixed, and the payload is a
+      // number — there is nothing here worth restricting.
+      window.parent.postMessage({ type: 'wcs-dayone-height', height: h }, '*')
+    }
+    window.addEventListener('load', postHeight)
+    window.addEventListener('resize', postHeight)
+    if (typeof ResizeObserver === 'function') {
+      new ResizeObserver(postHeight).observe(document.documentElement)
+    } else {
+      setInterval(postHeight, 500)
+    }
+  }
 
   start()
 })()
