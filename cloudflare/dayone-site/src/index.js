@@ -26,7 +26,7 @@ const ORIGIN = 'https://wcs-auth-api.onrender.com'
 const MOUNT = '/dayone'
 
 export default {
-  async fetch(request, env) {
+  async fetch(request) {
     const url = new URL(request.url)
 
     // Health check for uptime monitors, answered without touching the origin.
@@ -47,17 +47,13 @@ export default {
     const clientIp = request.headers.get('cf-connecting-ip')
     if (clientIp) headers.set('x-forwarded-for', clientIp)
 
-    // Optional. Set with `wrangler secret put WIDGET_SECRET` to let staff use
-    // the booking page without typing the secret.
+    // No credential is injected: the widget is open by design, the link itself
+    // is the access. The origin rate limits booking (6/min) and reads (60/min)
+    // per IP, which is why forwarding the real client IP above matters.
     //
-    // Think before enabling: it makes booking available to anyone who finds the
-    // URL, and booking writes real appointments and sends real SMS. The right
-    // pairing is Cloudflare Access in front of /:location so only signed-in
-    // staff reach it, leaving /cancel and /reschedule public for members — they
-    // are keyed on ids and never needed the secret. See README.
-    if (env.WIDGET_SECRET && url.pathname.startsWith('/api/')) {
-      headers.set('x-widget-secret', env.WIDGET_SECRET)
-    }
+    // If abuse appears, put Cloudflare Access in front of /:location so only
+    // signed-in staff can book, and exclude /*/cancel and /*/reschedule so
+    // members are not asked to log in. See README.
 
     const response = await fetch(target.toString(), {
       method: request.method,

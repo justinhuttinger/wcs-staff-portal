@@ -59,31 +59,21 @@ Worker → **Settings** → **Domains & Routes** → **Add** → **Custom domain
 The zone is already on Cloudflare nameservers, so Cloudflare creates the DNS
 record and issues the certificate itself. No manual CNAME.
 
-### 3. Decide how staff authenticate
+### 3. Access
 
-Out of the box the booking page asks for the widget secret once per browser and
-stores it locally. The member cancel/reschedule pages need no secret — they are
-keyed on contact and appointment ids.
+The widget is **open** — the link is the access. No secret, nothing to type,
+which is what makes it usable from a QR code, an SMS or an embed.
 
-Two ways to remove the prompt for staff, in increasing order of correctness:
+That also means booking is reachable by anyone who has the URL, and booking
+writes real appointments and sends real SMS to trainers. The origin rate limits
+it (6 bookings/min and 60 reads/min per IP), which is why this Worker forwards
+the real client IP.
 
-**Inject the secret** (quick, weaker):
-
-```bash
-npx wrangler secret put WIDGET_SECRET
-```
-
-The Worker then adds the header to `/api/*` itself. Nobody types anything — but
-anyone who finds the URL can book, and booking creates real appointments and
-sends real SMS. Only reasonable if the URL stays internal.
-
-**Cloudflare Access** (proper):
-
-Zero Trust → Access → Applications → add `book.westcoaststrength.com/` with a
-policy allowing your staff email domain, then **exclude** `/*/cancel` and
-`/*/reschedule` so members are not asked to log in. Combine with the injected
-secret above and staff get a clean signed-in experience while members keep
-self-service.
+If that ever stops being enough, put **Cloudflare Access** in front of the
+booking path: Zero Trust → Access → Applications → add
+`book.westcoaststrength.com/` with a policy for your staff email domain, and
+**exclude** `/*/cancel` and `/*/reschedule` so members are never asked to log
+in — those are keyed on contact and appointment ids and were always public.
 
 ## Local development
 
