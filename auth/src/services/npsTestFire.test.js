@@ -130,3 +130,29 @@ test('a club with no configured GHL location is refused', async () => {
   assert.equal(out.ok, false);
   assert.match(out.error, /location/i);
 });
+
+// --- the locations config contract ------------------------------------------
+//
+// These exist because the first version of this module did
+// `require('../config/ghlLocations')` and called .find on it. auth exports an
+// OBJECT there; ghl-sync exports the array directly. Every test injected a real
+// array, so the default path was never exercised and it shipped broken with
+// "locations.find is not a function" the first time anyone pressed the button.
+
+test('auth config exports LOCATIONS as an array, not the array itself', () => {
+  const mod = require('../config/ghlLocations');
+  assert.equal(Array.isArray(mod), false, 'the module itself is an object');
+  assert.ok(Array.isArray(mod.LOCATIONS), 'the array lives under .LOCATIONS');
+});
+
+test('a module-shaped locations object still resolves a club', async () => {
+  const db = fakeDb({ contacts: [CONTACT] });
+  const out = await testFire({
+    db, slug: '6mo', memberId: 'M1', force: true, now: NOW,
+    // Deliberately the module shape rather than a bare array.
+    locations: { LOCATIONS },
+    ghlFetchFn: async () => ({ contact: { id: 'C1', tags: [] } }),
+  });
+  assert.equal(out.ok, true);
+  assert.equal(out.contact.location, 'Salem');
+});
