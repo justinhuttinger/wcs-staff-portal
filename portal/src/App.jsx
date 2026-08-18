@@ -144,7 +144,6 @@ export default function App() {
         setShowCommunicationNotes(false)
         setShowHR(false)
         setShowHelpCenter(false)
-        setShowTickets(false)
         setShowForms(false)
         if (window.wcsElectron) window.wcsElectron.onLogout()
       })
@@ -159,7 +158,6 @@ export default function App() {
         setShowCommunicationNotes(false)
         setShowHR(false)
         setShowHelpCenter(false)
-        setShowTickets(false)
         setShowForms(false)
         // Navigate to requested view
         if (view === 'calendar') setShowCalendar(true)
@@ -190,7 +188,6 @@ export default function App() {
       setShowCommunicationNotes(false)
       setShowHR(false)
       setShowHelpCenter(false)
-      setShowTickets(false)
       setShowDrive(false)
       setShowForms(false)
       if (kioskMode === 'dayone' && kioskKey) {
@@ -232,7 +229,6 @@ export default function App() {
     setShowCommunicationNotes(false)
     setShowHR(false)
     setShowHelpCenter(false)
-    setShowTickets(false)
     setShowForms(false)
     if (window.location.hash) window.location.hash = ''
     // Notify Electron main process about the login
@@ -320,7 +316,6 @@ export default function App() {
     setShowCommunicationNotes(false)
     setShowHR(false)
     setShowHelpCenter(false)
-    setShowTickets(false)
     setShowTicketsBoard(false)
     setShowDrive(false)
     setShowForms(false)
