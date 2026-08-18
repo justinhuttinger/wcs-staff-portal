@@ -146,6 +146,7 @@ app.use('/changelog', require('./routes/changelog'))
 app.use('/forms', require('./routes/forms'))
 app.use('/public/forms', require('./routes/publicForms'))
 app.use('/public/nps', require('./routes/publicNps'))
+app.use('/nps', require('./routes/nps'))
 
 // WCS University (voice roleplay training) — ships dark behind a flag until the
 // Retell agent + GHL custom fields are configured. See services/university/README.md.
