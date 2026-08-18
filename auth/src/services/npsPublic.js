@@ -67,4 +67,74 @@ async function loadByQr({ db = getDb(), slug, key }) {
   return { ok: true, survey, clubNumber: qr.club_number };
 }
 
-module.exports = { loadByToken, loadByQr };
+/**
+ * Write one response and its score rows.
+ *
+ * Resolution reuses loadByToken/loadByQr so the submit path enforces exactly
+ * the same expiry, already-answered and slug rules the render path does. A
+ * separate check here would drift and let a dead link still post.
+ */
+async function submitResponse({
+  db = getDb(), slug, token, key, answers, now = new Date(), ipHash = null, userAgent = null,
+}) {
+  const ctx = token
+    ? await loadByToken({ db, slug, token, now })
+    : await loadByQr({ db, slug, key });
+  if (!ctx.ok) return { ok: false, status: 404, reason: ctx.reason };
+
+  const { survey } = ctx;
+  const invited = Boolean(token);
+  const invite = ctx.invite || null;
+
+  const v = validateSubmission(survey.schema || [], answers);
+  if (!v.ok) return { ok: false, status: 400, errors: v.errors };
+
+  const isTest = invited ? Boolean(invite.is_test) : false;
+  const clubNumber = invited ? invite.club_number : ctx.clubNumber;
+  const submittedAt = now.toISOString();
+  // Denormalised for report speed, per the parent spec.
+  const npsScore = v.scores.find(s => s.metric_key === 'nps')?.score ?? null;
+
+  const { data: response, error } = await db.from('nps_responses').insert({
+    invite_id: invited ? invite.id : null,
+    survey_id: survey.id,
+    member_id: invited ? invite.member_id : null,
+    club_number: clubNumber,
+    source: invited ? 'invited' : 'walkup',
+    nps_score: npsScore,
+    answers: v.cleaned,
+    contact_name: v.cleaned.q_contact_name || null,
+    contact_email: v.cleaned.q_contact_email || null,
+    ip_hash: ipHash,
+    user_agent: userAgent,
+    submitted_at: submittedAt,
+    is_test: isTest,
+  }).select().maybeSingle();
+  if (error) throw new Error(`[NPS] failed to write nps_responses: ${error.message}`);
+
+  if (v.scores.length) {
+    const { error: scoreErr } = await db.from('nps_response_scores').insert(
+      v.scores.map(s => ({
+        response_id: response.id,
+        survey_id: survey.id,
+        metric_key: s.metric_key,
+        score: s.score,
+        club_number: clubNumber,
+        source: invited ? 'invited' : 'walkup',
+        submitted_at: submittedAt,
+        is_test: isTest,
+      })),
+    );
+    if (scoreErr) throw new Error(`[NPS] failed to write nps_response_scores: ${scoreErr.message}`);
+  }
+
+  if (invited) {
+    await db.from('nps_invites')
+      .update({ status: 'responded', responded_at: submittedAt })
+      .eq('id', invite.id);
+  }
+
+  return { ok: true, status: 200, responseId: response.id };
+}
+
+module.exports = { loadByToken, loadByQr, submitResponse };

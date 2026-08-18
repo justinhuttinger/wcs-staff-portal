@@ -100,3 +100,101 @@ test('refuses an inactive QR key', async () => {
   const r = await loadByQr({ db, slug: '6mo', key: 'abc123' });
   assert.equal(r.ok, false);
 });
+
+const { submitResponse } = require('./npsPublic');
+
+// The submit path inserts, so the fake needs insert() returning the row.
+function fakeSubmitDb({ invites = [], surveys = [SURVEY], qr = [] } = {}) {
+  const inserted = [];
+  const updates = [];
+  const tables = { nps_invites: invites, nps_surveys: surveys, nps_club_qr: qr };
+  return {
+    inserted,
+    updates,
+    from(table) {
+      const eq = {};
+      const builder = {
+        select() { return builder; },
+        eq(c, v) { eq[c] = v; return builder; },
+        maybeSingle() {
+          const rows = (tables[table] || []).filter(r =>
+            Object.entries(eq).every(([c, v]) => r[c] === v));
+          return Promise.resolve({ data: rows[0] || null, error: null });
+        },
+        update(patch) {
+          return { eq: (c, v) => { updates.push({ table, patch, where: [c, v] }); return Promise.resolve({ error: null }); } };
+        },
+        insert(rows) {
+          const list = Array.isArray(rows) ? rows : [rows];
+          list.forEach(r => inserted.push({ table, row: r }));
+          return {
+            select: () => ({ maybeSingle: () => Promise.resolve({ data: { id: 'resp-1', ...list[0] }, error: null }) }),
+            then: (res) => res({ data: list, error: null }),
+          };
+        },
+      };
+      return builder;
+    },
+  };
+}
+
+test('an invited submission writes the response, the scores, and burns the token', async () => {
+  const db = fakeSubmitDb({ invites: [LIVE] });
+  const r = await submitResponse({
+    db, slug: '6mo', token: 'tok-live', answers: { q_nps: 9 }, now: NOW,
+  });
+
+  assert.equal(r.ok, true);
+  const resp = db.inserted.find(i => i.table === 'nps_responses').row;
+  assert.equal(resp.source, 'invited');
+  assert.equal(resp.nps_score, 9);
+  assert.equal(resp.member_id, 'M1');
+
+  const score = db.inserted.find(i => i.table === 'nps_response_scores').row;
+  assert.equal(score.metric_key, 'nps');
+  assert.equal(score.score, 9);
+  assert.equal(score.club_number, '30935', 'club is denormalised onto the score row');
+
+  const burn = db.updates.find(u => u.patch.status === 'responded');
+  assert.ok(burn, 'the token must be burned so the link is one-shot');
+});
+
+test('is_test propagates from the invite all the way to the score rows', async () => {
+  // A manual fire must never reach the report, and the report reads
+  // nps_response_scores directly.
+  const db = fakeSubmitDb({ invites: [{ ...LIVE, is_test: true }] });
+  await submitResponse({ db, slug: '6mo', token: 'tok-live', answers: { q_nps: 3 }, now: NOW });
+
+  assert.equal(db.inserted.find(i => i.table === 'nps_responses').row.is_test, true);
+  assert.equal(db.inserted.find(i => i.table === 'nps_response_scores').row.is_test, true);
+});
+
+test('a walk-up submission records no member identity', async () => {
+  const db = fakeSubmitDb({ qr: [{ id: 'q1', key: 'abc123', survey_id: 'srv-1', club_number: '31599', active: true }] });
+  const r = await submitResponse({ db, slug: '6mo', key: 'abc123', answers: { q_nps: 7 }, now: NOW });
+
+  assert.equal(r.ok, true);
+  const resp = db.inserted.find(i => i.table === 'nps_responses').row;
+  assert.equal(resp.source, 'walkup');
+  assert.equal(resp.member_id, null);
+  assert.equal(resp.invite_id, null);
+  assert.equal(resp.club_number, '31599');
+});
+
+test('a bad answer is rejected with field errors and writes nothing', async () => {
+  const db = fakeSubmitDb({ invites: [LIVE] });
+  const r = await submitResponse({ db, slug: '6mo', token: 'tok-live', answers: { q_nps: 44 }, now: NOW });
+
+  assert.equal(r.ok, false);
+  assert.equal(r.status, 400);
+  assert.ok(r.errors.q_nps);
+  assert.equal(db.inserted.length, 0, 'nothing is written when validation fails');
+});
+
+test('submitting on an already-answered token is refused', async () => {
+  const db = fakeSubmitDb({ invites: [{ ...LIVE, status: 'responded' }] });
+  const r = await submitResponse({ db, slug: '6mo', token: 'tok-live', answers: { q_nps: 9 }, now: NOW });
+  assert.equal(r.ok, false);
+  assert.equal(r.status, 404);
+  assert.equal(db.inserted.length, 0);
+});
