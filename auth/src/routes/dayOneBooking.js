@@ -41,26 +41,33 @@ const DAY_ONE_BOOKED_FIELD = 'contact.day_one_booked'
 // Distinct from contact.cancel_reason, which is MEMBERSHIP cancellation.
 const DAY_ONE_CANCEL_REASON_FIELD = 'contact.day_one_cancel_reason'
 
-// The page itself is harmless to load, but every API call is gated on a shared
-// secret while this is a test artifact. Fail CLOSED: if the env var is missing the
-// endpoints refuse rather than standing up an open booking API on the internet.
-function requireWidgetSecret(req, res, next) {
-  const expected = process.env.DAYONE_WIDGET_SECRET
-  if (!expected) {
-    return res.status(503).json({ error: 'DAYONE_WIDGET_SECRET is not configured; booking API disabled' })
-  }
-  const given = req.get('x-widget-secret') || req.query.secret || ''
-  if (given !== expected) return res.status(401).json({ error: 'Invalid or missing widget secret' })
-  next()
-}
-
-// Booking writes to GHL and sends SMS, so cap it well below anything a human needs.
+// This widget is reachable by anyone with the link — no shared secret. That is
+// deliberate: the link goes on a public subdomain so staff and members can use
+// it without credentials.
+//
+// It does mean POST /api/book is an open endpoint that creates real GHL
+// appointments and sends real SMS to trainers, so rate limiting is the only
+// thing in front of it. Kept deliberately tight: booking is a slow, deliberate
+// human action, and nobody legitimately submits more than a handful a minute.
+// If abuse ever shows up, the fixes in order of preference are Cloudflare
+// Access over the booking path, then Turnstile on submit.
 const bookLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 10,
+  max: 6,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many booking attempts, slow down' },
+})
+
+// Reads are cheap for us (mostly cached) but each miss costs a GHL call, and
+// GHL rate limits per location. Cap them so one script cannot burn the quota
+// for a whole club.
+const readLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please wait a moment' },
 })
 
 // ---------------------------------------------------------------------------
@@ -289,12 +296,12 @@ router.get('/logo.png', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'assets', 'logo.png'))
 })
 
-router.get('/api/locations', requireWidgetSecret, (req, res) => {
+router.get('/api/locations', readLimiter, (req, res) => {
   res.json({ locations: LOCATIONS.map(l => ({ slug: l.slug, name: l.name })) })
 })
 
 // Calendar shape + who can be booked + the valid "tour member" picklist values.
-router.get('/api/config', requireWidgetSecret, async (req, res) => {
+router.get('/api/config', readLimiter, async (req, res) => {
   const loc = getLocationBySlug(String(req.query.location || '').toLowerCase())
   if (!loc) return res.status(400).json({ error: 'Unknown location' })
   try {
@@ -334,7 +341,7 @@ router.get('/api/config', requireWidgetSecret, async (req, res) => {
 
 // Availability. Omit userId for "anyone" (GHL applies its round-robin priority);
 // pass one to narrow to that trainer's own schedule.
-router.get('/api/slots', requireWidgetSecret, async (req, res) => {
+router.get('/api/slots', readLimiter, async (req, res) => {
   const loc = getLocationBySlug(String(req.query.location || '').toLowerCase())
   if (!loc) return res.status(400).json({ error: 'Unknown location' })
   const requested = Math.min(Math.max(parseInt(req.query.days, 10) || 14, 1), 31)
@@ -452,7 +459,7 @@ async function resolveAssignment(loc, startTime, timezone) {
 
 // Pre-submit: who WILL take this slot. `pick` is the trainer we will actually
 // send, not a guess — the booking assigns explicitly.
-router.get('/api/slot-trainers', requireWidgetSecret, async (req, res) => {
+router.get('/api/slot-trainers', readLimiter, async (req, res) => {
   const loc = getLocationBySlug(String(req.query.location || '').toLowerCase())
   if (!loc) return res.status(400).json({ error: 'Unknown location' })
   const startTime = String(req.query.startTime || '')
@@ -476,7 +483,7 @@ router.get('/api/slot-trainers', requireWidgetSecret, async (req, res) => {
 //   3. write the Day One custom fields onto the contact
 // Step 3 is last on purpose: a custom-field failure must not cost us the booking,
 // so it is reported but non-fatal.
-router.post('/api/book', requireWidgetSecret, bookLimiter, async (req, res) => {
+router.post('/api/book', bookLimiter, async (req, res) => {
   const {
     location, firstName, lastName, email, phone,
     userId, startTime, tourMember, notes,

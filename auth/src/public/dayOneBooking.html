@@ -169,9 +169,9 @@
   dl.summary dd { margin: 0; }
   code { background: var(--fill); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
 
-  /* ---- gate ---- */
-  .gate { max-width: 380px; margin: 60px auto; }
-  .gate h2 { margin-bottom: 16px; }
+  /* ---- location picker (shown when no location is in the path) ---- */
+  .panel { max-width: 380px; margin: 60px auto; }
+  .panel h2 { margin-bottom: 16px; }
   .loclink {
     display: block; border: 1px solid var(--line); border-radius: 8px;
     padding: 12px 14px; margin-bottom: 9px; color: var(--ink); text-decoration: none; font-weight: 500;
@@ -190,22 +190,8 @@
 <body>
 <div class="page">
 
-  <!-- Secret gate -->
-  <div class="gate" id="gate">
-    <h2>Day One Booking</h2>
-    <div class="field">
-      <label for="secret">Widget secret</label>
-      <input id="secret" type="password" autocomplete="off" placeholder="DAYONE_WIDGET_SECRET">
-    </div>
-    <div class="row-actions">
-      <button class="btn" id="unlock">Unlock</button>
-      <span class="muted">Stored in this browser only.</span>
-    </div>
-    <div class="err hide" id="gate-err"></div>
-  </div>
-
   <!-- Reached without a location: hand over the per-location links. -->
-  <div class="gate hide" id="picker">
+  <div class="panel hide" id="picker">
     <h2>Pick a location</h2>
     <p class="muted" style="margin-top:-8px">Each location has its own booking link.</p>
     <div id="links"></div>
@@ -330,7 +316,6 @@
   // here, because a per-location link (/day-one-booking/salem) has an extra
   // segment that is not part of the mount point.
   var API = '{{WIDGET_BASE}}'
-  var secret = localStorage.getItem('dayOneWidgetSecret') || ''
   var S = {
     // One link per location, so this is fixed for the life of the page.
     location: '{{WIDGET_LOCATION}}',
@@ -350,8 +335,7 @@
     opts = opts || {}
     return fetch(API + path, {
       method: opts.method || 'GET',
-      headers: Object.assign({ 'x-widget-secret': secret },
-        opts.body ? { 'Content-Type': 'application/json' } : {}),
+      headers: opts.body ? { 'Content-Type': 'application/json' } : {},
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     }).then(function (r) {
       return r.json().catch(function () { return {} }).then(function (b) {
@@ -386,21 +370,18 @@
       String(d.getDate()).padStart(2, '0')
   }
 
-  // --- gate ---------------------------------------------------------------
-  function unlock() {
-    secret = $('secret').value.trim()
-    if (!secret) return
-    fail($('gate-err'), '')
-    api('/api/locations').then(function (d) {
-      localStorage.setItem('dayOneWidgetSecret', secret)
-      show($('gate'), false)
-      if (!S.location) return offerLinks(d.locations)
+  // --- start --------------------------------------------------------------
+  // No credential step: the link itself is the access. A location in the path
+  // goes straight to booking; without one we hand over the per-location links.
+  function start() {
+    if (S.location) {
       show($('shell'), true)
-      loadConfig()
-    }).catch(function (e) { fail($('gate-err'), e.message) })
+      return loadConfig()
+    }
+    api('/api/locations')
+      .then(function (d) { offerLinks(d.locations) })
+      .catch(function (e) { fail($('cal-err'), e.message) })
   }
-  $('unlock').addEventListener('click', unlock)
-  $('secret').addEventListener('keydown', function (e) { if (e.key === 'Enter') unlock() })
 
   // Opened without a location: this page is meant to be reached by a
   // per-location link, so hand over the links rather than showing a picker
@@ -690,7 +671,7 @@
     updateWhen(); loadSlots()
   })
 
-  if (secret) { $('secret').value = secret; unlock() }
+  start()
 })()
 </script>
 </body>
