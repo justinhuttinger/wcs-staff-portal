@@ -88,6 +88,12 @@
     <div class="callout">Give us a call and we'll sort it out for you.</div>
   </div>
 
+  <div id="choose" class="hide">
+    <h1>Which Day One?</h1>
+    <p class="sub">You have more than one booked. Pick the one you meant.</p>
+    <div class="reasons" id="choose-list"></div>
+  </div>
+
   <div id="main" class="hide">
     <h1 id="title">Cancel your Day One</h1>
     <p class="sub" id="subtitle"></p>
@@ -140,6 +146,9 @@
   var LOCATION = '{{WIDGET_LOCATION}}'
   var MODE = '{{WIDGET_MODE}}'            // 'cancel' | 'reschedule'
   var CONTACT = new URLSearchParams(location.search).get('c') || ''
+  // Which appointment this link is for. Authoritative when present — without it
+  // a member with two booked Day Ones could act on the wrong one.
+  var APPT = new URLSearchParams(location.search).get('a') || ''
   var TZ = 'America/Los_Angeles'
 
   var S = { appt: null, trainer: null, reason: '', startTime: '' }
@@ -184,8 +193,13 @@
   if (!CONTACT) {
     show($('loading'), false); show($('notfound'), true)
   } else {
-    api('/api/appointment?location=' + encodeURIComponent(LOCATION) + '&c=' + encodeURIComponent(CONTACT))
+    api('/api/appointment?location=' + encodeURIComponent(LOCATION) +
+        '&c=' + encodeURIComponent(CONTACT) +
+        (APPT ? '&a=' + encodeURIComponent(APPT) : ''))
       .then(function (d) {
+        // Two upcoming and nothing in the link to say which: ask, rather than
+        // acting on whichever came back first.
+        if (!d.appointment && (d.candidates || []).length > 1) return chooseOne(d.candidates)
         S.appt = d.appointment
         S.trainer = d.trainer
         show($('loading'), false); show($('main'), true)
@@ -198,6 +212,25 @@
       .catch(function () {
         show($('loading'), false); show($('notfound'), true)
       })
+  }
+
+  // --- which appointment? -------------------------------------------------
+  function chooseOne(list) {
+    show($('loading'), false); show($('choose'), true)
+    $('choose-list').innerHTML = list.map(function (a) {
+      return '<button type="button" class="reason" data-id="' + esc(a.id) + '">' +
+        '<span class="dot-o"></span><span>' + esc(fmtDate(a.startTime)) + ' at ' +
+        esc(fmtTime(a.startTime)) + (a.trainerName ? ' — ' + esc(a.trainerName) : '') +
+        '</span></button>'
+    }).join('')
+    Array.prototype.forEach.call($('choose-list').querySelectorAll('.reason'), function (b) {
+      b.addEventListener('click', function () {
+        // Re-enter with the id pinned, so every later call is unambiguous.
+        var u = new URL(window.location.href)
+        u.searchParams.set('a', b.getAttribute('data-id'))
+        window.location.href = u.toString()
+      })
+    })
   }
 
   // --- cancel -------------------------------------------------------------
@@ -225,7 +258,7 @@
     $('do-cancel').disabled = true
     $('do-cancel').innerHTML = '<span class="spin"></span> Cancelling…'
     api('/api/cancel', { method: 'POST', body: {
-      location: LOCATION, c: CONTACT, reason: S.reason, notes: $('notes').value.trim(),
+      location: LOCATION, c: CONTACT, a: S.appt && S.appt.id, reason: S.reason, notes: $('notes').value.trim(),
     }}).then(function () {
       show($('main'), false); show($('done'), true)
       $('done-title').textContent = 'Your Day One is cancelled'
@@ -251,7 +284,7 @@
     // The server resolves the trainer from the link, so this cannot ask for
     // anyone else's availability.
     api('/api/reschedule-slots?location=' + encodeURIComponent(LOCATION) +
-        '&c=' + encodeURIComponent(CONTACT) +
+        '&c=' + encodeURIComponent(CONTACT) + (APPT ? '&a=' + encodeURIComponent(APPT) : '') +
         '&timezone=' + encodeURIComponent(TZ))
       .then(function (s) {
         var dates = Object.keys(s.days || {}).sort()
@@ -292,7 +325,7 @@
     $('do-resched').disabled = true
     $('do-resched').innerHTML = '<span class="spin"></span> Rescheduling…'
     api('/api/reschedule', { method: 'POST', body: {
-      location: LOCATION, c: CONTACT, startTime: S.startTime,
+      location: LOCATION, c: CONTACT, a: S.appt && S.appt.id, startTime: S.startTime,
     }}).then(function (r) {
       show($('main'), false); show($('done'), true)
       $('done-title').textContent = 'You\'re rescheduled'
