@@ -26,7 +26,7 @@
 const ORIGIN = 'https://wcs-auth-api.onrender.com'
 
 // Path prefixes this subdomain will serve. Everything else 404s.
-const ALLOWED = ['/dayone']
+const ALLOWED = ['/dayone', '/meetjustin']
 
 // Where "/" sends people. Update if this stops being the only booking type.
 const DEFAULT_PATH = '/dayone/'

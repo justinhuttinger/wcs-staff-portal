@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{WIDGET_TITLE}}</title>
+<style>
+  :root {
+    --ink: #111213; --text: #1f2328; --muted: #6b7280;
+    --line: #e5e7eb; --fill: #f3f4f6; --fill-2: #9ca3af;
+    --danger: #b42318; --ok: #2f7d4f;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: #fff; }
+  body {
+    margin: 0; color: var(--text);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 620px; margin: 0 auto; padding: 30px 20px 56px; }
+  body.compact .wrap { padding: 16px; }
+  .logo { width: 62px; height: 62px; display: block; margin: 0 auto 16px; }
+  body.compact .logo { width: 46px; height: 46px; margin-bottom: 10px; }
+  h1 { font-size: 24px; margin: 0 0 6px; letter-spacing: -0.02em; color: var(--ink); text-align: center; }
+  body.compact h1 { font-size: 20px; }
+  .sub { color: var(--muted); text-align: center; margin: 0 0 24px; font-size: 15px; }
+
+  /* Step rail */
+  .steps { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 22px; }
+  .step { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); }
+  .step .n {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--fill); color: var(--muted);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;
+  }
+  .step.on { color: var(--ink); font-weight: 600; }
+  .step.on .n { background: var(--ink); color: #fff; }
+  .step.done .n { background: var(--ok); color: #fff; }
+  .step-sep { width: 18px; height: 1px; background: var(--line); }
+  body.compact .steps { display: none; }
+
+  .card { border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
+  .chosen-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--fill); border-radius: 10px; padding: 10px 13px; margin-bottom: 18px; font-size: 14px;
+  }
+  .chosen-bar b { color: var(--ink); }
+  .linkish {
+    background: none; border: 0; color: var(--muted); font: inherit; text-decoration: underline;
+    cursor: pointer; padding: 0; margin-left: auto;
+  }
+  .linkish:hover { color: var(--ink); }
+
+  /* Length options */
+  .opts { display: flex; flex-direction: column; gap: 10px; }
+  .opt-btn {
+    display: flex; align-items: center; gap: 13px; width: 100%; text-align: left;
+    border: 1px solid var(--line); border-radius: 11px; background: #fff; color: var(--text);
+    padding: 15px 16px; font: inherit; cursor: pointer;
+  }
+  .opt-btn:hover { border-color: var(--ink); background: #fafafa; }
+  .opt-btn .mins {
+    flex: none; width: 46px; height: 46px; border-radius: 50%; background: var(--ink); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;
+  }
+  .opt-btn .t { flex: 1; }
+  .opt-btn .t .big { font-size: 16px; font-weight: 600; color: var(--ink); }
+  .opt-btn .t .small { font-size: 13px; color: var(--muted); }
+  .opt-btn .chev { color: var(--fill-2); flex: none; }
+
+  /* Week strip + times */
+  .week { display: flex; align-items: center; gap: 6px; margin-bottom: 16px; }
+  .week-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; flex: 1; }
+  .wd {
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    border: 1px solid var(--line); border-radius: 9px; background: #fff;
+    padding: 8px 2px; font: inherit; cursor: pointer; color: var(--text);
+  }
+  .wd .dow-s { font-size: 11px; color: var(--muted); }
+  .wd .num { font-size: 15px; font-weight: 600; }
+  .wd:hover:not(:disabled) { background: var(--fill); }
+  .wd:disabled { color: #c8ccd2; border-color: #f0f1f3; cursor: default; }
+  .wd:disabled .dow-s { color: #d5d8dd; }
+  .wd[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .wd[aria-pressed="true"] .dow-s { color: #cfd3d9; }
+  .nav {
+    width: 32px; height: 32px; flex: none; border-radius: 50%; border: 0; background: transparent;
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink);
+  }
+  .nav:hover:not(:disabled) { background: var(--fill); }
+  .nav:disabled { color: #d1d5db; cursor: default; }
+  .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
+  .slot {
+    border: 1px solid var(--ink); border-radius: 9px; background: #fff; color: var(--ink);
+    padding: 12px 6px; font: inherit; font-size: 15px; cursor: pointer; text-align: center;
+  }
+  .slot:hover { background: var(--fill); }
+  .slot[aria-pressed="true"] { background: var(--ink); color: #fff; }
+
+  /* Form */
+  .field { margin-bottom: 13px; }
+  .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 5px; }
+  .field input, .field textarea {
+    width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 11px 13px;
+    font: inherit; color: var(--text); background: #fff; outline: none;
+  }
+  .field input:focus, .field textarea:focus { border-color: var(--ink); }
+  .field textarea { min-height: 82px; resize: vertical; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+  body.compact .two { grid-template-columns: 1fr; gap: 0; }
+  .btn {
+    width: 100%; background: var(--ink); color: #fff; border: 0; border-radius: 9px;
+    padding: 14px 20px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  .btn:hover:not(:disabled) { background: #000; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .ghost-btn {
+    background: transparent; color: var(--muted); border: 1px solid var(--line);
+    font-weight: 500; padding: 10px 18px; width: auto;
+  }
+  .ghost-btn:hover { background: var(--fill); color: var(--text); }
+
+  /* Confirmation */
+  .done-wrap { text-align: center; padding: 14px 0 6px; }
+  .done-mark {
+    position: relative; width: 74px; height: 74px; border-radius: 50%; margin: 0 auto 20px;
+    background: #eaf6ee; color: var(--ok);
+    display: flex; align-items: center; justify-content: center;
+    animation: pop .42s cubic-bezier(.2,.9,.3,1.4) both;
+  }
+  .done-mark::after {
+    content: ''; position: absolute; width: 74px; height: 74px; border-radius: 50%;
+    border: 2px solid var(--ok); animation: ring .9s ease-out .18s both;
+  }
+  .done-tick { stroke-dasharray: 48; stroke-dashoffset: 48; animation: draw .38s ease-out .26s both; }
+  @keyframes pop { from { transform: scale(.4); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+  @keyframes ring { from { transform: scale(1); opacity: .55 } to { transform: scale(1.85); opacity: 0 } }
+  @keyframes draw { to { stroke-dashoffset: 0 } }
+  @media (prefers-reduced-motion: reduce) {
+    .done-mark, .done-mark::after, .done-tick { animation: none; stroke-dashoffset: 0; }
+    .done-mark::after { display: none; }
+  }
+  .done-head { font-size: 25px; font-weight: 700; color: var(--ink); margin: 0 0 10px; letter-spacing: -0.02em; }
+  body.compact .done-head { font-size: 21px; }
+  .done-line { font-size: 17px; line-height: 1.5; margin: 0 0 14px; }
+  .done-line b { font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .done-sub { font-size: 14px; color: var(--muted); margin: 0 0 22px; }
+
+  .muted { color: var(--muted); font-size: 14px; }
+  .err { color: var(--danger); font-size: 14px; margin-top: 12px; }
+  .hide { display: none !important; }
+  .spin {
+    display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line);
+    border-top-color: var(--ink); border-radius: 50%; animation: s .7s linear infinite; vertical-align: -2px;
+  }
+  @keyframes s { to { transform: rotate(360deg) } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img class="logo" id="logo" alt="West Coast Strength">
+  <h1 id="title">{{WIDGET_TITLE}}</h1>
+  <p class="sub" id="blurb">{{WIDGET_BLURB}}</p>
+
+  <div class="steps" id="steps">
+    <div class="step on" id="s1"><span class="n">1</span> Length</div>
+    <div class="step-sep"></div>
+    <div class="step" id="s2"><span class="n">2</span> Time</div>
+    <div class="step-sep"></div>
+    <div class="step" id="s3"><span class="n">3</span> Details</div>
+  </div>
+
+  <div class="chosen-bar hide" id="chosen"></div>
+
+  <!-- STEP 1 -->
+  <div id="pane-length">
+    <div class="opts" id="opts"><span class="muted"><span class="spin"></span> Loading…</span></div>
+    <div class="err hide" id="opts-err"></div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div id="pane-time" class="hide">
+    <div class="week" id="week">
+      <button class="nav" id="week-prev" aria-label="Previous week">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg>
+      </button>
+      <div class="week-days" id="week-days"></div>
+      <button class="nav" id="week-next" aria-label="Next week">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+      </button>
+    </div>
+    <div id="slots"><span class="muted"><span class="spin"></span> Loading times…</span></div>
+    <div class="err hide" id="time-err"></div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div id="pane-form" class="hide">
+    <div class="two">
+      <div class="field"><label for="firstName">First name</label><input id="firstName" autocomplete="given-name"></div>
+      <div class="field"><label for="lastName">Last name</label><input id="lastName" autocomplete="family-name"></div>
+    </div>
+    <div class="two">
+      <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="email"></div>
+      <div class="field"><label for="phone">Phone</label><input id="phone" type="tel" autocomplete="tel"></div>
+    </div>
+    <div class="field">
+      <label for="notes">What would you like to talk about?</label>
+      <textarea id="notes" placeholder="Optional"></textarea>
+    </div>
+    <button class="btn" id="book" disabled>Confirm booking</button>
+    <div class="err hide" id="book-err"></div>
+  </div>
+
+  <!-- DONE -->
+  <div id="pane-done" class="hide">
+    <div class="done-wrap">
+      <div class="done-mark" aria-hidden="true">
+        <svg viewBox="0 0 52 52" width="38" height="38">
+          <path class="done-tick" d="M14 27l8 8 16-18" fill="none" stroke="currentColor"
+                stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h2 class="done-head">You're booked!</h2>
+      <p class="done-line" id="done-line"></p>
+      <p class="done-sub">We've sent you a confirmation. Talk soon!</p>
+      <button class="btn ghost-btn" id="again">Book another</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict'
+  var API = '{{WIDGET_BASE}}'
+  var TZ = 'America/Los_Angeles'
+
+  var qp = new URLSearchParams(window.location.search)
+  var COMPACT = qp.get('embed') === '1' ||
+    (qp.get('embed') !== '0' && window.parent !== window)
+  if (COMPACT) document.body.classList.add('compact')
+
+  var S = { option: null, days: {}, date: '', startTime: '', weekStart: null }
+  var $ = function (id) { return document.getElementById(id) }
+  function show(el, on) { el.classList.toggle('hide', !on) }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;') }
+  function fail(el, m) { el.textContent = m || ''; show(el, !!m) }
+
+  $('logo').src = API + '/logo.png'
+
+  function api(path, opts) {
+    opts = opts || {}
+    return fetch(API + path, {
+      method: opts.method || 'GET',
+      headers: opts.body ? { 'Content-Type': 'application/json' } : {},
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    }).then(function (r) {
+      return r.json().catch(function () { return {} }).then(function (b) {
+        if (!r.ok) throw new Error(b.error || ('HTTP ' + r.status))
+        return b
+      })
+    })
+  }
+
+  // --- formatting (in the displayed zone, so everything agrees) ------------
+  function fmtTime(iso) {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZone: TZ }).format(new Date(iso))
+  }
+  function fmtDayName(iso) {
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric', timeZone: TZ }).format(new Date(iso))
+  }
+  function dateKey(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0')
+  }
+  function fromKey(k) { var p = k.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]) }
+  function startOfWeek(d) {
+    var x = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+    x.setDate(x.getDate() - x.getDay()); return x
+  }
+  function addDays(d, n) {
+    var x = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+    x.setDate(x.getDate() + n); return x
+  }
+  var DOW_S = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+  function setStep(n) {
+    ;[1, 2, 3].forEach(function (i) {
+      var el = $('s' + i)
+      el.classList.toggle('on', i === n)
+      el.classList.toggle('done', i < n)
+    })
+  }
+
+  function renderChosen() {
+    if (!S.option) return show($('chosen'), false)
+    var bits = '<b>' + esc(S.option.label) + '</b>'
+    if (S.startTime) {
+      bits += ' · <b>' + esc(fmtTime(S.startTime)) + '</b>, ' + esc(fmtDayName(S.startTime))
+    }
+    $('chosen').innerHTML = bits +
+      '<button type="button" class="linkish" id="change">Change</button>'
+    show($('chosen'), true)
+    $('change').addEventListener('click', backToStart)
+  }
+
+  function backToStart() {
+    S.option = null; S.startTime = ''; S.date = ''; S.days = {}
+    show($('pane-time'), false); show($('pane-form'), false); show($('pane-done'), false)
+    show($('pane-length'), true); show($('chosen'), false)
+    setStep(1)
+  }
+
+  // --- step 1: length ------------------------------------------------------
+  api('/api/options').then(function (d) {
+    if (d.title) { $('title').textContent = d.title; document.title = d.title }
+    if (d.blurb) $('blurb').textContent = d.blurb
+    $('opts').innerHTML = (d.options || []).map(function (o) {
+      return '<button type="button" class="opt-btn" data-id="' + esc(o.id) + '">' +
+        '<span class="mins">' + o.minutes + '<span style="font-size:10px">m</span></span>' +
+        '<span class="t"><span class="big">' + esc(o.label) + '</span><br>' +
+        '<span class="small">' + esc(o.name) + '</span></span>' +
+        '<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" ' +
+          'stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>' +
+        '</button>'
+    }).join('')
+    Array.prototype.forEach.call($('opts').querySelectorAll('.opt-btn'), function (b) {
+      b.addEventListener('click', function () {
+        S.option = (d.options || []).filter(function (o) {
+          return o.id === b.getAttribute('data-id') })[0]
+        chooseLength()
+      })
+    })
+  }).catch(function (e) { fail($('opts-err'), e.message) })
+
+  function chooseLength() {
+    show($('pane-length'), false); show($('pane-time'), true)
+    setStep(2); renderChosen()
+    $('slots').innerHTML = '<span class="muted"><span class="spin"></span> Loading times…</span>'
+    api('/api/slots?calendarId=' + encodeURIComponent(S.option.id) +
+        '&days=31&timezone=' + encodeURIComponent(TZ))
+      .then(function (d) {
+        S.days = d.days || {}
+        var keys = Object.keys(S.days).sort()
+        S.date = keys[0] || ''
+        S.weekStart = startOfWeek(S.date ? fromKey(S.date) : new Date())
+        renderWeek(); renderTimes()
+      })
+      .catch(function (e) { fail($('time-err'), e.message) })
+  }
+
+  // --- step 2: week + times ------------------------------------------------
+  function renderWeek() {
+    if (!S.weekStart) return
+    var html = ''
+    for (var i = 0; i < 7; i++) {
+      var d = addDays(S.weekStart, i), key = dateKey(d), open = !!S.days[key]
+      html += '<button class="wd" data-key="' + key + '"' + (open ? '' : ' disabled') +
+        ' aria-pressed="' + (key === S.date) + '">' +
+        '<span class="dow-s">' + DOW_S[d.getDay()] + '</span>' +
+        '<span class="num">' + d.getDate() + '</span></button>'
+    }
+    $('week-days').innerHTML = html
+    Array.prototype.forEach.call($('week-days').querySelectorAll('.wd'), function (b) {
+      if (b.disabled) return
+      b.addEventListener('click', function () {
+        S.date = b.getAttribute('data-key'); S.startTime = ''
+        renderWeek(); renderTimes(); renderChosen()
+      })
+    })
+    // Only weeks that contain bookable days — arrowing past the calendar's
+    // booking window would just show empty rows.
+    var keys = Object.keys(S.days).sort()
+    var first = keys.length ? startOfWeek(fromKey(keys[0])) : null
+    var last = keys.length ? startOfWeek(fromKey(keys[keys.length - 1])) : null
+    $('week-prev').disabled = !first || S.weekStart <= first
+    $('week-next').disabled = !last || S.weekStart >= last
+  }
+
+  $('week-prev').addEventListener('click', function () {
+    S.weekStart = addDays(S.weekStart, -7); renderWeek()
+  })
+  $('week-next').addEventListener('click', function () {
+    S.weekStart = addDays(S.weekStart, 7); renderWeek()
+  })
+
+  function renderTimes() {
+    var list = (S.date && S.days[S.date]) || []
+    if (!list.length) {
+      $('slots').innerHTML = '<span class="muted">No open times that day.</span>'
+      return
+    }
+    $('slots').innerHTML = '<div class="slots">' + list.map(function (iso) {
+      return '<button class="slot" data-iso="' + iso + '">' + fmtTime(iso) + '</button>'
+    }).join('') + '</div>'
+    Array.prototype.forEach.call($('slots').querySelectorAll('.slot'), function (b) {
+      b.addEventListener('click', function () {
+        S.startTime = b.getAttribute('data-iso')
+        renderChosen()
+        show($('pane-time'), false); show($('pane-form'), true)
+        setStep(3); syncBook()
+      })
+    })
+  }
+
+  // --- step 3: details -----------------------------------------------------
+  function syncBook() {
+    $('book').disabled = !(S.startTime && $('firstName').value.trim() &&
+      ($('email').value.trim() || $('phone').value.trim()))
+  }
+  ;['firstName', 'email', 'phone'].forEach(function (id) {
+    $(id).addEventListener('input', syncBook)
+  })
+
+  $('book').addEventListener('click', function () {
+    fail($('book-err'), '')
+    $('book').disabled = true
+    $('book').innerHTML = '<span class="spin"></span> Booking…'
+    api('/api/book', { method: 'POST', body: {
+      calendarId: S.option.id,
+      startTime: S.startTime,
+      firstName: $('firstName').value.trim(),
+      lastName: $('lastName').value.trim(),
+      email: $('email').value.trim(),
+      phone: $('phone').value.trim(),
+      notes: $('notes').value.trim(),
+    }}).then(function (r) {
+      var first = ($('firstName').value.trim().split(/\s+/)[0]) || ''
+      $('done-line').innerHTML = (first ? 'Thanks, ' + esc(first) + '! ' : 'Thank you! ') +
+        'Your <b>' + esc(S.option.label) + '</b> with Justin is booked for <b>' +
+        esc(fmtTime(r.startTime)) + '</b> on <b>' + esc(fmtDayName(r.startTime)) + '</b>.'
+      show($('pane-form'), false); show($('chosen'), false); show($('pane-done'), true)
+      show($('steps'), false)
+    }).catch(function (e) {
+      fail($('book-err'), e.message)
+      $('book').disabled = false
+      $('book').textContent = 'Confirm booking'
+    })
+  })
+
+  $('again').addEventListener('click', function () {
+    ;['firstName', 'lastName', 'email', 'phone', 'notes'].forEach(function (id) { $(id).value = '' })
+    $('book').textContent = 'Confirm booking'
+    show($('steps'), true)
+    backToStart()
+  })
+
+  // --- height for embeds ---------------------------------------------------
+  // Without this an embed picks between a fixed height that clips the times and
+  // height:100%, which collapses to ~150px when the container has only a
+  // min-height. Snippet in docs/day-one-embed.md.
+  if (window.parent !== window) {
+    var lastHeight = 0
+    var postHeight = function () {
+      var h = Math.max(
+        document.body ? document.body.scrollHeight : 0,
+        document.documentElement ? document.documentElement.scrollHeight : 0)
+      if (!h || Math.abs(h - lastHeight) < 2) return
+      lastHeight = h
+      window.parent.postMessage({ type: 'wcs-dayone-height', height: h }, '*')
+    }
+    window.addEventListener('load', postHeight)
+    window.addEventListener('resize', postHeight)
+    if (typeof ResizeObserver === 'function') {
+      new ResizeObserver(postHeight).observe(document.documentElement)
+    } else {
+      setInterval(postHeight, 500)
+    }
+  }
+})()
+</script>
+</body>
+</html>
