@@ -13,24 +13,33 @@ Same approach as `join.westcoaststrength.com` (the online-join worker).
 
 ## URLs
 
-| Public | Proxied to |
+| Public | Purpose |
 |---|---|
-| `book.westcoaststrength.com/salem` | booking page (staff) |
-| `book.westcoaststrength.com/salem/cancel?c=…&a=…` | cancel (member) |
-| `book.westcoaststrength.com/salem/reschedule?c=…&a=…` | reschedule (member) |
-| `book.westcoaststrength.com/` | location list |
+| `book.westcoaststrength.com/dayone/salem` | booking page |
+| `book.westcoaststrength.com/dayone/salem/cancel?c=…&a=…` | cancel (member) |
+| `book.westcoaststrength.com/dayone/salem/reschedule?c=…&a=…` | reschedule (member) |
+| `book.westcoaststrength.com/dayone/` | location list |
+| `book.westcoaststrength.com/` | redirects to `/dayone/` |
 
 Any club slug works: `salem`, `keizer`, `eugene`, `springfield`, `clackamas`,
 `milwaukie`, `medford`.
 
-## Why every path is prefixed
+Paths pass through **unchanged** to the origin. The `/dayone` segment is kept
+rather than stripped so other booking types can live beside it later — `/pt`,
+`/tour` — on the same subdomain, each with its own pages. It also means the
+page's own idea of its mount base is already correct, so no HTML is rewritten in
+transit and nothing here breaks if that markup changes.
 
-The Worker maps everything into `/dayone/*` on the origin. That is a security
-boundary, not tidiness: the auth API also serves `/admin`, `/reports`, `/vault`
-and the rest, and pointing a public subdomain straight at the service would
-expose all of it on a friendly hostname. Here anything outside `/dayone` is
-unreachable by construction, rather than by an allowlist someone has to keep
-updating.
+## The allowlist is the security boundary
+
+`ALLOWED` in `src/index.js` lists the path prefixes this subdomain will serve.
+Everything else 404s before the request ever reaches the origin.
+
+That matters because the auth API also serves `/admin`, `/reports` and `/vault`.
+Pointing a public subdomain straight at the service would put all of it on a
+friendly hostname. Adding a booking type is a deliberate one-line edit here,
+which is exactly the point — a new prefix should be a decision, not a side
+effect of someone adding a route to the API.
 
 ## Setup
 
@@ -59,31 +68,22 @@ Worker → **Settings** → **Domains & Routes** → **Add** → **Custom domain
 The zone is already on Cloudflare nameservers, so Cloudflare creates the DNS
 record and issues the certificate itself. No manual CNAME.
 
-### 3. Decide how staff authenticate
+### 3. Access
 
-Out of the box the booking page asks for the widget secret once per browser and
-stores it locally. The member cancel/reschedule pages need no secret — they are
-keyed on contact and appointment ids.
+The widget is **open** — the link is the access. No secret, nothing to type,
+which is what makes it usable from a QR code, an SMS or an embed.
 
-Two ways to remove the prompt for staff, in increasing order of correctness:
+That also means booking is reachable by anyone who has the URL, and booking
+writes real appointments and sends real SMS to trainers. The origin rate limits
+it (6 bookings/min and 60 reads/min per IP), which is why this Worker forwards
+the real client IP.
 
-**Inject the secret** (quick, weaker):
-
-```bash
-npx wrangler secret put WIDGET_SECRET
-```
-
-The Worker then adds the header to `/api/*` itself. Nobody types anything — but
-anyone who finds the URL can book, and booking creates real appointments and
-sends real SMS. Only reasonable if the URL stays internal.
-
-**Cloudflare Access** (proper):
-
-Zero Trust → Access → Applications → add `book.westcoaststrength.com/` with a
-policy allowing your staff email domain, then **exclude** `/*/cancel` and
-`/*/reschedule` so members are not asked to log in. Combine with the injected
-secret above and staff get a clean signed-in experience while members keep
-self-service.
+If that ever stops being enough, put **Cloudflare Access** in front of the
+booking path: Zero Trust → Access → Applications → add
+`book.westcoaststrength.com/dayone/` with a policy for your staff email domain,
+and **exclude** `/dayone/*/cancel` and `/dayone/*/reschedule` so members are
+never asked to log in — those are keyed on contact and appointment ids and were
+always public.
 
 ## Local development
 
@@ -94,11 +94,14 @@ npx wrangler dev
 Proxies the real API, so booking through it books for real. Use the cancel and
 reschedule pages against a test contact rather than a member.
 
-## The one coupling to know about
+## Adding another booking type
 
-The Worker rewrites `var API = '…'` in HTML responses, because the page derives
-its API base from the mount it was served under (`/dayone` on the origin, root
-here). If that line in `auth/src/public/dayOne*.html` is ever renamed, this
-rewrite silently stops matching and every API call from the subdomain 404s.
+When there is a second way to book, add its prefix to `ALLOWED` and point
+`DEFAULT_PATH` wherever `/` should land:
 
-Both files live in the same repo, so a grep for `var API` catches it.
+```js
+const ALLOWED = ['/dayone', '/pt']
+```
+
+Nothing else changes here — the pages come from the auth API, so the work is on
+that side. This Worker only decides what the subdomain is willing to serve.
