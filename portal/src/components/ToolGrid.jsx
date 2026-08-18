@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import allTools from '../config/tools.json'
 import ToolButton from './ToolButton'
 import { PORTAL_TILE_CATALOG } from '../config/portalTiles'
+import PortalSearch from './PortalSearch'
+import { getTheme, THEME_EVENT } from '../lib/theme'
 import { getTiles, getDayOneTrackerAppointments, getTours, getLeaderboard, getAppSettings } from '../lib/api'
 
 // Shared Drive uses an inline icon path in the main layout; mirror it here so
@@ -60,6 +62,8 @@ function SvgTileButton({ onClick, iconPath, label, desc, badge, star }) {
   return (
     <button
       onClick={onClick}
+      // Search haystack for the Spotlight theme's board search — see PortalSearch.
+      data-tile-search={`${label || ''} ${desc || ''} tool internal`.toLowerCase()}
       className="portal-tile group relative flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
     >
       {star && (
@@ -79,7 +83,7 @@ function SvgTileButton({ onClick, iconPath, label, desc, badge, star }) {
       </div>
       <div className="portal-tile__text text-center">
         <span className="portal-tile__label block text-base font-semibold text-text-primary">{label}</span>
-        <span className="block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">{desc}</span>
+        <span className="portal-tile__desc block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">{desc}</span>
       </div>
     </button>
   )
@@ -128,6 +132,25 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   const [dayoneUrl, setDayoneUrl] = useState(null)
   const [vipUrl, setVipUrl] = useState(null)
   const [actionPopup, setActionPopup] = useState(null) // { title, url } or null
+  // Spotlight theme adds board search + a staggered reveal. Everything else
+  // about the board is identical across themes.
+  const [theme, setThemeState] = useState(getTheme)
+  const spotlight = theme === 'spotlight'
+
+  useEffect(() => {
+    const onChange = () => setThemeState(getTheme())
+    window.addEventListener(THEME_EVENT, onChange)
+    return () => window.removeEventListener(THEME_EVENT, onChange)
+  }, [])
+
+  // Stamp each tile's position so the reveal can stagger without every call
+  // site having to thread an index through. Cheap: a few dozen nodes.
+  useEffect(() => {
+    if (!spotlight) return
+    document.querySelectorAll('.portal-tile').forEach((el, i) => {
+      el.style.setProperty('--tile-i', String(i))
+    })
+  })
 
   useEffect(() => {
     if (locationId) {
@@ -321,6 +344,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
     if (showMarketingTracker) cells.push(tile('marketingTracker'))
     return (
       <div className="w-full max-w-4xl mx-auto px-8 pt-4">
+        {spotlight && <PortalSearch />}
         <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">
           {userName ? `${userName}'s Portal` : 'Portal'}
         </p>
@@ -379,13 +403,16 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
 
   return (
     <div className="w-full px-4 mx-auto">
+      {/* Search sits above the board in every Spotlight variant, and is never
+          optional. Classic and WP keep the board exactly as it was. */}
+      {spotlight && <PortalSearch />}
       {/* Top banner row — Action buttons (Apps side) + Score Card (Tools side) */}
       {leaderboardData && !hideScoreCard && (() => {
         const totalAtLocation = leaderboardData.total_staff || totalStaff
         const displayRank = userRank || totalAtLocation || '—'
         return (
           <>
-            <div className="flex gap-10 mb-5">
+            <div className="portal-section flex gap-10 mb-5">
               {/* Score Card — above Apps (left) */}
               <div className="w-1/2 rounded-[14px] bg-surface border border-border px-5 py-3 flex items-center gap-4">
                 <div className="flex items-center gap-2 shrink-0">
@@ -564,9 +591,9 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
         )
       })()}
 
-      <div className="flex gap-10">
+      <div className="portal-columns flex gap-10">
       {/* Apps — left side */}
-      <div className="w-1/2">
+      <div className="portal-section w-1/2">
         <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">Apps</p>
         <div className="portal-tile-grid grid grid-cols-4 gap-4">
           {appTools.map((tool) => (
@@ -594,7 +621,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
       </div>
 
       {/* Tools — right side, ordered */}
-      <div className="w-1/2">
+      <div className="portal-section w-1/2">
         <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">Tools</p>
         <div className="portal-tile-grid grid grid-cols-4 gap-4">
           {/* 1. Cancel Tool (custom tile — direct link) */}
