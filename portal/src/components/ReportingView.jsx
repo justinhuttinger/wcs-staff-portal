@@ -96,7 +96,7 @@ const REPORT_GROUPS = [
     label: 'Club Health',
     desc: 'Health, Activity & Compliance',
     iconPath: REPORT_ICONS['club-health'],
-    reports: ['club-health', 'membership', 'cancels', 'compliance', 'audits', 'checkins', 'payroll', 'revenue', 'pos-sales', 'till'],
+    reports: ['club-health', 'membership', 'cancels', 'nps', 'compliance', 'audits', 'checkins', 'payroll', 'revenue', 'pos-sales', 'till'],
   },
   {
     key: 'training',
