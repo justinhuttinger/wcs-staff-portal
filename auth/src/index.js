@@ -15,6 +15,7 @@ app.set('trust proxy', 1)
 const ALLOWED_ORIGINS = [
   process.env.PORTAL_URL || 'https://portal.wcstrength.com',
   'https://forms.westcoaststrength.com',
+  'https://survey.westcoaststrength.com',
   'http://localhost:3000',
   'http://localhost:5173',
 ]
@@ -144,6 +145,7 @@ app.use('/audit-log', require('./routes/auditLog'))
 app.use('/changelog', require('./routes/changelog'))
 app.use('/forms', require('./routes/forms'))
 app.use('/public/forms', require('./routes/publicForms'))
+app.use('/public/nps', require('./routes/publicNps'))
 
 // WCS University (voice roleplay training) — ships dark behind a flag until the
 // Retell agent + GHL custom fields are configured. See services/university/README.md.
