@@ -56,7 +56,9 @@ export default function StrandedAdsModal({ audit, onClose, onSwept }) {
       setResult(res)
       onSwept()
     } catch (err) {
-      setError(err.message)
+      setError(err.rate_limited && err.retry_after_minutes
+        ? `${err.message} Nothing was left half-done — re-run this when the limit clears.`
+        : err.message)
     } finally {
       setBusy(false)
     }
@@ -75,6 +77,17 @@ export default function StrandedAdsModal({ audit, onClose, onSwept }) {
             ? 'Those ads are switched off for real now. Turning their campaign or ad set back on will no longer bring them with it.'
             : 'Nothing was changed.'}
         </p>
+
+        {result.stopped_early && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+            <p className="text-sm font-semibold text-amber-900">Stopped early to protect the ad account</p>
+            <p className="text-xs text-amber-800 mt-0.5">
+              Meta meters every ad it pauses, and the account was approaching its hourly limit, so
+              {' '}{result.remaining} ad{result.remaining === 1 ? '' : 's'} were left alone. Run this again
+              in an hour to finish — already-paused ads are skipped, so nothing gets done twice.
+            </p>
+          </div>
+        )}
         {failures.length > 0 && (
           <ul className="space-y-2 max-h-56 overflow-y-auto">
             {failures.map(f => (
@@ -117,6 +130,13 @@ export default function StrandedAdsModal({ audit, onClose, onSwept }) {
         switching the campaign or ad set back on would start every one of them spending at once. Pausing
         them here makes off mean off.
       </p>
+
+      {audit.total > 100 && (
+        <p className="text-xs text-amber-800 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+          Meta counts every ad paused against this account's hourly API budget. A sweep this size may stop
+          part-way and ask you to finish it later — that is expected, and nothing is left inconsistent.
+        </p>
+      )}
 
       <div className="rounded-xl border border-border divide-y divide-border max-h-[52vh] overflow-y-auto">
         {audit.groups.map(g => {

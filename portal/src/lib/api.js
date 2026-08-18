@@ -1374,8 +1374,16 @@ export async function getAdsManagerAudiences() {
 
 // Stranded ads: switched on inside a paused campaign or ad set. Harmless
 // until the parent is reactivated, at which point they all resume at once.
-export async function getAdsManagerStrandedAds() {
-  return api(MAM + '/audit/stranded-ads')
+// The audit is the most expensive query this feature makes, so the server
+// caches it. Pass force to pay for a fresh one.
+export async function getAdsManagerStrandedAds(force) {
+  return api(MAM + '/audit/stranded-ads' + (force ? '?refresh=1' : ''))
+}
+
+// Last observed Meta rate-limit budget. Served from cached headers, so this
+// costs nothing against the ad account.
+export async function getAdsManagerUsage() {
+  return api(MAM + '/usage')
 }
 
 // Omit ad_ids to sweep every stranded ad; pass a subset to pause just those.

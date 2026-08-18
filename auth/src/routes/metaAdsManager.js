@@ -31,6 +31,58 @@ function getConfig() {
   return { token, accountId }
 }
 
+// ---------------------------------------------------------------------------
+// Rate limiting
+// ---------------------------------------------------------------------------
+//
+// Meta meters ads_management per ad account on THREE independent budgets, each
+// reported as a percentage in the x-business-use-case-usage header:
+//   call_count    - share of the hourly call allowance
+//   total_cputime - share of the CPU budget
+//   total_time    - share of the wall-clock budget
+// Hitting 100 on ANY of them throttles the whole account. In practice it is
+// total_time that trips first here: a few broad, deeply-expanded queries cost
+// far more than many narrow ones, so "just make fewer calls" is the wrong fix.
+//
+// The allowance is 300 + 40 x active ads per hour on the standard tier, and
+// this app is currently on the limited/development tier, so the ceiling is low.
+let lastUsage = null
+
+function recordUsage(res, accountId) {
+  try {
+    const raw = res.headers.get('x-business-use-case-usage')
+    if (!raw) return
+    const parsed = JSON.parse(raw)
+    const bare = String(accountId).replace(/^act_/, '')
+    const entry = (parsed[bare] || [])[0]
+    if (!entry) return
+    lastUsage = {
+      call_count: entry.call_count,
+      total_cputime: entry.total_cputime,
+      total_time: entry.total_time,
+      retry_after_minutes: entry.estimated_time_to_regain_access || 0,
+      tier: entry.ads_api_access_tier,
+      at: Date.now(),
+    }
+  } catch {
+    // Usage telemetry is best-effort; never let it break a real request.
+  }
+}
+
+// Worst of the three budgets, as a percentage.
+function usagePressure() {
+  if (!lastUsage) return 0
+  return Math.max(lastUsage.call_count || 0, lastUsage.total_cputime || 0, lastUsage.total_time || 0)
+}
+
+// 80004/2446079 is the documented ads_management throttle; 17 and 613 are the
+// older generic request-limit codes Meta still returns in places.
+function isThrottleError(err) {
+  const m = err && err.meta
+  if (!m) return false
+  return m.code === 80004 || m.code === 17 || m.code === 613 || m.error_subcode === 2446079
+}
+
 // Meta returns its real complaint inside error.error_user_msg far more often
 // than in error.message ("Invalid parameter" is the useless default). Surface
 // the most specific string available or the UI is unusable.
@@ -51,6 +103,7 @@ async function metaFetch(path, params, token) {
     url.searchParams.set(key, typeof val === 'object' ? JSON.stringify(val) : String(val))
   }
   const res = await fetch(url.toString())
+  recordUsage(res, getConfig().accountId)
   const data = await res.json()
   if (data.error) throw metaError(data)
   return data
@@ -70,14 +123,16 @@ async function metaWrite(path, body, token, method = 'POST') {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: form,
   })
+  recordUsage(res, getConfig().accountId)
   const data = await res.json()
   if (data.error) throw metaError(data)
   return data
 }
 
-// Graph's batch endpoint, chunked at its 50-per-request ceiling. Pausing a
-// sweep of 150 ads one call at a time would take minutes and risk the
-// per-account write throttle; batched it is a handful of requests.
+// Graph's batch endpoint, chunked at its 50-per-request ceiling. This saves
+// HTTP round-trips, NOT rate limit — Meta explicitly meters each sub-request
+// individually — so it also watches the usage budget and stops early rather
+// than driving the account into a lockout.
 async function metaBatch(operations, token) {
   const results = []
   for (let i = 0; i < operations.length; i += 50) {
@@ -94,6 +149,7 @@ async function metaBatch(operations, token) {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form,
     })
+    recordUsage(res, getConfig().accountId)
     const data = await res.json()
     if (data.error) throw metaError(data)
     // Batch replies are positional, and a failed sub-request reports inside
@@ -110,9 +166,20 @@ async function metaBatch(operations, token) {
       }
       results.push({ ...op.meta, id: op.id, ok: !error, error })
     })
+
+    // Batching saves HTTP round-trips but NOT rate limit: Meta meters every
+    // sub-request individually. So a long sweep has to watch the budget and
+    // stop while the account is still usable, reporting how far it got.
+    if (usagePressure() >= BATCH_STOP_PRESSURE && i + 50 < operations.length) {
+      return { results, stoppedEarly: true, remaining: operations.length - (i + 50) }
+    }
   }
-  return results
+  return { results, stoppedEarly: false, remaining: 0 }
 }
+
+// Leaves headroom for the rest of the app rather than running to 100 and
+// locking the whole ad account out for everyone.
+const BATCH_STOP_PRESSURE = 80
 
 // Walk every page of an edge. The ad account is past 500 ads, so anything
 // that reasons about "all ads" has to page or it silently works on a subset.
@@ -127,6 +194,7 @@ async function metaFetchAll(path, params, token, maxPages = 25) {
   let next = url.toString()
   for (let page = 0; page < maxPages && next; page++) {
     const res = await fetch(next)
+    recordUsage(res, getConfig().accountId)
     const data = await res.json()
     if (data.error) throw metaError(data)
     out.push(...(data.data || []))
@@ -137,6 +205,21 @@ async function metaFetchAll(path, params, token, maxPages = 25) {
 
 function fail(res, err, label) {
   console.error(`[Meta Ads Manager] ${label}:`, err.message)
+
+  // A throttled ad account is a wait-and-retry situation, not a bad request.
+  // Give the UI the minutes Meta itself reported so it can say something useful.
+  if (isThrottleError(err)) {
+    const mins = (lastUsage && lastUsage.retry_after_minutes) || 0
+    return res.status(429).json({
+      error: mins
+        ? `Meta is rate-limiting this ad account. Try again in about ${mins} minute${mins === 1 ? '' : 's'}.`
+        : 'Meta is rate-limiting this ad account. Try again shortly.',
+      rate_limited: true,
+      retry_after_minutes: mins,
+      usage: lastUsage,
+    })
+  }
+
   const status = err.meta && err.meta.code === 190 ? 502 : 400
   res.status(status).json({ error: err.message, meta: err.meta || undefined })
 }
@@ -149,6 +232,12 @@ function toMinorUnits(dollars) {
   if (!Number.isFinite(n) || n < 0) throw new Error('Budget must be a positive number')
   return String(Math.round(n * 100))
 }
+
+// GET /meta-ads-manager/usage — the last observed rate-limit budget. Reads
+// cached header data, so it costs nothing against the account itself.
+router.get('/usage', (req, res) => {
+  res.json(lastUsage || { call_count: 0, total_cputime: 0, total_time: 0, retry_after_minutes: 0, tier: null })
+})
 
 // ---------------------------------------------------------------------------
 // Account / pages
@@ -215,14 +304,17 @@ router.get('/account', async (req, res) => {
 
 async function pauseChildren(level, id, token) {
   const paused = { adsets: [], ads: [] }
+  let stoppedEarly = false
 
   if (level === 'campaign') {
     const adsets = await metaFetchAll(`/${id}/adsets`, { fields: 'id,name,status', limit: 200 }, token)
     const liveAdsets = adsets.filter(a => a.status === 'ACTIVE')
     if (liveAdsets.length) {
-      paused.adsets = await metaBatch(liveAdsets.map(a => ({
+      const batch = await metaBatch(liveAdsets.map(a => ({
         relative_url: a.id, body: 'status=PAUSED', id: a.id, meta: { name: a.name },
       })), token)
+      paused.adsets = batch.results
+      if (batch.stoppedEarly) stoppedEarly = true
     }
   }
 
@@ -231,15 +323,18 @@ async function pauseChildren(level, id, token) {
   const ads = await metaFetchAll(`/${id}/ads`, { fields: 'id,name,status', limit: 200 }, token)
   const liveAds = ads.filter(a => a.status === 'ACTIVE')
   if (liveAds.length) {
-    paused.ads = await metaBatch(liveAds.map(a => ({
+    const batch = await metaBatch(liveAds.map(a => ({
       relative_url: a.id, body: 'status=PAUSED', id: a.id, meta: { name: a.name },
     })), token)
+    paused.ads = batch.results
+    if (batch.stoppedEarly) stoppedEarly = true
   }
 
   return {
     adsets_paused: paused.adsets.filter(r => r.ok).length,
     ads_paused: paused.ads.filter(r => r.ok).length,
     failures: [...paused.adsets, ...paused.ads].filter(r => !r.ok),
+    stopped_early: stoppedEarly,
   }
 }
 
@@ -247,12 +342,31 @@ async function pauseChildren(level, id, token) {
 // the parent stays off, a mass reactivation the moment it does not.
 const STRANDED_STATUSES = ['CAMPAIGN_PAUSED', 'ADSET_PAUSED']
 
-async function findStrandedAds(token, accountId) {
+// The audit is cached because it is the single most expensive query this
+// screen makes, and re-running it after every pause is what drove total_time
+// past 100 and got the whole ad account throttled.
+let strandedCache = null
+const STRANDED_TTL = 5 * 60 * 1000
+
+async function findStrandedAds(token, accountId, { force } = {}) {
+  if (!force && strandedCache && (Date.now() - strandedCache.at) < STRANDED_TTL) {
+    return strandedCache.ads
+  }
+
+  // Filter server-side. Asking Meta for all 500+ ads and discarding 70% of
+  // them in Node is what made this query expensive: the cost is in the work
+  // Meta does, not in the number of round-trips.
   const ads = await metaFetchAll(`/${accountId}/ads`, {
     fields: 'id,name,status,effective_status,adset{id,name,status},campaign{id,name,status}',
+    effective_status: STRANDED_STATUSES,
     limit: 200,
   }, token)
-  return ads.filter(a => a.status === 'ACTIVE' && STRANDED_STATUSES.includes(a.effective_status))
+
+  // effective_status narrows it to paused-parent ads; the ACTIVE check is what
+  // separates genuinely-stranded ads from ones already switched off.
+  const stranded = ads.filter(a => a.status === 'ACTIVE' && STRANDED_STATUSES.includes(a.effective_status))
+  strandedCache = { ads: stranded, at: Date.now() }
+  return stranded
 }
 
 // GET /meta-ads-manager/audit/stranded-ads
@@ -260,7 +374,7 @@ async function findStrandedAds(token, accountId) {
 router.get('/audit/stranded-ads', async (req, res) => {
   try {
     const { token, accountId } = getConfig()
-    const stranded = await findStrandedAds(token, accountId)
+    const stranded = await findStrandedAds(token, accountId, { force: req.query.refresh === '1' })
 
     const groups = new Map()
     for (const ad of stranded) {
@@ -284,6 +398,8 @@ router.get('/audit/stranded-ads', async (req, res) => {
       by_paused_adset: stranded.filter(a => a.effective_status === 'ADSET_PAUSED').length,
       by_paused_campaign: stranded.filter(a => a.effective_status === 'CAMPAIGN_PAUSED').length,
       groups: [...groups.values()].sort((a, b) => b.ads.length - a.ads.length),
+      usage: lastUsage,
+      cached_at: strandedCache ? strandedCache.at : null,
     })
   } catch (err) {
     fail(res, err, 'stranded audit')
@@ -299,19 +415,29 @@ router.post('/audit/stranded-ads/pause', async (req, res) => {
     const { token, accountId } = getConfig()
     const { ad_ids } = req.body || {}
 
-    const stranded = await findStrandedAds(token, accountId)
+    const stranded = await findStrandedAds(token, accountId, { force: true })
     const wanted = Array.isArray(ad_ids) && ad_ids.length ? new Set(ad_ids) : null
     const targets = wanted ? stranded.filter(a => wanted.has(a.id)) : stranded
 
     if (!targets.length) return res.json({ paused: 0, failed: 0, results: [] })
 
-    const results = await metaBatch(targets.map(a => ({
+    const batch = await metaBatch(targets.map(a => ({
       relative_url: a.id, body: 'status=PAUSED', id: a.id, meta: { name: a.name },
     })), token)
 
+    strandedCache = null // the audit is stale the moment anything is paused
+    const results = batch.results
     const paused = results.filter(r => r.ok).length
-    console.log(`[Meta Ads Manager] stranded sweep paused ${paused}/${targets.length} ads`)
-    res.json({ paused, failed: results.length - paused, results })
+    console.log(`[Meta Ads Manager] stranded sweep paused ${paused}/${targets.length} ads` +
+      (batch.stoppedEarly ? ` (stopped early, ${batch.remaining} left)` : ''))
+    res.json({
+      paused,
+      failed: results.length - paused,
+      results,
+      stopped_early: batch.stoppedEarly,
+      remaining: batch.remaining,
+      usage: lastUsage,
+    })
   } catch (err) {
     fail(res, err, 'stranded sweep')
   }

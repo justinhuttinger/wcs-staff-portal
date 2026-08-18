@@ -106,8 +106,14 @@ export default function AdsManagerView({ onBack }) {
   // Ads switched on inside a paused parent — see StrandedAdsModal.
   const [stranded, setStranded] = useState(null)
   const [showStranded, setShowStranded] = useState(false)
+  // The audit is expensive, so it is not re-run after every pause. Pausing
+  // something just marks it stale and the banner offers a recheck.
+  const [strandedStale, setStrandedStale] = useState(false)
   // Short-lived note after a cascading pause, so the knock-on effect is visible.
   const [notice, setNotice] = useState('')
+  // Set when Meta throttles the ad account, so the UI can say "wait N minutes"
+  // instead of showing a generic failure.
+  const [rateLimit, setRateLimit] = useState(null)
 
   // Always pull the full (non-deleted) set and filter in the browser — the
   // three-way Active/Inactive/All split does not map onto a single Meta
@@ -125,31 +131,38 @@ export default function AdsManagerView({ onBack }) {
     setLoading(l => ({ ...l, campaigns: true }))
     return getAdsManagerCampaigns({ status: statusParam })
       .then(res => setCampaigns(res.data || []))
-      .catch(err => setError(err.message))
+      .catch(reportError)
       .finally(() => setLoading(l => ({ ...l, campaigns: false })))
-  }, [statusParam])
+  }, [statusParam, reportError])
 
   const loadAdsets = useCallback(campaignId => {
     if (!campaignId) { setAdsets([]); return Promise.resolve() }
     setLoading(l => ({ ...l, adsets: true }))
     return getAdsManagerAdsets({ campaign_id: campaignId, status: statusParam })
       .then(res => setAdsets(res.data || []))
-      .catch(err => setError(err.message))
+      .catch(reportError)
       .finally(() => setLoading(l => ({ ...l, adsets: false })))
-  }, [statusParam])
+  }, [statusParam, reportError])
 
   const loadAds = useCallback(adsetId => {
     if (!adsetId) { setAds([]); return Promise.resolve() }
     setLoading(l => ({ ...l, ads: true }))
     return getAdsManagerAds({ adset_id: adsetId, status: statusParam })
       .then(res => setAds(res.data || []))
-      .catch(err => setError(err.message))
+      .catch(reportError)
       .finally(() => setLoading(l => ({ ...l, ads: false })))
-  }, [statusParam])
+  }, [statusParam, reportError])
 
-  const loadStranded = useCallback(() => {
-    return getAdsManagerStrandedAds()
-      .then(setStranded)
+  // Every catch funnels through here so a throttle is reported as a wait, not
+  // as a broken screen.
+  const reportError = useCallback(err => {
+    if (err && err.rate_limited) setRateLimit({ minutes: err.retry_after_minutes || 0, message: err.message })
+    else setError(err.message)
+  }, [])
+
+  const loadStranded = useCallback(force => {
+    return getAdsManagerStrandedAds(force)
+      .then(res => { setStranded(res); setStrandedStale(false) })
       // A failed audit must not take the whole screen down; the banner just
       // stays hidden.
       .catch(() => setStranded(null))
@@ -225,10 +238,12 @@ export default function AdsManagerView({ onBack }) {
       if (c && c.failures && c.failures.length) {
         setError(`${c.failures.length} child object(s) could not be paused: ${c.failures[0].error}`)
       }
-      // The audit is only meaningful against current statuses.
-      loadStranded()
+      // Deliberately NOT re-running the audit here: it is the most expensive
+      // query on the screen, and firing it after every pause is what pushed
+      // Meta's total_time budget past 100 and throttled the whole ad account.
+      if (next === 'PAUSED') setStrandedStale(true)
     } catch (err) {
-      setError(err.message)
+      reportError(err)
     }
   }
 
@@ -347,6 +362,22 @@ export default function AdsManagerView({ onBack }) {
         </div>
       </div>
 
+      {rateLimit && (
+        <div className="mb-4 shrink-0 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-amber-900">Meta is rate-limiting this ad account</p>
+              <p className="text-xs text-amber-800 mt-0.5">
+                {rateLimit.minutes
+                  ? `Meta expects access back in about ${rateLimit.minutes} minute${rateLimit.minutes === 1 ? '' : 's'}. Nothing is broken — the limit is per ad account and resets on a rolling hour.`
+                  : 'The limit is per ad account and resets on a rolling hour. Give it a few minutes.'}
+              </p>
+            </div>
+            <button onClick={() => setRateLimit(null)} className="text-amber-800/60 hover:text-amber-800 text-lg leading-none">×</button>
+          </div>
+        </div>
+      )}
+
       {error && <div className="mb-4 shrink-0"><ErrorBanner error={error} onDismiss={() => setError('')} /></div>}
 
       {notice && (
@@ -364,9 +395,17 @@ export default function AdsManagerView({ onBack }) {
             </p>
             <p className="text-xs text-amber-800 mt-0.5">
               Not delivering now, but turning the parent back on would start every one of them spending at once.
+              {strandedStale && <span className="font-semibold"> Count may be out of date since your last pause.</span>}
             </p>
           </div>
-          <Button onClick={() => setShowStranded(true)} className="shrink-0">Review &amp; pause</Button>
+          <div className="flex items-center gap-3 shrink-0">
+            {strandedStale && (
+              <button onClick={() => loadStranded(true)} className="text-xs text-amber-900 underline hover:no-underline">
+                Recheck
+              </button>
+            )}
+            <Button onClick={() => setShowStranded(true)}>Review &amp; pause</Button>
+          </div>
         </div>
       )}
 
@@ -546,7 +585,7 @@ export default function AdsManagerView({ onBack }) {
           audit={stranded}
           onClose={() => setShowStranded(false)}
           onSwept={() => {
-            loadStranded()
+            loadStranded(true)
             loadCampaigns()
             if (selectedCampaign) loadAdsets(selectedCampaign.id)
             if (selectedAdset) loadAds(selectedAdset.id)
