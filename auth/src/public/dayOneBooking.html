@@ -13,6 +13,7 @@
     --fill: #f3f4f6;
     --fill-2: #9ca3af;
     --danger: #b42318;
+    --ok: #2f7d4f;
   }
   * { box-sizing: border-box; }
   html, body { background: #fff; }
@@ -168,6 +169,46 @@
   dl.summary dt { color: var(--muted); }
   dl.summary dd { margin: 0; }
   code { background: var(--fill); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+  /* ---- confirmation ------------------------------------------------------
+     Member-facing, so it reads as a moment rather than a receipt: no ids, no
+     field-write status, just who and when. */
+  .done-wrap { max-width: 460px; margin: 8px auto; text-align: center; padding: 18px 0 8px; }
+  .done-mark {
+    width: 74px; height: 74px; border-radius: 50%; margin: 0 auto 20px;
+    background: #eaf6ee; color: var(--ok, #2f7d4f);
+    display: flex; align-items: center; justify-content: center;
+    animation: pop .42s cubic-bezier(.2,.9,.3,1.4) both;
+  }
+  /* Ring that expands and fades once, like a single quiet cheer. */
+  .done-mark::after {
+    content: ''; position: absolute; width: 74px; height: 74px; border-radius: 50%;
+    border: 2px solid var(--ok, #2f7d4f); animation: ring .9s ease-out .18s both;
+  }
+  .done-mark { position: relative; }
+  .done-tick { stroke-dasharray: 48; stroke-dashoffset: 48; animation: draw .38s ease-out .26s both; }
+  @keyframes pop { from { transform: scale(.4); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+  @keyframes ring { from { transform: scale(1); opacity: .55 } to { transform: scale(1.85); opacity: 0 } }
+  @keyframes draw { to { stroke-dashoffset: 0 } }
+  @media (prefers-reduced-motion: reduce) {
+    .done-mark, .done-mark::after, .done-tick { animation: none; stroke-dashoffset: 0; }
+    .done-mark::after { display: none; }
+  }
+  .done-head {
+    font-size: 25px; font-weight: 700; color: var(--ink); margin: 0 0 10px;
+    letter-spacing: -0.02em;
+  }
+  .done-line { font-size: 17px; line-height: 1.5; color: var(--text); margin: 0 0 14px; }
+  .done-line b { font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .done-sub { font-size: 14px; color: var(--muted); margin: 0 0 22px; }
+  .ghost-btn {
+    background: transparent; color: var(--muted); border: 1px solid var(--line);
+    font-weight: 500; padding: 10px 18px; width: auto;
+  }
+  .ghost-btn:hover { background: var(--fill); color: var(--text); }
+  body.compact .done-wrap { padding: 6px 0; }
+  body.compact .done-head { font-size: 21px; }
+  body.compact .done-line { font-size: 16px; }
 
   /* ---- compact / embedded ------------------------------------------------
      The three-pane layout assumes a full browser window. In an iframe it
@@ -374,9 +415,18 @@
 
     <!-- DONE STEP -->
     <div class="form-pane hide" id="pane-done">
-      <h2>Booked</h2>
-      <dl class="summary" id="done-dl"></dl>
-      <button class="btn" id="again">Book another</button>
+      <div class="done-wrap">
+        <div class="done-mark" aria-hidden="true">
+          <svg viewBox="0 0 52 52" width="38" height="38">
+            <path class="done-tick" d="M14 27l8 8 16-18" fill="none" stroke="currentColor"
+                  stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h2 class="done-head">You're booked!</h2>
+        <p class="done-line" id="done-line"></p>
+        <p class="done-sub" id="done-sub">We've sent you a confirmation. See you then!</p>
+        <button class="btn ghost-btn" id="again">Book another</button>
+      </div>
     </div>
   </div>
 </div>
@@ -437,6 +487,21 @@
     var p = key.split('-')
     return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('en-US', {
       weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+  }
+  // "6:30 AM", not "06:30 AM". The slot buttons pad the hour so the column
+  // aligns; a sentence should not.
+  function fmtTimeNice(iso) {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZone: S.tz,
+    }).format(new Date(iso))
+  }
+  // "Monday, August 25" — the confirmation reads as a sentence, so it wants the
+  // full weekday and month rather than the abbreviations used in the picker.
+  // Rendered in the selected zone so it agrees with the time beside it.
+  function fmtDayName(iso) {
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric', timeZone: S.tz,
+    }).format(new Date(iso))
   }
   function endOf(iso) {
     var mins = durationMinutes()
@@ -800,19 +865,16 @@
       var name = r.assignedUserId
         ? ((S.cfg.trainers || []).filter(function (x) { return x.userId === r.assignedUserId })[0] || {}).name
         : null
-      $('done-dl').innerHTML =
-        '<dt>When</dt><dd>' + fmtTime(r.startTime) + ' - ' + fmtTime(r.endTime) + ', ' +
-          fmtLongDate(String(r.startTime).slice(0, 10)) + '</dd>' +
-        '<dt>Trainer</dt><dd>' + esc(name || r.assignedUserId || 'unassigned') +
-          (r.autoAssigned ? ' <span class="muted">(auto-assigned)</span>' : '') +
-          (r.reassignedFrom
-            ? '<br><span class="muted">Reassigned — the trainer shown became unavailable.</span>'
-            : '') + '</dd>' +
-        '<dt>Appointment</dt><dd><code>' + esc(r.appointmentId) + '</code></dd>' +
-        '<dt>Contact</dt><dd><code>' + esc(r.contactId) + '</code></dd>' +
-        '<dt>Custom fields</dt><dd>' + (r.customFieldsWritten
-          ? esc((r.customFieldsSet || []).join(', ') || 'none matched')
-          : '<span class="err">failed: ' + esc(r.customFieldError || '') + '</span>') + '</dd>'
+      // Who and when, nothing else. Ids and field-write status were useful while
+      // building this, but they are noise to the person who just booked — and
+      // the API response and server logs still carry them if support needs them.
+      var first = ($('firstName').value.trim().split(/\s+/)[0]) || ''
+      var when = fmtDayName(r.startTime)
+      $('done-line').innerHTML =
+        (first ? 'Thanks, ' + esc(first) + '! ' : 'Thank you! ') +
+        'Your Day One is booked with <b>' + esc(name || 'your trainer') + '</b> at <b>' +
+        esc(fmtTimeNice(r.startTime)) + '</b> on <b>' + esc(when) + '</b>.'
+      $('done-sub').textContent = 'We’ve sent you a confirmation. See you then!'
       show($('pane-form'), false); show($('pane-done'), true)
     }).catch(function (e) {
       fail($('book-err'), e.message)
