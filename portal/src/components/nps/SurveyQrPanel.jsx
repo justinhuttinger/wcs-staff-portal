@@ -61,7 +61,7 @@ function QrRow({ qr, slug, onRotate, rotating }) {
             {url}
           </a>
           <button type="button" onClick={copy} className="text-[10px] font-semibold text-wcs-red hover:text-wcs-red/70 shrink-0">
-            {copied ? <span className="text-green-600 animate-pulse">Copied!</span> : 'Copy'}
+            {copied ? <span className="text-wcs-red animate-pulse">Copied!</span> : 'Copy'}
           </button>
         </div>
 
@@ -141,8 +141,8 @@ export default function SurveyQrPanel({ survey, qr, onChanged }) {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-          <p className="text-xs text-red-700">{error}</p>
+        <div className="bg-bg border border-border rounded-lg p-3">
+          <p className="text-xs text-wcs-red">{error}</p>
         </div>
       )}
 

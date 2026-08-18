@@ -109,37 +109,58 @@ export default function SurveyBuilder({ surveyId, onBack }) {
 
   if (error && !survey) {
     return (
-      <div className="p-6">
-        <button onClick={onBack} className="text-sm text-wcs-red hover:underline">Back</button>
-        <p className="mt-4 text-sm text-red-700">{error}</p>
+      <div className="max-w-5xl mx-auto px-4 py-6 w-full">
+        <div className="bg-surface rounded-xl border border-border p-5 space-y-3">
+          <button onClick={onBack} className="text-sm text-wcs-red hover:underline">Back</button>
+          <p className="text-sm text-wcs-red">{error}</p>
+        </div>
       </div>
     )
   }
-  if (!survey) return <div className="p-6 text-sm text-text-muted">Loading…</div>
+  if (!survey) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 py-6 w-full">
+        <div className="bg-surface rounded-xl border border-border p-8 text-center">
+          <p className="text-sm text-text-muted">Loading…</p>
+        </div>
+      </div>
+    )
+  }
 
   const isTenure = survey.trigger_type === 'tenure_days' || survey.trigger_type === 'tenure_months'
   const isWalkup = survey.trigger_type === 'walkup'
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-5">
-      <div className="flex items-center justify-between gap-3">
-        <button onClick={onBack} className="text-sm text-wcs-red hover:underline">Back to surveys</button>
-        <div className="flex items-center gap-3">
-          {savedAt && <span className="text-xs font-semibold text-green-600 animate-pulse">Saved</span>}
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving}
-            className="px-4 py-2 text-sm font-medium bg-wcs-red text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-4 w-full">
+      <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-text-primary truncate">{survey.title || 'Untitled survey'}</h2>
+            <p className="text-xs text-text-muted font-mono truncate">/{survey.slug}</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {savedAt && <span className="text-xs font-semibold text-wcs-red animate-pulse">Saved</span>}
+            <button
+              onClick={onBack}
+              className="px-4 py-2 text-sm font-medium text-text-primary border border-border rounded-lg hover:bg-bg transition-colors"
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving}
+              className="px-4 py-2 text-sm font-medium bg-wcs-red text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-          <p className="text-xs text-red-700">{error}</p>
+        <div className="bg-surface rounded-xl border border-border px-4 py-3">
+          <p className="text-sm text-wcs-red">{error}</p>
         </div>
       )}
 
@@ -265,22 +286,16 @@ export default function SurveyBuilder({ surveyId, onBack }) {
 
         <div className="space-y-3">
           {(survey.schema || []).map((q, i) => (
-            <div key={q.id} className="flex gap-2">
-              <div className="flex flex-col gap-1 pt-4">
-                <button type="button" onClick={() => move(i, -1)} disabled={i === 0}
-                  className="text-text-muted hover:text-text-primary disabled:opacity-30 text-xs">▲</button>
-                <button type="button" onClick={() => move(i, 1)} disabled={i === (survey.schema.length - 1)}
-                  className="text-text-muted hover:text-text-primary disabled:opacity-30 text-xs">▼</button>
-              </div>
-              <div className="flex-1">
-                <QuestionEditor
-                  question={q}
-                  metrics={metrics}
-                  onChange={changes => patchQuestion(i, changes)}
-                  onRemove={() => removeQuestion(i)}
-                />
-              </div>
-            </div>
+            <QuestionEditor
+              key={q.id}
+              question={q}
+              index={i}
+              total={survey.schema.length}
+              metrics={metrics}
+              onChange={changes => patchQuestion(i, changes)}
+              onRemove={() => removeQuestion(i)}
+              onMove={delta => move(i, delta)}
+            />
           ))}
         </div>
       </div>

@@ -16,7 +16,7 @@ export const QUESTION_TYPES = [
 const SCORE_TYPES = ['nps', 'rating']
 const DISPLAY_TYPES = ['header', 'description']
 
-export default function QuestionEditor({ question, metrics, onChange, onRemove, disabled }) {
+export default function QuestionEditor({ question, metrics, onChange, onRemove, onMove, index = 0, total = 1, disabled }) {
   const [optionsText, setOptionsText] = useState((question.options || []).join('\n'))
   useEffect(() => {
     setOptionsText((question.options || []).join('\n'))
@@ -49,14 +49,34 @@ export default function QuestionEditor({ question, metrics, onChange, onRemove, 
             ))}
           </select>
         </div>
-        <button
-          type="button"
-          onClick={onRemove}
-          disabled={disabled}
-          className="mt-5 text-xs font-semibold text-text-muted hover:text-wcs-red transition-colors shrink-0"
-        >
-          Remove
-        </button>
+        <div className="flex items-center gap-1 mt-5 shrink-0">
+          {onMove && (
+            <>
+              <button
+                type="button" onClick={() => onMove(-1)} disabled={disabled || index === 0}
+                aria-label="Move question up"
+                className="px-2 py-1 text-xs text-text-muted hover:text-text-primary disabled:opacity-30 border border-border rounded-lg"
+              >
+                Up
+              </button>
+              <button
+                type="button" onClick={() => onMove(1)} disabled={disabled || index >= total - 1}
+                aria-label="Move question down"
+                className="px-2 py-1 text-xs text-text-muted hover:text-text-primary disabled:opacity-30 border border-border rounded-lg"
+              >
+                Down
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={onRemove}
+            disabled={disabled}
+            className="px-2 py-1 text-xs font-semibold text-text-muted hover:text-wcs-red transition-colors"
+          >
+            Remove
+          </button>
+        </div>
       </div>
 
       <div>
