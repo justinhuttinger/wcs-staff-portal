@@ -32,7 +32,7 @@ function shared() {
  */
 async function testFire({
   db = getDb(), slug, memberId, force = true, now = new Date(),
-  locations = DEFAULT_LOCATIONS, ghlFetchFn = ghlFetch,
+  locations = DEFAULT_LOCATIONS, ghlFetchFn = ghlFetch, fieldIdResolver = null,
   baseUrl = process.env.NPS_SURVEY_BASE_URL || 'https://survey.westcoaststrength.com',
 }) {
   const { buildInvite, surveyUrl, pacificToday, addDays } = shared();
@@ -114,14 +114,33 @@ async function testFire({
     // Field FIRST. The workflow triggers on the tag, so tagging before the URL
     // exists sends an email with an empty link. npsJob.test.js pins the same
     // ordering on the ghl-sync side; both must fail if either flips.
-    // ghlFetch stringifies `body` itself. Passing a string here double-encodes
-    // it and GHL rejects the whole request as invalid JSON.
+    // The custom field must be addressed by ID, not by key.
+    //
+    // GHL answers 200 to {key, field_value} and silently discards it. Verified
+    // against a live contact: the key form does not stick, the id form does.
+    // A silent no-op here is the worst kind of failure, because the tag write
+    // below fires the workflow and the email would carry an empty link.
+    //
+    // ghlFetch stringifies `body` itself, so it takes an object, not a string.
+    const fieldId = await resolveFieldId(location, survey.ghl_field_key, fieldIdResolver);
+    if (!fieldId) {
+      throw new Error(`no GHL custom field ${survey.ghl_field_key} in ${location.name}; create it before sending`);
+    }
+
     await ghlFetchFn(`/contacts/${contact.id}`, location.apiKey, {
       method: 'PUT',
-      body: { customFields: [{ key: survey.ghl_field_key, field_value: url }] },
+      body: { customFields: [{ id: fieldId, value: url }] },
     });
 
+    // Read back before tagging. Writing the field first only protects the
+    // workflow if the write actually happened, and this API can accept a write
+    // it never performs.
     const live = await ghlFetchFn(`/contacts/${contact.id}`, location.apiKey, { method: 'GET' });
+    const stored = (live?.contact?.customFields || []).find(f => f.id === fieldId);
+    if (!stored || String(stored.value || '') !== url) {
+      throw new Error('GHL accepted the survey URL but did not store it; not tagging, so no email goes out with a dead link');
+    }
+
     const existing = live?.contact?.tags ?? contact.tags ?? [];
     if (!existing.includes(survey.ghl_tag)) {
       await ghlFetchFn(`/contacts/${contact.id}`, location.apiKey, {
@@ -155,4 +174,14 @@ async function testFire({
   };
 }
 
-module.exports = { testFire };
+/**
+ * Custom field id for a location. Injectable so tests need no Supabase, and
+ * required lazily because ghlCustomFields pulls in the Supabase client at
+ * import time.
+ */
+async function resolveFieldId(location, fieldKey, resolver = null) {
+  const fn = resolver || require('./ghlCustomFields').getFieldId;
+  return fn(location.id, location.apiKey, fieldKey);
+}
+
+module.exports = { testFire, resolveFieldId };

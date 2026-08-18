@@ -17,6 +17,7 @@ const CONTACT = {
   first_name: 'Jo', last_name: 'Doe', tags: [], custom_fields: [],
 };
 const NOW = new Date('2026-08-18T14:00:00Z');
+const shared = { written: null };
 
 function fakeDb({ surveys = [SURVEY], members = [MEMBER], invites = [], contacts = [] } = {}) {
   const inserted = [];
@@ -57,10 +58,12 @@ function fakeDb({ surveys = [SURVEY], members = [MEMBER], invites = [], contacts
 
 test('a forced fire writes the field before the tag and marks the invite as a test', async () => {
   const order = [];
+  let written = null;
   const db = fakeDb({ contacts: [CONTACT] });
 
   const out = await testFire({
     db, slug: '6mo', memberId: 'M1', force: true, now: NOW, locations: LOCATIONS,
+    fieldIdResolver: async () => 'FIELD1',
     ghlFetchFn: async (path, apiKey, options = {}) => {
       // ghlFetch stringifies the body itself, so callers must hand it an
       // object. Asserting that here is the point: the previous fake called
@@ -71,9 +74,15 @@ test('a forced fire writes the field before the tag and marks the invite as a te
       }
       const body = options.body || {};
       if (path.includes('/contacts/search/duplicate')) return { contact: CONTACT };
-      if (options.method === 'PUT' && body.customFields) order.push('field');
+      if (options.method === 'PUT' && body.customFields) {
+        // Addressed by id, never by key: GHL 200s the key form and drops it.
+        assert.ok(body.customFields[0].id, 'custom field must be written by id');
+        assert.equal(body.customFields[0].key, undefined);
+        written = body.customFields[0].value;
+        order.push('field');
+      }
       if (options.method === 'PUT' && body.tags) order.push('tag');
-      return { contact: { id: 'C1', tags: [] } };
+      return { contact: { id: 'C1', tags: [], customFields: [{ id: 'FIELD1', value: written }] } };
     },
   });
 
@@ -94,9 +103,14 @@ test('two forced fires on the same member and day both succeed', async () => {
   const db = fakeDb({ contacts: [CONTACT] });
   const opts = {
     db, slug: '6mo', memberId: 'M1', force: true, now: NOW, locations: LOCATIONS,
-    ghlFetchFn: async (path) => (path.includes('/contacts/search/duplicate')
-      ? { contact: CONTACT }
-      : { contact: { id: 'C1', tags: [] } }),
+    fieldIdResolver: async () => 'FIELD1',
+    ghlFetchFn: async (path, apiKey, options = {}) => {
+      if (path.includes('/contacts/search/duplicate')) return { contact: CONTACT };
+      if (options.method === 'PUT' && options.body?.customFields) {
+        shared.written = options.body.customFields[0].value;
+      }
+      return { contact: { id: 'C1', tags: [], customFields: [{ id: 'FIELD1', value: shared.written }] } };
+    },
   };
 
   assert.equal((await testFire(opts)).ok, true);
@@ -112,9 +126,14 @@ test('without force, a member inside the cooldown is refused', async () => {
 
   const out = await testFire({
     db, slug: '6mo', memberId: 'M1', force: false, now: NOW, locations: LOCATIONS,
-    ghlFetchFn: async (path) => (path.includes('/contacts/search/duplicate')
-      ? { contact: CONTACT }
-      : { contact: { id: 'C1', tags: [] } }),
+    fieldIdResolver: async () => 'FIELD1',
+    ghlFetchFn: async (path, apiKey, options = {}) => {
+      if (path.includes('/contacts/search/duplicate')) return { contact: CONTACT };
+      if (options.method === 'PUT' && options.body?.customFields) {
+        shared.written = options.body.customFields[0].value;
+      }
+      return { contact: { id: 'C1', tags: [], customFields: [{ id: 'FIELD1', value: shared.written }] } };
+    },
   });
 
   assert.equal(out.ok, false);
@@ -163,9 +182,14 @@ test('a module-shaped locations object still resolves a club', async () => {
     db, slug: '6mo', memberId: 'M1', force: true, now: NOW,
     // Deliberately the module shape rather than a bare array.
     locations: { LOCATIONS },
-    ghlFetchFn: async (path) => (path.includes('/contacts/search/duplicate')
-      ? { contact: CONTACT }
-      : { contact: { id: 'C1', tags: [] } }),
+    fieldIdResolver: async () => 'FIELD1',
+    ghlFetchFn: async (path, apiKey, options = {}) => {
+      if (path.includes('/contacts/search/duplicate')) return { contact: CONTACT };
+      if (options.method === 'PUT' && options.body?.customFields) {
+        shared.written = options.body.customFields[0].value;
+      }
+      return { contact: { id: 'C1', tags: [], customFields: [{ id: 'FIELD1', value: shared.written }] } };
+    },
   });
   assert.equal(out.ok, true);
   assert.equal(out.contact.location, 'Salem');
@@ -187,4 +211,38 @@ test('a contact missing from GHL is reported, not written to', async () => {
   assert.equal(out.ok, false);
   assert.equal(out.status, 404);
   assert.match(out.error, /no GHL contact/);
+});
+
+
+test('a URL that does not stick blocks the tag entirely', async () => {
+  // GHL answers 200 to a custom-field write it never performs. Tagging anyway
+  // would fire the workflow and email a link to nowhere.
+  const db = fakeDb();
+  const calls = [];
+  const out = await testFire({
+    db, slug: '6mo', memberId: 'M1', force: true, now: NOW, locations: LOCATIONS,
+    fieldIdResolver: async () => 'FIELD1',
+    ghlFetchFn: async (path, apiKey, options = {}) => {
+      if (path.includes('/contacts/search/duplicate')) return { contact: CONTACT };
+      if (options.method === 'PUT' && options.body?.tags) calls.push('tag');
+      // Read-back reports the field as empty, i.e. the write silently failed.
+      return { contact: { id: 'C1', tags: [], customFields: [] } };
+    },
+  });
+
+  assert.equal(out.ghl.tagged, 0);
+  assert.equal(calls.includes('tag'), false, 'must not tag when the URL did not store');
+  assert.match(out.ghl.errors[0], /did not store it/);
+});
+
+test('a missing custom field is reported instead of tagging', async () => {
+  const db = fakeDb();
+  const out = await testFire({
+    db, slug: '6mo', memberId: 'M1', force: true, now: NOW, locations: LOCATIONS,
+    fieldIdResolver: async () => null,
+    ghlFetchFn: async (path) => (path.includes('/contacts/search/duplicate')
+      ? { contact: CONTACT } : { contact: { id: 'C1', tags: [] } }),
+  });
+  assert.equal(out.ghl.tagged, 0);
+  assert.match(out.ghl.errors[0], /no GHL custom field/);
 });
