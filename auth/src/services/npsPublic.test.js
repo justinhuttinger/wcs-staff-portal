@@ -113,13 +113,15 @@ function fakeSubmitDb({ invites = [], surveys = [SURVEY], qr = [], walkupCount =
     updates,
     from(table) {
       const eq = {};
+      let countMode = false;
       const builder = {
-        select() { return builder; },
+        select(_cols, opts) { countMode = Boolean(opts && opts.head); return builder; },
         eq(c, v) { eq[c] = v; return builder; },
-        gte() { return builder; },
-        // Supabase's count query terminates on .head(); the fake returns the
-        // number the test asked for rather than filtering by time.
-        head() { return Promise.resolve({ count: walkupCount, error: null }); },
+        // A count query is select('id', { count: 'exact', head: true }) and is
+        // awaited directly — there is no .head() method. The fake used to
+        // provide one, which is exactly why a call that throws in production
+        // passed the tests.
+        gte() { return countMode ? Promise.resolve({ count: walkupCount, error: null }) : builder; },
         maybeSingle() {
           const rows = (tables[table] || []).filter(r =>
             Object.entries(eq).every(([c, v]) => r[c] === v));
