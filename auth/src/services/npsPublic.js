@@ -16,6 +16,26 @@ function getDb() {
   return _db;
 }
 
+/**
+ * Tidy a name for display without mangling it.
+ *
+ * ABC stores names inconsistently: this member is "Justin" at one club and
+ * "JUSTIN" at another, and greeting somebody in block capitals reads as
+ * shouting at them.
+ *
+ * Only re-cases a name that is entirely upper or entirely lower. Anything
+ * already mixed-case is left exactly as typed, so McDonald and DeAngelo
+ * survive rather than becoming Mcdonald and Deangelo.
+ */
+function displayName(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  const hasLower = /[a-z]/.test(s);
+  const hasUpper = /[A-Z]/.test(s);
+  if (hasLower && hasUpper) return s;
+  return s.toLowerCase().replace(/(^|[\s'’-])([a-z])/g, (_, sep, ch) => sep + ch.toUpperCase());
+}
+
 async function loadSurveyById(db, surveyId) {
   const { data } = await db.from('nps_surveys').select('*').eq('id', surveyId).maybeSingle();
   return data || null;
@@ -49,7 +69,7 @@ async function loadByToken({ db = getDb(), slug, token, now = new Date() }) {
       .eq('id', invite.id);
   }
 
-  const firstName = (invite.member_name || '').trim().split(/\s+/)[0] || null;
+  const firstName = displayName((invite.member_name || '').trim().split(/\s+/)[0]);
   return {
     ok: true,
     survey,
@@ -210,4 +230,4 @@ async function recordPreScore({ db = getDb(), slug, token, score, now = new Date
   });
 }
 
-module.exports = { loadByToken, loadByQr, submitResponse, recordPreScore };
+module.exports = { loadByToken, loadByQr, submitResponse, recordPreScore, displayName };
