@@ -413,9 +413,12 @@
   }
 
   // --- location config ----------------------------------------------------
-  function loadConfig() {
+  function loadConfig(opts) {
+    opts = opts || {}
     $('times').innerHTML = '<span class="muted"><span class="spin"></span> Loading…</span>'
-    api('/api/config?location=' + encodeURIComponent(S.location)).then(function (cfg) {
+    api('/api/config?location=' + encodeURIComponent(S.location) +
+        (opts.refresh ? '&refresh=1' : '')).then(function (cfg) {
+      if (opts.refresh) openPicker(false)
       $('location-name').textContent = cfg.location.name
       S.cfg = cfg
       $('duration').textContent = cfg.calendar.slotDuration + ' ' +
@@ -447,9 +450,21 @@
         '<svg class="tick" width="15" height="15" viewBox="0 0 24 24" fill="none" ' +
           'stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>' +
         '</button>'
-    }).join('')
+    }).join('') +
+      // The roster is cached, so someone just added in GHL will not appear until
+      // it expires. This is where they go looking, so this is where the fix goes.
+      '<div class="opt-sep"></div>' +
+      '<button type="button" class="opt" id="refresh-roster">' +
+        '<span class="avatar any">&#8635;</span>' +
+        '<span class="nm">Refresh trainer list</span></button>'
     Array.prototype.forEach.call($('trainer-menu').querySelectorAll('.opt'), function (b) {
+      if (b.id === 'refresh-roster') return
       b.addEventListener('click', function () { selectTrainer(b.getAttribute('data-uid')) })
+    })
+    $('refresh-roster').addEventListener('click', function (e) {
+      e.stopPropagation()
+      $('refresh-roster').querySelector('.nm').textContent = 'Refreshing…'
+      loadConfig({ refresh: true })
     })
     syncTrainerLabel(rows)
   }
