@@ -42,13 +42,44 @@
   .blurb { margin-top: 22px; font-size: 14px; color: var(--muted); }
   .blurb strong { color: var(--text); }
   .blurb em { font-style: italic; }
-  select.trainer {
-    appearance: none; border: 0; background: transparent; font: inherit; color: inherit;
-    padding: 2px 22px 2px 0; cursor: pointer; width: 100%;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23111213' stroke-width='2.5'><path d='M6 9l6 6 6-6'/></svg>");
-    background-repeat: no-repeat; background-position: right center;
+  /* Trainer picker. A native select cannot be styled inside its own popup, and
+     this one sits in the summary panel where the OS widget looks pasted on. */
+  .picker { position: relative; flex: 1; min-width: 0; }
+  .picker-btn {
+    width: 100%; display: flex; align-items: center; gap: 8px;
+    border: 1px solid transparent; border-radius: 8px; background: transparent;
+    font: inherit; color: inherit; text-align: left; cursor: pointer;
+    padding: 5px 8px 5px 7px; margin-left: -7px;
   }
-  select.trainer:focus { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 3px; }
+  .picker-btn:hover { background: var(--fill); border-color: var(--line); }
+  .picker-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .picker-btn .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .picker-btn .chev { flex: none; transition: transform .15s ease; }
+  .picker[data-open="true"] .picker-btn { background: var(--fill); border-color: var(--line); }
+  .picker[data-open="true"] .chev { transform: rotate(180deg); }
+  .picker-menu {
+    position: absolute; z-index: 20; top: calc(100% + 6px); left: -7px; right: -7px;
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 10px 28px rgba(17,18,19,.13), 0 2px 6px rgba(17,18,19,.06);
+    padding: 6px; max-height: 288px; overflow-y: auto;
+  }
+  .picker[data-open="false"] .picker-menu { display: none; }
+  .opt {
+    width: 100%; display: flex; align-items: center; gap: 10px;
+    border: 0; border-radius: 7px; background: transparent; font: inherit; color: var(--text);
+    padding: 8px 9px; cursor: pointer; text-align: left;
+  }
+  .opt:hover, .opt.active { background: var(--fill); }
+  .opt .avatar {
+    flex: none; width: 26px; height: 26px; border-radius: 50%;
+    background: var(--ink); color: #fff; font-size: 11px; font-weight: 600;
+    display: inline-flex; align-items: center; justify-content: center; letter-spacing: .02em;
+  }
+  .opt .avatar.any { background: var(--fill-2); }
+  .opt .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .opt .tick { flex: none; opacity: 0; color: var(--ink); }
+  .opt[aria-selected="true"] .tick { opacity: 1; }
+  .opt-sep { height: 1px; background: var(--line); margin: 6px 4px; }
 
   /* ---- center ---- */
   h2 { font-size: 19px; margin: 0 0 22px; color: var(--ink); font-weight: 600; letter-spacing: -0.01em; }
@@ -197,7 +228,15 @@
       </div>
       <div class="meta">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M4.5 20c0-3.6 3.4-5.6 7.5-5.6s7.5 2 7.5 5.6"/></svg>
-        <select class="trainer" id="trainer"><option value="">Anyone</option></select>
+        <div class="picker" id="trainer-picker" data-open="false">
+          <button type="button" class="picker-btn" id="trainer-btn"
+                  aria-haspopup="listbox" aria-expanded="false">
+            <span class="label" id="trainer-label">Anyone</span>
+            <svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="picker-menu" id="trainer-menu" role="listbox" aria-label="Trainer"></div>
+        </div>
       </div>
       <div class="meta">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-7-4.5-7-10a7 7 0 1114 0c0 5.5-7 10-7 10z"/><circle cx="12" cy="11" r="2.5"/></svg>
@@ -381,10 +420,7 @@
       S.cfg = cfg
       $('duration').textContent = cfg.calendar.slotDuration + ' ' +
         (cfg.calendar.slotDurationUnit === 'hours' ? 'hr' : 'min')
-      $('trainer').innerHTML = '<option value="">Anyone</option>' +
-        cfg.trainers.map(function (t) {
-          return '<option value="' + esc(t.userId) + '">' + esc(t.name) + '</option>'
-        }).join('')
+      renderTrainerMenu(cfg.trainers || [])
       $('tourMember').innerHTML = '<option value="">Select…</option>' +
         (cfg.tourMembers || []).map(function (n) {
           return '<option value="' + esc(n) + '">' + esc(n) + '</option>'
@@ -393,10 +429,65 @@
     }).catch(function (e) { fail($('cal-err'), e.message) })
   }
 
-  $('trainer').addEventListener('change', function () {
-    S.userId = this.value; S.startTime = ''
+  // --- trainer picker -----------------------------------------------------
+  function initials(name) {
+    var parts = String(name).trim().split(/\s+/)
+    return ((parts[0] || '')[0] || '' ) + ((parts[parts.length - 1] || '')[0] || '')
+  }
+
+  function renderTrainerMenu(trainers) {
+    var rows = [{ userId: '', name: 'Anyone', any: true }].concat(trainers)
+    $('trainer-menu').innerHTML = rows.map(function (t, i) {
+      return (i === 1 ? '<div class="opt-sep"></div>' : '') +
+        '<button type="button" class="opt" role="option" data-uid="' + esc(t.userId) + '"' +
+        ' aria-selected="' + (t.userId === S.userId) + '">' +
+        '<span class="avatar' + (t.any ? ' any' : '') + '">' +
+          (t.any ? '&#183;&#183;' : esc(initials(t.name).toUpperCase())) + '</span>' +
+        '<span class="nm">' + esc(t.name) + '</span>' +
+        '<svg class="tick" width="15" height="15" viewBox="0 0 24 24" fill="none" ' +
+          'stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>' +
+        '</button>'
+    }).join('')
+    Array.prototype.forEach.call($('trainer-menu').querySelectorAll('.opt'), function (b) {
+      b.addEventListener('click', function () { selectTrainer(b.getAttribute('data-uid')) })
+    })
+    syncTrainerLabel(rows)
+  }
+
+  function syncTrainerLabel(rows) {
+    var match = rows.filter(function (t) { return t.userId === S.userId })[0]
+    $('trainer-label').textContent = match ? match.name : 'Anyone'
+    Array.prototype.forEach.call($('trainer-menu').querySelectorAll('.opt'), function (b) {
+      b.setAttribute('aria-selected', String(b.getAttribute('data-uid') === S.userId))
+    })
+  }
+
+  function openPicker(on) {
+    $('trainer-picker').setAttribute('data-open', String(on))
+    $('trainer-btn').setAttribute('aria-expanded', String(on))
+  }
+
+  function selectTrainer(uid) {
+    openPicker(false)
+    if (uid === S.userId) return
+    S.userId = uid
+    S.startTime = ''
+    syncTrainerLabel([{ userId: '', name: 'Anyone' }].concat(S.cfg.trainers || []))
     loadSlots()
+  }
+
+  $('trainer-btn').addEventListener('click', function (e) {
+    e.stopPropagation()
+    openPicker($('trainer-picker').getAttribute('data-open') !== 'true')
   })
+  // Click-away and Escape, so the menu never strands itself open.
+  document.addEventListener('click', function (e) {
+    if (!$('trainer-picker').contains(e.target)) openPicker(false)
+  })
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') openPicker(false)
+  })
+
   $('tz').addEventListener('change', function () { S.tz = this.value; loadSlots() })
 
   // --- slots + calendar ---------------------------------------------------
@@ -529,8 +620,8 @@
           return
         }
         S.pick = d.pick.userId
-        $('who').innerHTML = 'Day One with <b>' + esc(d.pick.name) + '</b>' +
-          '<span class="hint">Assigned by availability, balancing upcoming Day Ones.</span>'
+        // No explanation of how the trainer was chosen — staff just need the name.
+        $('who').innerHTML = 'Day One with <b>' + esc(d.pick.name) + '</b>'
         syncBook()
       })
       .catch(function () {
