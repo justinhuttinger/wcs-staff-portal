@@ -1155,6 +1155,22 @@ export const forms = {
   staffDirectory: () => api('/forms/staff-directory'),
 }
 
+// NPS / member feedback — admin survey management + manual test fire
+export const nps = {
+  listSurveys: () => api('/nps/surveys'),
+  getSurvey: (id) => api(`/nps/surveys/${id}`),
+  createSurvey: (body) => api('/nps/surveys', { method: 'POST', body: JSON.stringify(body) }),
+  updateSurvey: (id, body) => api(`/nps/surveys/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  removeSurvey: (id) => api(`/nps/surveys/${id}`, { method: 'DELETE' }),
+  createQr: (id, clubNumber) => api(`/nps/surveys/${id}/qr`, { method: 'POST', body: JSON.stringify({ club_number: clubNumber }) }),
+  rotateQr: (qrId) => api(`/nps/qr/${qrId}/rotate`, { method: 'POST' }),
+  listMetrics: () => api('/nps/metrics'),
+  createMetric: (body) => api('/nps/metrics', { method: 'POST', body: JSON.stringify(body) }),
+  setMetricActive: (id, active) => api(`/nps/metrics/${id}`, { method: 'PATCH', body: JSON.stringify({ active }) }),
+  searchMembers: (q) => api(`/nps/members/search?q=${encodeURIComponent(q)}`),
+  testFire: (body) => api('/nps/test-fire', { method: 'POST', body: JSON.stringify(body) }),
+}
+
 // Lapsed Check-in Tagging — admin exclusions + at-risk dashboard
 export const lapsedCheckins = {
   getTypes: () => api('/admin/lapsed-checkins/types'),

@@ -39,6 +39,36 @@ router.post('/test-fire', async (req, res) => {
   }
 });
 
+// --- member lookup ---------------------------------------------------------
+
+// GET /nps/members/search?q=
+//
+// Backs the test-fire member picker. Deliberately its own endpoint rather than
+// reusing /abc-scheduler/members/search: that one requires a club_number, and
+// picking a test subject usually means finding yourself without first
+// remembering which club you are on.
+router.get('/members/search', async (req, res) => {
+  const term = String(req.query.q || '').trim();
+  if (term.length < 2) return res.json({ members: [] });
+
+  try {
+    const { supabaseAdmin } = require('../services/supabase');
+    const pattern = `%${term}%`;
+    const { data, error } = await supabaseAdmin
+      .from('abc_members')
+      .select('member_id, first_name, last_name, email, club_number, is_active')
+      .or(`first_name.ilike.${pattern},last_name.ilike.${pattern},email.ilike.${pattern},member_id.ilike.${pattern}`)
+      .limit(20);
+    if (error) throw new Error(error.message);
+    // A member with no email cannot be surveyed at all, so they are not
+    // offered as a test subject.
+    res.json({ members: (data || []).filter(m => m.email) });
+  } catch (err) {
+    console.error('[nps] member search failed:', err.message);
+    res.status(500).json({ error: 'Failed to search members' });
+  }
+});
+
 // --- surveys ---------------------------------------------------------------
 
 router.get('/surveys', async (req, res) => {
