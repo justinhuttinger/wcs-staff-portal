@@ -226,7 +226,7 @@ async function runNpsAll(options = {}) {
       console.error(`[NPS] survey ${survey.slug} failed:`, err.message);
       results.push({
         slug: survey.slug, evaluated: 0, created: 0,
-        skipped: { noEmail: 0, cooldown: 0, duplicate: 0 },
+        skipped: { noEmail: 0, cooldown: 0, notMember: 0, duplicate: 0 },
         tagged: 0, errors: [err.message],
       });
     }
