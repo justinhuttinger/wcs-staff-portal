@@ -15,6 +15,13 @@ function fakeDb(tables) {
         eq(col, val) { state.eq[col] = val; return builder; },
         in(col, vals) { state.in[col] = vals; return builder; },
         gte(col, val) { state.gte = [col, val]; return builder; },
+        // app_config lookups end on maybeSingle(); with no fixture the caller
+        // falls back to its seeded list, which is the production default.
+        maybeSingle() {
+          const rows = (tables[table] || []).filter(r =>
+            Object.entries(state.eq).every(([c, v]) => r[c] === v));
+          return Promise.resolve({ data: rows[0] || null, error: null });
+        },
         range(from, to) {
           self.calls.push(state);
           const rows = (tables[table] || []).filter(r => {
@@ -136,4 +143,54 @@ test('selectCohort does NOT suppress a member whose only invite predates the coo
   assert.equal(out.candidates.length, 1);
   assert.equal(out.candidates[0].member.member_id, 'M1');
   assert.equal(out.skipped.cooldown, 0);
+});
+
+// --- membership type ---------------------------------------------------------
+
+const { isRealMember } = require('./npsCohort');
+
+test('employees, childcare and non-members are not surveyed', () => {
+  // Roughly a quarter of a real night's cohort is these categories. Asking an
+  // employee how likely they are to recommend the gym they work at is noise at
+  // best; asking a childcare or reciprocal-use record is meaningless.
+  const excluded = new Set(['Employee', 'CHILDCARE', 'NON-MEMBER', 'TEMPORARY SINGLE']);
+  assert.equal(isRealMember({ membership_type: 'Employee' }, excluded), false);
+  assert.equal(isRealMember({ membership_type: 'CHILDCARE' }, excluded), false);
+  assert.equal(isRealMember({ membership_type: 'NON-MEMBER' }, excluded), false);
+  assert.equal(isRealMember({ membership_type: 'TEMPORARY SINGLE' }, excluded), false);
+});
+
+test('paying members are surveyed', () => {
+  const excluded = new Set(['Employee', 'CHILDCARE']);
+  assert.equal(isRealMember({ membership_type: 'SINGLE' }, excluded), true);
+  assert.equal(isRealMember({ membership_type: 'FAMILY' }, excluded), true);
+  assert.equal(isRealMember({ membership_type: 'PREMIUM' }, excluded), true);
+});
+
+test('an unknown membership type is surveyed rather than silently dropped', () => {
+  // Fail open: a new plan type appearing in ABC should reach members, not
+  // vanish from every survey until somebody notices months later.
+  assert.equal(isRealMember({ membership_type: 'BRAND NEW PLAN' }, new Set(['Employee'])), true);
+  assert.equal(isRealMember({ membership_type: null }, new Set(['Employee'])), true);
+});
+
+test('excluded members are counted separately from members with no email', async () => {
+  const db = fakeDb({
+    abc_members: [
+      { member_id: 'M1', club_number: '30935', email: 'a@x.com', begin_date: '2026-02-18', is_active: true, membership_type: 'Employee' },
+      { member_id: 'M2', club_number: '30935', email: null, begin_date: '2026-02-18', is_active: true, membership_type: 'SINGLE' },
+      { member_id: 'M3', club_number: '30935', email: 'c@x.com', begin_date: '2026-02-18', is_active: true, membership_type: 'SINGLE' },
+    ],
+    nps_invites: [],
+    app_config: [{ key: 'lapsed_checkin_excluded_types', value: JSON.stringify(['Employee']) }],
+  });
+
+  const { candidates, skipped } = await selectCohort({
+    db, survey: SURVEY_6MO, now: new Date('2026-08-18T14:00:00Z'),
+  });
+
+  assert.equal(skipped.notMember, 1, 'the employee');
+  assert.equal(skipped.noEmail, 1, 'the member with no email');
+  assert.equal(candidates.length, 1, 'only the real member with an email');
+  assert.equal(candidates[0].member.member_id, 'M3');
 });

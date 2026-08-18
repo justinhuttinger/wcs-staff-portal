@@ -18,6 +18,9 @@ function fakeDb({ members = [], invites = [], surveys = [] } = {}) {
         // to test behind the wrong one.
         gte(c, v) { state.gte = [c, v]; return builder; },
         order() { return builder; },
+        // The cohort reads app_config for the membership-type exclusions; with
+        // no row the caller falls back to its seeded list.
+        maybeSingle() { return Promise.resolve({ data: null, error: null }); },
         range(from, to) {
           const src = table === 'abc_members' ? members
             : table === 'nps_invites' ? invites

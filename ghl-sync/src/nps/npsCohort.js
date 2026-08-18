@@ -1,4 +1,5 @@
 const { cohortFilters, targetDates, pacificToday, addDays } = require('./npsTriggers');
+const { loadExcludedTypes } = require('../abc/lapsedConfig');
 
 // Lazy so this module can be required in tests with no SUPABASE_URL set —
 // db/supabase.js calls createClient() eagerly at import time.
@@ -67,6 +68,22 @@ function hasEmail(member) {
 }
 
 /**
+ * Is this a real member, or a category we should never survey?
+ *
+ * Reuses the lapsed check-in job's exclusion list rather than keeping a second
+ * one. "Who counts as a member" should have exactly one answer across the
+ * business, and that list is already editable in Admin without a deploy.
+ *
+ * Without it, roughly a quarter of a night's cohort is employees, childcare,
+ * NON-MEMBER, corporate, reciprocal-use and short-term passes: people who
+ * would be asked how likely they are to recommend a gym they do not really
+ * belong to.
+ */
+function isRealMember(member, excludedTypes) {
+  return !excludedTypes.has(member.membership_type);
+}
+
+/**
  * Candidate invites for one survey across its send window.
  * Returns at most one candidate per member even if two window days match.
  */
@@ -77,9 +94,11 @@ async function selectCohort({ db = getDefaultDb(), survey, now = new Date() }) {
     db, cooldownDays: survey.resend_cooldown_days, now,
   });
 
+  const excludedTypes = await loadExcludedTypes(db);
+
   const candidates = [];
   const seen = new Set();
-  const skipped = { noEmail: 0, cooldown: 0 };
+  const skipped = { noEmail: 0, cooldown: 0, notMember: 0 };
 
   for (const targetDate of dates) {
     const filters = cohortFilters(survey, targetDate);
@@ -88,6 +107,7 @@ async function selectCohort({ db = getDefaultDb(), survey, now = new Date() }) {
     });
     for (const member of members) {
       if (seen.has(member.member_id)) continue;
+      if (!isRealMember(member, excludedTypes)) { seen.add(member.member_id); skipped.notMember++; continue; }
       if (!hasEmail(member)) { seen.add(member.member_id); skipped.noEmail++; continue; }
       if (cooldownIds.has(member.member_id)) { seen.add(member.member_id); skipped.cooldown++; continue; }
       seen.add(member.member_id);
@@ -99,5 +119,5 @@ async function selectCohort({ db = getDefaultDb(), survey, now = new Date() }) {
 }
 
 module.exports = {
-  MEMBER_SELECT, loadMembersFor, loadCooldownMemberIds, selectCohort,
+  MEMBER_SELECT, loadMembersFor, loadCooldownMemberIds, selectCohort, isRealMember,
 };
