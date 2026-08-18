@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   createAdsManagerAdset, updateAdsManagerAdset,
-  searchAdsManagerLocations, getAdsManagerAudiences,
+  searchAdsManagerLocations, getAdsManagerAudiences, getAdsManagerSavedAudiences,
 } from '../../lib/api'
 import {
   OPTIMIZATION_GOALS, BILLING_EVENTS, BID_STRATEGIES, CONVERSION_EVENTS,
   PLATFORMS, GENDERS, budgetToDollars,
 } from './constants'
 import { Modal, Field, TextInput, Select, Button, ErrorBanner } from './ui'
+import { passthroughTargeting, describePassthrough, readGender, readGeoList } from './filters'
 
 // Meta wants a datetime with an offset; <input type="datetime-local"> gives a
 // bare local string. Round-tripping through Date fixes it up either way.
@@ -61,31 +62,13 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
   const [status, setStatus] = useState(adset ? adset.status : 'PAUSED')
 
   // Targeting
-  const [geo, setGeo] = useState(() => {
-    const list = []
-    for (const city of existingGeo.cities || []) {
-      list.push({ type: 'city', key: city.key, name: city.name || city.key, region: city.region, radius: city.radius || 10, distance_unit: city.distance_unit || 'mile' })
-    }
-    for (const region of existingGeo.regions || []) {
-      list.push({ type: 'region', key: region.key, name: region.name || region.key })
-    }
-    for (const zip of existingGeo.zips || []) {
-      list.push({ type: 'zip', key: zip.key, name: zip.name || zip.key })
-    }
-    for (const country of existingGeo.countries || []) {
-      list.push({ type: 'country', key: country, name: country })
-    }
-    return list
-  })
+  const [geo, setGeo] = useState(() => readGeoList(existingGeo))
   const [geoQuery, setGeoQuery] = useState('')
   const [geoResults, setGeoResults] = useState([])
   const [geoSearching, setGeoSearching] = useState(false)
   const [ageMin, setAgeMin] = useState(existingTargeting.age_min || 21)
   const [ageMax, setAgeMax] = useState(existingTargeting.age_max || 55)
-  const [gender, setGender] = useState(() => {
-    const g = existingTargeting.genders
-    return Array.isArray(g) && g.length === 1 ? String(g[0]) : 'all'
-  })
+  const [gender, setGender] = useState(() => readGender(existingTargeting))
   const [platforms, setPlatforms] = useState(
     existingTargeting.publisher_platforms || ['facebook', 'instagram']
   )
@@ -97,6 +80,11 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
     (existingTargeting.excluded_custom_audiences || []).map(a => a.id)
   )
 
+  // Targeting this form cannot render, carried through to Meta untouched.
+  const [extraTargeting, setExtraTargeting] = useState(() => passthroughTargeting(existingTargeting))
+  const [savedAudiences, setSavedAudiences] = useState([])
+  const [appliedAudience, setAppliedAudience] = useState('')
+
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const searchTimer = useRef(null)
@@ -105,7 +93,31 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
     getAdsManagerAudiences()
       .then(res => setAudiences(res.data || []))
       .catch(() => setAudiences([]))
+    getAdsManagerSavedAudiences()
+      .then(res => setSavedAudiences(res.data || []))
+      .catch(() => setSavedAudiences([]))
   }, [])
+
+  // Loading a saved audience replaces the whole targeting block: the parts
+  // this form renders become editable form state, and the parts it cannot
+  // render (interests, radius pins) ride along in extraTargeting.
+  function applySavedAudience(id) {
+    setAppliedAudience(id)
+    if (!id) return
+    const saved = savedAudiences.find(a => a.id === id)
+    if (!saved || !saved.targeting) return
+    const t = saved.targeting
+    setGeo(readGeoList(t.geo_locations))
+    setAgeMin(t.age_min || 18)
+    setAgeMax(t.age_max || 65)
+    setGender(readGender(t))
+    if (Array.isArray(t.publisher_platforms) && t.publisher_platforms.length) {
+      setPlatforms(t.publisher_platforms)
+    }
+    setIncludedAudiences((t.custom_audiences || []).map(a => a.id))
+    setExcludedAudiences((t.excluded_custom_audiences || []).map(a => a.id))
+    setExtraTargeting(passthroughTargeting(t))
+  }
 
   // Debounced typeahead — Meta rate-limits /search hard on every keystroke.
   useEffect(() => {
@@ -155,8 +167,13 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
       }
     }
 
+    // Passthrough first so the form's own controls always win, then merge the
+    // geo blocks so a saved audience's radius pins survive alongside any city
+    // added here.
+    const { geo_locations: extraGeo, ...extraRest } = extraTargeting
     const targeting = {
-      geo_locations,
+      ...extraRest,
+      geo_locations: { ...(extraGeo || {}), ...geo_locations },
       age_min: Number(ageMin),
       age_max: Number(ageMax),
       publisher_platforms: platforms,
@@ -184,7 +201,8 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
 
   async function submit() {
     if (!name.trim()) return setError('Give the ad set a name')
-    if (!geo.length) return setError('Add at least one location to target')
+    const hasPinnedLocations = !!(extraTargeting.geo_locations && (extraTargeting.geo_locations.custom_locations || []).length)
+    if (!geo.length && !hasPinnedLocations) return setError('Add at least one location to target')
     if (budgetType !== 'none' && !(Number(budget) > 0)) return setError('Set a budget above $0')
 
     setSaving(true)
@@ -215,6 +233,7 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
   }
 
   const needsPixel = goal === 'OFFSITE_CONVERSIONS'
+  const passthroughNotes = describePassthrough(extraTargeting)
 
   return (
     <Modal
@@ -297,6 +316,29 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
       {/* Targeting */}
       <section className="rounded-xl border border-border bg-bg/60 p-4 space-y-4">
         <h4 className="text-xs font-bold uppercase tracking-wider text-text-muted">Audience</h4>
+
+        {savedAudiences.length > 0 && (
+          <Field
+            label="Start from a saved audience"
+            hint="Fills in everything below. You can still edit it afterwards — this does not link the ad set to the saved audience."
+          >
+            <Select
+              value={appliedAudience}
+              onChange={e => applySavedAudience(e.target.value)}
+              options={[
+                { value: '', label: `Build from scratch (${savedAudiences.length} saved available)` },
+                ...savedAudiences.map(a => ({ value: a.id, label: a.name })),
+              ]}
+            />
+          </Field>
+        )}
+
+        {passthroughNotes.length > 0 && (
+          <p className="text-[11px] text-text-muted rounded-lg border border-border bg-surface px-3 py-2">
+            Carrying through {passthroughNotes.join(', ')} that this form does not show. They stay on the
+            ad set exactly as saved.
+          </p>
+        )}
 
         <Field label="Locations" required hint="Cities get a radius; regions and ZIPs are exact.">
           <div className="relative">
