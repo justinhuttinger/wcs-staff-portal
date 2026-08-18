@@ -1,4 +1,4 @@
-const DEFAULT_LOCATIONS = require('../config/ghlLocations');
+const { LOCATIONS: DEFAULT_LOCATIONS } = require('../config/ghlLocations');
 const { ghlFetch } = require('./ghlClient');
 
 let _db = null;
@@ -84,9 +84,14 @@ async function testFire({
     }
   }
 
-  // NOTE: auth's config calls this clubCode; ghl-sync calls the same field
-  // clubNumber. Reading the wrong one yields undefined and matches nothing.
-  const location = locations.find(l => l.clubCode === member.club_number);
+  // Two traps live on this one line, both from ghl-sync and auth having
+  // parallel-but-different location configs:
+  //   1. auth exports an OBJECT ({ LOCATIONS, ... }); ghl-sync exports the
+  //      array directly. Requiring the module whole gives you something with
+  //      no .find.
+  //   2. auth calls the field clubCode; ghl-sync calls it clubNumber.
+  const list = Array.isArray(locations) ? locations : (locations?.LOCATIONS || []);
+  const location = list.find(l => l.clubCode === member.club_number);
   if (!location) {
     return { ok: false, status: 400, error: `no GHL location configured for club ${member.club_number}` };
   }
