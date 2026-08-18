@@ -19,6 +19,7 @@ Same approach as `join.westcoaststrength.com` (the online-join worker).
 | `book.westcoaststrength.com/dayone/salem/cancel?c=…&a=…` | cancel (member) |
 | `book.westcoaststrength.com/dayone/salem/reschedule?c=…&a=…` | reschedule (member) |
 | `book.westcoaststrength.com/dayone/` | location list |
+| `book.westcoaststrength.com/meetjustin/` | Meet with Justin (pick a length, then a time) |
 | `book.westcoaststrength.com/` | redirects to `/dayone/` |
 
 Any club slug works: `salem`, `keizer`, `eugene`, `springfield`, `clackamas`,

@@ -28,6 +28,7 @@ const fs = require('fs')
 const rateLimit = require('express-rate-limit')
 const { LOCATIONS, getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
+const { cached, bookableDays, mapLimit, slotsFor, clearSlotsCache } = require('../lib/ghlBooking')
 
 const router = Router()
 
@@ -88,32 +89,18 @@ const userCache = {}     // slug -> { promise, at }
 // worth of requests, and clearCaches() below makes the wait optional.
 const CACHE_TTL = 5 * 60 * 1000
 
-// Caches the in-flight PROMISE, not the resolved value, which makes it
-// single-flight: /api/config asks for the calendar, the roster and the fields
-// concurrently, and the roster needs the calendar too. Caching values alone
-// meant all of those raced past an empty cache and each refetched the same
-// calendar — three duplicate round trips on every cold request.
-function cached(store, key, ttl, produce) {
-  const hit = store[key]
-  if (hit && (Date.now() - hit.at) < ttl) return hit.promise
-  // A rejection must not be cached, or one blip poisons the entry for the TTL.
-  const promise = produce().catch(err => { delete store[key]; throw err })
-  store[key] = { promise, at: Date.now() }
-  return promise
-}
-
 // Drop everything held for one location, so a roster change in GHL can be
-// picked up on demand instead of waiting out the TTL. Slot caches are keyed by
-// more than the slug, hence the prefix match.
+// picked up on demand instead of waiting out the TTL. The free-slots cache now
+// lives in lib/ghlBooking and is shared with the other booking pages, so it is
+// cleared through the lib rather than reached into directly.
 function clearCaches(slug) {
   delete calendarCache[slug]
   delete userCache[slug]
   delete fieldCache[slug]
   delete loadCache[slug]
-  for (const store of [slotsCache, trainerSlotsCache]) {
-    for (const key of Object.keys(store)) {
-      if (key.startsWith(slug + '|')) delete store[key]
-    }
+  clearSlotsCache(slug)
+  for (const key of Object.keys(trainerSlotsCache)) {
+    if (key.startsWith(slug + '|')) delete trainerSlotsCache[key]
   }
 }
 
@@ -158,51 +145,9 @@ function getFieldsByKey(loc) {
   })
 }
 
-// How far ahead this calendar will actually accept a booking, in days.
-// free-slots simply stops returning slots past this, so asking wider is waste.
-function bookableDays(calendar) {
-  const n = Number(calendar.allowBookingFor)
-  if (!Number.isFinite(n) || n <= 0) return 31
-  const unit = String(calendar.allowBookingForUnit || 'days').toLowerCase()
-  if (unit.startsWith('hour')) return Math.max(1, Math.ceil(n / 24))
-  if (unit.startsWith('week')) return n * 7
-  if (unit.startsWith('month')) return n * 31
-  return n
-}
-
-// free-slots responses, cached briefly. Availability moves slowly relative to
-// someone toggling between trainers or nudging the timezone, and every one of
-// those was a fresh round trip before.
-const slotsCache = {} // key -> { promise, at }
+// Matches the free-slots cache in lib/ghlBooking, so the per-trainer prefetch
+// below expires on the same clock as the responses it is built from.
 const SLOTS_TTL = 45 * 1000
-
-function slotsFor(loc, calendar, params) {
-  // Bucket the window so millisecond-different startDates still share an entry.
-  const key = [
-    loc.slug, calendar.id, params.userId || 'any', params.timezone,
-    Math.floor(params.startDate / 60000), Math.floor(params.endDate / 60000),
-  ].join('|')
-  return cached(slotsCache, key, SLOTS_TTL, () =>
-    ghlFetch(`/calendars/${calendar.id}/free-slots`, loc.apiKey, {
-      params, version: CAL_VERSION,
-    }))
-}
-
-// Run async work with a concurrency ceiling. GHL rate limits per location and
-// ghlClient backs off a full 5s on a 429, so a burst is far more expensive than
-// a queue: two at a time is dramatically faster than six at once.
-async function mapLimit(items, limit, fn) {
-  const out = new Array(items.length)
-  let next = 0
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const i = next++
-      out[i] = await fn(items[i], i)
-    }
-  })
-  await Promise.all(workers)
-  return out
-}
 
 // Every trainer's open instants across the booking window, as Sets keyed by
 // userId. Fetched once per window and cached, which turns "who can take this

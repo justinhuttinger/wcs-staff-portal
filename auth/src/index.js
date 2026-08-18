@@ -76,6 +76,9 @@ app.use('/day-one-booking', require('./routes/dayOneBooking'))
 // (book.westcoaststrength.com/dayone/salem/cancel?c=...). Same router; it reads
 // req.baseUrl, so the page it serves calls back through whichever mount was used.
 app.use('/dayone', require('./routes/dayOneBooking'))
+// "Meet with Justin" — a calendar GROUP in the corporate sub-account, so the
+// visitor picks a meeting length before a time.
+app.use('/meetjustin', require('./routes/meetBooking'))
 app.use('/public/group-x', require('./routes/publicGroupX'))
 app.use('/public/facility', require('./routes/publicFacility'))
 app.use('/oidc', require('./routes/oidc'))
