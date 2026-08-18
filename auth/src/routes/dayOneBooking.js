@@ -655,7 +655,15 @@ const manageLimiter = rateLimit({
 
 // The member's upcoming Day One at this location, or null. Shared by the
 // cancel and reschedule flows so both agree on what "their appointment" means.
-async function upcomingForContact(loc, contactId) {
+// Resolve WHICH appointment a manage link refers to.
+//
+// The appointment id is authoritative when the link carries one. Falling back to
+// "their soonest upcoming" is only safe when they have exactly one: with two
+// booked, a link sent for the later appointment would silently move or cancel
+// the earlier one, and the confirmation would look completely normal. So when
+// the caller gives no id and more than one exists, this returns them all and
+// refuses to guess — the page asks which.
+async function upcomingForContact(loc, contactId, appointmentId) {
   const calendar = await getDayOneCalendar(loc)
   const data = await ghlFetch('/calendars/events', loc.apiKey, {
     params: {
@@ -670,14 +678,23 @@ async function upcomingForContact(loc, contactId) {
     .filter(e => e.contactId === contactId && !e.deleted)
     .filter(e => String(e.appointmentStatus || '').toLowerCase() !== 'cancelled')
     .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
-  const appt = mine[0]
-  if (!appt) return { calendar, appointment: null, trainer: null }
+
   const usersById = await getUsersById(loc)
-  return {
+  const withTrainer = appt => ({
     calendar,
     appointment: appt,
-    trainer: usersById[appt.assignedUserId] || null,
+    trainer: appt ? (usersById[appt.assignedUserId] || null) : null,
+    candidates: mine,
+  })
+
+  if (appointmentId) {
+    // Scoped to this contact's own appointments, so an id from elsewhere
+    // cannot be used to reach someone else's booking.
+    const exact = mine.find(e => e.id === appointmentId)
+    return withTrainer(exact || null)
   }
+  if (mine.length > 1) return { calendar, appointment: null, trainer: null, candidates: mine }
+  return withTrainer(mine[0] || null)
 }
 
 // What the manage pages render from.
@@ -687,7 +704,25 @@ router.get('/api/appointment', manageLimiter, async (req, res) => {
   const contactId = String(req.query.c || '').trim()
   if (!contactId) return res.status(400).json({ error: 'Missing link id' })
   try {
-    const { appointment, trainer } = await upcomingForContact(loc, contactId)
+    const usersById = await getUsersById(loc)
+    const { appointment, trainer, candidates } =
+      await upcomingForContact(loc, contactId, String(req.query.a || '').trim() || null)
+
+    // More than one upcoming and nothing to disambiguate: hand the list back so
+    // the member picks, rather than acting on whichever happens to be first.
+    if (!appointment && (candidates || []).length > 1) {
+      return res.json({
+        location: { slug: loc.slug, name: loc.name },
+        appointment: null,
+        reasons: CANCEL_REASONS,
+        candidates: candidates.map(a => ({
+          id: a.id,
+          startTime: a.startTime,
+          endTime: a.endTime,
+          trainerName: (usersById[a.assignedUserId] || {}).name || null,
+        })),
+      })
+    }
     if (!appointment) {
       return res.status(404).json({ error: 'No upcoming Day One found for this link.' })
     }
@@ -721,7 +756,7 @@ router.get('/api/reschedule-slots', manageLimiter, async (req, res) => {
   if (!contactId) return res.status(400).json({ error: 'Missing link id' })
 
   try {
-    const { calendar, appointment, trainer } = await upcomingForContact(loc, contactId)
+    const { calendar, appointment, trainer } = await upcomingForContact(loc, contactId, String(req.query.a || '').trim() || null)
     if (!appointment) {
       return res.status(404).json({ error: 'No upcoming Day One found for this link.' })
     }
@@ -774,7 +809,7 @@ router.post('/api/cancel', manageLimiter, async (req, res) => {
   }
 
   try {
-    const { appointment, trainer } = await upcomingForContact(loc, String(contactId))
+    const { appointment, trainer } = await upcomingForContact(loc, String(contactId), String(req.body.a || '').trim() || null)
     if (!appointment) {
       return res.status(404).json({ error: 'No upcoming Day One found for this link.' })
     }
@@ -847,7 +882,7 @@ router.post('/api/reschedule', manageLimiter, async (req, res) => {
   if (!startTime) return res.status(400).json({ error: 'Pick a new time' })
 
   try {
-    const { calendar, appointment } = await upcomingForContact(loc, String(contactId))
+    const { calendar, appointment } = await upcomingForContact(loc, String(contactId), String(req.body.a || '').trim() || null)
     if (!appointment) {
       return res.status(404).json({ error: 'No upcoming Day One found for this link.' })
     }
