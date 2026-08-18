@@ -71,7 +71,12 @@ const bookLimiter = rateLimit({
 const calendarCache = {} // slug -> { promise, at }
 const fieldCache = {}    // slug -> { promise, at }
 const userCache = {}     // slug -> { promise, at }
-const CACHE_TTL = 15 * 60 * 1000
+// Calendar shape and field ids are stable, but teamMembers is NOT: adding a
+// trainer to the Day One calendar in GHL changes it, and a 15-minute hold meant
+// staff added someone and then could not find them in the picker with no way to
+// tell whether they had done it wrong. Five minutes still absorbs a session's
+// worth of requests, and clearCaches() below makes the wait optional.
+const CACHE_TTL = 5 * 60 * 1000
 
 // Caches the in-flight PROMISE, not the resolved value, which makes it
 // single-flight: /api/config asks for the calendar, the roster and the fields
@@ -85,6 +90,21 @@ function cached(store, key, ttl, produce) {
   const promise = produce().catch(err => { delete store[key]; throw err })
   store[key] = { promise, at: Date.now() }
   return promise
+}
+
+// Drop everything held for one location, so a roster change in GHL can be
+// picked up on demand instead of waiting out the TTL. Slot caches are keyed by
+// more than the slug, hence the prefix match.
+function clearCaches(slug) {
+  delete calendarCache[slug]
+  delete userCache[slug]
+  delete fieldCache[slug]
+  delete loadCache[slug]
+  for (const store of [slotsCache, trainerSlotsCache]) {
+    for (const key of Object.keys(store)) {
+      if (key.startsWith(slug + '|')) delete store[key]
+    }
+  }
 }
 
 function getDayOneCalendar(loc) {
@@ -298,6 +318,10 @@ router.get('/api/config', requireWidgetSecret, async (req, res) => {
   const loc = getLocationBySlug(String(req.query.location || '').toLowerCase())
   if (!loc) return res.status(400).json({ error: 'Unknown location' })
   try {
+    // ?refresh=1 — for right after someone is added to the calendar in GHL.
+    // Secret-gated with the rest of this endpoint, so members cannot use it to
+    // hammer GHL through us.
+    if (req.query.refresh) clearCaches(loc.slug)
     const [calendar, trainers, fields] = await Promise.all([
       getDayOneCalendar(loc), trainerRoster(loc), getFieldsByKey(loc),
     ])
