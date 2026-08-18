@@ -27,6 +27,7 @@ const TILE_ICONS = {
   media: 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z',
   blog: 'M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 0 1-2.25 2.25M16.5 7.5V18a2.25 2.25 0 0 0 2.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 0 0 2.25 2.25h13.5M6 7.5h3v3H6v-3Z',
   forms: 'M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z',
+  nps: 'M8 10.5h8m-8 3h5m-5 6.5 -3 2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8z',
 }
 
 // Vendor ordering sub-tiles (opens via the "Ordering" tile in Tools)
@@ -113,7 +114,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onTourCheckin, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
+export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onNps, onTourCheckin, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [showOrdering, setShowOrdering] = useState(false)
@@ -303,6 +304,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           return onReporting && <SvgTileButton key={key} onClick={() => { window.location.hash = '#reporting'; onReporting() }} iconPath={TILE_ICONS.reporting} label="Reporting" desc="Reports" />
         case 'forms':
           return onForms && <SvgTileButton key={key} onClick={onForms} iconPath={TILE_ICONS.forms} label="Forms" desc="Signups" />
+        case 'nps':
+          return onNps && <SvgTileButton key={key} onClick={onNps} iconPath={TILE_ICONS.nps} label="Feedback" desc="Member surveys" />
         case 'marketingTracker':
           return onMarketingTracker && <SvgTileButton key={key} onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />
         default:
@@ -620,6 +623,8 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           {onTourCheckin && roleIdx >= ROLE_LEVELS.admin && <SvgTileButton onClick={onTourCheckin} iconPath={TILE_ICONS.tourCheckin} label="Tour Check-In" desc="Front Desk" />}
           {/* 6.7. Forms — admin+ or granted the 'forms' tile */}
           {onForms && (roleIdx >= ROLE_LEVELS.admin || (visibleTools || []).includes('forms')) && <SvgTileButton onClick={onForms} iconPath={TILE_ICONS.forms} label="Forms" desc="Signups" />}
+          {/* 6.8. Feedback (NPS surveys) — admin+ or granted the 'nps' tile */}
+          {onNps && (roleIdx >= ROLE_LEVELS.admin || (visibleTools || []).includes('nps')) && <SvgTileButton onClick={onNps} iconPath={TILE_ICONS.nps} label="Feedback" desc="Member surveys" />}
           {/* 7-9. Reporting, Tickets + remaining custom tiles
               (Marketing now lives inside Reporting — no standalone tile) */}
           {toolCustomTiles.filter((tile) => {
