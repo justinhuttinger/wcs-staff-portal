@@ -90,9 +90,11 @@ AS $$
     m.template_key,
     max(t.label)                                              AS label,
     max(t.sample_body)                                        AS sample_body,
-    count(*)                                                  AS sends,
-    count(*) FILTER (WHERE m.status = 'delivered')            AS delivered,
-    count(*) FILTER (WHERE m.status IN ('failed','undelivered')) AS failed,
+    -- The LEFT JOIN to sms_replies multiplies a send's row for each reply it
+    -- received, so count(*) would over-count sends; count DISTINCT m.id instead.
+    count(DISTINCT m.id)                                      AS sends,
+    count(DISTINCT m.id) FILTER (WHERE m.status = 'delivered') AS delivered,
+    count(DISTINCT m.id) FILTER (WHERE m.status IN ('failed','undelivered')) AS failed,
     count(DISTINCT r.send_id)                                 AS replies,
     count(DISTINCT r.send_id) FILTER (WHERE r.is_opt_out)     AS opt_outs,
     -- percentile_cont over an integer column resolves to double precision, but
@@ -114,6 +116,5 @@ AS $$
       OR (p_kind = 'staff'     AND m.source = 'app')
     )
   GROUP BY m.location, m.template_key
-  HAVING count(*) > 0
   ORDER BY count(*) DESC;
 $$;
