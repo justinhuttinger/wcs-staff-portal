@@ -83,6 +83,10 @@ function aggregate({ scoreRows = [], combineSources = false } = {}) {
   const clubs = new Map();
   const metrics = new Map();
   const overall = { invited: [], walkup: [] };
+  // Blended pools: every rating answer regardless of metric or source.
+  const clubAll = new Map();
+  const cellAll = new Map(); // `${club}|${metric}` -> scores
+  const allScores = [];
 
   for (const r of rows) {
     const source = r.source === 'walkup' ? 'walkup' : 'invited';
@@ -95,6 +99,15 @@ function aggregate({ scoreRows = [], combineSources = false } = {}) {
 
     if (!metrics.has(r.metric_key)) metrics.set(r.metric_key, { invited: [], walkup: [] });
     metrics.get(r.metric_key)[source].push(r.score);
+
+    if (!clubAll.has(r.club_number)) clubAll.set(r.club_number, []);
+    clubAll.get(r.club_number).push(r.score);
+
+    const cell = `${r.club_number}|${r.metric_key}`;
+    if (!cellAll.has(cell)) cellAll.set(cell, []);
+    cellAll.get(cell).push(r.score);
+
+    allScores.push(r.score);
   }
 
   const byClub = [...clubs.entries()].map(([club_number, s]) => {
@@ -102,6 +115,10 @@ function aggregate({ scoreRows = [], combineSources = false } = {}) {
       club_number,
       invited: npsFromScores(s.invited),
       walkup: npsFromScores(s.walkup),
+      // Every rating answer from this club, across every metric and both
+      // sources. "How are we doing at Salem" in one number, which is the
+      // question a manager actually opens the report to answer.
+      blended: averageOf(clubAll.get(club_number) || []),
     };
     if (combineSources) entry.combined = npsFromScores([...s.invited, ...s.walkup]);
     return entry;
@@ -112,10 +129,18 @@ function aggregate({ scoreRows = [], combineSources = false } = {}) {
       metric_key,
       invited: averageOf(s.invited),
       walkup: averageOf(s.walkup),
+      blended: averageOf([...s.invited, ...s.walkup]),
     };
     if (combineSources) entry.combined = averageOf([...s.invited, ...s.walkup]);
     return entry;
   }).sort((a, b) => a.metric_key.localeCompare(b.metric_key));
+
+  // Club x question. Same rows, pivoted: this is what shows that one gym's
+  // equipment score is dragging while everything else there is fine.
+  const matrix = [...cellAll.entries()].map(([cell, scores]) => {
+    const [club_number, metric_key] = cell.split('|');
+    return { club_number, metric_key, ...averageOf(scores) };
+  });
 
   const overallOut = {
     invited: npsFromScores(overall.invited),
@@ -123,7 +148,9 @@ function aggregate({ scoreRows = [], combineSources = false } = {}) {
   };
   if (combineSources) overallOut.combined = npsFromScores([...overall.invited, ...overall.walkup]);
 
-  return { byClub, byMetric, overall: overallOut };
+  overallOut.blended = averageOf(allScores);
+
+  return { byClub, byMetric, matrix, overall: overallOut };
 }
 
 /**

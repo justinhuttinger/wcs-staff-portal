@@ -196,3 +196,40 @@ test('an empty comment is dropped rather than listed blank', () => {
   }]);
   assert.deepEqual(out, []);
 });
+
+// --- blended views ----------------------------------------------------------
+
+test('a club blends every rating answer, not just the nps one', () => {
+  // "How are we doing at Salem" is one number over every question and both
+  // sources. The nps-only figure answers a narrower question.
+  const out = aggregate({ scoreRows: SCORES });
+  const salem = out.byClub.find(c => c.club_number === '30935');
+  // Salem: nps 10, nps 3, cleanliness 8 -> (10+3+8)/3 = 7
+  assert.equal(salem.blended.n, 3);
+  assert.equal(salem.blended.average, 7);
+});
+
+test('a question blends both sources without being asked to combine', () => {
+  const out = aggregate({ scoreRows: SCORES });
+  const nps = out.byMetric.find(m => m.metric_key === 'nps');
+  // 10 and 3 invited at Salem, 9 walkup at Keizer -> (10+3+9)/3 = 7.3
+  assert.equal(nps.blended.n, 3);
+  assert.equal(nps.blended.average, 7.3);
+});
+
+test('the club x question matrix only holds cells somebody answered', () => {
+  const out = aggregate({ scoreRows: SCORES });
+  const salemClean = out.matrix.find(c => c.club_number === '30935' && c.metric_key === 'cleanliness');
+  assert.equal(salemClean.average, 8);
+  // Keizer has an nps answer but nothing on cleanliness, so no empty cell.
+  assert.equal(out.matrix.some(c => c.club_number === '31599' && c.metric_key === 'cleanliness'), false);
+});
+
+test('test rows stay out of every blended figure too', () => {
+  const withTest = [...SCORES, {
+    survey_id: 's1', metric_key: 'cleanliness', score: 0, club_number: '30935',
+    source: 'invited', submitted_at: '2026-08-11T00:00:00Z', is_test: true,
+  }];
+  assert.deepEqual(aggregate({ scoreRows: withTest }).byClub, aggregate({ scoreRows: SCORES }).byClub);
+  assert.deepEqual(aggregate({ scoreRows: withTest }).matrix, aggregate({ scoreRows: SCORES }).matrix);
+});
