@@ -23,8 +23,8 @@ function diffSnapshots(latest, baseline) {
   const out = { is_lifetime: !baseline }
   for (const f of COUNTER_FIELDS) {
     const d = num(latest[f]) - (baseline ? num(baseline[f]) : 0)
-    // GHL occasionally restates a counter downward; a negative period is not a
-    // real reading, so floor it and let the caller log.
+    // GHL occasionally restates a counter downward, resulting in a negative
+    // delta. Clamp to zero since negative periods are not real readings.
     out[f] = d > 0 ? d : 0
   }
   return out
