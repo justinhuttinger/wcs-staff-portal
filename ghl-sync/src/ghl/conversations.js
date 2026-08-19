@@ -41,4 +41,21 @@ async function fetchFirstHumanContact(locationId, apiKey, contactId) {
   return pickFirstHumanContact(messages);
 }
 
-module.exports = { fetchFirstHumanContact, pickFirstHumanContact };
+// One page of a location's conversations, newest activity first.
+//
+// Pagination here is NOT the contacts/opportunities dual cursor, and it is not
+// offset-based. Verified live 2026-08-19 against Salem: `startAfterId`, `page`,
+// `skip`, and `offset` are all silently ignored and return page 1 again. The
+// only cursor that works is `startAfterDate` — the epoch-ms `lastMessageDate`
+// of the last row on the previous page. A four-page walk with it returned 80
+// unique conversations, zero duplicates, strictly decreasing dates.
+//
+// NOTE: `lastMessageDate` is epoch MILLISECONDS (a number), not an ISO string.
+async function searchConversations(locationId, apiKey, { limit = 100, startAfterDate = null } = {}) {
+  const params = { locationId, limit, sortBy: 'last_message_date', sort: 'desc' };
+  if (startAfterDate) params.startAfterDate = startAfterDate;
+  const res = await get('/conversations/search', params, apiKey);
+  return res?.conversations || [];
+}
+
+module.exports = { fetchFirstHumanContact, pickFirstHumanContact, fetchAllMessages, searchConversations };

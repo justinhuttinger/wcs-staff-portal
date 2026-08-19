@@ -9,6 +9,7 @@ const { alertSyncFailed } = require('./alerts');
 const { runMediaIndex } = require('./media/mediaIndex');
 const { checkRevenueGaps } = require('./revenue/gapCheck');
 const { emailStatsSync } = require('./sync/emailStatsSync');
+const { smsStatsSync } = require('./sync/smsStatsSync');
 const { enrichAll: enrichAttributionAll } = require('./sync/attributionEnrich');
 const { runLapsedTaggingAll } = require('./abc/lapsedTaggingJob');
 const { runNpsAll } = require('./nps/npsJob');
@@ -171,6 +172,27 @@ function startScheduler() {
     }
   });
 
+  // SMS message sync can walk up to 20k conversations with a ~120ms sleep per
+  // fetch, so a run can plausibly outlast the default 60-minute interval
+  // (especially the first run for a location). Unlike email-stats, this needs
+  // an overlap guard so a slow run doesn't get a second one stacked on top.
+  const smsStatsIntervalMinutes = process.env.SMS_STATS_INTERVAL_MINUTES || 60;
+  let smsStatsRunning = false;
+  cron.schedule(`*/${smsStatsIntervalMinutes} * * * *`, async () => {
+    if (smsStatsRunning) {
+      console.warn('[Scheduler] Previous SMS stats sync still running — skipping this tick');
+      return;
+    }
+    smsStatsRunning = true;
+    try {
+      await smsStatsSync();
+    } catch (err) {
+      console.error('[Scheduler] SMS stats sync failed:', err.message);
+    } finally {
+      smsStatsRunning = false;
+    }
+  });
+
   // Lapsed check-in tagging — nightly, dark-launched behind LAPSED_TAGGING_ENABLED
   // (default off). Tags active members lapsed 10/21/30 days for GHL win-back
   // workflows. Defaults to dry-run (log-only, no tag writes) until the rollout
@@ -232,6 +254,7 @@ function startScheduler() {
 
   console.log(`[Scheduler] Delta sync every ${intervalMinutes}m, full sync daily at ${fullSyncHour}:00 PST (${fullSyncHourUTC}:00 UTC)`);
   console.log(`[Scheduler] Email stats sync every ${emailStatsIntervalMinutes}m`);
+  console.log(`[Scheduler] SMS stats sync every ${smsStatsIntervalMinutes}m`);
   console.log(`[Scheduler] Attribution enrichment daily at ${attributionSyncHour}:00 PST (${attributionSyncHourUTC}:00 UTC), lookback ${attributionLookbackDays}d`);
   console.log(`[Scheduler] Recurring PT sync daily at ${recurringPtHour}:30 PST (${recurringPtHourUTC}:30 UTC)`);
   console.log(`[Scheduler] Revenue gap check daily at ${revenueGapCheckHour}:00 UTC`);
