@@ -2,11 +2,17 @@
 //
 // Two sheets:
 //   Price Summary — one row per price point, one column per club (+ Total),
-//                   so "how many members pay $50 at each club" reads straight
-//                   across. Mirrors the on-screen matrix.
-//   Members       — the detail list backing it: one row per active member with
-//                   the amount as charged, the payment frequency, and the
-//                   monthly-equivalent price used for grouping.
+//                   so "how many memberships pay $50 at each club" reads
+//                   straight across. Mirrors the on-screen matrix.
+//   Members       — the detail list backing it: one row per AGREEMENT (not per
+//                   person), represented by the primary member, with the amount
+//                   as charged, the payment frequency, and the monthly
+//                   equivalent used for grouping.
+//
+// Counts are agreements, not bodies: every person on a family or couple plan
+// carries that agreement's full dues in abc_members, so counting rows would
+// multiply a $150 family of four into $600/mo. `People` columns keep the head
+// count visible without letting it inflate revenue.
 //
 // exceljs is already a dependency (used by the roster + trends exports).
 
@@ -34,6 +40,91 @@ function styleHeader(row) {
 }
 
 /**
+ * Shared shaping for both exports: the same two tables the workbook renders,
+ * as plain 2D arrays. The Excel builder adds formatting on top; the Google
+ * Sheets export writes these rows directly, so the two exports can't drift
+ * apart in columns or ordering.
+ *
+ * @returns {{ summary: {title, rows, boldRowIndices}, detail: {title, rows} }}
+ */
+function buildPriceTables({ detail = [], breakdown = [], clubSlugs = null, basis = 'monthly' }) {
+  const clubs = CLUB_ORDER.filter(s => !clubSlugs || clubSlugs.includes(s))
+  const priceKey = basis === 'charged' ? 'charged_amount' : 'monthly_price'
+  const basisLabel = basis === 'charged' ? 'Amount as Charged' : 'Monthly Equivalent'
+
+  // price -> { clubs: { slug: memberships }, people }
+  const byPrice = new Map()
+  for (const r of breakdown) {
+    const price = Number(r[priceKey]) || 0
+    const slug = CLUB_SLUG_MAP[r.club_number] || r.club_number
+    if (!byPrice.has(price)) byPrice.set(price, { clubs: {}, people: 0 })
+    const bucket = byPrice.get(price)
+    bucket.clubs[slug] = (bucket.clubs[slug] || 0) + (Number(r.memberships) || 0)
+    bucket.people += Number(r.people) || 0
+  }
+  const prices = [...byPrice.keys()].sort((a, b) => b - a)
+  const clubTotal = (price, slug) => byPrice.get(price).clubs[slug] || 0
+  const rowTotal = price => clubs.reduce((n, s) => n + clubTotal(price, s), 0)
+
+  const summaryRows = [[
+    `Price (${basisLabel})`,
+    ...clubs.map(title),
+    'Total Memberships', 'People Covered', 'Monthly Revenue',
+  ]]
+  for (const price of prices) {
+    const total = rowTotal(price)
+    summaryRows.push([
+      price,
+      ...clubs.map(s => clubTotal(price, s)),
+      total,
+      byPrice.get(price).people,
+      Number((price * total).toFixed(2)),
+    ])
+  }
+  summaryRows.push([
+    'Total',
+    ...clubs.map(s => prices.reduce((n, p) => n + clubTotal(p, s), 0)),
+    prices.reduce((n, p) => n + rowTotal(p), 0),
+    prices.reduce((n, p) => n + byPrice.get(p).people, 0),
+    Number(prices.reduce((n, p) => n + p * rowTotal(p), 0).toFixed(2)),
+  ])
+
+  const detailRows = [[
+    'Club', 'First Name', 'Last Name', 'Email', 'Agreement #', 'Membership Type',
+    'Frequency', 'Amount Charged', 'Monthly Equivalent', 'People on Agreement',
+    'Others Covered', 'Begin Date', 'Tenure (mo)', 'Past Due', 'Sold By',
+  ]]
+  for (const r of detail) {
+    detailRows.push([
+      title(CLUB_SLUG_MAP[r.club_number] || r.club_number),
+      r.first_name || '',
+      r.last_name || '',
+      r.email || '',
+      r.agreement_number || '',
+      r.membership_type || '',
+      r.payment_frequency || '',
+      Number(r.charged_amount) || 0,
+      Number(r.monthly_price) || 0,
+      Number(r.people_on_agreement) || 1,
+      r.other_members || '',
+      r.begin_date || '',
+      r.tenure_months == null ? '' : Number(r.tenure_months),
+      r.is_past_due ? 'Yes' : 'No',
+      r.sales_person_name || '',
+    ])
+  }
+
+  return {
+    summary: {
+      title: 'Price Summary',
+      rows: summaryRows,
+      boldRowIndices: [summaryRows.length - 1],
+    },
+    detail: { title: 'Members', rows: detailRows },
+  }
+}
+
+/**
  * @param {object} input
  * @param {Array}  input.detail    rows from membership_price_detail (club_number, …)
  * @param {Array}  input.breakdown rows from membership_price_breakdown
@@ -56,28 +147,34 @@ async function buildPriceWorkbook({ detail = [], breakdown = [], clubSlugs = nul
   sum.columns = [
     { header: `Price (${basisLabel})`, key: 'price', width: 24 },
     ...clubs.map(s => ({ header: title(s), key: s, width: 13 })),
-    { header: 'Total Members', key: 'total', width: 15 },
+    { header: 'Total Memberships', key: 'total', width: 18 },
+    { header: 'People Covered', key: 'people', width: 15 },
     { header: 'Monthly Revenue', key: 'revenue', width: 17 },
   ]
   styleHeader(sum.getRow(1))
 
-  // price -> { slug: count }
+  // price -> { clubs: { slug: memberships }, people }
   const byPrice = new Map()
   for (const r of breakdown) {
     const price = Number(r[priceKey]) || 0
     const slug = CLUB_SLUG_MAP[r.club_number] || r.club_number
-    if (!byPrice.has(price)) byPrice.set(price, {})
+    if (!byPrice.has(price)) byPrice.set(price, { clubs: {}, people: 0 })
     const bucket = byPrice.get(price)
-    bucket[slug] = (bucket[slug] || 0) + (Number(r.members) || 0)
+    bucket.clubs[slug] = (bucket.clubs[slug] || 0) + (Number(r.memberships) || 0)
+    bucket.people += Number(r.people) || 0
   }
   const prices = [...byPrice.keys()].sort((a, b) => b - a)
+  const clubTotal = (price, slug) => byPrice.get(price).clubs[slug] || 0
+  const rowTotal = price => clubs.reduce((n, s) => n + clubTotal(price, s), 0)
+
   for (const price of prices) {
     const bucket = byPrice.get(price)
-    const total = clubs.reduce((n, s) => n + (bucket[s] || 0), 0)
+    const total = rowTotal(price)
     const row = sum.addRow({
       price,
-      ...Object.fromEntries(clubs.map(s => [s, bucket[s] || 0])),
+      ...Object.fromEntries(clubs.map(s => [s, clubTotal(price, s)])),
       total,
+      people: bucket.people,
       revenue: price * total,
     })
     row.getCell('price').numFmt = '$#,##0.00'
@@ -86,10 +183,11 @@ async function buildPriceWorkbook({ detail = [], breakdown = [], clubSlugs = nul
   const totalRow = sum.addRow({
     price: 'Total',
     ...Object.fromEntries(clubs.map(s => [
-      s, prices.reduce((n, p) => n + (byPrice.get(p)[s] || 0), 0),
+      s, prices.reduce((n, p) => n + clubTotal(p, s), 0),
     ])),
-    total: prices.reduce((n, p) => n + clubs.reduce((m, s) => m + (byPrice.get(p)[s] || 0), 0), 0),
-    revenue: prices.reduce((n, p) => n + p * clubs.reduce((m, s) => m + (byPrice.get(p)[s] || 0), 0), 0),
+    total: prices.reduce((n, p) => n + rowTotal(p), 0),
+    people: prices.reduce((n, p) => n + byPrice.get(p).people, 0),
+    revenue: prices.reduce((n, p) => n + p * rowTotal(p), 0),
   })
   totalRow.font = { bold: true }
   totalRow.getCell('revenue').numFmt = '$#,##0.00'
@@ -106,6 +204,8 @@ async function buildPriceWorkbook({ detail = [], breakdown = [], clubSlugs = nul
     { header: 'Frequency', key: 'payment_frequency', width: 13 },
     { header: 'Amount Charged', key: 'charged_amount', width: 16 },
     { header: 'Monthly Equivalent', key: 'monthly_price', width: 18 },
+    { header: 'People on Agreement', key: 'people_on_agreement', width: 19 },
+    { header: 'Others Covered', key: 'other_members', width: 46 },
     { header: 'Begin Date', key: 'begin_date', width: 13 },
     { header: 'Tenure (mo)', key: 'tenure_months', width: 12 },
     { header: 'Past Due', key: 'is_past_due', width: 10 },
@@ -123,6 +223,8 @@ async function buildPriceWorkbook({ detail = [], breakdown = [], clubSlugs = nul
       payment_frequency: r.payment_frequency || '',
       charged_amount: Number(r.charged_amount) || 0,
       monthly_price: Number(r.monthly_price) || 0,
+      people_on_agreement: Number(r.people_on_agreement) || 1,
+      other_members: r.other_members || '',
       begin_date: r.begin_date || '',
       tenure_months: r.tenure_months == null ? '' : Number(r.tenure_months),
       is_past_due: r.is_past_due ? 'Yes' : 'No',
@@ -136,4 +238,4 @@ async function buildPriceWorkbook({ detail = [], breakdown = [], clubSlugs = nul
   return wb.xlsx.writeBuffer().then(ab => Buffer.from(ab))
 }
 
-module.exports = { buildPriceWorkbook, CLUB_SLUG_MAP, CLUB_ORDER }
+module.exports = { buildPriceWorkbook, buildPriceTables, CLUB_SLUG_MAP, CLUB_ORDER }

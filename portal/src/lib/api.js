@@ -697,6 +697,19 @@ export async function downloadMembershipPriceDetail({ locationSlug = 'all', basi
   setTimeout(() => URL.revokeObjectURL(blobUrl), 100)
 }
 
+// Same two tables as the .xlsx, written to a new Google Sheet in the user's own
+// Drive. Resolves to { url }. Throws with code 'google_not_connected' (HTTP 412)
+// when the user hasn't linked their Google account yet.
+export async function exportMembershipPriceToSheet({ locationSlug = 'all', basis = 'monthly' } = {}) {
+  const params = new URLSearchParams()
+  if (locationSlug && locationSlug !== 'all') params.set('location_slug', locationSlug)
+  if (basis) params.set('basis', basis)
+  const qs = params.toString()
+  return api('/reports/membership-price-detail/export-sheet' + (qs ? '?' + qs : ''), {
+    method: 'POST',
+  })
+}
+
 export async function getPTReport(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/reports/pt' + (qs ? '?' + qs : ''), options)
