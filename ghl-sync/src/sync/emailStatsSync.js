@@ -1,6 +1,7 @@
 const LOCATIONS = require('../config/locations');
 const { EMAIL_SOURCES, STATS_DELAY_MS, listCampaigns, getCampaignStats, transformRow } = require('../ghl/emailCampaigns');
 const { upsertEmailStats } = require('../db/upsertEmailStats');
+const { upsertEmailStatsDaily, snapshotRow } = require('../db/upsertEmailStatsDaily');
 const { writeSyncLog } = require('./syncLog');
 const { sleep } = require('../ghl/client');
 
@@ -44,13 +45,25 @@ async function emailStatsSyncForLocation(loc) {
 
   const { upserted, errors } = rows.length ? await upsertEmailStats(rows) : { upserted: 0, errors: [] };
 
+  // Freeze today's cumulative counters so period figures are derivable later.
+  // Snapshot failures are logged but never fail the run: email_stats (the
+  // live view) is the primary write, this is the history feed.
+  const snapshotDate = new Date().toISOString().slice(0, 10);
+  const snapshots = rows.map(r => snapshotRow(r, snapshotDate));
+  const snap = snapshots.length
+    ? await upsertEmailStatsDaily(snapshots)
+    : { upserted: 0, errors: [] };
+  if (snap.errors.length) {
+    console.warn(`[EmailStats] ${loc.name}: ${snap.errors.length} snapshot batch error(s)`);
+  }
+
   await writeSyncLog({
     syncType: 'email-stats',
     entity: 'email_stats',
     locationId: loc.id,
     recordsFetched: fetched,
     recordsUpserted: upserted,
-    errors: [...errors, ...skipped],
+    errors: [...errors, ...snap.errors, ...skipped],
     startedAt,
   });
 
