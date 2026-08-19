@@ -113,3 +113,45 @@ test('bodies differing only past 160 normalized characters collide', () => {
   const base = 'x'.repeat(200)
   assert.strictEqual(templateKey(base + 'aaa'), templateKey(base + 'bbb'))
 })
+
+// Failure 1 regression: the trailing-name rule must not eat real brand copy
+// like "Strength" just because it happens to sit before the first period.
+test('trailing-name rule does not strip "Strength" from real closing copy', () => {
+  const norm = normalizeBody(GROUPS.personalWelcome[0])
+  assert.match(norm, /\bstrength\b/)
+})
+
+// Failure 1 regression: a greeting followed by a stoplisted word (not a
+// name) must keep that word, even though it looks like "Hey <Name>,".
+test('"Hey Team," keeps "Team" (stoplisted, not a name)', () => {
+  const norm = normalizeBody('Hey Team, the gym is closed today for a deep clean.')
+  assert.match(norm, /\bteam\b/)
+})
+
+// Failure 1 regression: greeting + up to three capitalized name tokens must
+// still collapse across recipients, including a three-word name.
+test('multi-token merged names collide across recipients (oneMoreTryMultiName)', () => {
+  const keys = GROUPS.oneMoreTryMultiName.map(templateKey)
+  for (const k of keys) assert.strictEqual(k, keys[0])
+})
+
+// Failure 2 regression: a merge field mid-clause, right before the first
+// terminal punctuation, must still collapse across recipients — including
+// when GHL sends the name ALL CAPS.
+test('trailing merge-field name collides across recipients (tourBookingThanks, happyBirthday)', () => {
+  assert.strictEqual(
+    templateKey(GROUPS.tourBookingThanks[0]),
+    templateKey(GROUPS.tourBookingThanks[1])
+  )
+  assert.strictEqual(
+    templateKey(GROUPS.happyBirthday[0]),
+    templateKey(GROUPS.happyBirthday[1])
+  )
+})
+
+test('tourBookingThanks and happyBirthday stay distinct from each other', () => {
+  assert.notStrictEqual(
+    templateKey(GROUPS.tourBookingThanks[0]),
+    templateKey(GROUPS.happyBirthday[0])
+  )
+})

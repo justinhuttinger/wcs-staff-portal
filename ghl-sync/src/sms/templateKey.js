@@ -46,6 +46,16 @@ const OPENER_STOPLIST = new Set([
   'congrats', 'congratulations', 'welcome', 'thanks', 'thank you',
   'reminder', 'urgent', 'heads up', 'last chance', 'today only',
   'good news', 'bad news', 'attention', 'oh no', 'yes', 'no', 'ok', 'okay',
+  'team',
+]);
+
+// Small brand/common-word stoplist for the trailing-name rule (see
+// stripTrailingNameBeforePunct below). Real WCS copy routinely ends its
+// first sentence on one of these ("...to West Coast Strength.", "...gym is
+// OPEN!"), and they must never be mistaken for a merged name.
+const BRAND_STOPLIST = new Set([
+  'strength', 'gym', 'today', 'tonight', 'now', 'here', 'open', 'wcs',
+  'west', 'coast', 'family',
 ]);
 
 const GREETING_RE = /^\s*(hi|hey|hello|good morning|good afternoon)\b[,!]*\s*/i;
@@ -53,24 +63,47 @@ const GREETING_RE = /^\s*(hi|hey|hello|good morning|good afternoon)\b[,!]*\s*/i;
 // production data includes names like "Фаина"), not just ASCII A-Z — an
 // ASCII-only [A-Z] test would fail to strip those and reintroduce
 // per-recipient clusters for non-Latin names.
-const NAME_TOKEN_RE = /^(\p{Lu}\S*?)[,!]*\s+/u;
+//
+// Captures ONE TO THREE capitalized tokens (people have two-word first
+// names, hyphenated names, and occasionally a middle name — "Jon Michael",
+// "Lindsay Belle"). The repeated group is optional and greedy, but each
+// repetition still requires \p{Lu} on the NEXT token to continue, so on an
+// unpunctuated body ("Hey Michael we tried calling...") it naturally
+// backtracks down to just "Michael" once it hits the lowercase "we" — it
+// does not walk into real sentence content.
+const NAME_TOKEN_RE = /^((?:\p{Lu}[\p{L}'-]*\s+){0,2}\p{Lu}[\p{L}'-]*)[,!]*\s+/u;
 const LEADING_TOKENS_RE = /^\s*(\p{L}[\p{L}'-]*)(?:\s+(\p{L}[\p{L}'-]*))?[,!]\s+/u;
+const TRAILING_PUNCT_RE = /[.!?]/;
+const TRAILING_WORD_RE = /(\p{L}[\p{L}'-]*)\s*$/u;
 const isCapitalized = tok => /^\p{Lu}/u.test(tok);
+
+// Case A helper: does the captured name phrase look like a real non-name
+// opener rather than a name? Checked against the whole phrase and its first
+// word, same as Case B below, so "Hey Team," doesn't lose "Team".
+function isStoplistedOpener(nameTokens) {
+  const lower = nameTokens.toLowerCase();
+  if (OPENER_STOPLIST.has(lower)) return true;
+  const firstWord = nameTokens.split(/\s+/)[0].toLowerCase();
+  return OPENER_STOPLIST.has(firstWord);
+}
 
 // Strip a leading personalization from the ORIGINAL (not-yet-lowercased)
 // body, so capitalization is still available to distinguish a real name from
 // an ordinary sentence-initial word.
 function stripLeadingPersonalization(body) {
   // Case A: an optional greeting word ("Hi", "Hey", "Hello", "Good morning",
-  // "Good afternoon"), plus a following capitalized name token if present.
-  // This is what restores the "Hey Michael we tried calling..." shape — no
-  // comma or bang follows the name, so the punctuation-anchored rule below
-  // never fires, but the greeting word itself is an unambiguous signal.
+  // "Good afternoon"), plus one to three following capitalized name tokens
+  // if present. This is what restores the "Hey Michael we tried calling..."
+  // shape — no comma or bang follows the name, so the punctuation-anchored
+  // rule below never fires, but the greeting word itself is an unambiguous
+  // signal.
   const greeting = body.match(GREETING_RE);
   if (greeting) {
     const rest = body.slice(greeting[0].length);
     const name = rest.match(NAME_TOKEN_RE);
-    return name ? rest.slice(name[0].length) : rest;
+    if (!name) return rest;
+    if (isStoplistedOpener(name[1])) return rest;
+    return rest.slice(name[0].length);
   }
 
   // Case B: one or two LEADING capitalized tokens immediately followed by
@@ -92,10 +125,41 @@ function stripLeadingPersonalization(body) {
   return body;
 }
 
+// Strip a capitalized token that sits immediately before the FIRST terminal
+// punctuation ("!", ".", or "?") of the message, when it isn't a known
+// stoplisted/brand word. Handles merge fields WCS drops mid-clause instead of
+// up front — "Thank you for booking a tour with us Joshua!",
+// "Happy Birthday MATTHEW!" — where no leading rule ever fires because the
+// name isn't at the start. Runs on the (already leading-stripped) ORIGINAL
+// body, before lowercasing, so ALL-CAPS names ("MATTHEW") still test
+// positive for capitalization via their first letter.
+function stripTrailingNameBeforePunct(body) {
+  const idx = body.search(TRAILING_PUNCT_RE);
+  if (idx === -1) return body;
+
+  const prefix = body.slice(0, idx);
+  const m = prefix.match(TRAILING_WORD_RE);
+  if (!m) return body;
+
+  const word = m[1];
+  if (!isCapitalized(word)) return body;
+
+  const lower = word.toLowerCase();
+  if (OPENER_STOPLIST.has(lower) || BRAND_STOPLIST.has(lower)) return body;
+
+  const start = m.index;
+  return body.slice(0, start) + body.slice(start + word.length);
+}
+
+function stripPersonalization(body) {
+  const leadingStripped = stripLeadingPersonalization(body);
+  return stripTrailingNameBeforePunct(leadingStripped);
+}
+
 function normalizeBody(body) {
   if (typeof body !== 'string') return '';
 
-  let s = stripLeadingPersonalization(body);
+  let s = stripPersonalization(body);
   s = s.toLowerCase();
 
   // Links: a tracking short link differs per recipient, and stripping it

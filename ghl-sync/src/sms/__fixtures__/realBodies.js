@@ -20,9 +20,14 @@ const GROUPS = {
     'Hi Cole!\n\nWelcome to the West Coast Strength Family! We are so happy to have you apart of our community!\n\nAs a member, you unlock incredible benefits, such as free personal training.',
   ],
 
+  // Includes a two-token merged name ("Lindsay Belle") alongside the plain
+  // single-token sends — regression for the greeting branch only stripping
+  // the greeting word plus ONE adjacent name token and leaving the second
+  // name token to leak a per-recipient cluster.
   freeWeek: [
     'Hi Chris!\n\nWelcome to your free week at West Coast Strength! We are happy to have you here experiencing the best gym around, if you have any questions during your trial please feel free to ask.',
     'Hi Andrea!\n\nWelcome to your free week at West Coast Strength! We are happy to have you here experiencing the best gym around, if you have any questions during your trial please feel free to ask.',
+    'Hi Lindsay Belle! Welcome to your free week at West Coast Strength! We are happy to have you here experiencing the best gym around, if you have any questions during your trial please feel free to ask.',
   ],
 
   // Opens "<Name>, this is <Staff> from ..." — the staff name varies by employee
@@ -39,9 +44,13 @@ const GROUPS = {
     'Hey Dennis, just tried calling! Wanted to get you scheduled for a tour and get your free trial activated. What day works best for you to swing by?',
   ],
 
+  // Includes a two-token merged name ("Lindsay Belle") — same regression as
+  // freeWeek above, but exercising the comma-terminated greeting shape
+  // ("Hey <Name>,") instead of the bang-terminated one.
   trialCheckIn: [
     "Hey Colleen, tried calling to check in on your trial! Hope you've been enjoying it. I wanted to chat about next steps before it wraps up. Call or text me back when you can!",
     "Hey Chris, tried calling to check in on your trial! Hope you've been enjoying it. I wanted to chat about next steps before it wraps up. Call or text me back when you can!",
+    "Hey Lindsay Belle, tried calling to check in on your trial! Hope you've been enjoying it. I wanted to chat about next steps before it wraps up. Call or text me back when you can!",
   ],
 
   // Opens with a BARE first name and a comma — no greeting word at all.
@@ -105,6 +114,32 @@ const GROUPS = {
   todayOnlySale: [
     'Today only! Our summer sale ends tonight. Lock in your rate before it disappears.',
     'Today only!  Our summer sale ends tonight.   Lock in your rate before it disappears.',
+  ],
+
+  // Multi-token merged name with a comma, no matching template among the
+  // groups above (freeWeek/trialCheckIn cover the bang and comma shapes on
+  // existing templates; this one pins a THIRD name token too, for a
+  // three-word name, to prove the 1-to-3-token allowance).
+  oneMoreTryMultiName: [
+    "Hey Jon Michael, one more try! I don't want you to miss out on your free trial. Let me know when you want to come in!",
+    "Hey Mary Kate, one more try! I don't want you to miss out on your free trial. Let me know when you want to come in!",
+    "Hey Anna Marie Lee, one more try! I don't want you to miss out on your free trial. Let me know when you want to come in!",
+  ],
+
+  // The merged name sits at the END of the first clause, immediately before
+  // "!", not at the start — no leading rule ever fires for these. Pins the
+  // trailing-name-before-first-terminal-punctuation rule.
+  tourBookingThanks: [
+    'Thank you for booking a tour with us Joshua! We look forward to seeing you.',
+    'Thank you for booking a tour with us Ector! We look forward to seeing you.',
+  ],
+
+  // Same trailing-name shape, and the name is sent ALL CAPS ("MATTHEW") for
+  // one recipient — capitalization must be tested on the ORIGINAL body
+  // before lowercasing so this still collides with the Title-Case send.
+  happyBirthday: [
+    'Happy Birthday MATTHEW! We are here to celebrate with you!',
+    'Happy Birthday Josue! We are here to celebrate with you!',
   ],
 }
 
