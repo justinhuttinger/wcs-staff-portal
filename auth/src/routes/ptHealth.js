@@ -2,7 +2,7 @@ const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireReportAccess } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
-const { wrapSWR } = require('../services/memoryCache')
+const { wrap, wrapSWR } = require('../services/memoryCache')
 const { parseLocationSlugParam, locationCacheKey } = require('../utils/locationSlug')
 
 // Phase 2 perf: cache the heavy ABC+GHL aggregation payload across users.
@@ -102,51 +102,53 @@ async function fetchPTRecurringServices(clubNumber, startISO, endISO, paramName)
   return all
 }
 
-const historyCache = new Map()
+// Per-member ABC lookups, cached only long enough to dedupe repeat calls
+// within one report run — high cardinality (thousands of PT members across
+// seven clubs), so this deliberately does NOT persist across runs. Backed by
+// the shared memoryCache helper, which caps total entries and sweeps expired
+// ones so a busy day of report runs can't grow this without bound.
+const MEMBER_LOOKUP_TTL_MS = 5 * 60 * 1000
+
 async function fetchPTPurchaseHistory(clubNumber, memberId) {
   if (!memberId) return []
-  const key = `${clubNumber}:${memberId}`
-  if (historyCache.has(key)) return historyCache.get(key)
-  try {
-    const data = await abcGet(`/${clubNumber}/members/${memberId}/services/purchasehistory`, {
-      purchaseDateRange: '2020-01-01',
-    })
-    const summaries = (data.serviceSummaries || []).filter(s => isPT(s.serviceName))
-    historyCache.set(key, summaries)
-    return summaries
-  } catch (e) {
-    console.warn(`[PT Health] purchasehistory failed for ${memberId}@${clubNumber}:`, e.message)
-    historyCache.set(key, [])
-    return []
-  }
+  const key = `pt-health:history:${clubNumber}:${memberId}`
+  return wrap(key, MEMBER_LOOKUP_TTL_MS, async () => {
+    try {
+      const data = await abcGet(`/${clubNumber}/members/${memberId}/services/purchasehistory`, {
+        purchaseDateRange: '2020-01-01',
+      })
+      return (data.serviceSummaries || []).filter(s => isPT(s.serviceName))
+    } catch (e) {
+      console.warn(`[PT Health] purchasehistory failed for ${memberId}@${clubNumber}:`, e.message)
+      return []
+    }
+  })
 }
 
-const memberRSCache = new Map()
 async function fetchMemberAllRS(clubNumber, memberId) {
   if (!memberId) return []
-  const key = `${clubNumber}:${memberId}`
-  if (memberRSCache.has(key)) return memberRSCache.get(key)
-  try {
-    const all = []
-    let page = 1
-    while (page <= 5) {
-      const data = await abcGet(`/${clubNumber}/members/recurringservices`, {
-        memberId, size: 200, page,
-      })
-      const svcs = data.recurringServices || []
-      for (const s of svcs) {
-        if (!isPT(s.serviceItem)) continue
-        all.push(s)
+  const key = `pt-health:member-rs:${clubNumber}:${memberId}`
+  return wrap(key, MEMBER_LOOKUP_TTL_MS, async () => {
+    try {
+      const all = []
+      let page = 1
+      while (page <= 5) {
+        const data = await abcGet(`/${clubNumber}/members/recurringservices`, {
+          memberId, size: 200, page,
+        })
+        const svcs = data.recurringServices || []
+        for (const s of svcs) {
+          if (!isPT(s.serviceItem)) continue
+          all.push(s)
+        }
+        if (svcs.length < 200) break
+        page++
       }
-      if (svcs.length < 200) break
-      page++
+      return all
+    } catch (e) {
+      return []
     }
-    memberRSCache.set(key, all)
-    return all
-  } catch (e) {
-    memberRSCache.set(key, [])
-    return []
-  }
+  })
 }
 
 function parsePriceField(raw) {

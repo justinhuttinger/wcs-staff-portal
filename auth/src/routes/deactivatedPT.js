@@ -2,7 +2,8 @@ const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireReportAccess } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
-const { wrapSWR } = require('../services/memoryCache')
+const memoryCache = require('../services/memoryCache')
+const { wrap, wrapSWR } = memoryCache
 const { parseLocationSlugParam, locationCacheKey } = require('../utils/locationSlug')
 
 // Phase 2 perf: cache the heavy ABC-aggregation payload across users. Auth +
@@ -112,73 +113,80 @@ async function fetchPTRecurringServices(clubNumber, startISO, endISO, paramName)
   return all
 }
 
-const historyCache = new Map()
+// Per-member ABC lookups, cached only long enough to dedupe repeat calls
+// within one report run — high cardinality (thousands of PT members across
+// seven clubs), so this deliberately does NOT persist across runs. Backed by
+// the shared memoryCache helper, which caps total entries and sweeps expired
+// ones so a busy day of report runs can't grow this without bound.
+const MEMBER_LOOKUP_TTL_MS = 5 * 60 * 1000
+
 async function fetchPTPurchaseHistory(clubNumber, memberId) {
   if (!memberId) return []
-  const key = `${clubNumber}:${memberId}`
-  if (historyCache.has(key)) return historyCache.get(key)
-  try {
-    const data = await abcGet(`/${clubNumber}/members/${memberId}/services/purchasehistory`, {
-      purchaseDateRange: '2020-01-01',
-    })
-    const summaries = (data.serviceSummaries || []).filter(s => isPT(s.serviceName))
-    historyCache.set(key, summaries)
-    return summaries
-  } catch (e) {
-    console.warn(`[Deactivated PT] purchasehistory failed for ${memberId}@${clubNumber}:`, e.message)
-    historyCache.set(key, [])
-    return []
-  }
+  const key = `deactivated-pt:history:${clubNumber}:${memberId}`
+  return wrap(key, MEMBER_LOOKUP_TTL_MS, async () => {
+    try {
+      const data = await abcGet(`/${clubNumber}/members/${memberId}/services/purchasehistory`, {
+        purchaseDateRange: '2020-01-01',
+      })
+      return (data.serviceSummaries || []).filter(s => isPT(s.serviceName))
+    } catch (e) {
+      console.warn(`[Deactivated PT] purchasehistory failed for ${memberId}@${clubNumber}:`, e.message)
+      return []
+    }
+  })
 }
 
 // Pull every recurring service for a single member, regardless of date — used
 // to verify "no different active RS exists" before we flag someone as PIF
 // Burned. The window-filtered club fetch can miss long-running active services
 // that haven't been modified recently.
-const memberRSCache = new Map()
 async function fetchMemberAllRS(clubNumber, memberId) {
   if (!memberId) return []
-  const key = `${clubNumber}:${memberId}`
-  if (memberRSCache.has(key)) return memberRSCache.get(key)
-  try {
-    const all = []
-    let page = 1
-    while (page <= 5) {
-      const data = await abcGet(`/${clubNumber}/members/recurringservices`, {
-        memberId, size: 200, page,
-      })
-      const svcs = data.recurringServices || []
-      for (const s of svcs) {
-        if (!isPT(s.serviceItem)) continue
-        all.push(s)
+  const key = `deactivated-pt:member-rs:${clubNumber}:${memberId}`
+  return wrap(key, MEMBER_LOOKUP_TTL_MS, async () => {
+    try {
+      const all = []
+      let page = 1
+      while (page <= 5) {
+        const data = await abcGet(`/${clubNumber}/members/recurringservices`, {
+          memberId, size: 200, page,
+        })
+        const svcs = data.recurringServices || []
+        for (const s of svcs) {
+          if (!isPT(s.serviceItem)) continue
+          all.push(s)
+        }
+        if (svcs.length < 200) break
+        page++
       }
-      if (svcs.length < 200) break
-      page++
+      return all
+    } catch (e) {
+      console.warn(`[Deactivated PT] member RS fetch failed for ${memberId}@${clubNumber}:`, e.message)
+      return []
     }
-    memberRSCache.set(key, all)
-    return all
-  } catch (e) {
-    console.warn(`[Deactivated PT] member RS fetch failed for ${memberId}@${clubNumber}:`, e.message)
-    memberRSCache.set(key, [])
-    return []
-  }
+  })
 }
 
 // Plan-detail cache for rich names — same pattern as ptNewClients.js. The
 // recurring-services payload returns the short `serviceItem` ("PT 60MIN");
 // the full name with frequency + duration ("PT60 3X/WEEK 12 MONTHS") lives
-// on the recurringServicePlan entity.
-const planCache = new Map()
+// on the recurringServicePlan entity. Lower cardinality than the per-member
+// caches above (bounded by distinct recurring-service plans, not members), so
+// this keeps its original 1h TTL rather than the short per-run TTL.
+//
+// NOTE: a failed lookup is deliberately NOT cached (matches pre-refactor
+// behavior) — this uses memoryCache's get/set directly rather than wrap(),
+// which would cache the null result for the full TTL.
 const PLAN_CACHE_TTL = 60 * 60 * 1000
 async function fetchPlanName(clubNumber, planId) {
   if (!planId) return null
-  const key = `${clubNumber}:${planId}`
-  const hit = planCache.get(key)
-  if (hit && (Date.now() - hit.ts) < PLAN_CACHE_TTL) return hit.name
+  const key = `deactivated-pt:plan:${clubNumber}:${planId}`
+  const hit = memoryCache.get(key)
+  if (hit !== undefined) return hit
   try {
     const data = await abcGet(`/${clubNumber}/clubs/recurringserviceplans/${planId}`)
     const name = data?.recurringServicePlanDetail?.recurringServicePlanName || null
-    planCache.set(key, { name, ts: Date.now() })
+    memoryCache.set(key, name, PLAN_CACHE_TTL)
     return name
   } catch (e) {
     console.warn(`[Deactivated PT] plan fetch failed for ${planId}@${clubNumber}:`, e.message)

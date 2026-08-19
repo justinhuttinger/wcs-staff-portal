@@ -104,48 +104,36 @@ const { diffSnapshots, computeRates } = require('./emailAutomationMath')
 router.get('/automations', async (req, res) => {
   const { location_slug, start_date, end_date } = req.query
   try {
-    let q = supabaseAdmin
-      .from('email_stats_daily')
-      .select('location, source_id, name, subject, snapshot_date, sent, accepted, delivered, opened, clicked, unsubscribed, complained, permanent_fail, temporary_fail, rejected, failed, replied')
-      .eq('source', 'workflow-campaigns')
-      .order('snapshot_date', { ascending: true })
+    // email_automation_period() (auth/migrations/112_email_automation_period.sql)
+    // does the "latest at/before end_date" + "baseline strictly before
+    // start_date" selection in SQL via DISTINCT ON, returning at most two rows
+    // per campaign instead of the whole table. Replaces the old paged full-table
+    // scan that grew ~294 rows/day forever and was accumulating tens of MB per
+    // request.
+    const { data, error } = await supabaseAdmin.rpc('email_automation_period', {
+      p_start: start_date || null,
+      p_end: end_date || null,
+      p_location: location_slug || null,
+    })
+    if (error) throw error
 
-    if (location_slug) q = q.eq('location', location_slug)
-    if (end_date) q = q.lte('snapshot_date', end_date)
-
-    // No lower bound here on purpose: the baseline snapshot has to predate
-    // start_date, so it can live arbitrarily far back. email_stats_daily grows
-    // by one row per workflow campaign per location per day, which reaches
-    // PostgREST's ~1000-row response cap within about a week. Ascending order
-    // means an unpaged query would silently truncate to the OLDEST rows, so
-    // `latest` would collapse to a week-one snapshot, every diff would read
-    // as zero, and the table would render empty. Page explicitly until a
-    // short page comes back (see auth/src/routes/checkinsReport.js).
-    const data = []
-    let from = 0
-    for (;;) {
-      const { data: page, error } = await q.range(from, from + 999)
-      if (error) throw error
-      if (!page || !page.length) break
-      data.push(...page)
-      if (page.length < 1000) break
-      from += 1000
-    }
-
-    // Per campaign: the last snapshot at or before end_date is the "latest";
-    // the last one strictly before start_date is the baseline. Rows arrive in
-    // ascending date order, so a single pass keeps the newest of each.
+    // Per campaign: at most one "latest" row (is_baseline = false) and one
+    // "baseline" row (is_baseline = true) come back from the function.
     const byCampaign = new Map()
     let baselineDate = null
     for (const row of data || []) {
       const k = `${row.location}|${row.source_id}`
-      const entry = byCampaign.get(k) || { latest: null, baseline: null, meta: row }
-      entry.latest = row
-      if (start_date && row.snapshot_date < start_date) {
+      const entry = byCampaign.get(k) || { latest: null, baseline: null, meta: null }
+      if (row.is_baseline) {
         entry.baseline = row
         if (!baselineDate || row.snapshot_date > baselineDate) baselineDate = row.snapshot_date
+      } else {
+        entry.latest = row
       }
-      entry.meta = row
+      // Prefer the latest row's name/subject (mirrors the old ascending-scan
+      // behavior, where the most recent row processed last always won); fall
+      // back to whatever row we have if latest hasn't been seen yet.
+      if (!row.is_baseline || !entry.meta) entry.meta = row
       byCampaign.set(k, entry)
     }
 
