@@ -49,6 +49,10 @@ router.get('/campaigns', async (req, res) => {
       .from('email_stats')
       .select('location, source, source_id, name, subject, status, completed_at, sent, delivered, opened, clicked, replied, unsubscribed, complained, permanent_fail, temporary_fail, open_rate, click_rate, reply_rate, unsubscribe_rate, bounce_rate')
       .order('completed_at', { ascending: false, nullsFirst: false })
+      // One-time sends only. Workflow rows are evergreen automations with a
+      // null completed_at, so the date filter below would silently drop them —
+      // they get their own endpoint with real period math instead.
+      .in('source', ['bulk-actions', 'email-campaigns'])
 
     if (location_slug) q = q.eq('location', location_slug)
     if (start_date) q = q.gte('completed_at', start_date)
@@ -83,6 +87,90 @@ router.get('/campaigns', async (req, res) => {
     res.json({ campaigns, totals })
   } catch (err) {
     console.error('[Email Marketing] campaigns error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+const { diffSnapshots, computeRates } = require('./emailAutomationMath')
+
+// GET /email-marketing/automations?location_slug=&start_date=&end_date=
+//
+// Workflow email performance over a real date range. GHL only exposes LIFETIME
+// counters per workflow, so the period figure is the difference between the
+// last snapshot in the range and the last snapshot before it. When no snapshot
+// predates the range (we started snapshotting after start_date), the row is
+// returned as a lifetime total flagged is_lifetime rather than a made-up
+// period number.
+router.get('/automations', async (req, res) => {
+  const { location_slug, start_date, end_date } = req.query
+  try {
+    let q = supabaseAdmin
+      .from('email_stats_daily')
+      .select('location, source_id, name, subject, snapshot_date, sent, accepted, delivered, opened, clicked, unsubscribed, complained, permanent_fail, temporary_fail, rejected, failed, replied')
+      .eq('source', 'workflow-campaigns')
+      .order('snapshot_date', { ascending: true })
+
+    if (location_slug) q = q.eq('location', location_slug)
+    if (end_date) q = q.lte('snapshot_date', end_date)
+
+    const { data, error } = await q
+    if (error) throw error
+
+    // Per campaign: the last snapshot at or before end_date is the "latest";
+    // the last one strictly before start_date is the baseline. Rows arrive in
+    // ascending date order, so a single pass keeps the newest of each.
+    const byCampaign = new Map()
+    let baselineDate = null
+    for (const row of data || []) {
+      const k = `${row.location}|${row.source_id}`
+      const entry = byCampaign.get(k) || { latest: null, baseline: null, meta: row }
+      entry.latest = row
+      if (start_date && row.snapshot_date < start_date) {
+        entry.baseline = row
+        if (!baselineDate || row.snapshot_date > baselineDate) baselineDate = row.snapshot_date
+      }
+      entry.meta = row
+      byCampaign.set(k, entry)
+    }
+
+    const automations = []
+    for (const [, { latest, baseline, meta }] of byCampaign) {
+      const counters = diffSnapshots(latest, baseline)
+      if (!counters) continue
+      if (!counters.sent) continue // omit automations with no sends in range
+      automations.push({
+        location: meta.location,
+        source_id: meta.source_id,
+        name: meta.name,
+        subject: meta.subject,
+        sent: counters.sent,
+        delivered: counters.delivered,
+        opened: counters.opened,
+        clicked: counters.clicked,
+        replied: counters.replied,
+        unsubscribed: counters.unsubscribed,
+        bounced: counters.permanent_fail + counters.temporary_fail,
+        is_lifetime: counters.is_lifetime,
+        ...computeRates(counters),
+      })
+    }
+    automations.sort((a, b) => b.sent - a.sent)
+
+    const t = automations.reduce((a, c) => {
+      a.automations += 1
+      a.sent += c.sent; a.delivered += c.delivered; a.opened += c.opened
+      a.clicked += c.clicked; a.replied += c.replied
+      a.unsubscribed += c.unsubscribed; a.bounced += c.bounced
+      return a
+    }, { automations: 0, sent: 0, delivered: 0, opened: 0, clicked: 0, replied: 0, unsubscribed: 0, bounced: 0 })
+
+    res.json({
+      automations,
+      totals: { ...t, ...computeRates({ ...t, permanent_fail: t.bounced, temporary_fail: 0 }) },
+      baseline_date: baselineDate,
+    })
+  } catch (err) {
+    console.error('[Email Marketing] automations error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })

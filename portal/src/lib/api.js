@@ -968,6 +968,12 @@ export async function getEmailMarketingCampaigns(params = {}) {
   return api('/email-marketing/campaigns' + (qs ? '?' + qs : ''))
 }
 
+// Workflow email performance over a date range, derived from daily snapshots.
+export async function getEmailMarketingAutomations(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/email-marketing/automations' + (qs ? '?' + qs : ''))
+}
+
 export async function getInventoryInvoices() {
   return api('/inventory/invoices')
 }
