@@ -661,6 +661,42 @@ export async function getMembershipAudit(params = {}, options = {}) {
   return api('/reports/membership-audit' + (qs ? '?' + qs : ''), options)
 }
 
+// How many active members pay each price, grouped by club × type × frequency ×
+// price. One fetch backs every view — the client pivots and filters it.
+export async function getMembershipPriceBreakdown(params = {}, options = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/reports/membership-price-breakdown' + (qs ? '?' + qs : ''), options)
+}
+
+// Excel export of the price breakdown: a price × club summary sheet plus the
+// member-level detail list. `basis` picks which price column groups the summary.
+export async function downloadMembershipPriceDetail({ locationSlug = 'all', basis = 'monthly' } = {}) {
+  const headers = {}
+  if (authToken) headers['Authorization'] = 'Bearer ' + authToken
+  const params = new URLSearchParams()
+  if (locationSlug && locationSlug !== 'all') params.set('location_slug', locationSlug)
+  if (basis) params.set('basis', basis)
+  const qs = params.toString()
+  const url = `${API_URL}/reports/membership-price-detail.xlsx${qs ? '?' + qs : ''}`
+  const res = await fetch(url, { headers })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    let msg = text
+    try { msg = JSON.parse(text).error || text } catch { /* leave text */ }
+    throw new Error(msg || `Failed to generate price breakdown (HTTP ${res.status})`)
+  }
+  const blob = await res.blob()
+  const blobUrl = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = blobUrl
+  const locLabel = !locationSlug || locationSlug === 'all' ? 'All-Clubs' : locationSlug
+  a.download = `WCS-Membership-Price-Breakdown-${locLabel}.xlsx`
+  a.click()
+  // Defer revoke so the browser can start the download before the blob URL is
+  // freed (a synchronous revoke races the download in some browsers).
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 100)
+}
+
 export async function getPTReport(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
   return api('/reports/pt' + (qs ? '?' + qs : ''), options)
