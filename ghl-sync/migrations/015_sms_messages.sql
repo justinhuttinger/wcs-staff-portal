@@ -95,7 +95,10 @@ AS $$
     count(*) FILTER (WHERE m.status IN ('failed','undelivered')) AS failed,
     count(DISTINCT r.send_id)                                 AS replies,
     count(DISTINCT r.send_id) FILTER (WHERE r.is_opt_out)     AS opt_outs,
-    percentile_cont(0.5) WITHIN GROUP (ORDER BY r.reply_minutes) AS median_reply_minutes
+    -- percentile_cont over an integer column resolves to double precision, but
+    -- this function declares median_reply_minutes NUMERIC; cast explicitly
+    -- rather than rely on an assignment-context cast at CREATE FUNCTION time.
+    (percentile_cont(0.5) WITHIN GROUP (ORDER BY r.reply_minutes))::numeric AS median_reply_minutes
   FROM ghl_sms_messages m
   LEFT JOIN sms_replies r ON r.send_id = m.id
   LEFT JOIN sms_templates t
