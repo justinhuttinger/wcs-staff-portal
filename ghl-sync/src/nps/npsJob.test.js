@@ -33,13 +33,23 @@ function fakeDb({ members = [], invites = [], surveys = [] } = {}) {
           });
           return Promise.resolve({ data: rows.slice(from, to + 1), error: null });
         },
-        upsert(rows) {
-          // Emulate ignoreDuplicates: only rows whose (survey_id, member_id,
-          // trigger_date) is not already present come back.
-          const fresh = rows.filter(r => !invites.some(i =>
+        // Postgres refuses ON CONFLICT against the partial idempotency index
+        // (migration 109 added `where not is_test`). The old fake accepted an
+        // upsert happily, which is why a job that could never insert a single
+        // row passed every test and failed on its first live night.
+        upsert() {
+          throw new Error('there is no unique or exclusion constraint matching the ON CONFLICT specification');
+        },
+        insert(rows) {
+          const list = Array.isArray(rows) ? rows : [rows];
+          // The real index still rejects a duplicate that slips through.
+          const dup = list.find(r => invites.some(i =>
             i.survey_id === r.survey_id && i.member_id === r.member_id && i.trigger_date === r.trigger_date));
-          inserted.push(...fresh);
-          return { select: () => Promise.resolve({ data: fresh, error: null }) };
+          if (dup) {
+            return { select: () => Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key' } }) };
+          }
+          inserted.push(...list);
+          return { select: () => Promise.resolve({ data: list, error: null }) };
         },
       };
       return builder;

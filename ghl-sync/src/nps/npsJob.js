@@ -27,17 +27,44 @@ async function loadActiveSurveys({ db }) {
 }
 
 /**
- * Insert invite rows, letting the unique index absorb anything already sent.
- * ignoreDuplicates means .select() returns ONLY the rows actually inserted,
- * which is exactly the "what is new tonight" list the caller wants.
+ * Insert tonight's invites, skipping anyone who already has one.
+ *
+ * This cannot use ON CONFLICT. Migration 109 made the idempotency index
+ * PARTIAL (`where not is_test`) so manual test fires can repeat, and Postgres
+ * will not match a partial unique index to an ON CONFLICT target unless the
+ * same predicate is restated — which PostgREST has no way to express. The
+ * upsert therefore failed outright with "no unique or exclusion constraint
+ * matching the ON CONFLICT specification" and every survey aborted.
+ *
+ * So the duplicate check is explicit: read the keys that already exist, drop
+ * them, insert the rest. The index still stands as the last line of defence
+ * against a race, and a 23505 from it is treated as "somebody else got there
+ * first" rather than an error.
  */
 async function insertInvites({ db, rows }) {
   if (!rows.length) return [];
-  const { data, error } = await db
+
+  const keyOf = r => `${r.survey_id}|${r.member_id}|${r.trigger_date}`;
+
+  const { data: existing, error: readErr } = await db
     .from('nps_invites')
-    .upsert(rows, { onConflict: 'survey_id,member_id,trigger_date', ignoreDuplicates: true })
-    .select();
-  if (error) throw new Error(`[NPS] failed to insert nps_invites: ${error.message}`);
+    .select('survey_id, member_id, trigger_date')
+    .in('survey_id', [...new Set(rows.map(r => r.survey_id))])
+    .in('member_id', [...new Set(rows.map(r => r.member_id))])
+    .in('trigger_date', [...new Set(rows.map(r => r.trigger_date))]);
+  if (readErr) throw new Error(`[NPS] failed to read nps_invites: ${readErr.message}`);
+
+  const taken = new Set((existing || []).map(keyOf));
+  const fresh = rows.filter(r => !taken.has(keyOf(r)));
+  if (!fresh.length) return [];
+
+  const { data, error } = await db.from('nps_invites').insert(fresh).select();
+  if (error) {
+    // 23505 is the partial unique index doing its job under a race. Nothing
+    // was double-sent, so treat it as nothing new rather than a failure.
+    if (error.code === '23505') return [];
+    throw new Error(`[NPS] failed to insert nps_invites: ${error.message}`);
+  }
   return data || [];
 }
 
