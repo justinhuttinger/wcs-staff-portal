@@ -974,6 +974,19 @@ export async function getEmailMarketingAutomations(params = {}) {
   return api('/email-marketing/automations' + (qs ? '?' + qs : ''))
 }
 
+// SMS engagement per automated text (clustered by message-body fingerprint).
+export async function getSmsMarketingTemplates(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/sms-marketing/templates' + (qs ? '?' + qs : ''))
+}
+
+export async function setSmsTemplateLabel(key, location_slug, label) {
+  return api(`/sms-marketing/templates/${encodeURIComponent(key)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ location_slug, label }),
+  })
+}
+
 export async function getInventoryInvoices() {
   return api('/inventory/invoices')
 }
