@@ -2,8 +2,11 @@
 // across all seven locations). These exist so the template fingerprint is tested
 // against WCS's ACTUAL copy rather than invented examples — the first version of
 // the normalizer passed hand-written tests and still produced 982 "templates"
-// from 1,437 real messages, because it only stripped a merged first name when it
-// followed "Hi/Hey/Hello".
+// from 1,450 real messages, because it only stripped a merged first name when it
+// followed "Hi/Hey/Hello". A later rewrite fixed that (195 clusters) but
+// over-merged in the other direction, pooling templates that only share a
+// leading "Word[,!]" shape regardless of what that word was — see
+// heyNameNoPunct, congrats/welcome, and lastChance/todayOnly below.
 //
 // Each group is one real template. Every body inside a group MUST fingerprint
 // identically; bodies in different groups MUST NOT collide.
@@ -66,6 +69,42 @@ const GROUPS = {
   paymentFailed: [
     "Hi Acacia! We noticed your recent payment wasn't successful. Please give us a call or stop by the front desk to get this taken care of \u{1F4AA}",
     "Hi Justin! We noticed your recent payment wasn't successful. Please give us a call or stop by the front desk to get this taken care of \u{1F4AA}",
+  ],
+
+  // Greeting word followed by a bare name with NO comma or bang at all — the
+  // shape the punctuation-anchored rewrite missed entirely (it only stripped
+  // a leading personalization ending in "," or "!"), reintroducing the
+  // original per-recipient-cluster bug for this exact template.
+  heyNameNoPunct: [
+    'Hey Michael we tried calling you today, sorry we missed you! Give us a call back when you get a chance so we can find a time that works.',
+    'Hey Sarah we tried calling you today, sorry we missed you! Give us a call back when you get a chance so we can find a time that works.',
+    'Hey Devon we tried calling you today, sorry we missed you! Give us a call back when you get a chance so we can find a time that works.',
+  ],
+
+  // MUST NOT collide with congratsMember below: both are a single stoplisted
+  // opener word followed by "!" and otherwise identical copy. A punctuation-
+  // anchored rule that strips any capitalized word before "!" merges these
+  // two different templates into one, producing wrong engagement numbers.
+  // The second body is whitespace noise only (same template, sloppy send),
+  // to also confirm collapsing still happens once the opener is preserved.
+  congratsMember: [
+    'Congrats! You are officially a member of West Coast Strength. We cannot wait to help you crush your goals.',
+    'Congrats!  You are officially a member of West Coast Strength.   We cannot wait to help you crush your goals.',
+  ],
+  welcomeMember: [
+    'Welcome! You are officially a member of West Coast Strength. We cannot wait to help you crush your goals.',
+    'Welcome!  You are officially a member of West Coast Strength.   We cannot wait to help you crush your goals.',
+  ],
+
+  // MUST NOT collide with todayOnlySale below: same trailing copy, different
+  // stoplisted two-word opener.
+  lastChanceSale: [
+    'Last chance! Our summer sale ends tonight. Lock in your rate before it disappears.',
+    'Last chance!  Our summer sale ends tonight.   Lock in your rate before it disappears.',
+  ],
+  todayOnlySale: [
+    'Today only! Our summer sale ends tonight. Lock in your rate before it disappears.',
+    'Today only!  Our summer sale ends tonight.   Lock in your rate before it disappears.',
   ],
 }
 

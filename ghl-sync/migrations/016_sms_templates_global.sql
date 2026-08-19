@@ -75,6 +75,7 @@ AS $$
       m.template_key,
       m.status,
       m.body,
+      m.date_added,
       t.label,
       COALESCE(t.label, m.template_key) AS group_key,
       r.send_id,
@@ -125,7 +126,17 @@ AS $$
     max(b.label)                                                    AS label,
     array_agg(DISTINCT b.template_key)                              AS template_keys,
     array_agg(DISTINCT b.location)                                  AS clubs,
-    max(b.body)                                                     AS sample_body,
+    -- max(b.body) sorts by collation, not by recency, so it systematically
+    -- surfaced the lexicographically-largest member name in the cluster
+    -- (live data: a Cyrillic name). Pick the earliest send's body instead,
+    -- matching what sms_templates.sample_body already claims to be ("first
+    -- body seen") and stable across refetches.
+    (
+      SELECT b2.body FROM base b2
+      WHERE b2.group_key = b.group_key
+      ORDER BY b2.date_added, b2.id
+      LIMIT 1
+    )                                                                AS sample_body,
     count(DISTINCT b.id)                                            AS sends,
     count(DISTINCT b.id) FILTER (WHERE b.status = 'delivered')      AS delivered,
     count(DISTINCT b.id) FILTER (WHERE b.status IN ('failed','undelivered')) AS failed,
@@ -155,5 +166,8 @@ AS $$
     )                                                                AS by_club
   FROM base b
   GROUP BY b.group_key
-  ORDER BY count(DISTINCT b.id) DESC;
+  -- Tiebreaker on group_key: equal-send groups otherwise have no defined
+  -- order and can silently reorder between refetches, making rows appear to
+  -- jump around after an unrelated rename.
+  ORDER BY count(DISTINCT b.id) DESC, b.group_key;
 $$;

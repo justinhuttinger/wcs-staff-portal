@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useMemo, useCallback } from 'react'
+import { Fragment, useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { getSmsMarketingTemplates, setSmsTemplateLabel } from '../../lib/api'
 import { exportCSV } from '../../lib/export'
 
@@ -117,6 +117,13 @@ export default function SmsMarketingReport({ startDate, endDate, locationSlug, i
   const [editingKey, setEditingKey] = useState(null)
   const [draftLabel, setDraftLabel] = useState('')
   const [renameError, setRenameError] = useState('')
+  // Enter and Escape both unmount the input (Enter via saveEdit's
+  // setEditingKey(null), Escape via cancelEdit's setEditingKey(null)), and
+  // either can trigger a synchronous onBlur before the unmount completes.
+  // Without this guard, Escape's blur would call saveEdit and persist the
+  // draft the user just asked to discard. Set before either branch's state
+  // change so the blur handler sees it regardless of ordering.
+  const skipBlurRef = useRef(false)
 
   const allLoc = locationSlug === 'all' || !locationSlug
   const params = useMemo(
@@ -128,6 +135,7 @@ export default function SmsMarketingReport({ startDate, endDate, locationSlug, i
     let ignore = false
     setLoading(true)
     setError('')
+    setRenameError('')
     getSmsMarketingTemplates(params)
       .then(d => { if (!ignore) setData(d) })
       .catch(e => { if (!ignore) setError(e.message || 'Failed to load SMS engagement') })
@@ -136,6 +144,9 @@ export default function SmsMarketingReport({ startDate, endDate, locationSlug, i
   }, [params])
 
   useEffect(() => load(), [load])
+  // Stale group keys from a previous filter set should not re-expand rows
+  // that happen to share a key under the new filters.
+  useEffect(() => { setExpanded(new Set()) }, [params])
 
   const rows = data?.templates || []
   const totals = data?.totals
@@ -152,11 +163,13 @@ export default function SmsMarketingReport({ startDate, endDate, locationSlug, i
   function startEdit(r) {
     if (!isAdmin) return
     setRenameError('')
+    skipBlurRef.current = false
     setEditingKey(r.group_key)
     setDraftLabel(r.label || '')
   }
 
   function cancelEdit() {
+    skipBlurRef.current = true
     setEditingKey(null)
     setDraftLabel('')
   }
@@ -174,7 +187,7 @@ export default function SmsMarketingReport({ startDate, endDate, locationSlug, i
 
     const urlKey = (r.template_keys && r.template_keys[0]) || r.group_key
     try {
-      await setSmsTemplateLabel(urlKey, nextLabel, r.template_keys)
+      await setSmsTemplateLabel(urlKey, nextLabel, r.template_keys, prevLabel)
       // A rename can collide with another group's label, merging them on the
       // backend into a single row — refetch rather than trust local state.
       load()
@@ -189,18 +202,22 @@ export default function SmsMarketingReport({ startDate, endDate, locationSlug, i
 
   function handleExport() {
     exportCSV(
-      rows.map(r => ({
-        Text: r.label || preview(r.sample_body),
-        Clubs: r.clubs?.length || 0,
-        Sends: r.sends,
-        Delivered: r.delivered,
-        Failed: r.failed,
-        Replies: r.replies,
-        'Reply %': r.reply_rate,
-        'Opt-outs': r.opt_outs,
-        'Median reply (min)': r.median_reply_minutes ?? '',
-      })),
-      `sms-engagement-${startDate}_to_${endDate}`
+      [
+        ['Text', 'Clubs', 'Club Count', 'Sends', 'Delivered', 'Failed', 'Replies', 'Reply %', 'Opt-outs', 'Median reply (min)'],
+        ...rows.map(r => [
+          r.label || r.sample_body || '',
+          (r.clubs || []).join('; '),
+          r.clubs?.length || 0,
+          r.sends,
+          r.delivered,
+          r.failed,
+          r.replies,
+          r.reply_rate,
+          r.opt_outs,
+          r.median_reply_minutes ?? '',
+        ]),
+      ],
+      `sms-engagement-${kind}-${startDate}_to_${endDate}`
     )
   }
 
@@ -293,10 +310,10 @@ export default function SmsMarketingReport({ startDate, endDate, locationSlug, i
                                 value={draftLabel}
                                 onChange={e => setDraftLabel(e.target.value)}
                                 onKeyDown={e => {
-                                  if (e.key === 'Enter') { e.preventDefault(); saveEdit(r) }
+                                  if (e.key === 'Enter') { e.preventDefault(); skipBlurRef.current = true; saveEdit(r) }
                                   else if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
                                 }}
-                                onBlur={() => saveEdit(r)}
+                                onBlur={() => { if (!skipBlurRef.current) saveEdit(r) }}
                                 placeholder={preview(r.sample_body)}
                                 className="flex-1 min-w-0 bg-bg border border-border rounded-md px-2 py-1 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-wcs-red"
                               />

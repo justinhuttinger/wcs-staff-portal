@@ -980,10 +980,14 @@ export async function getSmsMarketingTemplates(params = {}) {
   return api('/sms-marketing/templates' + (qs ? '?' + qs : ''))
 }
 
-export async function setSmsTemplateLabel(key, label, template_keys) {
+export async function setSmsTemplateLabel(key, label, template_keys, prev_label) {
   return api(`/sms-marketing/templates/${encodeURIComponent(key)}`, {
     method: 'PATCH',
-    body: JSON.stringify({ label, ...(template_keys ? { template_keys } : {}) }),
+    body: JSON.stringify({
+      label,
+      ...(template_keys ? { template_keys } : {}),
+      ...(prev_label ? { prev_label } : {}),
+    }),
   })
 }
 

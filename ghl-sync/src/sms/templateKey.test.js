@@ -45,6 +45,38 @@ test('freeTrialReady and medfordOpen stay distinct despite both saying "this is 
   )
 })
 
+// These are the explicit regression pins for the over-merge bug: a
+// punctuation-anchored rule that strips any capitalized word before "," or
+// "!" collapses these into one key, silently pooling different templates'
+// engagement numbers together.
+test('Congrats! and Welcome! openers stay distinct (must-not-collide)', () => {
+  assert.notStrictEqual(
+    templateKey(GROUPS.congratsMember[0]),
+    templateKey(GROUPS.welcomeMember[0])
+  )
+})
+
+test('Last chance! and Today only! openers stay distinct (must-not-collide)', () => {
+  assert.notStrictEqual(
+    templateKey(GROUPS.lastChanceSale[0]),
+    templateKey(GROUPS.todayOnlySale[0])
+  )
+})
+
+// Not a checked-in fixture group (both sides are single-body, no per-recipient
+// variation to demonstrate), but the same class of stoplist regression.
+test('Good news, and Bad news, openers stay distinct (must-not-collide)', () => {
+  assert.notStrictEqual(
+    templateKey('Good news, your session is confirmed for tomorrow at 10am.'),
+    templateKey('Bad news, your session is confirmed for tomorrow at 10am.')
+  )
+})
+
+test('bare-name greeting with no punctuation still collides across recipients', () => {
+  const keys = GROUPS.heyNameNoPunct.map(templateKey)
+  for (const k of keys) assert.strictEqual(k, keys[0])
+})
+
 test('differing short links in the same template collide', () => {
   const a = 'Book your tour here: https://link.wcs.com/a1b2c3'
   const b = 'Book your tour here: https://link.wcs.com/z9y8x7'

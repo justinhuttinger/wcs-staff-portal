@@ -75,7 +75,7 @@ router.get('/templates', async (req, res) => {
   }
 })
 
-// PATCH /sms-marketing/templates/:key { label, template_keys? }
+// PATCH /sms-marketing/templates/:key { label, template_keys?, prev_label? }
 //
 // Names a cluster. Template identity is global (one row per fingerprint
 // across all clubs), so this renames by template_key alone — no
@@ -83,22 +83,52 @@ router.get('/templates', async (req, res) => {
 // (the edited body hashes to a new key alongside the old one), so an optional
 // template_keys array lets the caller rename every fingerprint in the group
 // at once; when omitted, only :key is renamed.
+//
+// template_keys only ever carries the fingerprints that appear inside the
+// report's current date range (it comes from the RPC's date-filtered base
+// CTE), so a rename issued while viewing a narrow range would otherwise only
+// touch that range's fingerprints — older sends of the same labeled group
+// keep the stale label and the group visibly splits under a wider range.
+// prev_label lets the caller also carry along every OTHER row already
+// wearing the group's current label, regardless of when it was sent.
 router.patch('/templates/:key', requireRole('admin'), async (req, res) => {
-  const { label, template_keys } = req.body || {}
+  const { label, template_keys, prev_label } = req.body || {}
 
   const clean = typeof label === 'string' && label.trim() ? label.trim().slice(0, 120) : null
+  const cleanPrev = typeof prev_label === 'string' && prev_label.trim() ? prev_label.trim() : null
 
   const keys = Array.isArray(template_keys) && template_keys.length
     ? Array.from(new Set([req.params.key, ...template_keys.filter(k => typeof k === 'string')]))
     : [req.params.key]
 
   try {
-    const { error } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('sms_templates')
       .update({ label: clean })
       .in('template_key', keys)
+      .select('template_key')
     if (error) throw error
-    res.json({ ok: true })
+
+    const affected = new Map((data || []).map(r => [r.template_key, true]))
+
+    // A rename issued from a narrow date range must also carry forward every
+    // OTHER row still wearing the group's current label, or those fingerprints
+    // keep the stale name and the group visibly splits under a wider range.
+    // Re-touching a key already updated above is harmless (same target label).
+    if (cleanPrev) {
+      const { data: prevData, error: prevError } = await supabaseAdmin
+        .from('sms_templates')
+        .update({ label: clean })
+        .eq('label', cleanPrev)
+        .select('template_key')
+      if (prevError) throw prevError
+      for (const r of prevData || []) affected.set(r.template_key, true)
+    }
+
+    if (!affected.size) {
+      return res.status(404).json({ error: 'No matching template rows found to rename' })
+    }
+    res.json({ ok: true, updated: affected.size })
   } catch (err) {
     console.error('[SMS Marketing] label error:', err.message)
     res.status(500).json({ error: err.message })
