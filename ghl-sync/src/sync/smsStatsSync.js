@@ -173,16 +173,18 @@ async function smsStatsSyncForLocation(loc, { sinceIso = null } = {}) {
   errors.push(...msgResult.errors);
 
   // One template row per distinct key, carrying the earliest and latest sighting.
+  // Template identity is GLOBAL (not per-location): the same fingerprint sent
+  // from two different clubs is one template, one row.
   const templates = new Map();
   for (const m of messages) {
     if (m.direction !== 'outbound' || !m.template_key) continue;
     const prev = templates.get(m.template_key);
     if (!prev) {
       templates.set(m.template_key, {
-        location: m.location,
         template_key: m.template_key,
         label: null,
         sample_body: m.body || '',
+        first_seen_location: m.location,
         first_seen_at: m.date_added,
         last_seen_at: m.date_added,
       });
@@ -197,16 +199,40 @@ async function smsStatsSyncForLocation(loc, { sinceIso = null } = {}) {
   // human-set label — would get re-inserted with label: null on conflict.
   // Skip the template upsert entirely this run instead; it just re-tries
   // next run, and the recorded error keeps the watermark from advancing.
-  const { data: known, error: knownError } = await supabase
-    .from('sms_templates')
-    .select('template_key')
-    .eq('location', loc.slug);
+  //
+  // Lookup is global (not scoped to this location): a template first seen at
+  // another club must still be recognized as known here, or its label would
+  // get clobbered the first time a second club sends the same text.
+  //
+  // Only ask about the keys THIS RUN actually saw, rather than paging the
+  // whole sms_templates table. Production is already past PostgREST's ~1000
+  // row cap (216 rows after one day; the backfill defaults to 180 days x 7
+  // locations) — a `.select('template_key')` with no filter would silently
+  // truncate, `knownKeys` would hold an arbitrary subset, every template
+  // outside it would look "new", and the upsert would null out real labels.
+  // Inverting the query to `.in('template_key', keys)` bounds the response by
+  // this run's size, not the table's, no matter how large the table grows.
+  const runKeys = Array.from(templates.keys());
+  let known = [];
+  let knownError = null;
+  for (let i = 0; i < runKeys.length && !knownError; i += 1000) {
+    const chunk = runKeys.slice(i, i + 1000);
+    const { data, error } = await supabase
+      .from('sms_templates')
+      .select('template_key')
+      .in('template_key', chunk);
+    if (error) {
+      knownError = error;
+      break;
+    }
+    known.push(...(data || []));
+  }
   let tplResult = { upserted: 0, errors: [] };
   if (knownError) {
     console.warn(`[SmsStats] ${loc.name}: known-template lookup failed:`, knownError.message);
     errors.push({ stage: 'templates-known', reason: String(knownError.message) });
   } else {
-    const knownKeys = new Set((known || []).map(r => r.template_key));
+    const knownKeys = new Set(known.map(r => r.template_key));
     const newTemplates = Array.from(templates.values()).filter(t => !knownKeys.has(t.template_key));
     tplResult = newTemplates.length ? await upsertSmsTemplates(newTemplates) : { upserted: 0, errors: [] };
     errors.push(...tplResult.errors);

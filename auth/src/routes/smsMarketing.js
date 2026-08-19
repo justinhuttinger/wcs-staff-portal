@@ -15,9 +15,11 @@ const pct = (n, d) => (d > 0 ? +((n / d) * 100).toFixed(2) : 0)
 
 // GET /sms-marketing/templates?location_slug=&start_date=&end_date=&kind=
 //
-// Reply rate per automated text. GHL exposes no workflow id on a message, so
+// Reply rate per automated text, one row per template GLOBALLY across all
+// seven clubs (not per club) — GHL exposes no workflow id on a message, so
 // texts are clustered by a fingerprint of their body (see ghl-sync
-// src/sms/templateKey.js) and named through sms_templates.label.
+// src/sms/templateKey.js) and named through sms_templates.label. Each row
+// carries a by_club breakdown for the underlying per-gym numbers.
 //
 // The date range filters the SEND date. A reply landing after end_date still
 // counts: the attribution window, not the report range, decides what is a reply.
@@ -39,8 +41,9 @@ router.get('/templates', async (req, res) => {
       const replies = Number(r.replies) || 0
       const optOuts = Number(r.opt_outs) || 0
       return {
-        location: r.location,
-        template_key: r.template_key,
+        group_key: r.group_key,
+        template_keys: r.template_keys || [],
+        clubs: r.clubs || [],
         label: r.label || null,
         sample_body: r.sample_body || '',
         sends,
@@ -51,6 +54,7 @@ router.get('/templates', async (req, res) => {
         opt_outs: optOuts,
         opt_out_rate: pct(optOuts, sends),
         median_reply_minutes: r.median_reply_minutes == null ? null : Number(r.median_reply_minutes),
+        by_club: r.by_club || {},
       }
     })
 
@@ -71,25 +75,60 @@ router.get('/templates', async (req, res) => {
   }
 })
 
-// PATCH /sms-marketing/templates/:key { location_slug, label }
+// PATCH /sms-marketing/templates/:key { label, template_keys?, prev_label? }
 //
-// Names a cluster. Labels are per location because the same text can run at
-// more than one gym. A copy edit produces a new fingerprint, so reusing the
-// same label is how an edited template stays grouped in the report.
+// Names a cluster. Template identity is global (one row per fingerprint
+// across all clubs), so this renames by template_key alone — no
+// location_slug. A copy edit can leave a group spanning several fingerprints
+// (the edited body hashes to a new key alongside the old one), so an optional
+// template_keys array lets the caller rename every fingerprint in the group
+// at once; when omitted, only :key is renamed.
+//
+// template_keys only ever carries the fingerprints that appear inside the
+// report's current date range (it comes from the RPC's date-filtered base
+// CTE), so a rename issued while viewing a narrow range would otherwise only
+// touch that range's fingerprints — older sends of the same labeled group
+// keep the stale label and the group visibly splits under a wider range.
+// prev_label lets the caller also carry along every OTHER row already
+// wearing the group's current label, regardless of when it was sent.
 router.patch('/templates/:key', requireRole('admin'), async (req, res) => {
-  const { location_slug, label } = req.body || {}
-  if (!location_slug) return res.status(400).json({ error: 'location_slug is required' })
+  const { label, template_keys, prev_label } = req.body || {}
 
   const clean = typeof label === 'string' && label.trim() ? label.trim().slice(0, 120) : null
+  const cleanPrev = typeof prev_label === 'string' && prev_label.trim() ? prev_label.trim() : null
+
+  const keys = Array.isArray(template_keys) && template_keys.length
+    ? Array.from(new Set([req.params.key, ...template_keys.filter(k => typeof k === 'string')]))
+    : [req.params.key]
 
   try {
-    const { error } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('sms_templates')
       .update({ label: clean })
-      .eq('location', location_slug)
-      .eq('template_key', req.params.key)
+      .in('template_key', keys)
+      .select('template_key')
     if (error) throw error
-    res.json({ ok: true })
+
+    const affected = new Map((data || []).map(r => [r.template_key, true]))
+
+    // A rename issued from a narrow date range must also carry forward every
+    // OTHER row still wearing the group's current label, or those fingerprints
+    // keep the stale name and the group visibly splits under a wider range.
+    // Re-touching a key already updated above is harmless (same target label).
+    if (cleanPrev) {
+      const { data: prevData, error: prevError } = await supabaseAdmin
+        .from('sms_templates')
+        .update({ label: clean })
+        .eq('label', cleanPrev)
+        .select('template_key')
+      if (prevError) throw prevError
+      for (const r of prevData || []) affected.set(r.template_key, true)
+    }
+
+    if (!affected.size) {
+      return res.status(404).json({ error: 'No matching template rows found to rename' })
+    }
+    res.json({ ok: true, updated: affected.size })
   } catch (err) {
     console.error('[SMS Marketing] label error:', err.message)
     res.status(500).json({ error: err.message })
