@@ -33,6 +33,30 @@ const crypto = require('node:crypto');
 // still strips bare-name opens like "Vickie, tried you again" and
 // "Hey Michael we tried calling you today...", and stops walking past real
 // content to find punctuation that isn't actually part of a personalization.
+//
+// REVERTED (2026-08-19, commit 8d7037c follow-up): this version briefly
+// included a `stripTrailingNameBeforePunct` rule that stripped any
+// capitalized token sitting right before the first terminal punctuation,
+// guarded only by a small stoplist. That rule was unsafe — a stoplist can
+// never enumerate the space of legitimate proper nouns (trainer names,
+// class names, weekdays, cities), so it silently pooled genuinely different
+// templates into one key. Worst example: "Come see our new location in
+// Milwaukie!" and "Come see our new location in Medford!" hashed to the SAME
+// key across WCS's seven locations, which is exactly the distinction this
+// report exists to preserve. The rule has been removed entirely. Do not
+// re-add a trailing-proper-noun strip without a much stronger signal than a
+// stoplist (e.g. an actual merge-field marker from GHL). The merge fields it
+// was chasing ("Thank you for booking a tour with us Joshua!", "Happy
+// Birthday MATTHEW!") now cluster per recipient instead — those become
+// singleton rows an admin can merge by hand via rename/prev_label, which is
+// far better than silently pooling wrong numbers.
+//
+// Cluster-count point-in-time measurement: 179 clusters / 1,486 messages
+// measured WITH the (now-reverted) trailing-name rule in place. That rule is
+// gone as of this revision, so the true cluster count is somewhat higher
+// (more singleton merge-field rows). This is a measurement from one sample
+// run, not a guarantee — re-measure against current production data if you
+// need a current number.
 
 const MAX_CHARS = 160;
 
@@ -49,32 +73,26 @@ const OPENER_STOPLIST = new Set([
   'team',
 ]);
 
-// Small brand/common-word stoplist for the trailing-name rule (see
-// stripTrailingNameBeforePunct below). Real WCS copy routinely ends its
-// first sentence on one of these ("...to West Coast Strength.", "...gym is
-// OPEN!"), and they must never be mistaken for a merged name.
-const BRAND_STOPLIST = new Set([
-  'strength', 'gym', 'today', 'tonight', 'now', 'here', 'open', 'wcs',
-  'west', 'coast', 'family',
-]);
-
 const GREETING_RE = /^\s*(hi|hey|hello|good morning|good afternoon)\b[,!]*\s*/i;
 // Unicode-aware: \p{Lu} matches any uppercase letter in any script (real
 // production data includes names like "Фаина"), not just ASCII A-Z — an
 // ASCII-only [A-Z] test would fail to strip those and reintroduce
 // per-recipient clusters for non-Latin names.
 //
-// Captures ONE TO THREE capitalized tokens (people have two-word first
-// names, hyphenated names, and occasionally a middle name — "Jon Michael",
-// "Lindsay Belle"). The repeated group is optional and greedy, but each
-// repetition still requires \p{Lu} on the NEXT token to continue, so on an
-// unpunctuated body ("Hey Michael we tried calling...") it naturally
+// Captures ONE TO TWO capitalized tokens (people have two-word first names,
+// hyphenated names, and occasionally a middle name — "Jon Michael",
+// "Lindsay Belle" — every real multi-word merged name observed in
+// production is two tokens). The repeated group is optional and greedy, but
+// each repetition still requires \p{Lu} on the NEXT token to continue, so on
+// an unpunctuated body ("Hey Michael we tried calling...") it naturally
 // backtracks down to just "Michael" once it hits the lowercase "we" — it
-// does not walk into real sentence content.
-const NAME_TOKEN_RE = /^((?:\p{Lu}[\p{L}'-]*\s+){0,2}\p{Lu}[\p{L}'-]*)[,!]*\s+/u;
+// does not walk into real sentence content. Capped at TWO (not three): on a
+// Title-Cased body ("Hey Michael We Tried Calling You Today") a three-token
+// cap greedily eats real words ("we tried") as if they were more name
+// tokens; two tokens is enough for every real name seen while halving that
+// blast radius if a Title-Cased body ever appears.
+const NAME_TOKEN_RE = /^((?:\p{Lu}[\p{L}'-]*\s+){0,1}\p{Lu}[\p{L}'-]*)[,!]*\s+/u;
 const LEADING_TOKENS_RE = /^\s*(\p{L}[\p{L}'-]*)(?:\s+(\p{L}[\p{L}'-]*))?[,!]\s+/u;
-const TRAILING_PUNCT_RE = /[.!?]/;
-const TRAILING_WORD_RE = /(\p{L}[\p{L}'-]*)\s*$/u;
 const isCapitalized = tok => /^\p{Lu}/u.test(tok);
 
 // Case A helper: does the captured name phrase look like a real non-name
@@ -92,7 +110,7 @@ function isStoplistedOpener(nameTokens) {
 // an ordinary sentence-initial word.
 function stripLeadingPersonalization(body) {
   // Case A: an optional greeting word ("Hi", "Hey", "Hello", "Good morning",
-  // "Good afternoon"), plus one to three following capitalized name tokens
+  // "Good afternoon"), plus one to two following capitalized name tokens
   // if present. This is what restores the "Hey Michael we tried calling..."
   // shape — no comma or bang follows the name, so the punctuation-anchored
   // rule below never fires, but the greeting word itself is an unambiguous
@@ -125,35 +143,8 @@ function stripLeadingPersonalization(body) {
   return body;
 }
 
-// Strip a capitalized token that sits immediately before the FIRST terminal
-// punctuation ("!", ".", or "?") of the message, when it isn't a known
-// stoplisted/brand word. Handles merge fields WCS drops mid-clause instead of
-// up front — "Thank you for booking a tour with us Joshua!",
-// "Happy Birthday MATTHEW!" — where no leading rule ever fires because the
-// name isn't at the start. Runs on the (already leading-stripped) ORIGINAL
-// body, before lowercasing, so ALL-CAPS names ("MATTHEW") still test
-// positive for capitalization via their first letter.
-function stripTrailingNameBeforePunct(body) {
-  const idx = body.search(TRAILING_PUNCT_RE);
-  if (idx === -1) return body;
-
-  const prefix = body.slice(0, idx);
-  const m = prefix.match(TRAILING_WORD_RE);
-  if (!m) return body;
-
-  const word = m[1];
-  if (!isCapitalized(word)) return body;
-
-  const lower = word.toLowerCase();
-  if (OPENER_STOPLIST.has(lower) || BRAND_STOPLIST.has(lower)) return body;
-
-  const start = m.index;
-  return body.slice(0, start) + body.slice(start + word.length);
-}
-
 function stripPersonalization(body) {
-  const leadingStripped = stripLeadingPersonalization(body);
-  return stripTrailingNameBeforePunct(leadingStripped);
+  return stripLeadingPersonalization(body);
 }
 
 function normalizeBody(body) {

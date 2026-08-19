@@ -135,23 +135,56 @@ test('multi-token merged names collide across recipients (oneMoreTryMultiName)',
   for (const k of keys) assert.strictEqual(k, keys[0])
 })
 
-// Failure 2 regression: a merge field mid-clause, right before the first
-// terminal punctuation, must still collapse across recipients — including
-// when GHL sends the name ALL CAPS.
-test('trailing merge-field name collides across recipients (tourBookingThanks, happyBirthday)', () => {
-  assert.strictEqual(
-    templateKey(GROUPS.tourBookingThanks[0]),
-    templateKey(GROUPS.tourBookingThanks[1])
-  )
-  assert.strictEqual(
-    templateKey(GROUPS.happyBirthday[0]),
-    templateKey(GROUPS.happyBirthday[1])
+// ---------------------------------------------------------------------------
+// MUST-NOT-COLLIDE regression guard (trailing-name rule revert)
+//
+// Commit 8d7037c briefly added `stripTrailingNameBeforePunct`: strip any
+// capitalized token sitting right before the first terminal punctuation,
+// guarded only by a small stoplist. The previous test suite PASSED with that
+// rule in place, because nothing tested the danger zone directly — it only
+// asserted the merge-field cases the rule was meant to fix
+// (tourBookingThanks, happyBirthday), never the cases it broke.
+//
+// A stoplist cannot enumerate the space of legitimate proper nouns: class
+// names, trainer names, weekdays, cities, products. Every pair below is a
+// DIFFERENT real WCS template that the reverted rule collapsed into the SAME
+// key, which pools two templates' engagement numbers together and reports
+// wrong data. The worst case is the last one: WCS is a seven-location gym
+// chain, and per-location promo copy ("Milwaukie" vs "Medford") is exactly
+// what this report exists to keep apart. These assertions exist so nobody
+// re-adds that rule (or an equivalent) without noticing it breaks this.
+// ---------------------------------------------------------------------------
+test('MUST-NOT-COLLIDE: different trainer name before "!" stays distinct', () => {
+  assert.notStrictEqual(
+    templateKey('Free trial today with Coach Sarah!'),
+    templateKey('Free trial today with Coach Mike!')
   )
 })
 
-test('tourBookingThanks and happyBirthday stay distinct from each other', () => {
+test('MUST-NOT-COLLIDE: different weekday before "!" stays distinct', () => {
   assert.notStrictEqual(
-    templateKey(GROUPS.tourBookingThanks[0]),
-    templateKey(GROUPS.happyBirthday[0])
+    templateKey('See you Monday!'),
+    templateKey('See you Wednesday!')
+  )
+})
+
+test('MUST-NOT-COLLIDE: different class/program name before "!" stays distinct', () => {
+  assert.notStrictEqual(
+    templateKey('Sign up for Bootcamp!'),
+    templateKey('Sign up for Yoga!')
+  )
+})
+
+test('MUST-NOT-COLLIDE: different location name before "!" stays distinct (worst case: per-location promo copy)', () => {
+  assert.notStrictEqual(
+    templateKey('Come see our new location in Milwaukie!'),
+    templateKey('Come see our new location in Medford!')
+  )
+})
+
+test('MUST-NOT-COLLIDE: different brand name before "." stays distinct', () => {
+  assert.notStrictEqual(
+    templateKey('Welcome to Cascade CrossFit. Come check us out!'),
+    templateKey('Welcome to Cascade Fitness. Come check us out!')
   )
 })

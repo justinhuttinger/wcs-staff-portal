@@ -118,28 +118,14 @@ const GROUPS = {
 
   // Multi-token merged name with a comma, no matching template among the
   // groups above (freeWeek/trialCheckIn cover the bang and comma shapes on
-  // existing templates; this one pins a THIRD name token too, for a
-  // three-word name, to prove the 1-to-3-token allowance).
+  // existing templates; this one pins a SECOND name token too, for a
+  // two-word name, to prove the 1-to-2-token allowance). Every real
+  // multi-word merged name observed in production is two tokens, so the cap
+  // stops at two — see NAME_TOKEN_RE in templateKey.js.
   oneMoreTryMultiName: [
     "Hey Jon Michael, one more try! I don't want you to miss out on your free trial. Let me know when you want to come in!",
     "Hey Mary Kate, one more try! I don't want you to miss out on your free trial. Let me know when you want to come in!",
-    "Hey Anna Marie Lee, one more try! I don't want you to miss out on your free trial. Let me know when you want to come in!",
-  ],
-
-  // The merged name sits at the END of the first clause, immediately before
-  // "!", not at the start — no leading rule ever fires for these. Pins the
-  // trailing-name-before-first-terminal-punctuation rule.
-  tourBookingThanks: [
-    'Thank you for booking a tour with us Joshua! We look forward to seeing you.',
-    'Thank you for booking a tour with us Ector! We look forward to seeing you.',
-  ],
-
-  // Same trailing-name shape, and the name is sent ALL CAPS ("MATTHEW") for
-  // one recipient — capitalization must be tested on the ORIGINAL body
-  // before lowercasing so this still collides with the Title-Case send.
-  happyBirthday: [
-    'Happy Birthday MATTHEW! We are here to celebrate with you!',
-    'Happy Birthday Josue! We are here to celebrate with you!',
+    "Hey Emma Rose, one more try! I don't want you to miss out on your free trial. Let me know when you want to come in!",
   ],
 }
 
