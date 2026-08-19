@@ -63,7 +63,11 @@ The underlying data is real:
 
 `source` cleanly separates automated (`workflow`, `bulk_actions`) from staff-typed (`app`) — the same discriminator `ghl-sync/src/ghl/firstContactPick.js` already relies on. But **no workflow id or name appears on the message**, so per-automation grouping is only possible by clustering on the message body.
 
-Conversation volume: Salem reports `total: 6244` from `/conversations/search`. `lastMessageDate` on each conversation record allows a watermark-based delta.
+Conversation volume: Salem reports `total: 6244` from `/conversations/search`. `lastMessageDate` on each conversation record allows a watermark-based delta, but note it is **epoch milliseconds (a number)**, not an ISO string.
+
+### Conversation pagination uses `startAfterDate`, nothing else
+
+Verified live 2026-08-19. `/conversations/search` does **not** use the meta dual cursor that contacts and opportunities use, and it is not offset-based. `startAfterId`, `page`, `skip`, and `offset` are all silently ignored and return page 1 again. The only working cursor is `startAfterDate`, set to the epoch-ms `lastMessageDate` of the last row on the previous page. A four-page walk with it returned 80 unique conversations, zero duplicates, strictly decreasing dates.
 
 Non-SMS rows (`TYPE_ACTIVITY_*`, `TYPE_CALL`) share the same feed and must be filtered out.
 
@@ -166,11 +170,17 @@ Rate limiting reuses `sleep(STATS_DELAY_MS)` between message fetches, keeping un
 
 **Backfill.** A one-time `ghl-sync/scripts/backfillSmsMessages.js` runs the same walk with a fixed 180-day floor instead of a watermark. Estimated ~1 hour total across seven locations. It is idempotent (upsert on message id) and safe to re-run or resume.
 
-**Reply attribution.** Computed at query time, not stored, so the window stays tunable without a resync. For each inbound SMS, the attributed send is the most recent outbound SMS to the same `contact_id` strictly before it, within `SMS_REPLY_WINDOW_HOURS` (default 72). An outbound send counts as replied if at least one inbound message attributes to it; multiple inbounds to one send count once.
+**Reply attribution.** Computed in JavaScript at sync time and stored in an `sms_replies` table (`inbound_id` PK, `send_id`, `location`, `reply_minutes`, `is_opt_out`).
+
+This is a change from the original query-time plan, made while writing the implementation plan. Query-time attribution would need the whole join expressed in SQL, which cannot be unit tested in this repo; sync-time attribution makes the rule a pure, fully tested JavaScript function and reduces the report query to a plain aggregate. The cost is that changing `SMS_REPLY_WINDOW_HOURS` requires re-running the sync over the affected window rather than taking effect instantly. The window is not expected to change often.
+
+Attribution reloads each touched contact's messages from the database rather than attributing only the freshly fetched page, so a reply that arrives in a later sync run than its send still links correctly.
+
+For each inbound SMS, the attributed send is the most recent outbound SMS to the same `contact_id` strictly before it, within `SMS_REPLY_WINDOW_HOURS` (default 72). An outbound send counts as replied if at least one inbound message attributes to it; multiple inbounds to one send count once.
 
 Opt-outs: an inbound body matching `^\s*(stop|stopall|unsubscribe|cancel|end|quit)\b`, case-insensitive, attributed to the same send.
 
-This is a single SQL query using `LATERAL` and window functions in a Postgres view `sms_engagement` created by the migration, so the route does not hand-roll the join.
+The report reads this through a Postgres function `sms_engagement_by_template(p_location, p_start, p_end, p_kind)` created by the migration and called via `supabase.rpc(...)`, matching the existing `revenue_summary` / `speed_to_lead_business` pattern. supabase-js cannot express GROUP BY, so an RPC is required regardless.
 
 **Route.** New `auth/src/routes/smsMarketing.js`:
 
@@ -243,6 +253,7 @@ Manual verification before merge: run `POST /api/sync/sms-messages/springfield` 
 ## Out of scope
 
 - Attributing SMS replies to a specific GHL workflow. Impossible: no workflow id on the message.
+- Sharing the snapshot-diff math between `ghl-sync` and `auth` as one module. The two packages have separate dependency roots, so `auth` carries a deliberate duplicate (`auth/src/routes/emailAutomationMath.js`) that must be changed alongside its `ghl-sync` twin.
 - Revenue or conversion attribution from a reply.
 - Any change to `smsHistory.js` or the Twilio alert-number feed.
 - Retention and pruning for `ghl_sms_messages` or `email_stats_daily`.
