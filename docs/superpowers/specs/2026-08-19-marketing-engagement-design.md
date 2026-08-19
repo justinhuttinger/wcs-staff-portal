@@ -127,12 +127,13 @@ index on (template_key, date_added)
 
 ```
 sms_templates(
-  template_key text primary key,
   location text not null,
+  template_key text not null,
   label text,                          -- human-assigned friendly name, nullable
   sample_body text not null,           -- first body seen, for identification
   first_seen_at timestamptz not null,
-  last_seen_at timestamptz not null
+  last_seen_at timestamptz not null,
+  primary key (location, template_key)
 )
 ```
 
@@ -148,7 +149,7 @@ RLS enabled with no policy on both (service-role only, per house rule).
 
 Fingerprinting lives in its own pure module, `ghl-sync/src/sms/templateKey.js`, with unit tests covering: two sends differing only by first name collide; two different templates do not; a link-bearing template collides across differing short links.
 
-Because copy edits produce a new key, `sms_templates.label` exists so a renamed or lightly edited template can be given the same human label. The report groups by `COALESCE(label, template_key)`.
+Because copy edits produce a new key, `sms_templates.label` exists so a renamed or lightly edited template can be given the same human label. The report groups by `COALESCE(label, template_key)` within a location.
 
 **Sync job.** `ghl-sync/src/sync/smsStatsSync.js`:
 
@@ -179,7 +180,7 @@ Date filtering is on the **send** date, so a send late in the range whose reply 
 
 Gated `requireReportAccess('corporate', ['marketing-engagement'])`, matching the Meta Ads and Email Marketing pattern.
 
-A second handler, `PATCH /sms-marketing/templates/:key`, sets `label`. Admin only.
+A second handler, `PATCH /sms-marketing/templates/:key?location_slug=`, sets `label`. Admin only. The location is required because labels are per location.
 
 ### Piece C — Report shell
 
