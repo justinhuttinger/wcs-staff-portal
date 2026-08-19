@@ -107,7 +107,14 @@ async function fetchPTRecurringServices(clubNumber, startISO, endISO, paramName)
 // seven clubs), so this deliberately does NOT persist across runs. Backed by
 // the shared memoryCache helper, which caps total entries and sweeps expired
 // ones so a busy day of report runs can't grow this without bound.
-const MEMBER_LOOKUP_TTL_MS = 5 * 60 * 1000
+// 60 minutes. Measured against live ABC on 2026-08-19: the per-member
+// fan-out costs ~145ms/member (2 ABC calls, batched 5 with a 200ms pause),
+// and there are ~296 distinct PT members across the seven clubs — so a cold
+// run is ~43s for all clubs, 3-10s for one. An hour of staleness on PT
+// purchase history is harmless; the unbounded staleness this replaces was
+// the actual bug. Memory stays bounded via memoryCache's entry cap and
+// sweep, NOT via this TTL, so it is free to tune.
+const MEMBER_LOOKUP_TTL_MS = 60 * 60 * 1000
 
 async function fetchPTPurchaseHistory(clubNumber, memberId) {
   if (!memberId) return []
