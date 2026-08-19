@@ -38,6 +38,13 @@ ALTER TABLE sms_templates ENABLE ROW LEVEL SECURITY;
 -- The range filters the SEND date only. A reply that arrives after p_end still
 -- counts, because the attribution window (not the report range) bounds what
 -- counts as a reply.
+-- CREATE OR REPLACE cannot change a function's return type — migration 015
+-- already created this function with a different RETURNS TABLE shape, so
+-- Postgres rejects the replace with "cannot change return type of existing
+-- function". Drop it first. (Verified: applying without this DROP fails with
+-- SQLSTATE 42P13 on any database where 015 has been applied.)
+DROP FUNCTION IF EXISTS sms_engagement_by_template(TEXT, TIMESTAMPTZ, TIMESTAMPTZ, TEXT);
+
 CREATE OR REPLACE FUNCTION sms_engagement_by_template(
   p_location TEXT,
   p_start    TIMESTAMPTZ,
