@@ -86,11 +86,16 @@ AS $$
         OR (p_kind = 'staff'     AND m.source = 'app')
       )
   ),
-  -- reply_minutes lives on sms_replies, joined separately here so the median
-  -- is computed once per send rather than once per (send, reply) pair —
-  -- matches the base CTE's own DISTINCT-by-id discipline below.
+  -- base is already fanned out by its own LEFT JOIN sms_replies (one row per
+  -- (send, reply) pair), so re-joining sms_replies here without deduping
+  -- would multiply again: a send with N replies would contribute N^2 rows and
+  -- bias the median toward heavily-replied sends. DISTINCT on
+  -- (group_key, inbound_id, reply_minutes) — inbound_id is sms_replies' own
+  -- primary key — collapses that fan-out so each reply is counted exactly
+  -- once per group. The median's population is per REPLY, not per send; that
+  -- is intended (median time-to-reply across replies).
   reply_times AS (
-    SELECT b.group_key, r.reply_minutes
+    SELECT DISTINCT b.group_key, r.inbound_id, r.reply_minutes
     FROM base b
     JOIN sms_replies r ON r.send_id = b.id
   ),
