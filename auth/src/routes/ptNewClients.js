@@ -1,7 +1,8 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireReportAccess } = require('../middleware/role')
-const { wrapSWR } = require('../services/memoryCache')
+const memoryCache = require('../services/memoryCache')
+const { wrap, wrapSWR } = memoryCache
 const { parseLocationSlugParam, locationCacheKey } = require('../utils/locationSlug')
 
 // Phase 2 perf: cache the heavy ABC-aggregation payload across users.
@@ -167,8 +168,8 @@ function isPIF(s) {
 // endpoint returns only the short `serviceItem` (e.g. "PT 60MIN"); the rich
 // name with frequency or pack count ("PT 60MIN 3XWEEK") and the per-purchase
 // quantity for PIF packs live on the recurringServicePlan entity, fetched
-// separately.
-const planCache = new Map()
+// separately. Lower cardinality than the per-member caches below (bounded by
+// distinct recurring-service plans, not members), so this keeps a longer TTL.
 const PLAN_CACHE_TTL = 60 * 60 * 1000 // 1h
 
 function toPosInt(v) {
@@ -177,11 +178,16 @@ function toPosInt(v) {
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
+// NOTE: unlike the per-member caches below, a failed lookup here is
+// deliberately NOT cached (matches pre-refactor behavior) — plan-detail
+// fetches are cheap/low-cardinality and a transient ABC error shouldn't
+// suppress retries for the rest of the TTL window. So this uses memoryCache's
+// get/set directly rather than wrap(), which would cache the null result.
 async function fetchPlanDetail(clubNumber, planId) {
   if (!planId) return null
-  const key = `${clubNumber}:${planId}`
-  const hit = planCache.get(key)
-  if (hit && (Date.now() - hit.ts) < PLAN_CACHE_TTL) return hit.detail
+  const key = `pt-new-clients:plan:${clubNumber}:${planId}`
+  const hit = memoryCache.get(key)
+  if (hit !== undefined) return hit
   try {
     const data = await abcGet(`/${clubNumber}/clubs/recurringserviceplans/${planId}`)
     const d = data?.recurringServicePlanDetail || {}
@@ -200,7 +206,7 @@ async function fetchPlanDetail(clubNumber, planId) {
       name: d.recurringServicePlanName || null,
       quantity,
     }
-    planCache.set(key, { detail, ts: Date.now() })
+    memoryCache.set(key, detail, PLAN_CACHE_TTL)
     return detail
   } catch (e) {
     console.warn(`[PT New Clients] Plan fetch failed for ${planId}@${clubNumber}:`, e.message)
@@ -249,24 +255,27 @@ function pifPackageName(s, planDetail) {
 // endpoint is the canonical source — its `serviceSummaries[].purchased` is the
 // sessions-bought count (same field ptRoster.js reads). Cached per-member for
 // the lifetime of this request batch.
-const purchaseHistoryCache = new Map() // key: `${clubNumber}:${memberId}` → serviceSummaries[]
+// Per-member ABC lookup, cached only long enough to dedupe repeat calls
+// within one report run — high cardinality (thousands of PT members across
+// seven clubs), so this deliberately does NOT persist across runs. Backed by
+// the shared memoryCache helper, which caps total entries and sweeps expired
+// ones so a busy day of report runs can't grow this without bound.
+const MEMBER_LOOKUP_TTL_MS = 5 * 60 * 1000
 
 async function fetchMemberPTPurchaseHistory(clubNumber, memberId) {
   if (!memberId) return []
-  const key = `${clubNumber}:${memberId}`
-  if (purchaseHistoryCache.has(key)) return purchaseHistoryCache.get(key)
-  try {
-    const data = await abcGet(`/${clubNumber}/members/${memberId}/services/purchasehistory`, {
-      purchaseDateRange: '2020-01-01',
-    })
-    const summaries = (data.serviceSummaries || []).filter(s => isPT(s.serviceName))
-    purchaseHistoryCache.set(key, summaries)
-    return summaries
-  } catch (e) {
-    console.warn(`[PT New Clients] purchasehistory failed for ${memberId}@${clubNumber}:`, e.message)
-    purchaseHistoryCache.set(key, [])
-    return []
-  }
+  const key = `pt-new-clients:purchase-history:${clubNumber}:${memberId}`
+  return wrap(key, MEMBER_LOOKUP_TTL_MS, async () => {
+    try {
+      const data = await abcGet(`/${clubNumber}/members/${memberId}/services/purchasehistory`, {
+        purchaseDateRange: '2020-01-01',
+      })
+      return (data.serviceSummaries || []).filter(s => isPT(s.serviceName))
+    } catch (e) {
+      console.warn(`[PT New Clients] purchasehistory failed for ${memberId}@${clubNumber}:`, e.message)
+      return []
+    }
+  })
 }
 
 // Pick the serviceSummary whose purchaseDate sits closest to this row's

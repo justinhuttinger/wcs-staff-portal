@@ -286,4 +286,22 @@ app.listen(PORT, () => {
   } catch (err) {
     console.error('[rbac] role-tier startup failed:', err.message)
   }
+
+  // Memory verification instrumentation (see auth memory-leak fixes): log
+  // process.memoryUsage() every 15 minutes so RSS growth in production is
+  // visible in Render logs without attaching a profiler. `external` and
+  // `rss - heapUsed` matter specifically because this service uses `canvas`
+  // and `chartjs-node-canvas` (trends Excel export) for native rendering —
+  // those allocations live outside the V8 heap, so a leak there grows RSS
+  // without ever showing up as heapUsed and without ever producing a
+  // "JavaScript heap out of memory" error. Cheap: one interval, one log line,
+  // no history retained in memory.
+  const mb = n => (n / 1024 / 1024).toFixed(1)
+  setInterval(() => {
+    const m = process.memoryUsage()
+    console.log(
+      `[memory] rss=${mb(m.rss)}MB heapUsed=${mb(m.heapUsed)}MB external=${mb(m.external)}MB ` +
+      `heapTotal=${mb(m.heapTotal)}MB nonHeap=${mb(m.rss - m.heapUsed)}MB`
+    )
+  }, 15 * 60 * 1000).unref()
 })

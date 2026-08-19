@@ -10,6 +10,43 @@
 const store = new Map() // key -> { value, freshUntil, expiresAt }
 const inflight = new Map() // key -> Promise (singleflight for cold miss + bg refresh)
 
+// Hard ceiling on the number of entries this process will hold, regardless of
+// TTL. `get()` only evicts lazily (on read), so a high-cardinality key space
+// that's written far more than it's re-read (e.g. per-member report caches
+// keyed by `${clubNumber}:${memberId}`) would otherwise grow unbounded even
+// though every individual entry eventually expires. Enforced on insert:
+// oldest-inserted entries are evicted first (Map preserves insertion order),
+// which is cheap and, combined with the periodic sweep below, keeps this
+// bounded without needing real LRU bookkeeping.
+const MAX_ENTRIES = 20000
+
+// Belt-and-suspenders: periodically sweep expired entries even if nobody
+// ever reads them again, so memory is reclaimed on a timer instead of only
+// on the next read of that exact key. Unref'd so it never keeps the process
+// alive (tests, scripts, etc.).
+const SWEEP_INTERVAL_MS = 5 * 60 * 1000
+let sweepTimer = null
+
+function sweepExpired() {
+  const now = Date.now()
+  for (const [key, hit] of store) {
+    if (now >= hit.expiresAt) store.delete(key)
+  }
+}
+
+function startSweep() {
+  if (sweepTimer || typeof setInterval !== 'function') return
+  sweepTimer = setInterval(sweepExpired, SWEEP_INTERVAL_MS)
+  if (sweepTimer.unref) sweepTimer.unref()
+}
+
+function stopSweep() {
+  if (sweepTimer) clearInterval(sweepTimer)
+  sweepTimer = null
+}
+
+startSweep()
+
 // Lightweight counters for ops visibility. Reset on process restart.
 const stats = {
   freshHits: 0,
@@ -18,6 +55,7 @@ const stats = {
   bgRefreshes: 0,
   bgRefreshErrors: 0,
   singleflightDedupes: 0,
+  evictions: 0,
 }
 
 function getStats() {
@@ -38,9 +76,33 @@ function get(key) {
   return hit.value
 }
 
+// Evict the oldest entries (in insertion order) until we're under the cap.
+// Only called from the write path, and only when inserting a genuinely new
+// key — overwriting an existing key doesn't grow store.size so it can't
+// trip the cap.
+function evictOldestIfNeeded() {
+  while (store.size >= MAX_ENTRIES) {
+    const oldestKey = store.keys().next().value
+    if (oldestKey === undefined) break
+    store.delete(oldestKey)
+    stats.evictions++
+  }
+}
+
+// Shared write path for both set() and the wrapSWR internal writes below, so
+// the cap/eviction logic lives in exactly one place.
+function writeEntry(key, entry) {
+  if (!store.has(key)) evictOldestIfNeeded()
+  // Re-inserting an existing key would keep its old insertion-order slot in a
+  // Map; delete first so a refreshed entry also counts as "freshest" for
+  // oldest-first eviction purposes.
+  store.delete(key)
+  store.set(key, entry)
+}
+
 function set(key, value, ttlMs) {
   const now = Date.now()
-  store.set(key, { value, freshUntil: now + ttlMs, expiresAt: now + ttlMs })
+  writeEntry(key, { value, freshUntil: now + ttlMs, expiresAt: now + ttlMs })
 }
 
 function del(key) {
@@ -86,7 +148,7 @@ async function wrapSWR(key, freshMs, staleMs, producer) {
         try {
           const value = await producer()
           const t = Date.now()
-          store.set(key, { value, freshUntil: t + freshMs, expiresAt: t + freshMs + staleMs })
+          writeEntry(key, { value, freshUntil: t + freshMs, expiresAt: t + freshMs + staleMs })
           stats.bgRefreshes++
         } catch (err) {
           stats.bgRefreshErrors++
@@ -112,7 +174,7 @@ async function wrapSWR(key, freshMs, staleMs, producer) {
     try {
       const value = await producer()
       const t = Date.now()
-      store.set(key, { value, freshUntil: t + freshMs, expiresAt: t + freshMs + staleMs })
+      writeEntry(key, { value, freshUntil: t + freshMs, expiresAt: t + freshMs + staleMs })
       return value
     } finally {
       inflight.delete(key)
@@ -122,4 +184,20 @@ async function wrapSWR(key, freshMs, staleMs, producer) {
   return p
 }
 
-module.exports = { get, set, del, wrap, wrapSWR, getStats, resetStats }
+module.exports = {
+  get,
+  set,
+  del,
+  wrap,
+  wrapSWR,
+  getStats,
+  resetStats,
+  // Exposed for tests only. `sweepExpired` is also called on the internal
+  // timer; `MAX_ENTRIES`/`_store` let tests exercise the eviction cap without
+  // creating 20,000 real entries.
+  sweepExpired,
+  stopSweep,
+  startSweep,
+  MAX_ENTRIES,
+  _store: store,
+}
