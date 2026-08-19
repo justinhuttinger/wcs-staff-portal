@@ -189,4 +189,133 @@ async function exportToGoogleSheet({
   return { id: spreadsheetId, url }
 }
 
-module.exports = { exportToGoogleSheet }
+/**
+ * Multi-tab variant of exportToGoogleSheet.
+ *
+ * exportToGoogleSheet writes one tab in a single batchUpdate, which is fine for
+ * report-sized output. A detail export can run to tens of thousands of rows —
+ * one batchUpdate carrying that many cells blows past Google's request size
+ * limit — so this writes each tab's cells in chunks.
+ *
+ *   exportTabsToGoogleSheet({
+ *     accessToken,   // required — Google OAuth access_token
+ *     title,         // spreadsheet name
+ *     tabs,          // [{ title, rows, boldRowIndices? }] — one per sheet tab
+ *     folderId,      // optional Drive folder ID to move the file into
+ *   }) -> { id, url }
+ */
+const ROWS_PER_WRITE = 2000
+
+async function exportTabsToGoogleSheet({ accessToken, title, tabs, folderId = null }) {
+  if (!accessToken) throw new Error('accessToken required')
+  if (!Array.isArray(tabs) || tabs.length === 0) throw new Error('tabs must be a non-empty array')
+  for (const t of tabs) {
+    if (!Array.isArray(t.rows) || t.rows.length === 0) {
+      throw new Error(`tab "${t.title}" must have a non-empty rows array`)
+    }
+  }
+
+  const specs = tabs.map((t, i) => ({
+    sheetId: i,
+    title: t.title || `Sheet${i + 1}`,
+    rows: t.rows,
+    boldRowIndices: t.boldRowIndices || [],
+    colCount: Math.max(1, t.rows.reduce((m, r) => Math.max(m, r.length), 0)),
+  }))
+
+  const create = await googleJson(SHEETS_BASE, accessToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      properties: { title },
+      sheets: specs.map(sp => ({
+        properties: {
+          sheetId: sp.sheetId,
+          title: sp.title,
+          gridProperties: {
+            rowCount: sp.rows.length + 10,
+            columnCount: sp.colCount,
+          },
+        },
+      })),
+    }),
+  })
+  const spreadsheetId = create.spreadsheetId
+  const url = create.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`
+
+  // Cell writes, chunked per tab so no single request carries the whole detail
+  // list. Each chunk starts at its own rowIndex, so order doesn't matter.
+  for (const sp of specs) {
+    for (let start = 0; start < sp.rows.length; start += ROWS_PER_WRITE) {
+      const slice = sp.rows.slice(start, start + ROWS_PER_WRITE)
+      await googleJson(`${SHEETS_BASE}/${spreadsheetId}:batchUpdate`, accessToken, {
+        method: 'POST',
+        body: JSON.stringify({
+          requests: [{
+            updateCells: {
+              rows: slice.map(row => ({ values: row.map(toCellValue) })),
+              fields: 'userEnteredValue',
+              start: { sheetId: sp.sheetId, rowIndex: start, columnIndex: 0 },
+            },
+          }],
+        }),
+      })
+    }
+  }
+
+  // Formatting in one pass: freeze + bold the header (and any caller-specified
+  // rows), then size the columns to their content.
+  const formatRequests = []
+  for (const sp of specs) {
+    formatRequests.push({
+      updateSheetProperties: {
+        properties: { sheetId: sp.sheetId, gridProperties: { frozenRowCount: 1 } },
+        fields: 'gridProperties.frozenRowCount',
+      },
+    })
+    const boldRows = new Set([0, ...sp.boldRowIndices.filter(i => Number.isInteger(i) && i >= 0)])
+    for (const rowIdx of boldRows) {
+      if (rowIdx >= sp.rows.length) continue
+      formatRequests.push({
+        repeatCell: {
+          range: {
+            sheetId: sp.sheetId,
+            startRowIndex: rowIdx,
+            endRowIndex: rowIdx + 1,
+            startColumnIndex: 0,
+            endColumnIndex: sp.colCount,
+          },
+          cell: { userEnteredFormat: { textFormat: { bold: true } } },
+          fields: 'userEnteredFormat.textFormat.bold',
+        },
+      })
+    }
+    formatRequests.push({
+      autoResizeDimensions: {
+        dimensions: { sheetId: sp.sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: sp.colCount },
+      },
+    })
+  }
+  await googleJson(`${SHEETS_BASE}/${spreadsheetId}:batchUpdate`, accessToken, {
+    method: 'POST',
+    body: JSON.stringify({ requests: formatRequests }),
+  })
+
+  if (folderId) {
+    try {
+      const meta = await googleJson(`${DRIVE_BASE}/${spreadsheetId}?fields=parents`, accessToken)
+      const removeParents = (meta.parents || []).join(',')
+      const params = new URLSearchParams({ addParents: folderId })
+      if (removeParents) params.set('removeParents', removeParents)
+      await googleJson(`${DRIVE_BASE}/${spreadsheetId}?${params.toString()}`, accessToken, {
+        method: 'PATCH',
+        body: JSON.stringify({}),
+      })
+    } catch (err) {
+      console.warn('[googleSheets] Drive folder move failed:', err.message)
+    }
+  }
+
+  return { id: spreadsheetId, url }
+}
+
+module.exports = { exportToGoogleSheet, exportTabsToGoogleSheet }

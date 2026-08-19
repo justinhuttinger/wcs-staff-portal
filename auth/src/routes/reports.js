@@ -1570,13 +1570,16 @@ router.get('/membership-price-breakdown', async (req, res) => {
     if (error) {
       return res.status(500).json({ error: 'Failed to fetch price breakdown', detail: error.message })
     }
+    // `memberships` = distinct agreements (what actually pays); `people` = bodies
+    // covered. A family of four on one $150 agreement is 1 membership, 4 people.
     const rows = (data || []).map(r => ({
       club:              CLUB_SLUG_MAP[r.club_number] || r.club_number,
       membership_type:   r.membership_type,
       payment_frequency: r.payment_frequency || '',
       charged_amount:    Number(r.charged_amount) || 0,
       monthly_price:     Number(r.monthly_price) || 0,
-      members:           Number(r.members) || 0,
+      memberships:       Number(r.memberships) || 0,
+      people:            Number(r.people) || 0,
     }))
     return res.json({ rows })
   } catch (err) {
@@ -1632,6 +1635,75 @@ router.get('/membership-price-detail.xlsx', async (req, res) => {
     return res.status(500).json({ error: err.message })
   }
 })
+
+// ---------------------------------------------------------------------------
+// POST /reports/membership-price-detail/export-sheet
+// Same two tables as the .xlsx export, written into a new Google Sheet in the
+// requesting user's own Drive (per-user OAuth — see googleSheetsAuth.js).
+// Returns { url } for the client to open. 412 means "connect Google first".
+// Query params: location_slug, basis (monthly | charged).
+// ---------------------------------------------------------------------------
+router.post('/membership-price-detail/export-sheet', async (req, res) => {
+  try {
+    const { exportTabsToGoogleSheet } = require('../services/googleSheets')
+    const { getStaffGoogleAccessToken } = require('../services/googleUserToken')
+    const { buildPriceTables } = require('../services/membershipPriceExcel')
+
+    let accessToken
+    try {
+      ({ accessToken } = await getStaffGoogleAccessToken(req.staff.id))
+    } catch (err) {
+      if (err.notConnected) {
+        return res.status(412).json({
+          error: 'google_not_connected',
+          message: 'Connect your Google account first.',
+        })
+      }
+      throw err
+    }
+
+    const { pClubs, slugs } = await resolveAuditClubs(req)
+    const basis = req.query.basis === 'charged' ? 'charged' : 'monthly'
+
+    const [breakdownRes, detailRes] = await Promise.all([
+      supabaseAdmin.rpc('membership_price_breakdown', { p_club_numbers: pClubs }),
+      supabaseAdmin.rpc('membership_price_detail', { p_club_numbers: pClubs }),
+    ])
+    if (breakdownRes.error) {
+      return res.status(500).json({ error: 'Failed to fetch price breakdown', detail: breakdownRes.error.message })
+    }
+    if (detailRes.error) {
+      return res.status(500).json({ error: 'Failed to fetch price detail', detail: detailRes.error.message })
+    }
+
+    const tables = buildPriceTables({
+      breakdown: breakdownRes.data || [],
+      detail: detailRes.data || [],
+      clubSlugs: slugs,
+      basis,
+    })
+
+    const locLabel = slugs && slugs.length ? slugs.join(', ') : 'All Clubs'
+    const stamp = new Date().toISOString().slice(0, 10)
+    const { url } = await exportTabsToGoogleSheet({
+      accessToken,
+      title: `WCS Membership Price Breakdown — ${locLabel} — ${stamp}`,
+      tabs: [tables.summary, tables.detail],
+    })
+
+    console.log('[reports] membership-price export-sheet:', JSON.stringify({
+      clubs: slugs || 'all',
+      basis,
+      detail_rows: tables.detail.rows.length - 1,
+    }))
+
+    return res.json({ url })
+  } catch (err) {
+    console.error('[reports] membership-price export-sheet failed:', err.message)
+    return res.status(500).json({ error: err.message })
+  }
+})
+
 
 // ---------------------------------------------------------------------------
 // GET /reports/kpi-history — frozen end-of-day KPI snapshots for a date range.
