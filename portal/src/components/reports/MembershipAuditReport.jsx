@@ -4,6 +4,7 @@ import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { StatBlock, StatCell, ReportBlock } from './StatBlock'
 import { LOCATION_NAMES } from '../../config/locations'
+import MembershipPriceBreakdown from './MembershipPriceBreakdown'
 
 const DUES_PILLS = [
   { key: 'all', label: 'All' },
@@ -240,6 +241,9 @@ export default function MembershipAuditReport() {
           </tbody>
         </table>
       </div>
+
+      {/* Price breakdown — how many members pay each price, per club */}
+      <MembershipPriceBreakdown locationSlug={loc} />
 
       {/* Dues leaks */}
       <div className="px-5 sm:px-6 py-5 border-t border-border">

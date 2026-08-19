@@ -1534,6 +1534,106 @@ router.get('/membership-audit', async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
+// Membership price breakdown — shared club resolution.
+// Same scope rules as /membership-audit: the caller's assigned clubs win, a
+// slug scope that maps to zero clubs returns nothing (never "all"), and an
+// unrestricted caller with no filter gets NULL (= every club).
+// ---------------------------------------------------------------------------
+async function resolveAuditClubs(req) {
+  const locationFilter = await resolveLocationFilter(req)
+  let clubNumbers = []
+  if (locationFilter) {
+    clubNumbers = locationFilter.values.map(s => SLUG_CLUB_MAP[s]).filter(Boolean)
+    if (locationFilter.column === 'location_slug' && clubNumbers.length === 0) {
+      clubNumbers = ['__none__']
+    }
+  }
+  return {
+    pClubs: clubNumbers.length > 0 ? clubNumbers : null,
+    slugs: clubNumbers.length > 0 ? clubNumbers.map(n => CLUB_SLUG_MAP[n]).filter(Boolean) : null,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GET /reports/membership-price-breakdown
+// How many active members pay each price, per club. Returns the raw grouped
+// rows (club × membership type × frequency × price) — ~700 across all 7 clubs
+// — so the client can pivot into a price × club matrix, filter by type, and
+// switch price basis without refetching. No date range (current state).
+// Query params: location_slug (single | comma list | 'all').
+// ---------------------------------------------------------------------------
+router.get('/membership-price-breakdown', async (req, res) => {
+  try {
+    const { pClubs } = await resolveAuditClubs(req)
+    const { data, error } = await supabaseAdmin
+      .rpc('membership_price_breakdown', { p_club_numbers: pClubs })
+    if (error) {
+      return res.status(500).json({ error: 'Failed to fetch price breakdown', detail: error.message })
+    }
+    const rows = (data || []).map(r => ({
+      club:              CLUB_SLUG_MAP[r.club_number] || r.club_number,
+      membership_type:   r.membership_type,
+      payment_frequency: r.payment_frequency || '',
+      charged_amount:    Number(r.charged_amount) || 0,
+      monthly_price:     Number(r.monthly_price) || 0,
+      members:           Number(r.members) || 0,
+    }))
+    return res.json({ rows })
+  } catch (err) {
+    return res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /reports/membership-price-detail.xlsx
+// Excel export of the price breakdown: a price × club summary sheet plus the
+// member-level detail list behind it. Same scope + population as the report,
+// so it lives here rather than under /admin/exports (which is admin-only and
+// would lock out the corporate/director roles that can see this report).
+// Query params: location_slug, basis (monthly | charged).
+// ---------------------------------------------------------------------------
+router.get('/membership-price-detail.xlsx', async (req, res) => {
+  try {
+    const { pClubs, slugs } = await resolveAuditClubs(req)
+    const basis = req.query.basis === 'charged' ? 'charged' : 'monthly'
+
+    const [breakdownRes, detailRes] = await Promise.all([
+      supabaseAdmin.rpc('membership_price_breakdown', { p_club_numbers: pClubs }),
+      supabaseAdmin.rpc('membership_price_detail', { p_club_numbers: pClubs }),
+    ])
+    if (breakdownRes.error) {
+      return res.status(500).json({ error: 'Failed to fetch price breakdown', detail: breakdownRes.error.message })
+    }
+    if (detailRes.error) {
+      return res.status(500).json({ error: 'Failed to fetch price detail', detail: detailRes.error.message })
+    }
+
+    const { buildPriceWorkbook } = require('../services/membershipPriceExcel')
+    const buffer = await buildPriceWorkbook({
+      breakdown: breakdownRes.data || [],
+      detail: detailRes.data || [],
+      clubSlugs: slugs,
+      basis,
+    })
+
+    console.log('[reports] membership-price-detail.xlsx:', JSON.stringify({
+      clubs: slugs || 'all',
+      basis,
+      detail_rows: (detailRes.data || []).length,
+      bytes: buffer.length,
+    }))
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', 'attachment; filename="WCS-Membership-Price-Breakdown.xlsx"')
+    res.setHeader('Content-Length', buffer.length)
+    return res.send(buffer)
+  } catch (err) {
+    console.error('[reports] membership-price-detail.xlsx failed:', err.message)
+    return res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
 // GET /reports/kpi-history — frozen end-of-day KPI snapshots for a date range.
 // Query: start_date, end_date (YYYY-MM-DD), optional kpi_key, location_slug.
 // Rows carry the MTD-as-of-day `value`, the `goal` in effect that day, and the
