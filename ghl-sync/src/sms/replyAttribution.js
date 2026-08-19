@@ -26,7 +26,15 @@ function attributeReplies(messages, { windowHours = DEFAULT_WINDOW_HOURS } = {})
   const sorted = (messages || [])
     .map(m => ({ m, t: Date.parse(m?.date_added) }))
     .filter(x => Number.isFinite(x.t))
-    .sort((a, b) => a.t - b.t);
+    .sort((a, b) => {
+      const timeDiff = a.t - b.t;
+      if (timeDiff !== 0) return timeDiff;
+      // At equal timestamps, inbound sorts before outbound. A reply cannot
+      // answer a send from the same instant; inbound should stay with the
+      // genuinely preceding send, not get credited to the just-sent one.
+      const directionOrder = { inbound: 0, outbound: 1 };
+      return (directionOrder[a.m.direction] ?? 2) - (directionOrder[b.m.direction] ?? 2);
+    });
 
   const out = [];
   let lastSend = null;
