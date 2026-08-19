@@ -16,6 +16,7 @@ const supabase = require('./db/supabase');
 const { runMediaIndex } = require('./media/mediaIndex');
 const { syncRecurringPtServices } = require('./abc/recurringPtServices');
 const { emailStatsSync, emailStatsSyncForSlug } = require('./sync/emailStatsSync');
+const { smsStatsSync, smsStatsSyncForSlug } = require('./sync/smsStatsSync');
 const { runLapsedTaggingAll } = require('./abc/lapsedTaggingJob');
 
 const app = express();
@@ -120,6 +121,19 @@ app.post('/api/sync/email-stats/:locationSlug', requireSecret, (req, res) => {
   res.json({ status: 'started', message: `Email stats sync for ${req.params.locationSlug} running` });
   emailStatsSyncForSlug(req.params.locationSlug)
     .catch(err => console.error(`[API] Email stats sync for ${req.params.locationSlug} failed:`, err.message));
+});
+
+// POST /api/sync/sms-messages — all locations
+app.post('/api/sync/sms-messages', requireSecret, (req, res) => {
+  res.json({ status: 'started', message: 'SMS message sync running in background' });
+  smsStatsSync().catch(err => console.error('[API] SMS sync failed:', err.message));
+});
+
+// POST /api/sync/sms-messages/:locationSlug — single location
+app.post('/api/sync/sms-messages/:locationSlug', requireSecret, (req, res) => {
+  res.json({ status: 'started', message: `SMS sync for ${req.params.locationSlug} running` });
+  smsStatsSyncForSlug(req.params.locationSlug)
+    .catch(err => console.error(`[API] SMS sync for ${req.params.locationSlug} failed:`, err.message));
 });
 
 // POST /api/sync/full/:locationSlug
