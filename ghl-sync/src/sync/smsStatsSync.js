@@ -159,16 +159,31 @@ async function smsStatsSyncForLocation(loc, { sinceIso = null } = {}) {
     }
   }
   // Never clobber a label a human set: only insert templates we have not seen.
-  const { data: known } = await supabase
+  // If the lookup itself fails, `known` would otherwise silently read as "no
+  // templates known yet", and every template — including ones with a
+  // human-set label — would get re-inserted with label: null on conflict.
+  // Skip the template upsert entirely this run instead; it just re-tries
+  // next run, and the recorded error keeps the watermark from advancing.
+  const { data: known, error: knownError } = await supabase
     .from('sms_templates')
     .select('template_key')
     .eq('location', loc.slug);
-  const knownKeys = new Set((known || []).map(r => r.template_key));
-  const newTemplates = Array.from(templates.values()).filter(t => !knownKeys.has(t.template_key));
-  const tplResult = newTemplates.length ? await upsertSmsTemplates(newTemplates) : { upserted: 0, errors: [] };
-  errors.push(...tplResult.errors);
+  let tplResult = { upserted: 0, errors: [] };
+  if (knownError) {
+    console.warn(`[SmsStats] ${loc.name}: known-template lookup failed:`, knownError.message);
+    errors.push({ stage: 'templates-known', reason: String(knownError.message) });
+  } else {
+    const knownKeys = new Set((known || []).map(r => r.template_key));
+    const newTemplates = Array.from(templates.values()).filter(t => !knownKeys.has(t.template_key));
+    tplResult = newTemplates.length ? await upsertSmsTemplates(newTemplates) : { upserted: 0, errors: [] };
+    errors.push(...tplResult.errors);
+  }
 
-  const attrSince = watermark || new Date(Date.now() - WINDOW_HOURS * 3600 * 1000).toISOString();
+  // Reload span must cover the full attribution window regardless of how
+  // recently this location last synced — a reply arriving more than one
+  // watermark-width after its send otherwise has no matching outbound in the
+  // reloaded slice and its link is silently dropped (or misattributed).
+  const attrSince = new Date(Date.now() - WINDOW_HOURS * 3600 * 1000).toISOString();
   const replies = await attributeForContacts(touchedContacts, attrSince);
   const repResult = replies.length ? await upsertSmsReplies(replies) : { upserted: 0, errors: [] };
   errors.push(...repResult.errors);

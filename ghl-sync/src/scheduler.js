@@ -172,12 +172,24 @@ function startScheduler() {
     }
   });
 
+  // SMS message sync can walk up to 20k conversations with a ~120ms sleep per
+  // fetch, so a run can plausibly outlast the default 60-minute interval
+  // (especially the first run for a location). Unlike email-stats, this needs
+  // an overlap guard so a slow run doesn't get a second one stacked on top.
   const smsStatsIntervalMinutes = process.env.SMS_STATS_INTERVAL_MINUTES || 60;
+  let smsStatsRunning = false;
   cron.schedule(`*/${smsStatsIntervalMinutes} * * * *`, async () => {
+    if (smsStatsRunning) {
+      console.warn('[Scheduler] Previous SMS stats sync still running — skipping this tick');
+      return;
+    }
+    smsStatsRunning = true;
     try {
       await smsStatsSync();
     } catch (err) {
       console.error('[Scheduler] SMS stats sync failed:', err.message);
+    } finally {
+      smsStatsRunning = false;
     }
   });
 
