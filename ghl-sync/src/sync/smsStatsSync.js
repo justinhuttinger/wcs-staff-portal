@@ -173,16 +173,18 @@ async function smsStatsSyncForLocation(loc, { sinceIso = null } = {}) {
   errors.push(...msgResult.errors);
 
   // One template row per distinct key, carrying the earliest and latest sighting.
+  // Template identity is GLOBAL (not per-location): the same fingerprint sent
+  // from two different clubs is one template, one row.
   const templates = new Map();
   for (const m of messages) {
     if (m.direction !== 'outbound' || !m.template_key) continue;
     const prev = templates.get(m.template_key);
     if (!prev) {
       templates.set(m.template_key, {
-        location: m.location,
         template_key: m.template_key,
         label: null,
         sample_body: m.body || '',
+        first_seen_location: m.location,
         first_seen_at: m.date_added,
         last_seen_at: m.date_added,
       });
@@ -197,10 +199,13 @@ async function smsStatsSyncForLocation(loc, { sinceIso = null } = {}) {
   // human-set label — would get re-inserted with label: null on conflict.
   // Skip the template upsert entirely this run instead; it just re-tries
   // next run, and the recorded error keeps the watermark from advancing.
+  //
+  // Lookup is global (not scoped to this location): a template first seen at
+  // another club must still be recognized as known here, or its label would
+  // get clobbered the first time a second club sends the same text.
   const { data: known, error: knownError } = await supabase
     .from('sms_templates')
-    .select('template_key')
-    .eq('location', loc.slug);
+    .select('template_key');
   let tplResult = { upserted: 0, errors: [] };
   if (knownError) {
     console.warn(`[SmsStats] ${loc.name}: known-template lookup failed:`, knownError.message);
