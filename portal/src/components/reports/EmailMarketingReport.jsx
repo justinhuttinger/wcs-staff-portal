@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { getEmailMarketingCampaigns } from '../../lib/api'
+import { getEmailMarketingCampaigns, getEmailMarketingAutomations } from '../../lib/api'
 import { exportCSV } from '../../lib/export'
 
 // Email Marketing report — GHL email campaign performance per send. Data comes
@@ -64,8 +64,67 @@ function StatCard({ label, value, sub }) {
   )
 }
 
+// Evergreen workflow emails. GHL only reports lifetime totals per workflow, so
+// these figures come from diffing daily snapshots; a row with no snapshot from
+// before the range shows its lifetime total, labelled as such.
+function AutomationsTable({ data }) {
+  const rows = data?.automations || []
+  if (!rows.length) return null
+  const anyLifetime = rows.some(r => r.is_lifetime)
+
+  return (
+    <div className="bg-surface rounded-xl border border-border overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="font-bold text-text-primary">Automations</h3>
+          <p className="text-xs text-text-muted">Workflow emails, performance within the selected range</p>
+        </div>
+        {anyLifetime && (
+          <span className="text-xs px-2 py-1 rounded-md bg-amber-500/15 text-amber-500 font-semibold">
+            Lifetime to date — not enough snapshot history for this range yet
+          </span>
+        )}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-xs uppercase tracking-wide text-text-muted border-b border-border">
+            <tr>
+              <th className="py-2.5 px-4 text-left">Workflow</th>
+              <th className="py-2.5 px-2 text-right">Sent</th>
+              <th className="py-2.5 px-2 text-right">Delivered</th>
+              <th className="py-2.5 px-2 text-right">Opened</th>
+              <th className="py-2.5 px-2 text-right">Open %</th>
+              <th className="py-2.5 px-2 text-right">Clicked</th>
+              <th className="py-2.5 px-2 text-right">Click %</th>
+              <th className="py-2.5 px-2 text-right">Bounced</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={`${r.location}|${r.source_id}`} className="border-b border-border/50 last:border-0">
+                <td className="py-2.5 px-4 text-text-primary">
+                  {r.name || '—'}
+                  {r.is_lifetime && <span className="ml-2 text-xs text-text-muted">(lifetime)</span>}
+                </td>
+                <td className="py-2.5 px-2 text-right text-text-primary">{fmtInt(r.sent)}</td>
+                <td className="py-2.5 px-2 text-right text-text-primary">{fmtInt(r.delivered)}</td>
+                <td className="py-2.5 px-2 text-right text-text-primary">{fmtInt(r.opened)}</td>
+                <td className="py-2.5 px-2 text-right font-semibold text-text-primary">{fmtPct(r.open_rate)}</td>
+                <td className="py-2.5 px-2 text-right text-text-primary">{fmtInt(r.clicked)}</td>
+                <td className="py-2.5 px-2 text-right font-semibold text-text-primary">{fmtPct(r.click_rate)}</td>
+                <td className="py-2.5 px-2 text-right text-text-primary">{fmtInt(r.bounced)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export default function EmailMarketingReport({ startDate, endDate, locationSlug }) {
   const [data, setData] = useState(null)
+  const [autoData, setAutoData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [sort, setSort] = useState({ col: 'completed_at', dir: 'desc' })
@@ -83,6 +142,16 @@ export default function EmailMarketingReport({ startDate, endDate, locationSlug 
       .then(res => { if (!ignore) setData(res) })
       .catch(err => { if (!ignore) setError(err.message) })
       .finally(() => { if (!ignore) setLoading(false) })
+    return () => { ignore = true }
+  }, [params])
+
+  // Automations load independently: a failure here must not blank the
+  // Campaigns table, which is the part that has always worked.
+  useEffect(() => {
+    let ignore = false
+    getEmailMarketingAutomations(params)
+      .then(d => { if (!ignore) setAutoData(d) })
+      .catch(() => { if (!ignore) setAutoData(null) })
     return () => { ignore = true }
   }, [params])
 
@@ -204,6 +273,8 @@ export default function EmailMarketingReport({ startDate, endDate, locationSlug 
           </div>
         )}
       </div>
+
+      <AutomationsTable data={autoData} />
 
       <p className="text-xs text-text-muted px-1">
         Open and click rates are GoHighLevel's own figures (calculated over delivered). Bounces combine permanent and temporary failures.
