@@ -17,6 +17,7 @@ const { runMediaIndex } = require('./media/mediaIndex');
 const { syncRecurringPtServices } = require('./abc/recurringPtServices');
 const { emailStatsSync, emailStatsSyncForSlug } = require('./sync/emailStatsSync');
 const { runLapsedTaggingAll } = require('./abc/lapsedTaggingJob');
+const { runNpsAll } = require('./nps/npsJob');
 
 const app = express();
 app.use(express.json());
@@ -458,6 +459,28 @@ app.post('/api/lapsed-tagging/run', requireSecret, async (req, res) => {
     res.json({ dryRun, summary });
   } catch (err) {
     console.error('[API] Lapsed tagging run failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/nps/run
+//
+// Run the nightly NPS job on demand. The cron fires once a day, so a night
+// that fails leaves that day's cohort stranded: their milestone date passes
+// and the back-window will not reach it again. This is how you recover one.
+//
+// Same shape as /api/lapsed-tagging/run: dryRun defaults to the env setting
+// and can be overridden per call.
+app.post('/api/nps/run', requireSecret, async (req, res) => {
+  try {
+    const defaultDryRun = process.env.NPS_TAGGING_DRY_RUN !== 'false';
+    const dryRun = typeof req.body?.dryRun === 'boolean' ? req.body.dryRun : defaultDryRun;
+    console.log(`[API] NPS run requested (dryRun=${dryRun})`);
+    const summary = await runNpsAll({ dryRun });
+    console.log('[API] NPS run results:', JSON.stringify(summary));
+    res.json({ dryRun, ...summary });
+  } catch (err) {
+    console.error('[API] NPS run failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
