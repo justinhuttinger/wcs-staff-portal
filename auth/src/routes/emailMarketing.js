@@ -113,8 +113,24 @@ router.get('/automations', async (req, res) => {
     if (location_slug) q = q.eq('location', location_slug)
     if (end_date) q = q.lte('snapshot_date', end_date)
 
-    const { data, error } = await q
-    if (error) throw error
+    // No lower bound here on purpose: the baseline snapshot has to predate
+    // start_date, so it can live arbitrarily far back. email_stats_daily grows
+    // by one row per workflow campaign per location per day, which reaches
+    // PostgREST's ~1000-row response cap within about a week. Ascending order
+    // means an unpaged query would silently truncate to the OLDEST rows, so
+    // `latest` would collapse to a week-one snapshot, every diff would read
+    // as zero, and the table would render empty. Page explicitly until a
+    // short page comes back (see auth/src/routes/checkinsReport.js).
+    const data = []
+    let from = 0
+    for (;;) {
+      const { data: page, error } = await q.range(from, from + 999)
+      if (error) throw error
+      if (!page || !page.length) break
+      data.push(...page)
+      if (page.length < 1000) break
+      from += 1000
+    }
 
     // Per campaign: the last snapshot at or before end_date is the "latest";
     // the last one strictly before start_date is the baseline. Rows arrive in

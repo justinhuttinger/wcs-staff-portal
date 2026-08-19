@@ -60,6 +60,12 @@ test('isOptOut does not fire on the keyword inside a sentence', () => {
   assert.strictEqual(isOptOut(null), false)
 })
 
+test('isOptOut matches the keyword as a punctuated or trailing-word prefix', () => {
+  for (const w of ['STOP.', 'Stop!', 'STOP - remove me', '  stop  ']) {
+    assert.strictEqual(isOptOut(w), true, w)
+  }
+})
+
 test('at equal timestamps, inbound sorts before outbound so reply credits the earlier send', () => {
   const t1 = at(1)
   const t2 = at(2)

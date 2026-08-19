@@ -13,6 +13,12 @@ const WINDOW_HOURS = Number(process.env.SMS_REPLY_WINDOW_HOURS || DEFAULT_WINDOW
 // Re-walk a little before the last run so a conversation that moved mid-sync
 // is not missed. Cheap: an already-stored message just upserts over itself.
 const OVERLAP_MS = 2 * 60 * 60 * 1000;
+// First-ever run for a location (no ghl_sync_log row yet) gets a bounded
+// default floor instead of walking all history. The full historical walk is
+// meant to be a deliberate, off-hours, one-location-at-a-time operation (see
+// scripts/backfillSmsMessages.js), not something that happens automatically
+// on the first top-of-hour tick after deploy.
+const FIRST_RUN_DAYS = Number(process.env.SMS_FIRST_RUN_DAYS || 7);
 
 // When did this location last finish an sms-messages run without errors?
 // Returns null on the first ever run, which the caller reads as "no watermark".
@@ -44,17 +50,35 @@ async function attributeForContacts(contactIds, sinceIso) {
 
   for (let i = 0; i < ids.length; i += 50) {
     const chunk = ids.slice(i, i + 50);
-    const { data, error } = await supabase
-      .from('ghl_sms_messages')
-      .select('id, contact_id, direction, body, date_added, location')
-      .in('contact_id', chunk)
-      .gte('date_added', sinceIso)
-      .order('date_added', { ascending: true });
 
-    if (error) {
-      console.warn('[SmsStats] attribution reload failed:', error.message);
-      continue;
+    // PostgREST caps a single response at ~1000 rows. At the old 72h window
+    // that rarely mattered; once the reload spans a 180-day backfill floor
+    // (see below) a single chunk can easily hold more than 1000 messages, and
+    // a silent truncation drops reply links. Page explicitly until a short
+    // page comes back, matching the idiom in auth/src/routes/checkinsReport.js.
+    const data = [];
+    let from = 0;
+    let pageError = false;
+    for (;;) {
+      const { data: page, error } = await supabase
+        .from('ghl_sms_messages')
+        .select('id, contact_id, direction, body, date_added, location')
+        .in('contact_id', chunk)
+        .gte('date_added', sinceIso)
+        .order('date_added', { ascending: true })
+        .range(from, from + 999);
+
+      if (error) {
+        console.warn('[SmsStats] attribution reload failed:', error.message);
+        pageError = true;
+        break;
+      }
+      if (!page || !page.length) break;
+      data.push(...page);
+      if (page.length < 1000) break;
+      from += 1000;
     }
+    if (pageError) continue; // skip this chunk entirely rather than attribute on a partial reload
 
     const byContact = new Map();
     for (const m of data || []) {
@@ -82,7 +106,16 @@ async function attributeForContacts(contactIds, sinceIso) {
 // the outbound ones into templates, and recompute reply linkage.
 async function smsStatsSyncForLocation(loc, { sinceIso = null } = {}) {
   const startedAt = new Date().toISOString();
-  const watermark = sinceIso || (await lastSuccessfulRun(loc.id));
+  let watermark = sinceIso || (await lastSuccessfulRun(loc.id));
+  if (!watermark) {
+    // No explicit override (the backfill always passes one) and no prior
+    // successful run recorded: this is the first-ever tick for this location.
+    // Left unbounded, `reachedWatermark` would never become true and the walk
+    // would run to MAX_PAGES — the entire conversation history — on the first
+    // scheduled tick after deploy. Bound it to a recent default instead; the
+    // deliberate full-history walk is scripts/backfillSmsMessages.js.
+    watermark = new Date(Date.now() - FIRST_RUN_DAYS * 24 * 3600 * 1000).toISOString();
+  }
   const errors = [];
 
   // lastMessageDate comes back as epoch ms, so the watermark is compared as a
@@ -183,7 +216,18 @@ async function smsStatsSyncForLocation(loc, { sinceIso = null } = {}) {
   // recently this location last synced — a reply arriving more than one
   // watermark-width after its send otherwise has no matching outbound in the
   // reloaded slice and its link is silently dropped (or misattributed).
-  const attrSince = new Date(Date.now() - WINDOW_HOURS * 3600 * 1000).toISOString();
+  //
+  // This function backs BOTH the incremental sync and the historical backfill
+  // (scripts/backfillSmsMessages.js passes `sinceIso` = now - 180d, which
+  // flows into `watermark`/`watermarkMs` above). A backfill run stores sends
+  // back to that floor, so the reload has to reach back at least as far, or
+  // backfilled replies never find their outbound send and silently link to
+  // nothing (thousands of sends, ~0 replies). Use whichever bound is EARLIER:
+  // the normal attribution window, or this run's own floor.
+  const attrSince = new Date(
+    watermarkMs != null ? Math.min(Date.now() - WINDOW_HOURS * 3600 * 1000, watermarkMs)
+      : Date.now() - WINDOW_HOURS * 3600 * 1000
+  ).toISOString();
   const replies = await attributeForContacts(touchedContacts, attrSince);
   const repResult = replies.length ? await upsertSmsReplies(replies) : { upserted: 0, errors: [] };
   errors.push(...repResult.errors);

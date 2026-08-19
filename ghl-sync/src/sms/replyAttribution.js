@@ -10,9 +10,14 @@
 
 const DEFAULT_WINDOW_HOURS = 72;
 
-// Standard carrier opt-out keywords, as a WHOLE message. Matching the keyword
-// anywhere would flag "I cannot stop thinking about leg day" as an opt-out.
-const OPT_OUT_RE = /^\s*(stop|stopall|unsubscribe|cancel|end|quit)\s*$/i;
+// Standard carrier opt-out keywords, as a PREFIX: the message must START with
+// the keyword (optional leading whitespace, word-boundary after), with
+// anything allowed after it — trailing punctuation ("STOP.", "Stop!") or
+// trailing words ("STOP - remove me") are all real, carrier-honored opt-outs.
+// A prefix anchor still rejects the false positive that motivated this regex
+// in the first place: "I cannot stop thinking about leg day" does not START
+// with the keyword, so it never matches.
+const OPT_OUT_RE = /^\s*(stop|stopall|unsubscribe|cancel|end|quit)\b/i;
 
 function isOptOut(body) {
   return typeof body === 'string' && OPT_OUT_RE.test(body);
