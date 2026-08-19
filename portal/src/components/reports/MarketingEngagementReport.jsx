@@ -11,7 +11,7 @@ const TABS = [
   { key: 'sms', label: 'SMS' },
 ]
 
-export default function MarketingEngagementReport({ startDate, endDate, locationSlug }) {
+export default function MarketingEngagementReport({ startDate, endDate, locationSlug, isAdmin }) {
   const [tab, setTab] = useState('email')
 
   return (
@@ -34,7 +34,7 @@ export default function MarketingEngagementReport({ startDate, endDate, location
 
       {tab === 'email'
         ? <EmailMarketingReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
-        : <SmsMarketingReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />}
+        : <SmsMarketingReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} isAdmin={isAdmin} />}
     </div>
   )
 }

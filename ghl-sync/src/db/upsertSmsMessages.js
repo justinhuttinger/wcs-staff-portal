@@ -60,8 +60,7 @@ const upsertSmsMessages = rows =>
   batchUpsert('ghl_sms_messages', rows, 'id', r => r.id);
 
 const upsertSmsTemplates = rows =>
-  batchUpsert('sms_templates', rows, 'location,template_key', r =>
-    r.template_key ? `${r.location}|${r.template_key}` : null);
+  batchUpsert('sms_templates', rows, 'template_key', r => r.template_key || null);
 
 const upsertSmsReplies = rows =>
   batchUpsert('sms_replies', rows, 'inbound_id', r => r.inbound_id);

@@ -656,7 +656,7 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
             <EmailMarketingReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
           )}
           {activeReport === 'marketing-engagement' && (
-            <MarketingEngagementReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+            <MarketingEngagementReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} isAdmin={isAdmin} />
           )}
           {activeReport === 'kpis' && (
             <KpiReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
