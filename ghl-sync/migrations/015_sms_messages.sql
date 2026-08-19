@@ -116,5 +116,5 @@ AS $$
       OR (p_kind = 'staff'     AND m.source = 'app')
     )
   GROUP BY m.location, m.template_key
-  ORDER BY count(*) DESC;
+  ORDER BY count(DISTINCT m.id) DESC;
 $$;
