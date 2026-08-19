@@ -15,6 +15,10 @@ function fmtPct(v) {
   return Number.isFinite(n) ? `${n.toFixed(1)}%` : '—'
 }
 function fmtMinutes(v) {
+  // Explicit null/undefined check first: Number(null) is 0 (not NaN), so
+  // relying on Number.isFinite alone would silently turn "no replies yet"
+  // (median_reply_minutes: null) into a plausible-looking "0m".
+  if (v === null || v === undefined) return '—'
   const n = Number(v)
   if (!Number.isFinite(n)) return '—'
   if (n < 60) return `${Math.round(n)}m`
