@@ -20,6 +20,7 @@ import TillReport from './reports/TillReport'
 import MetaAdsView from './MetaAdsView'
 import GoogleMarketingView from './GoogleMarketingView'
 import EmailMarketingReport from './reports/EmailMarketingReport'
+import MarketingEngagementReport from './reports/MarketingEngagementReport'
 import KpiReport from './reports/KpiReport'
 import AuditsReport from './reports/AuditsReport'
 import ReportInfoButton from './ReportInfoButton'
@@ -53,6 +54,7 @@ const REPORT_ICONS = {
   'meta-ads': 'M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6',
   'google-marketing': 'm21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z',
   'email-marketing': 'M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75',
+  'marketing-engagement': 'M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z',
   kpis: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z',
   audits: 'M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V19.5a2.25 2.25 0 0 0 2.25 2.25h7.5a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08M15.75 18.75h-7.5m7.5-3h-7.5m-4.5-9v12.75c0 .621.504 1.125 1.125 1.125h.375',
 }
@@ -79,6 +81,7 @@ const ALL_REPORT_TILES = [
   { key: 'meta-ads', label: 'Meta Ads', desc: 'Facebook & Instagram' },
   { key: 'google-marketing', label: 'Google', desc: 'Business + Analytics' },
   { key: 'email-marketing', label: 'Email Marketing', desc: 'Campaign Performance' },
+  { key: 'marketing-engagement', label: 'Marketing Engagement', desc: 'Email + SMS Performance' },
   { key: 'kpis', label: 'KPIs', desc: 'Goals vs. Actuals' },
   { key: 'audits', label: 'Audits', desc: 'Operandio Scores' },
 ]
@@ -110,7 +113,7 @@ const REPORT_GROUPS = [
     label: 'Marketing',
     desc: 'Ads, SEO & Lead Capture',
     iconPath: REPORT_ICONS['marketing'],
-    reports: ['meta-ads', 'google-marketing', 'email-marketing'],
+    reports: ['meta-ads', 'google-marketing', 'email-marketing', 'marketing-engagement'],
   },
 ]
 
@@ -651,6 +654,9 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           )}
           {activeReport === 'email-marketing' && (
             <EmailMarketingReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+          )}
+          {activeReport === 'marketing-engagement' && (
+            <MarketingEngagementReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
           )}
           {activeReport === 'kpis' && (
             <KpiReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
