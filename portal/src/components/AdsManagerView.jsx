@@ -127,6 +127,19 @@ export default function AdsManagerView({ onBack }) {
       .finally(() => setLoadingAccount(false))
   }, [])
 
+  // Every catch funnels through here so a throttle is reported as a wait, not
+  // as a broken screen.
+  //
+  // Declared BEFORE the loaders below: they list it in their useCallback
+  // dependency arrays, and those arrays evaluate during render. Declaring it
+  // afterwards leaves it in the temporal dead zone and throws
+  // "Cannot access 'reportError' before initialization" on first render, which
+  // takes the whole view down to a blank screen.
+  const reportError = useCallback(err => {
+    if (err && err.rate_limited) setRateLimit({ minutes: err.retry_after_minutes || 0, message: err.message })
+    else setError(err.message)
+  }, [])
+
   const loadCampaigns = useCallback(() => {
     setLoading(l => ({ ...l, campaigns: true }))
     return getAdsManagerCampaigns({ status: statusParam })
@@ -152,13 +165,6 @@ export default function AdsManagerView({ onBack }) {
       .catch(reportError)
       .finally(() => setLoading(l => ({ ...l, ads: false })))
   }, [statusParam, reportError])
-
-  // Every catch funnels through here so a throttle is reported as a wait, not
-  // as a broken screen.
-  const reportError = useCallback(err => {
-    if (err && err.rate_limited) setRateLimit({ minutes: err.retry_after_minutes || 0, message: err.message })
-    else setError(err.message)
-  }, [])
 
   const loadStranded = useCallback(force => {
     return getAdsManagerStrandedAds(force)
