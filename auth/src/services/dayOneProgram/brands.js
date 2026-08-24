@@ -20,6 +20,9 @@ const BRANDS = {
     logoWidth: 70,
     logoHeight: 70,
     headerOffset: 90,
+    // Day-title characters that fit on ONE line at the base 42px, measured by
+    // rendering escalating titles through PDFShift: WCS fits 33, wraps at 36.
+    headlineFitChars: 33,
     // Club name is appended for WCS ("West Coast Strength - Keizer").
     perClub: true,
   },
@@ -40,6 +43,9 @@ const BRANDS = {
     logoWidth: 170,
     logoHeight: 52,
     headerOffset: 190,
+    // Measured the same way: the wide wordmark leaves less header room, so ESAC
+    // fits 27 and wraps at 32.
+    headlineFitChars: 27,
     // ESAC is a single club, so the club name is never appended.
     perClub: false,
   },
