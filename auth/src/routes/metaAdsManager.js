@@ -757,15 +757,50 @@ function buildObjectStorySpec(variant, shared) {
   return spec
 }
 
+// The individual Advantage+ enhancements that rewrite copy or alter media.
+// Meta retired the single `standard_enhancements` bundle - sending it now
+// fails the creative outright with "Creative should not include standard
+// enhancements" - so opting out means naming each feature. Meta silently drops
+// the ones that don't apply to a given creative, so one list covers image,
+// video and link ads alike.
+const ENHANCEMENTS_TO_DECLINE = [
+  // Copy
+  'text_optimizations',
+  'description_automation',
+  'text_extraction_for_headline',
+  'add_text_overlay',
+  'text_translation',
+  'text_overlay_translation',
+  // Media
+  'image_touchups',
+  'image_templates',
+  'image_background_gen',
+  'image_animation',
+  'adapt_to_placement',
+  'media_type_automation',
+  'multi_photo_to_video',
+  'video_to_image',
+  'music_generation',
+  // Extra modules bolted onto the ad
+  'generate_cta',
+  'site_extensions',
+  'product_extensions',
+  'profile_card',
+  'inline_comment',
+]
+
 // Advantage+ creative enhancements silently rewrite copy and crop images.
 // That defeats the whole point of hand-authored A/B variants, so we default to
-// opting out and let the caller turn it back on per batch.
+// opting out and let the caller turn it back on per batch. Turning it ON means
+// sending no spec at all: there is no bundle to opt into any more, and an
+// absent spec is exactly what leaves Meta free to apply its own defaults.
 function degreesOfFreedom(advantagePlus) {
-  return {
-    creative_features_spec: {
-      standard_enhancements: { enroll_status: advantagePlus ? 'OPT_IN' : 'OPT_OUT' },
-    },
+  if (advantagePlus) return undefined
+  const creative_features_spec = {}
+  for (const feature of ENHANCEMENTS_TO_DECLINE) {
+    creative_features_spec[feature] = { enroll_status: 'OPT_OUT' }
   }
+  return { creative_features_spec }
 }
 
 async function createOneAd(variant, shared, token, accountId) {
