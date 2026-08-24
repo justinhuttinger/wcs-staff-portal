@@ -1,7 +1,7 @@
 'use strict'
 
 // Day One programs ship under one of two brands. WCS is the default; ESAC
-// (Eastside Athletic Club) is selected by a GHL custom field on the intake and
+// (East Side Athletic Club) is selected by a GHL custom field on the intake and
 // is deliberately black-and-white — every accent that is WCS red becomes black.
 const BRANDS = {
   wcs: {
@@ -28,8 +28,8 @@ const BRANDS = {
   },
   esac: {
     key: 'esac',
-    name: 'Eastside Athletic Club',
-    headline: 'EASTSIDE ATHLETIC CLUB',
+    name: 'East Side Athletic Club',
+    headline: 'EAST SIDE ATHLETIC CLUB',
     accent: '#000000',
     accentSoft: 'rgba(0,0,0,.30)',
     accentGlow: 'rgba(0,0,0,.10)',
@@ -69,7 +69,7 @@ function getBrand(key) {
 
 const ESAC_PATTERN = /\b(esac|east\s?side)\b/i
 // Only these fields decide the brand. Scanning every value would let a client's
-// free-text answer ("I train at Eastside") silently rebrand the program.
+// free-text answer ("I train at East Side") silently rebrand the program.
 const BRAND_KEY_PATTERN = /brand|esac|east\s?side|club|program\s*type/i
 const TRUTHY = /^(yes|true|1|on|checked|esac|east\s?side)$/i
 
