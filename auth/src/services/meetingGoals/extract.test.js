@@ -62,35 +62,58 @@ test('actionPlansFromSteps handles a job with nothing filled in', () => {
 
 test('entryFromJob builds a row for a submitted meeting', () => {
   const job = {
-    id: 'job-1', location_slug: 'salem', process_name: 'MC Weekly Meeting',
+    id: 'job-1', location_slug: 'salem', process_id: 'p-pt',
     job_date: '2026-08-28', submitted: true,
     submitted_at: '2026-08-28T17:00:00Z', submitted_by: 'Ryan Harris',
   }
-  const entry = entryFromJob(job, [{ name: 'Action Plan 1', position: 22, response: 'do the thing' }])
+  const entry = entryFromJob(job, [{ name: 'Action Plan 1', position: 22, response: 'do the thing' }], 'PT')
   assert.equal(entry.job_id, 'job-1')
-  assert.equal(entry.kind, 'MC')
+  assert.equal(entry.kind, 'PT')
   assert.equal(entry.location_slug, 'salem')
   assert.equal(entry.week_start, '2026-08-24')
   assert.equal(entry.submitted_by, 'Ryan Harris')
   assert.deepEqual(entry.action_plans, ['do the thing'])
 })
 
+test('entryFromJob takes kind from the caller, ignoring the stale process_name', () => {
+  // Real 2026-08-24 trap: the MC/PT processes were renamed to fix crossed
+  // content, but the already-created job row still carried the PRE-rename
+  // name. Trusting process_name would file a PT action plan into MC Goals.
+  const job = {
+    id: '6a8c75ee0839cce627e20d7e', location_slug: 'salem',
+    process_name: 'MC Weekly Meeting',   // stale snapshot
+    process_id: '6a8c743d721e406ca008467e', // now named "PT Weekly Meeting"
+    job_date: '2026-08-30', submitted: true, submitted_by: 'Justin Huttinger',
+  }
+  const entry = entryFromJob(job, [{ name: 'Action Plan 1', position: 7, response: 'Make 10 Calls' }], 'PT')
+  assert.equal(entry.kind, 'PT')
+})
+
 test('entryFromJob rejects jobs that are not ours or not submitted', () => {
   const base = {
-    id: 'j', location_slug: 'salem', process_name: 'MC Weekly Meeting',
+    id: 'j', location_slug: 'salem', process_id: 'p-mc',
     job_date: '2026-08-28', submitted: true,
   }
-  assert.equal(entryFromJob({ ...base, submitted: false }, []), null)
-  assert.equal(entryFromJob({ ...base, process_name: 'PT Audit' }, []), null)
-  assert.equal(entryFromJob({ ...base, job_date: null }, []), null)
+  assert.equal(entryFromJob({ ...base, submitted: false }, [], 'MC'), null)
+  assert.equal(entryFromJob(base, [], null), null)       // process isn't a meeting job
+  assert.equal(entryFromJob(base, [], undefined), null)  // id not in the kind map
+  assert.equal(entryFromJob({ ...base, job_date: null }, [], 'MC'), null)
 })
 
 test('entryFromJob keeps an empty submission as evidence the meeting ran', () => {
   const job = {
-    id: 'job-2', location_slug: 'keizer', process_name: 'PT Weekly Meeting',
+    id: 'job-2', location_slug: 'keizer', process_id: 'p-pt',
     job_date: '2026-08-25', submitted: true, submitted_by: 'Someone',
   }
-  const entry = entryFromJob(job, [{ name: 'Action Plan 1', position: 22, response: '  ' }])
+  const entry = entryFromJob(job, [{ name: 'Action Plan 1', position: 22, response: '  ' }], 'PT')
   assert.notEqual(entry, null)
   assert.deepEqual(entry.action_plans, [])
+})
+
+test('actionPlansFromSteps supports the real 3-to-5 range', () => {
+  const mk = (n) => Array.from({ length: n }, (_, k) =>
+    ({ name: `Action Plan ${k + 1}`, position: 22 + k, response: `priority ${k + 1}` }))
+  assert.equal(actionPlansFromSteps(mk(3)).length, 3) // the stated minimum
+  assert.equal(actionPlansFromSteps(mk(4)).length, 4)
+  assert.equal(actionPlansFromSteps(mk(5)).length, 5) // the stated maximum
 })
