@@ -227,7 +227,12 @@ export default function DayOneProgramsAdmin() {
                   <div className="text-xs text-text-muted">{p.contact_email || '—'}</div>
                 </td>
                 <td className="px-4 py-2 text-text-primary">{p.trainer_name || '—'}</td>
-                <td className="px-4 py-2 text-text-primary whitespace-nowrap">{CLUB_NAMES[p.club_code] || p.club_code || '—'}</td>
+                <td className="px-4 py-2 text-text-primary whitespace-nowrap">
+                  {CLUB_NAMES[p.club_code] || p.club_code || '—'}
+                  {p.brand === 'esac' && (
+                    <div className="text-xs text-text-muted">ESAC branding</div>
+                  )}
+                </td>
                 <td className="px-4 py-2">
                   <span className={`inline-block rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize ${STATUS_STYLES[p.status] || STATUS_STYLES.pending}`}>
                     {p.status || 'pending'}

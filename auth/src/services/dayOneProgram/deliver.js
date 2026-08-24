@@ -1,6 +1,7 @@
 'use strict'
 
 const sgMail = require('@sendgrid/mail')
+const { getBrand } = require('./brands')
 if (process.env.SENDGRID_API_KEY) sgMail.setApiKey(process.env.SENDGRID_API_KEY)
 
 const FROM_EMAIL = process.env.FROM_EMAIL || 'programs@westcoaststrength.com'
@@ -12,13 +13,17 @@ function safeFilename(contactData) {
   return base.replace(/[^A-Za-z0-9_\-]/g, '') + '.pdf'
 }
 
-function clubFromName(club) {
-  const name = club.name || 'West Coast Strength'
-  return name.includes('West Coast Strength') ? name : `West Coast Strength - ${name}`
+// Sender/brand name on the client email. ESAC is a single club, so it is never
+// suffixed with the club name the way the WCS clubs are.
+function clubFromName(club, brandKey) {
+  const brand = getBrand(brandKey)
+  if (!brand.perClub) return brand.name
+  const name = club?.name || brand.name
+  return name.includes(brand.name) ? name : `${brand.name} - ${name}`
 }
 
-async function sendProgramEmail(contactData, club, pdfBuffer) {
-  const fromName = clubFromName(club)
+async function sendProgramEmail(contactData, club, pdfBuffer, brandKey) {
+  const fromName = clubFromName(club, brandKey)
   await sgMail.send({
     to: contactData.email,
     from: { email: FROM_EMAIL, name: fromName },

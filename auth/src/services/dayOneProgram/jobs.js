@@ -12,6 +12,7 @@ async function createJob(fields) {
     location_id: fields.locationId || null,
     club_code: fields.clubCode || null,
     trainer_name: fields.trainerName || null,
+    brand: fields.brand || 'wcs',
     abc_member_id: fields.abcMemberId || null,
     status: 'pending',
     progress: 'Queued',

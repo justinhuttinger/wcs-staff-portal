@@ -680,7 +680,7 @@ router.get('/day-one-programs', requireRole('admin'), async (req, res) => {
     }
 
     // Page of rows for the table (program_json omitted — it's large and unused here).
-    const cols = 'id, created_at, completed_at, contact_name, contact_email, trainer_name, club_code, location_id, status, progress, emailed, uploaded_abc, abc_member_id, error_message'
+    const cols = 'id, created_at, completed_at, contact_name, contact_email, trainer_name, club_code, location_id, brand, status, progress, emailed, uploaded_abc, abc_member_id, error_message'
     let listQuery = supabaseAdmin
       .from('pt_programs')
       .select(cols, { count: 'exact' })
