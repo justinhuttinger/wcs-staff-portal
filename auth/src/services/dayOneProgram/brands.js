@@ -53,6 +53,16 @@ const BRANDS = {
 
 const DEFAULT_BRAND = 'wcs'
 
+// Which clubs trade under which brand. The intake site derives the brand from
+// its URL slug, so a trainer cannot pick the wrong one.
+const BRAND_BY_SLUG = {
+  milwaukie: 'esac',
+}
+
+function brandForSlug(slug) {
+  return BRAND_BY_SLUG[String(slug || '').trim().toLowerCase()] || DEFAULT_BRAND
+}
+
 function getBrand(key) {
   return BRANDS[String(key || '').toLowerCase()] || BRANDS[DEFAULT_BRAND]
 }
@@ -115,4 +125,7 @@ function brandFieldNames(body = {}, depth = 0) {
   return out
 }
 
-module.exports = { BRANDS, DEFAULT_BRAND, getBrand, resolveBrandKey, brandFieldNames }
+module.exports = {
+  BRANDS, DEFAULT_BRAND, BRAND_BY_SLUG, getBrand, brandForSlug,
+  resolveBrandKey, brandFieldNames,
+}
