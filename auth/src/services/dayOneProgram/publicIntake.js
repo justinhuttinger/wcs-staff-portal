@@ -35,6 +35,17 @@ function intInRange(v, { min, max, fallback }) {
   return Math.min(max, Math.max(min, n))
 }
 
+// Height arrives as feet + inches. Either part alone still resolves: 5 ft with
+// no inches is 60, and a bare inches value passes straight through, so an older
+// payload sending `height` on its own keeps working.
+function heightInInches(i = {}) {
+  const ft = parseInt(String(i.heightFeet ?? '').replace(/[^0-9]/g, ''), 10)
+  const inch = parseInt(String(i.heightInches ?? '').replace(/[^0-9]/g, ''), 10)
+  if (Number.isNaN(ft) && Number.isNaN(inch)) return text(i.height, MAX_SHORT)
+  const total = (Number.isNaN(ft) ? 0 : ft) * 12 + (Number.isNaN(inch) ? 0 : inch)
+  return total ? String(total) : ''
+}
+
 // Map the site's payload onto the exact formData shape generateProgram expects,
 // so both entry points feed the generator identically.
 function normalizeIntake(intake = {}, trainerName = '') {
@@ -48,9 +59,10 @@ function normalizeIntake(intake = {}, trainerName = '') {
     equipment: text(i.equipment, MAX_SHORT) || 'full gym',
 
     weight: text(i.weight, MAX_SHORT),
-    height: text(i.height, MAX_SHORT),
+    // The form collects feet and inches; the generator's prompt says "inches",
+    // so the two are combined here rather than changing what the prompt means.
+    height: heightInInches(i),
     bodyFat: text(i.bodyFat, MAX_SHORT).replace('%', ''),
-    bmr: text(i.bmr, MAX_SHORT),
 
     neckLimitation: bool(i.neckLimitation),
     shoulderLimitation: bool(i.shoulderLimitation),
@@ -61,23 +73,15 @@ function normalizeIntake(intake = {}, trainerName = '') {
     ankleLimitation: bool(i.ankleLimitation),
     otherLimitations: text(i.otherLimitations),
 
-    interestedIn: text(i.interestedIn),
-    interestedInPT: text(i.interestedInPT, MAX_SHORT),
-    preferredCoach: text(i.preferredCoach, MAX_SHORT),
-    fitnessGoals: text(i.fitnessGoals),
-
     heartCondition: yesNo(i.heartCondition),
     chestPain: yesNo(i.chestPain),
     boneJointProblem: yesNo(i.boneJointProblem),
     bloodPressureMedication: yesNo(i.bloodPressureMedication),
     medicalSupervisionNeeded: yesNo(i.medicalSupervisionNeeded),
 
-    currentWorkoutRoutine: text(i.currentWorkoutRoutine),
-    followsDietPlan: text(i.followsDietPlan, MAX_SHORT),
-    biggestObstacles: text(i.biggestObstacles),
-    wouldHelpMost: text(i.wouldHelpMost),
-
     gender: text(i.gender, MAX_SHORT),
+    // The single highest-signal field: the prompt uses it to include exercises
+    // the client loves and avoid ones they hate.
     trainerNotes: text(i.trainerNotes),
   }
   // Day focus overrides only matter for the days actually being trained.

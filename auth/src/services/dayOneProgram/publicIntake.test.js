@@ -39,9 +39,33 @@ test('first name, trainer and location are required', () => {
 
 test('free text is capped so a public form cannot stuff the prompt', () => {
   const body = validBody()
-  body.intake.fitnessGoals = 'x'.repeat(50000)
+  body.intake.otherLimitations = 'x'.repeat(50000)
   const { formData } = validateSubmission(body)
-  assert.equal(formData.fitnessGoals.length, MAX_TEXT)
+  assert.equal(formData.otherLimitations.length, MAX_TEXT)
+})
+
+test('height is collected as feet + inches and sent as inches', () => {
+  assert.equal(normalizeIntake({ heightFeet: '5', heightInches: '8' }).height, '68')
+  assert.equal(normalizeIntake({ heightFeet: '6', heightInches: '0' }).height, '72')
+})
+
+test('a partial height still resolves', () => {
+  assert.equal(normalizeIntake({ heightFeet: '6' }).height, '72')      // feet only
+  assert.equal(normalizeIntake({ heightInches: '70' }).height, '70')   // inches only
+  assert.equal(normalizeIntake({}).height, '')
+})
+
+test('a payload sending height on its own keeps working', () => {
+  assert.equal(normalizeIntake({ height: '68' }).height, '68')
+})
+
+test('PT notes reach the generator, capped like other free text', () => {
+  assert.equal(normalizeIntake({ trainerNotes: 'Hates burpees' }).trainerNotes, 'Hates burpees')
+  assert.equal(normalizeIntake({ trainerNotes: 'x'.repeat(50000) }).trainerNotes.length, MAX_TEXT)
+})
+
+test('BMR is no longer collected', () => {
+  assert.equal(normalizeIntake({ bmr: '1690' }).bmr, undefined)
 })
 
 test('days per week is clamped to a real split', () => {

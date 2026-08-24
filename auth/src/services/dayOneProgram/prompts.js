@@ -16,9 +16,16 @@ function buildPreamble(contactData, formData) {
     ? `MOVEMENT LIMITATIONS: ${limitations.join(', ')}. You MUST modify exercises to work around these limitations.`
     : 'No movement limitations reported.'
 
-  const inbody = (f.weight || f.height || f.bodyFat || f.bmr)
-    ? `INBODY METRICS: Weight: ${f.weight} lbs, Height: ${f.height} inches, Body Fat: ${f.bodyFat}%, BMR: ${f.bmr} calories/day`
-    : ''
+  // Built from the metrics actually present. Interpolating them unconditionally
+  // put empty or "undefined" values into the prompt whenever one was not
+  // collected - the intake site no longer asks for BMR at all.
+  const metrics = [
+    f.weight && `Weight: ${f.weight} lbs`,
+    f.height && `Height: ${f.height} inches`,
+    f.bodyFat && `Body Fat: ${f.bodyFat}%`,
+    f.bmr && `BMR: ${f.bmr} calories/day`,
+  ].filter(Boolean)
+  const inbody = metrics.length ? `INBODY METRICS: ${metrics.join(', ')}` : ''
 
   const medical = []
   if (f.heartCondition && f.heartCondition !== 'No') medical.push(`Heart condition requiring medical supervision: ${f.heartCondition}`)
