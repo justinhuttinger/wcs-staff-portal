@@ -9,7 +9,7 @@ const { buildProgramPdf } = require('../services/dayOneProgram/pdf')
 const deliver = require('../services/dayOneProgram/deliver')
 const jobs = require('../services/dayOneProgram/jobs')
 const { renderSuccessPage } = require('../services/dayOneProgram/successPage')
-const { resolveBrandKey, DEFAULT_BRAND } = require('../services/dayOneProgram/brands')
+const { resolveBrandKey, DEFAULT_BRAND, brandFieldNames } = require('../services/dayOneProgram/brands')
 const { supabaseAdmin } = require('../services/supabase')
 
 const router = Router()
@@ -97,6 +97,9 @@ router.post('/webhook', async (req, res) => {
     // A GHL custom field on the intake selects the brand (ESAC = black-and-white
     // Eastside branding); everything else stays WCS.
     const brandKey = resolveBrandKey(req.body)
+    // Field LABELS only (values can hold client PII). Without this, a run that
+    // silently comes out WCS gives no way to see what the payload carried.
+    console.log(`[DayOne] brand=${brandKey} branding-fields=[${brandFieldNames(req.body).join(', ')}]`)
 
     const job = await jobs.createJob({
       contactId,
