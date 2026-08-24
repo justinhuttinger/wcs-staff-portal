@@ -6,6 +6,20 @@ const { getBrand } = require('./brands')
 
 const TEMPLATE_DIR = path.join(__dirname, '..', '..', 'templates', 'day-one')
 
+// A wrapped day title pushes the whole header down and looks broken, so the
+// title shrinks to stay on one line instead of wrapping. Sizes are derived from
+// each brand's measured one-line capacity at the base size.
+const TITLE_BASE_PX = 42
+const TITLE_MIN_PX = 18
+const TITLE_SAFETY = 0.95   // character widths vary; leave a little room
+
+function titleFontSize(text, brand) {
+  const len = String(text || '').length
+  const fit = Math.floor((brand.headlineFitChars || 33) * TITLE_SAFETY)
+  if (!len || len <= fit) return TITLE_BASE_PX
+  return Math.max(TITLE_MIN_PX, Math.floor(TITLE_BASE_PX * fit / len))
+}
+
 function formatTerminology(text) {
   if (!text) return ''
   return text
@@ -45,11 +59,12 @@ function formatProgramHTML(contactData, programContent, brandKey) {
 
   const workouts = programContent.weekTemplate?.workouts || programContent.weeks?.[0]?.workouts || []
   workouts.forEach(workout => {
+    const dayTitle = `DAY ${workout.day} - ${String(workout.title || '').toUpperCase()}`
     html += `
       <div class="page">
         <img src="data:image/png;base64,{{logoBase64}}" class="logo-image" alt="${brand.name} Logo">
         <div class="page-header">
-          <div class="header-left"><h1>${brand.headline}</h1><h2>DAY ${workout.day} - ${String(workout.title || '').toUpperCase()}</h2></div>
+          <div class="header-left"><h1>${brand.headline}</h1><h2 style="font-size: ${titleFontSize(dayTitle, brand)}px;">${dayTitle}</h2></div>
           <div class="header-right" style="padding-top: 30px;"><p>CLIENT: ${name}</p>${coachLine}</div>
         </div>
         <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
@@ -109,4 +124,4 @@ async function buildProgramPdf(contactData, programContent, brandKey) {
   return Buffer.from(await resp.arrayBuffer())
 }
 
-module.exports = { buildProgramPdf, formatProgramHTML }
+module.exports = { buildProgramPdf, formatProgramHTML, titleFontSize }
