@@ -34,10 +34,14 @@ function actionPlansFromSteps(steps) {
     .filter((text) => text.length > 0)
 }
 
-// One goal entry row from a synced job + its steps, or null if the job isn't
-// an MC/PT Weekly Meeting or hasn't been submitted yet.
-function entryFromJob(job, steps) {
-  const kind = kindForProcess(job.process_name)
+// One goal entry row from a synced job + its steps, or null if the job isn't a
+// meeting job or hasn't been submitted yet.
+//
+// `kind` is passed in, resolved from the process id against live process names
+// (see processes.js). It is deliberately NOT derived from job.process_name:
+// that column is a snapshot from job-creation time and goes stale the moment a
+// process is renamed in Operandio.
+function entryFromJob(job, steps, kind) {
   if (!kind || !job.submitted || !job.job_date) return null
   return {
     job_id: job.id,

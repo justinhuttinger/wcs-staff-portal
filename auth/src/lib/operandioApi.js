@@ -141,6 +141,27 @@ async function fetchJobs(locationId, startDate, endDate) {
   return jobs
 }
 
+// Every process (template) with its CURRENT name. Job rows carry a
+// denormalized `processName` snapshot taken when the instance was created, so
+// after a rename in Operandio that snapshot is stale — anything that must
+// follow the current name has to resolve process id -> name through here.
+async function fetchProcesses() {
+  const pageSize = 100
+  const out = []
+  for (let offset = 0; ; offset += pageSize) {
+    const data = await graphql(
+      `query($limit: Int, $offset: Int) {
+        processes { list(filter: {}, limit: $limit, offset: $offset) { id name inactive } }
+      }`,
+      { limit: pageSize, offset },
+    )
+    const page = data.processes?.list || []
+    out.push(...page)
+    if (page.length < pageSize) break
+  }
+  return out
+}
+
 // Flattened per-step responses for every instance of one process at one
 // location in [gt, lt] (org-local days). This is the step-level who/when.
 async function fetchJobStepDetail(processId, locationId, startDate, endDate) {
@@ -253,7 +274,8 @@ async function deleteKnowledge(id) {
 }
 
 module.exports = {
-  graphql, getToken, scheduleDate, fetchLocations, fetchJobs, fetchJobStepDetail,
+  graphql, getToken, scheduleDate, fetchLocations, fetchJobs, fetchProcesses,
+  fetchJobStepDetail,
   listKnowledgeArticles, createKnowledgeArticle, updateKnowledgeArticle,
   fetchKnowledgeContent, deleteKnowledge,
 }
