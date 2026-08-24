@@ -36,6 +36,13 @@ const markFlags = (id, { emailed, uploadedAbc }) =>
 const markComplete = (id) => update(id, { status: 'complete', progress: 'Done', completed_at: new Date().toISOString() })
 const markError = (id, message) => update(id, { status: 'error', error_message: String(message || '').slice(0, 2000) })
 
+async function getById(id) {
+  const { data, error } = await supabaseAdmin.from('pt_programs')
+    .select('*').eq('id', id).maybeSingle()
+  if (error) throw new Error(`getById failed: ${error.message}`)
+  return data
+}
+
 async function getLatestForContact(contactId) {
   const { data, error } = await supabaseAdmin.from('pt_programs')
     .select('*').eq('contact_id', contactId)
@@ -60,5 +67,5 @@ async function downloadPdfFromStorage(pdfPath) {
 
 module.exports = {
   BUCKET, createJob, setProgress, attachContact, attachProgram, attachPdf, markFlags,
-  markComplete, markError, getLatestForContact, uploadPdfToStorage, downloadPdfFromStorage,
+  markComplete, markError, getById, getLatestForContact, uploadPdfToStorage, downloadPdfFromStorage,
 }

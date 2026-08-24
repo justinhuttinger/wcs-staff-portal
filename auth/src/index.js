@@ -24,6 +24,7 @@ const ALLOWED_ORIGINS = [
 // is embedded on westcoaststrength.com and loaded directly by in-gym TVs, so
 // its permissive CORS has to be mounted FIRST or preflight fails. This exact
 // ordering bug has bitten the prospects repo before.
+app.use('/public/day-one', cors({ origin: '*', methods: ['GET', 'POST'] }))
 app.use('/public/group-x', cors({ origin: '*', methods: ['GET'] }))
 app.use('/public/facility', cors({ origin: '*', methods: ['GET'] }))
 
@@ -149,6 +150,7 @@ app.use('/admin/lapsed-checkins', require('./routes/lapsedCheckins'))
 app.use('/audit-log', require('./routes/auditLog'))
 app.use('/changelog', require('./routes/changelog'))
 app.use('/forms', require('./routes/forms'))
+app.use('/public/day-one', require('./routes/publicDayOne'))
 app.use('/public/forms', require('./routes/publicForms'))
 app.use('/public/nps', require('./routes/publicNps'))
 app.use('/nps', require('./routes/nps'))
