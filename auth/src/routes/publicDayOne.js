@@ -9,6 +9,7 @@ const { Router } = require('express')
 const rateLimit = require('express-rate-limit')
 const { LOCATIONS, getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
+const { trainerRoster, clearRosterCache } = require('../lib/ghlBooking')
 const { brandForSlug, getBrand } = require('../services/dayOneProgram/brands')
 const { validateSubmission } = require('../services/dayOneProgram/publicIntake')
 const { runPipeline } = require('../services/dayOneProgram/pipeline')
@@ -70,6 +71,29 @@ router.get('/locations', readLimiter, (req, res) => {
       brandName: getBrand(brandForSlug(l.slug)).name,
     })),
   })
+})
+
+// GET /public/day-one/trainers/:slug - who may run a Day One at this club.
+// The Day One calendar's round-robin membership is the source of truth: those
+// are the people GHL can actually assign, so the list cannot drift from a
+// hand-kept roster. Cached in the lib for five minutes; ?refresh=1 skips the
+// wait right after someone is added in GHL.
+router.get('/trainers/:slug', readLimiter, async (req, res) => {
+  const slug = String(req.params.slug || '').trim().toLowerCase()
+  const club = getLocationBySlug(slug)
+  if (!club) return res.status(400).json({ error: `Unknown location "${slug}"` })
+  try {
+    if (req.query.refresh) clearRosterCache(slug)
+    const roster = await trainerRoster(club)
+    // Names only. This is a public endpoint and staff emails are not needed to
+    // draw a dropdown.
+    res.json({ trainers: roster.map(t => t.name).filter(Boolean) })
+  } catch (e) {
+    // A missing or unreachable calendar must not block a program: the site
+    // falls back to a free-text trainer field.
+    console.warn(`[DayOnePublic] trainer roster failed for ${slug}:`, e.message)
+    res.json({ trainers: [], error: e.message })
+  }
 })
 
 // POST /public/day-one/intake - the whole submission.

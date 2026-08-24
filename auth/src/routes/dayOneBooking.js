@@ -28,13 +28,15 @@ const fs = require('fs')
 const rateLimit = require('express-rate-limit')
 const { LOCATIONS, getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
-const { cached, bookableDays, mapLimit, slotsFor, clearSlotsCache } = require('../lib/ghlBooking')
+const {
+  cached, bookableDays, mapLimit, slotsFor, clearSlotsCache,
+  getDayOneCalendar, getUsersById, trainerRoster, clearRosterCache,
+} = require('../lib/ghlBooking')
 
 const router = Router()
 
 // Calendar endpoints need the older version header; contacts use the client default.
 const CAL_VERSION = '2021-04-15'
-const CALENDAR_NAME = 'day one'
 const DAY_ONE_TEAM_FIELD = 'contact.day_one_booking_team_member'
 const DAY_ONE_DATE_FIELD = 'contact.day_one_booking_date'
 const DAY_ONE_BOOKED_FIELD = 'contact.day_one_booked'
@@ -79,9 +81,7 @@ const readLimiter = rateLimit({
 // custom-field IDs differ per location so they must never be hardcoded)
 // ---------------------------------------------------------------------------
 
-const calendarCache = {} // slug -> { promise, at }
 const fieldCache = {}    // slug -> { promise, at }
-const userCache = {}     // slug -> { promise, at }
 // Calendar shape and field ids are stable, but teamMembers is NOT: adding a
 // trainer to the Day One calendar in GHL changes it, and a 15-minute hold meant
 // staff added someone and then could not find them in the picker with no way to
@@ -94,44 +94,13 @@ const CACHE_TTL = 5 * 60 * 1000
 // lives in lib/ghlBooking and is shared with the other booking pages, so it is
 // cleared through the lib rather than reached into directly.
 function clearCaches(slug) {
-  delete calendarCache[slug]
-  delete userCache[slug]
+  clearRosterCache(slug)
   delete fieldCache[slug]
   delete loadCache[slug]
   clearSlotsCache(slug)
   for (const key of Object.keys(trainerSlotsCache)) {
     if (key.startsWith(slug + '|')) delete trainerSlotsCache[key]
   }
-}
-
-function getDayOneCalendar(loc) {
-  return cached(calendarCache, loc.slug, CACHE_TTL, async () => {
-    const list = await ghlFetch('/calendars/', loc.apiKey, {
-      params: { locationId: loc.id }, version: CAL_VERSION,
-    })
-    const match = (list.calendars || []).find(
-      c => (c.name || '').trim().toLowerCase() === CALENDAR_NAME)
-    if (!match) throw new Error(`No "Day One" calendar found for ${loc.name}`)
-    // The list payload omits teamMembers on some calendars; the detail call is
-    // authoritative for the round-robin roster and slot duration.
-    const detail = await ghlFetch(`/calendars/${match.id}`, loc.apiKey, { version: CAL_VERSION })
-    return detail.calendar || detail || match
-  })
-}
-
-function getUsersById(loc) {
-  return cached(userCache, loc.slug, CACHE_TTL, async () => {
-    const data = await ghlFetch('/users/', loc.apiKey, { params: { locationId: loc.id } })
-    const byId = {}
-    for (const u of (data.users || [])) {
-      byId[u.id] = {
-        id: u.id,
-        name: u.name || [u.firstName, u.lastName].filter(Boolean).join(' '),
-        email: (u.email || '').toLowerCase(),
-      }
-    }
-    return byId
-  })
 }
 
 function getFieldsByKey(loc) {
@@ -186,22 +155,6 @@ function getTrainerSlots(loc, calendar, timezone, days) {
 function optionLabel(o) {
   if (typeof o === 'string') return o
   return (o && (o.label || o.value || o.name || o.option)) || ''
-}
-
-// The trainer roster shown to staff must be the calendar's actual round-robin
-// members (those are who GHL can assign), resolved to real names.
-async function trainerRoster(loc) {
-  const [calendar, usersById] = await Promise.all([getDayOneCalendar(loc), getUsersById(loc)])
-  const members = Array.isArray(calendar.teamMembers) ? calendar.teamMembers : []
-  return members
-    .map(m => {
-      const userId = typeof m === 'string' ? m : (m.userId || m.id)
-      const user = usersById[userId]
-      if (!user) return null
-      return { userId, name: user.name, email: user.email, priority: m.priority ?? null }
-    })
-    .filter(Boolean)
-    .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || a.name.localeCompare(b.name))
 }
 
 // ---------------------------------------------------------------------------
