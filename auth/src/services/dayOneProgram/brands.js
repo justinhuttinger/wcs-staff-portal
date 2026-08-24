@@ -57,12 +57,30 @@ const ESAC_PATTERN = /\b(esac|east\s?side)\b/i
 const BRAND_KEY_PATTERN = /brand|esac|east\s?side|club|program\s*type/i
 const TRUTHY = /^(yes|true|1|on|checked|esac|east\s?side)$/i
 
-// Decide the brand from a GHL webhook body. Two shapes both work:
+// How deep to look for a branding field. GHL puts a workflow action's Custom
+// Data rows in a nested `customData` object, while a form submission's answers
+// arrive at the top level, so both shapes have to be covered.
+const MAX_DEPTH = 3
+
+function isPlainObject(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v)
+}
+
+// One field decides the brand. Three shapes all work:
 //   1. a field whose VALUE names the brand   -> { "Brand": "ESAC" }
 //   2. a checkbox NAMED for the brand        -> { "ESAC": "Yes" }
-function resolveBrandKey(body = {}) {
-  for (const [rawKey, rawVal] of Object.entries(body)) {
-    if (rawVal == null || typeof rawVal === 'object' && !Array.isArray(rawVal)) continue
+//   3. either of those nested in an object   -> { customData: { "Brand": "ESAC" } }
+function scanForBrand(obj, depth) {
+  for (const [rawKey, rawVal] of Object.entries(obj)) {
+    if (rawVal == null) continue
+    if (isPlainObject(rawVal)) {
+      // Nested payloads (customData, contact, ...) get the same treatment.
+      if (depth < MAX_DEPTH) {
+        const nested = scanForBrand(rawVal, depth + 1)
+        if (nested) return nested
+      }
+      continue
+    }
     const key = String(rawKey)
     if (!BRAND_KEY_PATTERN.test(key)) continue
     const val = (Array.isArray(rawVal) ? rawVal.join(' ') : String(rawVal)).trim()
@@ -70,7 +88,25 @@ function resolveBrandKey(body = {}) {
     if (ESAC_PATTERN.test(val)) return 'esac'
     if (ESAC_PATTERN.test(key) && TRUTHY.test(val)) return 'esac'
   }
-  return DEFAULT_BRAND
+  return null
 }
 
-module.exports = { BRANDS, DEFAULT_BRAND, getBrand, resolveBrandKey }
+function resolveBrandKey(body = {}) {
+  return scanForBrand(body || {}, 0) || DEFAULT_BRAND
+}
+
+// The field labels a payload carried, for one log line when a run misbrands.
+// Labels only - values can hold client PII.
+function brandFieldNames(body = {}, depth = 0) {
+  const out = []
+  for (const [rawKey, rawVal] of Object.entries(body || {})) {
+    if (isPlainObject(rawVal)) {
+      if (depth < MAX_DEPTH) out.push(...brandFieldNames(rawVal, depth + 1).map(k => `${rawKey}.${k}`))
+    } else if (BRAND_KEY_PATTERN.test(String(rawKey))) {
+      out.push(String(rawKey))
+    }
+  }
+  return out
+}
+
+module.exports = { BRANDS, DEFAULT_BRAND, getBrand, resolveBrandKey, brandFieldNames }

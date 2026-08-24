@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { getBrand, resolveBrandKey, BRANDS } = require('./brands')
+const { getBrand, resolveBrandKey, brandFieldNames, BRANDS } = require('./brands')
 
 test('defaults to WCS when no brand field is present', () => {
   assert.equal(resolveBrandKey({ 'Program Goal': 'hypertrophy' }), 'wcs')
@@ -27,8 +27,35 @@ test('ignores brand words in free-text client answers', () => {
   }), 'wcs')
 })
 
-test('ignores non-scalar values (location object, nested payloads)', () => {
-  assert.equal(resolveBrandKey({ club: { name: 'ESAC' } }), 'wcs')
+// GHL puts a workflow action's Custom Data in a nested `customData` object,
+// while form answers arrive top-level. A run configured as Brand=ESAC came out
+// WCS in prod because only the top level was scanned.
+test('finds the brand inside nested customData', () => {
+  assert.equal(resolveBrandKey({ customData: { Brand: 'ESAC' } }), 'esac')
+  assert.equal(resolveBrandKey({ customData: { ESAC: 'Yes' } }), 'esac')
+  assert.equal(resolveBrandKey({ customData: { Brand: 'WCS' } }), 'wcs')
+  assert.equal(resolveBrandKey({ customData: {} }), 'wcs')
+})
+
+test('nesting does not weaken the free-text guard', () => {
+  assert.equal(resolveBrandKey({
+    customData: { 'What are your Fitness Goals?': 'I used to train at Eastside' },
+  }), 'wcs')
+})
+
+test('a real payload shape resolves alongside the other fields', () => {
+  assert.equal(resolveBrandKey({
+    contact_id: 'k16U4YOIRYa3wbenwFNh',
+    location: { id: 'uflpfHNpByAnaBLkQzu3', name: 'Salem' },
+    'Service Employee': 'Seth  Tripp',
+    customData: { Brand: 'ESAC' },
+  }), 'esac')
+})
+
+test('brandFieldNames reports labels with their path, no values', () => {
+  const names = brandFieldNames({ customData: { Brand: 'ESAC' }, location: { id: 'x' } })
+  assert.deepEqual(names, ['customData.Brand'])
+  assert.ok(!JSON.stringify(names).includes('ESAC'))
 })
 
 test('getBrand falls back to WCS for unknown/missing keys', () => {
