@@ -32,8 +32,8 @@
       position: absolute;
       top: 0;
       left: 0;
-      width: 70px;
-      height: 70px;
+      width: {{logoWidth}}px;
+      height: {{logoHeight}}px;
       opacity: 1;
     }
     
@@ -43,9 +43,9 @@
       justify-content: space-between;
       align-items: flex-start;
       margin-bottom: 20px;
-      margin-left: 90px;
+      margin-left: {{headerOffset}}px;
       padding-bottom: 15px;
-      border-bottom: 4px solid #E31E24;
+      border-bottom: 4px solid {{accent}};
       position: relative;
     }
     
@@ -53,17 +53,17 @@
       content: '';
       position: absolute;
       bottom: -4px;
-      left: -90px;
-      width: 90px;
+      left: -{{headerOffset}}px;
+      width: {{headerOffset}}px;
       height: 4px;
-      background-color: #E31E24;
+      background-color: {{accent}};
     }
     
     .header-left h1 {
       font-family: 'Bebas Neue', sans-serif;
       font-size: 14px;
       font-weight: normal;
-      color: #E31E24;
+      color: {{accent}};
       margin: 0;
       letter-spacing: 2px;
     }
@@ -87,7 +87,7 @@
     
     .header-right p {
       font-size: 13px;
-      color: #E31E24;
+      color: {{accent}};
       margin: 2px 0;
       font-weight: bold;
     }
@@ -121,7 +121,7 @@
     }
     
     .core-concepts-content strong {
-      color: #E31E24;
+      color: {{accent}};
       font-weight: bold;
     }
     

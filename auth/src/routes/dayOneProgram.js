@@ -9,6 +9,7 @@ const { buildProgramPdf } = require('../services/dayOneProgram/pdf')
 const deliver = require('../services/dayOneProgram/deliver')
 const jobs = require('../services/dayOneProgram/jobs')
 const { renderSuccessPage } = require('../services/dayOneProgram/successPage')
+const { resolveBrandKey, DEFAULT_BRAND } = require('../services/dayOneProgram/brands')
 const { supabaseAdmin } = require('../services/supabase')
 
 const router = Router()
@@ -28,7 +29,7 @@ async function fetchContact(contactId, club) {
 }
 
 // Background pipeline. Updates the job row as it advances (SSE reads the row).
-async function runPipeline(jobId, contactId, club, formData, abcMemberId) {
+async function runPipeline(jobId, contactId, club, formData, abcMemberId, brandKey) {
   try {
     await jobs.setProgress(jobId, 'generating', 'Fetching client details')
     const contact = await fetchContact(contactId, club)
@@ -47,7 +48,7 @@ async function runPipeline(jobId, contactId, club, formData, abcMemberId) {
     await jobs.attachProgram(jobId, program)
 
     await jobs.setProgress(jobId, 'rendering', 'Building your PDF')
-    const pdfBuffer = await buildProgramPdf(contact, program)
+    const pdfBuffer = await buildProgramPdf(contact, program, brandKey)
 
     // Persist PDF (non-fatal). Once stored, the success page can show it
     // immediately (SSE emits 'done' on pdf_path) while email/ABC finish below.
@@ -61,7 +62,7 @@ async function runPipeline(jobId, contactId, club, formData, abcMemberId) {
 
     await jobs.setProgress(jobId, 'delivering', 'Sending to the client')
     // Email + ABC are independent: one failing must not block the other.
-    try { await deliver.sendProgramEmail(contact, club, pdfBuffer); await jobs.markFlags(jobId, { emailed: true }) }
+    try { await deliver.sendProgramEmail(contact, club, pdfBuffer, brandKey); await jobs.markFlags(jobId, { emailed: true }) }
     catch (e) { console.warn('[DayOne] Email failed:', e.message) }
 
     if (abcMemberId && club.clubCode) {
@@ -93,6 +94,9 @@ router.post('/webhook', async (req, res) => {
 
     const formData = mapWebhookToFormData(req.body)
     const abcMemberId = req.body['ABC Member ID'] || null
+    // A GHL custom field on the intake selects the brand (ESAC = black-and-white
+    // Eastside branding); everything else stays WCS.
+    const brandKey = resolveBrandKey(req.body)
 
     const job = await jobs.createJob({
       contactId,
@@ -100,11 +104,12 @@ router.post('/webhook', async (req, res) => {
       clubCode: club.clubCode,
       trainerName: formData.trainerName,
       abcMemberId,
+      brand: brandKey,
     })
 
     // Respond immediately; run generation in the background.
     res.status(200).json({ message: 'Program generation started', jobId: job.id, success: true })
-    runPipeline(job.id, contactId, club, formData, abcMemberId)
+    runPipeline(job.id, contactId, club, formData, abcMemberId, brandKey)
   } catch (err) {
     console.error('[DayOne] Webhook error:', err)
     if (!res.headersSent) res.status(500).json({ error: err.message })
@@ -182,9 +187,17 @@ router.get('/pdf/:jobId', async (req, res) => {
 })
 
 // GET /day-one-program/success?contactId=... — the SSE success page.
-router.get('/success', (req, res) => {
+// Brand comes from ?brand= when the redirect carries it, otherwise from the job
+// row this contact just created (a stale row still brands correctly - a contact
+// does not change clubs mid-session).
+router.get('/success', async (req, res) => {
+  let brandKey = req.query.brand || null
+  if (!brandKey && req.query.contactId) {
+    try { brandKey = (await jobs.getLatestForContact(req.query.contactId))?.brand || null }
+    catch (e) { console.warn('[DayOne] Brand lookup failed:', e.message) }
+  }
   res.set('Content-Type', 'text/html')
-  res.send(renderSuccessPage(req.query.contactId))
+  res.send(renderSuccessPage(req.query.contactId, brandKey || DEFAULT_BRAND))
 })
 
 module.exports = router

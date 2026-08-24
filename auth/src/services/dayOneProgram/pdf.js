@@ -2,6 +2,7 @@
 
 const fs = require('fs').promises
 const path = require('path')
+const { getBrand } = require('./brands')
 
 const TEMPLATE_DIR = path.join(__dirname, '..', '..', 'templates', 'day-one')
 
@@ -13,7 +14,8 @@ function formatTerminology(text) {
 }
 
 // Build the inner program HTML (same markup as the standalone service).
-function formatProgramHTML(contactData, programContent) {
+function formatProgramHTML(contactData, programContent, brandKey) {
+  const brand = getBrand(brandKey)
   if (!programContent.weekTemplate && !programContent.weeks) {
     return `<div class="program-text">${programContent.programText || 'Program content'}</div>`
   }
@@ -22,9 +24,9 @@ function formatProgramHTML(contactData, programContent) {
   const coachLine = coach ? `<p>COACH: ${coach}</p>` : ''
   let html = `
     <div class="page">
-      <img src="data:image/png;base64,{{logoBase64}}" class="logo-image" alt="WCS Logo">
+      <img src="data:image/png;base64,{{logoBase64}}" class="logo-image" alt="${brand.name} Logo">
       <div class="page-header" style="margin-bottom: 10px;">
-        <div class="header-left"><h1>WEST COAST STRENGTH</h1><h2>PROGRAM OVERVIEW</h2></div>
+        <div class="header-left"><h1>${brand.headline}</h1><h2>PROGRAM OVERVIEW</h2></div>
         <div class="header-right" style="padding-top: 30px;"><p>CLIENT: ${name}</p>${coachLine}</div>
       </div>
       <div class="core-concepts" style="margin-top: 5px;">
@@ -45,9 +47,9 @@ function formatProgramHTML(contactData, programContent) {
   workouts.forEach(workout => {
     html += `
       <div class="page">
-        <img src="data:image/png;base64,{{logoBase64}}" class="logo-image" alt="WCS Logo">
+        <img src="data:image/png;base64,{{logoBase64}}" class="logo-image" alt="${brand.name} Logo">
         <div class="page-header">
-          <div class="header-left"><h1>WEST COAST STRENGTH</h1><h2>DAY ${workout.day} - ${String(workout.title || '').toUpperCase()}</h2></div>
+          <div class="header-left"><h1>${brand.headline}</h1><h2>DAY ${workout.day} - ${String(workout.title || '').toUpperCase()}</h2></div>
           <div class="header-right" style="padding-top: 30px;"><p>CLIENT: ${name}</p>${coachLine}</div>
         </div>
         <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
@@ -73,12 +75,19 @@ function formatProgramHTML(contactData, programContent) {
   return html
 }
 
-async function buildProgramPdf(contactData, programContent) {
+async function buildProgramPdf(contactData, programContent, brandKey) {
+  const brand = getBrand(brandKey)
   const htmlTemplate = await fs.readFile(path.join(TEMPLATE_DIR, 'program-template.html'), 'utf8')
-  const logoBase64 = (await fs.readFile(path.join(TEMPLATE_DIR, 'logo.png'))).toString('base64')
+  const logoBase64 = (await fs.readFile(path.join(TEMPLATE_DIR, brand.logoFile))).toString('base64')
 
-  let programHTML = formatProgramHTML(contactData, programContent).replace(/{{logoBase64}}/g, logoBase64)
-  const finalHtml = htmlTemplate.replace(/{{programContent}}/g, programHTML)
+  const programHTML = formatProgramHTML(contactData, programContent, brand.key)
+    .replace(/{{logoBase64}}/g, logoBase64)
+  const finalHtml = htmlTemplate
+    .replace(/{{programContent}}/g, programHTML)
+    .replace(/{{accent}}/g, brand.accent)
+    .replace(/{{logoWidth}}/g, String(brand.logoWidth))
+    .replace(/{{logoHeight}}/g, String(brand.logoHeight))
+    .replace(/{{headerOffset}}/g, String(brand.headerOffset))
 
   const apiKey = process.env.PDFSHIFT_API_KEY
   if (!apiKey) throw new Error('PDFSHIFT_API_KEY not set')
