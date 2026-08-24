@@ -1,5 +1,6 @@
 const { Router } = require('express')
 const crypto = require('crypto')
+const { normalizeExternalId, matchCoverage } = require('../lib/metaMatch')
 
 const router = Router()
 
@@ -132,6 +133,15 @@ router.post('/meta-lead', verifyWebhookSecret, async (req, res) => {
  * halves carry the same event_id (a cookie written at form render) and the
  * same content_name. Meta keeps the first event it receives and discards the
  * second along with its parameters, so the two halves must agree.
+ *
+ * external_id is the theme's first-party wcs_xid cookie. It is the only match
+ * key that survives a visitor with no email, no phone and no ad click, and it
+ * is what lets a later offline event (membership sold, PT sold) be tied back
+ * to this lead.
+ *
+ * Every accepted event logs a match= column saying which keys it actually
+ * carried. Empty values are dropped rather than sent, so without it there is
+ * no way to tell a field that was sent-and-empty from one that was populated.
  * ------------------------------------------------------------------- */
 
 // Standard events only. A typo'd custom name is accepted by Meta and then
@@ -203,6 +213,7 @@ router.post('/lead', verifyFormSecret, async (req, res) => {
     last_name,
     fbp,
     fbc,
+    external_id,
     client_ip_address,
     client_user_agent,
     event_source_url,
@@ -226,7 +237,7 @@ router.post('/lead', verifyFormSecret, async (req, res) => {
   if (!Number.isFinite(eventTime) || eventTime > nowSec + 60 || eventTime < nowSec - 7 * 86400) {
     return res.status(400).json({ error: 'event_time missing or outside the last 7 days' })
   }
-  if (!email && !phone && !fbp && !fbc) {
+  if (!email && !phone && !fbp && !fbc && !external_id) {
     return res.status(400).json({ error: 'no matchable user data' })
   }
 
@@ -251,6 +262,9 @@ router.post('/lead', verifyFormSecret, async (req, res) => {
   if (normLast) userData.ln = [sha256(normLast)]
   if (fbp) userData.fbp = fbp
   if (fbc) userData.fbc = fbc
+  // The first-party visitor id the theme writes as the wcs_xid cookie.
+  const normExternalId = normalizeExternalId(external_id)
+  if (normExternalId) userData.external_id = [sha256(normExternalId)]
   // Only ever the visitor's, never this server's request metadata — sending
   // the API host's identity is worse than omitting the fields entirely.
   if (client_ip_address) userData.client_ip_address = client_ip_address
@@ -305,6 +319,7 @@ router.post('/lead', verifyFormSecret, async (req, res) => {
     }
     console.log(
       `[meta-lead] ${tag} location=${resolvedLocation || '(none)'} ` +
+      `match=${matchCoverage(userData)} ` +
       `events_received=${data.events_received} fbtrace_id=${data.fbtrace_id}` +
       (data.messages && data.messages.length ? ` warnings=${JSON.stringify(data.messages)}` : '')
     )
