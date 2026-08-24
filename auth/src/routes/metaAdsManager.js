@@ -573,11 +573,31 @@ router.get('/adsets/:id', async (req, res) => {
   }
 })
 
+// Meta now REQUIRES an explicit Advantage audience decision on every ad set
+// write: targeting.targeting_automation.advantage_audience must be 0 or 1, or
+// the create fails with "Advantage Audience Flag Required". There is no
+// default. We opt out (0) unless the caller says otherwise, for the same
+// reason Advantage+ creative enhancements default to OPT_OUT: letting Meta
+// broaden the audience past the targeting that was actually chosen makes an
+// A/B test meaningless.
+function withAdvantageAudience(targeting, advantageAudience) {
+  const existing = targeting.targeting_automation || {}
+  let flag = advantageAudience
+  if (flag === undefined || flag === null || flag === '') {
+    flag = existing.advantage_audience
+  }
+  const on = flag === true || flag === 1 || flag === '1' || flag === 'true'
+  return {
+    ...targeting,
+    targeting_automation: { ...existing, advantage_audience: on ? 1 : 0 },
+  }
+}
+
 function buildAdsetBody(input) {
   const {
     name, campaign_id, status, daily_budget, lifetime_budget, billing_event,
     optimization_goal, bid_strategy, bid_amount, targeting, promoted_object,
-    destination_type, start_time, end_time,
+    destination_type, start_time, end_time, advantage_audience,
   } = input || {}
 
   const body = {}
@@ -589,7 +609,7 @@ function buildAdsetBody(input) {
   if (destination_type) body.destination_type = destination_type
   if (start_time) body.start_time = start_time
   if (end_time) body.end_time = end_time
-  if (targeting) body.targeting = targeting
+  if (targeting) body.targeting = withAdvantageAudience(targeting, advantage_audience)
   if (promoted_object) body.promoted_object = promoted_object
 
   const daily = toMinorUnits(daily_budget)
