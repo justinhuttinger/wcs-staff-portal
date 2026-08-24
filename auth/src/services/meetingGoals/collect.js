@@ -3,24 +3,31 @@
 'use strict'
 
 const { supabaseAdmin } = require('../supabase')
-const { KINDS } = require('./config')
 const { entryFromJob } = require('./extract')
-
-const PROCESS_NAMES = Object.keys(KINDS)
+const { fetchProcessKinds } = require('./processes')
 
 // Upsert an entry per submitted meeting job in the window. Idempotent: job_id
 // is the primary key, so re-reading the same jobs every 15 minutes is a no-op,
 // and a job edited after submission updates in place.
+//
+// Jobs are selected by process_id, never by process_name — see processes.js for
+// why the stored name cannot be trusted after a rename.
 //
 // Returns the set of articles touched, as "KIND:slug" keys.
 async function collect({ sinceDays = 30 } = {}) {
   const since = new Date(Date.now() - sinceDays * 86400000)
     .toISOString().slice(0, 10)
 
+  const kindByProcessId = await fetchProcessKinds()
+  if (kindByProcessId.size === 0) {
+    console.warn('[MeetingGoals] no MC/PT Weekly Meeting processes found in Operandio')
+    return { entries: 0, touched: [] }
+  }
+
   const { data: jobs, error } = await supabaseAdmin
     .from('operandio_api_jobs')
-    .select('id, location_slug, process_name, job_date, submitted, submitted_at, submitted_by')
-    .in('process_name', PROCESS_NAMES)
+    .select('id, location_slug, process_id, job_date, submitted, submitted_at, submitted_by')
+    .in('process_id', [...kindByProcessId.keys()])
     .eq('submitted', true)
     .gte('job_date', since)
   if (error) throw new Error(`goal job query failed: ${error.message}`)
@@ -40,7 +47,7 @@ async function collect({ sinceDays = 30 } = {}) {
 
   const rows = []
   for (const job of jobs) {
-    const entry = entryFromJob(job, byJob.get(job.id) || [])
+    const entry = entryFromJob(job, byJob.get(job.id) || [], kindByProcessId.get(job.process_id))
     if (entry) rows.push(entry)
   }
   if (rows.length === 0) return { entries: 0, touched: [] }
