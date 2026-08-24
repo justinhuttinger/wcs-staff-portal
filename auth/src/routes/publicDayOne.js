@@ -83,7 +83,16 @@ router.post('/intake', submitLimiter, async (req, res) => {
     if (!club) return res.status(400).json({ error: `Unknown location "${slug}"` })
 
     const turnstile = await verifyTurnstile(req.body.turnstileToken, req.ip)
-    if (!turnstile.ok) return res.status(403).json({ error: 'Verification failed. Please reload and try again.' })
+    if (!turnstile.ok) {
+      // Say WHY. A bare 403 gives nothing to debug from, and the common cause
+      // is a deploy mismatch (server secret set, page built without the site
+      // key) rather than anything the trainer did.
+      console.warn(`[DayOnePublic] turnstile rejected slug=${slug} reason=${turnstile.reason}`)
+      const message = turnstile.reason === 'missing-token'
+        ? 'This page did not send a verification token. It needs to be rebuilt with the Turnstile site key.'
+        : 'Verification failed. Please reload and try again.'
+      return res.status(403).json({ error: message, reason: turnstile.reason })
+    }
 
     // Brand comes from the URL slug, never from the payload: a trainer cannot
     // pick the wrong one, and a caller cannot ask for someone else's branding.
