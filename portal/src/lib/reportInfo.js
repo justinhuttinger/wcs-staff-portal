@@ -17,6 +17,29 @@
 // - Aim for one-paragraph-per-section, manager-friendly language.
 
 const REPORT_INFO = {
+  childcare: {
+    title: 'Childcare',
+    sections: [
+      {
+        heading: 'What this is',
+        body: 'Headcounts recorded on the Morning and Evening Childcare Checklists: how many children over 1 year and under 1 year were in the club for each block. It exists to advise future staffing, not to flag anything in the moment.',
+      },
+      {
+        heading: 'Day of week view',
+        body: 'This is the planning table. For each weekday and block it shows the average headcount per occurrence, the peak, and how many times that block was actually reported. Staff to the average, sanity-check against the peak, and use the occurrence count to judge how much the average is worth.',
+      },
+      {
+        heading: 'Filters',
+        body: 'The date range sets which submissions are included. Location narrows to one club. Only clubs running the childcare checklists appear at all.',
+      },
+    ],
+    notes: [
+      'Averages count only blocks that actually reported a number. A skipped checklist is treated as unknown, never as zero, so a missed day cannot drag an average down.',
+      'A blank or non-numeric answer is also treated as unknown rather than zero.',
+      'If a block is submitted twice for the same day, the latest submission wins and the day is marked as corrected. The counts are never added together.',
+      'Days where nothing was submitted do not appear as rows.',
+    ],
+  },
   'club-health': {
     title: 'Club Health',
     sections: [
