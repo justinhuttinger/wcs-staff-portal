@@ -34,9 +34,11 @@ const BRANDS = {
     success: '#000000',
     successGlow: 'rgba(0,0,0,.10)',
     logoFile: 'logo-esac.png',
-    // Wide wordmark (~4:1), so it needs more gutter than the WCS badge.
+    // Wide wordmark (~3.3:1), so it needs more gutter than the square WCS badge.
+    // The mark keeps its own colors; "black and white" applies to the page
+    // accents, and this logo has no legible one-color version.
     logoWidth: 170,
-    logoHeight: 42,
+    logoHeight: 52,
     headerOffset: 190,
     // ESAC is a single club, so the club name is never appended.
     perClub: false,
