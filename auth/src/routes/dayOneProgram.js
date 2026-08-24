@@ -46,7 +46,7 @@ router.post('/webhook', async (req, res) => {
 
     // Respond immediately; run generation in the background.
     res.status(200).json({ message: 'Program generation started', jobId: job.id, success: true })
-    runPipeline(job.id, contactId, club, formData, abcMemberId, brandKey)
+    runPipeline(job.id, { club, formData, brandKey, contactId, abcMemberId })
   } catch (err) {
     console.error('[DayOne] Webhook error:', err)
     if (!res.headersSent) res.status(500).json({ error: err.message })
