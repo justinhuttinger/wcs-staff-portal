@@ -84,6 +84,83 @@ function clearSlotsCache(prefix) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Day One roster
+//
+// Who may run a Day One is the Day One calendar's round-robin membership - the
+// people GHL can actually assign - so both the booking widget and the program
+// intake site read it from there rather than keeping a list of names in sync
+// by hand.
+//
+// teamMembers is NOT stable: adding a trainer to the calendar in GHL changes
+// it, and a long hold meant staff added someone and then could not find them
+// with no way to tell whether they had done it wrong. Five minutes absorbs a
+// session's worth of requests, and clearRosterCache() makes the wait optional.
+// ---------------------------------------------------------------------------
+
+const ROSTER_TTL = 5 * 60 * 1000
+const CALENDAR_NAME = 'day one'
+
+const calendarCache = {}  // slug -> { promise, at }
+const userCache = {}      // slug -> { promise, at }
+
+function clearRosterCache(slug) {
+  delete calendarCache[slug]
+  delete userCache[slug]
+}
+
+function getDayOneCalendar(loc) {
+  return cached(calendarCache, loc.slug, ROSTER_TTL, async () => {
+    const list = await ghlFetch('/calendars/', loc.apiKey, {
+      params: { locationId: loc.id }, version: CAL_VERSION,
+    })
+    const match = (list.calendars || []).find(
+      c => (c.name || '').trim().toLowerCase() === CALENDAR_NAME)
+    if (!match) throw new Error(`No "Day One" calendar found for ${loc.name}`)
+    // The list payload omits teamMembers on some calendars; the detail call is
+    // authoritative for the round-robin roster and slot duration.
+    const detail = await ghlFetch(`/calendars/${match.id}`, loc.apiKey, { version: CAL_VERSION })
+    return detail.calendar || detail || match
+  })
+}
+
+function getUsersById(loc) {
+  return cached(userCache, loc.slug, ROSTER_TTL, async () => {
+    const data = await ghlFetch('/users/', loc.apiKey, { params: { locationId: loc.id } })
+    const byId = {}
+    for (const u of (data.users || [])) {
+      byId[u.id] = {
+        id: u.id,
+        name: u.name || [u.firstName, u.lastName].filter(Boolean).join(' '),
+        email: (u.email || '').toLowerCase(),
+      }
+    }
+    return byId
+  })
+}
+
+// Resolve the calendar's members to real names. A member with no matching user
+// is dropped rather than shown as a blank row.
+function toRoster(calendar, usersById) {
+  const members = Array.isArray(calendar.teamMembers) ? calendar.teamMembers : []
+  return members
+    .map(m => {
+      const userId = typeof m === 'string' ? m : (m.userId || m.id)
+      const user = usersById[userId]
+      if (!user) return null
+      return { userId, name: user.name, email: user.email, priority: m.priority ?? null }
+    })
+    .filter(Boolean)
+    .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || a.name.localeCompare(b.name))
+}
+
+async function trainerRoster(loc) {
+  const [calendar, usersById] = await Promise.all([getDayOneCalendar(loc), getUsersById(loc)])
+  return toRoster(calendar, usersById)
+}
+
 module.exports = {
   CAL_VERSION, cached, bookableDays, mapLimit, slotsFor, slotsByDate, clearSlotsCache,
+  ROSTER_TTL, CALENDAR_NAME, clearRosterCache,
+  getDayOneCalendar, getUsersById, toRoster, trainerRoster,
 }
