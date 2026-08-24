@@ -2027,3 +2027,10 @@ export async function applySalesCommissions(file, period) {
   const fd = new FormData(); fd.append('file', file); fd.append('period', period)
   return api('/reports/payroll/sales-commissions/apply', { method: 'POST', body: fd })
 }
+
+// Childcare headcounts (Admin → Reports → Childcare).
+export async function getChildcareReport({ start, end, locationSlug } = {}, options = {}) {
+  const qs = new URLSearchParams({ start, end })
+  if (locationSlug) qs.set('location_slug', locationSlug)
+  return api('/reports/childcare?' + qs.toString(), options)
+}

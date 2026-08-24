@@ -4,6 +4,7 @@ import PTReport from './reports/PTReport'
 import ClubHealthReport from './reports/ClubHealthReport'
 import PTRosterReport from './reports/PTRosterReport'
 import ComplianceReport from './reports/ComplianceReport'
+import ChildcareReport from './reports/ChildcareReport'
 import CancelsReport from './reports/CancelsReport'
 import CheckinsReport from './reports/CheckinsReport'
 import PTSessionsReport from './reports/PTSessionsReport'
@@ -31,6 +32,7 @@ import { hasReportDetail } from '../lib/reportDetail'
 
 // SVG path data for each reporting tile (outline style, matches main page tiles via ToolButton)
 const REPORT_ICONS = {
+  childcare: 'M12 4.5a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5Zm-7.5 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm15 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM12 6a4.5 4.5 0 0 0-4.5 4.5v3h2.25V21h4.5v-7.5h2.25v-3A4.5 4.5 0 0 0 12 6Z',
   'club-health': 'M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z',
   membership: 'M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z M6 6h.008v.008H6V6Z',
   pt: 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z',
@@ -60,6 +62,7 @@ const REPORT_ICONS = {
 }
 
 const ALL_REPORT_TILES = [
+  { key: 'childcare', label: 'Childcare', desc: 'Headcounts' },
   { key: 'club-health', label: 'Club Health', desc: 'Dashboard' },
   { key: 'membership', label: 'Membership', desc: 'Report' },
   { key: 'cancels', label: 'Cancels', desc: 'Report' },
@@ -99,7 +102,7 @@ const REPORT_GROUPS = [
     label: 'Club Health',
     desc: 'Health, Activity & Compliance',
     iconPath: REPORT_ICONS['club-health'],
-    reports: ['club-health', 'membership', 'cancels', 'nps', 'compliance', 'audits', 'checkins', 'payroll', 'revenue', 'pos-sales', 'till'],
+    reports: ['club-health', 'membership', 'cancels', 'nps', 'compliance', 'audits', 'checkins', 'childcare', 'payroll', 'revenue', 'pos-sales', 'till'],
   },
   {
     key: 'training',
@@ -636,6 +639,9 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
           )}
           {activeReport === 'compliance' && (
             <ComplianceReport locationSlug={locationSlug} />
+          )}
+          {activeReport === 'childcare' && (
+            <ChildcareReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
           )}
           {activeReport === 'revenue' && (
             <RevenueReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
