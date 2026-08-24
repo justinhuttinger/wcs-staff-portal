@@ -29,7 +29,7 @@ router.post('/webhook', async (req, res) => {
     const formData = mapWebhookToFormData(req.body)
     const abcMemberId = req.body['ABC Member ID'] || null
     // A GHL custom field on the intake selects the brand (ESAC = black-and-white
-    // Eastside branding); everything else stays WCS.
+    // East Side branding); everything else stays WCS.
     const brandKey = resolveBrandKey(req.body)
     // Field LABELS only (values can hold client PII). Without this, a run that
     // silently comes out WCS gives no way to see what the payload carried.

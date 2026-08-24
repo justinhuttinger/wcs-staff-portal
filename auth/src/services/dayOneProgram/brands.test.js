@@ -10,19 +10,27 @@ test('defaults to WCS when no brand field is present', () => {
 
 test('picks ESAC from a field whose value names the brand', () => {
   assert.equal(resolveBrandKey({ Brand: 'ESAC' }), 'esac')
-  assert.equal(resolveBrandKey({ 'Program Brand': 'Eastside Athletic Club' }), 'esac')
+  assert.equal(resolveBrandKey({ 'Program Brand': 'East Side Athletic Club' }), 'esac')
   assert.equal(resolveBrandKey({ Brand: ['ESAC'] }), 'esac')
 })
 
 test('picks ESAC from a checkbox named for the brand', () => {
   assert.equal(resolveBrandKey({ ESAC: 'Yes' }), 'esac')
-  assert.equal(resolveBrandKey({ 'Eastside Branding': 'true' }), 'esac')
+  assert.equal(resolveBrandKey({ 'East Side Branding': 'true' }), 'esac')
   assert.equal(resolveBrandKey({ ESAC: 'No' }), 'wcs')
+})
+
+// The club is written both ways in the wild. Detection must not care, so a
+// field filled in from memory still picks the right brand.
+test('either spelling of the club name resolves', () => {
+  assert.equal(resolveBrandKey({ Brand: 'East Side' }), 'esac')
+  assert.equal(resolveBrandKey({ Brand: 'Eastside' }), 'esac')
+  assert.equal(resolveBrandKey({ Brand: 'EAST SIDE ATHLETIC CLUB' }), 'esac')
 })
 
 test('ignores brand words in free-text client answers', () => {
   assert.equal(resolveBrandKey({
-    'What are your Fitness Goals?': 'I used to train at Eastside',
+    'What are your Fitness Goals?': 'I used to train at East Side',
     'Other Limitations': 'esac',
   }), 'wcs')
 })
