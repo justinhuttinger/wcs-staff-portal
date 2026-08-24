@@ -69,6 +69,12 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
   const [ageMin, setAgeMin] = useState(existingTargeting.age_min || 21)
   const [ageMax, setAgeMax] = useState(existingTargeting.age_max || 55)
   const [gender, setGender] = useState(() => readGender(existingTargeting))
+  // Meta refuses an ad set write unless Advantage audience is explicitly on or
+  // off. Off keeps delivery inside the targeting chosen below; on lets Meta
+  // ignore it and go wider.
+  const [advantageAudience, setAdvantageAudience] = useState(
+    () => (existingTargeting.targeting_automation || {}).advantage_audience === 1
+  )
   const [platforms, setPlatforms] = useState(
     existingTargeting.publisher_platforms || ['facebook', 'instagram']
   )
@@ -116,6 +122,7 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
     }
     setIncludedAudiences((t.custom_audiences || []).map(a => a.id))
     setExcludedAudiences((t.excluded_custom_audiences || []).map(a => a.id))
+    setAdvantageAudience((t.targeting_automation || {}).advantage_audience === 1)
     setExtraTargeting(passthroughTargeting(t))
   }
 
@@ -182,6 +189,10 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
     if (gender !== 'all') targeting.genders = [Number(gender)]
     if (includedAudiences.length) targeting.custom_audiences = includedAudiences.map(id => ({ id }))
     if (excludedAudiences.length) targeting.excluded_custom_audiences = excludedAudiences.map(id => ({ id }))
+    targeting.targeting_automation = {
+      ...(extraRest.targeting_automation || {}),
+      advantage_audience: advantageAudience ? 1 : 0,
+    }
     return targeting
   }
 
@@ -419,6 +430,19 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
             <Select value={gender} onChange={e => setGender(e.target.value)} options={GENDERS} />
           </Field>
         </div>
+
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            checked={advantageAudience}
+            onChange={e => setAdvantageAudience(e.target.checked)}
+            className="mt-0.5 accent-wcs-red"
+          />
+          <span className="text-xs text-text-muted">
+            <span className="font-semibold text-text-primary block">Advantage audience</span>
+            Lets Meta deliver outside the age, gender and interest targeting above when it thinks it will do better. Off holds delivery to exactly what is set here. Meta requires this to be answered either way.
+          </span>
+        </label>
 
         <Field label="Placements" hint="Meta usually delivers cheapest with all of them on.">
           <div className="flex flex-wrap gap-2">
