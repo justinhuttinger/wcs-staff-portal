@@ -173,14 +173,29 @@ async function fetchJobStepDetail(processId, locationId, startDate, endDate) {
 }
 
 // ---------------------------------------------------------------------------
-// Knowledge articles (for the weekly KPI digest).
+// Knowledge articles.
 //
-// The public API has NO updateKnowledgeV2, so an article cannot be edited in
-// place. To republish we createKnowledgeV2 the new one, verify it, then
-// deleteKnowledge the previous one — the id changes every run, so callers must
-// look articles up by title, never by a stored id. `richTextContent` is a
-// TipTap doc; on INPUT the field is `tipTapContent`, on OUTPUT `richTextContent`.
-// (Full schema notes in reference_operandio_api project memory.)
+// `richTextContent` is a TipTap doc; on INPUT the field is `tipTapContent`, on
+// OUTPUT `richTextContent`. (Full schema notes in reference_operandio_api.)
+//
+// There are two ways to republish, and which you want depends on whether the
+// article's id has to survive:
+//
+//   updateKnowledgeArticle() — edits IN PLACE via the undocumented
+//     `Mutation.knowledge` NAMESPACE: knowledge(id){ update(input) }. There is
+//     no `updateKnowledgeV2`; that name does not exist, which is why this
+//     looked impossible for a while. Keeps the id, so anything linking to the
+//     article (e.g. an Operandio job's `@[Title](KnowledgeArticle:<id>)` step)
+//     keeps working. Omitted input fields are PRESERVED, so we send only
+//     type/title/tipTapContent and never disturb the category, groups, or
+//     locations set in the Operandio UI. Note it creates NO version — there is
+//     no API-side undo, so callers must be able to rebuild content from their
+//     own source of truth.
+//
+//   createKnowledgeArticle() + deleteKnowledge() — create-before-delete. The id
+//     CHANGES every run, so callers must look articles up by title, never by a
+//     stored id, and nothing may link to the article by id. Used by the KPI
+//     digest, which predates the discovery of the update mutation.
 
 // All KnowledgeArticle items with id + title (files are ignored). Used to find
 // the current digest article to supersede.
@@ -204,7 +219,26 @@ async function createKnowledgeArticle({ title, category, groups = [], tipTapCont
   return data.createKnowledgeV2
 }
 
-// Fetch one article's stored richTextContent (for post-create verification).
+// Edit an article in place, keeping its id. Only the fields passed are changed;
+// everything omitted (category, groups, locations, tags) is preserved by the
+// API, so callers do not need to know them. `title` is required by
+// KnowledgeInput even when unchanged — pass the article's existing title or it
+// gets renamed.
+async function updateKnowledgeArticle({ id, title, tipTapContent }) {
+  const data = await graphql(
+    `mutation ($id: ID!, $input: KnowledgeInput!) {
+      knowledge(id: $id) {
+        update(input: $input) {
+          ... on KnowledgeArticle { id title richTextContent }
+        }
+      }
+    }`,
+    { id, input: { type: 'article', title, tipTapContent } },
+  )
+  return data.knowledge?.update
+}
+
+// Fetch one article's stored richTextContent (for post-write verification).
 async function fetchKnowledgeContent(id) {
   const data = await graphql(
     `query { knowledges { ... on KnowledgeArticle { id richTextContent } } }`,
@@ -220,5 +254,6 @@ async function deleteKnowledge(id) {
 
 module.exports = {
   graphql, getToken, scheduleDate, fetchLocations, fetchJobs, fetchJobStepDetail,
-  listKnowledgeArticles, createKnowledgeArticle, fetchKnowledgeContent, deleteKnowledge,
+  listKnowledgeArticles, createKnowledgeArticle, updateKnowledgeArticle,
+  fetchKnowledgeContent, deleteKnowledge,
 }

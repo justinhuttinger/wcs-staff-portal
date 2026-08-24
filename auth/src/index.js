@@ -138,6 +138,7 @@ app.use('/referral-rewards', require('./routes/referralRewards'))
 app.use('/marketing-tracker', require('./routes/marketingTracker'))
 app.use('/blog-automation', require('./routes/blogAutomation'))
 app.use('/kpi-digest', require('./routes/kpiDigest'))
+app.use('/meeting-goals', require('./routes/meetingGoals'))
 app.use('/meeting-notes', require('./routes/meetingNotes'))
 app.use('/inventory', require('./routes/inventory'))
 app.use('/till', require('./routes/till'))
@@ -226,6 +227,13 @@ app.listen(PORT, () => {
     require('./services/kpiDigest').start()
   } catch (err) {
     console.error('[kpiDigest] failed to start:', err.message)
+  }
+
+  // Weekly meeting goals articles — opt-in via OPERANDIO_GOALS_ENABLED=true.
+  try {
+    require('./services/meetingGoals').start()
+  } catch (err) {
+    console.error('[meetingGoals] failed to start:', err.message)
   }
 
   // Meeting-notes poller — opt-in via MEETING_NOTES_ENABLED=true.
