@@ -8,7 +8,6 @@
 const { Router } = require('express')
 const rateLimit = require('express-rate-limit')
 const { LOCATIONS, getLocationBySlug } = require('../config/ghlLocations')
-const { ghlFetch } = require('../services/ghlClient')
 const { trainerRoster, clearRosterCache } = require('../lib/ghlBooking')
 const { brandForSlug, getBrand } = require('../services/dayOneProgram/brands')
 const { validateSubmission } = require('../services/dayOneProgram/publicIntake')
@@ -122,23 +121,19 @@ router.post('/intake', submitLimiter, async (req, res) => {
     // pick the wrong one, and a caller cannot ask for someone else's branding.
     const brandKey = brandForSlug(slug)
 
-    // upsert matches on email/phone, so a prospect already in GHL is reused
-    // rather than duplicated. It returns no contact detail to the browser.
-    const contactBody = {
-      locationId: club.id,
+    // No CRM. The form already collected everything a program needs, so this
+    // path creates no GHL contact and reads none back - it is a program
+    // generator, not a lead capture. A run therefore has no contact_id.
+    const contact = {
+      name: [client.firstName, client.lastName].filter(Boolean).join(' ') || 'Client',
       firstName: client.firstName,
       lastName: client.lastName,
       email: client.email,
+      phone: client.phone,
     }
-    if (client.phone) contactBody.phone = client.phone
-    const upserted = await ghlFetch('/contacts/upsert', club.apiKey, {
-      method: 'POST', body: contactBody,
-    })
-    const contactId = upserted?.contact?.id
-    if (!contactId) throw new Error('Contact upsert returned no id')
 
     const job = await jobs.createJob({
-      contactId,
+      contactId: null,
       contactName: [client.firstName, client.lastName].filter(Boolean).join(' '),
       contactEmail: client.email,
       locationId: club.id,
@@ -152,7 +147,7 @@ router.post('/intake', submitLimiter, async (req, res) => {
 
     // Respond immediately; the site polls /status for progress.
     res.status(202).json({ jobId: job.id, brand: brandKey })
-    runPipeline(job.id, contactId, club, formData, null, brandKey)
+    runPipeline(job.id, { club, formData, brandKey, contact })
   } catch (err) {
     console.error('[DayOnePublic] intake error:', err)
     if (!res.headersSent) res.status(500).json({ error: 'Could not start the program. Please try again.' })
