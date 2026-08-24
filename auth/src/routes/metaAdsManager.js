@@ -497,10 +497,29 @@ router.post('/campaigns', async (req, res) => {
   }
 })
 
+// Moving a campaign off Advantage campaign budget onto per-ad-set budgets is
+// not a matter of clearing the campaign's budget — Meta has no "unset". The
+// documented way is `adset_budgets`, which removes the campaign budget and
+// assigns every ad set its own in one atomic write. Every ad set under the
+// campaign must be given a budget, or the ones left out would have none at all.
+function buildAdsetBudgets(entries, lifetime) {
+  if (!Array.isArray(entries) || !entries.length) return undefined
+  const key = lifetime ? 'lifetime_budget' : 'daily_budget'
+  return entries.map(entry => {
+    const adsetId = entry && (entry.adset_id || entry.id)
+    if (!adsetId) throw new Error('Every ad set budget needs an ad set id')
+    const amount = toMinorUnits(entry.budget !== undefined ? entry.budget : entry[key])
+    if (!amount || Number(amount) <= 0) {
+      throw new Error(`Ad set ${entry.name || adsetId} needs a budget above zero`)
+    }
+    return { adset_id: String(adsetId), [key]: Number(amount) }
+  })
+}
+
 router.put('/campaigns/:id', async (req, res) => {
   try {
     const { token } = getConfig()
-    const { name, status, daily_budget, lifetime_budget, bid_strategy } = req.body || {}
+    const { name, status, daily_budget, lifetime_budget, bid_strategy, adset_budgets } = req.body || {}
     const body = {}
     if (name !== undefined) body.name = name
     if (status !== undefined) body.status = status
@@ -509,6 +528,18 @@ router.put('/campaigns/:id', async (req, res) => {
     if (daily) body.daily_budget = daily
     if (lifetime) body.lifetime_budget = lifetime
     if (bid_strategy) body.bid_strategy = bid_strategy
+
+    // Handing back budget control to the ad sets. Mutually exclusive with
+    // setting a campaign budget in the same call, which would contradict it.
+    if (adset_budgets) {
+      if (daily || lifetime) {
+        return res.status(400).json({
+          error: 'A campaign cannot have its own budget and per-ad-set budgets at the same time',
+        })
+      }
+      body.adset_budgets = buildAdsetBudgets(adset_budgets, req.body.adset_budget_type === 'lifetime')
+    }
+
     if (!Object.keys(body).length) return res.status(400).json({ error: 'Nothing to update' })
 
     await metaWrite(`/${req.params.id}`, body, token)

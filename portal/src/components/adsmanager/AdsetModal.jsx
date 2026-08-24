@@ -290,6 +290,8 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
         {campaignHasBudget ? (
           <p className="text-xs text-text-muted">
             This campaign holds the budget, so Meta distributes spend across its ad sets automatically.
+            To budget per ad set instead, edit the campaign and switch Campaign budget to
+            &ldquo;Set per ad set&rdquo;. Meta makes you set every ad set&rsquo;s budget in that one step.
           </p>
         ) : (
           <Field label="Budget" required>
