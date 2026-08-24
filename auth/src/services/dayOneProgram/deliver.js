@@ -22,14 +22,30 @@ function clubFromName(club, brandKey) {
   return name.includes(brand.name) ? name : `${brand.name} - ${name}`
 }
 
+// The copy the client reads. Pulled out of the send so the wording can be
+// tested without SendGrid, and so there is one obvious place to change it.
+function programEmail(contactData, fromName) {
+  const greeting = `Hi ${contactData.firstName},`
+  const body = `Your customized training program from ${fromName} is attached. `
+    + 'Please review it carefully and reach out if you have any questions.'
+  return {
+    subject: `Your Personalized Training Program - ${contactData.firstName}`,
+    text: `${greeting}\n\n${body}\n\n${fromName}`,
+    html: `<p>${greeting}</p><p>Your customized training program from `
+      + `<strong>${fromName}</strong> is attached. Please review it carefully `
+      + `and reach out if you have any questions.</p><p>${fromName}</p>`,
+  }
+}
+
 async function sendProgramEmail(contactData, club, pdfBuffer, brandKey) {
   const fromName = clubFromName(club, brandKey)
+  const { subject, text, html } = programEmail(contactData, fromName)
   await sgMail.send({
     to: contactData.email,
     from: { email: FROM_EMAIL, name: fromName },
-    subject: `Your Personalized Training Program - ${contactData.firstName}`,
-    text: `Hi ${contactData.firstName},\n\nYour customized training program from ${fromName} is attached. Please review it carefully and reach out if you have any questions.\n\nLet's crush these goals!\n\n${fromName}`,
-    html: `<p>Hi ${contactData.firstName},</p><p>Your customized training program from <strong>${fromName}</strong> is attached. Please review it carefully and reach out if you have any questions.</p><p><strong>Let's crush these goals!</strong></p><p>${fromName}</p>`,
+    subject,
+    text,
+    html,
     attachments: [{
       content: pdfBuffer.toString('base64'),
       filename: safeFilename(contactData),
@@ -74,4 +90,6 @@ async function sendErrorNotification(error, contactId, club) {
   }
 }
 
-module.exports = { clubFromName, sendProgramEmail, uploadToABC, sendErrorNotification, safeFilename }
+module.exports = {
+  clubFromName, programEmail, sendProgramEmail, uploadToABC, sendErrorNotification, safeFilename,
+}
