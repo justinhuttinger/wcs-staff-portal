@@ -321,6 +321,10 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
     try {
       // Write the pass BEFORE completing: saving deletes the row, so a failure
       // afterwards would leave no way back to this person.
+      // Carried into the outbound webhook: the length is chosen here (or fixed
+      // per outcome), so nothing downstream can work it out from the outcome.
+      let passDays = null
+
       if (grantsAPass(outcome)) {
         const n = outcome === CUSTOM_PASS ? Number(days) : PASS_DAYS[outcome]
         if (!Number.isInteger(n) || n < 1 || n > 90) {
@@ -328,13 +332,21 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
           setSaving(false)
           return
         }
+        passDays = n
         // Nothing to write a pass onto without a linked ABC profile. Complete
         // the tour anyway rather than blocking the save on it.
         if (intake.abc_member_id) {
           await publicTour.giveTrialDays(token, intake.id, n)
         }
       }
-      await publicTour.saveOutcome(token, intake.id, { tour_member: tourMember, outcome, notes, status: 'completed' })
+
+      await publicTour.saveOutcome(token, intake.id, {
+        tour_member: tourMember,
+        outcome,
+        notes,
+        status: 'completed',
+        pass_days: passDays,
+      })
       // Show the success animation briefly, then close + refresh the queue.
       setSaved(true)
       try { navigator.vibrate?.(80) } catch (e) { /* best-effort */ }
