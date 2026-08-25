@@ -951,6 +951,19 @@ router.post('/ads', async (req, res) => {
       return res.status(400).json({ error: 'Every variant needs a name' })
     }
 
+    // A form creative is only legal under an ON_AD ad set. Meta rejects it once
+    // per variant, so a batch of 8 buys 8 failed writes against a rate limit
+    // that is already tight. One read up front turns that into one clear no.
+    if (lead_gen_form_id) {
+      const target = await metaFetch(`/${adset_id}`, { fields: 'destination_type,optimization_goal' }, token)
+      if (target.destination_type !== 'ON_AD') {
+        return res.status(400).json({
+          error: 'This ad set does not deliver an Instant Form. Set its destination to the Instant Form ' +
+            '(destination_type ON_AD) before adding form ads — Meta rejects the creative otherwise.',
+        })
+      }
+    }
+
     const shared = {
       adset_id, page_id, instagram_user_id, link, call_to_action,
       status, advantage_plus, lead_gen_form_id,
