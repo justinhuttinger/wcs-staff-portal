@@ -1354,6 +1354,10 @@ export async function getAdsManagerAccount() {
   return api(MAM + '/account')
 }
 
+export async function getAdsManagerLeadForms(pageId) {
+  return api(MAM + '/pages/' + encodeURIComponent(pageId) + '/lead-forms')
+}
+
 export async function getAdsManagerCampaigns(params = {}) {
   return api(mamQs('/campaigns', params))
 }
