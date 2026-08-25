@@ -68,7 +68,7 @@ export default function AdEditModal({ ad, adset, account, onClose, onSaved }) {
       message,
       headline,
       description,
-      link: instantForm ? undefined : link.trim(),
+      link: link.trim(),
       lead_gen_form_id: instantForm ? leadFormId : undefined,
       call_to_action: cta,
       ...assetToVariantFields(asset),
@@ -90,7 +90,10 @@ export default function AdEditModal({ ad, adset, account, onClose, onSaved }) {
     if (!name.trim()) return setError('Give the ad a name')
     if (editCreative) {
       if (instantForm && !leadFormId) return setError('Choose the Instant form this ad opens')
-      if (!instantForm && !link.trim()) return setError('A destination link is required')
+      if (!link.trim()) return setError(instantForm ? 'Your website link is required' : 'A destination link is required')
+      if (instantForm && /^https?:\/\/([^/]*\.)?(facebook|fb)\.(com|me)(\/|$)/i.test(link.trim())) {
+        return setError('A lead ad cannot link to a Facebook Page — use your website')
+      }
       if (!asset) return setError('Pick an image or video')
       if (asset.kind === 'video' && !asset.ready) return setError('The video is still processing')
     }
@@ -193,7 +196,7 @@ export default function AdEditModal({ ad, adset, account, onClose, onSaved }) {
           </div>
 
           <div className="grid sm:grid-cols-2 gap-3">
-            {instantForm ? (
+            {instantForm && (
               <LeadFormPicker
                 pageId={pageId}
                 forms={leadForms.forms}
@@ -204,11 +207,14 @@ export default function AdEditModal({ ad, adset, account, onClose, onSaved }) {
                 value={leadFormId}
                 onChange={setLeadFormId}
               />
-            ) : (
-              <Field label="Destination link" required>
-                <TextInput value={link} onChange={e => setLink(e.target.value)} placeholder="https://…" />
-              </Field>
             )}
+            <Field
+              label={instantForm ? 'Website link' : 'Destination link'}
+              required
+              hint={instantForm ? 'Required by Meta even though the form opens in Facebook. Cannot be a Facebook Page.' : undefined}
+            >
+              <TextInput value={link} onChange={e => setLink(e.target.value)} placeholder="https://…" />
+            </Field>
             <Field label="Call to action">
               <Select value={cta} onChange={e => setCta(e.target.value)} options={CALL_TO_ACTIONS} />
             </Field>

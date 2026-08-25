@@ -870,12 +870,21 @@ function buildObjectStorySpec(variant, shared) {
   const page_id = variant.page_id || shared.page_id
   if (!page_id) throw new Error('A Facebook Page is required')
 
-  // An Instant Form ad has no website to send anyone to: the form opens inside
-  // Facebook. Meta still insists on a `link`, so the convention is the Page's
-  // own URL, and the form id rides in the call to action alongside it.
+  // An Instant Form ad opens its form inside Facebook, so the `link` is never
+  // where anyone lands — but Meta still requires one, and it must point OFF
+  // Facebook: a Page URL is refused with "Lead Ad Creative Does Not Use
+  // External URL". In practice this is the advertiser's own site, which is also
+  // where the form's privacy policy lives.
   const leadFormId = variant.lead_gen_form_id || shared.lead_gen_form_id
-  const link = variant.link || shared.link || (leadFormId ? `https://facebook.com/${page_id}` : '')
-  if (!link) throw new Error('A destination link is required')
+  const link = variant.link || shared.link || ''
+  if (!link) {
+    throw new Error(leadFormId
+      ? 'Lead ads still need your website link. Nobody lands on it — the form opens in Facebook — but Meta requires one that points off Facebook.'
+      : 'A destination link is required')
+  }
+  if (leadFormId && /^https?:\/\/([^/]*\.)?(facebook|fb)\.(com|me)(\/|$)/i.test(link)) {
+    throw new Error('A lead ad cannot link to a Facebook Page. Use your website — Meta requires an external URL on the creative.')
+  }
 
   const ctaType = variant.call_to_action || shared.call_to_action || (leadFormId ? 'SIGN_UP' : 'LEARN_MORE')
   const call_to_action = { type: ctaType, value: { link } }

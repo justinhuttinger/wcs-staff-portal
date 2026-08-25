@@ -135,7 +135,7 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
       adset_id: adset.id,
       page_id: pageId,
       instagram_user_id: page && page.instagram_id ? page.instagram_id : undefined,
-      link: instantForm ? undefined : link.trim(),
+      link: link.trim(),
       lead_gen_form_id: instantForm ? leadFormId : undefined,
       call_to_action: cta,
       status,
@@ -168,8 +168,14 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
     if (instantForm) {
       if (!leadFormId) list.push('Choose the Instant form this ad opens')
       else if (!/^\d{6,}$/.test(leadFormId.trim())) list.push('The Instant form ID should be all digits')
-    } else if (!link.trim()) list.push('Add a destination link')
-    else if (!/^https?:\/\//i.test(link.trim())) list.push('The destination link needs to start with http:// or https://')
+    }
+    // Even a form ad carries a link, and on a lead ad Meta insists it points
+    // off Facebook.
+    if (!link.trim()) list.push(instantForm ? 'Add your website link' : 'Add a destination link')
+    else if (!/^https?:\/\//i.test(link.trim())) list.push('The link needs to start with http:// or https://')
+    else if (instantForm && /^https?:\/\/([^/]*\.)?(facebook|fb)\.(com|me)(\/|$)/i.test(link.trim())) {
+      list.push('A lead ad cannot link to a Facebook Page — use your website')
+    }
     variants.forEach((v, i) => {
       const label = v.name || `Variant ${i + 1}`
       if (!v.name.trim()) list.push(`${label}: needs a name`)
@@ -270,7 +276,7 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
             <Select value={cta} onChange={e => setCta(e.target.value)} options={CALL_TO_ACTIONS} />
           </Field>
         </div>
-        {instantForm ? (
+        {instantForm && (
           <LeadFormPicker
             pageId={pageId}
             forms={leadForms.forms}
@@ -281,15 +287,20 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
             value={leadFormId}
             onChange={setLeadFormId}
           />
-        ) : (
-          <Field label="Destination link" required hint="Where the ad sends people">
-            <TextInput
-              value={link}
-              onChange={e => setLink(e.target.value)}
-              placeholder="https://westcoaststrength.com/…"
-            />
-          </Field>
         )}
+        <Field
+          label={instantForm ? 'Website link' : 'Destination link'}
+          required
+          hint={instantForm
+            ? 'Nobody lands here — the form opens in Facebook — but Meta rejects a lead ad whose link points at a Facebook Page.'
+            : 'Where the ad sends people'}
+        >
+          <TextInput
+            value={link}
+            onChange={e => setLink(e.target.value)}
+            placeholder="https://westcoaststrength.com/…"
+          />
+        </Field>
         <div className="grid sm:grid-cols-2 gap-4">
           <Field label="Start as">
             <Select
