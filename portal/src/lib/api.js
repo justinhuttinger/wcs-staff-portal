@@ -1209,6 +1209,14 @@ export const tourAdmin = {
     api('/admin/tour-locations/referrer-search?q=' + encodeURIComponent(q)),
 }
 
+// Per-club outbound webhook URLs (Admin -> Club Integrations). Consumed by the
+// prospects---documents service; see auth/migrations/075_club_integrations.sql.
+export const clubIntegrationsAdmin = {
+  list: () => api('/admin/club-integrations'),
+  update: (clubNumber, body) =>
+    api('/admin/club-integrations/' + clubNumber, { method: 'PUT', body: JSON.stringify(body) }),
+}
+
 // Form Builder
 export const forms = {
   list: () => api('/forms'),

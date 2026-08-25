@@ -30,6 +30,7 @@ import ClassSeedingAdmin from './admin/ClassSeedingAdmin'
 import OnlineJoinAdmin from './admin/OnlineJoinAdmin'
 import VipReferralsAdmin from './admin/VipReferralsAdmin'
 import TourCheckinLocations from './admin/TourCheckinLocations'
+import ClubIntegrations from './admin/ClubIntegrations'
 import DailySnapshotReport from './reports/DailySnapshotReport'
 import PaychexTrainingAdmin from './admin/PaychexTrainingAdmin'
 import RevenueBackfillTile from './admin/RevenueBackfillTile'
@@ -90,6 +91,7 @@ const TECHNICAL_TILES = [
   { key: 'webhooks', label: 'Webhooks', desc: 'Webhook History', icon: 'M7.5 7.5h-.75A2.25 2.25 0 0 0 4.5 9.75v7.5a2.25 2.25 0 0 0 2.25 2.25h7.5a2.25 2.25 0 0 0 2.25-2.25v-7.5a2.25 2.25 0 0 0-2.25-2.25h-.75m-6 3.75 3 3m0 0 3-3m-3 3V1.5m6 9h.75a2.25 2.25 0 0 1 2.25 2.25v7.5a2.25 2.25 0 0 1-2.25 2.25h-7.5a2.25 2.25 0 0 1-2.25-2.25v-7.5a2.25 2.25 0 0 1 2.25-2.25H9' },
   { key: 'custom-fields', label: 'Custom Fields', desc: 'GHL Field Lookup', icon: 'M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z' },
   { key: 'google-connections', label: 'Google Connections', desc: 'OAuth Scopes & Reconnect', icon: 'M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244' },
+  { key: 'club-integrations', label: 'Club Integrations', desc: 'Per-Club Webhook URLs', icon: 'M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244' },
   { key: 'shared-credentials', label: 'Shared Logins', desc: 'Master Account Credentials', icon: 'M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z' },
   { key: 'launcher-version', label: 'Force Update', desc: 'Pin Launcher Version', icon: 'M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 0 0-3.7-3.7 48.678 48.678 0 0 0-7.324 0 4.006 4.006 0 0 0-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 0 0 3.7 3.7 48.656 48.656 0 0 0 7.324 0 4.006 4.006 0 0 0 3.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3-3 3' },
   { key: 'kiosk-installs', label: 'Kiosk Installs', desc: 'Machine Locations & ABC URLs', icon: 'M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0V12a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 12V5.25' },
@@ -129,7 +131,7 @@ const CATEGORIES = [
   { title: 'Portal Setup', keys: ['tiles', 'appearance', 'layouts', 'config', 'drive-folders', 'forms', 'ticketing', 'action-links', 'references', 'portal-refresh'] },
   { title: 'Reports & KPIs', keys: ['kpi-goals', 'trends-12mo', 'daily-snapshot', 'spotlight', 'membership-audit', 'speed-to-lead-audit', 'business-hours-stl', 'revenue-backfill', 'payroll-commissions'] },
   { title: 'Members & Sales', keys: ['online-join', 'vip-referrals', 'tour-checkin', 'membership-skip', 'referral-rewards', 'audit-toggles', 'vendor-price-list', 'till-settings', 'lapsed-checkins'] },
-  { title: 'Integrations & Sync', keys: ['sync', 'abc-sync', 'custom-fields', 'google-connections', 'shared-credentials'] },
+  { title: 'Integrations & Sync', keys: ['sync', 'abc-sync', 'club-integrations', 'custom-fields', 'google-connections', 'shared-credentials'] },
   { title: 'Logs & Messaging', keys: ['webhooks', 'sms', 'audit-log'] },
   { title: 'Kiosk & Devices', keys: ['kiosk-installs', 'launcher-version', 'print-devices', 'print-automations'] },
   { title: 'Automation & AI', keys: ['blog', 'day-one-programs', 'university-enroll', 'pt-scheduler', 'group-x', 'facility-schedules', 'class-seeding'] },
@@ -214,6 +216,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'online-join' && <OnlineJoinAdmin />}
         {activeSection === 'vip-referrals' && <VipReferralsAdmin />}
         {activeSection === 'tour-checkin' && <TourCheckinLocations />}
+        {activeSection === 'club-integrations' && <ClubIntegrations />}
         {activeSection === 'kpi-goals' && <KpiGoalsAdmin />}
         {activeSection === 'audit-toggles' && <AuditTogglesAdmin />}
         {activeSection === 'speed-to-lead-audit' && <SpeedToLeadAudit />}
