@@ -286,6 +286,30 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
+  // Trial days. Only offered when the kiosk linked an ABC profile to this
+  // check-in; a card raised from a GHL survey has nothing to extend.
+  const [days, setDays] = useState('10')
+  const [givingDays, setGivingDays] = useState(false)
+  const [daysResult, setDaysResult] = useState(null)
+  const [daysError, setDaysError] = useState('')
+
+  async function giveDays() {
+    const n = Number(days)
+    if (!Number.isInteger(n) || n < 1 || n > 90) {
+      setDaysError('Enter between 1 and 90 days.')
+      return
+    }
+    setGivingDays(true); setDaysError(''); setDaysResult(null)
+    try {
+      const r = await publicTour.giveTrialDays(token, intake.id, n)
+      setDaysResult(r)
+    } catch (e) {
+      setDaysError(e.message || 'Could not update ABC.')
+    } finally {
+      setGivingDays(false)
+    }
+  }
+
   useEffect(() => {
     publicTour.employees(token).then(r => setEmployees(r.employees || [])).catch(() => {})
   }, [token])
@@ -344,6 +368,53 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
             {employees.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
           </select>
         </div>
+
+        {intake.abc_member_id && (
+          <div className="rounded-xl border border-gray-200 p-3">
+            <label className="block text-sm font-semibold text-gray-900 mb-2">Give trial days</label>
+            {daysResult ? (
+              <p className="text-sm text-green-700 font-medium">
+                {daysResult.days} days granted — access through {daysResult.after.expirationDate},{' '}
+                {daysResult.after.visitsAllowed} visits.
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  {[3, 7, 10, 14, 30].map(d => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setDays(String(d))}
+                      className={`px-3 py-2 rounded-xl text-sm font-medium border transition-colors active:scale-95 ${
+                        days === String(d)
+                          ? 'bg-red-600 text-white border-red-600'
+                          : 'bg-white text-gray-700 border-gray-300'
+                      }`}>
+                      {d}
+                    </button>
+                  ))}
+                  <input
+                    value={days}
+                    onChange={e => setDays(e.target.value.replace(/\D+/g, '').slice(0, 2))}
+                    inputMode="numeric"
+                    aria-label="Number of trial days"
+                    className="w-20 px-3 py-2 rounded-xl border border-gray-300 text-sm" />
+                  <button
+                    type="button"
+                    onClick={giveDays}
+                    disabled={givingDays}
+                    className="px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold disabled:opacity-50">
+                    {givingDays ? 'Updating…' : 'Give days'}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Sets the expiration and the visit allowance to the same number, in ABC.
+                </p>
+              </>
+            )}
+            {daysError && <p className="text-sm text-red-600 mt-2">{daysError}</p>}
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-semibold text-gray-900 mb-2">Tour outcome</label>

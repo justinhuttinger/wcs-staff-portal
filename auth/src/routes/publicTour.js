@@ -58,7 +58,15 @@ async function rosterFromTable(locationName) {
 
 const SELECT_COLS =
   'id, received_at, ghl_contact_id, contact_name, contact_email, contact_phone, ' +
-  'photo_base64, location_id, status, outcome, notes, tour_member, completed_at'
+  'photo_base64, location_id, status, outcome, notes, tour_member, completed_at, raw'
+
+// The kiosk stamps abc_member_id into `raw` when it creates or attaches a
+// profile. Surface just that field: `raw` is the entire inbound webhook body and
+// has no business going to a login-free page.
+function withAbcId(row) {
+  const { raw, ...rest } = row || {}
+  return { ...rest, abc_member_id: (raw && (raw.abc_member_id || raw.abcMemberId)) || null }
+}
 
 const ALLOWED_OUTCOMES = ['Membership Sale', 'Started Trial', 'Started VIP Pass', 'Only Tour']
 
@@ -100,7 +108,7 @@ router.get('/:token', async (req, res) => {
       location_name: ctx.location.name,
       day_one_base_url: ctx.cfg.day_one_base_url || null,
       vapid_public_key: process.env.VAPID_PUBLIC_KEY || null,
-      ready: ready || [],
+      ready: (ready || []).map(withAbcId),
     })
   } catch (err) {
     console.error('[public-tour] list failed:', err.message)
@@ -197,6 +205,71 @@ router.patch('/:token/intake/:id', async (req, res) => {
 // POST /public/tour/:token/subscribe -> register this iPad's Web Push subscription
 // for the token's location. Idempotent on endpoint (re-subscribing updates keys
 // and can move a device to a new location).
+// POST /public/tour/:token/intake/:id/trial-days  { days }
+//
+// Give a returning prospect more trial days from the front-desk queue. Proxied
+// through here rather than called from the browser so the location token still
+// gates it, and so the prospects service's URL and secret stay server-side.
+//
+// PROSPECTS ONLY. ABC gives us no writable agreement route for real members, so
+// a member comes back as not_a_prospect and staff handle it at the desk.
+router.post('/:token/intake/:id/trial-days', async (req, res) => {
+  try {
+    const ctx = await resolveToken(req.params.token)
+    if (!ctx) return res.status(404).json({ error: 'not found' })
+
+    const days = Number((req.body || {}).days)
+    if (!Number.isInteger(days) || days < 1 || days > 90) {
+      return res.status(400).json({ error: 'Enter between 1 and 90 days.' })
+    }
+
+    const { data: intake } = await supabaseAdmin
+      .from('tour_intakes')
+      .select('id, location_id, raw')
+      .eq('id', req.params.id)
+      .maybeSingle()
+    if (!intake || intake.location_id !== ctx.location.id) {
+      return res.status(404).json({ error: 'not found' })
+    }
+
+    const prospectId =
+      (intake.raw && (intake.raw.abc_member_id || intake.raw.abcMemberId)) || null
+    if (!prospectId) {
+      // A card raised from a GHL survey carries no ABC id; only the kiosk
+      // stamps one. Say so plainly rather than failing cryptically.
+      return res.status(400).json({
+        error: 'No ABC profile linked to this check-in, so there is nothing to extend.',
+      })
+    }
+
+    const clubNumber = clubNumberForLocationName(ctx.location.name)
+    if (!clubNumber) return res.status(400).json({ error: 'no club mapped for this location' })
+
+    const base = (process.env.PROSPECTS_API_URL || 'https://prospects-documents.onrender.com')
+      .replace(/\/$/, '')
+    const slug = ctx.location.name.trim().toLowerCase()
+
+    const r = await fetch(base + '/api/kiosk/extend-trial', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ location: slug, prospectId, days }),
+    })
+    const data = await r.json().catch(() => ({}))
+
+    if (!r.ok) {
+      const message = data.error === 'not_a_prospect'
+        ? 'This is a full member, not a trial. Access changes have to be made at the front desk.'
+        : data.error || 'Could not update ABC.'
+      return res.status(r.status === 404 ? 400 : 502).json({ error: message })
+    }
+
+    res.json(data)
+  } catch (err) {
+    console.error('[public-tour] trial-days failed:', err.message)
+    res.status(500).json({ error: 'internal error' })
+  }
+})
+
 router.post('/:token/subscribe', async (req, res) => {
   try {
     const ctx = await resolveToken(req.params.token)
