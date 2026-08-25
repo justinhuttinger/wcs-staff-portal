@@ -187,6 +187,13 @@ router.patch('/:token/intake/:id', async (req, res) => {
         pass_days: pass_days ?? null,
         completed_at: new Date().toISOString(),
       })
+      // The outbound body is not observable from our side once it reaches GHL,
+      // so log the fields that decide a workflow. Without this, "it came through
+      // null" cannot be traced to the app, this route, or a stale bundle.
+      console.log(
+        `[public-tour] completed ${ctx.location.name} intake=${existing.id} ` +
+        `outcome=${JSON.stringify(outcome)} pass_days=${JSON.stringify(payload.pass_days)}`
+      )
       fetch(ctx.cfg.webhook_url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
