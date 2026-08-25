@@ -1196,6 +1196,13 @@ export const publicTour = {
       method: 'POST',
       body: JSON.stringify({ subscription }),
     }),
+  // Extend a lapsed trial from the queue. Prospects only; a real member comes
+  // back as an error the UI shows verbatim.
+  giveTrialDays: (token, id, days) =>
+    publicFetch(`/public/tour/${token}/intake/${id}/trial-days`, {
+      method: 'POST',
+      body: JSON.stringify({ days }),
+    }),
 }
 
 // --- Tour Check-In admin (authed) ---
