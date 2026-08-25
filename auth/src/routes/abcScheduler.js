@@ -16,6 +16,10 @@ const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { parseAbcTs, padDate, toIsoDate } = require('../lib/abcTime')
+const {
+  EVENT_STATUSES, employeeDepartments, isPersonalTrainer,
+  sumSessionSummaries, isAbcSuccess, extractEventId,
+} = require('../lib/ptScheduler')
 
 const router = Router()
 router.use(authenticate)
@@ -318,15 +322,55 @@ router.get('/members/search', async (req, res) => {
 // redeploys. ABC's response is returned verbatim.
 // ---------------------------------------------------------------------------
 
+// Resolve the training level for an event type from cached events, so the
+// booking form never has to ask. ABC rejects a booking with API-CAL-EVT-0060
+// when the type requires a level, and the level is a property of the type
+// rather than a per-booking choice — whatever this type has always used is
+// the right answer.
+async function resolveLevelId(clubNumber, eventTypeId) {
+  if (!eventTypeId) return null
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('abc_calendar_events')
+      .select('raw')
+      .eq('club_number', String(clubNumber))
+      .eq('event_type_id', String(eventTypeId))
+      .not('raw', 'is', null)
+      .order('event_timestamp', { ascending: false })
+      .limit(200)
+    if (error) throw new Error(error.message)
+    const counts = new Map()
+    for (const row of (data || [])) {
+      const id = row.raw?.eventTrainingLevel?.levelId || row.raw?.eventTrainingLevel?.id
+      if (id) counts.set(id, (counts.get(id) || 0) + 1)
+    }
+    let best = null, bestN = 0
+    for (const [id, n] of counts) if (n > bestN) { best = id; bestN = n }
+    return best
+  } catch (err) {
+    console.warn('[abcScheduler] resolveLevelId failed:', err.message)
+    return null
+  }
+}
+
 // POST /abc-scheduler/events
 //   body: ABC POST /calendars/events payload (plus a top-level club_number
 //   we strip before forwarding)
 // Returns ABC's response body.
+//
+// v2: `allowUnfunded` is always forced true (staff book sessions before the
+// package is paid for, and a booking blocked on funding is never what the
+// club wants), and `levelId` is resolved server-side when the caller omits it.
 router.post('/events', async (req, res) => {
   const { club_number, ...payload } = req.body || {}
   if (!club_number) return res.status(400).json({ error: 'club_number is required in body' })
   if (!payload || Object.keys(payload).length === 0) {
     return res.status(400).json({ error: 'request body required (ABC event payload)' })
+  }
+  payload.allowUnfunded = true
+  if (!payload.levelId) {
+    const levelId = await resolveLevelId(club_number, payload.eventTypeId)
+    if (levelId) payload.levelId = levelId
   }
   try {
     const url = `${ABC_BASE_URL}/${club_number}/calendars/events`
@@ -667,6 +711,283 @@ router.post('/events/:eventId/refresh-from-abc', async (req, res) => {
   } catch (err) {
     console.error('[abcScheduler] refresh-from-abc failed:', err.message)
     res.status(500).json({ error: err.message, attempts })
+  }
+})
+
+
+// ---------------------------------------------------------------------------
+// Event status writes (v2)
+//
+// ABC exposes an UNDOCUMENTED PUT .../events/{eventId}/status that sets the
+// event-level status. Discovered + verified live 2026-08-24 against Salem.
+//
+//   PUT /rest/{club}/calendars/events/{eventId}/status
+//   body: { status, employeeId, skipSelfServiceValidation }
+//
+// Notes from the live discovery:
+//   - `employeeId` is REQUIRED (API-CAL-EVT-0029 if omitted) and must be the
+//     event's own trainer. It is what ABC attributes the completion to, so
+//     commission lands on the right person.
+//   - `skipSelfServiceValidation` is a server-side field ABC echoes back even
+//     when you never send it (defaults false). While false, event types that
+//     are not bookable online are rejected with API-CAL-EVT-0011 ("The event
+//     must be available online") — that check exists because these endpoints
+//     were built for member self-service. We send `true` because the
+//     scheduler is a staff tool acting on internally-booked appointments.
+//   - Nothing mutates unless the call fully succeeds; a failed validation
+//     leaves the event untouched.
+//   - This sets the EVENT status only. It does NOT set per-member attendance
+//     (the member stays "Did Not Attend"), which is why the attendance route
+//     above still exists.
+// ---------------------------------------------------------------------------
+router.put('/events/:eventId/status', async (req, res) => {
+  const { eventId } = req.params
+  const { club_number, status, employee_id } = req.body || {}
+  if (!club_number || !status || !employee_id) {
+    return res.status(400).json({ error: 'club_number, status, employee_id are required' })
+  }
+  if (!EVENT_STATUSES.includes(status)) {
+    return res.status(400).json({ error: 'status must be one of: ' + EVENT_STATUSES.join(', ') })
+  }
+  try {
+    const url = `${ABC_BASE_URL}/${club_number}/calendars/events/${encodeURIComponent(eventId)}/status`
+    const r = await axios.put(url, {
+      status,
+      employeeId: employee_id,
+      skipSelfServiceValidation: true,
+    }, {
+      headers: { ...abcHeaders(), 'Content-Type': 'application/json' },
+      timeout: 30000,
+      validateStatus: () => true,
+    })
+    // ABC returns HTTP 200 for business rejections too — the messageCode is
+    // the real signal (API-CAL-EVT-0000 == success). Treat anything else as a
+    // failure so the UI never shows a false confirmation.
+    const code = r.data?.status?.messageCode
+    const ok = isAbcSuccess(r.status, r.data)
+    if (!ok) {
+      console.error('[abcScheduler] PUT event status rejected:', r.status, code, r.data?.status?.message)
+      return res.status(400).json({
+        error: r.data?.status?.message || 'ABC rejected the status change',
+        messageCode: code || null,
+        abc: r.data,
+      })
+    }
+    // Keep our cache honest immediately rather than waiting for ghl-sync.
+    await supabaseAdmin
+      .from('abc_calendar_events')
+      .update({ status })
+      .eq('club_number', String(club_number))
+      .eq('event_id', eventId)
+    res.json({ ok: true, status, abc: r.data })
+  } catch (err) {
+    console.error('[abcScheduler] PUT event status failed:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /abc-scheduler/trainers?club_number=
+// Active employees whose ABC departments include "Personal Trainers".
+// employment.departments.department is a string ARRAY, so a trainer who is
+// also Front Desk / Management still qualifies.
+// ---------------------------------------------------------------------------
+router.get('/trainers', async (req, res) => {
+  const { club_number } = req.query
+  if (!club_number) return res.status(400).json({ error: 'club_number is required' })
+  try {
+    const r = await axios.get(`${ABC_BASE_URL}/${club_number}/employees`, {
+      headers: abcHeaders(), timeout: 20000, validateStatus: () => true,
+    })
+    if (r.status < 200 || r.status >= 300) {
+      return res.status(r.status).json({ error: 'ABC /employees failed', abc: r.data })
+    }
+    const trainers = (r.data?.employees || [])
+      .filter(emp => (emp.employment?.employeeStatus || '').toLowerCase() === 'active')
+      .filter(isPersonalTrainer)
+      .map(emp => ({
+        employee_id: emp.employeeId || emp.id,
+        first_name: emp.personal?.firstName || '',
+        last_name: emp.personal?.lastName || '',
+        display_name: `${emp.personal?.firstName || ''} ${emp.personal?.lastName || ''}`.trim() || 'Unknown',
+        departments: employeeDepartments(emp),
+      }))
+      .filter(e => e.employee_id && !EMPLOYEE_EXCLUDED_NAMES.has(e.display_name.toLowerCase()))
+      .sort((a, b) => a.display_name.localeCompare(b.display_name))
+    res.json({ trainers })
+  } catch (err) {
+    console.error('[abcScheduler] /trainers failed:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /abc-scheduler/trainers/:employeeId/clients?club_number=[&q=]
+//
+// The trainer -> client assignment lives on the recurring service, in ABC's
+// `serviceEmployeeId` — the same link the PT Roster report uses, mirrored by
+// ghl-sync into abc_recurring_pt_services.service_employee_id.
+//
+// That table alone is NOT enough: its sync deliberately keeps only ACTIVE,
+// NON-PIF agreements (see ghl-sync/src/abc/recurringPtServices.js), so a
+// paid-in-full client — the whole PIF 60 book of business — would be invisible
+// and unbookable. We therefore union it with everyone this trainer has
+// actually had a calendar event with in the last 180 days. Each client is
+// labelled with where it came from so the UI can tell them apart.
+// ---------------------------------------------------------------------------
+const CLIENT_HISTORY_DAYS = 180
+
+router.get('/trainers/:employeeId/clients', async (req, res) => {
+  const { employeeId } = req.params
+  const { club_number, q } = req.query
+  if (!club_number) return res.status(400).json({ error: 'club_number is required' })
+  try {
+    const since = new Date()
+    since.setDate(since.getDate() - CLIENT_HISTORY_DAYS)
+
+    const [rosterRes, historyRes] = await Promise.all([
+      supabaseAdmin
+        .from('abc_recurring_pt_services')
+        .select('member_id, member_name, service_item')
+        .eq('club_number', String(club_number))
+        .eq('service_employee_id', String(employeeId))
+        .limit(2000),
+      supabaseAdmin
+        .from('abc_calendar_events')
+        .select('member_id, member_first_name, member_last_name, event_name')
+        .eq('club_number', String(club_number))
+        .eq('employee_id', String(employeeId))
+        .gte('event_timestamp', since.toISOString())
+        .not('member_id', 'is', null)
+        .limit(5000),
+    ])
+    if (rosterRes.error) throw new Error(rosterRes.error.message)
+
+    // One row per member (a client can hold several recurring services).
+    const byMember = new Map()
+    const put = (memberId, name, service, source) => {
+      if (!memberId) return
+      if (!byMember.has(memberId)) {
+        byMember.set(memberId, {
+          member_id: memberId,
+          member_name: name || '(no name)',
+          services: [],
+          source,
+        })
+      }
+      const entry = byMember.get(memberId)
+      // A roster match is the stronger claim — let it win the label.
+      if (source === 'roster') entry.source = 'roster'
+      if (service && !entry.services.includes(service)) entry.services.push(service)
+      if (name && entry.member_name === '(no name)') entry.member_name = name
+    }
+
+    for (const row of (rosterRes.data || [])) {
+      put(row.member_id, row.member_name, row.service_item, 'roster')
+    }
+    // History is best-effort — a failure here must not hide the roster.
+    if (historyRes.error) {
+      console.warn('[abcScheduler] client history lookup failed:', historyRes.error.message)
+    } else {
+      for (const row of (historyRes.data || [])) {
+        const name = [row.member_first_name, row.member_last_name].filter(Boolean).join(' ')
+        put(row.member_id, name, row.event_name, 'history')
+      }
+    }
+
+    let clients = [...byMember.values()].sort((a, b) => {
+      if (a.source !== b.source) return a.source === 'roster' ? -1 : 1
+      return a.member_name.localeCompare(b.member_name)
+    })
+    const term = (q || '').trim().toLowerCase()
+    if (term) clients = clients.filter(c => c.member_name.toLowerCase().includes(term))
+    res.json({ clients })
+  } catch (err) {
+    console.error('[abcScheduler] /trainers/:id/clients failed:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /abc-scheduler/session-total?club_number=&member_id=
+// Collapses ABC's purchasehistory (one summary per billing lot) into a single
+// remaining-sessions number. `available` is ABC's remaining count; `scheduled`
+// is booked-but-not-yet-used and is reported separately.
+// ---------------------------------------------------------------------------
+router.get('/session-total', async (req, res) => {
+  const { club_number, member_id } = req.query
+  if (!club_number || !member_id) {
+    return res.status(400).json({ error: 'club_number and member_id are required' })
+  }
+  try {
+    const url = `${ABC_BASE_URL}/${club_number}/members/${member_id}/services/purchasehistory`
+    const r = await axios.get(url, { headers: abcHeaders(), timeout: 20000, validateStatus: () => true })
+    if (r.status < 200 || r.status >= 300) {
+      return res.status(r.status).json({ error: 'ABC purchasehistory failed' })
+    }
+    res.json(sumSessionSummaries(r.data))
+  } catch (err) {
+    console.error('[abcScheduler] /session-total failed:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// POST /abc-scheduler/events/:eventId/move
+//   body: { club_number, startTime, eventTypeId, employeeId, memberId, levelId? }
+//
+// ABC HAS NO RESCHEDULE ENDPOINT — probed 2026-08-24: PUT/PATCH on
+// /calendars/events/{id} return 405 "resource not supported", and every
+// plausible /reschedule | /time | /move | /starttime path 404s. So a
+// drag-to-move is really "book the new slot, then cancel the old one".
+//
+// Ordering is deliberate: CREATE FIRST, then delete. If the delete fails we
+// leave a duplicate (visible, easy to cancel by hand). Deleting first would
+// risk destroying the booking with nothing to show for it.
+// ---------------------------------------------------------------------------
+router.post('/events/:eventId/move', async (req, res) => {
+  const { eventId } = req.params
+  const { club_number, startTime, eventTypeId, employeeId, memberId, levelId } = req.body || {}
+  if (!club_number || !startTime || !eventTypeId || !employeeId || !memberId) {
+    return res.status(400).json({ error: 'club_number, startTime, eventTypeId, employeeId, memberId are required' })
+  }
+  try {
+    const createBody = { eventTypeId, employeeId, memberId, startTime, allowUnfunded: true }
+    const resolvedLevel = levelId || await resolveLevelId(club_number, eventTypeId)
+    if (resolvedLevel) createBody.levelId = resolvedLevel
+    const created = await axios.post(`${ABC_BASE_URL}/${club_number}/calendars/events`, createBody, {
+      headers: { ...abcHeaders(), 'Content-Type': 'application/json' },
+      timeout: 30000, validateStatus: () => true,
+    })
+    const createdOk = isAbcSuccess(created.status, created.data)
+    if (!createdOk) {
+      return res.status(400).json({
+        error: created.data?.status?.message || 'ABC rejected the new booking; original event left untouched',
+        messageCode: created.data?.status?.messageCode || null,
+        abc: created.data,
+      })
+    }
+    const newEventId = extractEventId(created.data)
+
+    const del = await axios.delete(`${ABC_BASE_URL}/${club_number}/calendars/events/${encodeURIComponent(eventId)}`, {
+      headers: abcHeaders(), timeout: 30000, validateStatus: () => true,
+    })
+    const deletedOk = del.status >= 200 && del.status < 300
+    if (deletedOk) {
+      await supabaseAdmin.from('abc_calendar_events')
+        .delete().eq('club_number', String(club_number)).eq('event_id', eventId)
+    } else {
+      console.error('[abcScheduler] move: new event created but old delete failed', del.status, del.data)
+    }
+    res.json({
+      ok: true,
+      new_event_id: newEventId,
+      old_event_deleted: deletedOk,
+      warning: deletedOk ? null : 'New event booked, but the original could not be cancelled — cancel it manually in DataTrak.',
+    })
+  } catch (err) {
+    console.error('[abcScheduler] move failed:', err.message)
+    res.status(500).json({ error: err.message })
   }
 })
 
