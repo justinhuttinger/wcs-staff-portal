@@ -488,6 +488,12 @@ router.post('/campaigns', async (req, res) => {
     if (daily) body.daily_budget = daily
     else if (lifetime) body.lifetime_budget = lifetime
     if (daily || lifetime) body.bid_strategy = bid_strategy || 'LOWEST_COST_WITHOUT_CAP'
+    // Without a campaign budget Meta refuses the create until you answer the
+    // Advantage budget-sharing question outright ("Must specify True or False
+    // in is_adset_budget_sharing_enabled"). Default False: sharing lets ad sets
+    // hand 20% of their budget to each other, which would blur the per-ad-set
+    // spend the multi-variant tests depend on.
+    else body.is_adset_budget_sharing_enabled = req.body.is_adset_budget_sharing_enabled === true
 
     const created = await metaWrite(`/${accountId}/campaigns`, body, token)
     const full = await metaFetch(`/${created.id}`, { fields: CAMPAIGN_FIELDS }, token)
@@ -538,6 +544,11 @@ router.put('/campaigns/:id', async (req, res) => {
         })
       }
       body.adset_budgets = buildAdsetBudgets(adset_budgets, req.body.adset_budget_type === 'lifetime')
+      // Same rule as create: a campaign leaving CBO has to state whether its ad
+      // sets share budget. Default False for the same reason.
+      body.is_adset_budget_sharing_enabled = req.body.is_adset_budget_sharing_enabled === true
+    } else if (req.body.is_adset_budget_sharing_enabled !== undefined) {
+      body.is_adset_budget_sharing_enabled = req.body.is_adset_budget_sharing_enabled === true
     }
 
     if (!Object.keys(body).length) return res.status(400).json({ error: 'Nothing to update' })
