@@ -8,6 +8,17 @@ import { buildDayOneUrl } from '../lib/dayOnePrefill'
 // easy to miss.
 const CUSTOM_PASS = 'Custom Pass'
 const OUTCOMES = ['Membership Sale', 'Started Trial', 'Started VIP Pass', 'Only Tour', CUSTOM_PASS]
+
+// Outcomes that hand out gym access, and for how long. A trial and a VIP pass
+// are just fixed-length versions of a custom pass, so they take the same route:
+// the expiration and visit allowance go to ABC and the desk gets the alert.
+// Keeping the lengths here means changing "a trial is 7 days" is a one-line
+// change rather than something staff have to remember to type.
+const PASS_DAYS = {
+  'Started Trial': 7,
+  'Started VIP Pass': 14,
+}
+const grantsAPass = outcome => outcome === CUSTOM_PASS || outcome in PASS_DAYS
 const REFRESH_MS = 2000   // poll fast so a new arrival shows within ~2s (only while the app is open)
 
 // Same per-location photo backgrounds as the mobile app (keyed by lowercase name).
@@ -310,14 +321,18 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
     try {
       // Write the pass BEFORE completing: saving deletes the row, so a failure
       // afterwards would leave no way back to this person.
-      if (outcome === CUSTOM_PASS) {
-        const n = Number(days)
+      if (grantsAPass(outcome)) {
+        const n = outcome === CUSTOM_PASS ? Number(days) : PASS_DAYS[outcome]
         if (!Number.isInteger(n) || n < 1 || n > 90) {
           setError('Enter between 1 and 90 days for the pass.')
           setSaving(false)
           return
         }
-        await publicTour.giveTrialDays(token, intake.id, n)
+        // Nothing to write a pass onto without a linked ABC profile. Complete
+        // the tour anyway rather than blocking the save on it.
+        if (intake.abc_member_id) {
+          await publicTour.giveTrialDays(token, intake.id, n)
+        }
       }
       await publicTour.saveOutcome(token, intake.id, { tour_member: tourMember, outcome, notes, status: 'completed' })
       // Show the success animation briefly, then close + refresh the queue.
@@ -385,6 +400,17 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
               )
             })}
           </div>
+
+          {outcome in PASS_DAYS && (
+            <div className="mt-3 rounded-xl border border-gray-200 p-3">
+              <p className="text-sm text-gray-900">
+                <span className="font-semibold">{PASS_DAYS[outcome]} days</span>{' '}
+                {intake.abc_member_id
+                  ? 'goes to ABC when you save, and the front desk is flagged until 3 days after it ends.'
+                  : 'is the usual length, but no ABC profile is linked to this check-in so nothing will be written.'}
+              </p>
+            </div>
+          )}
 
           {outcome === CUSTOM_PASS && (
             <div className="mt-3 rounded-xl border border-gray-200 p-3">
