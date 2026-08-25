@@ -1390,6 +1390,10 @@ export async function updateAdsManagerAdset(id, body) {
   return api(`${MAM}/adsets/${id}`, { method: 'PUT', body: JSON.stringify(body) })
 }
 
+export async function duplicateAdsManagerAdset(id, body) {
+  return api(`${MAM}/adsets/${id}/duplicate`, { method: 'POST', body: JSON.stringify(body) })
+}
+
 export async function deleteAdsManagerAdset(id) {
   return api(`${MAM}/adsets/${id}`, { method: 'DELETE' })
 }

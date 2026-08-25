@@ -771,6 +771,55 @@ router.put('/adsets/:id', async (req, res) => {
   }
 })
 
+// POST /meta-ads-manager/adsets/:id/duplicate
+//
+// Meta's own /copies edge does this server-side, which is the only way to get a
+// faithful copy: targeting, budget, schedule, promoted object and every child
+// ad, without this app having to re-derive a shape it may not fully model.
+//
+// The copy is ALWAYS paused, whatever the source was doing, and deep_copy keeps
+// the child ads paused too. Copying an ad set is a setup step; nothing should
+// start spending because someone duplicated something. Activating is a separate,
+// deliberate click — the same rule as everywhere else here.
+router.post('/adsets/:id/duplicate', async (req, res) => {
+  try {
+    const { token } = getConfig()
+    const { campaign_id, name, include_ads } = req.body || {}
+
+    const body = {
+      deep_copy: !!include_ads,
+      status_option: 'PAUSED',
+    }
+    // Copying into another campaign is legal only when the objective matches;
+    // Meta says so itself, and its message is clearer than a guess of ours.
+    if (campaign_id) body.campaign_id = campaign_id
+
+    const copied = await metaWrite(`/${req.params.id}/copies`, body, token)
+    const newId = copied.copied_adset_id || copied.id
+    if (!newId) throw new Error('Meta did not return the new ad set id')
+
+    // /copies names the copy "<source> - Copy"; rename it in a second call
+    // rather than fighting rename_options, which only appends.
+    if (name) {
+      try {
+        await metaWrite(`/${newId}`, { name }, token)
+      } catch (err) {
+        console.error('[Meta Ads Manager] copy rename failed:', err.message)
+      }
+    }
+
+    const full = await metaFetch(`/${newId}`, { fields: ADSET_FIELDS }, token)
+    let ads = 0
+    if (include_ads) {
+      const list = await metaFetch(`/${newId}/ads`, { fields: 'id', limit: 200 }, token)
+      ads = (list.data || []).length
+    }
+    res.json({ ...full, copied_ads: ads })
+  } catch (err) {
+    fail(res, err, 'ad set duplicate')
+  }
+})
+
 router.delete('/adsets/:id', async (req, res) => {
   try {
     const { token } = getConfig()

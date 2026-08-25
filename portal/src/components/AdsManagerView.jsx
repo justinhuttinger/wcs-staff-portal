@@ -14,6 +14,7 @@ import { Button, StatusPill, ErrorBanner, EmptyState, Spinner, Modal } from './a
 import { MediaThumb } from './adsmanager/MediaPicker'
 import CampaignModal from './adsmanager/CampaignModal'
 import AdsetModal from './adsmanager/AdsetModal'
+import DuplicateAdsetModal from './adsmanager/DuplicateAdsetModal'
 import AdVariantsModal from './adsmanager/AdVariantsModal'
 import AdEditModal from './adsmanager/AdEditModal'
 import StrandedAdsModal from './adsmanager/StrandedAdsModal'
@@ -489,6 +490,7 @@ export default function AdsManagerView({ onBack }) {
                 <RowMenu items={[
                   { label: a.status === 'ACTIVE' ? 'Pause' : 'Activate', onClick: () => toggleStatus('adset', a) },
                   { label: 'Edit', onClick: () => setModal({ type: 'adset', adset: a }) },
+                  { label: 'Duplicate', onClick: () => setModal({ type: 'duplicateAdset', adset: a }) },
                   { label: 'Delete', danger: true, onClick: () => setConfirm({ level: 'adset', entity: a }) },
                 ]} />
               </div>
@@ -564,6 +566,24 @@ export default function AdsManagerView({ onBack }) {
           account={account}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); loadAdsets(selectedCampaign.id) }}
+        />
+      )}
+
+      {modal && modal.type === 'duplicateAdset' && selectedCampaign && (
+        <DuplicateAdsetModal
+          adset={modal.adset}
+          campaign={selectedCampaign}
+          campaigns={campaigns}
+          onClose={() => setModal(null)}
+          onDuplicated={copy => {
+            setModal(null)
+            setNotice(
+              copy.copied_ads
+                ? `Copied “${copy.name}” with ${copy.copied_ads} ad${copy.copied_ads === 1 ? '' : 's'}. Everything is paused until you activate it.`
+                : `Copied “${copy.name}”. It is paused until you activate it.`
+            )
+            loadAdsets(selectedCampaign.id)
+          }}
         />
       )}
 
