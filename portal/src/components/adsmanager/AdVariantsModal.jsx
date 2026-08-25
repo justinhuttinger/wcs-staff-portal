@@ -167,6 +167,7 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
     if (!pageId) list.push('Pick a Facebook Page')
     if (instantForm) {
       if (!leadFormId) list.push('Choose the Instant form this ad opens')
+      else if (!/^\d{6,}$/.test(leadFormId.trim())) list.push('The Instant form ID should be all digits')
     } else if (!link.trim()) list.push('Add a destination link')
     else if (!/^https?:\/\//i.test(link.trim())) list.push('The destination link needs to start with http:// or https://')
     variants.forEach((v, i) => {
@@ -275,6 +276,8 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
             forms={leadForms.forms}
             loading={leadForms.loading}
             error={leadForms.error}
+            restricted={leadForms.restricted}
+            message={leadForms.message}
             value={leadFormId}
             onChange={setLeadFormId}
           />

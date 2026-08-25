@@ -291,11 +291,28 @@ router.get('/account', async (req, res) => {
 // GET /meta-ads-manager/pages/:id/lead-forms — the Instant Forms that live on
 // a Page. Lead ads point at one of these instead of a website.
 //
-// leadgen_forms is one of the few edges the system-user token cannot always
-// read directly: Meta wants the Page's own token. Ask for the ad-account token
-// first (it works when the token carries leads_retrieval) and fall back to
-// minting the Page token, so a permission gap costs one extra call, not the
-// feature.
+// Reading leadgen_forms needs pages_manage_ads (or leads_retrieval), which
+// ads_management does NOT imply. Our system-user token carries neither, and a
+// Page token minted from it inherits the same scopes, so the fallback below
+// only helps a token that was scoped differently. When both fail on a scope
+// error we answer 200 with restricted:true rather than an error: creating the
+// ad only needs the form id, so the builder can still take one by hand instead
+// of the whole feature going dark over a permission Meta grants in Business
+// Settings.
+const LEAD_FORM_SCOPE_HINT =
+  'This Meta token cannot list Instant Forms. Its system user needs the ' +
+  'pages_manage_ads permission (Business Settings → System Users → Generate ' +
+  'New Token) and access to this Page. Until then, paste the form ID from ' +
+  'Meta: Page → Meta Business Suite → All tools → Instant Forms.'
+
+function isScopeError(err) {
+  const m = err && err.meta
+  if (!m) return false
+  // 200 = "requires <permission> permission", 10 = permission not granted,
+  // 190 = the token itself is bad, which is the same dead end for the caller.
+  return m.code === 200 || m.code === 10 || m.code === 190
+}
+
 router.get('/pages/:id/lead-forms', async (req, res) => {
   const { token } = getConfig()
   const pageId = req.params.id
@@ -310,15 +327,22 @@ router.get('/pages/:id/lead-forms', async (req, res) => {
   }
 
   try {
-    res.json({ data: await load(token) })
+    return res.json({ data: await load(token) })
   } catch (err) {
-    try {
-      const page = await metaFetch(`/${pageId}`, { fields: 'access_token' }, token)
-      if (!page.access_token) throw err
-      res.json({ data: await load(page.access_token) })
-    } catch (retryErr) {
-      fail(res, retryErr, 'lead forms list')
+    let pageErr = err
+    if (!isScopeError(err)) {
+      try {
+        const page = await metaFetch(`/${pageId}`, { fields: 'access_token' }, token)
+        if (page.access_token) return res.json({ data: await load(page.access_token) })
+      } catch (retryErr) {
+        pageErr = retryErr
+      }
     }
+    if (isScopeError(pageErr)) {
+      console.error('[Meta Ads Manager] lead forms blocked:', pageErr.message)
+      return res.json({ data: [], restricted: true, message: LEAD_FORM_SCOPE_HINT })
+    }
+    return fail(res, pageErr, 'lead forms list')
   }
 })
 

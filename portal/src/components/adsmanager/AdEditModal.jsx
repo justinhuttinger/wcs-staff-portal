@@ -199,6 +199,8 @@ export default function AdEditModal({ ad, adset, account, onClose, onSaved }) {
                 forms={leadForms.forms}
                 loading={leadForms.loading}
                 error={leadForms.error}
+                restricted={leadForms.restricted}
+                message={leadForms.message}
                 value={leadFormId}
                 onChange={setLeadFormId}
               />
