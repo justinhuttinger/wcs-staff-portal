@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getAdsManagerLeadForms } from '../../lib/api'
-import { Field, Select } from './ui'
+import { Field, Select, TextInput } from './ui'
 
 // An Instant Form ad set delivers its form inside Facebook, so its ads carry a
 // lead form id instead of a destination URL. Meta records that two ways
@@ -15,30 +15,62 @@ export function isInstantFormAdset(adset) {
 
 // Loads the Page's active Instant Forms. Re-runs on Page change because the
 // forms belong to the Page, not the ad account.
+//
+// `restricted` means the token is not allowed to LIST forms (pages_manage_ads).
+// Creating the ad only needs the id, so that case falls back to typing one in
+// rather than blocking the build.
 export function useLeadForms(pageId, enabled) {
-  const [forms, setForms] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [state, setState] = useState({ forms: [], loading: false, error: '', restricted: false, message: '' })
 
   useEffect(() => {
     if (!enabled || !pageId) {
-      setForms([])
+      setState({ forms: [], loading: false, error: '', restricted: false, message: '' })
       return
     }
     let live = true
-    setLoading(true)
-    setError('')
+    setState(s => ({ ...s, loading: true, error: '' }))
     getAdsManagerLeadForms(pageId)
-      .then(res => { if (live) setForms(res.data || []) })
-      .catch(err => { if (live) setError(err.message) })
-      .finally(() => { if (live) setLoading(false) })
+      .then(res => {
+        if (!live) return
+        setState({
+          forms: res.data || [],
+          loading: false,
+          error: '',
+          restricted: !!res.restricted,
+          message: res.message || '',
+        })
+      })
+      .catch(err => {
+        if (live) setState({ forms: [], loading: false, error: err.message, restricted: false, message: '' })
+      })
     return () => { live = false }
   }, [pageId, enabled])
 
-  return { forms, loading, error }
+  return state
 }
 
-export function LeadFormPicker({ pageId, forms, loading, error, value, onChange }) {
+export function LeadFormPicker({ pageId, forms, loading, error, restricted, message, value, onChange }) {
+  // No list to pick from, so take the id directly. Meta form ids are long
+  // numeric strings, which is cheap to sanity-check before Create.
+  if (restricted) {
+    const looksValid = !value || /^\d{6,}$/.test(value.trim())
+    return (
+      <Field
+        label="Instant form ID"
+        required
+        hint={looksValid ? message : undefined}
+        error={looksValid ? undefined : 'A form ID is all digits — copy it from the Instant Forms list in Meta.'}
+      >
+        <TextInput
+          value={value}
+          onChange={e => onChange(e.target.value.trim())}
+          placeholder="e.g. 1234567890123456"
+          inputMode="numeric"
+        />
+      </Field>
+    )
+  }
+
   let hint = 'The form that opens when someone taps the ad'
   if (!pageId) hint = 'Pick a Facebook Page first'
   else if (loading) hint = 'Loading forms…'
