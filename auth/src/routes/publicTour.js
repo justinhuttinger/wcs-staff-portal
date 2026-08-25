@@ -152,7 +152,12 @@ router.patch('/:token/intake/:id', async (req, res) => {
     const ctx = await resolveToken(req.params.token)
     if (!ctx) return res.status(404).json({ error: 'not found' })
 
-    const { tour_member, outcome, notes, status, referring_member_id, referring_member_name } = req.body || {}
+    const {
+      tour_member, outcome, notes, status, referring_member_id, referring_member_name,
+      // Set by the app when the outcome granted a pass. The length is chosen in
+      // the UI (or fixed per outcome), so the server cannot derive it.
+      pass_days,
+    } = req.body || {}
     const cancelled = status === 'cancelled'
     if (!cancelled && !ALLOWED_OUTCOMES.includes(outcome)) {
       return res.status(400).json({ error: 'invalid outcome' })
@@ -179,6 +184,7 @@ router.patch('/:token/intake/:id', async (req, res) => {
         notes: notes || null,
         referring_member_id: referring_member_id || null,
         referring_member_name: referring_member_name || null,
+        pass_days: pass_days ?? null,
         completed_at: new Date().toISOString(),
       })
       fetch(ctx.cfg.webhook_url, {
