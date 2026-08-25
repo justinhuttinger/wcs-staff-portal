@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { api } from '../../lib/api'
 import {
   DAY_START_HOUR, DAY_END_HOUR, PX_PER_MINUTE, GRID_HEIGHT_PX, WEEKDAY_LABELS, MONTH_LABELS,
@@ -16,92 +16,97 @@ const CLUB_NUMBERS = [
   { slug: 'medford', name: 'Medford', clubNumber: '32073' },
 ]
 
-// Same heuristic as before, paired with a color hint for the event card
-function statusInfo(status, attended) {
-  const s = (attended || status || '').toLowerCase()
-  if (s.includes('did not attend') || s.includes('no show') || s.includes('no-show')) {
-    return { label: 'No Show', badge: 'bg-red-50 text-red-700 border-red-200', card: 'bg-red-50 border-red-300 text-red-900' }
+// The four ABC event statuses this tool writes. These are the exact strings
+// ABC's PUT .../events/{id}/status accepts — do not localise them.
+const EVENT_STATUS_OPTIONS = [
+  { value: 'Completed',          label: 'Completed',      cls: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' },
+  { value: 'Pending',            label: 'Pending',        cls: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' },
+  { value: 'Canceled-Charge',    label: 'Cancel (charge)', cls: 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100' },
+  { value: 'Canceled-No Charge', label: 'Cancel (no charge)', cls: 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100' },
+]
+
+// Colour purely off the ABC event status. Attendance is deliberately ignored
+// here — the scheduler tracks event status now, not per-member attendance.
+function statusInfo(status) {
+  const s = (status || '').toLowerCase()
+  if (s.includes('no charge')) {
+    return { label: 'Canceled (no charge)', badge: 'bg-gray-100 text-gray-700 border-gray-200', card: 'bg-gray-100 border-gray-300 text-gray-700' }
   }
   if (s.includes('cancel')) {
-    return { label: status || 'Canceled', badge: 'bg-orange-50 text-orange-700 border-orange-200', card: 'bg-orange-50 border-orange-300 text-orange-900 line-through-decoration' }
+    return { label: 'Canceled (charge)', badge: 'bg-orange-50 text-orange-700 border-orange-200', card: 'bg-orange-50 border-orange-300 text-orange-900' }
   }
-  if (s.includes('completed') || s.includes('attended')) {
+  if (s.includes('completed')) {
     return { label: 'Completed', badge: 'bg-green-50 text-green-700 border-green-200', card: 'bg-green-50 border-green-300 text-green-900' }
   }
   if (s.includes('pending') || s.includes('scheduled')) {
-    return { label: 'Scheduled', badge: 'bg-blue-50 text-blue-700 border-blue-200', card: 'bg-blue-50 border-blue-300 text-blue-900' }
+    return { label: 'Pending', badge: 'bg-blue-50 text-blue-700 border-blue-200', card: 'bg-blue-50 border-blue-300 text-blue-900' }
   }
   return { label: status || 'Unknown', badge: 'bg-gray-50 text-gray-700 border-gray-200', card: 'bg-gray-50 border-gray-300 text-gray-900' }
 }
 
-const ATTENDANCE_OPTIONS = [
-  { value: 'Attended',       label: 'Attended',     cls: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' },
-  { value: 'Did Not Attend', label: 'No-show',      cls: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100' },
-  { value: 'Pending',        label: 'Pending',      cls: 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100' },
-]
+// Snap a pixel offset inside a day column to a 15-minute slot, clamped to the
+// visible grid. PX_PER_MINUTE is 1, so pixels are minutes.
+function yToTime(y) {
+  const raw = y / PX_PER_MINUTE
+  const snapped = Math.round(raw / 15) * 15
+  const maxMin = (DAY_END_HOUR - DAY_START_HOUR) * 60 - 15
+  const clamped = Math.max(0, Math.min(maxMin, snapped))
+  const hour = DAY_START_HOUR + Math.floor(clamped / 60)
+  const min = clamped % 60
+  return { hour, min, hhmm: `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}` }
+}
 
-function SessionBalanceModal({ event, clubNumber, onClose, onMutated }) {
-  const [data, setData] = useState(null)
+// ---------------------------------------------------------------------------
+// Event detail modal — shows the client's total remaining sessions and lets
+// staff set the ABC event status.
+// ---------------------------------------------------------------------------
+function EventDetailModal({ event, clubNumber, onClose, onMutated }) {
+  const [totals, setTotals] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [actionPending, setActionPending] = useState(null) // string label or null
+  const [actionPending, setActionPending] = useState(null)
   const [actionError, setActionError] = useState(null)
   const [actionSuccess, setActionSuccess] = useState(null)
-  const [currentAttended, setCurrentAttended] = useState(event.attended_status)
+  const [currentStatus, setCurrentStatus] = useState(event.status)
 
-  async function markAttendance(value) {
-    if (!event.member_id) return
-    setActionPending('attendance:' + value); setActionError(null); setActionSuccess(null)
+  async function setStatus(value) {
+    if (!event.employee_id) {
+      setActionError('This event has no trainer on file, so ABC will not accept a status change.')
+      return
+    }
+    setActionPending('status:' + value); setActionError(null); setActionSuccess(null)
     try {
-      await api(`/abc-scheduler/events/${encodeURIComponent(event.event_id)}/attendance`, {
+      await api(`/abc-scheduler/events/${encodeURIComponent(event.event_id)}/status`, {
         method: 'PUT',
         body: JSON.stringify({
-          club_number: clubNumber, member_id: event.member_id, attended_status: value,
+          club_number: clubNumber,
+          status: value,
+          employee_id: event.employee_id,
         }),
       })
-      setCurrentAttended(value)
-      setActionSuccess(`Marked as ${value}.`)
+      setCurrentStatus(value)
+      setActionSuccess(`Status set to ${value}.`)
       if (onMutated) onMutated()
     } catch (e) {
-      setActionError(e.message || 'Failed to update attendance')
+      setActionError(e.message || 'Failed to set status')
     } finally {
       setActionPending(null)
     }
   }
 
   async function cancelEvent() {
-    const ok = window.confirm(`Cancel "${event.event_name || 'this event'}"? This removes it from ABC for all members.`)
+    const ok = window.confirm(`Delete "${event.event_name || 'this event'}" from the ABC calendar? To keep it on the calendar but mark it cancelled, use the Cancel (charge / no charge) buttons instead.`)
     if (!ok) return
     setActionPending('cancel'); setActionError(null); setActionSuccess(null)
     try {
       await api(`/abc-scheduler/events/${encodeURIComponent(event.event_id)}?club_number=${encodeURIComponent(clubNumber)}`, {
         method: 'DELETE',
       })
-      setActionSuccess('Event canceled.')
+      setActionSuccess('Event deleted.')
       if (onMutated) onMutated()
       setTimeout(onClose, 600)
     } catch (e) {
-      setActionError(e.message || 'Failed to cancel event')
-    } finally {
-      setActionPending(null)
-    }
-  }
-
-  async function removeMember() {
-    if (!event.member_id) return
-    const name = [event.member_first_name, event.member_last_name].filter(Boolean).join(' ') || 'this member'
-    const ok = window.confirm(`Remove ${name} from this event? The event will remain for any other members.`)
-    if (!ok) return
-    setActionPending('remove'); setActionError(null); setActionSuccess(null)
-    try {
-      await api(`/abc-scheduler/events/${encodeURIComponent(event.event_id)}/members/${encodeURIComponent(event.member_id)}?club_number=${encodeURIComponent(clubNumber)}`, {
-        method: 'DELETE',
-      })
-      setActionSuccess('Member removed from event.')
-      if (onMutated) onMutated()
-      setTimeout(onClose, 600)
-    } catch (e) {
-      setActionError(e.message || 'Failed to remove member')
+      setActionError(e.message || 'Failed to delete event')
     } finally {
       setActionPending(null)
     }
@@ -112,31 +117,25 @@ function SessionBalanceModal({ event, clubNumber, onClose, onMutated }) {
     async function load() {
       setLoading(true); setError(null)
       try {
-        const qs = new URLSearchParams({
-          club_number: clubNumber, member_id: event.member_id, event_type_id: event.event_type_id || '',
-        }).toString()
-        const r = await api('/abc-scheduler/session-balance?' + qs)
-        if (!cancelled) setData(r)
+        const qs = new URLSearchParams({ club_number: clubNumber, member_id: event.member_id }).toString()
+        const r = await api('/abc-scheduler/session-total?' + qs)
+        if (!cancelled) setTotals(r)
       } catch (e) {
-        if (!cancelled) setError(e.message || 'Failed to load session balance')
+        if (!cancelled) setError(e.message || 'Failed to load session total')
       } finally {
         if (!cancelled) setLoading(false)
       }
     }
     if (event?.member_id) load()
+    else { setLoading(false) }
     return () => { cancelled = true }
   }, [event, clubNumber])
-
-  const summaries = data?.serviceSummaries || []
-  const matched = event?.event_type_id
-    ? summaries.filter(s => s.eventId === event.event_type_id || s.serviceName?.toLowerCase().includes((event.event_name || '').toLowerCase()))
-    : summaries
 
   const clientName = [event.member_first_name, event.member_last_name].filter(Boolean).join(' ') || '—'
   const trainerName = [event.employee_first_name, event.employee_last_name].filter(Boolean).join(' ') || '—'
   const parsed = parseLocalTimestamp(event.event_timestamp_local)
   const timeStr = parsed ? fmtTime12(parsed.hour, parsed.min) : ''
-  const badge = statusInfo(event.status, event.attended_status)
+  const badge = statusInfo(currentStatus)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
@@ -162,90 +161,52 @@ function SessionBalanceModal({ event, clubNumber, onClose, onMutated }) {
             <span className="text-xs text-text-muted">Status</span>
             <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${badge.badge}`}>{badge.label}</span>
           </div>
-          {event.training_level && (
-            <div className="flex items-center justify-between bg-bg rounded-lg px-3 py-2">
-              <span className="text-xs text-text-muted">Training Level</span>
-              <span className="text-sm text-text-primary">{event.training_level}</span>
-            </div>
-          )}
+          <div className="flex items-center justify-between bg-bg rounded-lg px-3 py-2">
+            <span className="text-xs text-text-muted">Sessions remaining</span>
+            <span className="text-sm font-semibold text-text-primary">
+              {loading ? '…' : error ? '—' : (totals?.available ?? 0)}
+            </span>
+          </div>
+          {error && <p className="text-[11px] text-red-600 px-1">{error}</p>}
         </div>
 
-        <div className="border-t border-border pt-3">
-          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Session Balance</p>
-          {loading && <p className="text-xs text-text-muted">Loading from ABC…</p>}
-          {error && <p className="text-xs text-red-600">{error}</p>}
-          {!loading && !error && matched.length === 0 && (
-            <p className="text-xs text-text-muted">No matching service purchase found.</p>
-          )}
-          {!loading && !error && matched.map((s, i) => (
-            <div key={i} className="bg-bg rounded-lg p-3 mb-2 text-xs">
-              <div className="flex items-center justify-between mb-1">
-                <span className="font-semibold text-text-primary">{s.serviceName}</span>
-                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${parseInt(s.available || 0) > 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                  {s.available || 0} left
-                </span>
-              </div>
-              <div className="grid grid-cols-4 gap-2 text-[11px] text-text-muted">
-                <span><span className="text-text-primary font-medium">{s.purchased}</span> purchased</span>
-                <span><span className="text-text-primary font-medium">{s.scheduled}</span> scheduled</span>
-                <span><span className="text-text-primary font-medium">{s.available}</span> available</span>
-                <span><span className="text-text-primary font-medium">{s.unscheduled}</span> unscheduled</span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Attendance + cancel actions */}
-        <div className="border-t border-border pt-3 mt-3 space-y-3">
+        <div className="border-t border-border pt-3 space-y-3">
           {(actionError || actionSuccess) && (
             <div className={`rounded-lg px-3 py-2 text-xs ${actionError ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-green-50 border border-green-200 text-green-700'}`}>
               {actionError || actionSuccess}
             </div>
           )}
 
-          {event.member_id && (
-            <div>
-              <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Attendance</p>
-              <div className="flex flex-wrap gap-1.5">
-                {ATTENDANCE_OPTIONS.map(opt => {
-                  const isCurrent = currentAttended === opt.value
-                  const isPending = actionPending === 'attendance:' + opt.value
-                  return (
-                    <button
-                      key={opt.value}
-                      onClick={() => markAttendance(opt.value)}
-                      disabled={!!actionPending || isCurrent}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-50 ${isCurrent ? 'bg-bg border-border text-text-muted' : opt.cls}`}
-                      title={isCurrent ? 'Already set' : ''}
-                    >
-                      {isPending ? '…' : (isCurrent ? `✓ ${opt.label}` : opt.label)}
-                    </button>
-                  )
-                })}
-              </div>
+          <div>
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Event Status</p>
+            <div className="flex flex-wrap gap-1.5">
+              {EVENT_STATUS_OPTIONS.map(opt => {
+                const isCurrent = (currentStatus || '').toLowerCase() === opt.value.toLowerCase()
+                const isPending = actionPending === 'status:' + opt.value
+                return (
+                  <button
+                    key={opt.value}
+                    onClick={() => setStatus(opt.value)}
+                    disabled={!!actionPending || isCurrent}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-50 ${isCurrent ? 'bg-bg border-border text-text-muted' : opt.cls}`}
+                    title={isCurrent ? 'Already set' : ''}
+                  >
+                    {isPending ? '…' : (isCurrent ? `✓ ${opt.label}` : opt.label)}
+                  </button>
+                )
+              })}
             </div>
-          )}
+          </div>
 
           <div>
             <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Manage Event</p>
-            <div className="flex flex-wrap gap-1.5">
-              {event.member_id && (
-                <button
-                  onClick={removeMember}
-                  disabled={!!actionPending}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text-muted hover:text-text-primary hover:bg-bg disabled:opacity-50"
-                >
-                  {actionPending === 'remove' ? '…' : 'Remove this member'}
-                </button>
-              )}
-              <button
-                onClick={cancelEvent}
-                disabled={!!actionPending}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-200 text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50"
-              >
-                {actionPending === 'cancel' ? 'Canceling…' : 'Cancel event'}
-              </button>
-            </div>
+            <button
+              onClick={cancelEvent}
+              disabled={!!actionPending}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-200 text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50"
+            >
+              {actionPending === 'cancel' ? 'Deleting…' : 'Delete event'}
+            </button>
           </div>
         </div>
       </div>
@@ -254,484 +215,266 @@ function SessionBalanceModal({ event, clubNumber, onClose, onMutated }) {
 }
 
 // ---------------------------------------------------------------------------
-// Book Event modal — POSTs a new event to /abc-scheduler/events. The ABC
-// payload shape is a best guess based on the GET response (eventTypeId +
-// eventTimestamp + duration + employeeId + members[]); backend passes the
-// body through unchanged so this is iterable without redeploys.
+// Book Event modal — strict order: trainer, then client, then event type,
+// then time. The client list is scoped to the chosen trainer's own roster
+// (ABC serviceEmployeeId on the recurring service).
 // ---------------------------------------------------------------------------
-function BookEventModal({ club, defaultDate, onClose, onCreated }) {
-  const [eventTypes, setEventTypes] = useState([])
-  const [employees, setEmployees] = useState([])
-  const [memberQuery, setMemberQuery] = useState('')
-  const [memberResults, setMemberResults] = useState([])
-  const [selectedMember, setSelectedMember] = useState(null)
-  const [memberSearchPending, setMemberSearchPending] = useState(false)
+function BookEventModal({ club, defaultDate, defaultTime, defaultTrainerId, onClose, onCreated }) {
+  const [trainers, setTrainers] = useState([])
+  const [trainersLoading, setTrainersLoading] = useState(true)
+  const [employeeId, setEmployeeId] = useState(defaultTrainerId && defaultTrainerId !== 'all' ? defaultTrainerId : '')
 
+  const [clients, setClients] = useState([])
+  const [clientsLoading, setClientsLoading] = useState(false)
+  const [clientQuery, setClientQuery] = useState('')
+  const [selectedMember, setSelectedMember] = useState(null)
+
+  const [eventTypes, setEventTypes] = useState([])
   const [eventTypeId, setEventTypeId] = useState('')
-  const [employeeId, setEmployeeId] = useState('')
+
   const [date, setDate] = useState(() => toISODate(defaultDate || new Date()))
   const [time, setTime] = useState(() => {
+    if (defaultTime) return defaultTime
     const now = new Date()
     const hh = String(Math.max(DAY_START_HOUR, Math.min(DAY_END_HOUR - 1, now.getHours()))).padStart(2, '0')
     const mm = now.getMinutes() < 30 ? '00' : '30'
     return `${hh}:${mm}`
   })
-  const [duration, setDuration] = useState(60)
-  const [allowUnfunded, setAllowUnfunded] = useState(false)
-  const [trainingLevels, setTrainingLevels] = useState([])
-  const [trainingLevelId, setTrainingLevelId] = useState('')
-  const [trainingLevelManual, setTrainingLevelManual] = useState('')
-  const [trainingLevelsLoading, setTrainingLevelsLoading] = useState(false)
-  const [rawSample, setRawSample] = useState(null)
-  const [rawSampleLoading, setRawSampleLoading] = useState(false)
-  const [rawSampleError, setRawSampleError] = useState(null)
-  const [abcDetail, setAbcDetail] = useState(null)
-  const [abcDetailLoading, setAbcDetailLoading] = useState(false)
 
-  // Look at the cache first; if no useful levelId surfaces, hit ABC directly.
-  async function loadLevelDiscovery() {
-    if (!eventTypeId) return
-    setRawSampleLoading(true); setRawSampleError(null); setRawSample(null); setAbcDetail(null)
-    try {
-      const r = await api(`/abc-scheduler/event-types/${encodeURIComponent(eventTypeId)}/raw-sample?club_number=${encodeURIComponent(club.clubNumber)}`)
-      setRawSample(r.sample || null)
-      const cachedLevelId = r.sample?.raw?.eventTrainingLevel?.levelId
-        || r.sample?.raw?.eventTrainingLevel?.id
-      if (!cachedLevelId) {
-        // Cache had nothing useful — ask ABC directly.
-        setAbcDetailLoading(true)
-        try {
-          const abc = await api(`/abc-scheduler/event-types/${encodeURIComponent(eventTypeId)}/abc-detail?club_number=${encodeURIComponent(club.clubNumber)}`)
-          setAbcDetail(abc)
-        } catch (e2) {
-          setAbcDetail({ error: e2.message || 'ABC discovery failed' })
-        } finally {
-          setAbcDetailLoading(false)
-        }
-      }
-    } catch (e) {
-      setRawSampleError(e.message || 'Failed to fetch sample')
-    } finally {
-      setRawSampleLoading(false)
-    }
-  }
-
-  // Extract a likely levelId + levelName from either source.
-  const cachedLevelId = rawSample?.raw?.eventTrainingLevel?.levelId
-    || rawSample?.raw?.eventTrainingLevel?.id
-    || null
-  const cachedLevelName = rawSample?.raw?.eventTrainingLevel?.levelName
-    || rawSample?.raw?.eventTrainingLevel?.name
-    || null
-
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
-  const [success, setSuccess] = useState(null)
   const [submitError, setSubmitError] = useState(null)
-  const [debugResponse, setDebugResponse] = useState(null)
+  const [success, setSuccess] = useState(null)
 
-  // Load event types + employees on open
+  // Trainers (PT department only)
   useEffect(() => {
     let cancelled = false
     async function load() {
-      setLoading(true); setError(null)
+      setTrainersLoading(true)
       try {
-        const [et, emp] = await Promise.all([
-          api(`/abc-scheduler/event-types?club_number=${encodeURIComponent(club.clubNumber)}`),
-          api(`/abc-scheduler/employees?club_number=${encodeURIComponent(club.clubNumber)}`),
-        ])
-        if (cancelled) return
-        setEventTypes(et.event_types || [])
-        setEmployees(emp.employees || [])
-        if ((et.event_types || []).length > 0) {
-          setEventTypeId(et.event_types[0].event_type_id)
-          if (et.event_types[0].default_duration_minutes) {
-            setDuration(et.event_types[0].default_duration_minutes)
-          }
-        }
-      } catch (e) {
-        if (!cancelled) setError(e.message || 'Failed to load picker data')
+        const r = await api(`/abc-scheduler/trainers?club_number=${encodeURIComponent(club.clubNumber)}`)
+        if (!cancelled) setTrainers(r.trainers || [])
+      } catch (_) {
+        if (!cancelled) setTrainers([])
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) setTrainersLoading(false)
       }
     }
     load()
     return () => { cancelled = true }
   }, [club.clubNumber])
 
-  // Member search — debounced
+  // Event types
   useEffect(() => {
-    if (!memberQuery || memberQuery.trim().length < 2) {
-      setMemberResults([])
-      return
-    }
-    const q = memberQuery.trim()
-    setMemberSearchPending(true)
-    const t = setTimeout(async () => {
-      try {
-        const r = await api(`/abc-scheduler/members/search?club_number=${encodeURIComponent(club.clubNumber)}&q=${encodeURIComponent(q)}`)
-        setMemberResults(r.members || [])
-      } catch (_) {
-        setMemberResults([])
-      } finally {
-        setMemberSearchPending(false)
-      }
-    }, 280)
-    return () => clearTimeout(t)
-  }, [memberQuery, club.clubNumber])
-
-  // Training levels — refetch when event type changes
-  useEffect(() => {
-    if (!eventTypeId) {
-      setTrainingLevels([])
-      setTrainingLevelId('')
-      return
-    }
     let cancelled = false
     async function load() {
-      setTrainingLevelsLoading(true)
       try {
-        const r = await api(`/abc-scheduler/training-levels?club_number=${encodeURIComponent(club.clubNumber)}&event_type_id=${encodeURIComponent(eventTypeId)}`)
-        if (cancelled) return
-        const levels = r.training_levels || []
-        setTrainingLevels(levels)
-        // Default to most-observed (already sorted) so the common case is one click.
-        setTrainingLevelId(levels[0]?.level_id || '')
+        const r = await api(`/abc-scheduler/event-types?club_number=${encodeURIComponent(club.clubNumber)}`)
+        if (!cancelled) setEventTypes((r.event_types || []).filter(t => (t.category || 'Appointment') === 'Appointment'))
       } catch (_) {
-        if (!cancelled) { setTrainingLevels([]); setTrainingLevelId('') }
-      } finally {
-        if (!cancelled) setTrainingLevelsLoading(false)
+        if (!cancelled) setEventTypes([])
       }
     }
     load()
     return () => { cancelled = true }
-  }, [eventTypeId, club.clubNumber])
+  }, [club.clubNumber])
 
-  const selectedType = eventTypes.find(t => t.event_type_id === eventTypeId)
+  // Clients for the chosen trainer. Reset the picked client when the trainer
+  // changes so you can never submit a client who isn't on that roster.
+  useEffect(() => {
+    let cancelled = false
+    setSelectedMember(null)
+    setClientQuery('')
+    if (!employeeId) { setClients([]); return }
+    async function load() {
+      setClientsLoading(true)
+      try {
+        const r = await api(`/abc-scheduler/trainers/${encodeURIComponent(employeeId)}/clients?club_number=${encodeURIComponent(club.clubNumber)}`)
+        if (!cancelled) setClients(r.clients || [])
+      } catch (_) {
+        if (!cancelled) setClients([])
+      } finally {
+        if (!cancelled) setClientsLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [employeeId, club.clubNumber])
+
+  const filteredClients = useMemo(() => {
+    const term = clientQuery.trim().toLowerCase()
+    if (!term) return clients
+    return clients.filter(c => (c.member_name || '').toLowerCase().includes(term))
+  }, [clients, clientQuery])
 
   async function submit() {
-    setSubmitError(null); setSuccess(null); setDebugResponse(null)
-    if (!eventTypeId) { setSubmitError('Pick an event type'); return }
+    setSubmitError(null); setSuccess(null)
     if (!employeeId) { setSubmitError('Pick a trainer'); return }
-    if (!selectedMember) { setSubmitError('Pick a member'); return }
+    if (!selectedMember) { setSubmitError('Pick a client'); return }
+    if (!eventTypeId) { setSubmitError('Pick an event type'); return }
     if (!date || !time) { setSubmitError('Pick a date and time'); return }
 
-    // ABC POST /calendars/events body shape — locked in 2026-05-12 by
-    // iterative discovery (see git log of this file for the trail).
-    // Confirmed required + accepted fields (echoed by ABC on success):
-    //   eventTypeId, employeeId, memberId, levelId, startTime, allowUnfunded
-    // Notes:
-    //   - startTime format: "yyyy-MM-dd HH:mm:ss" (space, NOT ISO 'T')
-    //   - Field names DIFFER from what GET returns:
-    //       GET response                →  POST request
-    //       eventTimestamp                 startTime
-    //       eventTrainingLevel.levelId  →  levelId (flat top-level)
-    //   - Duration is NOT accepted — ABC uses the event type's configured
-    //     default duration. None of our duration field variants ever
-    //     appeared in ABC's echo, yet bookings still succeed.
-    //   - The portal modal's Duration picker is UI-only; not sent.
-    const finalLevelId = (trainingLevelManual && trainingLevelManual.trim()) || trainingLevelId
+    // ABC POST /calendars/events body. startTime is "yyyy-MM-dd HH:mm:ss"
+    // (space, not ISO 'T'). Duration is not accepted — ABC uses the event
+    // type's configured default. levelId and allowUnfunded are filled in
+    // server-side so this form never has to ask.
     const body = {
-      club_number: club.clubNumber, // stripped by backend before forwarding
+      club_number: club.clubNumber,
       eventTypeId,
       employeeId,
       memberId: selectedMember.member_id,
       startTime: `${date} ${time}:00`,
-      allowUnfunded,
     }
-    if (finalLevelId) body.levelId = finalLevelId
 
     setSubmitting(true)
     try {
-      const r = await api('/abc-scheduler/events', {
-        method: 'POST',
-        body: JSON.stringify(body),
-      })
-      setSuccess('Event created.')
-
-      // Extract new eventId from the success response and pull it into our
-      // local cache so the calendar view shows it without waiting for the
-      // next ghl-sync run. Surface whatever happened in the debug response
-      // so we can see why an event might not appear on the calendar.
+      const r = await api('/abc-scheduler/events', { method: 'POST', body: JSON.stringify(body) })
+      const code = r?.status?.messageCode
+      if (code && code !== 'API-CAL-EVT-0000') {
+        setSubmitError(r?.status?.message || 'ABC rejected the booking')
+        return
+      }
+      setSuccess('Event booked.')
       const newEventId = r?.result?.links?.[0]?.href?.split('/').filter(Boolean).pop()
-      let refresh = null
       if (newEventId) {
         try {
-          refresh = await api(`/abc-scheduler/events/${encodeURIComponent(newEventId)}/refresh-from-abc?club_number=${encodeURIComponent(club.clubNumber)}&near_date=${encodeURIComponent(date)}`, {
-            method: 'POST',
-          })
-        } catch (err) {
-          refresh = { error: err.message || 'refresh-from-abc threw' }
-        }
-      } else {
-        refresh = { error: 'No eventId extracted from POST response' }
+          await api(`/abc-scheduler/events/${encodeURIComponent(newEventId)}/refresh-from-abc?club_number=${encodeURIComponent(club.clubNumber)}&near_date=${encodeURIComponent(date)}`, { method: 'POST' })
+        } catch (_) { /* the next sync will pick it up */ }
       }
-      setDebugResponse({ sent: body, received: r, refresh })
       if (onCreated) onCreated()
     } catch (e) {
-      setSubmitError(e.message || 'Failed to create event')
-      // Show what we shipped so the user can compare against ABC's echo.
-      setDebugResponse({ sent: body, error: e.message })
+      setSubmitError(e.message || 'Failed to book event')
     } finally {
       setSubmitting(false)
     }
   }
 
+  const stepNum = (n, done) => (
+    <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold mr-2 ${done ? 'bg-green-100 text-green-700' : 'bg-bg text-text-muted border border-border'}`}>{n}</span>
+  )
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-surface rounded-xl border border-border shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-border flex items-center justify-between sticky top-0 bg-surface z-10">
-          <div>
-            <h3 className="text-lg font-bold text-text-primary">Book event</h3>
-            <p className="text-xs text-text-muted">{club.name} (club #{club.clubNumber})</p>
-          </div>
+      <div className="bg-surface rounded-xl border border-border shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-3 border-t-0 border-b border-border flex items-center justify-between">
+          <h3 className="text-lg font-bold text-text-primary">Book event</h3>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
-          {loading && <div className="text-sm text-text-muted text-center py-6">Loading…</div>}
-          {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">{error}</div>}
+        <div className="px-5 py-4 space-y-4 overflow-y-auto">
+          {/* 1. Trainer */}
+          <label className="block">
+            <span className="block text-xs font-medium text-text-muted mb-1">{stepNum(1, !!employeeId)}Trainer</span>
+            <select
+              value={employeeId}
+              onChange={e => setEmployeeId(e.target.value)}
+              className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red"
+            >
+              <option value="">{trainersLoading ? 'Loading…' : '— select a trainer —'}</option>
+              {trainers.map(t => (
+                <option key={t.employee_id} value={t.employee_id}>{t.display_name}</option>
+              ))}
+            </select>
+          </label>
 
-          {!loading && !error && (
-            <>
-              {/* Event type */}
-              <label className="block">
-                <span className="block text-xs font-medium text-text-muted mb-1">Event type</span>
-                <select
-                  value={eventTypeId}
-                  onChange={e => {
-                    setEventTypeId(e.target.value)
-                    const t = eventTypes.find(t => t.event_type_id === e.target.value)
-                    if (t?.default_duration_minutes) setDuration(t.default_duration_minutes)
-                  }}
+          {/* 2. Client — only this trainer's roster */}
+          <label className="block">
+            <span className="block text-xs font-medium text-text-muted mb-1">{stepNum(2, !!selectedMember)}Client</span>
+            {!employeeId ? (
+              <p className="text-xs text-text-muted bg-bg border border-border rounded-lg px-3 py-2">Pick a trainer first.</p>
+            ) : selectedMember ? (
+              <div className="flex items-center justify-between bg-bg border border-border rounded-lg px-3 py-2">
+                <span className="text-sm font-medium text-text-primary">{selectedMember.member_name}</span>
+                <button onClick={() => setSelectedMember(null)} className="text-xs text-text-muted hover:text-wcs-red">change</button>
+              </div>
+            ) : (
+              <>
+                <input
+                  value={clientQuery}
+                  onChange={e => setClientQuery(e.target.value)}
+                  placeholder={clientsLoading ? 'Loading clients…' : `Search ${clients.length} assigned client${clients.length === 1 ? '' : 's'}…`}
                   className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red"
-                >
-                  <option value="">— select —</option>
-                  {eventTypes.map(t => (
-                    <option key={t.event_type_id} value={t.event_type_id}>
-                      {t.event_name} {t.category === 'Class' ? '(Class)' : ''} · {t.observed_count}× last 180d
-                    </option>
-                  ))}
-                </select>
-                {selectedType && (
-                  <span className="block text-[10px] text-text-muted mt-1">
-                    Category: {selectedType.category} · Default duration: {selectedType.default_duration_minutes || '—'} min
+                />
+                {!clientsLoading && clients.length === 0 && (
+                  <span className="text-[10px] text-text-muted mt-1 block">
+                    No clients are assigned to this trainer in ABC, and they have no sessions in the last 180 days.
                   </span>
                 )}
-              </label>
-
-              {/* Training level — always shown. Dropdown is populated from our
-                  cache of seen levels for this event type; manual override
-                  text input lets staff paste an ID when the cache is empty
-                  (new event type, or ABC never returned levelId in GET).   */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="block text-xs font-medium text-text-muted">Training level</span>
-                  <button
-                    type="button"
-                    onClick={loadLevelDiscovery}
-                    disabled={!eventTypeId || rawSampleLoading || abcDetailLoading}
-                    className="text-[10px] text-wcs-red hover:underline disabled:opacity-50"
-                    title="Cache + live ABC lookup to discover valid training levels"
-                  >
-                    {rawSampleLoading ? 'Searching cache…' : abcDetailLoading ? 'Querying ABC…' : 'Discover real levelId'}
-                  </button>
-                </div>
-                {trainingLevelsLoading ? (
-                  <div className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm text-text-muted">Loading…</div>
-                ) : trainingLevels.length > 0 ? (
-                  <select
-                    value={trainingLevelId}
-                    onChange={e => setTrainingLevelId(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red"
-                  >
-                    {trainingLevels.map(l => (
-                      <option key={l.level_id} value={l.level_id}>
-                        {l.level_name} · {l.observed_count}× last seen
-                      </option>
+                {filteredClients.length > 0 && (
+                  <div className="mt-1 border border-border rounded-lg max-h-44 overflow-y-auto">
+                    {filteredClients.map(c => (
+                      <button
+                        key={c.member_id}
+                        onClick={() => { setSelectedMember(c); setClientQuery('') }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-bg border-b border-border last:border-0"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-text-primary">{c.member_name}</span>
+                          {c.source === 'history' && (
+                            <span
+                              className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-bg border border-border text-text-muted"
+                              title="Not on this trainer's recurring-service roster — matched because they trained together in the last 180 days (covers paid-in-full clients)."
+                            >
+                              past client
+                            </span>
+                          )}
+                        </div>
+                        {c.services?.length > 0 && (
+                          <div className="text-[10px] text-text-muted">{[...new Set(c.services)].join(', ')}</div>
+                        )}
+                      </button>
                     ))}
-                  </select>
-                ) : (
-                  <div className="text-[11px] text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-2 py-1">
-                    No training levels cached for this event type. Paste one below if ABC requires it.
                   </div>
                 )}
-                <input
-                  type="text"
-                  value={trainingLevelManual}
-                  onChange={e => setTrainingLevelManual(e.target.value)}
-                  placeholder={trainingLevels.length > 0 ? 'Manual levelId override (optional)' : 'levelId (e.g. xzxxx…001)'}
-                  className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-xs font-mono focus:outline-none focus:border-wcs-red"
-                />
-                <p className="text-[10px] text-text-muted">
-                  Manual override wins if filled. ABC's POST expects a top-level <code>levelId</code> (confirmed 2026-05-12).
-                </p>
-                {rawSampleError && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-2 py-1 text-[11px]">
-                    {rawSampleError}
-                  </div>
-                )}
-                {cachedLevelId && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2 text-[11px]">
-                    <span className="text-green-900">
-                      Found a real levelId in cached events:{' '}
-                      <code className="font-mono">{cachedLevelId}</code>
-                      {cachedLevelName && <span className="text-green-800"> ({cachedLevelName})</span>}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setTrainingLevelManual(cachedLevelId)}
-                      className="px-2 py-1 rounded bg-wcs-red text-white text-[10px] font-semibold shrink-0"
-                    >
-                      Use this ID
-                    </button>
-                  </div>
-                )}
-                {rawSample && (
-                  <details className="bg-bg border border-border rounded-lg px-3 py-2 text-[11px]">
-                    <summary className="cursor-pointer text-text-muted font-medium">Most recent cached event raw JSON</summary>
-                    <pre className="mt-2 bg-surface border border-border rounded p-2 overflow-x-auto text-[10px] max-h-72">{JSON.stringify(rawSample, null, 2)}</pre>
-                  </details>
-                )}
-                {abcDetail && (
-                  <details open className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-[11px]">
-                    <summary className="cursor-pointer text-blue-900 font-medium">
-                      Live ABC response (path: <code>{abcDetail.matched_path || 'none matched'}</code>)
-                    </summary>
-                    {abcDetail.error && <div className="mt-1 text-red-700">{abcDetail.error}</div>}
-                    {abcDetail.attempts && (
-                      <div className="mt-1 text-[10px] text-blue-900">
-                        Tried: {abcDetail.attempts.map(a => `${a.path}=${a.status}`).join(' · ')}
-                      </div>
-                    )}
-                    {abcDetail.body && (
-                      <pre className="mt-2 bg-surface border border-blue-200 rounded p-2 overflow-x-auto text-[10px] max-h-72">{JSON.stringify(abcDetail.body, null, 2)}</pre>
-                    )}
-                    <p className="mt-1 text-[10px] text-blue-900">
-                      Look for a training-levels array in the body above. Copy the <code>levelId</code> (or <code>id</code>) of the level you want into the manual input.
-                    </p>
-                  </details>
-                )}
-              </div>
+              </>
+            )}
+          </label>
 
-              {/* Member search */}
-              <label className="block">
-                <span className="block text-xs font-medium text-text-muted mb-1">Member</span>
-                {selectedMember ? (
-                  <div className="flex items-center justify-between bg-bg border border-border rounded-lg px-3 py-2">
-                    <div>
-                      <div className="text-sm font-semibold text-text-primary">{selectedMember.first_name} {selectedMember.last_name}</div>
-                      <div className="text-[10px] text-text-muted">#{selectedMember.member_id} · {selectedMember.email || ''}</div>
-                    </div>
-                    <button onClick={() => { setSelectedMember(null); setMemberQuery('') }} className="text-xs text-wcs-red hover:underline">Change</button>
-                  </div>
-                ) : (
-                  <>
-                    <input
-                      type="text"
-                      value={memberQuery}
-                      onChange={e => setMemberQuery(e.target.value)}
-                      placeholder="Search by name, email, or barcode (min 2 chars)"
-                      className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red"
-                    />
-                    {memberSearchPending && <span className="text-[10px] text-text-muted mt-1 block">Searching…</span>}
-                    {memberResults.length > 0 && (
-                      <div className="mt-1 border border-border rounded-lg max-h-40 overflow-y-auto">
-                        {memberResults.map(m => (
-                          <button
-                            key={m.member_id}
-                            onClick={() => { setSelectedMember(m); setMemberQuery(''); setMemberResults([]) }}
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-bg border-b border-border last:border-0"
-                          >
-                            <div className="font-medium text-text-primary">{m.first_name} {m.last_name}</div>
-                            <div className="text-[10px] text-text-muted">{m.email || ''} · {m.barcode || ''}</div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-              </label>
+          {/* 3. Event type */}
+          <label className="block">
+            <span className="block text-xs font-medium text-text-muted mb-1">{stepNum(3, !!eventTypeId)}Event type</span>
+            <select
+              value={eventTypeId}
+              onChange={e => setEventTypeId(e.target.value)}
+              disabled={!selectedMember}
+              className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red disabled:opacity-50"
+            >
+              <option value="">— select —</option>
+              {eventTypes.map(t => (
+                <option key={t.event_type_id} value={t.event_type_id}>{t.event_name}</option>
+              ))}
+            </select>
+          </label>
 
-              {/* Trainer */}
-              <label className="block">
-                <span className="block text-xs font-medium text-text-muted mb-1">Trainer</span>
-                <select
-                  value={employeeId}
-                  onChange={e => setEmployeeId(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red"
-                >
-                  <option value="">— select —</option>
-                  {employees.map(emp => (
-                    <option key={emp.employee_id} value={emp.employee_id}>{emp.display_name}</option>
-                  ))}
-                </select>
-              </label>
+          {/* 4. Date + time */}
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="block text-xs font-medium text-text-muted mb-1">{stepNum(4, !!(date && time))}Date</span>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} disabled={!eventTypeId}
+                className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red disabled:opacity-50" />
+            </label>
+            <label className="block">
+              <span className="block text-xs font-medium text-text-muted mb-1">Time</span>
+              <input type="time" value={time} onChange={e => setTime(e.target.value)} step="900" disabled={!eventTypeId}
+                className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red disabled:opacity-50" />
+            </label>
+          </div>
 
-              {/* Date / time / duration */}
-              <div className="grid grid-cols-3 gap-2">
-                <label className="block">
-                  <span className="block text-xs font-medium text-text-muted mb-1">Date</span>
-                  <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red" />
-                </label>
-                <label className="block">
-                  <span className="block text-xs font-medium text-text-muted mb-1">Time</span>
-                  <input type="time" value={time} onChange={e => setTime(e.target.value)} step="900"
-                    className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red" />
-                </label>
-                <label className="block">
-                  <span className="block text-xs font-medium text-text-muted mb-1">Duration</span>
-                  <select value={duration} onChange={e => setDuration(parseInt(e.target.value, 10))}
-                    className="w-full px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-wcs-red">
-                    <option value={15}>15 min</option>
-                    <option value={30}>30 min</option>
-                    <option value={45}>45 min</option>
-                    <option value={60}>60 min</option>
-                    <option value={75}>75 min</option>
-                    <option value={90}>90 min</option>
-                  </select>
-                </label>
-              </div>
-
-              {/* Allow unfunded — book the session even with no funded sessions on file */}
-              <label className="flex items-start gap-2 text-xs text-text-primary cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={allowUnfunded}
-                  onChange={e => setAllowUnfunded(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 accent-wcs-red"
-                />
-                <span>
-                  <span className="font-semibold">Allow unfunded</span>
-                  <span className="block text-text-muted">Book even if the member has no funded PT sessions remaining.</span>
-                </span>
-              </label>
-
-              {submitError && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">{submitError}</div>}
-              {success && <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg px-3 py-2 text-sm">{success}</div>}
-
-              {debugResponse && (
-                <details className="bg-bg border border-border rounded-lg px-3 py-2 text-xs">
-                  <summary className="cursor-pointer text-text-muted font-medium">ABC response</summary>
-                  <pre className="mt-2 bg-surface border border-border rounded p-2 overflow-x-auto text-[10px]">{JSON.stringify(debugResponse, null, 2)}</pre>
-                </details>
-              )}
-            </>
-          )}
+          {submitError && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">{submitError}</div>}
+          {success && <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg px-3 py-2 text-sm">{success}</div>}
         </div>
 
-        <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2 sticky bottom-0 bg-surface">
+        <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2 bg-surface">
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-border text-xs text-text-muted hover:text-text-primary">
             {success ? 'Close' : 'Cancel'}
           </button>
           {!success && (
             <button
               onClick={submit}
-              disabled={submitting || loading}
+              disabled={submitting}
               className="px-4 py-1.5 rounded-lg bg-wcs-red text-white text-xs font-semibold disabled:opacity-60"
             >
               {submitting ? 'Booking…' : 'Book event'}
@@ -743,23 +486,23 @@ function BookEventModal({ club, defaultDate, onClose, onCreated }) {
   )
 }
 
-// Place overlapping events side-by-side within a day column.
-// Returns each event with { laneIndex, laneCount } so the render layer can size.
 export default function PtSchedulerView() {
   const [club, setClub] = useState(CLUB_NUMBERS[0])
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [events, setEvents] = useState([])
   const [sources, setSources] = useState(null)
-  const [allEmployees, setAllEmployees] = useState([])
+  const [trainerOptions, setTrainerOptions] = useState([])
   const [trainerFilter, setTrainerFilter] = useState('all')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [bookOpen, setBookOpen] = useState(false)
-  const [reloadKey, setReloadKey] = useState(0) // bump after a mutation to refetch
+  const [bookDefaults, setBookDefaults] = useState({ date: null, time: null })
+  const [reloadKey, setReloadKey] = useState(0)
+  const [moveBanner, setMoveBanner] = useState(null)
   const scrollRef = useRef(null)
+  const dragRef = useRef(null) // { event, grabOffsetMin }
 
-  // Fetch week's events whenever club, week, or reloadKey changes
   useEffect(() => {
     let cancelled = false
     async function load() {
@@ -785,52 +528,38 @@ export default function PtSchedulerView() {
     return () => { cancelled = true }
   }, [club, weekStart, reloadKey])
 
-  function refetchEvents() { setReloadKey(k => k + 1) }
+  const refetchEvents = useCallback(() => setReloadKey(k => k + 1), [])
 
-  // Fetch active employees for the club so the trainer filter shows ALL
-  // active staff (not just whoever happens to have an event this week).
+  // Trainer filter list — PT-department staff only.
   useEffect(() => {
     let cancelled = false
-    async function loadEmployees() {
+    async function loadTrainers() {
       try {
-        const r = await api(`/abc-scheduler/employees?club_number=${encodeURIComponent(club.clubNumber)}`)
-        if (!cancelled) setAllEmployees(r.employees || [])
+        const r = await api(`/abc-scheduler/trainers?club_number=${encodeURIComponent(club.clubNumber)}`)
+        if (!cancelled) setTrainerOptions(r.trainers || [])
       } catch (_) {
-        if (!cancelled) setAllEmployees([])
+        if (!cancelled) setTrainerOptions([])
       }
     }
-    loadEmployees()
+    loadTrainers()
     return () => { cancelled = true }
   }, [club])
 
-  // Auto-scroll the grid so 7 AM is visible on first render
+  // Reset the trainer filter when switching clubs — an employeeId from the
+  // previous club would silently match nothing.
+  useEffect(() => { setTrainerFilter('all') }, [club])
+
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 60
   }, [])
 
-  // Trainer list — merge the full active-employees roster (so trainers
-  // without events this week still appear) with anyone seen in this week's
-  // events (which keeps the dropdown functional if /employees is empty/down).
-  const trainers = useMemo(() => {
-    const byId = new Map()
-    for (const emp of allEmployees) {
-      if (!emp.employee_id) continue
-      byId.set(emp.employee_id, {
-        id: emp.employee_id,
-        name: emp.display_name || [emp.first_name, emp.last_name].filter(Boolean).join(' ') || 'Unknown',
-      })
-    }
-    for (const e of events) {
-      if (!e.employee_id || byId.has(e.employee_id)) continue
-      byId.set(e.employee_id, {
-        id: e.employee_id,
-        name: [e.employee_first_name, e.employee_last_name].filter(Boolean).join(' ') || 'Unknown',
-      })
-    }
-    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name))
-  }, [allEmployees, events])
+  const trainers = useMemo(
+    () => trainerOptions
+      .map(t => ({ id: t.employee_id, name: t.display_name }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [trainerOptions],
+  )
 
-  // Day-grouped, decorated events for rendering. Filtered by trainer.
   const eventsByDay = useMemo(() => {
     const buckets = {}
     for (let i = 0; i < 7; i++) buckets[toISODate(addDays(weekStart, i))] = []
@@ -849,20 +578,87 @@ export default function PtSchedulerView() {
         _trainerName: [e.employee_first_name, e.employee_last_name].filter(Boolean).join(' '),
       })
     }
-    // Lane layout per day
     for (const date of Object.keys(buckets)) {
       buckets[date] = layoutLanes(buckets[date])
     }
     return buckets
   }, [events, trainerFilter, weekStart])
 
-  // Now-line: only show if today is in the visible week
+  function openBooking(date, time) {
+    setBookDefaults({ date: date || null, time: time || null })
+    setBookOpen(true)
+  }
+
+  // Click an empty patch of a day column -> start a booking at that slot.
+  function handleColumnClick(e, dayDate) {
+    if (e.target.closest('[data-event-card]')) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const { hhmm } = yToTime(e.clientY - rect.top)
+    openBooking(dayDate, hhmm)
+  }
+
+  // --- drag to move -------------------------------------------------------
+  function handleDragStart(e, evt) {
+    const rect = e.currentTarget.getBoundingClientRect()
+    dragRef.current = { event: evt, grabOffsetMin: (e.clientY - rect.top) / PX_PER_MINUTE }
+    e.dataTransfer.effectAllowed = 'move'
+    // Firefox needs data set for a drag to start at all.
+    try { e.dataTransfer.setData('text/plain', evt.event_id) } catch (_) { /* ignore */ }
+  }
+
+  async function handleDrop(e, dayDate) {
+    e.preventDefault()
+    const drag = dragRef.current
+    dragRef.current = null
+    if (!drag) return
+    const evt = drag.event
+    const rect = e.currentTarget.getBoundingClientRect()
+    const { hhmm } = yToTime((e.clientY - rect.top) - drag.grabOffsetMin * PX_PER_MINUTE)
+    const newDate = toISODate(dayDate)
+
+    const parsed = parseLocalTimestamp(evt.event_timestamp_local)
+    const oldTime = parsed ? `${String(parsed.hour).padStart(2, '0')}:${String(parsed.min).padStart(2, '0')}` : ''
+    if (parsed && parsed.date === newDate && oldTime === hhmm) return
+
+    if (!evt.event_type_id || !evt.employee_id || !evt.member_id) {
+      setMoveBanner({ error: true, text: 'That event is missing a type, trainer, or client in our cache, so it cannot be re-booked.' })
+      return
+    }
+
+    const client = [evt.member_first_name, evt.member_last_name].filter(Boolean).join(' ') || 'this client'
+    const ok = window.confirm(
+      `Move ${client}'s ${evt.event_name || 'session'} to ${newDate} at ${hhmm}?\n\n` +
+      'ABC has no reschedule API, so this books a NEW event at the new time and then cancels the old one. ' +
+      'The event ID will change.',
+    )
+    if (!ok) return
+
+    setMoveBanner({ error: false, text: 'Moving…' })
+    try {
+      const r = await api(`/abc-scheduler/events/${encodeURIComponent(evt.event_id)}/move`, {
+        method: 'POST',
+        body: JSON.stringify({
+          club_number: club.clubNumber,
+          startTime: `${newDate} ${hhmm}:00`,
+          eventTypeId: evt.event_type_id,
+          employeeId: evt.employee_id,
+          memberId: evt.member_id,
+        }),
+      })
+      setMoveBanner(r.warning
+        ? { error: true, text: r.warning }
+        : { error: false, text: `Moved to ${newDate} at ${hhmm}.` })
+      refetchEvents()
+    } catch (err) {
+      setMoveBanner({ error: true, text: err.message || 'Move failed — the original event was left alone.' })
+    }
+  }
+
   const now = new Date()
   const todayISO = toISODate(now)
   const nowMin = (now.getHours() - DAY_START_HOUR) * 60 + now.getMinutes()
   const nowInGrid = nowMin >= 0 && nowMin <= (DAY_END_HOUR - DAY_START_HOUR) * 60
 
-  // Header label e.g. "May 11 – May 17, 2026"
   const weekEnd = addDays(weekStart, 6)
   const sameMonth = weekStart.getMonth() === weekEnd.getMonth()
   const sameYear = weekStart.getFullYear() === weekEnd.getFullYear()
@@ -875,12 +671,11 @@ export default function PtSchedulerView() {
   return (
     <div className="space-y-3">
       <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-2 text-xs text-yellow-800">
-        <span className="font-semibold">Experimental — write access live.</span> Booking, attendance, and cancellation hit the real ABC. Test changes will affect production club data.
+        <span className="font-semibold">Writes go straight to ABC.</span> Booking, status changes, moves, and deletions all affect production club data.
       </div>
 
       {/* Toolbar */}
       <div className="bg-surface border border-border rounded-xl p-3 flex flex-wrap items-center gap-3">
-        {/* Week nav */}
         <div className="flex items-center gap-1">
           <button onClick={() => setWeekStart(startOfWeek(new Date()))}
             className="px-3 py-1.5 rounded-lg bg-bg border border-border text-xs font-medium text-text-primary hover:bg-surface">
@@ -898,21 +693,18 @@ export default function PtSchedulerView() {
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          {/* Book event */}
           <button
-            onClick={() => setBookOpen(true)}
+            onClick={() => openBooking(null, null)}
             className="px-3 py-1.5 rounded-lg bg-wcs-red text-white text-xs font-semibold hover:bg-wcs-red-hover"
           >
             + Book event
           </button>
-          {/* Location */}
           <select value={club.slug} onChange={e => {
             const c = CLUB_NUMBERS.find(x => x.slug === e.target.value)
             if (c) setClub(c)
           }} className="px-3 py-1.5 bg-bg border border-border rounded-lg text-xs text-text-primary">
             {CLUB_NUMBERS.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
           </select>
-          {/* Trainer */}
           <select value={trainerFilter} onChange={e => setTrainerFilter(e.target.value)}
             className="px-3 py-1.5 bg-bg border border-border rounded-lg text-xs text-text-primary min-w-[160px]">
             <option value="all">All Trainers ({trainers.length})</option>
@@ -922,10 +714,15 @@ export default function PtSchedulerView() {
       </div>
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">{error}</div>}
+      {moveBanner && (
+        <div className={`rounded-xl px-4 py-2 text-xs flex items-center justify-between ${moveBanner.error ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-green-50 border border-green-200 text-green-700'}`}>
+          <span>{moveBanner.text}</span>
+          <button onClick={() => setMoveBanner(null)} className="opacity-60 hover:opacity-100">✕</button>
+        </div>
+      )}
 
       {/* Calendar grid */}
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
-        {/* Day-of-week header (sticky) */}
         <div className="grid border-b border-border" style={{ gridTemplateColumns: '56px repeat(7, 1fr)' }}>
           <div className="border-r border-border" />
           {Array.from({ length: 7 }, (_, i) => {
@@ -940,10 +737,8 @@ export default function PtSchedulerView() {
           })}
         </div>
 
-        {/* Scrollable time grid */}
         <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
           <div className="grid relative" style={{ gridTemplateColumns: '56px repeat(7, 1fr)', height: `${GRID_HEIGHT_PX}px` }}>
-            {/* Hour labels column */}
             <div className="border-r border-border relative">
               {Array.from({ length: DAY_END_HOUR - DAY_START_HOUR }, (_, i) => {
                 const h = DAY_START_HOUR + i
@@ -956,23 +751,26 @@ export default function PtSchedulerView() {
               })}
             </div>
 
-            {/* Day columns */}
             {Array.from({ length: 7 }, (_, dayIdx) => {
               const dayDate = addDays(weekStart, dayIdx)
               const dayISO = toISODate(dayDate)
               const dayEvents = eventsByDay[dayISO] || []
               const isToday = dayISO === todayISO
               return (
-                <div key={dayIdx} className={`relative border-r last:border-r-0 border-border ${isToday ? 'bg-wcs-red/[0.02]' : ''}`}>
-                  {/* Hour gridlines */}
+                <div
+                  key={dayIdx}
+                  className={`relative border-r last:border-r-0 border-border cursor-copy ${isToday ? 'bg-wcs-red/[0.02]' : ''}`}
+                  onClick={e => handleColumnClick(e, dayDate)}
+                  onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
+                  onDrop={e => handleDrop(e, dayDate)}
+                  title="Click an empty slot to book"
+                >
                   {Array.from({ length: DAY_END_HOUR - DAY_START_HOUR }, (_, i) => (
-                    <div key={i} className="absolute left-0 right-0 border-b border-border/40" style={{ top: `${i * 60}px`, height: '60px' }}>
-                      {/* Half-hour line */}
+                    <div key={i} className="absolute left-0 right-0 border-b border-border/40 pointer-events-none" style={{ top: `${i * 60}px`, height: '60px' }}>
                       <div className="absolute left-0 right-0 border-b border-dashed border-border/20" style={{ top: '30px' }} />
                     </div>
                   ))}
 
-                  {/* Now-line */}
                   {isToday && nowInGrid && (
                     <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: `${nowMin}px` }}>
                       <div className="h-0.5 bg-wcs-red" />
@@ -980,31 +778,36 @@ export default function PtSchedulerView() {
                     </div>
                   )}
 
-                  {/* Events */}
                   {dayEvents.map(e => {
                     const top = e._startMin * PX_PER_MINUTE
                     const height = Math.max(20, (e._endMin - e._startMin) * PX_PER_MINUTE)
                     const widthPct = 100 / (e._laneCount || 1)
                     const leftPct = (e._laneIndex || 0) * widthPct
-                    const info = statusInfo(e.status, e.attended_status)
+                    const info = statusInfo(e.status)
                     const client = [e.member_first_name, e.member_last_name].filter(Boolean).join(' ') || '—'
                     return (
-                      <button
+                      <div
                         key={e.event_id}
-                        onClick={() => setSelectedEvent(e)}
-                        className={`absolute z-10 rounded-md border-l-2 text-left px-1.5 py-1 overflow-hidden text-[10px] leading-tight hover:shadow-md hover:z-30 transition-shadow ${info.card}`}
+                        data-event-card
+                        draggable
+                        onDragStart={ev => handleDragStart(ev, e)}
+                        onClick={ev => { ev.stopPropagation(); setSelectedEvent(e) }}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={ev => { if (ev.key === 'Enter') { ev.stopPropagation(); setSelectedEvent(e) } }}
+                        className={`absolute z-10 rounded-md border-l-2 text-left px-1.5 py-1 overflow-hidden text-[10px] leading-tight cursor-grab active:cursor-grabbing hover:shadow-md hover:z-30 transition-shadow ${info.card}`}
                         style={{
                           top: `${top}px`,
                           height: `${height}px`,
                           left: `calc(${leftPct}% + 2px)`,
                           width: `calc(${widthPct}% - 4px)`,
                         }}
-                        title={`${client} · ${e.event_name} · ${e._trainerName}`}
+                        title={`${client} · ${e.event_name} · ${e._trainerName} — drag to move`}
                       >
                         <div className="font-semibold truncate">{client}</div>
                         {height >= 28 && <div className="opacity-70 truncate">{e.event_name}</div>}
                         {height >= 44 && trainerFilter === 'all' && <div className="opacity-60 truncate">{e._trainerName}</div>}
-                      </button>
+                      </div>
                     )
                   })}
                 </div>
@@ -1014,19 +817,15 @@ export default function PtSchedulerView() {
         </div>
       </div>
 
-      {/* Footer summary */}
       <div className="text-[11px] text-text-muted px-1 flex items-center gap-3 flex-wrap">
         <span>{loading ? 'Loading…' : `${events.length} event${events.length === 1 ? '' : 's'} this week`}</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-300" /> Scheduled</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-300" /> Pending</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-300" /> Completed</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-300" /> No Show</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-orange-300" /> Canceled</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-orange-300" /> Canceled (charge)</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-gray-300" /> Canceled (no charge)</span>
+        <span className="ml-auto">Click an empty slot to book · drag an event to move it</span>
       </div>
 
-      {/* Data source diagnostic — shows which ABC status filter actually
-          returns events. If everything is 0, ABC isn't returning anything
-          for this club/date range; if one row has http != 200, that's the
-          error to act on. */}
       {sources && (
         <details className="text-[11px] text-text-muted px-1">
           <summary className="cursor-pointer select-none">
@@ -1048,7 +847,7 @@ export default function PtSchedulerView() {
       )}
 
       {selectedEvent && (
-        <SessionBalanceModal
+        <EventDetailModal
           event={selectedEvent}
           clubNumber={club.clubNumber}
           onClose={() => setSelectedEvent(null)}
@@ -1059,7 +858,9 @@ export default function PtSchedulerView() {
       {bookOpen && (
         <BookEventModal
           club={club}
-          defaultDate={weekStart}
+          defaultDate={bookDefaults.date || weekStart}
+          defaultTime={bookDefaults.time}
+          defaultTrainerId={trainerFilter}
           onClose={() => setBookOpen(false)}
           onCreated={refetchEvents}
         />
