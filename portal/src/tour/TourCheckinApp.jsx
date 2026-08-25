@@ -291,29 +291,10 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
-  // Trial days. Only offered when the kiosk linked an ABC profile to this
-  // check-in; a card raised from a GHL survey has nothing to extend.
+  // How long a Custom Pass runs for. Picking a number does NOT write anything:
+  // the pass goes to ABC as part of Save & complete tour, so staff make one
+  // decision and press one button rather than remembering a second step.
   const [days, setDays] = useState('10')
-  const [givingDays, setGivingDays] = useState(false)
-  const [daysResult, setDaysResult] = useState(null)
-  const [daysError, setDaysError] = useState('')
-
-  async function giveDays() {
-    const n = Number(days)
-    if (!Number.isInteger(n) || n < 1 || n > 90) {
-      setDaysError('Enter between 1 and 90 days.')
-      return
-    }
-    setGivingDays(true); setDaysError(''); setDaysResult(null)
-    try {
-      const r = await publicTour.giveTrialDays(token, intake.id, n)
-      setDaysResult(r)
-    } catch (e) {
-      setDaysError(e.message || 'Could not update ABC.')
-    } finally {
-      setGivingDays(false)
-    }
-  }
 
   useEffect(() => {
     publicTour.employees(token).then(r => setEmployees(r.employees || [])).catch(() => {})
@@ -327,6 +308,17 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
   async function save() {
     setSaving(true); setError('')
     try {
+      // Write the pass BEFORE completing: saving deletes the row, so a failure
+      // afterwards would leave no way back to this person.
+      if (outcome === CUSTOM_PASS) {
+        const n = Number(days)
+        if (!Number.isInteger(n) || n < 1 || n > 90) {
+          setError('Enter between 1 and 90 days for the pass.')
+          setSaving(false)
+          return
+        }
+        await publicTour.giveTrialDays(token, intake.id, n)
+      }
       await publicTour.saveOutcome(token, intake.id, { tour_member: tourMember, outcome, notes, status: 'completed' })
       // Show the success animation briefly, then close + refresh the queue.
       setSaved(true)
@@ -396,39 +388,25 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
 
           {outcome === CUSTOM_PASS && (
             <div className="mt-3 rounded-xl border border-gray-200 p-3">
-              {daysResult ? (
-                <p className="text-sm text-green-700 font-medium">
-                  {daysResult.days} days granted — active through{' '}
-                  {daysResult.after.expirationDate}, {daysResult.after.visitsAllowed} visits.
-                </p>
-              ) : (
-                <>
-                  <p className="text-sm font-semibold text-gray-900 mb-2">How many days?</p>
-                  <div className="flex flex-wrap gap-2">
-                    {[3, 7, 10, 14, 30].map(d => (
-                      <button key={d} type="button" onClick={() => setDays(String(d))}
-                        className={`px-3 py-2 rounded-xl text-sm font-medium border transition-colors active:scale-95 ${
-                          days === String(d) ? 'bg-red-600 text-white border-red-600'
-                          : 'bg-white text-gray-700 border-gray-300'}`}>
-                        {d}
-                      </button>
-                    ))}
-                    <input value={days}
-                      onChange={e => setDays(e.target.value.replace(/\D+/g, '').slice(0, 2))}
-                      inputMode="numeric" aria-label="Number of pass days"
-                      className="w-20 px-3 py-2 rounded-xl border border-gray-300 text-sm" />
-                    <button type="button" onClick={giveDays} disabled={givingDays}
-                      className="px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold disabled:opacity-50">
-                      {givingDays ? 'Updating…' : 'Give days'}
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Writes the expiration and visit allowance to ABC, and flags the front
-                    desk until 3 days after it ends.
-                  </p>
-                </>
-              )}
-              {daysError && <p className="text-sm text-red-600 mt-2">{daysError}</p>}
+              <p className="text-sm font-semibold text-gray-900 mb-2">How many days?</p>
+              <div className="flex flex-wrap gap-2">
+                {[3, 7, 10, 14, 30].map(d => (
+                  <button key={d} type="button" onClick={() => setDays(String(d))}
+                    className={`px-3 py-2 rounded-xl text-sm font-medium border transition-colors active:scale-95 ${
+                      days === String(d) ? 'bg-red-600 text-white border-red-600'
+                      : 'bg-white text-gray-700 border-gray-300'}`}>
+                    {d}
+                  </button>
+                ))}
+                <input value={days}
+                  onChange={e => setDays(e.target.value.replace(/\D+/g, '').slice(0, 2))}
+                  inputMode="numeric" aria-label="Number of pass days"
+                  className="w-20 px-3 py-2 rounded-xl border border-gray-300 text-sm" />
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Applied to ABC when you save. The front desk is flagged until 3 days
+                after it ends.
+              </p>
             </div>
           )}
         </div>
