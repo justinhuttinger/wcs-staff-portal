@@ -42,6 +42,14 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
   const [billing, setBilling] = useState(adset ? adset.billing_event : 'IMPRESSIONS')
   const [bidStrategy, setBidStrategy] = useState(adset ? (adset.bid_strategy || 'LOWEST_COST_WITHOUT_CAP') : 'LOWEST_COST_WITHOUT_CAP')
   const [bidAmount, setBidAmount] = useState(adset && adset.bid_amount ? budgetToDollars(adset.bid_amount) : '')
+  // Lead and call ad sets promote a Page, and Meta compares it against the Page
+  // on every ad's creative — a mismatch is rejected with "Pages Don't Match".
+  // This used to be hardcoded to the first Page in the account, so every lead ad
+  // set promoted whichever Page happened to sort first regardless of location.
+  const [promotedPageId, setPromotedPageId] = useState(
+    (adset && adset.promoted_object && adset.promoted_object.page_id) ||
+    ((account.pages || [])[0] || {}).id || ''
+  )
   const [conversionEvent, setConversionEvent] = useState(
     (adset && adset.promoted_object && adset.promoted_object.custom_event_type) || 'LEAD'
   )
@@ -204,8 +212,7 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
       return { pixel_id: account.pixel_id, custom_event_type: conversionEvent }
     }
     if (goal === 'LEAD_GENERATION' || goal === 'QUALITY_CALL') {
-      const page = (account.pages || [])[0]
-      return page ? { page_id: page.id } : undefined
+      return promotedPageId ? { page_id: promotedPageId } : undefined
     }
     return undefined
   }
@@ -215,6 +222,9 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
     const hasPinnedLocations = !!(extraTargeting.geo_locations && (extraTargeting.geo_locations.custom_locations || []).length)
     if (!geo.length && !hasPinnedLocations) return setError('Add at least one location to target')
     if (budgetType !== 'none' && !(Number(budget) > 0)) return setError('Set a budget above $0')
+    if ((goal === 'LEAD_GENERATION' || goal === 'QUALITY_CALL') && !promotedPageId) {
+      return setError('Pick the Facebook Page this ad set promotes')
+    }
 
     setSaving(true)
     setError('')
@@ -248,6 +258,10 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
   }
 
   const needsPixel = goal === 'OFFSITE_CONVERSIONS'
+  const needsPage = goal === 'LEAD_GENERATION' || goal === 'QUALITY_CALL'
+  // Meta will not let promoted_object be changed after the fact, so an existing
+  // ad set can only be told, not fixed.
+  const pageLocked = !!(adset && adset.promoted_object && adset.promoted_object.page_id)
   const passthroughNotes = describePassthrough(extraTargeting)
 
   return (
@@ -277,6 +291,27 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
           <Select value={billing} onChange={e => setBilling(e.target.value)} options={BILLING_EVENTS} />
         </Field>
       </div>
+
+      {needsPage && (
+        <Field
+          label="Facebook Page"
+          required
+          hint={pageLocked
+            ? 'Meta locks the promoted Page once an ad set exists. To change it, build a new ad set.'
+            : 'Must be the same Page your ads use, and the Page that owns the Instant Form.'}
+          error={!promotedPageId ? 'A lead ad set has to promote a Page.' : undefined}
+        >
+          <Select
+            value={promotedPageId}
+            onChange={e => setPromotedPageId(e.target.value)}
+            disabled={pageLocked}
+            options={[
+              { value: '', label: 'Select a Page…' },
+              ...(account.pages || []).map(p => ({ value: p.id, label: p.name })),
+            ]}
+          />
+        </Field>
+      )}
 
       {needsPixel && (
         <Field
