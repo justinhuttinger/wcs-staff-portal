@@ -288,6 +288,40 @@ router.get('/account', async (req, res) => {
   }
 })
 
+// GET /meta-ads-manager/pages/:id/lead-forms — the Instant Forms that live on
+// a Page. Lead ads point at one of these instead of a website.
+//
+// leadgen_forms is one of the few edges the system-user token cannot always
+// read directly: Meta wants the Page's own token. Ask for the ad-account token
+// first (it works when the token carries leads_retrieval) and fall back to
+// minting the Page token, so a permission gap costs one extra call, not the
+// feature.
+router.get('/pages/:id/lead-forms', async (req, res) => {
+  const { token } = getConfig()
+  const pageId = req.params.id
+  const params = { fields: 'id,name,status,created_time,leadgen_form_type', limit: 200 }
+
+  async function load(useToken) {
+    const data = await metaFetch(`/${pageId}/leadgen_forms`, params, useToken)
+    return (data.data || [])
+      // Archived and draft forms cannot take a new ad; showing them is a trap.
+      .filter(f => f.status === 'ACTIVE')
+      .map(f => ({ id: f.id, name: f.name, created_time: f.created_time }))
+  }
+
+  try {
+    res.json({ data: await load(token) })
+  } catch (err) {
+    try {
+      const page = await metaFetch(`/${pageId}`, { fields: 'access_token' }, token)
+      if (!page.access_token) throw err
+      res.json({ data: await load(page.access_token) })
+    } catch (retryErr) {
+      fail(res, retryErr, 'lead forms list')
+    }
+  }
+})
+
 // ---------------------------------------------------------------------------
 // Cascading pause
 // ---------------------------------------------------------------------------
@@ -763,11 +797,16 @@ function buildObjectStorySpec(variant, shared) {
   const page_id = variant.page_id || shared.page_id
   if (!page_id) throw new Error('A Facebook Page is required')
 
-  const link = variant.link || shared.link
+  // An Instant Form ad has no website to send anyone to: the form opens inside
+  // Facebook. Meta still insists on a `link`, so the convention is the Page's
+  // own URL, and the form id rides in the call to action alongside it.
+  const leadFormId = variant.lead_gen_form_id || shared.lead_gen_form_id
+  const link = variant.link || shared.link || (leadFormId ? `https://facebook.com/${page_id}` : '')
   if (!link) throw new Error('A destination link is required')
 
-  const ctaType = variant.call_to_action || shared.call_to_action || 'LEARN_MORE'
+  const ctaType = variant.call_to_action || shared.call_to_action || (leadFormId ? 'SIGN_UP' : 'LEARN_MORE')
   const call_to_action = { type: ctaType, value: { link } }
+  if (leadFormId) call_to_action.value.lead_gen_form_id = String(leadFormId)
 
   const spec = { page_id }
   const igId = variant.instagram_user_id || shared.instagram_user_id
@@ -874,7 +913,7 @@ router.post('/ads', async (req, res) => {
     const { token, accountId } = getConfig()
     const {
       adset_id, page_id, instagram_user_id, link, call_to_action,
-      status, advantage_plus, variants,
+      status, advantage_plus, variants, lead_gen_form_id,
     } = req.body || {}
 
     if (!adset_id) return res.status(400).json({ error: 'Ad set is required' })
@@ -888,7 +927,10 @@ router.post('/ads', async (req, res) => {
       return res.status(400).json({ error: 'Every variant needs a name' })
     }
 
-    const shared = { adset_id, page_id, instagram_user_id, link, call_to_action, status, advantage_plus }
+    const shared = {
+      adset_id, page_id, instagram_user_id, link, call_to_action,
+      status, advantage_plus, lead_gen_form_id,
+    }
     const results = []
     for (const variant of variants) {
       try {

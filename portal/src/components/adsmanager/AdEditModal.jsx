@@ -3,6 +3,7 @@ import { updateAdsManagerAd, previewAdsManagerVariant } from '../../lib/api'
 import { CALL_TO_ACTIONS, COPY_LIMITS } from './constants'
 import { Modal, Field, TextInput, TextArea, Select, Button, CharCount, ErrorBanner } from './ui'
 import { MediaPicker, useVideoProcessing, assetToVariantFields } from './MediaPicker'
+import { isInstantFormAdset, useLeadForms, LeadFormPicker } from './LeadFormPicker'
 
 // Pulls the flat editable fields back out of whichever creative shape Meta
 // returned — link_data for image ads, video_data for video ads.
@@ -18,6 +19,10 @@ function readCreative(ad) {
     description: link.description || link.link_description || '',
     link: link.link || (link.call_to_action && link.call_to_action.value && link.call_to_action.value.link) || '',
     call_to_action: (link.call_to_action && link.call_to_action.type) || 'LEARN_MORE',
+    // Lead ads carry their Instant Form here. Meta creatives are immutable, so
+    // an edit rebuilds the creative — losing this would quietly turn a working
+    // lead ad into one that sends people to a Facebook Page.
+    lead_gen_form_id: (link.call_to_action && link.call_to_action.value && link.call_to_action.value.lead_gen_form_id) || '',
     asset: isVideo
       ? { kind: 'video', video_id: link.video_id, thumbnail_url: link.image_url || (ad.creative && ad.creative.thumbnail_url), ready: true, name: 'Current video' }
       : link.image_hash
@@ -29,9 +34,12 @@ function readCreative(ad) {
   }
 }
 
-export default function AdEditModal({ ad, account, onClose, onSaved }) {
+export default function AdEditModal({ ad, adset, account, onClose, onSaved }) {
   const initial = readCreative(ad)
   const pages = account.pages || []
+  // Trust the creative first: an ad that already carries a form is a lead ad
+  // whatever the ad set says.
+  const instantForm = !!initial.lead_gen_form_id || isInstantFormAdset(adset)
 
   const [name, setName] = useState(ad.name || '')
   const [status, setStatus] = useState(ad.status || 'PAUSED')
@@ -42,6 +50,7 @@ export default function AdEditModal({ ad, account, onClose, onSaved }) {
   const [description, setDescription] = useState(initial.description)
   const [link, setLink] = useState(initial.link)
   const [cta, setCta] = useState(initial.call_to_action)
+  const [leadFormId, setLeadFormId] = useState(initial.lead_gen_form_id)
   const [asset, setAsset] = useState(initial.asset)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -50,6 +59,7 @@ export default function AdEditModal({ ad, account, onClose, onSaved }) {
   useVideoProcessing(asset ? [asset] : [], ready => setAsset(ready))
 
   const page = pages.find(p => p.id === pageId) || null
+  const leadForms = useLeadForms(pageId, instantForm && editCreative)
 
   function creativePayload() {
     return {
@@ -58,7 +68,8 @@ export default function AdEditModal({ ad, account, onClose, onSaved }) {
       message,
       headline,
       description,
-      link: link.trim(),
+      link: instantForm ? undefined : link.trim(),
+      lead_gen_form_id: instantForm ? leadFormId : undefined,
       call_to_action: cta,
       ...assetToVariantFields(asset),
     }
@@ -78,7 +89,8 @@ export default function AdEditModal({ ad, account, onClose, onSaved }) {
   async function submit() {
     if (!name.trim()) return setError('Give the ad a name')
     if (editCreative) {
-      if (!link.trim()) return setError('A destination link is required')
+      if (instantForm && !leadFormId) return setError('Choose the Instant form this ad opens')
+      if (!instantForm && !link.trim()) return setError('A destination link is required')
       if (!asset) return setError('Pick an image or video')
       if (asset.kind === 'video' && !asset.ready) return setError('The video is still processing')
     }
@@ -181,9 +193,20 @@ export default function AdEditModal({ ad, account, onClose, onSaved }) {
           </div>
 
           <div className="grid sm:grid-cols-2 gap-3">
-            <Field label="Destination link" required>
-              <TextInput value={link} onChange={e => setLink(e.target.value)} placeholder="https://…" />
-            </Field>
+            {instantForm ? (
+              <LeadFormPicker
+                pageId={pageId}
+                forms={leadForms.forms}
+                loading={leadForms.loading}
+                error={leadForms.error}
+                value={leadFormId}
+                onChange={setLeadFormId}
+              />
+            ) : (
+              <Field label="Destination link" required>
+                <TextInput value={link} onChange={e => setLink(e.target.value)} placeholder="https://…" />
+              </Field>
+            )}
             <Field label="Call to action">
               <Select value={cta} onChange={e => setCta(e.target.value)} options={CALL_TO_ACTIONS} />
             </Field>

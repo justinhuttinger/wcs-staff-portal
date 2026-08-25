@@ -580,6 +580,7 @@ export default function AdsManagerView({ onBack }) {
       {modal && modal.type === 'editAd' && (
         <AdEditModal
           ad={modal.ad}
+          adset={selectedAdset}
           account={account}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); loadAds(selectedAdset.id) }}

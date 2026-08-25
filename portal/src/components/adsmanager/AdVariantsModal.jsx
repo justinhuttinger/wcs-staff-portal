@@ -1,8 +1,9 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { createAdsManagerAds, previewAdsManagerVariant } from '../../lib/api'
 import { CALL_TO_ACTIONS, COPY_LIMITS } from './constants'
 import { Modal, Field, TextInput, TextArea, Select, Button, CharCount, ErrorBanner } from './ui'
 import { MediaPicker, uploadFiles, useVideoProcessing, assetToVariantFields } from './MediaPicker'
+import { isInstantFormAdset, useLeadForms, LeadFormPicker } from './LeadFormPicker'
 
 let variantSeq = 0
 function blankVariant(overrides = {}) {
@@ -34,9 +35,14 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
   const pages = account.pages || []
   const defaultPage = pages[0] || null
 
+  // An Instant Form ad set has nowhere to send people — the form opens in
+  // Facebook — so the builder swaps the destination URL for a form picker.
+  const instantForm = isInstantFormAdset(adset)
+
   const [pageId, setPageId] = useState(defaultPage ? defaultPage.id : '')
   const [link, setLink] = useState('')
-  const [cta, setCta] = useState('LEARN_MORE')
+  const [leadFormId, setLeadFormId] = useState('')
+  const [cta, setCta] = useState(instantForm ? 'SIGN_UP' : 'LEARN_MORE')
   const [status, setStatus] = useState('PAUSED')
   const [advantagePlus, setAdvantagePlus] = useState(false)
   const [variants, setVariants] = useState([blankVariant()])
@@ -48,6 +54,14 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
   const bulkInputRef = useRef(null)
 
   const page = pages.find(p => p.id === pageId) || null
+  const leadForms = useLeadForms(pageId, instantForm)
+
+  // One form on the Page is the common case; make the obvious choice for them.
+  useEffect(() => {
+    if (instantForm && !leadFormId && leadForms.forms.length === 1) {
+      setLeadFormId(leadForms.forms[0].id)
+    }
+  }, [instantForm, leadFormId, leadForms.forms])
 
   // Patch a processed video back into whichever variant is holding it.
   useVideoProcessing(
@@ -121,7 +135,8 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
       adset_id: adset.id,
       page_id: pageId,
       instagram_user_id: page && page.instagram_id ? page.instagram_id : undefined,
-      link: link.trim(),
+      link: instantForm ? undefined : link.trim(),
+      lead_gen_form_id: instantForm ? leadFormId : undefined,
       call_to_action: cta,
       status,
       advantage_plus: advantagePlus,
@@ -150,7 +165,9 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
   const problems = useMemo(() => {
     const list = []
     if (!pageId) list.push('Pick a Facebook Page')
-    if (!link.trim()) list.push('Add a destination link')
+    if (instantForm) {
+      if (!leadFormId) list.push('Choose the Instant form this ad opens')
+    } else if (!link.trim()) list.push('Add a destination link')
     else if (!/^https?:\/\//i.test(link.trim())) list.push('The destination link needs to start with http:// or https://')
     variants.forEach((v, i) => {
       const label = v.name || `Variant ${i + 1}`
@@ -159,7 +176,7 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
       else if (v.asset.kind === 'video' && !v.asset.ready) list.push(`${label}: video is still processing`)
     })
     return list
-  }, [pageId, link, variants])
+  }, [pageId, link, leadFormId, instantForm, variants])
 
   async function submit() {
     if (problems.length) return
@@ -252,13 +269,24 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
             <Select value={cta} onChange={e => setCta(e.target.value)} options={CALL_TO_ACTIONS} />
           </Field>
         </div>
-        <Field label="Destination link" required hint="Where the ad sends people">
-          <TextInput
-            value={link}
-            onChange={e => setLink(e.target.value)}
-            placeholder="https://westcoaststrength.com/…"
+        {instantForm ? (
+          <LeadFormPicker
+            pageId={pageId}
+            forms={leadForms.forms}
+            loading={leadForms.loading}
+            error={leadForms.error}
+            value={leadFormId}
+            onChange={setLeadFormId}
           />
-        </Field>
+        ) : (
+          <Field label="Destination link" required hint="Where the ad sends people">
+            <TextInput
+              value={link}
+              onChange={e => setLink(e.target.value)}
+              placeholder="https://westcoaststrength.com/…"
+            />
+          </Field>
+        )}
         <div className="grid sm:grid-cols-2 gap-4">
           <Field label="Start as">
             <Select

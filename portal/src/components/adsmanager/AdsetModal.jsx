@@ -230,6 +230,10 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
         lifetime_budget: budgetType === 'lifetime' ? budget : undefined,
         targeting: buildTargeting(),
         promoted_object: buildPromotedObject(),
+        // Instant form leads deliver the form inside Facebook. Saying so on the
+        // ad set is what tells the ad builder to ask for a form instead of a
+        // destination URL.
+        destination_type: goal === 'LEAD_GENERATION' ? 'ON_AD' : undefined,
         start_time: toIso(startTime),
         end_time: toIso(endTime),
       }
