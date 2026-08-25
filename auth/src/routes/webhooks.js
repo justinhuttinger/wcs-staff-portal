@@ -319,7 +319,49 @@ router.post('/tour-intake', verifyWebhookSecret, async (req, res) => {
     pickKey(body, ['Member Profile Photo', 'photo_base64', 'photo', 'Photo', 'Profile Photo', 'profile_photo', 'image', 'Image'])
   )
 
+  // The kiosk fires this twice: once the moment somebody enters their name and
+  // contact info, so a card appears in the queue while they are still standing
+  // there filling the rest in, and again at the end when the photo exists. The
+  // second call carries the id from the first so it UPDATES that card rather
+  // than creating a duplicate.
+  const intakeId = pickKey(body, ['intake_id', 'intakeId'])
+
   try {
+    if (intakeId) {
+      // Only fields we actually received overwrite what is already there — the
+      // follow-up call must not blank out a name the first call established.
+      const patch = { raw: body }
+      if (name) patch.contact_name = name
+      if (email) patch.contact_email = email
+      if (phone) patch.contact_phone = phone
+      if (photo) patch.photo_base64 = photo
+      if (contactId) patch.ghl_contact_id = contactId
+
+      const { data, error } = await supabaseAdmin
+        .from('tour_intakes')
+        .update(patch)
+        .eq('id', intakeId)
+        // A staffer may already have completed and deleted the card while the
+        // member was finishing; updating a gone row must not resurrect it.
+        .eq('status', 'ready')
+        .select('id')
+        .maybeSingle()
+
+      if (error) {
+        console.error('[tour-intake] update failed:', error.message)
+        return res.status(500).json({ error: 'failed to update intake' })
+      }
+      if (!data) {
+        // Already handled at the desk. Not an error, and deliberately not
+        // re-inserted: a second card for somebody already dealt with is worse
+        // than no card.
+        return res.json({ success: true, id: intakeId, updated: false, reason: 'not_pending' })
+      }
+
+      // No push here — the card already exists and already chimed once.
+      return res.json({ success: true, id: data.id, updated: true })
+    }
+
     const { data, error } = await supabaseAdmin
       .from('tour_intakes')
       .insert({
