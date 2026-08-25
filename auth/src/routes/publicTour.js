@@ -68,7 +68,9 @@ function withAbcId(row) {
   return { ...rest, abc_member_id: (raw && (raw.abc_member_id || raw.abcMemberId)) || null }
 }
 
-const ALLOWED_OUTCOMES = ['Membership Sale', 'Started Trial', 'Started VIP Pass', 'Only Tour']
+// 'Custom Pass' also writes a pass to ABC (see the trial-days route); it is a
+// real outcome as far as saving and the outbound webhook are concerned.
+const ALLOWED_OUTCOMES = ['Membership Sale', 'Started Trial', 'Started VIP Pass', 'Only Tour', 'Custom Pass']
 
 // Resolve a token -> active config row (+ location). Returns null if not found.
 async function resolveToken(token) {
@@ -257,10 +259,7 @@ router.post('/:token/intake/:id/trial-days', async (req, res) => {
     const data = await r.json().catch(() => ({}))
 
     if (!r.ok) {
-      const message = data.error === 'not_a_prospect'
-        ? 'This is a full member, not a trial. Access changes have to be made at the front desk.'
-        : data.error || 'Could not update ABC.'
-      return res.status(r.status === 404 ? 400 : 502).json({ error: message })
+      return res.status(502).json({ error: data.error || 'Could not update ABC.' })
     }
 
     res.json(data)
