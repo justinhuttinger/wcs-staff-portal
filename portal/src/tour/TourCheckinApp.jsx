@@ -2,7 +2,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { publicTour } from '../lib/api'
 import { buildDayOneUrl } from '../lib/dayOnePrefill'
 
-const OUTCOMES = ['Membership Sale', 'Started Trial', 'Started VIP Pass', 'Only Tour']
+// 'Custom Pass' is not a plain outcome: choosing it reveals a day picker and
+// writes the pass to ABC. It sits in the same grid because that is where staff
+// already decide what happened, and a separate control above the outcome was
+// easy to miss.
+const CUSTOM_PASS = 'Custom Pass'
+const OUTCOMES = ['Membership Sale', 'Started Trial', 'Started VIP Pass', 'Only Tour', CUSTOM_PASS]
 const REFRESH_MS = 2000   // poll fast so a new arrival shows within ~2s (only while the app is open)
 
 // Same per-location photo backgrounds as the mobile app (keyed by lowercase name).
@@ -369,63 +374,63 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
           </select>
         </div>
 
-        {intake.abc_member_id && (
-          <div className="rounded-xl border border-gray-200 p-3">
-            <label className="block text-sm font-semibold text-gray-900 mb-2">Give trial days</label>
-            {daysResult ? (
-              <p className="text-sm text-green-700 font-medium">
-                {daysResult.days} days granted — access through {daysResult.after.expirationDate},{' '}
-                {daysResult.after.visitsAllowed} visits.
-              </p>
-            ) : (
-              <>
-                <div className="flex flex-wrap gap-2">
-                  {[3, 7, 10, 14, 30].map(d => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => setDays(String(d))}
-                      className={`px-3 py-2 rounded-xl text-sm font-medium border transition-colors active:scale-95 ${
-                        days === String(d)
-                          ? 'bg-red-600 text-white border-red-600'
-                          : 'bg-white text-gray-700 border-gray-300'
-                      }`}>
-                      {d}
-                    </button>
-                  ))}
-                  <input
-                    value={days}
-                    onChange={e => setDays(e.target.value.replace(/\D+/g, '').slice(0, 2))}
-                    inputMode="numeric"
-                    aria-label="Number of trial days"
-                    className="w-20 px-3 py-2 rounded-xl border border-gray-300 text-sm" />
-                  <button
-                    type="button"
-                    onClick={giveDays}
-                    disabled={givingDays}
-                    className="px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold disabled:opacity-50">
-                    {givingDays ? 'Updating…' : 'Give days'}
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  Sets the expiration and the visit allowance to the same number, in ABC.
-                </p>
-              </>
-            )}
-            {daysError && <p className="text-sm text-red-600 mt-2">{daysError}</p>}
-          </div>
-        )}
-
         <div>
           <label className="block text-sm font-semibold text-gray-900 mb-2">Tour outcome</label>
           <div className="grid grid-cols-2 gap-2">
-            {OUTCOMES.map(o => (
-              <button key={o} onClick={() => setOutcome(o)}
-                className={`px-3 py-3 rounded-xl text-sm font-medium border transition-colors active:scale-95 ${outcome === o ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-700 border-gray-300'}`}>
-                {o}
-              </button>
-            ))}
+            {OUTCOMES.map(o => {
+              // Nothing to extend without a linked ABC profile, so the box is
+              // there but plainly unavailable rather than silently broken.
+              const disabled = o === CUSTOM_PASS && !intake.abc_member_id
+              return (
+                <button key={o} onClick={() => !disabled && setOutcome(o)} disabled={disabled}
+                  title={disabled ? 'No ABC profile linked to this check-in' : undefined}
+                  className={`px-3 py-3 rounded-xl text-sm font-medium border transition-colors active:scale-95 ${
+                    outcome === o ? 'bg-red-600 text-white border-red-600'
+                    : disabled ? 'bg-gray-50 text-gray-400 border-gray-200'
+                    : 'bg-white text-gray-700 border-gray-300'}`}>
+                  {o}
+                </button>
+              )
+            })}
           </div>
+
+          {outcome === CUSTOM_PASS && (
+            <div className="mt-3 rounded-xl border border-gray-200 p-3">
+              {daysResult ? (
+                <p className="text-sm text-green-700 font-medium">
+                  {daysResult.days} days granted — active through{' '}
+                  {daysResult.after.expirationDate}, {daysResult.after.visitsAllowed} visits.
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold text-gray-900 mb-2">How many days?</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[3, 7, 10, 14, 30].map(d => (
+                      <button key={d} type="button" onClick={() => setDays(String(d))}
+                        className={`px-3 py-2 rounded-xl text-sm font-medium border transition-colors active:scale-95 ${
+                          days === String(d) ? 'bg-red-600 text-white border-red-600'
+                          : 'bg-white text-gray-700 border-gray-300'}`}>
+                        {d}
+                      </button>
+                    ))}
+                    <input value={days}
+                      onChange={e => setDays(e.target.value.replace(/\D+/g, '').slice(0, 2))}
+                      inputMode="numeric" aria-label="Number of pass days"
+                      className="w-20 px-3 py-2 rounded-xl border border-gray-300 text-sm" />
+                    <button type="button" onClick={giveDays} disabled={givingDays}
+                      className="px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold disabled:opacity-50">
+                      {givingDays ? 'Updating…' : 'Give days'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Writes the expiration and visit allowance to ABC, and flags the front
+                    desk until 3 days after it ends.
+                  </p>
+                </>
+              )}
+              {daysError && <p className="text-sm text-red-600 mt-2">{daysError}</p>}
+            </div>
+          )}
         </div>
 
         {dayOneBaseUrl && (
