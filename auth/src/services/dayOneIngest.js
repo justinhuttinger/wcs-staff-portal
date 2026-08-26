@@ -124,6 +124,26 @@ async function ingestBooking(raw = {}) {
       `(got ${JSON.stringify(start)}); storing with today's date for the reconciler to correct`)
   }
 
+  // A webhook that could not tell us its appointment id has NO natural identity,
+  // so a re-fire would insert a second row. GHL retried this endpoint 6 seconds
+  // apart on the first live booking and produced exactly that.
+  //
+  // Fall back to (contact, date) as the identity. It is not as strong as an
+  // appointment id, but a member booking two Day Ones on the same day at the
+  // same club is not a real scenario, and a duplicate row is far worse than a
+  // merged one.
+  if (!stored && !appointmentId) {
+    const { data } = await supabaseAdmin
+      .from('day_one_appointments')
+      .select('*')
+      .eq('ghl_contact_id', contactId)
+      .eq('scheduled_date', scheduledDate)
+      .is('outcome_recorded_at', null)
+      .order('created_at', { ascending: true })
+      .limit(1)
+    stored = (data && data[0]) || null
+  }
+
   const row = {
     location_slug: loc.slug,
     ghl_appointment_id: appointmentId,
@@ -162,7 +182,9 @@ async function ingestBooking(raw = {}) {
   // reconciled against the calendar later.
   const q = appointmentId
     ? supabaseAdmin.from('day_one_appointments').upsert(row, { onConflict: 'ghl_appointment_id' }).select('id').single()
-    : supabaseAdmin.from('day_one_appointments').insert(row).select('id').single()
+    : stored
+      ? supabaseAdmin.from('day_one_appointments').update(row).eq('id', stored.id).select('id').single()
+      : supabaseAdmin.from('day_one_appointments').insert(row).select('id').single()
 
   const { data: saved, error } = await q
   if (error) {
