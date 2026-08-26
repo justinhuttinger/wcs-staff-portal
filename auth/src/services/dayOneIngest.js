@@ -25,7 +25,10 @@ const { supabaseAdmin } = require('./supabase')
 const { LOCATIONS, getLocationBySlug, getLocationById } = require('../config/ghlLocations')
 const { ghlFetch } = require('./ghlClient')
 const { getFieldId } = require('./ghlCustomFields')
-const { pacificDate, flattenWebhookBody, webhookLabels } = require('../lib/dayOneOutcomes')
+const {
+  pacificDate, flattenWebhookBody, webhookLabels, statusFromGhl, bookerFromEvent,
+} = require('../lib/dayOneOutcomes')
+const { getUsersById, CAL_VERSION } = require('../lib/ghlBooking')
 
 const COURIER_FIELD = 'contact.day_one_booking_team_member'
 
@@ -55,6 +58,52 @@ function resolveLocation(body) {
   const nestedName = body.location && typeof body.location === 'object'
     ? String(body.location.name || '').trim().toLowerCase() : ''
   return nestedName ? getLocationBySlug(nestedName) : null
+}
+
+// Ask GHL what this appointment actually is.
+//
+// WHY THE SERVER DOES THIS INSTEAD OF A GHL WORKFLOW
+// The alternative was a workflow with custom code doing
+// {{appointment.id}} -> GET the appointment -> GET /users/{id} -> return a name,
+// and then feeding that back through the webhook. That put an API token in
+// workflow code, needed maintaining per location, and still could not supply a
+// start time the merge fields refused to resolve.
+//
+// One GET here replaces all of it and gives MORE: the true start and end, the
+// assigned trainer, GHL's own dateAdded and dateUpdated, the live status (so a
+// cancellation lands immediately instead of waiting for the next reconcile), and
+// createdBy.userId for the staff-booked minority.
+//
+// The webhook then only has to carry what GHL cannot tell us: which club, which
+// contact, which appointment, and the booking team member from the courier field.
+//
+// Non-fatal by design. If this call fails the row is still stored from whatever
+// the payload carried, and the reconciler repairs it within 15 minutes.
+async function enrichFromGhl(loc, appointmentId) {
+  if (!appointmentId) return null
+  try {
+    const data = await ghlFetch(`/calendars/events/appointments/${appointmentId}`, loc.apiKey, {
+      version: CAL_VERSION,
+    })
+    const appt = data?.appointment || data
+    if (!appt || !appt.id) return null
+    const usersById = await getUsersById(loc).catch(() => ({}))
+    const trainer = usersById[appt.assignedUserId] || null
+    return {
+      startTime: appt.startTime || null,
+      endTime: appt.endTime || null,
+      dateAdded: appt.dateAdded || null,
+      dateUpdated: appt.dateUpdated || null,
+      status: statusFromGhl(appt.appointmentStatus),
+      calendarId: appt.calendarId || null,
+      trainerUserId: appt.assignedUserId || null,
+      trainerName: trainer ? trainer.name : null,
+      booker: bookerFromEvent(appt, usersById),
+    }
+  } catch (e) {
+    console.warn(`[dayOneIngest] could not fetch appointment ${appointmentId}: ${e.message}`)
+    return null
+  }
 }
 
 // Returns { ok, status, body } so the route stays a thin wrapper.
@@ -114,8 +163,12 @@ async function ingestBooking(raw = {}) {
   //
   // Rejecting here instead would trade the only unrecoverable field for the most
   // recoverable one.
+  // Authoritative appointment data, straight from GHL, before anything is
+  // derived from the payload.
+  const live = await enrichFromGhl(loc, appointmentId)
+
   const now = new Date().toISOString()
-  const parsedDate = pacificDate(start)
+  const parsedDate = pacificDate(live?.startTime || start)
   const scheduledDate = parsedDate || stored?.scheduled_date || pacificDate(now)
   const dateIsProvisional = !parsedDate && !stored?.scheduled_date
   if (dateIsProvisional) {
@@ -156,30 +209,40 @@ async function ingestBooking(raw = {}) {
     // name its appointment has no business erasing one we already have.
     ghl_appointment_id: appointmentId || stored?.ghl_appointment_id || null,
     ghl_contact_id: contactId,
-    ghl_calendar_id: pick(body, 'calendar_id', 'calendarId') || stored?.ghl_calendar_id || null,
+    ghl_calendar_id: live?.calendarId || pick(body, 'calendar_id', 'calendarId') || stored?.ghl_calendar_id || null,
     contact_name: name || stored?.contact_name || null,
     contact_email: pick(body, 'contact_email', 'contactEmail', 'email') || stored?.contact_email || null,
     contact_phone: pick(body, 'contact_phone', 'contactPhone', 'phone') || stored?.contact_phone || null,
     scheduled_date: scheduledDate,
-    scheduled_start: parsedDate ? new Date(start).toISOString() : (stored?.scheduled_start || null),
-    scheduled_end: end ? new Date(end).toISOString() : (stored?.scheduled_end || null),
-    booked_at: stored?.booked_at || now,
+    scheduled_start: live?.startTime
+      ? new Date(live.startTime).toISOString()
+      : (parsedDate ? new Date(start).toISOString() : (stored?.scheduled_start || null)),
+    scheduled_end: live?.endTime
+      ? new Date(live.endTime).toISOString()
+      : (end ? new Date(end).toISOString() : (stored?.scheduled_end || null)),
+    booked_at: (live?.dateAdded && new Date(live.dateAdded).toISOString()) || stored?.booked_at || now,
+    ghl_updated_at: (live?.dateUpdated && new Date(live.dateUpdated).toISOString()) || stored?.ghl_updated_at || null,
     // A credit carried over from the original booking outranks the courier.
     // Otherwise a webhook re-fire would hand the credit back to whoever rebooked,
     // and the reschedule link already exists so the carryover would never be
     // re-applied to correct it.
     booked_by_name: stored?.booked_by_source === 'reschedule_carryover'
       ? stored.booked_by_name
-      : (teamMember || stored?.booked_by_name || null),
+      : (teamMember || stored?.booked_by_name || live?.booker?.booked_by_name || null),
     booked_by_source: stored?.booked_by_source === 'reschedule_carryover'
       ? 'reschedule_carryover'
-      : (teamMember ? 'webhook' : (stored?.booked_by_source || null)),
-    trainer_name: pick(body, 'trainer_name', 'trainerName') || stored?.trainer_name || null,
-    trainer_ghl_user_id: pick(body, 'trainer_user_id', 'assigned_user_id', 'assignedUserId')
+      : (teamMember ? 'webhook'
+        : (stored?.booked_by_source || live?.booker?.booked_by_source || null)),
+    trainer_name: live?.trainerName || pick(body, 'trainer_name', 'trainerName') || stored?.trainer_name || null,
+    trainer_ghl_user_id: live?.trainerUserId
+      || pick(body, 'trainer_user_id', 'assigned_user_id', 'assignedUserId')
       || stored?.trainer_ghl_user_id || null,
     notes_for_trainer: pick(body, 'notes_for_trainer', 'notesForTrainer', 'notes')
       || stored?.notes_for_trainer || null,
-    status: stored?.status || 'scheduled',
+    // A modify/cancel firing of the workflow carries no status of its own, so
+    // take GHL's. This is what lets one workflow cover made, modified AND
+    // cancelled without waiting for the next reconcile pass.
+    status: live?.status || stored?.status || 'scheduled',
     outcome: stored?.outcome ?? null,
     pt_sale_type: stored?.pt_sale_type ?? null,
     why_no_sale: stored?.why_no_sale ?? null,
