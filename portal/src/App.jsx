@@ -24,7 +24,11 @@ import TourCheckinQueueView from './components/TourCheckinQueueView'
 import AdsManagerView from './components/AdsManagerView'
 import GlobalProgressBar from './components/GlobalProgressBar'
 import PortalNav from './components/PortalNav'
+import PinPicker from './components/PinPicker'
 import { getTheme, THEME_EVENT } from './lib/theme'
+import { getPinned, togglePin, PINNED_EVENT } from './lib/pinnedTabs'
+import { appsForLocation } from './lib/apps'
+import { roleAtLeast } from './lib/roles'
 import WhatsNew from './components/WhatsNew'
 import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout, setImpersonateId } from './lib/api'
 import { logEvent } from './lib/audit'
@@ -81,6 +85,8 @@ export default function App() {
   // Which column the board shows when no other view is open. The Press nav's
   // Apps and Other tabs are both "home", differing only in this.
   const [boardMode, setBoardMode] = useState('apps')
+  const [pinned, setPinnedState] = useState(getPinned)
+  const [showPinPicker, setShowPinPicker] = useState(false)
   const isElectron = !!window.wcsElectron
   const isAdmin = user?.staff?.role === 'admin'
   // corporate sees all clubs portal-wide (same as Drive/report gating)
@@ -98,6 +104,14 @@ export default function App() {
     const onChange = () => setThemeState(getTheme())
     window.addEventListener(THEME_EVENT, onChange)
     return () => window.removeEventListener(THEME_EVENT, onChange)
+  }, [])
+
+  // Pins can also change in another tab of the same browser; the event keeps
+  // this one honest without a reload.
+  useEffect(() => {
+    const onChange = () => setPinnedState(getPinned())
+    window.addEventListener(PINNED_EVENT, onChange)
+    return () => window.removeEventListener(PINNED_EVENT, onChange)
   }, [])
 
   // Admin can push a hard reload to every open tab via Admin Panel.
@@ -354,14 +368,83 @@ export default function App() {
     if (window.location.hash) window.location.hash = ''
   }
 
+  // Which view is open, named the way the pin catalog names it, so a pinned
+  // tab can light up when you are inside it.
+  const openViewKey =
+    showCalendar ? 'tool:calendar'
+    : showLeaderboard ? 'tool:leaderboard'
+    : showReporting ? 'tool:reporting'
+    : showDriveHub ? 'tool:drive'
+    : showMediaLibrary ? 'tool:media'
+    : showHR ? 'tool:hr'
+    : showHelpCenter ? 'tool:helpCenter'
+    : showTicketsBoard ? 'tool:ticketing'
+    : showTrainerAvail ? 'tool:trainerAvail'
+    : showCommunicationNotes ? 'tool:commNotes'
+    : showInventory ? 'tool:inventory'
+    : showForms ? 'tool:forms'
+    : showNps ? 'tool:nps'
+    : showMarketingTracker ? 'tool:marketingTracker'
+    : showTourCheckin ? 'tool:tourCheckin'
+    : showAdsManager ? 'tool:adsManager'
+    : null
+
   // Which Press nav tab is lit. Apps and Other are both "home" — they differ
   // only in which column of the board renders — so they fall out of boardMode.
+  // A view that is open but has no tab leaves activeTab null, which is what
+  // puts the Back chip in the nav — see the invariant in PortalNav.
   const activeTab =
     showReporting ? 'reporting'
     : showCalendar ? 'calendar'
     : showLeaderboard ? 'leaderboard'
     : isHome ? boardMode
-    : null   // a view opened from the Other board; no tab is current
+    : (openViewKey && pins.some(p => p.key === openViewKey)) ? openViewKey
+    : null
+
+  // What a Press user may pin, and what pinning it does.
+  //
+  // Apps come from lib/apps so a pinned app resolves to exactly the URL the
+  // Apps board would have used (the ABC kiosk shim, Milwaukie's Zoho swap).
+  // Custom tiles are deliberately absent — they are fetched inside ToolGrid,
+  // not here, so offering them would mean a second fetch and a second source
+  // of truth for what a tile is.
+  //
+  // Every Tool carries the same gate its board tile has. A pinned tab must
+  // never reach a view the user's own board would not have offered; the server
+  // gates the data too, but the tab should not be there in the first place.
+  const canMedia = (user?.visible_tools || []).includes('drive')
+  const PINNABLE = [
+    ...appsForLocation({ location, abcUrl }).map(t => ({
+      key: 'app:' + t.id, kind: 'app', label: t.label, desc: t.description, url: t.url,
+    })),
+    { key: 'tool:calendar', label: 'Calendar', desc: 'Tours & Day Ones', icon: 'calendar', open: () => setShowCalendar(true) },
+    { key: 'tool:leaderboard', label: 'Leaderboard', desc: 'Rankings', icon: 'leaderboard', open: () => setShowLeaderboard(true) },
+    { key: 'tool:reporting', label: 'Reporting', desc: 'Reports', icon: 'reporting', show: user?.staff?.role !== 'team_member', open: () => { window.location.hash = '#reporting'; setShowReporting(true) } },
+    { key: 'tool:drive', label: 'Shared Drive', desc: 'Documents', open: () => setShowDriveHub(true) },
+    { key: 'tool:media', label: 'Media Library', desc: 'Assets', show: canMedia, open: () => setShowMediaLibrary(true) },
+    { key: 'tool:hr', label: 'HR Docs', desc: 'Documents', show: roleAtLeast(user?.staff?.role, 'manager'), open: () => setShowHR(true) },
+    { key: 'tool:helpCenter', label: 'Help Center', desc: 'Guides', open: () => setShowHelpCenter(true) },
+    { key: 'tool:ticketing', label: 'Tickets', desc: 'Submit & Track', open: () => setShowTicketsBoard(true) },
+    { key: 'tool:trainerAvail', label: 'D1 Availability', desc: 'Trainers', open: () => setShowTrainerAvail(true) },
+    { key: 'tool:commNotes', label: 'Comm Notes', desc: 'Member notes', open: () => setShowCommunicationNotes(true) },
+    { key: 'tool:inventory', label: 'Inventory', desc: 'Stock', open: () => setShowInventory(true) },
+    { key: 'tool:forms', label: 'Forms', desc: 'Signups', open: () => setShowForms(true) },
+    { key: 'tool:nps', label: 'Feedback', desc: 'Member surveys', open: () => setShowNps(true) },
+    { key: 'tool:marketingTracker', label: 'Marketing', desc: 'Campaigns', icon: 'reporting', show: mAccess.tracker, open: () => setShowMarketingTracker(true) },
+    { key: 'tool:tourCheckin', label: 'Tour Queue', desc: 'Check-ins', show: isAdmin, open: () => setShowTourCheckin(true) },
+    { key: 'tool:adsManager', label: 'Ads Manager', desc: 'Meta', show: isAdmin, open: () => setShowAdsManager(true) },
+  ]
+    .map(item => (item.kind ? item : { ...item, kind: 'tool' }))
+    .filter(item => item.show !== false)
+
+  // Resolve saved keys to catalog entries, dropping any that no longer apply —
+  // a role change or a retired tool should quietly lose its tab, not crash.
+  // Tools get handleBackToPortal first so pinning behaves like a tab, not a
+  // stack: you land on the view, never underneath whatever was already open.
+  const pins = pinned
+    .map(key => PINNABLE.find(p => p.key === key))
+    .filter(Boolean)
+    .map(p => (p.kind === 'app' ? p : { ...p, open: () => { handleBackToPortal(); p.open() } }))
 
   // Tiles the Press nav already carries as tabs. The Other board omits them so
   // it is strictly "everything that is not on the bar and not an app".
@@ -403,6 +486,8 @@ export default function App() {
           active={activeTab}
           onSelect={selectTab}
           onBack={handleBackToPortal}
+          pins={pins}
+          onOpenPicker={() => setShowPinPicker(true)}
           onAdmin={() => { handleBackToPortal(); setShowAdmin(true) }}
           onSignOut={handleLogout}
           location={location}
@@ -500,7 +585,7 @@ export default function App() {
         <TourCheckinQueueView location={location} />
       ) : (
         <main className={`flex-1 flex items-start pt-1 pb-12${press ? ' press-single' : ''}`}>
-          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} cancelInApps={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onNps={() => setShowNps(true)} onTourCheckin={() => setShowTourCheckin(true)} onAdsManager={() => setShowAdsManager(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
+          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} cancelInApps={press} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onNps={() => setShowNps(true)} onTourCheckin={() => setShowTourCheckin(true)} onAdsManager={() => setShowAdsManager(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>
@@ -508,6 +593,15 @@ export default function App() {
       <p className="fixed bottom-2 right-3 text-[10px] font-medium text-white/80 bg-black/30 backdrop-blur-sm rounded px-2 py-0.5 select-none pointer-events-none">
         Portal v1.3.7{window.wcsElectron?.version ? ` · App v${window.wcsElectron.version}` : ''}
       </p>
+
+      {press && showPinPicker && (
+        <PinPicker
+          catalog={PINNABLE}
+          pinned={pinned}
+          onToggle={(key) => setPinnedState(togglePin(key))}
+          onClose={() => setShowPinPicker(false)}
+        />
+      )}
 
       {savePrompt && (
         <SaveCredentialToast
