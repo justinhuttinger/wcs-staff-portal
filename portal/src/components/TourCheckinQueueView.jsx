@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { tourAdmin, publicTour } from '../lib/api'
 import { buildDayOneUrl } from '../lib/dayOnePrefill'
+import VipReferral from '../tour/VipReferral'
+import { OUTCOMES, VIP_PASS, CUSTOM_PASS, PASS_DAYS, grantsAPass, passDaysFor } from '../tour/outcomes'
 
 // Native desktop rebuild of the front-desk Tour Check-In queue (the same flow
 // the iPad runs), rendered directly in the portal rather than embedded via an
@@ -8,7 +10,6 @@ import { buildDayOneUrl } from '../lib/dayOnePrefill'
 // endpoint; the queue itself is read/written through the token-gated public
 // tour API (the only queue API that exists).
 
-const OUTCOMES = ['Membership Sale', 'Started Trial', 'Started VIP Pass', 'Only Tour']
 const REFRESH_MS = 2000
 
 function capitalize(s) {
@@ -247,19 +248,28 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
   const [tourMember, setTourMember] = useState('')
   const [outcome, setOutcome] = useState(intake.outcome || '')
   const [notes, setNotes] = useState(intake.notes || '')
-  const [referrer, setReferrer] = useState(null) // { member_id, name } | null — VIP referrals
+  // How long a Custom Pass runs for. Picking a number writes nothing on its
+  // own: the pass goes to ABC as part of Save & complete tour, so staff make
+  // one decision and press one button.
+  const [days, setDays] = useState('10')
+
+  // Who sent them. Prefilled from GHL when the contact already knows, otherwise
+  // whatever staff enter. All three are optional.
+  const [referral, setReferral] = useState({
+    referred_by_full_name: '',
+    referred_by_abc_id: '',
+    vip_team_member: '',
+  })
   const [showDayOne, setShowDayOne] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
-  const isVip = outcome === 'Started VIP Pass'
+  const isVip = outcome === VIP_PASS
 
   useEffect(() => {
     publicTour.employees(token).then(r => setEmployees(r.employees || [])).catch(() => {})
   }, [token])
 
-  // The referring member only applies to a VIP Pass; drop it if the outcome changes.
-  useEffect(() => { if (!isVip) setReferrer(null) }, [isVip])
 
   const dayOneUrl = buildDayOneUrl(dayOneBaseUrl, {
     name: intake.contact_name, email: intake.contact_email,
@@ -269,10 +279,25 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
   async function save() {
     setSaving(true); setError('')
     try {
+      // Write the pass BEFORE completing: saving deletes the row, so a failure
+      // afterwards would leave no way back to this person.
+      let passDays = null
+      if (grantsAPass(outcome)) {
+        const { days: n, error: bad } = passDaysFor(outcome, days)
+        if (bad) { setError(bad); setSaving(false); return }
+        passDays = n
+        // The server resolves the ABC record itself when the card carries no id.
+        // A failure here stops the save: staff have just told somebody they have
+        // access, so completing the tour as though it worked would be a lie they
+        // find out about at the door.
+        await publicTour.giveTrialDays(token, intake.id, n)
+      }
+
       await publicTour.saveOutcome(token, intake.id, {
         tour_member: tourMember, outcome, notes, status: 'completed',
-        referring_member_id: referrer?.member_id || null,
-        referring_member_name: referrer?.name || null,
+        pass_days: passDays,
+        // Sent only on a VIP pass; the server writes back whatever is non-empty.
+        ...(isVip ? referral : {}),
       })
       setSaved(true)
       setTimeout(() => onSaved(), 1100)
@@ -331,10 +356,45 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
               </div>
 
               {isVip && (
-                <div>
-                  <label className="block text-sm font-semibold text-text-primary mb-2">Referring member</label>
-                  <ReferrerPicker value={referrer} onChange={setReferrer} />
-                  <p className="mt-1 text-xs text-text-muted">Who referred them? Search active members by name, phone, or email.</p>
+                <VipReferral
+                  token={token}
+                  intakeId={intake.id}
+                  value={referral}
+                  onChange={setReferral}
+                  // Same roster as Tour member, already loaded: one source, one
+                  // spelling, and no second round trip.
+                  employees={employees}
+                />
+              )}
+
+              {outcome in PASS_DAYS && (
+                <div className="rounded-xl border border-border p-3">
+                  <p className="text-sm font-semibold text-text-primary">
+                    {PASS_DAYS[outcome]} day pass
+                  </p>
+                </div>
+              )}
+
+              {outcome === CUSTOM_PASS && (
+                <div className="rounded-xl border border-border p-3">
+                  <p className="text-sm font-semibold text-text-primary mb-2">How many days?</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[3, 7, 10, 14, 30].map(d => (
+                      <button key={d} type="button" onClick={() => setDays(String(d))}
+                        className={`px-3 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                          days === String(d) ? 'bg-wcs-red text-white border-wcs-red'
+                          : 'bg-surface text-text-secondary border-border hover:border-text-muted'}`}>
+                        {d}
+                      </button>
+                    ))}
+                    <input value={days}
+                      onChange={e => setDays(e.target.value.replace(/\D+/g, '').slice(0, 2))}
+                      inputMode="numeric" aria-label="Number of pass days"
+                      className="w-20 px-3 py-2 rounded-xl border border-border bg-bg text-sm text-text-primary" />
+                  </div>
+                  {days && (
+                    <p className="text-sm font-semibold text-text-primary mt-2">{days} day pass</p>
+                  )}
                 </div>
               )}
 
@@ -380,85 +440,6 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
             </div>
             <iframe title="Book Day One" src={dayOneUrl} className="flex-1 w-full border-0 bg-white" />
           </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Debounced member search for the VIP-pass referring member. Searches active
-// ABC members across all clubs (name / phone / email) via the authed admin
-// endpoint. `value` is the chosen { member_id, name } or null.
-function ReferrerPicker({ value, onChange }) {
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    if (value) return // a member is picked; don't keep searching
-    const term = query.trim()
-    if (term.length < 2) { setResults([]); setLoading(false); return }
-    setLoading(true)
-    const t = setTimeout(async () => {
-      try {
-        const r = await tourAdmin.searchReferrers(term)
-        setResults(r.members || [])
-        setOpen(true)
-      } catch {
-        setResults([])
-      } finally {
-        setLoading(false)
-      }
-    }, 250)
-    return () => clearTimeout(t)
-  }, [query, value])
-
-  if (value) {
-    return (
-      <div className="flex items-center justify-between gap-2 rounded-xl border border-border bg-bg px-3 py-2.5">
-        <span className="text-sm font-medium text-text-primary truncate">{value.name}</span>
-        <button
-          onClick={() => { onChange(null); setQuery(''); setResults([]) }}
-          className="text-text-muted hover:text-wcs-red text-xl leading-none shrink-0"
-          aria-label="Clear referring member"
-        >
-          &times;
-        </button>
-      </div>
-    )
-  }
-
-  const showDropdown = open && query.trim().length >= 2
-  return (
-    <div className="relative">
-      <input
-        value={query}
-        onChange={e => setQuery(e.target.value)}
-        onFocus={() => query.trim().length >= 2 && setOpen(true)}
-        placeholder="Search by name, phone, or email…"
-        className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-wcs-red"
-      />
-      {showDropdown && (
-        <div className="absolute z-10 mt-1 w-full max-h-60 overflow-y-auto rounded-xl border border-border bg-surface shadow-lg">
-          {loading && <p className="px-3 py-2 text-sm text-text-muted">Searching…</p>}
-          {!loading && results.map(m => {
-            const name = `${m.first_name || ''} ${m.last_name || ''}`.trim()
-            const sub = [m.phone, m.email, m.home_club].filter(Boolean).join(' · ')
-            return (
-              <button
-                key={m.member_id}
-                onClick={() => { onChange({ member_id: m.member_id, name }); setOpen(false) }}
-                className="w-full text-left px-3 py-2 hover:bg-bg border-b border-border last:border-0"
-              >
-                <p className="text-sm font-medium text-text-primary truncate">{name || 'Unknown'}</p>
-                {sub && <p className="text-xs text-text-muted truncate">{sub}</p>}
-              </button>
-            )
-          })}
-          {!loading && results.length === 0 && (
-            <p className="px-3 py-2 text-sm text-text-muted">No matches</p>
-          )}
         </div>
       )}
     </div>

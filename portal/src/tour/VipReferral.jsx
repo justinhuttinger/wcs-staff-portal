@@ -79,23 +79,23 @@ export default function VipReferral({ token, intakeId, value, onChange, employee
   }
 
   if (loading) {
-    return <p className="mt-3 text-sm text-gray-500">Checking who referred them…</p>
+    return <p className="mt-3 text-sm text-text-muted">Checking who referred them…</p>
   }
 
   if (known) {
     return (
-      <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
+      <div className="mt-3 rounded-xl border border-border bg-bg p-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">
           Already on file
         </p>
         {known.fullName && (
-          <p className="text-sm text-gray-900">
+          <p className="text-sm text-text-primary">
             Referred by <span className="font-semibold">{known.fullName}</span>
             {known.abcId ? '' : ' (no ABC match on file)'}
           </p>
         )}
         {known.teamMember && (
-          <p className="text-sm text-gray-900">
+          <p className="text-sm text-text-primary">
             Card from <span className="font-semibold">{known.teamMember}</span>
           </p>
         )}
@@ -104,10 +104,10 @@ export default function VipReferral({ token, intakeId, value, onChange, employee
   }
 
   return (
-    <div className="mt-3 rounded-xl border border-gray-200 p-3 space-y-3">
+    <div className="mt-3 rounded-xl border border-border p-3 space-y-3">
       <div>
-        <label className="block text-sm font-semibold text-gray-900 mb-1">
-          Who referred them? <span className="font-normal text-gray-500">(optional)</span>
+        <label className="block text-sm font-semibold text-text-primary mb-1">
+          Who referred them? <span className="font-normal text-text-muted">(optional)</span>
         </label>
         <input
           value={query}
@@ -117,24 +117,24 @@ export default function VipReferral({ token, intakeId, value, onChange, employee
             onChange({ ...value, referred_by_full_name: e.target.value, referred_by_abc_id: '' })
           }}
           placeholder="Start typing a member's name"
-          className="w-full px-3 py-2 rounded-xl border border-gray-300 text-sm"
+          className="w-full px-3 py-2 rounded-xl border border-border text-sm"
         />
-        {searching && <p className="text-xs text-gray-400 mt-1">Searching…</p>}
+        {searching && <p className="text-xs text-text-muted mt-1">Searching…</p>}
 
         {matches.length > 0 && (
-          <ul className="mt-2 border border-gray-200 rounded-xl overflow-hidden">
+          <ul className="mt-2 border border-border rounded-xl overflow-hidden">
             {matches.map(m => (
               <li key={m.memberId}>
                 <button
                   type="button"
                   onClick={() => pick(m)}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-bg border-b border-border last:border-b-0"
                 >
-                  <div className="font-medium text-gray-900">
+                  <div className="font-medium text-text-primary">
                     {m.firstName} {m.lastName}
                   </div>
                   {/* Enough to tell two people with the same name apart. */}
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-text-muted">
                     {[m.phone, m.email].filter(Boolean).join(' · ') || 'no contact details on file'}
                   </div>
                 </button>
@@ -144,19 +144,19 @@ export default function VipReferral({ token, intakeId, value, onChange, employee
         )}
 
         {value.referred_by_abc_id && (
-          <p className="text-xs text-green-700 mt-1">Matched to an ABC member.</p>
+          <p className="text-xs text-green-600 mt-1">Matched to an ABC member.</p>
         )}
       </div>
 
       <div>
-        <label className="block text-sm font-semibold text-gray-900 mb-1">
+        <label className="block text-sm font-semibold text-text-primary mb-1">
           Team member who gave them the card{' '}
-          <span className="font-normal text-gray-500">(optional)</span>
+          <span className="font-normal text-text-muted">(optional)</span>
         </label>
         <select
           value={value.vip_team_member}
           onChange={e => onChange({ ...value, vip_team_member: e.target.value })}
-          className="w-full px-3 py-2 rounded-xl border border-gray-300 text-sm bg-white"
+          className="w-full px-3 py-2 rounded-xl border border-border text-sm bg-surface"
         >
           <option value="">Nobody / not sure</option>
           {(employees || []).map(e => (
