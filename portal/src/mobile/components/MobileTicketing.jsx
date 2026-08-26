@@ -12,6 +12,9 @@ import { MentionComposer, MentionText, parseMentions } from '../../components/ad
 export default function MobileTicketing({ user }) {
   const [screen, setScreen] = useState('list') // list | detail | submit
   const [activeId, setActiveId] = useState(null)
+  // Opening a ticket unmounts List, so its status filter is held here to
+  // survive the round-trip back. Same reason as the desktop inbox.
+  const [status, setStatus] = useState('open') // default to New
 
   if (screen === 'detail' && activeId) {
     return <Detail id={activeId} onBack={() => setScreen('list')} />
@@ -19,7 +22,8 @@ export default function MobileTicketing({ user }) {
   if (screen === 'submit') {
     return <Submit onCancel={() => setScreen('list')} onDone={(id) => { setActiveId(id); setScreen('detail') }} />
   }
-  return <List onOpen={(id) => { setActiveId(id); setScreen('detail') }} onNew={() => setScreen('submit')} />
+  return <List status={status} onStatusChange={setStatus}
+    onOpen={(id) => { setActiveId(id); setScreen('detail') }} onNew={() => setScreen('submit')} />
 }
 
 function StatusPill({ status }) {
@@ -29,9 +33,8 @@ function StatusPill({ status }) {
   </span>
 }
 
-function List({ onOpen, onNew }) {
+function List({ onOpen, onNew, status, onStatusChange }) {
   const [tickets, setTickets] = useState([])
-  const [status, setStatus] = useState('open') // default to New
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -49,7 +52,7 @@ function List({ onOpen, onNew }) {
 
       <div className="flex gap-1.5 overflow-x-auto pb-1">
         {[{ key: '', label: 'All' }, ...STATUSES].map(s => (
-          <button key={s.key || 'all'} onClick={() => setStatus(s.key)}
+          <button key={s.key || 'all'} onClick={() => onStatusChange(s.key)}
             className={`px-3 py-1 text-xs font-semibold rounded-lg border whitespace-nowrap ${status === s.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-surface text-text-muted border-border'}`}>
             {s.label}
           </button>

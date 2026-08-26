@@ -4,15 +4,22 @@ import { STATUSES, STATUS_BY_KEY, PRIORITY_BY_KEY, fmtDate } from './shared'
 
 // The management inbox: filter chips + list of tickets. Clicking a row opens
 // the detail view (handled by the parent via onOpen).
-export default function TicketInbox({ onOpen, refreshKey, handling = false }) {
+//
+// The filters are controlled by the parent rather than held here on purpose:
+// opening a ticket unmounts this component, so local filter state was lost and
+// you landed back on "All" every time. Working a queue — say every open New
+// Hire Form — meant re-picking both filters after each ticket. The parent
+// outlives the detail view, so keeping them there makes Back resume where you
+// were.
+export default function TicketInbox({ onOpen, refreshKey, handling = false, filters, onFiltersChange }) {
   const [tickets, setTickets] = useState([])
   const [counts, setCounts] = useState({ open: 0, in_progress: 0, complete: 0, closed: 0 })
   const [total, setTotal] = useState(0)
-  const [status, setStatus] = useState('')
   const [types, setTypes] = useState([])
-  const [typeId, setTypeId] = useState('')
-  const [q, setQ] = useState('')
   const [loading, setLoading] = useState(true)
+
+  const { status = '', typeId = '', q = '' } = filters || {}
+  const setFilter = (patch) => onFiltersChange({ status, typeId, q, ...patch })
 
   useEffect(() => { ticketing.listTypes().then(r => setTypes(r.types || [])).catch(() => {}) }, [])
 
@@ -30,7 +37,7 @@ export default function TicketInbox({ onOpen, refreshKey, handling = false }) {
   }, [status, typeId, q, handling])
   useEffect(() => { load() }, [load, refreshKey])
 
-  const filters = [
+  const statusChips = [
     { key: '', label: `All (${total})` },
     ...STATUSES.map(s => ({ key: s.key, label: `${s.label} (${counts[s.key] || 0})`, dot: s.dot })),
   ]
@@ -40,8 +47,8 @@ export default function TicketInbox({ onOpen, refreshKey, handling = false }) {
       {/* Filter chips + search, on a surface card so they read against the backdrop */}
       <div className="bg-surface border border-border rounded-xl p-3 space-y-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          {filters.map(f => (
-            <button key={f.key || 'all'} onClick={() => setStatus(f.key)}
+          {statusChips.map(f => (
+            <button key={f.key || 'all'} onClick={() => setFilter({ status: f.key })}
               className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg border transition-colors ${status === f.key ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}>
               {f.dot && <span className={`w-1.5 h-1.5 rounded-full ${f.dot}`} />}
               {f.label}
@@ -50,12 +57,12 @@ export default function TicketInbox({ onOpen, refreshKey, handling = false }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <select value={typeId} onChange={e => setTypeId(e.target.value)}
+          <select value={typeId} onChange={e => setFilter({ typeId: e.target.value })}
             className="px-3 py-1.5 text-sm bg-bg border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red">
             <option value="">All types</option>
             {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search title…"
+          <input value={q} onChange={e => setFilter({ q: e.target.value })} placeholder="Search title…"
             className="px-3 py-1.5 text-sm bg-bg border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red flex-1 min-w-[160px]" />
         </div>
       </div>
