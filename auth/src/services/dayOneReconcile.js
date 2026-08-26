@@ -113,10 +113,16 @@ async function reconcileLocation(loc) {
       source: stored?.source ?? 'ghl_reconcile',
       updated_at: new Date().toISOString(),
     }
-    // An outcome already recorded is the trainer's answer, and the calendar must
-    // not undo it. Only a cancellation is allowed to override, because that
-    // genuinely happened after the fact.
-    if (stored?.outcome_recorded_at && live.status !== 'cancelled') {
+    // An outcome already recorded is the trainer's answer and the calendar never
+    // overrides it, cancellations included.
+    //
+    // This used to let a later cancellation win, on the reasoning that it
+    // happened after the fact. That was backwards: if a trainer recorded that
+    // the member showed up and bought, the session demonstrably happened, and
+    // someone tidying the calendar afterwards is not undoing history. It also
+    // produced a row reading Cancelled while carrying a sale result, which
+    // breaks the rule that a sale only exists on a Day One that was attended.
+    if (stored?.outcome_recorded_at) {
       row.status = stored.status
     }
     // Fill the booker whenever we do not already have one, not just on insert.

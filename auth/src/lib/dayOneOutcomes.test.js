@@ -5,6 +5,7 @@ const {
   validateOutcome, legacyGhlFields, pickOpenAppointments,
   linkReschedules, diffAppointment, statusFromGhl, pacificDate,
   rowFromEvent, bookerFromEvent, flattenWebhookBody, webhookLabels,
+  displayStatus,
 } = require('./dayOneOutcomes')
 
 // --- the conditional form ---------------------------------------------------
@@ -505,4 +506,48 @@ test('the diagnostic names the keys and never the values', () => {
 
 test('the diagnostic omits the customData section when there is none', () => {
   assert.equal(webhookLabels({ a: 1, b: 2 }), 'a,b')
+})
+
+// --- the status a human sees ------------------------------------------------
+
+const TODAY = new Date('2026-08-26T20:00:00Z')   // Aug 26 in Pacific
+
+test('an upcoming Day One with no outcome is Scheduled', () => {
+  assert.equal(displayStatus({ status: 'scheduled', scheduled_date: '2026-08-31' }, TODAY), 'Scheduled')
+})
+
+test("today's Day One is still Scheduled, not passed", () => {
+  // The session may not have happened yet. Calling it passed at midnight would
+  // flag every morning appointment as missing an outcome before it even ran.
+  assert.equal(displayStatus({ status: 'scheduled', scheduled_date: '2026-08-26' }, TODAY), 'Scheduled')
+})
+
+test('a past Day One with no outcome is Passed, no outcome', () => {
+  assert.equal(displayStatus({ status: 'scheduled', scheduled_date: '2026-08-20' }, TODAY), 'Passed, no outcome')
+})
+
+test('the form having been filled in beats the date', () => {
+  assert.equal(displayStatus({ status: 'completed', scheduled_date: '2026-08-20' }, TODAY), 'Completed')
+  assert.equal(displayStatus({ status: 'no_show', scheduled_date: '2026-08-20' }, TODAY), 'No Show')
+})
+
+test('a cancelled Day One is Cancelled whichever side of today it sits', () => {
+  assert.equal(displayStatus({ status: 'cancelled', scheduled_date: '2026-08-20' }, TODAY), 'Cancelled')
+  assert.equal(displayStatus({ status: 'cancelled', scheduled_date: '2026-09-20' }, TODAY), 'Cancelled')
+})
+
+test('a row with no date at all is not called passed', () => {
+  assert.equal(displayStatus({ status: 'scheduled', scheduled_date: null }, TODAY), 'Scheduled')
+})
+
+test('a sale is only ever recorded when they showed up', () => {
+  // Belt and braces on the rule: no path through the form attaches a sale
+  // result to a no-show, a cancellation or a reschedule.
+  for (const status of ['no_show', 'cancelled', 'rescheduled']) {
+    const r = validateOutcome({ status, outcome: 'Sale', pt_sale_type: '5 Pack', why_no_sale: 'Other' })
+    assert.equal(r.ok, true)
+    assert.equal(r.value.outcome, null, status + ' must not carry a sale result')
+    assert.equal(r.value.pt_sale_type, null, status + ' must not carry a package')
+    assert.equal(r.value.why_no_sale, null, status + ' must not carry a no-sale reason')
+  }
 })
