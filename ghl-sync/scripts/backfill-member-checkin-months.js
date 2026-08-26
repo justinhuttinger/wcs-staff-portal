@@ -101,12 +101,19 @@ async function fetchChunk(clubNumber, startDate, endDate) {
     const status = res.data?.status || {};
     const members = res.data?.members || [];
 
-    // ABC answers a rejected request with 200 + an empty list. Surface it
-    // rather than recording a month of zero check-ins as though it were real.
-    if (members.length === 0 && status.message && status.message !== 'success') {
-      throw new Error(`ABC rejected ${startDate}..${endDate}: ${status.message.trim()}`);
+    // ABC answers a rejected request with 200 + an empty list, so an empty
+    // response has to be read carefully. "No records found" is a real answer —
+    // a club that had not opened yet genuinely has no check-ins — while
+    // anything else alongside an empty list means the request was refused and
+    // must not be recorded as a month of zero.
+    if (members.length === 0) {
+      const msg = (status.message || '').trim();
+      const isEmpty = msg === '' || /^success$/i.test(msg) || /no records found/i.test(msg);
+      if (!isEmpty) {
+        throw new Error(`ABC rejected ${startDate}..${endDate}: ${msg}`);
+      }
+      break;
     }
-    if (members.length === 0) break;
 
     for (const m of members) {
       let n = 0;
