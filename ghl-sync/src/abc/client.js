@@ -114,6 +114,20 @@ function transformABCMember(raw, clubNumber) {
     membership_type_abc_code: a.membershipTypeAbcCode || null,
     payment_plan: a.paymentPlan || null,
     payment_frequency: a.paymentFrequency || null,
+    // How the agreement drafts: Statement | Cash | EFT | Credit Card. "EFT" is
+    // ACH — reporting's "% on ACH" reads this. Distinct from paymentFrequency,
+    // which is only ever "Monthly" or absent.
+    agreement_payment_method: a.agreementPaymentMethod || null,
+    // Open | Cash | Installment | Cash Open. The real payment term.
+    agreement_term: a.term || null,
+    // false when this person is a secondary/add-on member on someone else's
+    // agreement, which is how "Member Relationship" is derived.
+    is_primary_member: a.isPrimaryMember === undefined || a.isPrimaryMember === null
+      ? null
+      : a.isPrimaryMember === 'true' || a.isPrimaryMember === true,
+    is_non_member: a.isNonMember === undefined || a.isNonMember === null
+      ? null
+      : a.isNonMember === 'true' || a.isNonMember === true,
     is_past_due: a.isPastDue === 'true' || a.isPastDue === true,
     down_payment: a.downPayment ? parseFloat(a.downPayment) : null,
     next_due_amount: a.nextDueAmount ? parseFloat(a.nextDueAmount) : null,
