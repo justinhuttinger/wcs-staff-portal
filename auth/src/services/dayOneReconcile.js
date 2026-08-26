@@ -97,6 +97,7 @@ async function reconcileLocation(loc) {
       contact_email: stored?.contact_email ?? null,
       contact_phone: stored?.contact_phone ?? null,
       notes_for_trainer: stored?.notes_for_trainer ?? null,
+      ghl_updated_at: live.ghl_updated_at ?? stored?.ghl_updated_at ?? null,
       // Outcomes belong to the form. The calendar's showed/noshow marks are kept
       // on 5% of appointments, so reading them back would overwrite good data
       // with a blank on almost every pass.
@@ -200,9 +201,15 @@ async function adoptOrphans(locationSlug) {
     const live = (candidates || []).filter(h => h.status !== 'cancelled')
     if (!live.length) continue
 
+    // Compare against BOTH stamps. A fresh booking matches on dateAdded; a
+    // reschedule matches on dateUpdated, because the appointment itself may have
+    // been created long before. Measured on a live reschedule: dateAdded was 31
+    // minutes away and missed the window entirely, dateUpdated was 4 seconds.
     const oAt = new Date(o.booked_at || o.created_at).getTime()
+    const gapOf = h => Math.min(...[h.booked_at, h.ghl_updated_at]
+      .map(v => (v ? Math.abs(new Date(v).getTime() - oAt) : Infinity)))
     const near = live
-      .map(h => ({ h, gap: Math.abs(new Date(h.booked_at || h.created_at).getTime() - oAt) }))
+      .map(h => ({ h, gap: gapOf(h) }))
       .filter(x => Number.isFinite(x.gap) && x.gap <= ADOPT_WINDOW_MS)
       .sort((a, b) => a.gap - b.gap)[0]
 
@@ -211,6 +218,22 @@ async function adoptOrphans(locationSlug) {
     // an exact match.
     const host = near ? near.h : live.find(h => h.scheduled_date === o.scheduled_date)
     if (!host) continue
+
+    // An orphan carrying nothing the host lacks has no information to donate.
+    // Guessing a host for it risks attaching it to the wrong appointment for no
+    // gain, so drop it instead. A reschedule re-fires the booking webhook with
+    // an already-drained courier field, which is exactly this case.
+    const donates = (o.booked_by_name && !host.booked_by_name)
+      || (o.notes_for_trainer && !host.notes_for_trainer)
+      || (o.contact_name && !host.contact_name)
+      || (o.contact_email && !host.contact_email)
+      || (o.contact_phone && !host.contact_phone)
+    if (!donates) {
+      await supabaseAdmin.from('day_one_appointment_events').delete().eq('appointment_id', o.id)
+      const drop = await supabaseAdmin.from('day_one_appointments').delete().eq('id', o.id)
+      if (!drop.error) adopted++
+      continue
+    }
 
     // Only fill gaps. The host owns scheduling; the orphan owns attribution.
     const patch = { updated_at: new Date().toISOString() }
