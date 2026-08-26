@@ -75,6 +75,9 @@ app.use('/public/tour', require('./routes/publicTour'))
 // Standalone API-driven Day One booking widget (replaces the embedded GHL
 // booking iframe, which trips a captcha). Not wired into the portal yet.
 app.use('/day-one-booking', require('./routes/dayOneBooking'))
+// Public Day One outcome form. Reached from a GHL workflow link carrying only
+// {{contact.id}}, so no custom field is needed to route it.
+app.use('/day-one/outcome', require('./routes/dayOneOutcome'))
 // Shorter alias for the links members actually receive
 // (book.westcoaststrength.com/dayone/salem/cancel?c=...). Same router; it reads
 // req.baseUrl, so the page it serves calls back through whichever mount was used.
@@ -243,6 +246,14 @@ app.listen(PORT, () => {
     require('./services/meetingNotes').start()
   } catch (err) {
     console.error('[meetingNotes] failed to start:', err.message)
+  }
+
+  // Day One calendar reconciler. Keeps day_one_appointments self-healing when a
+  // booking webhook is missed. Opt-in via DAY_ONE_RECONCILE_ENABLED=true.
+  try {
+    require('./services/dayOneReconcile').start()
+  } catch (err) {
+    console.error('[dayOneReconcile] failed to start:', err.message)
   }
 
   // Nightly top-up for open-ended facility series. Without it an open-ended

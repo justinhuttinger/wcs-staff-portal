@@ -99,6 +99,20 @@ router.post('/ghl-appointment', verifyWebhookSecret, async (req, res) => {
   }
 })
 
+// POST /webhooks/day-one-booked — a GHL workflow pushes a Day One booking here
+// the moment it is made, carrying the booking team member out of the custom
+// field so the portal can own it. See services/dayOneIngest.js for why that
+// field survives as a courier and why the portal, not the workflow, clears it.
+router.post('/day-one-booked', verifyWebhookSecret, async (req, res) => {
+  try {
+    const result = await require('../services/dayOneIngest').ingestBooking(req.body || {})
+    res.status(result.status).json(result.body)
+  } catch (err) {
+    console.error('[webhooks] day-one-booked failed:', err.message)
+    res.status(500).json({ error: 'Internal error' })
+  }
+})
+
 // POST /webhooks/ghl-form-complete — GHL fires this when the form is submitted
 router.post('/ghl-form-complete', verifyWebhookSecret, async (req, res) => {
   const { appointment_id, contact_id, sale_result } = req.body
