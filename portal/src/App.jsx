@@ -22,6 +22,7 @@ import FormsView from './components/forms/FormsView'
 import NpsView from './components/nps/NpsView'
 import TourCheckinQueueView from './components/TourCheckinQueueView'
 import AdsManagerView from './components/AdsManagerView'
+import AnalyticsView from './components/AnalyticsView'
 import GlobalProgressBar from './components/GlobalProgressBar'
 import PortalNav from './components/PortalNav'
 import PinPicker from './components/PinPicker'
@@ -78,6 +79,7 @@ export default function App() {
   const [showNps, setShowNps] = useState(false)
   const [showTourCheckin, setShowTourCheckin] = useState(false)
   const [showAdsManager, setShowAdsManager] = useState(false)
+  const [showAnalytics, setShowAnalytics] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
   const [locationOverride, setLocationOverride] = useState(() => localStorage.getItem('wcs_location_override') || '')
   // Press theme swaps the classic header for a persistent top nav (PortalNav).
@@ -157,6 +159,7 @@ export default function App() {
   useEffect(() => { if (showDrive) logEvent('view.drive') }, [showDrive])
   useEffect(() => { if (showForms) logEvent('view.forms') }, [showForms])
   useEffect(() => { if (showNps) logEvent('view.nps') }, [showNps])
+  useEffect(() => { if (showAnalytics) logEvent('view.analytics') }, [showAnalytics])
 
   // Auto-login from stored token (for new tabs like Reporting)
   // Or kiosk auto-login with shared secret
@@ -261,6 +264,7 @@ export default function App() {
   useEffect(() => {
     function onHashChange() {
       setShowReporting(window.location.hash.startsWith('#reporting'))
+      setShowAnalytics(window.location.hash.startsWith('#analytics'))
     }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
@@ -359,7 +363,7 @@ export default function App() {
     )
   }
 
-  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms && !showNps && !showTourCheckin && !showAdsManager
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms && !showNps && !showTourCheckin && !showAdsManager && !showAnalytics
 
   function exitImpersonation() {
     setImpersonateId(null)
@@ -388,6 +392,7 @@ export default function App() {
     setShowForms(false)
     setShowNps(false)
     setShowTourCheckin(false)
+    setShowAnalytics(false)
     if (window.location.hash) window.location.hash = ''
   }
 
@@ -443,6 +448,7 @@ export default function App() {
     { key: 'tool:marketingTracker', label: 'Marketing', desc: 'Campaigns', icon: 'reporting', show: mAccess.tracker, open: () => setShowMarketingTracker(true) },
     { key: 'tool:tourCheckin', label: 'Tour Queue', desc: 'Check-ins', show: isAdmin, open: () => setShowTourCheckin(true) },
     { key: 'tool:adsManager', label: 'Ads Manager', desc: 'Meta', show: isAdmin, open: () => setShowAdsManager(true) },
+    { key: 'tool:analytics', label: 'Analytics', desc: 'Admin Reports', icon: 'reporting', show: isAdmin, open: () => { window.location.hash = '#analytics'; setShowAnalytics(true) } },
   ]
     .map(item => (item.kind ? item : { ...item, kind: 'tool' }))
     .filter(item => item.show !== false)
@@ -474,6 +480,7 @@ export default function App() {
     : showMarketingTracker ? 'tool:marketingTracker'
     : showTourCheckin ? 'tool:tourCheckin'
     : showAdsManager ? 'tool:adsManager'
+    : showAnalytics ? 'tool:analytics'
     : null
 
   // Which Press nav tab is lit. Apps and Tools are both "home" — they differ
@@ -637,13 +644,15 @@ export default function App() {
         <FormsView onBack={handleBackToPortal} me={user.staff} />
       ) : showNps ? (
         <NpsView onBack={handleBackToPortal} />
+      ) : showAnalytics && isAdmin ? (
+        <AnalyticsView user={user} onBack={() => { window.location.hash = ''; setShowAnalytics(false) }} location={location} isAdmin={isAdmin} />
       ) : showAdsManager && isAdmin ? (
         <AdsManagerView onBack={() => setShowAdsManager(false)} />
       ) : showTourCheckin && isAdmin ? (
         <TourCheckinQueueView location={location} />
       ) : (
         <main className={`flex-1 flex items-start pt-1 pb-12${press ? ' press-single' : ''}`}>
-          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} cancelInApps={press} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onNps={() => setShowNps(true)} onTourCheckin={() => setShowTourCheckin(true)} onAdsManager={() => setShowAdsManager(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
+          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} cancelInApps={press} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onNps={() => setShowNps(true)} onTourCheckin={() => setShowTourCheckin(true)} onAdsManager={() => setShowAdsManager(true)} onAnalytics={() => { window.location.hash = '#analytics'; setShowAnalytics(true) }} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>
