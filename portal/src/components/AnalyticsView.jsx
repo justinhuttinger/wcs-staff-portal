@@ -4,6 +4,7 @@ import LocationMultiSelect from './LocationMultiSelect'
 import SalespersonPerformance from './analytics/SalespersonPerformance'
 import Topline from './analytics/Topline'
 import PastDue from './analytics/PastDue'
+import MembershipMix from './analytics/MembershipMix'
 import ClubActivityTrends from './analytics/ClubActivityTrends'
 import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 
@@ -21,6 +22,7 @@ import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 
 const ANALYTICS_ICONS = {
   salespersonPerformance: 'M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
+  mix: 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z',
   pastDue: 'M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
   topline: 'M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6',
   trends: 'M2.25 18 9 11.25l4.306 4.307a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941',
@@ -56,6 +58,16 @@ const ANALYTICS_REPORTS = [
     Component: ClubActivityTrends,
     // Its window is a fixed trailing 13 months against the same months a year
     // earlier, so the shared date range would do nothing but mislead.
+    dates: false,
+  },
+  {
+    key: 'membership-mix',
+    label: 'Membership Mix',
+    desc: 'Who Our Members Are',
+    icon: ANALYTICS_ICONS.mix,
+    Component: MembershipMix,
+    // A snapshot of the membership as it stands; a date range would imply a
+    // history the current member rows do not carry.
     dates: false,
   },
   {
