@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { LOCATION_OPTIONS as LOCATIONS } from '../config/locations'
 import LocationMultiSelect from './LocationMultiSelect'
 import SalespersonPerformance from './analytics/SalespersonPerformance'
+import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 
 // ---------------------------------------------------------------------------
 // Analytics — an admin-only reporting surface, separate from ReportingView.
@@ -196,8 +197,12 @@ export default function AnalyticsView({ user, onBack, location, isAdmin }) {
             </div>
           </div>
 
-          {showDateControls && (
-            <div className="flex items-center gap-3 flex-wrap">
+          {/* Date row. The trailing slot is where a report portals its own
+              controls (e.g. the Filters button) so they sit inline with the
+              date range instead of in a second bar below it. */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {showDateControls && (
+              <>
               <div className="flex gap-1.5">
                 {QUICK_RANGES.map(qr => (
                   <button
@@ -228,8 +233,10 @@ export default function AnalyticsView({ user, onBack, location, isAdmin }) {
                   className="px-2.5 py-1.5 rounded-lg text-xs bg-bg border border-border text-text-primary"
                 />
               </div>
-            </div>
-          )}
+              </>
+            )}
+            <div id={TOOLBAR_SLOT_ID} className="flex items-center gap-2" />
+          </div>
         </div>
 
         {/* Report body */}

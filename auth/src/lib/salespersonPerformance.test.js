@@ -4,7 +4,7 @@ const assert = require('node:assert')
 // createClient() is happy with undefined env vars, but be explicit so this file
 // never depends on a developer's local .env.
 const {
-  buildReport, displayName, personKey, isExcludedType, ageOn, ageGroupKey, digits10,
+  buildReport, displayName, personKey, isExcludedType, ageOn, ageGroupKey, digits10, isNewSale,
 } = require('../lib/salespersonPerformance')
 
 const MILWAUKIE = '31601'
@@ -16,6 +16,8 @@ function member(over = {}) {
     club_number: MILWAUKIE,
     sales_person_name: 'Katie  Castlio',
     sign_date: '2026-07-10',
+    // since_date >= sign_date marks a genuinely new member; see isNewSale.
+    since_date: '2026-07-10',
     membership_type: 'SINGLE',
     agreement_entry_source: 'ABC',
     gender: 'F',
@@ -300,4 +302,78 @@ test('phone normalization strips formatting and country codes', () => {
   assert.equal(digits10('(503) 555-0147'), '5035550147')
   assert.equal(digits10('+1 503 555 0147'), '5035550147')
   assert.equal(digits10('555-0147'), '')
+})
+
+test('renewals are not new sales', () => {
+  // Already a member in 2024, signed a new agreement in 2026 — a rewrite.
+  assert.equal(isNewSale({ since_date: '2024-03-01', sign_date: '2026-07-10' }), false)
+  assert.equal(isNewSale({ since_date: '2026-07-10', sign_date: '2026-07-10' }), true)
+  assert.equal(isNewSale({ since_date: null, sign_date: '2026-07-10' }), false)
+})
+
+test('renewals are excluded from units, matching the Membership report', () => {
+  const members = [
+    member({ id: 'a' }),
+    member({ id: 'b' }),
+    member({ id: 'c', since_date: '2024-03-01' }), // renewal
+    member({ id: 'd', since_date: null }),         // no tenure on file
+  ]
+  const { summary } = buildReport(members, [], new Map(), NO_FILTERS)
+  assert.equal(summary.newMemberUnits, 2)
+})
+
+test('view by club collapses every salesperson at the club', () => {
+  const members = [
+    member({ id: 'a', sales_person_name: 'Katie  Castlio' }),
+    member({ id: 'b', sales_person_name: 'Lisa  Ashy' }),
+    member({ id: 'c', club_number: SALEM, sales_person_name: 'Matt  Turnquist' }),
+  ]
+  const { rows } = buildReport(members, [], new Map(), { ...NO_FILTERS, viewBy: 'club' })
+  assert.equal(rows.length, 2)
+  const esac = rows.find(r => r.club === 'East Side Athletic Club')
+  assert.equal(esac.newMemberUnits, 2)
+  // No single salesperson owns a club row.
+  assert.equal(esac.salesperson, null)
+  // Every row would be 100% of its own club, so the denominator becomes the
+  // whole selection instead.
+  assert.equal(esac.pctOfClubTotal, 66.7)
+})
+
+test('view by salesperson merges one person across clubs', () => {
+  const members = [
+    member({ id: 'a', sales_person_name: 'Katie  Castlio' }),
+    member({ id: 'b', club_number: SALEM, sales_person_name: 'Katie  Castlio' }),
+    member({ id: 'c', club_number: SALEM, sales_person_name: 'Matt  Turnquist' }),
+  ]
+  const { rows } = buildReport(members, [], new Map(), { ...NO_FILTERS, viewBy: 'salesperson' })
+  assert.equal(rows.length, 2)
+  const katie = rows.find(r => r.salesperson === 'Castlio, Katie')
+  assert.equal(katie.newMemberUnits, 2)
+  // The row spans clubs, so it is not tied to one.
+  assert.equal(katie.club, null)
+  assert.equal(katie.pctOfClubTotal, 66.7)
+})
+
+test('club + salesperson stays the default and scopes % to the club', () => {
+  const members = [
+    member({ id: 'a', sales_person_name: 'Katie  Castlio' }),
+    member({ id: 'b', sales_person_name: 'Lisa  Ashy' }),
+    member({ id: 'c', club_number: SALEM, sales_person_name: 'Matt  Turnquist' }),
+  ]
+  const dflt = buildReport(members, [], new Map(), NO_FILTERS)
+  assert.equal(dflt.viewBy, 'club_salesperson')
+  assert.equal(dflt.rows.length, 3)
+  // Salem's only seller is 100% of Salem, not 33% of the company.
+  assert.equal(dflt.rows.find(r => r.salesperson === 'Turnquist, Matt').pctOfClubTotal, 100)
+  // An unknown viewBy falls back to the default rather than throwing.
+  assert.equal(buildReport(members, [], new Map(), { ...NO_FILTERS, viewBy: 'nonsense' }).viewBy, 'club_salesperson')
+})
+
+test('day one bookings follow the same grouping as memberships', () => {
+  const members = [member({ id: 'a', sales_person_name: 'Katie  Castlio' })]
+  const dayOnes = [dayOne({ id: 'd1', booked_by_name: 'Katie Castlio' })]
+  const byClub = buildReport(members, dayOnes, new Map(), { ...NO_FILTERS, viewBy: 'club' })
+  assert.equal(byClub.rows.length, 1)
+  assert.equal(byClub.rows[0].newMemberUnits, 1)
+  assert.equal(byClub.rows[0].dayOneBookCount, 1)
 })

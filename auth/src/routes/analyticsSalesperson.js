@@ -36,14 +36,14 @@ const { getSkipList } = require('../utils/membershipSkipList')
 // ---------------------------------------------------------------------------
 
 const {
-  CLUBS, CLUB_BY_SLUG, buildReport, buildFilterOptions,
+  CLUBS, CLUB_BY_SLUG, buildReport, buildFilterOptions, VIEW_BY,
 } = require('../lib/salespersonPerformance')
 
 async function loadMembers(clubNumbers, start, end) {
   return fetchAll(
     supabaseAdmin
       .from('abc_members')
-      .select('id, club_number, sales_person_name, sign_date, membership_type, membership_type_abc_code, agreement_number, agreement_entry_source, gender, birth_date, payment_frequency, agreement_payment_method, agreement_term, is_primary_member, next_due_amount, down_payment, email, primary_phone, mobile_phone, first_name, last_name')
+      .select('id, club_number, sales_person_name, sign_date, membership_type, membership_type_abc_code, agreement_number, since_date, agreement_entry_source, gender, birth_date, payment_frequency, agreement_payment_method, agreement_term, is_primary_member, next_due_amount, down_payment, email, primary_phone, mobile_phone, first_name, last_name')
       .in('club_number', clubNumbers)
       .gte('sign_date', start)
       .lte('sign_date', end)
@@ -118,6 +118,7 @@ router.get('/', async (req, res) => {
         ? req.query.memberRelationship
         : null,
       ageGroup: req.query.ageGroup || null,
+      viewBy: VIEW_BY.includes(req.query.viewBy) ? req.query.viewBy : 'club_salesperson',
     }
 
     // Cache key is bounded: the filter values all come from a closed set of
@@ -126,7 +127,7 @@ router.get('/', async (req, res) => {
       'analytics:salesperson', start, end, slugs.slice().sort().join('+'),
       filters.exclusion, filters.joinSource, filters.membershipType,
       filters.gender, filters.paymentTerm, filters.paymentMethod,
-      filters.memberRelationship, filters.ageGroup,
+      filters.memberRelationship, filters.ageGroup, filters.viewBy,
     ].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {

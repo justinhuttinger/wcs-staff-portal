@@ -82,6 +82,19 @@ function ageGroupKey(age) {
 // share of drafting members are.
 const ACH_PAYMENT_METHOD = 'EFT'
 
+// A member whose since_date predates the sign_date of this agreement was
+// already a member when it was signed, so the agreement is a renewal or
+// rewrite rather than a new sale. The Membership report has always dropped
+// these; counting them here made this report read ~40% high against it
+// (671 vs 473 for August 2026).
+function isNewSale(m) {
+  return !!(m.since_date && m.sign_date && m.since_date >= m.sign_date)
+}
+
+// How rows are grouped. 'club_salesperson' is the default and matches the
+// source tool.
+const VIEW_BY = ['club_salesperson', 'club', 'salesperson']
+
 function pct(numerator, denominator) {
   if (!denominator) return null
   return Math.round((numerator / denominator) * 1000) / 10
@@ -126,6 +139,7 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
   // --- filter members -----------------------------------------------------
   const kept = members.filter(m => {
     if (filters.exclusion !== 'include' && isExcludedType(m.membership_type, skipList)) return false
+    if (!isNewSale(m)) return false
     if (filters.joinSource && (m.agreement_entry_source || 'Unknown') !== filters.joinSource) return false
     if (filters.membershipType && (m.membership_type || 'Unknown') !== filters.membershipType) return false
     if (filters.gender && (m.gender || 'Unknown') !== filters.gender) return false
@@ -147,17 +161,25 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
   const index = buildMemberIndex(kept)
 
   // --- rows ---------------------------------------------------------------
-  // Key is club slug + normalized person, so the two halves merge.
+  // The grouping key decides what a row means. In every mode the key is built
+  // the same way from both halves (memberships and Day One bookings), so a
+  // person's sales and their bookings always land on the same row.
+  const viewBy = VIEW_BY.includes(filters.viewBy) ? filters.viewBy : 'club_salesperson'
   const rows = new Map()
   function rowFor(clubSlug, rawName) {
-    const key = `${clubSlug}|${personKey(rawName) || 'unknown'}`
+    const person = personKey(rawName) || 'unknown'
+    const key = viewBy === 'club' ? clubSlug
+      : viewBy === 'salesperson' ? person
+      : `${clubSlug}|${person}`
     if (!rows.has(key)) {
       const club = CLUB_BY_SLUG[clubSlug]
       rows.set(key, {
         key,
-        clubSlug,
-        club: club?.name || clubSlug,
-        salesperson: rawName ? displayName(rawName) : 'Unknown',
+        // In salesperson-only mode a person can span clubs, so the row is not
+        // tied to one — leave the club fields off rather than pick a winner.
+        clubSlug: viewBy === 'salesperson' ? null : clubSlug,
+        club: viewBy === 'salesperson' ? null : (club?.name || clubSlug),
+        salesperson: viewBy === 'club' ? null : (rawName ? displayName(rawName) : 'Unknown'),
         newMemberUnits: 0,
         totalNewDues: 0,
         totalDownPayment: 0,
@@ -200,11 +222,18 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     }
   }
 
-  // --- club totals, for "% of Club Total" ---------------------------------
+  // --- denominator for the "% of Total" column ----------------------------
+  // Grouped by club AND salesperson, the useful comparison is against the
+  // person's own club. Grouped by club or by salesperson alone, every row
+  // would be 100% of itself, so compare against the whole selection instead.
   const clubUnits = new Map()
+  let grandUnits = 0
   for (const row of rows.values()) {
     clubUnits.set(row.clubSlug, (clubUnits.get(row.clubSlug) || 0) + row.newMemberUnits)
+    grandUnits += row.newMemberUnits
   }
+  const denominatorFor = (row) =>
+    viewBy === 'club_salesperson' ? clubUnits.get(row.clubSlug) : grandUnits
 
   const out = [...rows.values()].map(row => ({
     key: row.key,
@@ -212,7 +241,7 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     club: row.club,
     salesperson: row.salesperson,
     newMemberUnits: row.newMemberUnits,
-    pctOfClubTotal: pct(row.newMemberUnits, clubUnits.get(row.clubSlug)),
+    pctOfClubTotal: pct(row.newMemberUnits, denominatorFor(row)),
     // Denominator is units with a KNOWN payment method, not all units. Under a
     // partial backfill that keeps the number honest instead of diluting it
     // toward 0%; once every row is populated the two are the same thing.
@@ -275,7 +304,7 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     avgNewDuesDraft: summary.avgNewDuesDraft,
   }
 
-  return { rows: out, summary, averages }
+  return { rows: out, summary, averages, viewBy }
 }
 
 // Filter option lists come from the rows actually in range, so the dropdowns
@@ -300,5 +329,5 @@ module.exports = {
   CLUBS, CLUB_BY_NUMBER, CLUB_BY_SLUG, AGE_GROUPS,
   buildReport, buildFilterOptions, buildMemberIndex, matchMember,
   isExcludedType, personKey, displayName, digits10, ageOn, ageGroupKey, pct,
-  ACH_PAYMENT_METHOD,
+  ACH_PAYMENT_METHOD, VIEW_BY, isNewSale,
 }
