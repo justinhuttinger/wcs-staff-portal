@@ -27,10 +27,11 @@ import PortalNav from './components/PortalNav'
 import PinPicker from './components/PinPicker'
 import { getTheme, THEME_EVENT } from './lib/theme'
 import { getPinned, togglePin, PINNED_EVENT } from './lib/pinnedTabs'
+import { hydrateUiPrefs, startUiPrefsSync } from './lib/uiPrefs'
 import { appsForLocation } from './lib/apps'
 import { roleAtLeast } from './lib/roles'
 import WhatsNew from './components/WhatsNew'
-import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout, setImpersonateId } from './lib/api'
+import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout, setImpersonateId, getTiles } from './lib/api'
 import { logEvent } from './lib/audit'
 import { useForceRefresh } from './lib/useForceRefresh'
 
@@ -83,10 +84,14 @@ export default function App() {
   const [theme, setThemeState] = useState(getTheme)
   const press = theme === 'press'
   // Which column the board shows when no other view is open. The Press nav's
-  // Apps and Other tabs are both "home", differing only in this.
+  // Apps and Tools tabs are both "home", differing only in this.
   const [boardMode, setBoardMode] = useState('apps')
   const [pinned, setPinnedState] = useState(getPinned)
   const [showPinPicker, setShowPinPicker] = useState(false)
+  // Custom tiles, for the pin picker only. ToolGrid fetches these too; this is
+  // a second read of a small endpoint rather than hoisting the board's whole
+  // data flow up here just so a shortcut can be pinned.
+  const [pinTiles, setPinTiles] = useState([])
   const isElectron = !!window.wcsElectron
   const isAdmin = user?.staff?.role === 'admin'
   // corporate sees all clubs portal-wide (same as Drive/report gating)
@@ -113,6 +118,22 @@ export default function App() {
     window.addEventListener(PINNED_EVENT, onChange)
     return () => window.removeEventListener(PINNED_EVENT, onChange)
   }, [])
+
+  // Appearance and pins live per USER on the server, so they follow someone to
+  // whatever machine they sign in on. localStorage stays as the pre-paint
+  // mirror — see lib/uiPrefs.js. Keyed on staff id so switching accounts in the
+  // same browser re-hydrates rather than inheriting the previous person's bar.
+  useEffect(() => {
+    if (!user?.staff?.id) return
+    startUiPrefsSync()
+    hydrateUiPrefs()
+  }, [user?.staff?.id])
+
+  useEffect(() => {
+    if (!press || !user?.staff?.id) return
+    const locId = user.staff.locations?.find(l => l.is_primary)?.id
+    getTiles(locId).then(r => setPinTiles(r.tiles || [])).catch(() => {})
+  }, [press, user?.staff?.id])
 
   // Admin can push a hard reload to every open tab via Admin Panel.
   // Polls /config/portal-version every 60s.
@@ -378,9 +399,10 @@ export default function App() {
   //
   // Apps come from lib/apps so a pinned app resolves to exactly the URL the
   // Apps board would have used (the ABC kiosk shim, Milwaukie's Zoho swap).
-  // Custom tiles are deliberately absent — they are fetched inside ToolGrid,
-  // not here, so offering them would mean a second fetch and a second source
-  // of truth for what a tile is.
+  // Calendar, Leaderboard and Reporting are absent on purpose: they are already
+  // fixed tabs, so pinning one would put the same destination on the bar twice.
+  // Anyone who pinned them before this shipped just loses the duplicate — an
+  // unresolvable key drops out quietly.
   //
   // Every Tool carries the same gate its board tile has. A pinned tab must
   // never reach a view the user's own board would not have offered; the server
@@ -390,9 +412,22 @@ export default function App() {
     ...appsForLocation({ location, abcUrl }).map(t => ({
       key: 'app:' + t.id, kind: 'app', label: t.label, desc: t.description, url: t.url,
     })),
-    { key: 'tool:calendar', label: 'Calendar', desc: 'Tours & Day Ones', icon: 'calendar', open: () => setShowCalendar(true) },
-    { key: 'tool:leaderboard', label: 'Leaderboard', desc: 'Rankings', icon: 'leaderboard', open: () => setShowLeaderboard(true) },
-    { key: 'tool:reporting', label: 'Reporting', desc: 'Reports', icon: 'reporting', show: user?.staff?.role !== 'team_member', open: () => { window.location.hash = '#reporting'; setShowReporting(true) } },
+    // Board apps that are not in tools.json.
+    { key: 'app:insights', kind: 'app', label: 'Insights', desc: 'ABC', url: 'https://app.fitnessbi.com/signin', show: roleAtLeast(user?.staff?.role, 'manager') },
+    { key: 'app:notifications', kind: 'app', label: 'Send Notifications', desc: 'Member App', url: 'https://westcoaststrength.trainerize.com/app/login', show: roleAtLeast(user?.staff?.role, 'manager') },
+    // Custom tiles that are plain links. Group tiles (no url) open a sub-menu
+    // inside the board and have nothing to point a tab at, so they are skipped.
+    // Mirrors ToolGrid's visibility and manager-only rules.
+    ...pinTiles
+      .filter(t => t.url)
+      .filter(t => {
+        if (!user?.visible_tools || user.visible_tools.length === 0) return true
+        if (user.visible_tools.includes('tile:' + t.id)) return true
+        return !user.visible_tools.some(k => k.startsWith('tile:'))
+      })
+      .filter(t => !(['indeed', 'operandio', 'vistaprint', 'vista'].includes((t.label || '').toLowerCase())
+        && !roleAtLeast(user?.staff?.role, 'manager')))
+      .map(t => ({ key: 'app:tile:' + t.id, kind: 'app', label: t.label, desc: t.description || '', url: t.url })),
     { key: 'tool:drive', label: 'Shared Drive', desc: 'Documents', open: () => setShowDriveHub(true) },
     { key: 'tool:media', label: 'Media Library', desc: 'Assets', show: canMedia, open: () => setShowMediaLibrary(true) },
     { key: 'tool:hr', label: 'HR Docs', desc: 'Documents', show: roleAtLeast(user?.staff?.role, 'manager'), open: () => setShowHR(true) },
@@ -421,11 +456,10 @@ export default function App() {
 
   // Which view is open, named the way the pin catalog names it, so a pinned
   // tab can light up when you are inside it.
+  // Calendar, Leaderboard and Reporting are absent: they are fixed tabs, so
+  // activeTab resolves them above without ever consulting this.
   const openViewKey =
-    showCalendar ? 'tool:calendar'
-    : showLeaderboard ? 'tool:leaderboard'
-    : showReporting ? 'tool:reporting'
-    : showDriveHub ? 'tool:drive'
+    showDriveHub ? 'tool:drive'
     : showMediaLibrary ? 'tool:media'
     : showHR ? 'tool:hr'
     : showHelpCenter ? 'tool:helpCenter'
@@ -440,7 +474,7 @@ export default function App() {
     : showAdsManager ? 'tool:adsManager'
     : null
 
-  // Which Press nav tab is lit. Apps and Other are both "home" — they differ
+  // Which Press nav tab is lit. Apps and Tools are both "home" — they differ
   // only in which column of the board renders — so they fall out of boardMode.
   // A view that is open but has no tab leaves activeTab null, which is what
   // puts the Back chip in the nav — see the invariant in PortalNav.
@@ -452,7 +486,7 @@ export default function App() {
     : (openViewKey && pins.some(p => p.key === openViewKey)) ? openViewKey
     : null
 
-  // Tiles the Press nav already carries as tabs. The Other board omits them so
+  // Tiles the Press nav already carries as tabs. The Tools board omits them so
   // it is strictly "everything that is not on the bar and not an app".
   const NAV_OWNED_TILES = ['calendar', 'leaderboard', 'reporting']
 
@@ -466,7 +500,7 @@ export default function App() {
     } else if (key === 'leaderboard') {
       setShowLeaderboard(true)
     } else {
-      // 'apps' | 'other' — both land on the board, showing one column or both.
+      // 'apps' | 'tools' — both land on the board, showing one column each.
       setBoardMode(key)
     }
   }

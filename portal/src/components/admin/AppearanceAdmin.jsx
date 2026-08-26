@@ -137,12 +137,12 @@ export default function AppearanceAdmin() {
   return (
     <div className="bg-surface rounded-xl border border-border p-6 max-w-3xl">
       <p className="text-sm text-text-muted mb-1">
-        Choose how the portal looks for you. The change applies instantly and is
-        remembered on this device.
+        Choose how the portal looks for you. The change applies instantly and
+        follows you to any computer you sign in on.
       </p>
       <p className="text-xs text-text-muted mb-6">
-        Admin-only for now, and saved per browser — it only affects your own view,
-        not other staff.
+        Admin-only for now, and saved to your account — it only affects your own
+        view, not other staff.
       </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
