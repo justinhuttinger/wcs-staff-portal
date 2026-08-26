@@ -4,6 +4,7 @@ import { api } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
+import { useChartWidth } from './useChartWidth'
 
 // ---------------------------------------------------------------------------
 // Club Activity Trends — Analytics (admin only)
@@ -28,7 +29,6 @@ import { TOOLBAR_SLOT_ID } from './toolbarSlot'
 const SERIES = '#2a78d6'
 const PRIOR = 'var(--color-text-muted)'
 
-const CHART_W = 280
 const LINE_H = 88
 const BAR_H = 64
 
@@ -74,6 +74,10 @@ function bounds(values) {
 }
 
 function TrendTile({ tile, hovered, onHover }) {
+  // Measured rather than fixed: a fixed viewBox is centred and padded by the
+  // browser, which puts the crosshair somewhere other than the cursor. See
+  // useChartWidth.
+  const [wrapRef, CHART_W] = useChartWidth()
   const points = tile.series
   const all = [...points.map(p => p.value), ...points.map(p => p.priorValue)]
   const { min, max } = bounds(all)
@@ -111,6 +115,7 @@ function TrendTile({ tile, hovered, onHover }) {
 
   return (
     <div
+      ref={wrapRef}
       className="bg-surface rounded-xl border border-border p-3 flex flex-col"
       onMouseLeave={() => onHover(null)}
     >
@@ -130,13 +135,15 @@ function TrendTile({ tile, hovered, onHover }) {
 
       {/* Line: this year solid, last year dashed */}
       <svg
-        viewBox={`0 0 ${CHART_W} ${LINE_H}`}
-        className="w-full h-[88px]"
+        viewBox={`0 0 ${CHART_W || 1} ${LINE_H}`}
+        width={CHART_W || 0}
+        height={LINE_H}
+        className="block"
         role="img"
         aria-label={`${tile.label}, ${points.length} months against the same months a year earlier`}
         onMouseMove={e => {
           const rect = e.currentTarget.getBoundingClientRect()
-          const rel = (e.clientX - rect.left) / rect.width
+          const rel = (e.clientX - rect.left) / (CHART_W || 1)
           onHover(Math.max(0, Math.min(points.length - 1, Math.round(rel * (points.length - 1)))))
         }}
       >
@@ -157,13 +164,15 @@ function TrendTile({ tile, hovered, onHover }) {
 
       {/* Percent change vs the same month last year */}
       <svg
-        viewBox={`0 0 ${CHART_W} ${BAR_H}`}
-        className="w-full h-[64px] mt-1"
+        viewBox={`0 0 ${CHART_W || 1} ${BAR_H}`}
+        width={CHART_W || 0}
+        height={BAR_H}
+        className="block mt-1"
         role="img"
         aria-label={`${tile.label}, percent change against the same month a year earlier`}
         onMouseMove={e => {
           const rect = e.currentTarget.getBoundingClientRect()
-          const rel = (e.clientX - rect.left) / rect.width
+          const rel = (e.clientX - rect.left) / (CHART_W || 1)
           onHover(Math.max(0, Math.min(points.length - 1, Math.floor(rel * points.length))))
         }}
       >
