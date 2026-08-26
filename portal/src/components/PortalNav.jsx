@@ -50,6 +50,7 @@ export default function PortalNav({
   isAdmin,
   userRole,
   rightSlot,
+  quickActions,
 }) {
   const tabs = TABS.filter(t => {
     if (t.key === 'reporting') return userRole !== 'team_member'
@@ -123,6 +124,8 @@ export default function PortalNav({
             {p.label}
           </button>
         )))}
+
+        {quickActions}
 
         {onOpenPicker && (
           <button

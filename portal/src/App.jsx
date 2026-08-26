@@ -25,6 +25,7 @@ import AdsManagerView from './components/AdsManagerView'
 import GlobalProgressBar from './components/GlobalProgressBar'
 import PortalNav from './components/PortalNav'
 import PinPicker from './components/PinPicker'
+import QuickActions from './components/QuickActions'
 import { getTheme, THEME_EVENT } from './lib/theme'
 import { getPinned, togglePin, PINNED_EVENT } from './lib/pinnedTabs'
 import { hydrateUiPrefs, startUiPrefsSync } from './lib/uiPrefs'
@@ -534,6 +535,14 @@ export default function App() {
           isAdmin={isAdmin}
           userRole={user?.staff?.role}
           rightSlot={<WhatsNew user={user} bgImage={null} />}
+          quickActions={
+            // Book Gym Tour / Book Day Ones / Submit VIPs used to sit in the
+            // board's banner strip, which Press drops. Same audience as before:
+            // the strip was hidden from corporate and above, so directors and
+            // admins never had these. QuickActions hides itself when the club
+            // has none of the three URLs configured.
+            roleAtLeast(user?.staff?.role, 'corporate') ? null : <QuickActions location={location} />
+          }
         />
       ) : (
       <header className="flex items-center justify-between px-8 py-3 max-w-3xl mx-auto w-full relative z-10">

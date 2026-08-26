@@ -760,3 +760,70 @@ body {
   font-size: 0.75rem;
   color: rgb(22 24 29 / 0.5);
 }
+
+/* --- Quick Actions ---------------------------------------------------------
+   Book Gym Tour / Book Day Ones / Submit VIPs, for the roles that had them on
+   the classic board's banner strip. Sits with the tabs rather than the account
+   controls: it is work for the shift, not settings. Marked in the accent so it
+   reads as the one action in a row of destinations. */
+.press-quick { position: relative; display: flex; align-items: stretch; }
+.press-quick__btn {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 1.1rem;
+  border: 0;
+  border-left: 1px solid var(--press-line);
+  background: transparent;
+  font-family: 'WCSDisplay', 'Arial Narrow', 'Inter', sans-serif;
+  text-transform: uppercase;
+  font-size: 1.05rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--press-red);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.press-quick__btn svg { width: 1.05rem; height: 1.05rem; flex-shrink: 0; }
+.press-quick__btn:hover,
+.press-quick__btn.is-open { background: var(--press-band); }
+.press-quick__caret svg { width: 0.7rem; height: 0.7rem; }
+.press-quick__caret { display: flex; transition: transform 0.15s ease; }
+.press-quick__caret.is-open { transform: rotate(180deg); }
+
+.press-quick__menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 60;
+  min-width: 15rem;
+  background: #ffffff;
+  border: 1px solid var(--press-line);
+  border-top: 0;
+  box-shadow: 0 14px 40px rgb(0 0 0 / 0.16);
+  padding: 0.3rem;
+}
+.press-quick__item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--press-ink);
+  cursor: pointer;
+  border-radius: 0.1875rem;
+}
+.press-quick__item svg { width: 1.1rem; height: 1.1rem; color: var(--press-red); flex-shrink: 0; }
+.press-quick__item:hover { background: var(--press-band); }
+
+@media (max-width: 768px) {
+  /* The label is the first thing to go; the bolt still reads as "actions". */
+  .press-quick__btn { padding-inline: 0.85rem; font-size: 0; gap: 0.25rem; }
+  .press-quick__btn svg { width: 1.15rem; height: 1.15rem; }
+}
