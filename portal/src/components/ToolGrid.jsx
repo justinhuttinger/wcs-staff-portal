@@ -220,11 +220,14 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
   }, [locationId, location])
 
   useEffect(() => {
+    // Under Press the score card this feeds is hidden and PointsChip in the nav
+    // does the one read instead, so this would be a wasted report call.
+    if (press) return
     const locationSlug = (location || 'salem').toLowerCase()
     getLeaderboard({ location_slug: locationSlug }).then(res => {
       setLeaderboardData(res)
     }).catch(() => {})
-  }, [location])
+  }, [location, press])
 
   useEffect(() => {
     const interval = setInterval(() => {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import ActionPopup from './ActionPopup'
 import { getAppSettings } from '../lib/api'
 
@@ -15,6 +16,12 @@ import { getAppSettings } from '../lib/api'
 //
 // Who sees it is the caller's decision (App mirrors the board's rule: below
 // corporate). Directors and admins never had these buttons.
+//
+// The menu is portaled to <body> and positioned from the button's rect rather
+// than absolutely inside this component. It has to be: .press-nav__tabs sets
+// overflow-x: auto so the tab strip can scroll on narrow screens, and that
+// makes it a scroll container which clips an absolutely-positioned child. The
+// menu rendered, the caret animated, and nothing was visible.
 
 const ICONS = {
   tour: 'M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z',
@@ -26,7 +33,9 @@ export default function QuickActions({ location }) {
   const [urls, setUrls] = useState({ tour: null, dayone: null, vip: null })
   const [open, setOpen] = useState(false)
   const [popup, setPopup] = useState(null) // { title, url }
+  const [anchor, setAnchor] = useState(null) // { top, left } in viewport coords
   const wrapRef = useRef(null)
+  const btnRef = useRef(null)
 
   // Same three app settings the board reads, keyed by club slug.
   useEffect(() => {
@@ -43,18 +52,40 @@ export default function QuickActions({ location }) {
     return () => { live = false }
   }, [location])
 
-  // Click-away and Escape, the way every other menu in the portal closes.
+  // Click-away and Escape, the way every other menu in the portal closes. The
+  // menu lives outside wrapRef now, so it gets its own ref in the check.
+  const menuRef = useRef(null)
   useEffect(() => {
     if (!open) return
-    const onDown = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false) }
+    const onDown = (e) => {
+      if (wrapRef.current?.contains(e.target)) return
+      if (menuRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
     const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    // The nav is sticky, so scrolling does not move the button — but resizing
+    // and the tab strip scrolling both do.
+    const reposition = () => {
+      const r = btnRef.current?.getBoundingClientRect()
+      if (r) setAnchor({ top: r.bottom, left: r.left })
+    }
     document.addEventListener('mousedown', onDown)
     window.addEventListener('keydown', onKey)
+    window.addEventListener('resize', reposition)
+    window.addEventListener('scroll', reposition, true)
     return () => {
       document.removeEventListener('mousedown', onDown)
       window.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', reposition)
+      window.removeEventListener('scroll', reposition, true)
     }
   }, [open])
+
+  function toggle() {
+    const r = btnRef.current?.getBoundingClientRect()
+    if (r) setAnchor({ top: r.bottom, left: r.left })
+    setOpen(o => !o)
+  }
 
   // Milwaukie does not run the VIP survey, matching the board.
   const isMilwaukie = (location || '').toLowerCase() === 'milwaukie'
@@ -71,7 +102,8 @@ export default function QuickActions({ location }) {
     <div className="press-quick" ref={wrapRef}>
       <button
         type="button"
-        onClick={() => setOpen(o => !o)}
+        ref={btnRef}
+        onClick={toggle}
         aria-expanded={open}
         aria-haspopup="menu"
         className={`press-quick__btn${open ? ' is-open' : ''}`}
@@ -87,8 +119,13 @@ export default function QuickActions({ location }) {
         </span>
       </button>
 
-      {open && (
-        <div className="press-quick__menu" role="menu">
+      {open && anchor && createPortal(
+        <div
+          className="press-quick__menu"
+          role="menu"
+          ref={menuRef}
+          style={{ top: anchor.top, left: anchor.left }}
+        >
           {items.map(i => (
             <button
               key={i.key}
@@ -105,7 +142,8 @@ export default function QuickActions({ location }) {
               {i.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
 
       {popup && (
