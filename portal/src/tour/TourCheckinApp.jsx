@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { publicTour } from '../lib/api'
 import { buildDayOneUrl } from '../lib/dayOnePrefill'
+import VipReferral from './VipReferral'
 
 // 'Custom Pass' is not a plain outcome: choosing it reveals a day picker and
 // writes the pass to ABC. It sits in the same grid because that is where staff
 // already decide what happened, and a separate control above the outcome was
 // easy to miss.
+const VIP_PASS = 'Started VIP Pass'
 const CUSTOM_PASS = 'Custom Pass'
-const OUTCOMES = ['Membership Sale', 'Started Trial', 'Started VIP Pass', 'Only Tour', CUSTOM_PASS]
+const OUTCOMES = ['Membership Sale', 'Started Trial', VIP_PASS, 'Only Tour', CUSTOM_PASS]
 
 // Outcomes that hand out gym access, and for how long. A trial and a VIP pass
 // are just fixed-length versions of a custom pass, so they take the same route:
@@ -16,7 +18,7 @@ const OUTCOMES = ['Membership Sale', 'Started Trial', 'Started VIP Pass', 'Only 
 // change rather than something staff have to remember to type.
 const PASS_DAYS = {
   'Started Trial': 7,
-  'Started VIP Pass': 14,
+  [VIP_PASS]: 14,
 }
 const grantsAPass = outcome => outcome === CUSTOM_PASS || outcome in PASS_DAYS
 const REFRESH_MS = 2000   // poll fast so a new arrival shows within ~2s (only while the app is open)
@@ -307,6 +309,14 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
   // decision and press one button rather than remembering a second step.
   const [days, setDays] = useState('10')
 
+  // Who sent them. Prefilled from GHL when the contact already knows, otherwise
+  // whatever staff enter. All three are optional.
+  const [referral, setReferral] = useState({
+    referred_by_full_name: '',
+    referred_by_abc_id: '',
+    vip_team_member: '',
+  })
+
   useEffect(() => {
     publicTour.employees(token).then(r => setEmployees(r.employees || [])).catch(() => {})
   }, [token])
@@ -346,6 +356,8 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
         notes,
         status: 'completed',
         pass_days: passDays,
+        // Sent only on a VIP pass; the server writes back whatever is non-empty.
+        ...(outcome === VIP_PASS ? referral : {}),
       })
       // Show the success animation briefly, then close + refresh the queue.
       setSaved(true)
@@ -412,6 +424,15 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
               )
             })}
           </div>
+
+          {outcome === VIP_PASS && (
+            <VipReferral
+              token={token}
+              intakeId={intake.id}
+              value={referral}
+              onChange={setReferral}
+            />
+          )}
 
           {outcome in PASS_DAYS && (
             <div className="mt-3 rounded-xl border border-gray-200 p-3">

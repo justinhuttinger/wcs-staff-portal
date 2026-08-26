@@ -1202,6 +1202,11 @@ export const publicTour = {
     }),
   // Extend a lapsed trial from the queue. Prospects only; a real member comes
   // back as an error the UI shows verbatim.
+  // What the contact already says about who sent them.
+  referral: (token, id) => publicFetch(`/public/tour/${token}/intake/${id}/referral`),
+  // Backs the "who referred you" picker. Our synced abc_members, not ABC.
+  memberSearch: (token, q) =>
+    publicFetch(`/public/tour/${token}/member-search?q=${encodeURIComponent(q)}`),
   giveTrialDays: (token, id, days) =>
     publicFetch(`/public/tour/${token}/intake/${id}/trial-days`, {
       method: 'POST',

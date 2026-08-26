@@ -4,6 +4,8 @@ const { clubNumberForLocationName } = require('../config/clubMap')
 const { buildTourWebhookPayload } = require('../lib/tourWebhook')
 const { getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
+const { readReferral, writeReferral } = require('../lib/vipReferral')
+const { searchMembersByName } = require('../lib/memberLookup')
 
 const router = Router()
 
@@ -157,6 +159,9 @@ router.patch('/:token/intake/:id', async (req, res) => {
       // Set by the app when the outcome granted a pass. The length is chosen in
       // the UI (or fixed per outcome), so the server cannot derive it.
       pass_days,
+      // VIP referral, captured when the outcome is a VIP pass. All optional:
+      // staff answer what the member actually knows.
+      referred_by_full_name, referred_by_abc_id, vip_team_member,
     } = req.body || {}
     const cancelled = status === 'cancelled'
     if (!cancelled && !ALLOWED_OUTCOMES.includes(outcome)) {
@@ -173,6 +178,28 @@ router.patch('/:token/intake/:id', async (req, res) => {
       return res.status(404).json({ error: 'not found' })
     }
 
+    // Stamp the referral onto the GHL contact before the row goes. Only
+    // non-empty values are written, so leaving a question blank never clears
+    // something already on the record.
+    if (!cancelled && existing.ghl_contact_id &&
+        (referred_by_full_name || referred_by_abc_id || vip_team_member)) {
+      const loc = getLocationBySlug((ctx.location.name || '').trim().toLowerCase())
+      if (loc) {
+        const r = await writeReferral(
+          { locationId: loc.id, apiKey: loc.apiKey, contactId: existing.ghl_contact_id },
+          {
+            fullName: referred_by_full_name,
+            abcId: referred_by_abc_id,
+            teamMember: vip_team_member,
+          }
+        )
+        if (!r.ok) console.error('[public-tour] referral write failed:', r.error)
+        else if (r.written.length) {
+          console.log(`[public-tour] referral written ${r.written.join(', ')} for ${existing.id}`)
+        }
+      }
+    }
+
     // Fire the outbound per-location webhook with the final outcome (it carries
     // everything downstream needs), THEN delete the row. The iPad is a transient
     // queue: completed tours are not retained and there is no Completed tab.
@@ -185,6 +212,9 @@ router.patch('/:token/intake/:id', async (req, res) => {
         referring_member_id: referring_member_id || null,
         referring_member_name: referring_member_name || null,
         pass_days: pass_days ?? null,
+        referred_by_full_name: referred_by_full_name || null,
+        referred_by_abc_id: referred_by_abc_id || null,
+        vip_team_member: vip_team_member || null,
         completed_at: new Date().toISOString(),
       })
       // The outbound body is not observable from our side once it reaches GHL,
@@ -279,6 +309,62 @@ router.post('/:token/intake/:id/trial-days', async (req, res) => {
   } catch (err) {
     console.error('[public-tour] trial-days failed:', err.message)
     res.status(500).json({ error: 'internal error' })
+  }
+})
+
+// GET /public/tour/:token/intake/:id/referral
+//
+// What the contact already says about who sent them. Fetched when staff open a
+// card rather than with the queue: it is one GHL call per person and only the
+// VIP outcome needs it.
+router.get('/:token/intake/:id/referral', async (req, res) => {
+  try {
+    const ctx = await resolveToken(req.params.token)
+    if (!ctx) return res.status(404).json({ error: 'not found' })
+
+    const { data: intake } = await supabaseAdmin
+      .from('tour_intakes')
+      .select('id, location_id, ghl_contact_id')
+      .eq('id', req.params.id)
+      .maybeSingle()
+    if (!intake || intake.location_id !== ctx.location.id) {
+      return res.status(404).json({ error: 'not found' })
+    }
+
+    const loc = getLocationBySlug((ctx.location.name || '').trim().toLowerCase())
+    if (!loc || !intake.ghl_contact_id) {
+      // No contact to read. Not an error: staff simply get the blank prompts.
+      return res.json({ fullName: '', abcId: '', teamMember: '', known: false })
+    }
+
+    const referral = await readReferral({
+      locationId: loc.id, apiKey: loc.apiKey, contactId: intake.ghl_contact_id,
+    })
+    res.json({ ...referral, known: true })
+  } catch (err) {
+    console.error('[public-tour] referral read failed:', err.message)
+    // Degrade to the prompts rather than blocking the tour on a GHL hiccup.
+    res.json({ fullName: '', abcId: '', teamMember: '', known: false })
+  }
+})
+
+// GET /public/tour/:token/member-search?q=
+//
+// Backs the "who referred you" picker. Uses our synced abc_members rather than
+// ABC, which ignores every name filter it is given.
+router.get('/:token/member-search', async (req, res) => {
+  try {
+    const ctx = await resolveToken(req.params.token)
+    if (!ctx) return res.status(404).json({ error: 'not found' })
+
+    const clubNumber = clubNumberForLocationName(ctx.location.name)
+    if (!clubNumber) return res.json({ members: [] })
+
+    const members = await searchMembersByName(clubNumber, req.query.q)
+    res.json({ members })
+  } catch (err) {
+    console.error('[public-tour] member search failed:', err.message)
+    res.json({ members: [] })
   }
 })
 
