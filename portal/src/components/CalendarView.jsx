@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { getTours, getDayOneTrackerAppointments } from '../lib/api'
-import DayOneOutcomeFrame from './DayOneOutcomeFrame'
+import DayOneOutcomeModal from './DayOneOutcomeModal'
 
 // --- Helpers ---
 
@@ -87,8 +87,6 @@ const STATUS_COLORS = {
   'No Show': 'bg-red-50 text-red-600 border-red-200',
 }
 
-// --- OutcomeModal (from DayOneTrackerView) ---
-
 function StatusBadge({ appointment }) {
   const s = appointment.day_one_status
   const sale = appointment.day_one_sale
@@ -109,36 +107,6 @@ function formatDateTime(iso) {
   return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-function OutcomeModal({ appointment, onClose, onSubmitted }) {
-  // Third copy of this modal in the portal, and the one the calendar actually
-  // opens. Like the other two it now embeds the form the API serves instead of
-  // reimplementing it, so there is one design and one write path. The version
-  // that lived here POSTed to /day-one-tracker/submit, which reached GHL custom
-  // fields only and never day_one_appointments.
-  const name = appointment.contact_name || 'Day One'
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
-      <div className="w-full max-w-xl rounded-2xl bg-surface shadow-xl">
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
-          <h2 className="truncate text-base font-semibold text-text-primary">{name}</h2>
-          <button
-            onClick={onClose}
-            className="rounded-lg px-3 py-1 text-sm text-text-muted hover:bg-bg"
-            aria-label="Close"
-          >
-            Close
-          </button>
-        </div>
-        <div className="px-5 pb-4 pt-2">
-          <DayOneOutcomeFrame
-            contactId={appointment.contact_id}
-            onRecorded={() => { if (onSubmitted) onSubmitted(); if (onClose) onClose() }}
-          />
-        </div>
-      </div>
-    </div>
-  )
-}
 export default function CalendarView({ user, onBack, location, isAdmin }) {
   const [tours, setTours] = useState([])
   const [dayOnes, setDayOnes] = useState([])
@@ -414,10 +382,10 @@ export default function CalendarView({ user, onBack, location, isAdmin }) {
 
       {/* Outcome Modal for pending Day Ones (editable) */}
       {activeModal && (
-        <OutcomeModal
+        <DayOneOutcomeModal
           appointment={activeModal}
           onClose={() => setActiveModal(null)}
-          onSubmitted={() => {
+          onRecorded={() => {
             // The embedded form owns the write and reports only that it
             // happened, so reload rather than patching with a guess.
             setActiveModal(null)
