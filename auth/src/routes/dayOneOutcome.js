@@ -20,10 +20,12 @@
 //
 // NO AUTH, DELIBERATELY (Justin's call, 2026-08-25). Same posture as the tour
 // check-in page and the Day One booking widget: trainers are on their phones on
-// a gym floor and a login wall means the form does not get filled in. The
-// submitter picks their own name off the location's trainer roster, which is an
-// audit trail rather than an identity claim. Defence is the unguessable contact
-// id plus the rate limits below.
+// a gym floor and a login wall means the form does not get filled in. Defence is
+// the unguessable contact id plus the rate limits below.
+//
+// The form does not ask who is filling it in (dropped 2026-08-26, Justin's call:
+// the appointment already names the trainer, so asking again was a question that
+// bought nothing). submitted_by stays on the table for the rows that have it.
 const { Router } = require('express')
 const path = require('path')
 const fs = require('fs')
@@ -32,16 +34,15 @@ const { supabaseAdmin } = require('../services/supabase')
 const { getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
 const { getFieldId } = require('../services/ghlCustomFields')
-const { trainerRoster } = require('../lib/ghlBooking')
 const {
   PT_SALE_TYPES, NO_SALE_REASONS, CANCEL_REASONS,
-  validateOutcome, legacyGhlFields, pickOpenAppointments,
+  validateOutcome, legacyGhlFields, pickOpenAppointments, displayStatus,
 } = require('../lib/dayOneOutcomes')
 
 const router = Router()
 
-// Reads are cheap for us but each roster miss costs a GHL call, and GHL rate
-// limits per location. A trainer legitimately loads this once or twice.
+// This is a Supabase read only, but the endpoint is public, so it still gets a
+// cap. A trainer legitimately loads it once or twice.
 const readLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,
@@ -97,30 +98,14 @@ router.get('/api/appointment', readLimiter, async (req, res) => {
     if (error) throw new Error(error.message)
 
     const open = pickOpenAppointments(data || [])
-    // The roster is per location, and every open appointment for one contact is
-    // at the same club in practice, so the first one decides.
-    let trainers = []
-    const slug = open[0]?.location_slug || data?.[0]?.location_slug || null
-    if (slug) {
-      const loc = getLocationBySlug(slug)
-      if (loc) {
-        try {
-          // Calendar team members, NOT the day_one_booking_team_member picklist.
-          // This is a trainer reporting on their own session, and reading the
-          // calendar roster keeps the form off custom fields entirely.
-          trainers = (await trainerRoster(loc)).map(t => t.name)
-        } catch (e) {
-          console.warn('[dayOneOutcome] roster failed for', slug, e.message)
-        }
-      }
-    }
 
     res.json({
-      appointments: open,
+      // display_status so the page and any future caller agree on what
+      // "passed with no outcome" means without re-deriving it.
+      appointments: open.map(a => ({ ...a, display_status: displayStatus(a) })),
       // Sent so the page can say "this one is already done" rather than showing
       // an empty form with no explanation.
       recorded: (data || []).filter(r => r.outcome_recorded_at).slice(0, 3),
-      trainers,
       options: {
         pt_sale_types: PT_SALE_TYPES,
         no_sale_reasons: NO_SALE_REASONS,

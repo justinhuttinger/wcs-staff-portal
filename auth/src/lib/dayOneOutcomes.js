@@ -410,7 +410,39 @@ function webhookLabels(body = {}) {
 }
 
 
+
+// The status a human should see, which is not the same as the status stored.
+//
+// "Passed, no outcome" is DERIVED, never stored. It is the difference between a
+// Day One that has not happened yet and one that happened and nobody recorded.
+// Storing it would need a job flipping rows at midnight in the right timezone,
+// and a row would be wrong for however long that job was late or broken.
+//
+// This distinction is the whole reporting win. Against the old custom fields
+// both cases looked identical: a booking with no status. 937 past-dated Day Ones
+// currently have no outcome, and until now there was no way to name them.
+const DISPLAY_STATUS = {
+  SCHEDULED: 'Scheduled',
+  PASSED: 'Passed, no outcome',
+  COMPLETED: 'Completed',
+  NO_SHOW: 'No Show',
+  CANCELLED: 'Cancelled',
+}
+
+function displayStatus(row, now = new Date()) {
+  if (!row) return null
+  if (row.status === 'cancelled') return DISPLAY_STATUS.CANCELLED
+  if (row.status === 'completed') return DISPLAY_STATUS.COMPLETED
+  if (row.status === 'no_show') return DISPLAY_STATUS.NO_SHOW
+  // Still open. Which side of today is it on?
+  const today = pacificDate(now.toISOString())
+  if (row.scheduled_date && today && row.scheduled_date < today) return DISPLAY_STATUS.PASSED
+  return DISPLAY_STATUS.SCHEDULED
+}
+
 module.exports = {
+  DISPLAY_STATUS,
+  displayStatus,
   sameInstant,
   flattenWebhookBody,
   webhookLabels,
