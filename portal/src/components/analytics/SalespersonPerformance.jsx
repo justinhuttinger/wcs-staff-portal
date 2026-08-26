@@ -43,9 +43,22 @@ const BAR_TONES = {
 }
 
 // Alternating column tint so a number is easy to trace back to its header.
-// Both tokens are fully opaque: these cells sit under a sticky header and a
-// sticky first column, and a translucent tint would let rows show through.
-const zebra = (i) => (i % 2 === 0 ? 'bg-bg' : 'bg-surface')
+//
+// The tint is mixed from the theme's own ink into its own surface rather than
+// picked from two named tokens: bg-bg and bg-surface are BOTH #ffffff under the
+// press theme (and near-identical under wp), so a bg-bg/bg-surface pair renders
+// as no stripe at all. Mixing also means this inverts correctly in dark mode,
+// where the ink is light, without a second set of classes.
+//
+// The result is opaque on purpose. These cells scroll under a sticky header and
+// a sticky first column, and a translucent stripe would let rows bleed through.
+const ZEBRA_TINT = 'bg-[color-mix(in_srgb,var(--color-text-primary)_6%,var(--color-surface))]'
+const zebra = (i) => (i % 2 === 0 ? ZEBRA_TINT : 'bg-surface')
+
+// Row hover, mixed the same way and for the same reason. A translucent
+// bg-wcs-red/6 here would punch a hole in the sticky first column on hover and
+// let the scrolling columns show through it.
+const HOVER_TINT = 'group-hover:bg-[color-mix(in_srgb,var(--color-wcs-red)_8%,var(--color-surface))]'
 
 // What the first column is called, per grouping mode.
 const ROW_LABEL = {
@@ -312,7 +325,7 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
             <tbody>
               {rows.map(row => (
                 <tr key={row.key} className="group">
-                  <td className="sticky left-0 z-10 bg-surface group-hover:bg-wcs-red/[0.06] px-4 py-2 whitespace-nowrap border-b border-border/60">
+                  <td className={`sticky left-0 z-10 bg-surface ${HOVER_TINT} px-4 py-2 whitespace-nowrap border-b border-border/60`}>
                     <span className="text-text-primary">
                       {[row.club, row.salesperson].filter(Boolean).join('; ')}
                     </span>
@@ -328,7 +341,7 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
                       ? Math.min(100, Math.round((avg / max) * 100))
                       : null
                     return (
-                      <td key={col.key} className={`px-3 py-2 border-b border-border/60 ${zebra(i)} group-hover:bg-wcs-red/[0.06]`}>
+                      <td key={col.key} className={`px-3 py-2 border-b border-border/60 ${zebra(i)} ${HOVER_TINT}`}>
                         {col.bar ? (
                           <div className="relative flex items-center gap-2 h-5">
                             <div className="relative flex-1 h-4 min-w-[60px]">
