@@ -9,6 +9,7 @@ const {
   renderTitle,
   titleTemplateTokens,
   makeSlug,
+  canReuseTicket,
 } = require('../services/ticketingSchema')
 const { notifiableMentionIds } = require('../services/ticketMentions')
 const ticketNotify = require('../services/ticketNotify')
@@ -390,7 +391,7 @@ router.get('/summary', async (req, res) => {
 // POST /ticketing — submit a ticket against an active type (any staff)
 router.post('/', async (req, res) => {
   try {
-    const { type_id, data = {}, priority, location_id } = req.body || {}
+    const { type_id, data = {}, priority, location_id, reuse_ticket_id } = req.body || {}
     if (!type_id) return res.status(400).json({ error: 'type_id is required' })
     const type = await getType(type_id)
     if (!type) return res.status(404).json({ error: 'Ticket type not found' })
@@ -399,15 +400,38 @@ router.post('/', async (req, res) => {
     const v = validateSubmission(type.schema || [], data)
     if (!v.ok) return res.status(400).json({ error: 'Validation failed', errors: v.errors })
 
-    const insert = {
+    const fields = {
       type_id,
       title: renderTitle(type.title_template, type.schema || [], v.cleaned, type.name),
       data: v.cleaned,
-      submitter_id: req.staff.id,
       location_id: location_id || null,
     }
-    if (['low', 'normal', 'high', 'urgent'].includes(priority)) insert.priority = priority
-    const { data: ticket, error } = await supabaseAdmin.from('tickets').insert(insert).select().single()
+    if (['low', 'normal', 'high', 'urgent'].includes(priority)) fields.priority = priority
+
+    // Retry path. The submit form writes the ticket row first and uploads its
+    // attachments second, so an upload that fails leaves a real ticket behind.
+    // Resubmitting used to insert a *second* row (the 2026-08-24 "New Hire -
+    // Rocio Tello" x3). Given the id of that first attempt, refresh it in place
+    // instead — the user may have swapped the offending file, so the payload is
+    // re-validated and rewritten. Guarded to the submitter's own untouched
+    // ticket of the same type; anything else falls through to a normal insert.
+    // No creation notice here: the first attempt already sent it.
+    if (reuse_ticket_id) {
+      const { data: prior } = await supabaseAdmin
+        .from('tickets')
+        .select('id, submitter_id, type_id, status')
+        .eq('id', reuse_ticket_id)
+        .maybeSingle()
+      if (canReuseTicket(prior, { staffId: req.staff.id, typeId: type_id })) {
+        const { data: reused, error: reuseErr } = await supabaseAdmin
+          .from('tickets').update(fields).eq('id', prior.id).select().single()
+        if (reuseErr) throw reuseErr
+        return res.json({ ticket: reused, reused: true })
+      }
+    }
+
+    const { data: ticket, error } = await supabaseAdmin
+      .from('tickets').insert({ ...fields, submitter_id: req.staff.id }).select().single()
     if (error) throw error
 
     // Creation notice to whoever this type lists, DM'd from the portal's own

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ticketing } from '../../../lib/api'
 import DynamicFields from './DynamicFields'
 import { buildSubmission, summarizeErrors, findMissingRequired } from './shared'
@@ -13,6 +13,12 @@ export default function TicketSubmit({ onDone, onCancel }) {
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  // Set once the ticket row exists but its attachments didn't all land. A retry
+  // reuses this id rather than creating a second ticket.
+  const pendingId = useRef(null)
+  // Files already stored, held by object identity: swap a file in the picker
+  // and it's a new File, so it uploads; keep it and the retry skips it.
+  const stored = useRef(new Set())
 
   useEffect(() => {
     ticketing.listTypes(true)
@@ -23,6 +29,8 @@ export default function TicketSubmit({ onDone, onCancel }) {
 
   function pick(t) {
     setType(t); setValues({}); setErrors({}); setError('')
+    // A different type can't reuse the half-finished ticket from the last one.
+    pendingId.current = null; stored.current = new Set()
   }
 
   async function submit() {
@@ -36,17 +44,30 @@ export default function TicketSubmit({ onDone, onCancel }) {
     setSubmitting(true); setError(''); setErrors({})
     try {
       const { data, files } = buildSubmission(type.schema || [], values)
-      const res = await ticketing.create({ type_id: type.id, data })
+      const res = await ticketing.create({
+        type_id: type.id,
+        data,
+        // Present only when an earlier attempt already wrote the row.
+        reuse_ticket_id: pendingId.current || undefined,
+      })
       const ticketId = res.ticket.id
+      pendingId.current = ticketId
       // Upload file-field attachments sequentially so a failure is easy to attribute.
       for (const f of files) {
+        if (stored.current.has(f)) continue
         await ticketing.uploadAttachment(ticketId, f)
+        stored.current.add(f)
       }
+      pendingId.current = null; stored.current = new Set()
       onDone(ticketId)
     } catch (err) {
       if (err.errors) {
         setErrors(err.errors)
         setError(summarizeErrors(type.schema || [], err.errors) || err.message)
+      } else if (pendingId.current) {
+        // The ticket itself saved; only an attachment failed. Say so, so the
+        // fix is "retry the file", not "fill the form in again".
+        setError(`${err.message || 'The file could not be attached'}. Your ticket is saved — fix the file and submit again; this won't create a duplicate.`)
       } else {
         setError(err.message || 'Could not submit ticket')
       }
