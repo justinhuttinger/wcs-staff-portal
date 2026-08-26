@@ -617,8 +617,30 @@ body {
    the classic two-column board — so tiles get the full width to spread into. */
 [data-theme='press'] .press-single .portal-columns { display: block; }
 [data-theme='press'] .press-single .portal-section { width: 100%; }
-[data-theme='press'] .press-single .portal-tile-grid {
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+
+/* One tile geometry for every Press board, defined once and not scoped to a
+   single tab, so an Apps tile and an Other tile are the same box. Height is
+   fixed rather than min-height: a two-line label used to make one tile taller
+   than its neighbours, and the Apps and Other boards disagreed because their
+   labels differ in length. */
+[data-theme='press'] .portal-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+[data-theme='press'] .portal-tile {
+  height: 165px;
+  min-height: 0;
+  padding: 1.25rem 1rem;
+  overflow: hidden;
+}
+/* A long name wraps to two lines and then clips, rather than growing the box. */
+[data-theme='press'] .portal-tile__label {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 @media (max-width: 768px) {
@@ -634,3 +656,107 @@ body {
   color: var(--press-red);
 }
 .press-tab--back:hover { color: var(--press-red-hover); }
+
+
+/* --- Pinned tabs -----------------------------------------------------------
+   The user's own shortcuts, to the right of Other. Same shape as a tab, set
+   apart by a leading divider so the fixed five still read as a group. */
+.press-tab--pin { text-decoration: none; }
+.press-nav__tabs .press-tab--pin:first-of-type { border-left: 1px solid var(--press-line); }
+.press-tab--add {
+  padding-inline: 0.9rem;
+  color: rgb(22 24 29 / 0.4);
+}
+.press-tab--add svg { width: 1rem; height: 1rem; }
+.press-tab--add:hover { color: var(--press-red); background: var(--press-band); }
+
+/* --- Pin picker ------------------------------------------------------------
+   Portaled to <body>: the nav is position:sticky and so creates a stacking
+   context a child panel could never escape. */
+.press-pin-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgb(0 0 0 / 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 4.5rem 1rem 1rem;
+  overflow-y: auto;
+}
+.press-pin-panel {
+  width: 100%;
+  max-width: 30rem;
+  background: #ffffff;
+  border: 1px solid var(--press-line);
+  border-radius: 0.25rem;
+  padding: 1.25rem;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.25);
+}
+.press-pin-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.press-pin-panel__head h3 {
+  font-family: 'WCSDisplay', 'Arial Narrow', 'Inter', sans-serif;
+  text-transform: uppercase;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--press-ink);
+}
+.press-pin-panel__close {
+  border: 0;
+  background: transparent;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: rgb(22 24 29 / 0.5);
+  cursor: pointer;
+}
+.press-pin-panel__close:hover { color: var(--press-red); }
+.press-pin-panel__hint {
+  font-size: 0.8rem;
+  color: rgb(22 24 29 / 0.58);
+  margin-top: 0.35rem;
+}
+.press-pin-panel__group {
+  font-family: 'WCSDisplay', 'Arial Narrow', 'Inter', sans-serif;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.03em;
+  color: rgb(22 24 29 / 0.58);
+  border-bottom: 1px solid var(--press-line);
+  padding-bottom: 0.3rem;
+  margin: 1.1rem 0 0.5rem;
+}
+.press-pin-list { display: flex; flex-direction: column; }
+.press-pin-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.55rem 0.4rem;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 0.1875rem;
+}
+.press-pin-row:hover:not(:disabled) { background: var(--press-band); }
+.press-pin-row:disabled { opacity: 0.4; cursor: not-allowed; }
+.press-pin-row__star { color: rgb(22 24 29 / 0.3); flex-shrink: 0; }
+.press-pin-row__star svg { width: 1.1rem; height: 1.1rem; }
+.press-pin-row.is-on .press-pin-row__star { color: var(--press-red); }
+.press-pin-row__text { min-width: 0; }
+.press-pin-row__label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--press-ink);
+}
+.press-pin-row__desc {
+  display: block;
+  font-size: 0.75rem;
+  color: rgb(22 24 29 / 0.5);
+}

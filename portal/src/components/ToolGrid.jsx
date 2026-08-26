@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import allTools from '../config/tools.json'
 import ToolButton from './ToolButton'
 import { PORTAL_TILE_CATALOG } from '../config/portalTiles'
 import PortalSearch from './PortalSearch'
 import { getTheme, THEME_EVENT } from '../lib/theme'
+import { appsForLocation } from '../lib/apps'
+import { ROLE_LEVELS } from '../lib/roles'
 import { getTiles, getDayOneTrackerAppointments, getTours, getLeaderboard, getAppSettings } from '../lib/api'
 
 // Shared Drive uses an inline icon path in the main layout; mirror it here so
@@ -41,22 +42,9 @@ const ORDERING_LINKS = [
   { label: 'Walter E. Nelson', description: 'Supplies', url: 'https://www.walterenelson.com/' },
 ]
 
-// Which built-in tool IDs are "Apps" (external services)
-const APP_IDS = ['grow', 'abc', 'wheniwork', 'paychex', 'gmail']
-
-// Role hierarchy levels for visibility checks (legacy aliases included).
-// 'marketing' sits at the same tier as corporate so it passes any corporate
-// gate (reports, meta ads, etc.). The portal early-returns a restricted UI
-// for marketing role, so corporate-only built-in tools never get rendered.
-const ROLE_LEVELS = {
-  front_desk: 0, personal_trainer: 0, team_member: 0,
-  lead: 1,
-  manager: 2,
-  custom: 1,
-  director: 3, corporate: 3,
-  marketing: 3,
-  admin: 4,
-}
+// Role hierarchy and the Apps list both moved to lib/ — the Press nav's
+// pinned-tab picker has to agree with this board about both, and it cannot
+// import from a component.
 
 function SvgTileButton({ onClick, iconPath, label, desc, badge, star }) {
   return (
@@ -119,7 +107,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ only, exclude, cancelInApps, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onNps, onTourCheckin, onAdsManager, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
+export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onNps, onTourCheckin, onAdsManager, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [showOrdering, setShowOrdering] = useState(false)
@@ -136,6 +124,7 @@ export default function ToolGrid({ only, exclude, cancelInApps, abcUrl, location
   // about the board is identical across themes.
   const [theme, setThemeState] = useState(getTheme)
   const spotlight = theme === 'spotlight'
+  const press = theme === 'press'
   // `only` lets the Press theme give each column its own tab — 'apps' or
   // 'tools' — without duplicating any of the role, location and custom-tile
   // filtering below. Unset = both columns, the classic board.
@@ -157,6 +146,33 @@ export default function ToolGrid({ only, exclude, cancelInApps, abcUrl, location
     if (!spotlight) return
     document.querySelectorAll('.portal-tile').forEach((el, i) => {
       el.style.setProperty('--tile-i', String(i))
+    })
+  })
+
+  // Press sorts both boards alphabetically. The tiles are a long sequence of
+  // JSX conditionals rather than a list, so sorting the source would mean
+  // restructuring the whole render; instead each grid is sorted after paint by
+  // setting CSS `order`, which grid honors. Same trick PortalSearch already
+  // uses to filter the board without threading a query through every branch.
+  //
+  // No dep array on purpose: tiles arrive asynchronously (custom tiles, badge
+  // counts) and every render re-sorts, which is self-correcting and cheap at a
+  // few dozen nodes. Runs after the stagger effect above so both can coexist.
+  useEffect(() => {
+    if (!press) {
+      // Leaving the theme must not strand tiles at a stale order.
+      document.querySelectorAll('.portal-tile').forEach(el => { el.style.order = '' })
+      return
+    }
+    document.querySelectorAll('.portal-tile-grid').forEach(grid => {
+      const tiles = [...grid.querySelectorAll(':scope > .portal-tile')]
+      const label = (el) => (el.querySelector('.portal-tile__label')?.textContent || '').trim()
+      tiles
+        .map((el, i) => ({ el, key: label(el), i }))
+        // localeCompare so casing and punctuation sort the way a person reads
+        // them; the original index breaks ties so the order stays stable.
+        .sort((a, b) => a.key.localeCompare(b.key, undefined, { sensitivity: 'base' }) || a.i - b.i)
+        .forEach(({ el }, idx) => { el.style.order = String(idx) })
     })
   })
 
@@ -216,20 +232,11 @@ export default function ToolGrid({ only, exclude, cancelInApps, abcUrl, location
     return () => clearInterval(interval)
   }, [])
 
-  const tools = visibleTools && visibleTools.length > 0
-    ? allTools.filter(t => visibleTools.includes(t.id))
-    : allTools
-
-  const getUrl = (tool) => {
-    if (tool.id === 'abc') {
-      const params = new URLSearchParams()
-      if (abcUrl) params.set('abc_url', abcUrl)
-      if (location) params.set('location', location)
-      const qs = params.toString()
-      return '/kiosk.html' + (qs ? '?' + qs : '')
-    }
-    return tool.url
-  }
+  // Apps for this club, URLs already resolved (lib/apps handles the ABC kiosk
+  // shim and Milwaukie's WhenIWork/Zoho differences). Still honors the role's
+  // Tool Visibility list, which lib/apps knows nothing about.
+  const clubApps = appsForLocation({ location, abcUrl })
+  const visibleApp = (t) => !(visibleTools && visibleTools.length > 0) || visibleTools.includes(t.id)
 
   const visibleCustomTiles = customTiles.filter(t => {
     if (!visibleTools || visibleTools.length === 0) return true
@@ -305,12 +312,12 @@ export default function ToolGrid({ only, exclude, cancelInApps, abcUrl, location
     // wasn't explicitly checked — otherwise granted reports would be unreachable.
     const showReporting = granted.has('reporting') || (customReports && customReports.length > 0)
     // External app shortcuts pulled from tools.json so URLs stay in one place.
-    const appTool = (id) => allTools.find(t => t.id === id)
+    const appTool = (id) => clubApps.find(t => t.id === id)
     const tile = (key) => {
       switch (key) {
         case 'grow': case 'abc': case 'wheniwork': case 'paychex': case 'gmail': {
           const t = appTool(key)
-          return t ? <ToolButton key={key} label={t.label} description={t.description} icon={t.icon} url={getUrl(t)} star={key === 'grow' || key === 'abc'} /> : null
+          return t ? <ToolButton key={key} label={t.label} description={t.description} icon={t.icon} url={t.url} star={key === 'grow' || key === 'abc'} /> : null
         }
         case 'insights':
           return <ToolButton key={key} label="Insights" description="ABC" url="https://app.fitnessbi.com/signin" />
@@ -346,7 +353,8 @@ export default function ToolGrid({ only, exclude, cancelInApps, abcUrl, location
     }
     // Which catalog keys count as "Apps" — external services and file stores.
     // Everything else in the catalog is a Tool.
-    const APP_KEYS = new Set(['grow', 'abc', 'wheniwork', 'paychex', 'gmail', 'insights', 'notifications', 'drive'])
+    const APP_KEYS = new Set(['grow', 'abc', 'wheniwork', 'paychex', 'gmail', 'insights', 'notifications'])
+    if (!driveInTools) APP_KEYS.add('drive')
     const grantedKeys = PORTAL_TILE_CATALOG
       .map(t => t.key)
       .filter(k => (k === 'reporting' ? showReporting : granted.has(k)))
@@ -377,19 +385,7 @@ export default function ToolGrid({ only, exclude, cancelInApps, abcUrl, location
   // Labels that should be in Tools even if their section is "main"
   const TOOL_LABELS = ['cancel', 'cancel tool']
 
-  const isMilwaukie = (location || '').toLowerCase() === 'milwaukie'
-
-  const appTools = tools
-    .filter(t => APP_IDS.includes(t.id))
-    // Milwaukie: remove WhenIWork (location uses different scheduling)
-    .filter(t => !(isMilwaukie && t.id === 'wheniwork'))
-    // Milwaukie: swap Gmail → Zoho Mail
-    .map(t => {
-      if (isMilwaukie && t.id === 'gmail') {
-        return { ...t, label: 'Zoho Mail', description: 'Email', icon: 'zohomail', url: 'https://www.zoho.com/mail/login.html' }
-      }
-      return t
-    })
+  const appTools = clubApps.filter(visibleApp)
 
   // All custom tiles, categorized
   const allCustom = [...mainTiles, ...topLevelTiles]
@@ -619,10 +615,13 @@ export default function ToolGrid({ only, exclude, cancelInApps, abcUrl, location
             <ToolButton key={'custom-' + tile.id} label={tile.label} description={tile.description || ''} url={tile.url} star />
           ))}
           {appTools.map((tool) => (
-            <ToolButton key={tool.id} label={tool.label} description={tool.description} icon={tool.icon} url={getUrl(tool)} star={tool.id === 'grow' || tool.id === 'abc'} />
+            <ToolButton key={tool.id} label={tool.label} description={tool.description} icon={tool.icon} url={tool.url} star={tool.id === 'grow' || tool.id === 'abc'} />
           ))}
-          {/* Shared Drive — in-portal Drive browser (replaces the legacy static Google Drive link) */}
-          {onDrive && <SvgTileButton onClick={onDrive} iconPath="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" label="Shared Drive" desc="Documents" />}
+          {/* Shared Drive — in-portal Drive browser (replaces the legacy static
+              Google Drive link). It opens a portal view rather than an external
+              service, so driveInTools moves it to the Tools board where it
+              belongs; it stays here for the themes that keep one board. */}
+          {onDrive && !driveInTools && <SvgTileButton onClick={onDrive} iconPath={DRIVE_ICON} label="Shared Drive" desc="Documents" />}
           {/* Insights (FitnessBI / ABC) — manager+ only */}
           {roleIdx >= ROLE_LEVELS.manager && (
             <ToolButton label="Insights" description="ABC" url="https://app.fitnessbi.com/signin" />
@@ -658,6 +657,8 @@ export default function ToolGrid({ only, exclude, cancelInApps, abcUrl, location
           {onCalendar && !omitted.has('calendar') && <SvgTileButton onClick={onCalendar} iconPath={TILE_ICONS.tours} label="Calendar" desc="Tours & Day Ones" badge={calendarBadge} star />}
           {/* 4. Leaderboard */}
           {onLeaderboard && !omitted.has('leaderboard') && <SvgTileButton onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />}
+          {/* 4.5. Shared Drive, when it has been moved off the Apps board. */}
+          {onDrive && driveInTools && <SvgTileButton onClick={onDrive} iconPath={DRIVE_ICON} label="Shared Drive" desc="Documents" />}
           {/* 4.6. HR Documents — manager+ only */}
           {onHR && roleIdx >= ROLE_LEVELS.manager && <SvgTileButton onClick={onHR} iconPath={TILE_ICONS.hr} label="HR Docs" desc="Documents" />}
           {/* 4.7. Help Center — all roles */}
