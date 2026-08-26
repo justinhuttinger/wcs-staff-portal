@@ -244,7 +244,7 @@ async function stitchReschedules(locationSlug) {
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString().slice(0, 10)
   const { data, error } = await supabaseAdmin
     .from('day_one_appointments')
-    .select('id, ghl_contact_id, status, updated_at, booked_at, created_at, scheduled_date, rescheduled_from_id, rescheduled_to_id')
+    .select('id, ghl_contact_id, status, updated_at, booked_at, created_at, scheduled_date, rescheduled_from_id, rescheduled_to_id, booked_by_name, booked_by_source')
     .eq('location_slug', locationSlug)
     .gte('scheduled_date', since)
   if (error) throw new Error(`read for stitching: ${error.message}`)
@@ -267,11 +267,41 @@ async function stitchReschedules(locationSlug) {
         console.warn('[dayOneReconcile] reschedule link failed:', (a.error || b.error).message)
         continue
       }
+      // CREDIT FOLLOWS THE ORIGINAL BOOKING.
+      //
+      // A reschedule is the same Day One, so whoever booked it keeps the credit.
+      // Without this, moving an appointment silently transfers the credit to
+      // whoever touched it last, and the easiest way to score on the leaderboard
+      // becomes rebooking other people's Day Ones.
+      //
+      // The superseded name is kept in the history event rather than discarded,
+      // so "who actually made this booking" is still answerable.
+      const original = rows.find(r => r.id === from)
+      const replacement = rows.find(r => r.id === to)
+      const carried = original?.booked_by_name
+        && original.booked_by_name !== replacement?.booked_by_name
+      if (carried) {
+        const c = await supabaseAdmin.from('day_one_appointments').update({
+          booked_by_name: original.booked_by_name,
+          booked_by_source: 'reschedule_carryover',
+          updated_at: new Date().toISOString(),
+        }).eq('id', to)
+        if (c.error) console.warn('[dayOneReconcile] credit carryover failed:', c.error.message)
+      }
+
       await supabaseAdmin.from('day_one_appointment_events').insert({
         appointment_id: to,
         event_type: 'rescheduled',
-        from_value: { rescheduled_from_id: from },
-        to_value: { rescheduled_to_id: to },
+        from_value: {
+          rescheduled_from_id: from,
+          booked_by_name: original?.booked_by_name || null,
+        },
+        to_value: {
+          rescheduled_to_id: to,
+          // What the replacement booking claimed before credit was carried over.
+          superseded_booked_by_name: carried ? (replacement?.booked_by_name || null) : undefined,
+          credit_carried_over: !!carried,
+        },
         detected_by: 'reconciler',
       })
       linked++
