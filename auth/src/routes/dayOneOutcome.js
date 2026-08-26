@@ -36,7 +36,7 @@ const { ghlFetch } = require('../services/ghlClient')
 const { getFieldId } = require('../services/ghlCustomFields')
 const {
   PT_SALE_TYPES, NO_SALE_REASONS, CANCEL_REASONS,
-  validateOutcome, legacyGhlFields, pickOpenAppointments, displayStatus,
+  validateOutcome, legacyGhlFields, pickOpenAppointments, displayStatus, isRecorded,
 } = require('../lib/dayOneOutcomes')
 
 const router = Router()
@@ -105,7 +105,7 @@ router.get('/api/appointment', readLimiter, async (req, res) => {
       appointments: open.map(a => ({ ...a, display_status: displayStatus(a) })),
       // Sent so the page can say "this one is already done" rather than showing
       // an empty form with no explanation.
-      recorded: (data || []).filter(r => r.outcome_recorded_at).slice(0, 3),
+      recorded: (data || []).filter(isRecorded).slice(0, 3),
       options: {
         pt_sale_types: PT_SALE_TYPES,
         no_sale_reasons: NO_SALE_REASONS,
@@ -139,7 +139,7 @@ router.post('/api/submit', writeLimiter, async (req, res) => {
 
     // Idempotent by design: a trainer double-tapping submit, or opening the SMS
     // link twice, must not produce two conflicting answers or two history rows.
-    if (appt.outcome_recorded_at) {
+    if (isRecorded(appt)) {
       return res.status(409).json({
         error: 'This Day One was already recorded.',
         recorded_at: appt.outcome_recorded_at,

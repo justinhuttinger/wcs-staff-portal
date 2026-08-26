@@ -189,6 +189,22 @@ function legacyGhlFields(v) {
 // Together these took the number of contacts showing a picker from 179 to 4,
 // which is the point: the picker should mean "this member really did have two",
 // not "our data is untidy".
+
+// Has this Day One actually been recorded?
+//
+// Deliberately NOT just "outcome_recorded_at is set". That flag and the row's
+// substance can disagree: a data repair once copied the timestamp from a
+// cancelled backfill row onto a live scheduled one, and five Day Ones -- two of
+// them still upcoming -- became silently unrecordable, because the form skips
+// anything the flag calls done.
+//
+// A Day One is recorded when it says what happened. The timestamp alone is
+// bookkeeping.
+function isRecorded(row) {
+  if (!row || !row.outcome_recorded_at) return false
+  return row.status === 'completed' || row.status === 'no_show' || row.status === 'cancelled'
+}
+
 const DEFAULT_WINDOW_BACK_DAYS = 21
 const DEFAULT_WINDOW_FORWARD_DAYS = 2
 
@@ -197,7 +213,7 @@ function pickOpenAppointments(rows, now = new Date(), opts = {}) {
   const back = (opts.windowBackDays ?? DEFAULT_WINDOW_BACK_DAYS) * 86400000
   const forward = (opts.windowForwardDays ?? DEFAULT_WINDOW_FORWARD_DAYS) * 86400000
 
-  const open = (rows || []).filter(r => !r.outcome_recorded_at && r.status !== 'cancelled')
+  const open = (rows || []).filter(r => !isRecorded(r) && r.status !== 'cancelled')
 
   // Collapse rows describing the same Day One. Preferring the one with a GHL
   // appointment id keeps the row the reconciler will go on maintaining.
@@ -441,6 +457,7 @@ function displayStatus(row, now = new Date()) {
 }
 
 module.exports = {
+  isRecorded,
   DISPLAY_STATUS,
   displayStatus,
   sameInstant,
