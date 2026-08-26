@@ -57,11 +57,6 @@ async function ingestBooking(body = {}) {
 
   const appointmentId = pick(body, 'appointment_id', 'appointmentId')
   const start = pick(body, 'appointment_start', 'appointmentStart', 'start_time', 'startTime')
-  const scheduledDate = pacificDate(start)
-  if (!scheduledDate) {
-    return { ok: false, status: 400, body: { error: 'A valid appointment start time is required' } }
-  }
-
   const end = pick(body, 'appointment_end', 'appointmentEnd', 'end_time', 'endTime')
   const teamMember = pick(body, 'booking_team_member', 'bookingTeamMember', 'day_one_booking_team_member')
   const first = pick(body, 'contact_first_name', 'contactFirstName', 'first_name', 'firstName')
@@ -81,7 +76,26 @@ async function ingestBooking(body = {}) {
     stored = data || null
   }
 
+  // The webhook's ONE irreplaceable contribution is the booking team member: the
+  // reconciler can recover every other field from the calendar within 15 minutes,
+  // but it can never recover this one, because 94% of appointments carry
+  // createdBy.userId = null. So a bad or missing start time must NOT cost us the
+  // booking. If GHL sends an appointment merge field that does not resolve, we
+  // still store the row, dated today, and let the reconciler correct the date on
+  // its next pass (it upserts on ghl_appointment_id and owns scheduling data).
+  //
+  // Rejecting here instead would trade the only unrecoverable field for the most
+  // recoverable one.
   const now = new Date().toISOString()
+  const parsedDate = pacificDate(start)
+  const scheduledDate = parsedDate || stored?.scheduled_date || pacificDate(now)
+  const dateIsProvisional = !parsedDate && !stored?.scheduled_date
+  if (dateIsProvisional) {
+    console.warn(
+      `[dayOneIngest] no usable appointment start for contact ${contactId} ` +
+      `(got ${JSON.stringify(start)}); storing with today's date for the reconciler to correct`)
+  }
+
   const row = {
     location_slug: loc.slug,
     ghl_appointment_id: appointmentId,
@@ -91,7 +105,7 @@ async function ingestBooking(body = {}) {
     contact_email: pick(body, 'contact_email', 'contactEmail', 'email') || stored?.contact_email || null,
     contact_phone: pick(body, 'contact_phone', 'contactPhone', 'phone') || stored?.contact_phone || null,
     scheduled_date: scheduledDate,
-    scheduled_start: new Date(start).toISOString(),
+    scheduled_start: parsedDate ? new Date(start).toISOString() : (stored?.scheduled_start || null),
     scheduled_end: end ? new Date(end).toISOString() : (stored?.scheduled_end || null),
     booked_at: stored?.booked_at || now,
     booked_by_name: teamMember || stored?.booked_by_name || null,
@@ -144,7 +158,15 @@ async function ingestBooking(body = {}) {
   return {
     ok: true,
     status: 200,
-    body: { success: true, appointment_id: saved.id, booked_by: row.booked_by_name, courier_cleared: cleared },
+    body: {
+      success: true,
+      appointment_id: saved.id,
+      booked_by: row.booked_by_name,
+      courier_cleared: cleared,
+      // Surfaced so a misconfigured merge field shows up in the GHL workflow's
+      // own response log rather than silently producing wrongly-dated rows.
+      date_provisional: dateIsProvisional,
+    },
   }
 }
 
