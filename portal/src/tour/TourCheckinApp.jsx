@@ -436,10 +436,8 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
 
           {outcome in PASS_DAYS && (
             <div className="mt-3 rounded-xl border border-gray-200 p-3">
-              <p className="text-sm text-gray-900">
-                <span className="font-semibold">{PASS_DAYS[outcome]} days</span>{' '}
-                goes to ABC when you save, and the front desk is flagged until 3 days
-                after it ends.
+              <p className="text-sm font-semibold text-gray-900">
+                {PASS_DAYS[outcome]} day pass
               </p>
             </div>
           )}
@@ -461,10 +459,9 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
                   inputMode="numeric" aria-label="Number of pass days"
                   className="w-20 px-3 py-2 rounded-xl border border-gray-300 text-sm" />
               </div>
-              <p className="text-xs text-gray-500 mt-2">
-                Applied to ABC when you save. The front desk is flagged until 3 days
-                after it ends.
-              </p>
+              {days && (
+                <p className="text-sm font-semibold text-gray-900 mt-2">{days} day pass</p>
+              )}
             </div>
           )}
         </div>
