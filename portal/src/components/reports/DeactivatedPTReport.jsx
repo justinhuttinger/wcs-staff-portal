@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getDeactivatedPT, getDeactivatedPTMember } from '../../lib/api'
 import { exportCSV, exportPDF } from '../../lib/export'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
