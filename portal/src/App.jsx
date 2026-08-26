@@ -368,40 +368,13 @@ export default function App() {
     if (window.location.hash) window.location.hash = ''
   }
 
-  // Which view is open, named the way the pin catalog names it, so a pinned
-  // tab can light up when you are inside it.
-  const openViewKey =
-    showCalendar ? 'tool:calendar'
-    : showLeaderboard ? 'tool:leaderboard'
-    : showReporting ? 'tool:reporting'
-    : showDriveHub ? 'tool:drive'
-    : showMediaLibrary ? 'tool:media'
-    : showHR ? 'tool:hr'
-    : showHelpCenter ? 'tool:helpCenter'
-    : showTicketsBoard ? 'tool:ticketing'
-    : showTrainerAvail ? 'tool:trainerAvail'
-    : showCommunicationNotes ? 'tool:commNotes'
-    : showInventory ? 'tool:inventory'
-    : showForms ? 'tool:forms'
-    : showNps ? 'tool:nps'
-    : showMarketingTracker ? 'tool:marketingTracker'
-    : showTourCheckin ? 'tool:tourCheckin'
-    : showAdsManager ? 'tool:adsManager'
-    : null
-
-  // Which Press nav tab is lit. Apps and Other are both "home" — they differ
-  // only in which column of the board renders — so they fall out of boardMode.
-  // A view that is open but has no tab leaves activeTab null, which is what
-  // puts the Back chip in the nav — see the invariant in PortalNav.
-  const activeTab =
-    showReporting ? 'reporting'
-    : showCalendar ? 'calendar'
-    : showLeaderboard ? 'leaderboard'
-    : isHome ? boardMode
-    : (openViewKey && pins.some(p => p.key === openViewKey)) ? openViewKey
-    : null
-
   // What a Press user may pin, and what pinning it does.
+  //
+  // Must stay ABOVE activeTab, which reads `pins`. A const referenced before
+  // its declaration throws rather than reading undefined, and activeTab only
+  // evaluates that branch when a non-tab view is open — so getting this order
+  // wrong crashes the whole app the moment a pinned Tool is clicked, while the
+  // boards keep working. There is no linter here to catch it.
   //
   // Apps come from lib/apps so a pinned app resolves to exactly the URL the
   // Apps board would have used (the ABC kiosk shim, Milwaukie's Zoho swap).
@@ -445,6 +418,39 @@ export default function App() {
     .map(key => PINNABLE.find(p => p.key === key))
     .filter(Boolean)
     .map(p => (p.kind === 'app' ? p : { ...p, open: () => { handleBackToPortal(); p.open() } }))
+
+  // Which view is open, named the way the pin catalog names it, so a pinned
+  // tab can light up when you are inside it.
+  const openViewKey =
+    showCalendar ? 'tool:calendar'
+    : showLeaderboard ? 'tool:leaderboard'
+    : showReporting ? 'tool:reporting'
+    : showDriveHub ? 'tool:drive'
+    : showMediaLibrary ? 'tool:media'
+    : showHR ? 'tool:hr'
+    : showHelpCenter ? 'tool:helpCenter'
+    : showTicketsBoard ? 'tool:ticketing'
+    : showTrainerAvail ? 'tool:trainerAvail'
+    : showCommunicationNotes ? 'tool:commNotes'
+    : showInventory ? 'tool:inventory'
+    : showForms ? 'tool:forms'
+    : showNps ? 'tool:nps'
+    : showMarketingTracker ? 'tool:marketingTracker'
+    : showTourCheckin ? 'tool:tourCheckin'
+    : showAdsManager ? 'tool:adsManager'
+    : null
+
+  // Which Press nav tab is lit. Apps and Other are both "home" — they differ
+  // only in which column of the board renders — so they fall out of boardMode.
+  // A view that is open but has no tab leaves activeTab null, which is what
+  // puts the Back chip in the nav — see the invariant in PortalNav.
+  const activeTab =
+    showReporting ? 'reporting'
+    : showCalendar ? 'calendar'
+    : showLeaderboard ? 'leaderboard'
+    : isHome ? boardMode
+    : (openViewKey && pins.some(p => p.key === openViewKey)) ? openViewKey
+    : null
 
   // Tiles the Press nav already carries as tabs. The Other board omits them so
   // it is strictly "everything that is not on the bar and not an app".
