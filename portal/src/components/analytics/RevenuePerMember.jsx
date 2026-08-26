@@ -4,6 +4,7 @@ import { api } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
+import { useChartWidth } from './useChartWidth'
 
 // ---------------------------------------------------------------------------
 // Revenue Per Member — Analytics (admin only)
@@ -21,7 +22,6 @@ const PALETTE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#4a3aa7', '#e34948
 const INK = 'var(--color-text-primary)'
 const MUTED = 'var(--color-text-muted)'
 
-const W = 900
 const H_TOP = 110
 const H_BOTTOM = 190
 const PAD_L = 56
@@ -47,13 +47,21 @@ function compact(n) {
   return `$${Math.round(n)}`
 }
 
-/** One measure over the shared month axis. */
+/**
+ * One measure over the shared month axis.
+ *
+ * The viewBox is sized to the measured element width so the drawing scales 1:1.
+ * With a fixed viewBox the browser centres the drawing and pads the sides, and
+ * the pointer no longer lines up with what is under it — see useChartWidth.
+ */
 function LineChart({ months, series, height, yFormat, colors, hovered, onHover, yTicks = 3 }) {
+  const [wrapRef, W] = useChartWidth()
+
   const values = series.flatMap(s => s.points.map(p => p.value)).filter(v => v !== null && v !== undefined)
   const max = values.length ? Math.max(...values) : 1
   const min = 0                       // rates and totals are read against zero
   const span = (max - min) || 1
-  const plotW = W - PAD_L - PAD_R
+  const plotW = (W || 0) - PAD_L - PAD_R
   const plotH = height - PAD_B
 
   const x = (i) => PAD_L + (months.length <= 1 ? plotW / 2 : (i / (months.length - 1)) * plotW)
@@ -74,15 +82,21 @@ function LineChart({ months, series, height, yFormat, colors, hovered, onHover, 
 
   const ticks = Array.from({ length: yTicks + 1 }, (_, i) => min + (span * i) / yTicks)
 
+  // Nothing to draw until the width is known; guessing would paint once at the
+  // wrong scale and visibly jump.
+  if (!W || plotW <= 0) return <div ref={wrapRef} style={{ height }} />
+
   return (
+    <div ref={wrapRef}>
     <svg
       viewBox={`0 0 ${W} ${height}`}
-      className="w-full"
-      style={{ height }}
+      width={W}
+      height={height}
+      className="block"
       onMouseMove={e => {
         const r = e.currentTarget.getBoundingClientRect()
-        const rel = ((e.clientX - r.left) / r.width) * W
-        const i = Math.round(((rel - PAD_L) / plotW) * (months.length - 1))
+        // Scale is 1, so the offset within the element IS the viewBox x.
+        const i = Math.round((((e.clientX - r.left) - PAD_L) / plotW) * (months.length - 1))
         onHover(Math.max(0, Math.min(months.length - 1, i)))
       }}
       onMouseLeave={() => onHover(null)}
@@ -124,6 +138,7 @@ function LineChart({ months, series, height, yFormat, colors, hovered, onHover, 
         return <text key={m} x={x(i)} y={height - 6} textAnchor="middle" fontSize="9" fill={MUTED}>{fmtMonth(m, true)}</text>
       })}
     </svg>
+    </div>
   )
 }
 
