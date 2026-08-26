@@ -11,21 +11,23 @@ const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerfo
 //
 // What share of members are personal training clients, per club, over time.
 //
-// A PT member is one who PAID for training inside a trailing window. That is a
-// measurement rather than a status, and it is the only option available:
-// abc_recurring_pt_services holds 303 rows describing currently active
-// recurring services, with no start dates and no paid-in-full rows, so there is
-// no PT agreement history to read. Revenue goes back to 2024-01-01 and does.
+// Counts MEMBERS, from abc_pt_services (ABC /members/recurringservices), which
+// carries a real memberId plus saleDate and inactiveDate.
 //
-// The window is a setting because it changes the answer materially — July 2026
-// reads 1.97% on a one-month test and 3.26% on three months. Three is the
-// default: a prepaid block covers months of sessions with a single
-// transaction, and a one-month test drops those clients for every month except
-// the one they bought in.
+// The first version inferred clients from training revenue and was wrong twice:
+// revenue.member_number is the AGREEMENT number despite its name, so it counted
+// agreements against a denominator of people, and "paid recently" stood in for
+// "was a client".
+//
+// Recurring services answer the question exactly. Paid in Full cannot — every
+// PIF row is returned inactive with no inactiveDate, marked inactive at sale
+// because nothing recurring remains to bill — so a package counts for a chosen
+// number of months after the sale. That setting moves only the PIF figure;
+// recurring is unaffected.
 // ---------------------------------------------------------------------------
 
 const CHART_MONTHS = 32
-const DEFAULT_WINDOW = 3
+const DEFAULT_PIF_MONTHS = 3
 
 const router = Router()
 router.use(authenticate)
@@ -50,7 +52,7 @@ router.get('/', async (req, res) => {
     const metric = METRICS.some(m => m.key === req.query.metric) ? req.query.metric : 'penetration'
     const windowMonths = WINDOWS.some(w => String(w.key) === String(req.query.window))
       ? Number(req.query.window)
-      : DEFAULT_WINDOW
+      : DEFAULT_PIF_MONTHS
     const exclude = req.query.exclusion !== 'include'
     const end = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.end || ''))
       ? String(req.query.end)
@@ -64,11 +66,11 @@ router.get('/', async (req, res) => {
     // The metric only changes which number is plotted from rows we already
     // have, so it is applied after the cache rather than splitting it four ways.
     const raw = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
-      const { data, error } = await supabaseAdmin.rpc('analytics_pt_penetration', {
+      const { data, error } = await supabaseAdmin.rpc('analytics_pt_penetration_v2', {
         p_end: end,
         p_months: CHART_MONTHS,
         p_clubs: allClubs ? null : slugs.map(s => CLUB_BY_SLUG[s].clubNumber),
-        p_window_months: windowMonths,
+        p_pif_months: windowMonths,
         p_exclude: exclude,
       })
       if (error) throw new Error(error.message)
@@ -88,11 +90,12 @@ router.get('/', async (req, res) => {
         clubs: slugs,
         exclusion: exclude ? 'exclude' : 'include',
         rowsRead: raw.length,
+        pifMonths: windowMonths,
         definition: {
-          ptMember: `Paid for personal training within the last ${windowMonths} month${windowMonths === 1 ? '' : 's'}.`,
-          excluded: 'PT CONSULT (the free consultation, ~1,900 members a year at $0) and INBODY SCAN are not personal training and would inflate penetration several-fold.',
-          revenue: 'PT revenue is net of refunds; PT member counts ignore refunds, since a refund does not make someone a client.',
-          history: 'Built from training revenue because ABC gives us no PT agreement history — abc_recurring_pt_services is a current snapshot with no start dates.',
+          source: 'Counts members holding a PT service, from ABC /members/recurringservices — a real member id, not the agreement number that training revenue carries.',
+          recurring: 'Recurring services are exact: counted from their sale date until the date they went inactive.',
+          pif: `Paid in Full is an estimate. ABC marks a prepaid package inactive at the moment of sale and records no end date, so one counts for ${windowMonths} months after purchase.`,
+          overlap: 'A member holding both a recurring service and a package is counted once in the total, so recurring and PIF do not sum to it.',
         },
       },
     })
