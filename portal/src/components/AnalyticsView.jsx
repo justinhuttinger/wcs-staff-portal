@@ -173,7 +173,10 @@ export default function AnalyticsView({ user, onBack, location, isAdmin }) {
       {/* Main content pane */}
       <div className="flex-1 min-w-0">
         {/* Header card */}
-        <div className="relative z-20 bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
+        {/* z-50 so the Filters popup inside this card clears the table's
+            sticky header (z-30). z-20 here made the card its own stacking
+            context and trapped the popup underneath the column headers. */}
+        <div className="relative z-50 bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
           <div className="flex items-center gap-3 mb-4">
             {onBack && (
               <button
