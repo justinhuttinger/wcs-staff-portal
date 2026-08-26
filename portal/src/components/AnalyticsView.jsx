@@ -7,6 +7,7 @@ import PastDue from './analytics/PastDue'
 import MembershipMix from './analytics/MembershipMix'
 import RevenuePerMember from './analytics/RevenuePerMember'
 import PtPenetration from './analytics/PtPenetration'
+import PtScorecard from './analytics/PtScorecard'
 import ClubActivityTrends from './analytics/ClubActivityTrends'
 import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 
@@ -57,6 +58,12 @@ const ANALYTICS_REPORTS = [
     Component: RevenuePerMember,
     // A fixed trailing window anchored on the last complete month.
     dates: false,
+  },
+  {
+    key: 'pt-scorecard',
+    label: 'PT Scorecard',
+    desc: 'Day One Funnel',
+    Component: PtScorecard,
   },
   {
     key: 'pt-penetration',
