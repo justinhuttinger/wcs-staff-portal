@@ -73,7 +73,14 @@ const VIEW_BY_OPTIONS = [
   { key: 'salesperson', label: 'Salesperson' },
 ]
 
+// The first column's value, used both for rendering and for sorting by it.
+const rowLabel = (row) => [row.club, row.salesperson].filter(Boolean).join('; ')
+
+// Clicking a header cycles desc -> asc -> back to this.
+const DEFAULT_SORT = { by: 'newMemberUnits', order: 'desc' }
+
 const SORT_OPTIONS = [
+  { key: 'label', label: 'Club / Salesperson' },
   { key: 'newMemberUnits', label: 'New Member Units' },
   { key: 'pctOfClubTotal', label: '% of Club Total' },
   { key: 'totalNewDuesDraft', label: 'Total New Dues Draft' },
@@ -81,8 +88,6 @@ const SORT_OPTIONS = [
   { key: 'dayOneBookCount', label: 'Day One Book Count' },
   { key: 'dayOneBookPct', label: 'Day One Book %' },
   { key: 'bookOnJoinDateCount', label: 'Book on Join Date Count' },
-  { key: 'salesperson', label: 'Salesperson' },
-  { key: 'club', label: 'Club' },
 ]
 
 function fmt(value, format) {
@@ -141,8 +146,8 @@ function Select({ label, value, onChange, options, allLabel = 'All' }) {
 
 export default function SalespersonPerformance({ startDate, endDate, locationSlug }) {
   const [exclusion, setExclusion] = useState('exclude')
-  const [sortBy, setSortBy] = useState('newMemberUnits')
-  const [sortOrder, setSortOrder] = useState('desc')
+  const [sortBy, setSortBy] = useState(DEFAULT_SORT.by)
+  const [sortOrder, setSortOrder] = useState(DEFAULT_SORT.order)
   const [showAverages, setShowAverages] = useState(true)
   const [joinSource, setJoinSource] = useState('')
   const [membershipType, setMembershipType] = useState('')
@@ -158,6 +163,24 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
   // average lines are display settings, not narrowing.
   const activeFilterCount = [joinSource, membershipType, gender, ageGroup, paymentTerm, paymentMethod, memberRelationship]
     .filter(Boolean).length + (exclusion === 'include' ? 1 : 0)
+
+  // Click a header: sort it high-to-low, again for low-to-high, again to drop
+  // back to the default. Landing on a new column always starts high-to-low —
+  // "who is on top" is the question a header click is usually asking.
+  function cycleSort(key) {
+    if (sortBy !== key) {
+      setSortBy(key)
+      setSortOrder('desc')
+    } else if (sortOrder === 'desc') {
+      setSortOrder('asc')
+    } else {
+      setSortBy(DEFAULT_SORT.by)
+      setSortOrder(DEFAULT_SORT.order)
+    }
+  }
+
+  const ariaSort = (key) =>
+    sortBy !== key ? 'none' : sortOrder === 'asc' ? 'ascending' : 'descending'
 
   function clearFilters() {
     setJoinSource('')
@@ -196,9 +219,10 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
   const rows = useMemo(() => {
     const list = [...(data?.rows || [])]
     const dir = sortOrder === 'asc' ? 1 : -1
+    const valueOf = (row) => (sortBy === 'label' ? rowLabel(row) : row[sortBy])
     list.sort((a, b) => {
-      const av = a[sortBy]
-      const bv = b[sortBy]
+      const av = valueOf(a)
+      const bv = valueOf(b)
       if (typeof av === 'string' || typeof bv === 'string') {
         return String(av || '').localeCompare(String(bv || '')) * dir
       }
@@ -322,15 +346,25 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
                 {/* Sticky on both axes, so it stays put whichever way you
                     scroll. The higher z-index keeps it above the sticky first
                     column where the two overlap. */}
-                <th className="sticky left-0 top-0 z-30 bg-surface text-left font-semibold text-text-primary px-4 py-3 min-w-[290px] border-b border-border">
-                  {ROW_LABEL[viewBy] || ROW_LABEL.club_salesperson}
+                <th
+                  scope="col"
+                  aria-sort={ariaSort('label')}
+                  className="sticky left-0 top-0 z-30 bg-surface text-left font-semibold text-text-primary px-4 py-3 min-w-[290px] border-b border-border"
+                >
+                  <SortButton active={sortBy === 'label'} order={sortOrder} onClick={() => cycleSort('label')}>
+                    {ROW_LABEL[viewBy] || ROW_LABEL.club_salesperson}
+                  </SortButton>
                 </th>
                 {COLUMNS.map((col, i) => (
                   <th
                     key={col.key}
+                    scope="col"
+                    aria-sort={ariaSort(col.key)}
                     className={`sticky top-0 z-20 text-left font-semibold text-text-muted px-3 py-3 text-xs min-w-[140px] border-b border-border ${zebra(i)}`}
                   >
-                    {col.key === 'pctOfClubTotal' ? (viewBy === 'club_salesperson' ? '% of Club Total' : '% of Total') : col.label}
+                    <SortButton active={sortBy === col.key} order={sortOrder} onClick={() => cycleSort(col.key)}>
+                      {col.key === 'pctOfClubTotal' ? (viewBy === 'club_salesperson' ? '% of Club Total' : '% of Total') : col.label}
+                    </SortButton>
                   </th>
                 ))}
               </tr>
@@ -339,9 +373,7 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
               {rows.map(row => (
                 <tr key={row.key} className="group">
                   <td className={`sticky left-0 z-10 bg-surface ${HOVER_TINT} px-4 py-2 whitespace-nowrap border-b border-border/60`}>
-                    <span className="text-text-primary">
-                      {[row.club, row.salesperson].filter(Boolean).join('; ')}
-                    </span>
+                    <span className="text-text-primary">{rowLabel(row)}</span>
                   </td>
                   {COLUMNS.map((col, i) => {
                     const value = row[col.key]
@@ -480,5 +512,35 @@ function FiltersToolbar({ open, onOpenChange, activeCount, onClear, children }) 
       )}
     </div>,
     slot
+  )
+}
+
+// A header cell that sorts on click. The caret only appears on the active
+// column; every other header shows it on hover so the whole row reads as
+// clickable without twelve carets competing for attention.
+function SortButton({ active, order, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Sort by this column"
+      className={`group/sort flex items-center gap-1 w-full text-left transition-colors ${
+        active ? 'text-wcs-red' : 'hover:text-text-primary'
+      }`}
+    >
+      <span className="truncate">{children}</span>
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        aria-hidden="true"
+        className={`w-3 h-3 flex-shrink-0 transition-opacity ${
+          active ? 'opacity-100' : 'opacity-0 group-hover/sort:opacity-40'
+        } ${active && order === 'asc' ? 'rotate-180' : ''}`}
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+      </svg>
+    </button>
   )
 }
