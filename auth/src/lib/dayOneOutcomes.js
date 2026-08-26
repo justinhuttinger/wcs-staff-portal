@@ -364,6 +364,9 @@ function rowFromEvent(evt, { loc, usersById }) {
     scheduled_start: start ? new Date(start).toISOString() : null,
     scheduled_end: evt.endTime ? new Date(evt.endTime).toISOString() : null,
     booked_at: evt.dateAdded ? new Date(evt.dateAdded).toISOString() : null,
+    // GHL's own last-touched stamp. A reschedule moves this and leaves
+    // dateAdded alone, which is what lets an orphan find its appointment.
+    ghl_updated_at: evt.dateUpdated ? new Date(evt.dateUpdated).toISOString() : null,
     trainer_ghl_user_id: evt.assignedUserId || null,
     trainer_name: trainer ? trainer.name : null,
     status: statusFromGhl(evt.appointmentStatus),
