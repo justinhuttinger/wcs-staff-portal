@@ -792,11 +792,12 @@ body {
 .press-quick__caret { display: flex; transition: transform 0.15s ease; }
 .press-quick__caret.is-open { transform: rotate(180deg); }
 
+/* Fixed and portaled to <body>, positioned from the button's rect: the tab
+   strip is an overflow-x:auto scroll container and would clip an absolutely
+   positioned child. top/left come from the component. */
 .press-quick__menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 60;
+  position: fixed;
+  z-index: 130;
   min-width: 15rem;
   background: #ffffff;
   border: 1px solid var(--press-line);
@@ -826,4 +827,41 @@ body {
   /* The label is the first thing to go; the bolt still reads as "actions". */
   .press-quick__btn { padding-inline: 0.85rem; font-size: 0; gap: 0.25rem; }
   .press-quick__btn svg { width: 1.15rem; height: 1.15rem; }
+}
+
+/* --- Points chip -----------------------------------------------------------
+   Leaderboard points, far right just before the alert bell. Shaped like a nav
+   control rather than a badge, since it navigates. Ink coloured, not accent —
+   Quick Actions is the one red thing in the bar and two would compete. */
+.press-points {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--press-line);
+  background: #ffffff;
+  color: var(--press-ink);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.press-points:hover { border-color: var(--press-ink); background: var(--press-band); }
+.press-points svg { width: 0.95rem; height: 0.95rem; color: var(--press-red); flex-shrink: 0; }
+.press-points__n {
+  font-family: 'WCSDisplay', 'Arial Narrow', 'Inter', sans-serif;
+  font-size: 1rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+.press-points__unit {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgb(22 24 29 / 0.5);
+}
+
+@media (max-width: 768px) {
+  /* Keep the number, drop the unit — the trophy already says what it is. */
+  .press-points__unit { display: none; }
 }

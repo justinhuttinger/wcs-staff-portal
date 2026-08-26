@@ -51,6 +51,7 @@ export default function PortalNav({
   userRole,
   rightSlot,
   quickActions,
+  points,
 }) {
   const tabs = TABS.filter(t => {
     if (t.key === 'reporting') return userRole !== 'team_member'
@@ -143,6 +144,7 @@ export default function PortalNav({
       </div>
 
       <div className="press-nav__right">
+        {points}
         {rightSlot}
         {location && <span className="press-nav__loc">{location}</span>}
         {isAdmin && (

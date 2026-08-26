@@ -26,6 +26,7 @@ import GlobalProgressBar from './components/GlobalProgressBar'
 import PortalNav from './components/PortalNav'
 import PinPicker from './components/PinPicker'
 import QuickActions from './components/QuickActions'
+import PointsChip from './components/PointsChip'
 import { getTheme, THEME_EVENT } from './lib/theme'
 import { getPinned, togglePin, PINNED_EVENT } from './lib/pinnedTabs'
 import { hydrateUiPrefs, startUiPrefsSync } from './lib/uiPrefs'
@@ -535,6 +536,14 @@ export default function App() {
           isAdmin={isAdmin}
           userRole={user?.staff?.role}
           rightSlot={<WhatsNew user={user} bgImage={null} />}
+          points={
+            // Rank and points used to sit in the board's banner strip, which
+            // Press drops. Same audience as that strip and as Quick Actions:
+            // below corporate. Clicking opens the Leaderboard.
+            roleAtLeast(user?.staff?.role, 'corporate')
+              ? null
+              : <PointsChip location={location} onOpen={() => selectTab('leaderboard')} />
+          }
           quickActions={
             // Book Gym Tour / Book Day Ones / Submit VIPs used to sit in the
             // board's banner strip, which Press drops. Same audience as before:
