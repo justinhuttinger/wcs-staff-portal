@@ -213,14 +213,27 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
 
   // Column maxima drive the in-cell bar widths, so each column scales to its
   // own biggest value rather than to some shared arbitrary ceiling.
+  // Bar scale per column.
+  //
+  // Percentage columns are pinned to a 0-100 track, NOT to the column's own
+  // maximum. Day One Book % is credited to the booker while the denominator is
+  // that person's own sales, so a front-desk row can legitimately hit 400% —
+  // and scaling to that flattened every honest 40-60% row into a sliver. A
+  // fixed track keeps 50% looking like half regardless of who else is on the
+  // list; the outlier is drawn full-width and flagged as capped.
+  //
+  // Count columns still scale to the column max: there is no natural ceiling
+  // for "how many did you sell", so relative height is the only useful reading.
   const maxima = useMemo(() => {
     const out = {}
     for (const col of COLUMNS) {
       if (!col.bar) continue
-      out[col.key] = rows.reduce((mx, r) => {
-        const v = r[col.key]
-        return typeof v === 'number' && v > mx ? v : mx
-      }, 0)
+      out[col.key] = col.format === 'pct'
+        ? 100
+        : rows.reduce((mx, r) => {
+            const v = r[col.key]
+            return typeof v === 'number' && v > mx ? v : mx
+          }, 0)
     }
     return out
   }, [rows])
@@ -333,9 +346,14 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
                   {COLUMNS.map((col, i) => {
                     const value = row[col.key]
                     const max = maxima[col.key] || 0
-                    const width = col.bar && typeof value === 'number' && max > 0
+                    const rawWidth = col.bar && typeof value === 'number' && max > 0
                       ? Math.max(2, Math.round((value / max) * 100))
                       : 0
+                    // Over-scale values run off a fixed track, so clamp the
+                    // drawn bar and mark it rather than letting it overflow the
+                    // cell. The number beside it still reads the true value.
+                    const overflows = rawWidth > 100
+                    const width = Math.min(100, rawWidth)
                     const avg = showAverages ? averages[col.key] : null
                     const avgLeft = col.bar && typeof avg === 'number' && max > 0
                       ? Math.min(100, Math.round((avg / max) * 100))
@@ -345,7 +363,19 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
                         {col.bar ? (
                           <div className="relative flex items-center gap-2 h-5">
                             <div className="relative flex-1 h-4 min-w-[60px]">
-                              <div className={`absolute inset-y-0 left-0 rounded-sm ${BAR_TONES[col.barTone]}`} style={{ width: `${width}%` }} />
+                              <div
+                                className={`absolute inset-y-0 left-0 ${overflows ? 'rounded-l-sm' : 'rounded-sm'} ${BAR_TONES[col.barTone]}`}
+                                style={{ width: `${width}%` }}
+                              />
+                              {overflows && (
+                                // Notched right edge: this bar is clipped, the
+                                // real figure is larger than the track.
+                                <div
+                                  className={`absolute inset-y-0 right-0 w-1.5 ${BAR_TONES[col.barTone]}`}
+                                  style={{ clipPath: 'polygon(0 0, 100% 50%, 0 100%)' }}
+                                  title={`${fmt(value, col.format)} — beyond the 100% scale`}
+                                />
+                              )}
                               {avgLeft !== null && (
                                 <div
                                   className="absolute inset-y-0 border-l border-dashed border-text-muted/70"
