@@ -483,7 +483,7 @@ export default function App() {
       ) : showLeaderboard ? (
         <LeaderboardView user={user} onBack={() => setShowLeaderboard(false)} location={location} />
       ) : showReporting ? (
-        <ReportingView user={user} onBack={press ? undefined : () => { window.location.hash = ''; setShowReporting(false) }} location={location} isAdmin={isAdmin} />
+        <ReportingView user={user} onBack={() => { window.location.hash = ''; setShowReporting(false) }} location={location} isAdmin={isAdmin} />
       ) : showMarketingTracker ? (
         <MarketingTrackerView access={mAccess} onBack={() => setShowMarketingTracker(false)} />
       ) : showInventory ? (
