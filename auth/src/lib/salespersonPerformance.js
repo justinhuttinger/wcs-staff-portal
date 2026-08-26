@@ -76,6 +76,12 @@ function ageGroupKey(age) {
   return (AGE_GROUPS.find(g => g.test(age)) || AGE_GROUPS[AGE_GROUPS.length - 1]).key
 }
 
+// ABC's agreementPaymentMethod values. "EFT" is a bank draft — that is ACH.
+// Cash and Statement agreements do not draft at all but still count toward the
+// denominator: the question is what share of new members are on ACH, not what
+// share of drafting members are.
+const ACH_PAYMENT_METHOD = 'EFT'
+
 function pct(numerator, denominator) {
   if (!denominator) return null
   return Math.round((numerator / denominator) * 1000) / 10
@@ -123,7 +129,17 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     if (filters.joinSource && (m.agreement_entry_source || 'Unknown') !== filters.joinSource) return false
     if (filters.membershipType && (m.membership_type || 'Unknown') !== filters.membershipType) return false
     if (filters.gender && (m.gender || 'Unknown') !== filters.gender) return false
-    if (filters.paymentTerm && (m.payment_frequency || 'Unknown') !== filters.paymentTerm) return false
+    // agreement_term (Open/Cash/Installment/Cash Open), not payment_frequency,
+    // which is only ever "Monthly" or null.
+    if (filters.paymentTerm && (m.agreement_term || 'Unknown') !== filters.paymentTerm) return false
+    if (filters.paymentMethod && (m.agreement_payment_method || 'Unknown') !== filters.paymentMethod) return false
+    if (filters.memberRelationship) {
+      // is_primary_member is null on rows the backfill has not reached yet, and
+      // an unknown relationship is not evidence of either one.
+      if (m.is_primary_member === null || m.is_primary_member === undefined) return false
+      const wantPrimary = filters.memberRelationship === 'primary'
+      if (m.is_primary_member !== wantPrimary) return false
+    }
     if (filters.ageGroup && ageGroupKey(ageOn(m.birth_date, m.sign_date)) !== filters.ageGroup) return false
     return true
   })
@@ -147,6 +163,7 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
         totalDownPayment: 0,
         achUnits: 0,
         achKnownUnits: 0,
+        paymentMix: {},
         dayOneBookCount: 0,
         bookOnJoinDateCount: 0,
         memberIds: [],
@@ -163,9 +180,12 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     row.totalNewDues += Number(m.next_due_amount) || 0
     row.totalDownPayment += Number(m.down_payment) || 0
     row.memberIds.push(m.id)
-    // % on ACH is intentionally not computed: abc_members carries no payment
-    // method. See the PR notes — the field has to be added to the ABC sync
-    // before this can be anything but null.
+    const method = m.agreement_payment_method || null
+    if (method) {
+      row.achKnownUnits += 1
+      row.paymentMix[method] = (row.paymentMix[method] || 0) + 1
+      if (method === ACH_PAYMENT_METHOD) row.achUnits += 1
+    }
   }
 
   for (const d of dayOnes) {
@@ -193,8 +213,13 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     salesperson: row.salesperson,
     newMemberUnits: row.newMemberUnits,
     pctOfClubTotal: pct(row.newMemberUnits, clubUnits.get(row.clubSlug)),
-    // Pending a payment-method field on the ABC sync.
-    pctOnAch: null,
+    // Denominator is units with a KNOWN payment method, not all units. Under a
+    // partial backfill that keeps the number honest instead of diluting it
+    // toward 0%; once every row is populated the two are the same thing.
+    pctOnAch: row.achKnownUnits ? pct(row.achUnits, row.achKnownUnits) : null,
+    achUnits: row.achUnits,
+    achKnownUnits: row.achKnownUnits,
+    paymentMix: row.paymentMix,
     totalNewDuesDraft: Math.round(row.totalNewDues * 100) / 100,
     avgNewDuesDraft: row.newMemberUnits
       ? Math.round((row.totalNewDues / row.newMemberUnits) * 100) / 100
@@ -219,12 +244,14 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     acc.totalNewDuesDraft += r.totalNewDuesDraft
     acc.dayOneBookCount += r.dayOneBookCount
     acc.bookOnJoinDateCount += r.bookOnJoinDateCount
+    acc.achUnits += r.achUnits
+    acc.achKnownUnits += r.achKnownUnits
     return acc
-  }, { newMemberUnits: 0, totalNewDuesDraft: 0, dayOneBookCount: 0, bookOnJoinDateCount: 0 })
+  }, { newMemberUnits: 0, totalNewDuesDraft: 0, dayOneBookCount: 0, bookOnJoinDateCount: 0, achUnits: 0, achKnownUnits: 0 })
 
   const summary = {
     newMemberUnits: totals.newMemberUnits,
-    pctOnAch: null,
+    pctOnAch: totals.achKnownUnits ? pct(totals.achUnits, totals.achKnownUnits) : null,
     totalNewDuesDraft: Math.round(totals.totalNewDuesDraft * 100) / 100,
     avgNewDuesDraft: totals.newMemberUnits
       ? Math.round((totals.totalNewDuesDraft / totals.newMemberUnits) * 100) / 100
@@ -242,6 +269,7 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
   const n = out.length || 1
   const averages = {
     newMemberUnits: Math.round((totals.newMemberUnits / n) * 10) / 10,
+    pctOnAch: totals.achKnownUnits ? pct(totals.achUnits, totals.achKnownUnits) : null,
     dayOneBookPct: pct(totals.dayOneBookCount, totals.newMemberUnits),
     bookOnJoinDatePct: pct(totals.bookOnJoinDateCount, totals.newMemberUnits),
     avgNewDuesDraft: summary.avgNewDuesDraft,
@@ -258,8 +286,13 @@ function buildFilterOptions(members) {
     joinSource: uniq(members.map(m => m.agreement_entry_source)),
     membershipType: uniq(members.map(m => m.membership_type)),
     gender: uniq(members.map(m => m.gender)),
-    paymentTerm: uniq(members.map(m => m.payment_frequency)),
+    paymentTerm: uniq(members.map(m => m.agreement_term)),
+    paymentMethod: uniq(members.map(m => m.agreement_payment_method)),
     ageGroup: AGE_GROUPS.map(g => ({ key: g.key, label: g.label })),
+    memberRelationship: [
+      { key: 'primary', label: 'Primary' },
+      { key: 'secondary', label: 'Secondary / Add-on' },
+    ],
   }
 }
 
@@ -267,4 +300,5 @@ module.exports = {
   CLUBS, CLUB_BY_NUMBER, CLUB_BY_SLUG, AGE_GROUPS,
   buildReport, buildFilterOptions, buildMemberIndex, matchMember,
   isExcludedType, personKey, displayName, digits10, ageOn, ageGroupKey, pct,
+  ACH_PAYMENT_METHOD,
 }

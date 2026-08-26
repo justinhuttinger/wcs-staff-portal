@@ -21,6 +21,9 @@ function member(over = {}) {
     gender: 'F',
     birth_date: '1990-01-01',
     payment_frequency: 'Monthly',
+    agreement_payment_method: 'EFT',
+    agreement_term: 'Open',
+    is_primary_member: true,
     next_due_amount: 60,
     down_payment: 0,
     email: null,
@@ -47,7 +50,8 @@ function dayOne(over = {}) {
 
 const NO_FILTERS = {
   exclusion: 'include', joinSource: null, membershipType: null,
-  gender: null, paymentTerm: null, ageGroup: null,
+  gender: null, paymentTerm: null, paymentMethod: null,
+  memberRelationship: null, ageGroup: null,
 }
 
 // Mirrors abc_membership_skip_list, the shared list the other membership
@@ -197,13 +201,79 @@ test('dues totals and averages come from next_due_amount', () => {
 
 test('columns with no data source report null, never zero', () => {
   const { rows, summary } = buildReport([member()], [], new Map(), NO_FILTERS)
-  // A zero here would read as "nobody is on ACH" / "no tours given", which is a
-  // claim we cannot make. null lets the UI render an explicit N/A.
-  assert.equal(rows[0].pctOnAch, null)
+  // A zero here would read as "no tours given", which is a claim we cannot
+  // make. null lets the UI render an explicit N/A.
   assert.equal(rows[0].toursGiven, null)
   assert.equal(rows[0].tourConversionRate, null)
-  assert.equal(summary.pctOnAch, null)
   assert.equal(summary.toursGiven, null)
+})
+
+test('% on ACH counts EFT over units with a known payment method', () => {
+  // Mirrors Katie Castlio's real July mix: EFT 64, Credit Card 14, Cash 17,
+  // Statement 8. Cash and Statement do not draft but still count against her —
+  // the question is what share of new members are on ACH.
+  const members = [
+    ...Array.from({ length: 64 }, (_, i) => member({ id: 'e' + i, agreement_payment_method: 'EFT' })),
+    ...Array.from({ length: 14 }, (_, i) => member({ id: 'c' + i, agreement_payment_method: 'Credit Card' })),
+    ...Array.from({ length: 17 }, (_, i) => member({ id: 'h' + i, agreement_payment_method: 'Cash' })),
+    ...Array.from({ length: 8 }, (_, i) => member({ id: 's' + i, agreement_payment_method: 'Statement' })),
+  ]
+  const { rows, summary } = buildReport(members, [], new Map(), NO_FILTERS)
+  assert.equal(rows[0].newMemberUnits, 103)
+  assert.equal(rows[0].achUnits, 64)
+  assert.equal(rows[0].achKnownUnits, 103)
+  assert.equal(rows[0].pctOnAch, 62.1)
+  assert.equal(summary.pctOnAch, 62.1)
+  assert.deepEqual(rows[0].paymentMix, { EFT: 64, 'Credit Card': 14, Cash: 17, Statement: 8 })
+})
+
+test('a window with no payment method on file shows N/A, not 0%', () => {
+  // This is the state between migration 123 and the backfill finishing. A 0%
+  // would read as "nobody is on ACH" — a claim the data does not support.
+  const members = [
+    member({ id: 'a', agreement_payment_method: null }),
+    member({ id: 'b', agreement_payment_method: null }),
+  ]
+  const { rows, summary } = buildReport(members, [], new Map(), NO_FILTERS)
+  assert.equal(rows[0].achKnownUnits, 0)
+  assert.equal(rows[0].pctOnAch, null)
+  assert.equal(summary.pctOnAch, null)
+})
+
+test('a partial backfill scores against known rows, not all rows', () => {
+  // 1 EFT + 1 Credit Card known, 8 not yet backfilled. 50%, not 10%.
+  const members = [
+    member({ id: 'a', agreement_payment_method: 'EFT' }),
+    member({ id: 'b', agreement_payment_method: 'Credit Card' }),
+    ...Array.from({ length: 8 }, (_, i) => member({ id: 'n' + i, agreement_payment_method: null })),
+  ]
+  const { rows } = buildReport(members, [], new Map(), NO_FILTERS)
+  assert.equal(rows[0].newMemberUnits, 10)
+  assert.equal(rows[0].pctOnAch, 50)
+})
+
+test('member relationship filters on is_primary_member', () => {
+  const members = [
+    member({ id: 'a', is_primary_member: true }),
+    member({ id: 'b', is_primary_member: true }),
+    member({ id: 'c', is_primary_member: false }),
+    member({ id: 'd', is_primary_member: null }),
+  ]
+  assert.equal(buildReport(members, [], new Map(), { ...NO_FILTERS, memberRelationship: 'primary' }).summary.newMemberUnits, 2)
+  assert.equal(buildReport(members, [], new Map(), { ...NO_FILTERS, memberRelationship: 'secondary' }).summary.newMemberUnits, 1)
+  // An unknown relationship is not evidence of either one, so it is excluded
+  // from both rather than lumped in with primary.
+  assert.equal(buildReport(members, [], new Map(), NO_FILTERS).summary.newMemberUnits, 4)
+})
+
+test('payment term filters on agreement_term, not payment_frequency', () => {
+  const members = [
+    member({ id: 'a', agreement_term: 'Open', payment_frequency: 'Monthly' }),
+    member({ id: 'b', agreement_term: 'Installment', payment_frequency: 'Monthly' }),
+    member({ id: 'c', agreement_term: 'Cash', payment_frequency: 'Monthly' }),
+  ]
+  assert.equal(buildReport(members, [], new Map(), { ...NO_FILTERS, paymentTerm: 'Open' }).summary.newMemberUnits, 1)
+  assert.equal(buildReport(members, [], new Map(), { ...NO_FILTERS, paymentTerm: 'Installment' }).summary.newMemberUnits, 1)
 })
 
 test('filters narrow the member set', () => {
