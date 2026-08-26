@@ -559,8 +559,12 @@ body {
 }
 .press-nav__btn:hover { color: var(--press-red); border-color: var(--press-red); }
 
-/* The nav IS the navigation — every view's own back button is noise under this
-   theme. Hidden rather than removed so the other three themes keep theirs. */
+/* The nav IS the navigation under Press: its Back chip is the one and only way
+   back, so every view's own back-to-portal button carries .press-hide-back and
+   disappears here. Hidden rather than removed so the other three themes keep
+   theirs. Tag ONLY buttons that leave the view entirely — a back control that
+   steps within a view (HR's sub-views, Drive's breadcrumb) must stay visible,
+   since the nav chip cannot do that job. */
 [data-theme='press'] .press-hide-back { display: none !important; }
 
 /* Board tiles: square edges, hairline borders, red icon. No lift on hover —

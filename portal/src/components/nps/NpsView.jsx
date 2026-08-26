@@ -230,7 +230,7 @@ export default function NpsView({ onBack }) {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button onClick={onBack} className="px-4 py-2 text-sm font-medium text-text-primary border border-border rounded-lg hover:bg-bg transition-colors">
+            <button onClick={onBack} className="press-hide-back px-4 py-2 text-sm font-medium text-text-primary border border-border rounded-lg hover:bg-bg transition-colors">
               Back
             </button>
             {tab === 'surveys' && !showCreate && (

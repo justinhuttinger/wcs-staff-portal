@@ -295,7 +295,7 @@ export default function AdsManagerView({ onBack }) {
     return (
       <div className="w-full max-w-3xl mx-auto px-8 py-6 space-y-4">
         <ErrorBanner error={error || 'Could not reach the Meta ad account.'} />
-        <Button variant="secondary" onClick={onBack}>Back</Button>
+        <Button variant="secondary" className="press-hide-back" onClick={onBack}>Back</Button>
       </div>
     )
   }
@@ -305,7 +305,7 @@ export default function AdsManagerView({ onBack }) {
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-4 shrink-0">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
-            <button onClick={onBack} className="text-text-muted hover:text-text-primary text-sm">← Back</button>
+            <button onClick={onBack} className="press-hide-back text-text-muted hover:text-text-primary text-sm">← Back</button>
             <h2 className="text-xl font-bold text-text-primary">Ads Manager</h2>
             <span className="px-2 py-0.5 rounded-full bg-wcs-red/10 text-wcs-red text-[10px] font-bold uppercase tracking-wider border border-wcs-red/20">
               Admin only
