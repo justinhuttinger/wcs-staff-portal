@@ -411,6 +411,7 @@ function webhookLabels(body = {}) {
 
 
 module.exports = {
+  sameInstant,
   flattenWebhookBody,
   webhookLabels,
   rowFromEvent,
