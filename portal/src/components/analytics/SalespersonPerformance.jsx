@@ -405,30 +405,6 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
           <p className="text-sm text-text-muted text-center py-10">No sales or Day One bookings in this range.</p>
         )}
       </div>
-
-      <DataNotes meta={data?.meta} />
-    </div>
-  )
-}
-
-// Say plainly which columns are empty and why, so an N/A never reads as a zero.
-function DataNotes({ meta }) {
-  if (!meta) return null
-  const notes = Object.values(meta.unavailable || {})
-  return (
-    <div className="bg-surface rounded-xl border border-border p-4 text-xs text-text-muted space-y-1">
-      {meta.paymentMethodCoverage !== null && meta.paymentMethodCoverage < 100 && (
-        <p>
-          <span className="font-semibold text-text-primary">% on ACH</span> is scored against the{' '}
-          {meta.paymentMethodCoverage}% of members that have a payment method on file. Run the
-          migration-123 backfill to cover the rest.
-        </p>
-      )}
-      {meta.excludedTypes?.length > 0 && (
-        <p>Excluded membership types: {meta.excludedTypes.join(', ')}.</p>
-      )}
-      {notes.map(note => <p key={note}>Showing N/A: {note}.</p>)}
-      <p>{meta.memberRows?.toLocaleString()} membership records and {meta.dayOneRows?.toLocaleString()} Day One bookings in range.</p>
     </div>
   )
 }
