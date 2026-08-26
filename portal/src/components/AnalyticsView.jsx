@@ -93,6 +93,33 @@ const ANALYTICS_REPORTS = [
   },
 ]
 
+// Sidebar grouping. A report may appear in more than one group — Revenue Per
+// Member and Past Due are deliberately under both Member Counts and Revenue,
+// because both teams look for them there.
+//
+// Keys that do not (yet) exist in ANALYTICS_REPORTS are ignored rather than
+// rendering a dead link, so a group can name a report that ships later.
+const REPORT_GROUPS = [
+  { key: 'members',   label: 'Member Counts', reports: ['membership-mix', 'past-due', 'revenue-per-member'] },
+  { key: 'revenue',   label: 'Revenue',       reports: ['revenue-per-member', 'past-due'] },
+  { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard'] },
+  { key: 'employees', label: 'Employees',     reports: ['salesperson-performance'] },
+]
+
+// Pinned above the groups, in this order, outside any category.
+const PINNED_REPORTS = ['topline', 'club-activity']
+
+/**
+ * Reports that belong in no group and are not pinned still need a way in.
+ * Rather than trusting the catalogue above to stay exhaustive, anything
+ * unclaimed is listed alongside Topline — adding a report can therefore never
+ * make it unreachable, only mis-filed.
+ */
+function ungroupedReports() {
+  const claimed = new Set([...PINNED_REPORTS, ...REPORT_GROUPS.flatMap(g => g.reports)])
+  return ANALYTICS_REPORTS.filter(r => !claimed.has(r.key)).map(r => r.key)
+}
+
 const QUICK_RANGES = [
   { key: 'this_month', label: 'This Month' },
   { key: 'last_month', label: 'Last Month' },
@@ -145,6 +172,18 @@ export default function AnalyticsView({ user, onBack, location, isAdmin }) {
   const [endDate, setEndDate] = useState(initialRange.end)
   const [activeQuick, setActiveQuick] = useState('this_month')
   const [locationSlug, setLocationSlug] = useState('all')
+  // Every group starts collapsed, as asked. Opening one is a per-visit choice,
+  // not something worth persisting.
+  const [openGroups, setOpenGroups] = useState(() => new Set())
+
+  function toggleGroup(key) {
+    setOpenGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   useEffect(() => {
     if (activeReport && parseHash() !== activeReport) {
@@ -205,24 +244,54 @@ export default function AnalyticsView({ user, onBack, location, isAdmin }) {
             <span className="text-lg font-bold text-text-primary">Analytics</span>
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-wcs-red/10 text-wcs-red">Admin</span>
           </div>
+          {/* Topline first, then anything not filed under a group. */}
           <ul className="space-y-0.5">
-            {ANALYTICS_REPORTS.map(r => {
-              const isActive = activeReport === r.key
-              return (
+            {[...PINNED_REPORTS, ...ungroupedReports()]
+              .map(key => reportByKey[key])
+              .filter(Boolean)
+              .map(r => (
                 <li key={r.key}>
-                  <button
-                    type="button"
-                    onClick={() => navigateToReport(r.key)}
-                    className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left ${
-                      isActive ? 'bg-wcs-red/10 text-wcs-red' : 'text-text-primary hover:bg-bg'
-                    }`}
-                  >
-                    <span className="block truncate">{r.label}</span>
-                  </button>
+                  <ReportLink report={r} active={activeReport === r.key} onSelect={navigateToReport} />
                 </li>
-              )
-            })}
+              ))}
           </ul>
+
+          {REPORT_GROUPS.map(group => {
+            const reports = group.reports.map(k => reportByKey[k]).filter(Boolean)
+            if (reports.length === 0) return null
+            const open = openGroups.has(group.key)
+            const holdsActive = reports.some(r => r.key === activeReport)
+            return (
+              <div key={group.key} className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.key)}
+                  aria-expanded={open}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-sm font-bold rounded-lg transition-colors ${
+                    holdsActive && !open ? 'text-wcs-red' : 'text-text-primary hover:bg-bg'
+                  }`}
+                >
+                  <span className="truncate text-left">{group.label}</span>
+                  <svg
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                    aria-hidden="true"
+                    className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {open && (
+                  <ul className="space-y-0.5 mt-0.5">
+                    {reports.map(r => (
+                      <li key={r.key}>
+                        <ReportLink report={r} active={activeReport === r.key} onSelect={navigateToReport} indented />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )
+          })}
         </div>
       </aside>
 
@@ -316,5 +385,21 @@ export default function AnalyticsView({ user, onBack, location, isAdmin }) {
         )}
       </div>
     </div>
+  )
+}
+
+const reportByKey = Object.fromEntries(ANALYTICS_REPORTS.map(r => [r.key, r]))
+
+function ReportLink({ report, active, onSelect, indented = false }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(report.key)}
+      className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left ${
+        indented ? 'pl-6' : ''
+      } ${active ? 'bg-wcs-red/10 text-wcs-red' : 'text-text-primary hover:bg-bg'}`}
+    >
+      <span className="block truncate">{report.label}</span>
+    </button>
   )
 }
