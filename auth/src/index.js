@@ -114,6 +114,7 @@ app.use('/reports', require('./routes/reports'))
 // Analytics — admin-only reporting surface. Mounted outside /reports so the
 // report-access grants in the roles grid can never reach it.
 app.use('/analytics/salesperson-performance', require('./routes/analyticsSalesperson'))
+app.use('/analytics/club-activity', require('./routes/analyticsClubActivity'))
 app.use('/sync-status', require('./routes/syncStatus'))
 app.use('/day-one-program', require('./routes/dayOneProgram'))
 app.use('/day-one-tracker', require('./routes/dayOneTracker'))
