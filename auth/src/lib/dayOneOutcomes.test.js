@@ -4,7 +4,7 @@ const {
   PT_SALE_TYPES, NO_SALE_REASONS, CANCEL_REASONS,
   validateOutcome, legacyGhlFields, pickOpenAppointments,
   linkReschedules, diffAppointment, statusFromGhl, pacificDate,
-  rowFromEvent, bookerFromEvent,
+  rowFromEvent, bookerFromEvent, flattenWebhookBody, webhookLabels,
 } = require('./dayOneOutcomes')
 
 // --- the conditional form ---------------------------------------------------
@@ -450,4 +450,59 @@ test('an unrecognised booker id is dropped rather than credited to nobody', () =
 test('a missing createdBy does not throw', () => {
   assert.equal(bookerFromEvent({ ...EVENT, createdBy: undefined }, usersById), null)
   assert.equal(bookerFromEvent({}, usersById), null)
+})
+
+// --- GHL webhook body shapes ------------------------------------------------
+
+test('a workflow action nests its Custom Data, and it is still read', () => {
+  // The bug: GHL sends the "Custom Data" rows nested under customData, while a
+  // form submission sends its answers top-level. Reading only the top level
+  // silently sees nothing, which is what produced "Unknown or missing location"
+  // on a webhook that plainly had location_slug set to salem.
+  const raw = { customData: { location_slug: 'salem', contact_id: 'abc' } }
+  const flat = flattenWebhookBody(raw)
+  assert.equal(flat.location_slug, 'salem')
+  assert.equal(flat.contact_id, 'abc')
+})
+
+test('a top-level payload still works unchanged', () => {
+  const flat = flattenWebhookBody({ location_slug: 'eugene', contact_id: 'xyz' })
+  assert.equal(flat.location_slug, 'eugene')
+  assert.equal(flat.contact_id, 'xyz')
+})
+
+test('both shapes at once: the top level wins', () => {
+  const flat = flattenWebhookBody({
+    location_slug: 'eugene',
+    customData: { location_slug: 'salem' },
+  })
+  assert.equal(flat.location_slug, 'eugene', 'a form answer is more specific than action Custom Data')
+})
+
+test('customData under its snake_case spelling is read too', () => {
+  assert.equal(flattenWebhookBody({ custom_data: { contact_id: 'q' } }).contact_id, 'q')
+})
+
+test('a junk or missing customData does not throw', () => {
+  assert.deepEqual(flattenWebhookBody({}), {})
+  assert.equal(flattenWebhookBody({ customData: null, a: 1 }).a, 1)
+  assert.equal(flattenWebhookBody({ customData: 'nope', a: 1 }).a, 1)
+  assert.deepEqual(flattenWebhookBody(), {})
+})
+
+test('the diagnostic names the keys and never the values', () => {
+  const raw = {
+    contact_id: 'secret-id',
+    customData: { location_slug: 'salem', contact_email: 'member@example.com' },
+  }
+  const labels = webhookLabels(raw)
+  assert.match(labels, /contact_id/)
+  assert.match(labels, /customData\{/)
+  assert.match(labels, /location_slug/)
+  assert.ok(!labels.includes('member@example.com'), 'member PII must never reach the logs')
+  assert.ok(!labels.includes('secret-id'))
+})
+
+test('the diagnostic omits the customData section when there is none', () => {
+  assert.equal(webhookLabels({ a: 1, b: 2 }), 'a,b')
 })
