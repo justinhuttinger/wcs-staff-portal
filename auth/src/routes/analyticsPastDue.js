@@ -31,13 +31,16 @@ const MEMBER_FIELDS = [
   'member_id', 'club_number', 'first_name', 'last_name', 'email', 'mobile_phone', 'primary_phone',
   'member_status', 'is_active', 'membership_type', 'agreement_payment_method', 'agreement_term',
   'past_due_balance', 'total_past_due_balance', 'late_fee_amount', 'next_due_amount',
-  'since_date', 'sales_person_name',
+  'since_date', 'sales_person_name', 'counts_as_member', 'is_conditional_type',
 ].join(', ')
 
 async function loadPastDue(clubNumbers) {
   return fetchAll(
     supabaseAdmin
-      .from('abc_members')
+      // The view, not the table: it carries counts_as_member, which excludes
+      // insurance-plan members who have not checked in recently. See
+      // migration 126.
+      .from('abc_members_counted')
       .select(MEMBER_FIELDS)
       .in('club_number', clubNumbers)
       .gt('past_due_balance', 0)
@@ -51,10 +54,11 @@ async function loadPastDue(clubNumbers) {
 async function loadMemberBase(clubNumbers, skipList) {
   const rows = await fetchAll(
     supabaseAdmin
-      .from('abc_members')
-      .select('club_number, member_status, membership_type')
+      .from('abc_members_counted')
+      .select('club_number, member_status, membership_type, counts_as_member')
       .in('club_number', clubNumbers)
       .eq('is_active', true)
+      .eq('counts_as_member', true)
       .order('club_number', { ascending: true })
   )
   const totals = {}
@@ -87,9 +91,15 @@ router.get('/', async (req, res) => {
         loadMemberBase(clubNumbers, skipList),
       ])
 
+      // Applied to the numerator as well as the denominator. Someone who does
+      // not count as a member cannot be a member who is past due, and letting
+      // them into one side but not the other would make "% of members past
+      // due" compare two different populations.
+      let notCounted = 0
       const members = raw.filter(m => {
         if (!isChaseable(m)) return false
         if (exclude && skipList.has((m.membership_type || '').toLowerCase())) return false
+        if (m.counts_as_member === false) { notCounted += 1; return false }
         return true
       })
 
@@ -124,6 +134,9 @@ router.get('/', async (req, res) => {
           exclusion: exclude ? 'exclude' : 'include',
           excludedStatuses: [...EXCLUDED_STATUSES].sort(),
           pastDueRowsBeforeStatusFilter: raw.length,
+          // Dormant insurance-plan members carrying a balance. Excluded as
+          // members, but reported so the debt is not silently invisible.
+          notCountedAsMembers: notCounted,
           worstListCap: TOP,
           worstListTruncated: members.length > TOP,
         },
