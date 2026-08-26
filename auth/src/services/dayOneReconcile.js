@@ -138,8 +138,77 @@ async function reconcileLocation(loc) {
     if (error) console.warn(`[dayOneReconcile] history insert failed: ${error.message}`)
   }
 
+  // Adopt BEFORE stitching, so an adopted row is not mistaken for a separate
+  // booking that a cancellation could be paired against.
+  const adopted = await adoptOrphans(loc.slug)
   const linked = await stitchReschedules(loc.slug)
-  return { location: loc.slug, seen: events.length, inserted, updated, events: historyRows.length, linked }
+  return { location: loc.slug, seen: events.length, inserted, updated, events: historyRows.length, adopted, linked }
+}
+
+// Attach webhook rows that arrived without an appointment id to the real
+// calendar appointment they describe.
+//
+// WHY THESE EXIST AT ALL
+// GHL's {{appointment.*}} merge fields did not resolve on the first live
+// booking, so the webhook landed with a null appointment id while still
+// carrying the one thing only it knows: who booked the Day One. The reconciler
+// then created a SECOND row for the same session from the calendar.
+//
+// Adoption is what makes the courier robust: even if those merge fields are
+// never fixed, the booking team member still ends up on the right appointment,
+// and the duplicate disappears. Without this, a null appointment id means a
+// permanent double count.
+//
+// Matching on (contact, date) is deliberately loose. An appointment id would be
+// stronger, but the orphan by definition has none, and a member booking two Day
+// Ones on the same day at the same club is not a real scenario.
+async function adoptOrphans(locationSlug) {
+  const since = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString().slice(0, 10)
+  const { data: orphans, error } = await supabaseAdmin
+    .from('day_one_appointments')
+    .select('*')
+    .eq('location_slug', locationSlug)
+    .is('ghl_appointment_id', null)
+    .neq('source', 'ghl_custom_field_backfill')
+    .gte('scheduled_date', since)
+  if (error) throw new Error(`read orphans: ${error.message}`)
+  if (!orphans || !orphans.length) return 0
+
+  let adopted = 0
+  for (const o of orphans) {
+    const { data: hosts } = await supabaseAdmin
+      .from('day_one_appointments')
+      .select('*')
+      .eq('ghl_contact_id', o.ghl_contact_id)
+      .eq('scheduled_date', o.scheduled_date)
+      .not('ghl_appointment_id', 'is', null)
+      // An active appointment is the better host than one that was cancelled.
+      .order('status', { ascending: true })
+    const host = (hosts || []).find(h => h.status !== 'cancelled') || (hosts || [])[0]
+    if (!host) continue
+
+    // Only fill gaps. The host owns scheduling; the orphan owns attribution.
+    const patch = { updated_at: new Date().toISOString() }
+    if (!host.booked_by_name && o.booked_by_name) {
+      patch.booked_by_name = o.booked_by_name
+      patch.booked_by_source = o.booked_by_source || 'webhook'
+    }
+    if (!host.notes_for_trainer && o.notes_for_trainer) patch.notes_for_trainer = o.notes_for_trainer
+    if (!host.contact_name && o.contact_name) patch.contact_name = o.contact_name
+    if (!host.contact_email && o.contact_email) patch.contact_email = o.contact_email
+    if (!host.contact_phone && o.contact_phone) patch.contact_phone = o.contact_phone
+
+    const up = await supabaseAdmin.from('day_one_appointments').update(patch).eq('id', host.id)
+    if (up.error) { console.warn('[dayOneReconcile] adopt failed:', up.error.message); continue }
+
+    await supabaseAdmin.from('day_one_appointment_events')
+      .update({ appointment_id: host.id }).eq('appointment_id', o.id)
+    const del = await supabaseAdmin.from('day_one_appointments').delete().eq('id', o.id)
+    if (del.error) { console.warn('[dayOneReconcile] orphan delete failed:', del.error.message); continue }
+    adopted++
+  }
+  if (adopted) console.log(`[dayOneReconcile] ${locationSlug}: adopted ${adopted} orphan webhook row(s)`)
+  return adopted
 }
 
 // Pair cancellations with the replacement booking the same member made. GHL
@@ -217,4 +286,4 @@ function start() {
   console.log('[dayOneReconcile] scheduled every 15 minutes')
 }
 
-module.exports = { start, runOnce, reconcileLocation, stitchReschedules }
+module.exports = { start, runOnce, reconcileLocation, stitchReschedules, adoptOrphans }
