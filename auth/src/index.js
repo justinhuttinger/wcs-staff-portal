@@ -115,6 +115,7 @@ app.use('/reports', require('./routes/reports'))
 // report-access grants in the roles grid can never reach it.
 app.use('/analytics/salesperson-performance', require('./routes/analyticsSalesperson'))
 app.use('/analytics/club-activity', require('./routes/analyticsClubActivity'))
+app.use('/analytics/topline', require('./routes/analyticsTopline'))
 app.use('/sync-status', require('./routes/syncStatus'))
 app.use('/day-one-program', require('./routes/dayOneProgram'))
 app.use('/day-one-tracker', require('./routes/dayOneTracker'))
