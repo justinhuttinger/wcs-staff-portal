@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api } from '../../lib/api'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
+import { zebra, HOVER_TINT } from './tableTints'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 
@@ -42,23 +43,6 @@ const BAR_TONES = {
   orange: 'bg-orange-500/70',
 }
 
-// Alternating column tint so a number is easy to trace back to its header.
-//
-// The tint is mixed from the theme's own ink into its own surface rather than
-// picked from two named tokens: bg-bg and bg-surface are BOTH #ffffff under the
-// press theme (and near-identical under wp), so a bg-bg/bg-surface pair renders
-// as no stripe at all. Mixing also means this inverts correctly in dark mode,
-// where the ink is light, without a second set of classes.
-//
-// The result is opaque on purpose. These cells scroll under a sticky header and
-// a sticky first column, and a translucent stripe would let rows bleed through.
-const ZEBRA_TINT = 'bg-[color-mix(in_srgb,var(--color-text-primary)_6%,var(--color-surface))]'
-const zebra = (i) => (i % 2 === 0 ? ZEBRA_TINT : 'bg-surface')
-
-// Row hover, mixed the same way and for the same reason. A translucent
-// bg-wcs-red/6 here would punch a hole in the sticky first column on hover and
-// let the scrolling columns show through it.
-const HOVER_TINT = 'group-hover:bg-[color-mix(in_srgb,var(--color-wcs-red)_8%,var(--color-surface))]'
 
 // What the first column is called, per grouping mode.
 const ROW_LABEL = {
