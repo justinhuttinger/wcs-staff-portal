@@ -19,6 +19,9 @@ export default function TicketsBoardView({ onBack }) {
   const [tab, setTab] = useState('board') // board | queue
   const [view, setView] = useState(null)  // null | 'submit' | { detail: id }
   const [refreshKey, setRefreshKey] = useState(0)
+  // Held here, not in TicketInbox: the detail view below unmounts the inbox, so
+  // filters kept inside it were lost on every Back. See TicketInbox.jsx.
+  const [filters, setFilters] = useState({ status: '', typeId: '', q: '' })
   const bump = () => setRefreshKey(k => k + 1)
 
   useEffect(() => { ticketing.canHandle().then(r => setCanHandle(!!r.any)).catch(() => {}) }, [])
@@ -73,7 +76,8 @@ export default function TicketsBoardView({ onBack }) {
       </div>
 
       {tab === 'queue' && canHandle
-        ? <TicketInbox handling onOpen={(id) => setView({ detail: id })} refreshKey={refreshKey} />
+        ? <TicketInbox handling onOpen={(id) => setView({ detail: id })} refreshKey={refreshKey}
+            filters={filters} onFiltersChange={setFilters} />
         : <Board onOpen={(id) => setView({ detail: id })} refreshKey={refreshKey} />}
     </div>
   )

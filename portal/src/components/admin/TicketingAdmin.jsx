@@ -13,6 +13,9 @@ export default function TicketingAdmin() {
   const [tab, setTab] = useState('inbox') // inbox | types
   const [view, setView] = useState(null)  // null | 'submit' | { detail: id }
   const [refreshKey, setRefreshKey] = useState(0)
+  // Held here, not in TicketInbox: the detail view below unmounts the inbox, so
+  // filters kept inside it were lost on every Back. See TicketInbox.jsx.
+  const [filters, setFilters] = useState({ status: '', typeId: '', q: '' })
 
   const bump = () => setRefreshKey(k => k + 1)
 
@@ -54,7 +57,8 @@ export default function TicketingAdmin() {
       {tab === 'types' && <NotifierStatus />}
 
       {tab === 'inbox'
-        ? <TicketInbox onOpen={(id) => setView({ detail: id })} refreshKey={refreshKey} />
+        ? <TicketInbox onOpen={(id) => setView({ detail: id })} refreshKey={refreshKey}
+            filters={filters} onFiltersChange={setFilters} />
         : <TicketTypeBuilder />}
     </div>
   )
