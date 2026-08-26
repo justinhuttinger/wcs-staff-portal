@@ -164,8 +164,16 @@ async function ingestBooking(raw = {}) {
     scheduled_start: parsedDate ? new Date(start).toISOString() : (stored?.scheduled_start || null),
     scheduled_end: end ? new Date(end).toISOString() : (stored?.scheduled_end || null),
     booked_at: stored?.booked_at || now,
-    booked_by_name: teamMember || stored?.booked_by_name || null,
-    booked_by_source: teamMember ? 'webhook' : (stored?.booked_by_source || null),
+    // A credit carried over from the original booking outranks the courier.
+    // Otherwise a webhook re-fire would hand the credit back to whoever rebooked,
+    // and the reschedule link already exists so the carryover would never be
+    // re-applied to correct it.
+    booked_by_name: stored?.booked_by_source === 'reschedule_carryover'
+      ? stored.booked_by_name
+      : (teamMember || stored?.booked_by_name || null),
+    booked_by_source: stored?.booked_by_source === 'reschedule_carryover'
+      ? 'reschedule_carryover'
+      : (teamMember ? 'webhook' : (stored?.booked_by_source || null)),
     trainer_name: pick(body, 'trainer_name', 'trainerName') || stored?.trainer_name || null,
     trainer_ghl_user_id: pick(body, 'trainer_user_id', 'assigned_user_id', 'assignedUserId')
       || stored?.trainer_ghl_user_id || null,
