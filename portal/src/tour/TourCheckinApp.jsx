@@ -343,11 +343,11 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
           return
         }
         passDays = n
-        // Nothing to write a pass onto without a linked ABC profile. Complete
-        // the tour anyway rather than blocking the save on it.
-        if (intake.abc_member_id) {
-          await publicTour.giveTrialDays(token, intake.id, n)
-        }
+        // The server resolves the ABC record itself when the card carries no
+        // id. A failure here stops the save: staff have just told somebody they
+        // have access, so completing the tour as though it worked would be a
+        // lie they find out about at the door.
+        await publicTour.giveTrialDays(token, intake.id, n)
       }
 
       await publicTour.saveOutcome(token, intake.id, {
@@ -408,21 +408,18 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
         <div>
           <label className="block text-sm font-semibold text-gray-900 mb-2">Tour outcome</label>
           <div className="grid grid-cols-2 gap-2">
-            {OUTCOMES.map(o => {
-              // Nothing to extend without a linked ABC profile, so the box is
-              // there but plainly unavailable rather than silently broken.
-              const disabled = o === CUSTOM_PASS && !intake.abc_member_id
-              return (
-                <button key={o} onClick={() => !disabled && setOutcome(o)} disabled={disabled}
-                  title={disabled ? 'No ABC profile linked to this check-in' : undefined}
-                  className={`px-3 py-3 rounded-xl text-sm font-medium border transition-colors active:scale-95 ${
-                    outcome === o ? 'bg-red-600 text-white border-red-600'
-                    : disabled ? 'bg-gray-50 text-gray-400 border-gray-200'
-                    : 'bg-white text-gray-700 border-gray-300'}`}>
-                  {o}
-                </button>
-              )
-            })}
+            {OUTCOMES.map(o => (
+              // No longer gated on a linked ABC profile: the server looks the
+              // person up by phone or email when the card has no id, which is
+              // every card the GHL survey raises. Greying it out meant Custom
+              // Pass never worked on a real check-in.
+              <button key={o} onClick={() => setOutcome(o)}
+                className={`px-3 py-3 rounded-xl text-sm font-medium border transition-colors active:scale-95 ${
+                  outcome === o ? 'bg-red-600 text-white border-red-600'
+                  : 'bg-white text-gray-700 border-gray-300'}`}>
+                {o}
+              </button>
+            ))}
           </div>
 
           {outcome === VIP_PASS && (
@@ -438,9 +435,8 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
             <div className="mt-3 rounded-xl border border-gray-200 p-3">
               <p className="text-sm text-gray-900">
                 <span className="font-semibold">{PASS_DAYS[outcome]} days</span>{' '}
-                {intake.abc_member_id
-                  ? 'goes to ABC when you save, and the front desk is flagged until 3 days after it ends.'
-                  : 'is the usual length, but no ABC profile is linked to this check-in so nothing will be written.'}
+                goes to ABC when you save, and the front desk is flagged until 3 days
+                after it ends.
               </p>
             </div>
           )}
