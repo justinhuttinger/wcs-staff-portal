@@ -609,7 +609,8 @@ body {
   letter-spacing: 0.03em;
 }
 
-/* Single-column screens (Apps on its own tab) get more room per tile. */
+/* Both Press boards are single-column — Apps and Other each show one half of
+   the classic two-column board — so tiles get the full width to spread into. */
 [data-theme='press'] .press-single .portal-columns { display: block; }
 [data-theme='press'] .press-single .portal-section { width: 100%; }
 [data-theme='press'] .press-single .portal-tile-grid {

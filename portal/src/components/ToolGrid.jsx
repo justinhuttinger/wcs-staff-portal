@@ -119,7 +119,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ only, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onNps, onTourCheckin, onAdsManager, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
+export default function ToolGrid({ only, exclude, cancelInApps, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onNps, onTourCheckin, onAdsManager, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [showOrdering, setShowOrdering] = useState(false)
@@ -136,12 +136,14 @@ export default function ToolGrid({ only, abcUrl, location, visibleTools, locatio
   // about the board is identical across themes.
   const [theme, setThemeState] = useState(getTheme)
   const spotlight = theme === 'spotlight'
-  // `only` lets the Press theme show one column on its own tab ('apps') or the
-  // whole board ('other') without duplicating any of the role, location and
-  // custom-tile filtering below. Unset = both columns, the classic board.
-  const appsOnly = only === 'apps'
+  // `only` lets the Press theme give each column its own tab — 'apps' or
+  // 'tools' — without duplicating any of the role, location and custom-tile
+  // filtering below. Unset = both columns, the classic board.
   const showApps = only !== 'tools'
   const showTools = only !== 'apps'
+  // Tiles the shell already offers elsewhere. The Press nav carries Calendar,
+  // Leaderboard and Reporting as tabs, so repeating them on the board is noise.
+  const omitted = new Set(exclude || [])
 
   useEffect(() => {
     const onChange = () => setThemeState(getTheme())
@@ -342,12 +344,17 @@ export default function ToolGrid({ only, abcUrl, location, visibleTools, locatio
           return null
       }
     }
+    // Which catalog keys count as "Apps" — external services and file stores.
+    // Everything else in the catalog is a Tool.
+    const APP_KEYS = new Set(['grow', 'abc', 'wheniwork', 'paychex', 'gmail', 'insights', 'notifications', 'drive'])
     const grantedKeys = PORTAL_TILE_CATALOG
       .map(t => t.key)
       .filter(k => (k === 'reporting' ? showReporting : granted.has(k)))
+      .filter(k => !omitted.has(k))
+      .filter(k => (only === 'apps' ? APP_KEYS.has(k) : only === 'tools' ? !APP_KEYS.has(k) : true))
     const cells = grantedKeys.map(tile).filter(Boolean)
     // Marketing Tracker rides on the add-on, not the custom tile list.
-    if (showMarketingTracker) cells.push(tile('marketingTracker'))
+    if (showMarketingTracker && only !== 'apps' && !omitted.has('marketingTracker')) cells.push(tile('marketingTracker'))
     return (
       <div className="w-full max-w-4xl mx-auto px-8 pt-4">
         {spotlight && <PortalSearch />}
@@ -386,14 +393,18 @@ export default function ToolGrid({ only, abcUrl, location, visibleTools, locatio
 
   // All custom tiles, categorized
   const allCustom = [...mainTiles, ...topLevelTiles]
+  const isCancel = (label) => ['cancel', 'cancel tool'].includes(label)
   const appCustomTiles = allCustom.filter(t => {
     const label = (t.label || '').toLowerCase()
+    // Cancel is pinned to Tools by TOOL_LABELS; cancelInApps moves it across.
+    if (isCancel(label)) return !!cancelInApps
     if (TOOL_LABELS.includes(label)) return false
     if (APP_LABELS.includes(label)) return true
     return t.section === 'main' // default: main section = apps
   })
   const toolCustomTiles = allCustom.filter(t => {
     const label = (t.label || '').toLowerCase()
+    if (isCancel(label)) return !cancelInApps
     if (TOOL_LABELS.includes(label)) return true
     if (APP_LABELS.includes(label)) return false
     return t.section !== 'main' // default: non-main = tools
@@ -413,7 +424,7 @@ export default function ToolGrid({ only, abcUrl, location, visibleTools, locatio
           optional. Classic and WP keep the board exactly as it was. */}
       {spotlight && <PortalSearch />}
       {/* Top banner row — Action buttons (Apps side) + Score Card (Tools side) */}
-      {leaderboardData && !hideScoreCard && !appsOnly && (() => {
+      {leaderboardData && !hideScoreCard && !only && (() => {
         const totalAtLocation = leaderboardData.total_staff || totalStaff
         const displayRank = userRank || totalAtLocation || '—'
         return (
@@ -603,6 +614,10 @@ export default function ToolGrid({ only, abcUrl, location, visibleTools, locatio
       <div className="portal-section w-1/2">
         <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">Apps</p>
         <div className="portal-tile-grid grid grid-cols-4 gap-4">
+          {/* Cancel leads the Apps board when it has been moved here. */}
+          {cancelInApps && appCustomTiles.filter(t => isCancel((t.label || '').toLowerCase())).map(tile => (
+            <ToolButton key={'custom-' + tile.id} label={tile.label} description={tile.description || ''} url={tile.url} star />
+          ))}
           {appTools.map((tool) => (
             <ToolButton key={tool.id} label={tool.label} description={tool.description} icon={tool.icon} url={getUrl(tool)} star={tool.id === 'grow' || tool.id === 'abc'} />
           ))}
@@ -618,6 +633,8 @@ export default function ToolGrid({ only, abcUrl, location, visibleTools, locatio
           )}
           {appCustomTiles.filter((tile) => {
             const tileLabel = (tile.label || '').toLowerCase()
+            // Already rendered above with its star.
+            if (isCancel(tileLabel)) return false
             // Indeed, Operandio, VistaPrint: manager+ only
             if (['indeed', 'operandio', 'vistaprint', 'vista'].includes(tileLabel) && roleIdx < ROLE_LEVELS.manager) return false
             return true
@@ -634,13 +651,13 @@ export default function ToolGrid({ only, abcUrl, location, visibleTools, locatio
         <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">Tools</p>
         <div className="portal-tile-grid grid grid-cols-4 gap-4">
           {/* 1. Cancel Tool (custom tile — direct link) */}
-          {toolCustomTiles.filter(t => ['cancel', 'cancel tool'].includes((t.label || '').toLowerCase())).map(tile => (
+          {toolCustomTiles.filter(t => isCancel((t.label || '').toLowerCase())).map(tile => (
             <ToolButton key={'custom-' + tile.id} label={tile.label} description={tile.description || ''} url={tile.url} star />
           ))}
           {/* 2. Calendar (Tours + Day Ones combined) */}
-          {onCalendar && <SvgTileButton onClick={onCalendar} iconPath={TILE_ICONS.tours} label="Calendar" desc="Tours & Day Ones" badge={calendarBadge} star />}
+          {onCalendar && !omitted.has('calendar') && <SvgTileButton onClick={onCalendar} iconPath={TILE_ICONS.tours} label="Calendar" desc="Tours & Day Ones" badge={calendarBadge} star />}
           {/* 4. Leaderboard */}
-          {onLeaderboard && <SvgTileButton onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />}
+          {onLeaderboard && !omitted.has('leaderboard') && <SvgTileButton onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />}
           {/* 4.6. HR Documents — manager+ only */}
           {onHR && roleIdx >= ROLE_LEVELS.manager && <SvgTileButton onClick={onHR} iconPath={TILE_ICONS.hr} label="HR Docs" desc="Documents" />}
           {/* 4.7. Help Center — all roles */}
@@ -678,6 +695,7 @@ export default function ToolGrid({ only, abcUrl, location, visibleTools, locatio
             // case where the role has no other custom-tile keys (which otherwise
             // trips the "show all tiles" fallback in visibleCustomTiles).
             if (tileLabel === 'reporting') {
+              if (omitted.has('reporting')) return false
               if (roleIdx === ROLE_LEVELS.team_member) return false
               if (visibleTools && visibleTools.length > 0 && !visibleTools.includes('tile:' + tile.id)) return false
             }
