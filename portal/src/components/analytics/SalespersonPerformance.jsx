@@ -42,6 +42,11 @@ const BAR_TONES = {
   orange: 'bg-orange-500/70',
 }
 
+// Alternating column tint so a number is easy to trace back to its header.
+// Both tokens are fully opaque: these cells sit under a sticky header and a
+// sticky first column, and a translucent tint would let rows show through.
+const zebra = (i) => (i % 2 === 0 ? 'bg-bg' : 'bg-surface')
+
 // What the first column is called, per grouping mode.
 const ROW_LABEL = {
   club_salesperson: 'Club + Salesperson',
@@ -294,8 +299,11 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
                 <th className="sticky left-0 top-0 z-30 bg-surface text-left font-semibold text-text-primary px-4 py-3 min-w-[290px] border-b border-border">
                   {ROW_LABEL[viewBy] || ROW_LABEL.club_salesperson}
                 </th>
-                {COLUMNS.map(col => (
-                  <th key={col.key} className="sticky top-0 z-20 bg-surface text-left font-semibold text-text-muted px-3 py-3 text-xs min-w-[140px] border-b border-border">
+                {COLUMNS.map((col, i) => (
+                  <th
+                    key={col.key}
+                    className={`sticky top-0 z-20 text-left font-semibold text-text-muted px-3 py-3 text-xs min-w-[140px] border-b border-border ${zebra(i)}`}
+                  >
                     {col.key === 'pctOfClubTotal' ? (viewBy === 'club_salesperson' ? '% of Club Total' : '% of Total') : col.label}
                   </th>
                 ))}
@@ -303,13 +311,13 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
             </thead>
             <tbody>
               {rows.map(row => (
-                <tr key={row.key} className="hover:bg-bg/60">
-                  <td className="sticky left-0 z-10 bg-surface px-4 py-2 whitespace-nowrap border-b border-border/60">
+                <tr key={row.key} className="group">
+                  <td className="sticky left-0 z-10 bg-surface group-hover:bg-wcs-red/[0.06] px-4 py-2 whitespace-nowrap border-b border-border/60">
                     <span className="text-text-primary">
-                      {[row.club, row.salesperson].filter(Boolean).join(' — ')}
+                      {[row.club, row.salesperson].filter(Boolean).join('; ')}
                     </span>
                   </td>
-                  {COLUMNS.map(col => {
+                  {COLUMNS.map((col, i) => {
                     const value = row[col.key]
                     const max = maxima[col.key] || 0
                     const width = col.bar && typeof value === 'number' && max > 0
@@ -320,7 +328,7 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
                       ? Math.min(100, Math.round((avg / max) * 100))
                       : null
                     return (
-                      <td key={col.key} className="px-3 py-2 border-b border-border/60">
+                      <td key={col.key} className={`px-3 py-2 border-b border-border/60 ${zebra(i)} group-hover:bg-wcs-red/[0.06]`}>
                         {col.bar ? (
                           <div className="relative flex items-center gap-2 h-5">
                             <div className="relative flex-1 h-4 min-w-[60px]">
@@ -366,11 +374,6 @@ function DataNotes({ meta }) {
   const notes = Object.values(meta.unavailable || {})
   return (
     <div className="bg-surface rounded-xl border border-border p-4 text-xs text-text-muted space-y-1">
-      <p>
-        <span className="font-semibold text-text-primary">Day One Book Count</span> replaces the source tool's
-        PT Intro Book Count. Booking credit follows whoever booked the Day One, so a person can book more Day Ones
-        than they sold memberships and exceed 100%.
-      </p>
       {meta.paymentMethodCoverage !== null && meta.paymentMethodCoverage < 100 && (
         <p>
           <span className="font-semibold text-text-primary">% on ACH</span> is scored against the{' '}
