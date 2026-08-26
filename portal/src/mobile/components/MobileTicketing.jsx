@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import MobileHeader from './MobileHeader'
 import MobileLoading from './MobileLoading'
 import { ticketing, googleChat } from '../../lib/api'
@@ -238,6 +238,10 @@ function Submit({ onCancel, onDone }) {
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  // Same retry guard as the desktop form: reuse the row a failed attempt left
+  // behind instead of creating another ticket. See TicketSubmit.jsx.
+  const pendingId = useRef(null)
+  const stored = useRef(new Set())
 
   useEffect(() => {
     ticketing.listTypes(true).then(r => setTypes(r.types || [])).catch(() => {}).finally(() => setLoading(false))
@@ -254,13 +258,25 @@ function Submit({ onCancel, onDone }) {
     setSubmitting(true); setError(''); setErrors({})
     try {
       const { data, files } = buildSubmission(type.schema || [], values)
-      const res = await ticketing.create({ type_id: type.id, data })
-      for (const f of files) await ticketing.uploadAttachment(res.ticket.id, f)
+      const res = await ticketing.create({
+        type_id: type.id,
+        data,
+        reuse_ticket_id: pendingId.current || undefined,
+      })
+      pendingId.current = res.ticket.id
+      for (const f of files) {
+        if (stored.current.has(f)) continue
+        await ticketing.uploadAttachment(res.ticket.id, f)
+        stored.current.add(f)
+      }
+      pendingId.current = null; stored.current = new Set()
       onDone(res.ticket.id)
     } catch (err) {
       if (err.errors) {
         setErrors(err.errors)
         setError(summarizeErrors(type.schema || [], err.errors) || err.message)
+      } else if (pendingId.current) {
+        setError(`${err.message || 'The file could not be attached'}. Your ticket is saved — fix the file and submit again; this won't create a duplicate.`)
       } else {
         setError(err.message || 'Could not submit')
       }
@@ -276,7 +292,7 @@ function Submit({ onCancel, onDone }) {
         {types.length === 0 ? (
           <p className="text-sm text-text-muted text-center py-10 bg-surface border border-border rounded-2xl">No active ticket types.</p>
         ) : types.map(t => (
-          <button key={t.id} onClick={() => { setType(t); setValues({}); setErrors({}) }}
+          <button key={t.id} onClick={() => { setType(t); setValues({}); setErrors({}); pendingId.current = null; stored.current = new Set() }}
             className="w-full flex flex-col justify-center text-left bg-surface border border-border rounded-2xl p-5 min-h-[92px] active:scale-[0.99] transition-transform">
             <p className="text-base font-bold text-text-primary">{t.name}</p>
             {t.description && <p className="text-sm text-text-muted mt-1">{t.description}</p>}

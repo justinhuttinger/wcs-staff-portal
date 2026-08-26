@@ -174,8 +174,25 @@ function makeSlug(name) {
   return base
 }
 
+// The submit form writes the ticket row before uploading its attachments, so a
+// failed upload leaves a real ticket behind and the user retries. Given the id
+// of that first attempt, decide whether the retry may refresh it in place
+// rather than inserting a duplicate.
+//
+// Deliberately narrow: only the submitter's own ticket, only the same type, and
+// only while still untouched ('open'). A handler who has already picked the
+// ticket up, or a stray/foreign id, falls through to a normal insert — better a
+// duplicate than one person's retry silently rewriting another's ticket.
+function canReuseTicket(prior, { staffId, typeId } = {}) {
+  if (!prior || !staffId || !typeId) return false
+  return prior.submitter_id === staffId
+    && prior.type_id === typeId
+    && prior.status === 'open'
+}
+
 module.exports = {
   FIELD_TYPES,
+  canReuseTicket,
   INPUT_TYPES,
   DISPLAY_TYPES,
   OPTION_TYPES,
