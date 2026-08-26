@@ -15,9 +15,15 @@ import { publicTour } from '../lib/api'
  *            out cards to strangers.
  *
  * Picking a referrer from the list also captures their ABC member id, which is
- * the part that lets anything downstream actually credit the right person.
+ * the part that lets anything downstream actually credit the right person. The
+ * list is active members of THIS club only, with phone and email shown, because
+ * "Chris Miller" is three different people and staff need to see which one.
+ *
+ * The team member is a dropdown off the same roster as Tour Member rather than
+ * a text box: it cannot be mistyped, and a typo here is invisible until someone
+ * runs a report and finds "Caleb Ivey" split across four spellings.
  */
-export default function VipReferral({ token, intakeId, value, onChange }) {
+export default function VipReferral({ token, intakeId, value, onChange, employees }) {
   const [loading, setLoading] = useState(true)
   const [known, setKnown] = useState(null)
 
@@ -124,10 +130,13 @@ export default function VipReferral({ token, intakeId, value, onChange }) {
                   onClick={() => pick(m)}
                   className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
                 >
-                  <span className="font-medium text-gray-900">
+                  <div className="font-medium text-gray-900">
                     {m.firstName} {m.lastName}
-                  </span>
-                  <span className="text-gray-500"> · {m.status || 'member'}</span>
+                  </div>
+                  {/* Enough to tell two people with the same name apart. */}
+                  <div className="text-xs text-gray-500">
+                    {[m.phone, m.email].filter(Boolean).join(' · ') || 'no contact details on file'}
+                  </div>
                 </button>
               </li>
             ))}
@@ -144,12 +153,16 @@ export default function VipReferral({ token, intakeId, value, onChange }) {
           Team member who gave them the card{' '}
           <span className="font-normal text-gray-500">(optional)</span>
         </label>
-        <input
+        <select
           value={value.vip_team_member}
           onChange={e => onChange({ ...value, vip_team_member: e.target.value })}
-          placeholder="Name"
-          className="w-full px-3 py-2 rounded-xl border border-gray-300 text-sm"
-        />
+          className="w-full px-3 py-2 rounded-xl border border-gray-300 text-sm bg-white"
+        >
+          <option value="">Nobody / not sure</option>
+          {(employees || []).map(e => (
+            <option key={e.id || e.name} value={e.name}>{e.name}</option>
+          ))}
+        </select>
       </div>
     </div>
   )

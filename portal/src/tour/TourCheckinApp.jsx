@@ -428,6 +428,9 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
               intakeId={intake.id}
               value={referral}
               onChange={setReferral}
+              // Same roster as Tour Member, already loaded: one source, one
+              // spelling, and no second round trip.
+              employees={employees}
             />
           )}
 

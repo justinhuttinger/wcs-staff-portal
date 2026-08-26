@@ -27,9 +27,16 @@ async function searchMembersByName(clubNumber, query) {
   const q = String(query || '').trim()
   if (q.length < 2) return []
 
-  const cols = 'member_id, first_name, last_name, email, primary_phone, member_status'
+  const cols = 'member_id, first_name, last_name, email, primary_phone, mobile_phone, member_status'
+  // Active only, and only this club: a referral has to be somebody who actually
+  // trains here, and offering a cancelled member invites crediting the wrong
+  // person for a reward they can no longer receive.
   const base = () =>
-    supabaseAdmin.from('abc_members').select(cols).eq('club_number', String(clubNumber))
+    supabaseAdmin
+      .from('abc_members')
+      .select(cols)
+      .eq('club_number', String(clubNumber))
+      .ilike('member_status', 'active')
 
   const phone = digits(q)
   let rows = []
@@ -73,7 +80,7 @@ async function searchMembersByName(clubNumber, query) {
     firstName: r.first_name || '',
     lastName: r.last_name || '',
     email: r.email || '',
-    phone: r.primary_phone || '',
+    phone: r.primary_phone || r.mobile_phone || '',
     status: r.member_status || '',
   }))
 }
