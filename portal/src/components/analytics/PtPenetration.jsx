@@ -170,8 +170,8 @@ export default function PtPenetration({ locationSlug }) {
             { label: `PT Member Penetration %, ${fmtMonth(s.month)}`, value: fmt(s.penetration, 'pct') },
             { label: 'PT Members', value: fmt(s.ptMembers, 'int') },
             { label: 'Members', value: fmt(s.members, 'int') },
-            { label: 'PT Revenue', value: fmt(s.ptRevenue, 'money') },
-            { label: 'PT Revenue Per PT Member', value: fmt(s.revenuePerPtMember, 'money2') },
+            { label: 'Recurring PT Penetration %', value: fmt(s.recurringPenetration, 'pct') },
+            { label: 'PT PIF Penetration %', value: fmt(s.pifPenetration, 'pct') },
             { label: '% Change vs Prior Year', value: s.hasPriorYear ? fmt(s.vsPriorYear, 'pct') : 'N/A' },
           ].map(t => (
             <div key={t.label} className="px-5 py-4 text-center min-w-[140px] flex-1">
@@ -239,7 +239,7 @@ function Toolbar({ metric, setMetric, windowMonths, setWindowMonths, metrics, wi
       <label className={wrap}>
         PT Qualification
         <select value={String(windowMonths)} onChange={e => setWindowMonths(Number(e.target.value))} className={cls}>
-          {(windows.length ? windows : [{ key: 3, label: 'Paid in last 3 months' }])
+          {(windows.length ? windows : [{ key: 3, label: 'PIF counts for 3 months' }])
             .map(w => <option key={w.key} value={String(w.key)}>{w.label}</option>)}
         </select>
       </label>

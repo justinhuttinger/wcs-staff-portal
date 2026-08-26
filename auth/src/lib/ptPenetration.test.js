@@ -5,8 +5,13 @@ const { buildPtPenetration, pct, pctChange, shiftMonth } = require('./ptPenetrat
 const NAMES = { 31598: 'Springfield', 31599: 'Keizer' }
 const opts = (over = {}) => ({ clubNameFor: n => NAMES[n] || n, ...over })
 
-function row(month, club, members, ptMembers, ptRevenue = 0) {
-  return { month_start: month + '-01', club_number: club, members, pt_members: ptMembers, pt_revenue: ptRevenue }
+function row(month, club, members, ptMembers, recurring = null, pif = 0) {
+  return {
+    month_start: month + '-01', club_number: club, members,
+    pt_members: ptMembers,
+    recurring_pt_members: recurring === null ? ptMembers : recurring,
+    pif_pt_members: pif,
+  }
 }
 
 test('pct and pctChange guard zero denominators', () => {
@@ -65,20 +70,32 @@ test('totals pool every club before taking the rate', () => {
 })
 
 test('metrics switch what the line plots', () => {
-  const rows = [row('2026-07', '31598', 1000, 25, 5000)]
+  // 25 PT members: 20 on a recurring service, 8 on a prepaid package, 3 with
+  // both — so the parts exceed the whole and must not be summed.
+  const rows = [row('2026-07', '31598', 1000, 25, 20, 8)]
   assert.equal(buildPtPenetration(rows, opts({ metric: 'penetration' })).series[0].points[0].value, 2.5)
+  assert.equal(buildPtPenetration(rows, opts({ metric: 'recurringPenetration' })).series[0].points[0].value, 2)
+  assert.equal(buildPtPenetration(rows, opts({ metric: 'pifPenetration' })).series[0].points[0].value, 0.8)
   assert.equal(buildPtPenetration(rows, opts({ metric: 'ptMembers' })).series[0].points[0].value, 25)
-  assert.equal(buildPtPenetration(rows, opts({ metric: 'ptRevenue' })).series[0].points[0].value, 5000)
-  assert.equal(buildPtPenetration(rows, opts({ metric: 'revenuePerPtMember' })).series[0].points[0].value, 200)
   // An unknown metric falls back rather than throwing.
   assert.equal(buildPtPenetration(rows, opts({ metric: 'nope' })).metric, 'penetration')
 })
 
-test('revenue per PT member is null when nobody bought PT', () => {
-  const rows = [row('2026-07', '31598', 1000, 0, 0)]
-  const { series, summary } = buildPtPenetration(rows, opts({ metric: 'revenuePerPtMember' }))
-  assert.equal(series[0].points[0].value, null)
-  assert.equal(summary.revenuePerPtMember, null)
+test('a member holding both a recurring service and a package is counted once', () => {
+  const rows = [row('2026-07', '31598', 1000, 25, 20, 8)]
+  const { summary } = buildPtPenetration(rows, opts())
+  assert.equal(summary.ptMembers, 25)
+  assert.equal(summary.recurring, 20)
+  assert.equal(summary.pif, 8)
+  // 20 + 8 = 28 people would be double-counting the 3 who hold both.
+  assert.ok(summary.recurring + summary.pif > summary.ptMembers)
+})
+
+test('a month with no PT members reports 0%, not null', () => {
+  // Distinct from a club with no members at all, which has no rate.
+  const rows = [row('2026-06', '31598', 1000, 5), row('2026-07', '31598', 1000, 0)]
+  const { series } = buildPtPenetration(rows, opts())
+  assert.equal(series[0].points.find(p => p.month === '2026-07').value, 0)
 })
 
 test('the year-ago comparison is flagged when there is nothing to compare', () => {
