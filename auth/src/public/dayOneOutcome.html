@@ -49,6 +49,10 @@
   }
 
   .page { display: flex; justify-content: center; padding: 40px 20px 64px; }
+  /* Embedded in the portal's own modal, the page chrome is the host's job. */
+  body.embed .page { padding: 4px 0 12px; }
+  body.embed .wordmark { display: none; }
+  body.embed .form-title { font-size: 26px; }
   main { width: 100%; max-width: 620px; }
 
   .wordmark { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
@@ -186,6 +190,11 @@
   // The link only ever carries the contact id. `c` is the documented parameter;
   // contactId is accepted too so an older workflow link keeps working.
   var contactId = (params.get('c') || params.get('contactId') || '').trim();
+  // The portal embeds this in its own modal, which already carries the branding
+  // and the member's name, so the page drops its chrome and reports completion
+  // to the host instead of showing its own end screen.
+  var embedded = params.get('embed') === '1';
+  if (embedded) document.body.className = 'embed';
 
   var appt = null;    // the Day One being recorded
   var opts = null;    // option lists from the server
@@ -263,6 +272,7 @@
 
   function render() {
     clear();
+    reportHeight();
     view.appendChild(headerBlock());
 
     var card = el('div', 'fields');
@@ -402,9 +412,17 @@
   }
 
   function done() {
+    if (embedded) {
+      // Same-origin is not guaranteed (the portal is a different host), so the
+      // host filters on the message shape rather than us naming a target.
+      try { window.parent.postMessage({ type: 'day-one-outcome-recorded' }, '*'); } catch (e) {}
+    }
     clear();
     view.appendChild(el('h1', 'state-title', 'Result recorded'));
-    view.appendChild(el('p', 'state-text', 'Thanks. You can close this page.'));
+    view.appendChild(el('p', 'state-text', embedded
+      ? 'Saved.'
+      : 'Thanks. You can close this page.'));
+    reportHeight();
   }
 
   function alreadyDone(data) {
@@ -414,6 +432,7 @@
     view.appendChild(el('p', 'state-text', d
       ? 'This Day One has already been recorded.'
       : 'There is no open Day One for this member.'));
+    reportHeight();
   }
 
   // Two open Day Ones for one member is rare but real, and it is exactly the
@@ -432,6 +451,21 @@
       box.appendChild(b);
     });
     view.appendChild(box);
+  }
+
+  // The form's height changes with every step, and an iframe cannot size itself.
+  // Without this the host has to guess, and a percentage height inside a
+  // min-height-only parent silently collapses to 150px.
+  function reportHeight() {
+    if (!embedded) return;
+    setTimeout(function () {
+      try {
+        window.parent.postMessage({
+          type: 'day-one-outcome-height',
+          height: document.documentElement.scrollHeight
+        }, '*');
+      } catch (e) {}
+    }, 0);
   }
 
   // --- helpers --------------------------------------------------------------
