@@ -119,16 +119,25 @@ async function fetchAllContacts() {
   return out
 }
 
-// Keys of every row this script has already written, paginated. Returns
-// 'contactId|date' strings so the caller can build a Set directly.
-async function fetchAllBackfilled() {
+// Keys of every Day One already in the table, from ANY source, paginated.
+// Returns 'contactId|date' strings so the caller can build a Set directly.
+//
+// Deliberately not filtered to source = 'ghl_custom_field_backfill'. The legacy
+// custom fields describe recent Day Ones that the reconciler ALSO pulls from the
+// live calendar, so filtering by source let the script re-create a row that
+// already existed with a real appointment id. That produced 437 duplicate pairs
+// on the first run: same contact, same date, same Day One counted twice, and the
+// trainer form offering two identical choices.
+//
+// The live row always wins, because it carries the appointment id, the exact
+// start time, and stays reconciled.
+async function fetchExistingKeys() {
   const out = []
   let from = 0
   for (;;) {
     const { data, error } = await supabaseAdmin
       .from('day_one_appointments')
       .select('ghl_contact_id, scheduled_date')
-      .eq('source', 'ghl_custom_field_backfill')
       .range(from, from + 999)
     if (error) throw new Error(error.message)
     out.push(...(data || []).map(r => `${r.ghl_contact_id}|${r.scheduled_date}`))
@@ -154,14 +163,15 @@ async function main() {
   console.log(`mappable: ${mapped.length}`)
   console.log(`skipped, no usable date: ${noDate}`)
 
-  // Skip anything already present, so the script is re-runnable.
+  // Skip anything already present, from any source, so the script is re-runnable
+  // AND cannot duplicate a Day One the reconciler already owns.
   //
   // This MUST paginate. Supabase caps an unpaginated select at 1000 rows, and a
   // truncated "already done" set silently turns a no-op re-run into 642 duplicate
   // inserts. Same class of trap as the fetchAll above.
-  const seen = new Set(await fetchAllBackfilled())
+  const seen = new Set(await fetchExistingKeys())
   const fresh = mapped.filter(r => !seen.has(`${r.ghl_contact_id}|${r.scheduled_date}`))
-  console.log(`already backfilled: ${mapped.length - fresh.length}`)
+  console.log(`already present (backfilled or live): ${mapped.length - fresh.length}`)
   console.log(`to insert: ${fresh.length}`)
 
   const byStatus = {}
