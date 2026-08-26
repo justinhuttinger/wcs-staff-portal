@@ -392,6 +392,11 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
 
   const appTools = clubApps.filter(visibleApp)
 
+  // Still needed by the VIP action button below. lib/apps handles Milwaukie's
+  // app differences now, but the VIP survey is not an app — Milwaukie does not
+  // run it — so this club check has to stay here.
+  const isMilwaukie = (location || '').toLowerCase() === 'milwaukie'
+
   // All custom tiles, categorized
   const allCustom = [...mainTiles, ...topLevelTiles]
   const isCancel = (label) => ['cancel', 'cancel tool'].includes(label)
