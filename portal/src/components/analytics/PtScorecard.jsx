@@ -4,6 +4,7 @@ import { api } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
+import { zebra, diffTint, DIFF_TINTS, DIFF_STRONG_RATIO } from './tableTints'
 
 // ---------------------------------------------------------------------------
 // PT Scorecard — Analytics (admin only)
@@ -33,7 +34,7 @@ const COLUMNS = [
   { key: 'bookCount', label: 'Book Count', format: 'int', group: true },
   { key: 'bookPct', label: 'Book %', format: 'pct' },
   { key: 'bookGoal', label: 'Book Goal', format: 'int', goal: true },
-  { key: 'bookDiff', label: 'Book Diff', format: 'signed', diff: true },
+  { key: 'bookDiff', label: 'Book Diff', format: 'signed', diff: 'bookGoal' },
   { key: 'bookOnJoinCount', label: 'Book on Join', format: 'int', group: true },
   { key: 'bookOnJoinPct', label: 'Book on Join %', format: 'pct' },
   { key: 'setToDate', label: 'Set to Date', format: 'int', group: true },
@@ -41,11 +42,11 @@ const COLUMNS = [
   { key: 'showCount', label: 'Show Count', format: 'int', group: true },
   { key: 'showPct', label: 'Show %', format: 'pct' },
   { key: 'showGoal', label: 'Show Goal', format: 'int', goal: true },
-  { key: 'showDiff', label: 'Show Diff', format: 'signed', diff: true },
+  { key: 'showDiff', label: 'Show Diff', format: 'signed', diff: 'showGoal' },
   { key: 'closeCount', label: 'Close Count', format: 'int', group: true },
   { key: 'closePct', label: 'Close %', format: 'pct' },
   { key: 'closeGoal', label: 'Close Goal', format: 'int', goal: true },
-  { key: 'closeDiff', label: 'Close Diff', format: 'signed', diff: true },
+  { key: 'closeDiff', label: 'Close Diff', format: 'signed', diff: 'closeGoal' },
   { key: 'newEftDraft', label: 'New PT EFT Draft', format: 'money', group: true },
   { key: 'cancelledEftDraft', label: 'Cancelled PT EFT Draft', format: 'money' },
   { key: 'netEftDraft', label: 'Net PT EFT Draft', format: 'signedMoney' },
@@ -65,17 +66,15 @@ function fmt(v, format) {
   }
 }
 
-// Every diff here is actual minus goal, so above zero is good in all three.
-function diffTone(v) {
-  if (v === null || v === undefined || v === 0) return 'text-text-muted'
-  return v > 0 ? 'text-emerald-600' : 'text-wcs-red'
-}
-
-function Cell({ row, col }) {
+function Cell({ row, col, index }) {
   const v = row[col.key]
-  const tone = col.diff ? diffTone(v) : (v === null ? 'text-text-muted' : 'text-text-primary')
+  // A graded background carries how far off the goal is; the text stays in the
+  // normal ink so it remains readable on the strongest tints, and the sign is
+  // printed regardless, so colour never carries the meaning alone.
+  const background = col.diff ? diffTint(v, row[col.diff]) : zebra(index)
+  const tone = v === null ? 'text-text-muted' : 'text-text-primary'
   return (
-    <td className={`px-3 py-2 text-right text-xs tabular-nums whitespace-nowrap ${tone} ${col.group ? 'border-l border-border' : ''}`}>
+    <td className={`px-3 py-2 text-right text-xs tabular-nums whitespace-nowrap ${tone} ${background} ${col.group ? 'border-l border-border' : ''}`}>
       {fmt(v, col.format)}
     </td>
   )
@@ -124,10 +123,10 @@ export default function PtScorecard({ startDate, endDate, locationSlug }) {
                   <th className="sticky left-0 top-0 z-30 bg-surface text-left font-semibold text-text-primary px-4 py-3 min-w-[200px] border-b border-border">
                     Club
                   </th>
-                  {COLUMNS.map(col => (
+                  {COLUMNS.map((col, i) => (
                     <th
                       key={col.key}
-                      className={`sticky top-0 z-20 bg-surface text-right font-semibold px-3 py-3 text-xs min-w-[110px] border-b border-border ${col.group ? 'border-l' : ''} ${col.goal ? 'text-wcs-red' : 'text-text-muted'}`}
+                      className={`sticky top-0 z-20 text-right font-semibold px-3 py-3 text-xs min-w-[110px] border-b border-border ${zebra(i)} ${col.group ? 'border-l' : ''} ${col.goal ? 'text-wcs-red' : 'text-text-muted'}`}
                     >
                       {col.label}
                     </th>
@@ -140,7 +139,7 @@ export default function PtScorecard({ startDate, endDate, locationSlug }) {
                     <td className="sticky left-0 z-10 bg-bg px-4 py-2 text-text-primary whitespace-nowrap border-b border-border">
                       {overall.club}
                     </td>
-                    {COLUMNS.map(col => <Cell key={col.key} row={overall} col={col} />)}
+                    {COLUMNS.map((col, i) => <Cell key={col.key} row={overall} col={col} index={i} />)}
                   </tr>
                 )}
                 {clubs.map(row => (
@@ -148,7 +147,7 @@ export default function PtScorecard({ startDate, endDate, locationSlug }) {
                     <td className="sticky left-0 z-10 bg-surface px-4 py-2 text-text-primary whitespace-nowrap border-b border-border/60">
                       {row.club}
                     </td>
-                    {COLUMNS.map(col => <Cell key={col.key} row={row} col={col} />)}
+                    {COLUMNS.map((col, i) => <Cell key={col.key} row={row} col={col} index={i} />)}
                   </tr>
                 ))}
               </tbody>
@@ -188,6 +187,23 @@ export default function PtScorecard({ startDate, endDate, locationSlug }) {
           >
             Reset to 50%
           </button>
+          <div className="pt-2 border-t border-border space-y-1.5">
+            <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wide">Diff shading</p>
+            <div className="grid grid-cols-2 gap-1 text-[10px] text-text-muted">
+              {[
+                { tint: DIFF_TINTS.strongGood, label: 'Well over' },
+                { tint: DIFF_TINTS.good, label: 'Over' },
+                { tint: DIFF_TINTS.bad, label: 'Under' },
+                { tint: DIFF_TINTS.strongBad, label: 'Well under' },
+              ].map(s => (
+                <span key={s.label} className={`px-1.5 py-0.5 rounded ${s.tint}`}>{s.label}</span>
+              ))}
+            </div>
+            <p className="text-[10px] text-text-muted leading-snug">
+              &ldquo;Well&rdquo; means more than {Math.round(DIFF_STRONG_RATIO * 100)}% off the goal, so a
+              small club and a large one are shaded on the same footing.
+            </p>
+          </div>
           <p className="text-[10px] text-text-muted leading-snug pt-2 border-t border-border">
             Each goal applies to the same base as its rate: Book against new members,
             Show against sets to date, Close against shows.
