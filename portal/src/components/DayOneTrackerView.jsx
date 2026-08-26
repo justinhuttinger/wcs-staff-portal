@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getDayOneTrackerAppointments } from '../lib/api'
-import DayOneOutcomeFrame from './DayOneOutcomeFrame'
+import DayOneOutcomeModal from './DayOneOutcomeModal'
 
 function capitalize(str) {
   if (!str) return ''
@@ -60,35 +60,6 @@ function formatDateTime(iso) {
   return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-function OutcomeModal({ appointment, onClose, onSubmitted }) {
-  // The form is served by the API and embedded rather than reimplemented here.
-  // One form, one look, one write path. This modal used to POST to
-  // /day-one-tracker/submit, which wrote to GHL custom fields ONLY, leaving 27
-  // Day Ones with an outcome GHL knew about and day_one_appointments did not.
-  const name = appointment.contact_name || 'Day One'
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
-      <div className="w-full max-w-xl rounded-2xl bg-surface shadow-xl">
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
-          <h2 className="truncate text-base font-semibold text-text-primary">{name}</h2>
-          <button
-            onClick={onClose}
-            className="rounded-lg px-3 py-1 text-sm text-text-muted hover:bg-bg"
-            aria-label="Close"
-          >
-            Close
-          </button>
-        </div>
-        <div className="px-5 pb-4 pt-2">
-          <DayOneOutcomeFrame
-            contactId={appointment.contact_id}
-            onRecorded={() => { if (onSubmitted) onSubmitted(); if (onClose) onClose() }}
-          />
-        </div>
-      </div>
-    </div>
-  )
-}
 export default function DayOneTrackerView({ user, onBack, location, isAdmin }) {
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading] = useState(true)
@@ -234,10 +205,10 @@ export default function DayOneTrackerView({ user, onBack, location, isAdmin }) {
       )}
 
       {activeModal && (
-        <OutcomeModal
+        <DayOneOutcomeModal
           appointment={activeModal}
           onClose={() => setActiveModal(null)}
-          onSubmitted={() => {
+          onRecorded={() => {
             // The embedded form owns the write, so it reports completion rather
             // than handing back fields to merge. Refetching is both simpler and
             // more honest than patching local state with a guess at the result.
