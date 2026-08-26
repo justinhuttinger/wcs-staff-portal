@@ -27,6 +27,7 @@ const { ghlFetch } = require('./ghlClient')
 const { getFieldId } = require('./ghlCustomFields')
 const {
   pacificDate, flattenWebhookBody, webhookLabels, statusFromGhl, bookerFromEvent,
+  sameInstant,
 } = require('../lib/dayOneOutcomes')
 const { getUsersById, CAL_VERSION } = require('../lib/ghlBooking')
 
@@ -278,6 +279,40 @@ async function ingestBooking(raw = {}) {
       to_value: { scheduled_start: row.scheduled_start, booked_by_name: row.booked_by_name, trainer_name: row.trainer_name },
       detected_by: 'webhook',
     })
+  } else {
+    // The webhook now resolves status live, which means a cancellation lands
+    // here rather than at the next reconcile pass. The reconciler writes the
+    // history event when IT spots a change, but by then this row already says
+    // cancelled and there is no change left to spot. Without this, the fastest
+    // path silently skips the audit trail.
+    const events = []
+    if (row.status !== stored.status) {
+      if (row.status === 'cancelled') {
+        events.push({ event_type: 'cancelled', from_value: { status: stored.status }, to_value: { status: 'cancelled' } })
+      } else if (stored.status === 'cancelled') {
+        events.push({ event_type: 'restored', from_value: { status: 'cancelled' }, to_value: { status: row.status } })
+      }
+    }
+    if (!sameInstant(row.scheduled_start, stored.scheduled_start)) {
+      events.push({
+        event_type: 'rescheduled',
+        from_value: { scheduled_start: stored.scheduled_start },
+        to_value: { scheduled_start: row.scheduled_start },
+      })
+    }
+    if ((row.trainer_ghl_user_id || null) !== (stored.trainer_ghl_user_id || null)) {
+      events.push({
+        event_type: 'reassigned',
+        from_value: { trainer_name: stored.trainer_name, trainer_ghl_user_id: stored.trainer_ghl_user_id },
+        to_value: { trainer_name: row.trainer_name, trainer_ghl_user_id: row.trainer_ghl_user_id },
+      })
+    }
+    if (events.length) {
+      const { error: evErr } = await supabaseAdmin.from('day_one_appointment_events')
+        .insert(events.map(e => ({ ...e, appointment_id: saved.id, detected_by: 'webhook' })))
+      // History is an audit trail, not a gate.
+      if (evErr) console.warn('[dayOneIngest] history insert failed:', evErr.message)
+    }
   }
 
   // Only now, with the row committed, is it safe to drain the courier field.
@@ -292,6 +327,9 @@ async function ingestBooking(raw = {}) {
       appointment_id: saved.id,
       booked_by: row.booked_by_name,
       courier_cleared: cleared,
+      // Surfaced so a cancellation or reschedule is visible in GHL's own
+      // response log without opening the database.
+      status: row.status,
       // Surfaced so a misconfigured merge field shows up in the GHL workflow's
       // own response log rather than silently producing wrongly-dated rows.
       date_provisional: dateIsProvisional,
