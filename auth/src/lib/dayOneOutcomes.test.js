@@ -5,7 +5,7 @@ const {
   validateOutcome, legacyGhlFields, pickOpenAppointments,
   linkReschedules, diffAppointment, statusFromGhl, pacificDate,
   rowFromEvent, bookerFromEvent, flattenWebhookBody, webhookLabels,
-  displayStatus,
+  displayStatus, isRecorded,
 } = require('./dayOneOutcomes')
 
 // --- the conditional form ---------------------------------------------------
@@ -147,8 +147,8 @@ const NOW = new Date('2026-08-25T20:00:00Z')
 
 test('already-recorded appointments are never offered', () => {
   const rows = [
-    { id: 'done', scheduled_date: '2026-08-25', scheduled_start: '2026-08-25T17:00:00Z', outcome_recorded_at: '2026-08-25T18:00:00Z' },
-    { id: 'open', scheduled_date: '2026-08-24', scheduled_start: '2026-08-24T17:00:00Z', outcome_recorded_at: null },
+    { id: 'done', scheduled_date: '2026-08-25', scheduled_start: '2026-08-25T17:00:00Z', status: 'completed', outcome_recorded_at: '2026-08-25T18:00:00Z' },
+    { id: 'open', scheduled_date: '2026-08-24', scheduled_start: '2026-08-24T17:00:00Z', status: 'scheduled', outcome_recorded_at: null },
   ]
   assert.deepEqual(pickOpenAppointments(rows, NOW).map(r => r.id), ['open'])
 })
@@ -550,4 +550,33 @@ test('a sale is only ever recorded when they showed up', () => {
     assert.equal(r.value.pt_sale_type, null, status + ' must not carry a package')
     assert.equal(r.value.why_no_sale, null, status + ' must not carry a no-sale reason')
   }
+})
+
+// --- what counts as recorded ------------------------------------------------
+
+test('a recorded outcome counts as recorded', () => {
+  assert.equal(isRecorded({ outcome_recorded_at: '2026-08-26T12:00:00Z', status: 'completed' }), true)
+  assert.equal(isRecorded({ outcome_recorded_at: '2026-08-26T12:00:00Z', status: 'no_show' }), true)
+  assert.equal(isRecorded({ outcome_recorded_at: '2026-08-26T12:00:00Z', status: 'cancelled' }), true)
+})
+
+test('a stamp on a still-scheduled row does NOT count as recorded', () => {
+  // A data repair once copied the timestamp from a cancelled backfill row onto a
+  // live scheduled one. Five Day Ones, two still upcoming, became unrecordable.
+  assert.equal(isRecorded({ outcome_recorded_at: '2026-08-31T12:00:00Z', status: 'scheduled' }), false)
+})
+
+test('no stamp is never recorded', () => {
+  assert.equal(isRecorded({ outcome_recorded_at: null, status: 'completed' }), false)
+  assert.equal(isRecorded(null), false)
+  assert.equal(isRecorded({}), false)
+})
+
+test('such a row is still offered to the trainer', () => {
+  const rows = [{
+    id: 'ghost', scheduled_date: '2026-08-26', scheduled_start: '2026-08-26T17:00:00Z',
+    status: 'scheduled', outcome: null, outcome_recorded_at: '2026-08-26T12:00:00Z',
+  }]
+  assert.deepEqual(pickOpenAppointments(rows, NOW).map(r => r.id), ['ghost'],
+    'the substance says nobody has said what happened yet')
 })
