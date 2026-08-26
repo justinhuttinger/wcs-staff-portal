@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { LOCATION_OPTIONS as LOCATIONS } from '../config/locations'
 import LocationMultiSelect from './LocationMultiSelect'
+import SalespersonPerformance from './analytics/SalespersonPerformance'
 
 // ---------------------------------------------------------------------------
 // Analytics — an admin-only reporting surface, separate from ReportingView.
@@ -15,6 +16,7 @@ import LocationMultiSelect from './LocationMultiSelect'
 // ---------------------------------------------------------------------------
 
 const ANALYTICS_ICONS = {
+  salespersonPerformance: 'M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
   placeholder: 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z',
 }
 
@@ -22,7 +24,13 @@ const ANALYTICS_ICONS = {
 // { user, isAdmin, location, locationSlug, startDate, endDate }.
 // `dates: false` hides the date-range controls for reports that manage their own.
 const ANALYTICS_REPORTS = [
-  // { key: 'example', label: 'Example', desc: 'Report', icon: ANALYTICS_ICONS.placeholder, Component: ExampleReport },
+  {
+    key: 'salesperson-performance',
+    label: 'Salesperson Performance',
+    desc: 'New Member Units',
+    icon: ANALYTICS_ICONS.salespersonPerformance,
+    Component: SalespersonPerformance,
+  },
 ]
 
 const QUICK_RANGES = [
@@ -115,7 +123,9 @@ export default function AnalyticsView({ user, onBack, location, isAdmin }) {
   const ActiveComponent = active?.Component || null
 
   return (
-    <div className="w-full px-6 py-6 max-w-7xl mx-auto flex gap-6">
+    // Wider than ReportingView's max-w-7xl: these boards are deliberately
+    // column-heavy, and squeezing them into 80rem makes every table scroll.
+    <div className="w-full px-6 py-6 max-w-[1800px] mx-auto flex gap-6">
       {/* Left sidebar */}
       <aside className="w-56 flex-shrink-0 hidden md:block">
         <div className="bg-surface rounded-xl border border-border p-2 sticky top-6 max-h-[calc(100vh_-_3rem)] overflow-y-auto">
