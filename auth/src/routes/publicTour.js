@@ -6,6 +6,7 @@ const { getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
 const { readReferral, writeReferral } = require('../lib/vipReferral')
 const { searchMembersByName } = require('../lib/memberLookup')
+const { resolveAbcId } = require('../lib/resolveAbcId')
 
 const router = Router()
 
@@ -270,25 +271,37 @@ router.post('/:token/intake/:id/trial-days', async (req, res) => {
 
     const { data: intake } = await supabaseAdmin
       .from('tour_intakes')
-      .select('id, location_id, raw')
+      .select('id, location_id, raw, contact_phone, contact_email')
       .eq('id', req.params.id)
       .maybeSingle()
     if (!intake || intake.location_id !== ctx.location.id) {
       return res.status(404).json({ error: 'not found' })
     }
 
-    const prospectId =
-      (intake.raw && (intake.raw.abc_member_id || intake.raw.abcMemberId)) || null
-    if (!prospectId) {
-      // A card raised from a GHL survey carries no ABC id; only the kiosk
-      // stamps one. Say so plainly rather than failing cryptically.
-      return res.status(400).json({
-        error: 'No ABC profile linked to this check-in, so there is nothing to extend.',
-      })
-    }
-
     const clubNumber = clubNumberForLocationName(ctx.location.name)
     if (!clubNumber) return res.status(400).json({ error: 'no club mapped for this location' })
+
+    // The kiosk stamps an id when it raises the card. A GHL-survey card never
+    // does -- the survey fires this webhook and the ABC create at the same
+    // moment, so the card is written before the record exists. Staff tap this
+    // minutes later, by which point it does, so look them up instead of
+    // refusing.
+    let prospectId =
+      (intake.raw && (intake.raw.abc_member_id || intake.raw.abcMemberId)) || null
+
+    if (!prospectId) {
+      const found = await resolveAbcId(clubNumber, {
+        phone: intake.contact_phone,
+        email: intake.contact_email,
+      })
+      prospectId = found && found.id
+    }
+
+    if (!prospectId) {
+      return res.status(400).json({
+        error: 'Could not find them in ABC by phone or email, so there is nothing to extend.',
+      })
+    }
 
     const base = (process.env.PROSPECTS_API_URL || 'https://prospects-documents.onrender.com')
       .replace(/\/$/, '')
