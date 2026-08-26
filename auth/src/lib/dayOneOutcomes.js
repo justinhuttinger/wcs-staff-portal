@@ -174,17 +174,57 @@ function legacyGhlFields(v) {
 // needed to route the form. This is the query that makes that work, and it is
 // only expressible because one contact can now have many appointments.
 //
-// Preference order: still open, nearest to now, past before future (a trainer
-// filling this in is almost always reporting on one that already happened).
-function pickOpenAppointments(rows, now = new Date()) {
+// Four rules, each earned from real data (counts measured 2026-08-25):
+//
+//   1. Not already recorded. Obvious.
+//   2. Not cancelled. A cancelled Day One is resolved, not pending, and offering
+//      one invites a trainer to record an outcome for a session that never
+//      happened. 67 rows were being offered this way.
+//   3. Recent only. 647 open rows are more than three weeks old: nobody is ever
+//      going to fill those in, and they would clutter the picker forever.
+//   4. One row per date. The backfill and the reconciler can describe the SAME
+//      Day One (437 pairs did), and showing a trainer two identical entries is
+//      worse than useless. The row carrying a real GHL appointment id wins.
+//
+// Together these took the number of contacts showing a picker from 179 to 4,
+// which is the point: the picker should mean "this member really did have two",
+// not "our data is untidy".
+const DEFAULT_WINDOW_BACK_DAYS = 21
+const DEFAULT_WINDOW_FORWARD_DAYS = 2
+
+function pickOpenAppointments(rows, now = new Date(), opts = {}) {
   const t = now.getTime()
-  const open = (rows || []).filter(r => !r.outcome_recorded_at)
-  return open.slice().sort((a, b) => {
+  const back = (opts.windowBackDays ?? DEFAULT_WINDOW_BACK_DAYS) * 86400000
+  const forward = (opts.windowForwardDays ?? DEFAULT_WINDOW_FORWARD_DAYS) * 86400000
+
+  const open = (rows || []).filter(r => !r.outcome_recorded_at && r.status !== 'cancelled')
+
+  // Collapse rows describing the same Day One. Preferring the one with a GHL
+  // appointment id keeps the row the reconciler will go on maintaining.
+  const byDate = new Map()
+  for (const r of open) {
+    const key = r.scheduled_date || String(dateValue(r))
+    const held = byDate.get(key)
+    if (!held || (!held.ghl_appointment_id && r.ghl_appointment_id)) byDate.set(key, r)
+  }
+
+  const sorted = [...byDate.values()].sort((a, b) => {
     const at = dateValue(a), bt = dateValue(b)
     const aPast = at <= t, bPast = bt <= t
+    // A trainer is almost always reporting on one that already happened.
     if (aPast !== bPast) return aPast ? -1 : 1
     return Math.abs(at - t) - Math.abs(bt - t)
   })
+
+  const inWindow = sorted.filter(r => {
+    const d = dateValue(r)
+    return d >= t - back && d <= t + forward
+  })
+
+  // Fall back to the nearest open Day One when nothing is in the window, so
+  // someone catching up on a month-old session still has a way to record it.
+  // A hard window with no escape hatch would just be a dead end.
+  return inWindow.length ? inWindow : sorted.slice(0, 1)
 }
 
 function dateValue(r) {

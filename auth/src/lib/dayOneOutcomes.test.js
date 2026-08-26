@@ -146,32 +146,70 @@ const NOW = new Date('2026-08-25T20:00:00Z')
 
 test('already-recorded appointments are never offered', () => {
   const rows = [
-    { id: 'done', scheduled_start: '2026-08-25T17:00:00Z', outcome_recorded_at: '2026-08-25T18:00:00Z' },
-    { id: 'open', scheduled_start: '2026-08-25T17:00:00Z', outcome_recorded_at: null },
+    { id: 'done', scheduled_date: '2026-08-25', scheduled_start: '2026-08-25T17:00:00Z', outcome_recorded_at: '2026-08-25T18:00:00Z' },
+    { id: 'open', scheduled_date: '2026-08-24', scheduled_start: '2026-08-24T17:00:00Z', outcome_recorded_at: null },
   ]
   assert.deepEqual(pickOpenAppointments(rows, NOW).map(r => r.id), ['open'])
 })
 
+test('a cancelled Day One is never offered, it did not happen', () => {
+  // 67 rows were being offered this way: cancelled but with no outcome recorded.
+  const rows = [
+    { id: 'cancelled', scheduled_date: '2026-08-24', scheduled_start: '2026-08-24T17:00:00Z', status: 'cancelled', outcome_recorded_at: null },
+    { id: 'live', scheduled_date: '2026-08-25', scheduled_start: '2026-08-25T17:00:00Z', status: 'scheduled', outcome_recorded_at: null },
+  ]
+  assert.deepEqual(pickOpenAppointments(rows, NOW).map(r => r.id), ['live'])
+})
+
+test('stale open Day Ones are not offered alongside a current one', () => {
+  // 647 open rows are more than three weeks old. Nobody is filling those in, and
+  // they would sit in the picker forever.
+  const rows = [
+    { id: 'ancient', scheduled_date: '2026-06-01', scheduled_start: '2026-06-01T17:00:00Z', outcome_recorded_at: null },
+    { id: 'today', scheduled_date: '2026-08-25', scheduled_start: '2026-08-25T17:00:00Z', outcome_recorded_at: null },
+  ]
+  assert.deepEqual(pickOpenAppointments(rows, NOW).map(r => r.id), ['today'])
+})
+
+test('but a lone stale Day One is still offered, so a late entry is possible', () => {
+  const rows = [{ id: 'ancient', scheduled_date: '2026-06-01', scheduled_start: '2026-06-01T17:00:00Z', outcome_recorded_at: null }]
+  assert.deepEqual(pickOpenAppointments(rows, NOW).map(r => r.id), ['ancient'],
+    'a hard window with no escape hatch would be a dead end')
+})
+
+test('two rows describing the SAME Day One collapse to one', () => {
+  // The backfill and the reconciler both described 437 real Day Ones. Offering a
+  // trainer two identical choices is worse than useless.
+  const rows = [
+    { id: 'backfill', scheduled_date: '2026-08-25', scheduled_start: null, ghl_appointment_id: null, outcome_recorded_at: null },
+    { id: 'live', scheduled_date: '2026-08-25', scheduled_start: '2026-08-25T17:00:00Z', ghl_appointment_id: 'abc', outcome_recorded_at: null },
+  ]
+  const picked = pickOpenAppointments(rows, NOW)
+  assert.equal(picked.length, 1)
+  assert.equal(picked[0].id, 'live', 'the row with a real appointment id wins')
+})
+
+test('the live row wins regardless of which order they arrive in', () => {
+  const rows = [
+    { id: 'live', scheduled_date: '2026-08-25', ghl_appointment_id: 'abc', scheduled_start: '2026-08-25T17:00:00Z', outcome_recorded_at: null },
+    { id: 'backfill', scheduled_date: '2026-08-25', ghl_appointment_id: null, scheduled_start: null, outcome_recorded_at: null },
+  ]
+  assert.equal(pickOpenAppointments(rows, NOW)[0].id, 'live')
+})
+
 test('a past Day One outranks a future one, because that is what is being reported', () => {
   const rows = [
-    { id: 'future', scheduled_start: '2026-08-25T21:00:00Z', outcome_recorded_at: null },
-    { id: 'past', scheduled_start: '2026-08-25T16:00:00Z', outcome_recorded_at: null },
+    { id: 'future', scheduled_date: '2026-08-26', scheduled_start: '2026-08-26T21:00:00Z', outcome_recorded_at: null },
+    { id: 'past', scheduled_date: '2026-08-25', scheduled_start: '2026-08-25T16:00:00Z', outcome_recorded_at: null },
   ]
   assert.equal(pickOpenAppointments(rows, NOW)[0].id, 'past')
 })
 
-test('among past Day Ones the nearest one comes first', () => {
+test('two genuinely different open Day Ones are both returned, so the form can ask', () => {
+  // This is what the picker is FOR: the member really did have two.
   const rows = [
-    { id: 'older', scheduled_start: '2026-08-20T17:00:00Z', outcome_recorded_at: null },
-    { id: 'recent', scheduled_start: '2026-08-25T17:00:00Z', outcome_recorded_at: null },
-  ]
-  assert.equal(pickOpenAppointments(rows, NOW)[0].id, 'recent')
-})
-
-test('two open Day Ones are both returned so the form can ask instead of guessing', () => {
-  const rows = [
-    { id: 'a', scheduled_start: '2026-08-25T16:00:00Z', outcome_recorded_at: null },
-    { id: 'b', scheduled_start: '2026-08-25T17:00:00Z', outcome_recorded_at: null },
+    { id: 'a', scheduled_date: '2026-08-18', scheduled_start: '2026-08-18T16:00:00Z', outcome_recorded_at: null },
+    { id: 'b', scheduled_date: '2026-08-25', scheduled_start: '2026-08-25T17:00:00Z', outcome_recorded_at: null },
   ]
   assert.equal(pickOpenAppointments(rows, NOW).length, 2)
 })
@@ -179,6 +217,20 @@ test('two open Day Ones are both returned so the form can ask instead of guessin
 test('a backfilled row with only a date still resolves', () => {
   const rows = [{ id: 'legacy', scheduled_date: '2026-08-20', scheduled_start: null, outcome_recorded_at: null }]
   assert.equal(pickOpenAppointments(rows, NOW)[0].id, 'legacy')
+})
+
+test('the window is configurable', () => {
+  const rows = [
+    { id: 'old', scheduled_date: '2026-07-20', scheduled_start: '2026-07-20T17:00:00Z', outcome_recorded_at: null },
+    { id: 'new', scheduled_date: '2026-08-25', scheduled_start: '2026-08-25T17:00:00Z', outcome_recorded_at: null },
+  ]
+  assert.equal(pickOpenAppointments(rows, NOW).length, 1)
+  assert.equal(pickOpenAppointments(rows, NOW, { windowBackDays: 60 }).length, 2)
+})
+
+test('no rows at all is an empty list, not a crash', () => {
+  assert.deepEqual(pickOpenAppointments([], NOW), [])
+  assert.deepEqual(pickOpenAppointments(null, NOW), [])
 })
 
 // --- reschedule stitching ---------------------------------------------------

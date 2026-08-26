@@ -289,6 +289,36 @@ Left in place for now so this change stays reviewable; removed in phase 3 or 4.
 
 ---
 
+## Selecting which Day One the trainer means
+
+`pickOpenAppointments()` applies four rules, each earned from production data
+rather than guessed:
+
+1. **Not already recorded.**
+2. **Not cancelled.** A cancelled Day One is resolved, not pending. 67 rows were
+   being offered, inviting a trainer to record an outcome for a session that
+   never happened.
+3. **Recent only** (default 21 days back, 2 forward). 647 open rows are older
+   than three weeks and nobody will ever fill them in. A lone stale row is still
+   offered as a fallback, so a late entry is possible rather than a dead end.
+4. **One row per date**, preferring the row with a real `ghl_appointment_id`.
+
+Together these took the number of contacts that would see a picker from **179 to
+4**, which is the point: the picker should mean "this member really did have two
+Day Ones", not "our data is untidy".
+
+### The duplicate the first backfill created
+
+The initial backfill deduplicated only against its own previous rows. The legacy
+custom fields describe recent Day Ones that the reconciler **also** pulls from
+the live calendar, so **437 pairs** were created: same contact, same date, same
+Day One, counted twice.
+
+Repaired in place by merging each backfilled twin's outcome and booker into the
+live row (a straight delete would have destroyed **287 outcomes** and **348
+booker attributions**) and then removing the duplicate. The backfill script now
+deduplicates against every row regardless of source, so it cannot recur.
+
 ## Known limitations
 
 - The 2,287 date-less legacy contacts are not backfilled and cannot be. They have
