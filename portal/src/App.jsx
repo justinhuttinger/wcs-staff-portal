@@ -23,6 +23,8 @@ import NpsView from './components/nps/NpsView'
 import TourCheckinQueueView from './components/TourCheckinQueueView'
 import AdsManagerView from './components/AdsManagerView'
 import GlobalProgressBar from './components/GlobalProgressBar'
+import PortalNav from './components/PortalNav'
+import { getTheme, THEME_EVENT } from './lib/theme'
 import WhatsNew from './components/WhatsNew'
 import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout, setImpersonateId } from './lib/api'
 import { logEvent } from './lib/audit'
@@ -71,6 +73,14 @@ export default function App() {
   const [showAdsManager, setShowAdsManager] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
   const [locationOverride, setLocationOverride] = useState(() => localStorage.getItem('wcs_location_override') || '')
+  // Press theme swaps the classic header for a persistent top nav (PortalNav).
+  // It is the only theme that changes structure rather than just tokens, so it
+  // needs to be live state here, not just an attribute on <html>.
+  const [theme, setThemeState] = useState(getTheme)
+  const press = theme === 'press'
+  // Which column the board shows when no other view is open. The Press nav's
+  // Apps and Other tabs are both "home", differing only in this.
+  const [boardMode, setBoardMode] = useState('apps')
   const isElectron = !!window.wcsElectron
   const isAdmin = user?.staff?.role === 'admin'
   // corporate sees all clubs portal-wide (same as Drive/report gating)
@@ -80,6 +90,14 @@ export default function App() {
 
   useEffect(() => {
     document.title = 'WCS Staff Portal'
+  }, [])
+
+  // Appearance changes apply live (Admin Panel -> Appearance dispatches this),
+  // so switching into or out of Press swaps the shell without a reload.
+  useEffect(() => {
+    const onChange = () => setThemeState(getTheme())
+    window.addEventListener(THEME_EVENT, onChange)
+    return () => window.removeEventListener(THEME_EVENT, onChange)
   }, [])
 
   // Admin can push a hard reload to every open tab via Admin Panel.
@@ -277,6 +295,10 @@ export default function App() {
   }, [location])
 
   const bgImage = LOCATION_BACKGROUNDS[location.toLowerCase()]
+  // Press is a white-ground theme; the full-bleed location photo and its
+  // black/60 scrim cannot coexist with it. The login screen keeps the photo
+  // either way — that is the one place it still reads as the site's look.
+  const shellBg = press ? null : bgImage
 
   if (!user) {
     if (kioskMode === 'dayone') {
@@ -320,10 +342,40 @@ export default function App() {
     setShowHelpCenter(false)
     setShowTicketsBoard(false)
     setShowDrive(false)
+    // These three are in the isHome check but were never reset here, so going
+    // back from Drive Hub / Media Library / Ads Manager left the app in a state
+    // that was neither home nor any view.
+    setShowDriveHub(false)
+    setShowMediaLibrary(false)
+    setShowAdsManager(false)
     setShowForms(false)
     setShowNps(false)
     setShowTourCheckin(false)
     if (window.location.hash) window.location.hash = ''
+  }
+
+  // Which Press nav tab is lit. Apps and Other are both "home" — they differ
+  // only in which column of the board renders — so they fall out of boardMode.
+  const activeTab =
+    showReporting ? 'reporting'
+    : showCalendar ? 'calendar'
+    : showLeaderboard ? 'leaderboard'
+    : isHome ? boardMode
+    : null   // a view opened from the Other board; no tab is current
+
+  function selectTab(key) {
+    handleBackToPortal()   // also clears showAdmin
+    if (key === 'reporting') {
+      window.location.hash = '#reporting'
+      setShowReporting(true)
+    } else if (key === 'calendar') {
+      setShowCalendar(true)
+    } else if (key === 'leaderboard') {
+      setShowLeaderboard(true)
+    } else {
+      // 'apps' | 'other' — both land on the board, showing one column or both.
+      setBoardMode(key)
+    }
   }
 
   return (
@@ -336,12 +388,25 @@ export default function App() {
       )}
       <GlobalProgressBar />
       {/* Location background image — persists on all views */}
-      {bgImage && (
+      {shellBg && (
         <>
-          <div className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat" style={{ backgroundImage: `url(${bgImage})` }} />
+          <div className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat" style={{ backgroundImage: `url(${shellBg})` }} />
           <div className="fixed inset-0 z-0 bg-black/60" />
         </>
       )}
+      {press ? (
+        <PortalNav
+          active={activeTab}
+          onSelect={selectTab}
+          onBack={handleBackToPortal}
+          onAdmin={() => { handleBackToPortal(); setShowAdmin(true) }}
+          onSignOut={handleLogout}
+          location={location}
+          isAdmin={isAdmin}
+          userRole={user?.staff?.role}
+          rightSlot={<WhatsNew user={user} bgImage={null} />}
+        />
+      ) : (
       <header className="flex items-center justify-between px-8 py-3 max-w-3xl mx-auto w-full relative z-10">
         <div className="flex items-center gap-3">
           {!isHome && (
@@ -385,6 +450,7 @@ export default function App() {
           </button>
         </div>
       </header>
+      )}
 
       <div className="relative z-10 flex-1 flex flex-col">
       {showAdmin ? (
@@ -413,7 +479,7 @@ export default function App() {
       ) : showLeaderboard ? (
         <LeaderboardView user={user} onBack={() => setShowLeaderboard(false)} location={location} />
       ) : showReporting ? (
-        <ReportingView user={user} onBack={() => { window.location.hash = ''; setShowReporting(false) }} location={location} isAdmin={isAdmin} />
+        <ReportingView user={user} onBack={press ? undefined : () => { window.location.hash = ''; setShowReporting(false) }} location={location} isAdmin={isAdmin} />
       ) : showMarketingTracker ? (
         <MarketingTrackerView access={mAccess} onBack={() => setShowMarketingTracker(false)} />
       ) : showInventory ? (
@@ -429,8 +495,8 @@ export default function App() {
       ) : showTourCheckin && isAdmin ? (
         <TourCheckinQueueView location={location} />
       ) : (
-        <main className="flex-1 flex items-start pt-1 pb-12">
-          <ToolGrid abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onNps={() => setShowNps(true)} onTourCheckin={() => setShowTourCheckin(true)} onAdsManager={() => setShowAdsManager(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
+        <main className={`flex-1 flex items-start pt-1 pb-12${press && boardMode === 'apps' ? ' press-single' : ''}`}>
+          <ToolGrid only={press && boardMode === 'apps' ? 'apps' : undefined} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onNps={() => setShowNps(true)} onTourCheckin={() => setShowTourCheckin(true)} onAdsManager={() => setShowAdsManager(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>
