@@ -1146,17 +1146,11 @@ export async function getDayOneTrackerAppointments(params = {}) {
   return api('/day-one-tracker/appointments' + (qs ? '?' + qs : ''))
 }
 
-export async function submitDayOneResult(data) {
-  return api('/day-one-tracker/submit', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  })
-}
-
-export async function getDayOneFieldOptions(params = {}) {
-  const qs = new URLSearchParams(params).toString()
-  return api('/day-one-tracker/field-options' + (qs ? '?' + qs : ''))
-}
+// submitDayOneResult and getDayOneFieldOptions are deliberately gone.
+// They POSTed to /day-one-tracker/submit, which writes to GHL custom fields and
+// NOT to day_one_appointments. Three separate modals used them and left 27 Day
+// Ones with an outcome GHL knew about and the portal did not. Outcomes are now
+// recorded through the embedded form (DayOneOutcomeFrame), which writes both.
 
 // Tour Intake (front-desk gym-tour queue)
 export async function getTourIntakes(params = {}) {
