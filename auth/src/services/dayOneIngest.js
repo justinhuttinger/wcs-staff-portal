@@ -128,25 +128,33 @@ async function ingestBooking(raw = {}) {
   // so a re-fire would insert a second row. GHL retried this endpoint 6 seconds
   // apart on the first live booking and produced exactly that.
   //
-  // Fall back to (contact, date) as the identity. It is not as strong as an
-  // appointment id, but a member booking two Day Ones on the same day at the
-  // same club is not a real scenario, and a duplicate row is far worse than a
-  // merged one.
+  // The fallback identity is deliberately restricted to OTHER ORPHANS: rows that
+  // also have no appointment id. It must never match a row the reconciler owns.
+  //
+  // The first version of this matched on (contact, date) alone and did real
+  // damage. When the appointment start does not parse the date defaults to
+  // today, so a booking for Friday matched a CANCELLED appointment from today,
+  // took its row, and the whole-row write nulled out its real appointment id.
+  // A provisional date must never be allowed to claim a real appointment.
   if (!stored && !appointmentId) {
     const { data } = await supabaseAdmin
       .from('day_one_appointments')
       .select('*')
       .eq('ghl_contact_id', contactId)
       .eq('scheduled_date', scheduledDate)
+      .is('ghl_appointment_id', null)
       .is('outcome_recorded_at', null)
-      .order('created_at', { ascending: true })
+      .neq('status', 'cancelled')
+      .order('created_at', { ascending: false })
       .limit(1)
     stored = (data && data[0]) || null
   }
 
   const row = {
     location_slug: loc.slug,
-    ghl_appointment_id: appointmentId,
+    // Never downgrade a known appointment id to null. A webhook that cannot
+    // name its appointment has no business erasing one we already have.
+    ghl_appointment_id: appointmentId || stored?.ghl_appointment_id || null,
     ghl_contact_id: contactId,
     ghl_calendar_id: pick(body, 'calendar_id', 'calendarId') || stored?.ghl_calendar_id || null,
     contact_name: name || stored?.contact_name || null,
