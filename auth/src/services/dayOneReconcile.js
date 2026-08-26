@@ -159,9 +159,17 @@ async function reconcileLocation(loc) {
 // and the duplicate disappears. Without this, a null appointment id means a
 // permanent double count.
 //
-// Matching on (contact, date) is deliberately loose. An appointment id would be
-// stronger, but the orphan by definition has none, and a member booking two Day
-// Ones on the same day at the same club is not a real scenario.
+// HOW AN ORPHAN IS MATCHED TO ITS APPOINTMENT
+// NOT by date. When GHL's appointment merge fields do not resolve, the orphan's
+// date defaults to today, so a Friday booking carries today's date and matching
+// on it lands on the wrong appointment entirely.
+//
+// Match on WHEN THE BOOKING HAPPENED instead. The orphan's booked_at is the
+// moment the webhook fired; the appointment's booked_at is GHL's dateAdded. On
+// a real booking those are seconds apart (measured: 9s), which is a far stronger
+// signal than a date the webhook may not even know.
+const ADOPT_WINDOW_MS = 10 * 60 * 1000
+
 async function adoptOrphans(locationSlug) {
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString().slice(0, 10)
   const { data: orphans, error } = await supabaseAdmin
@@ -176,15 +184,27 @@ async function adoptOrphans(locationSlug) {
 
   let adopted = 0
   for (const o of orphans) {
-    const { data: hosts } = await supabaseAdmin
+    const { data: candidates } = await supabaseAdmin
       .from('day_one_appointments')
       .select('*')
       .eq('ghl_contact_id', o.ghl_contact_id)
-      .eq('scheduled_date', o.scheduled_date)
       .not('ghl_appointment_id', 'is', null)
-      // An active appointment is the better host than one that was cancelled.
-      .order('status', { ascending: true })
-    const host = (hosts || []).find(h => h.status !== 'cancelled') || (hosts || [])[0]
+    // A cancelled appointment is never the host: the orphan describes a booking
+    // that was just made, and attributing it to a cancelled session is how
+    // "Caleb Ivey" ended up on a dead appointment on the wrong day.
+    const live = (candidates || []).filter(h => h.status !== 'cancelled')
+    if (!live.length) continue
+
+    const oAt = new Date(o.booked_at || o.created_at).getTime()
+    const near = live
+      .map(h => ({ h, gap: Math.abs(new Date(h.booked_at || h.created_at).getTime() - oAt) }))
+      .filter(x => Number.isFinite(x.gap) && x.gap <= ADOPT_WINDOW_MS)
+      .sort((a, b) => a.gap - b.gap)[0]
+
+    // Only fall back to the date when no booking happened at about the same
+    // time, and then only when the orphan's date is trustworthy enough to have
+    // an exact match.
+    const host = near ? near.h : live.find(h => h.scheduled_date === o.scheduled_date)
     if (!host) continue
 
     // Only fill gaps. The host owns scheduling; the orphan owns attribution.
