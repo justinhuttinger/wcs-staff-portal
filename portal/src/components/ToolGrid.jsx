@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import ToolButton from './ToolButton'
 import { PORTAL_TILE_CATALOG } from '../config/portalTiles'
 import PortalSearch from './PortalSearch'
+import ActionPopup from './ActionPopup'
 import { getTheme, THEME_EVENT } from '../lib/theme'
 import { appsForLocation } from '../lib/apps'
 import { ROLE_LEVELS } from '../lib/roles'
@@ -510,44 +511,11 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
 
             {/* Action Popup — embeds GHL booking widget / VIP survey in an iframe */}
             {actionPopup && (
-              <div
-                className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6"
-                onClick={() => setActionPopup(null)}
-              >
-                <div
-                  className="bg-surface rounded-2xl border border-border w-full max-w-3xl flex flex-col overflow-hidden"
-                  style={{ height: 'min(90vh, 900px)' }}
-                  onClick={e => e.stopPropagation()}
-                >
-                  <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
-                    <h3 className="text-base font-bold text-text-primary">{actionPopup.title}</h3>
-                    <div className="flex items-center gap-3">
-                      <a
-                        href={actionPopup.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs font-semibold text-wcs-red hover:underline"
-                        title="Open in a new tab"
-                      >
-                        Open in new tab ↗
-                      </a>
-                      <button
-                        onClick={() => setActionPopup(null)}
-                        className="text-text-muted hover:text-text-primary text-2xl leading-none"
-                        aria-label="Close"
-                      >
-                        &times;
-                      </button>
-                    </div>
-                  </div>
-                  <iframe
-                    src={actionPopup.url}
-                    title={actionPopup.title}
-                    className="flex-1 border-0 bg-white"
-                    referrerPolicy="no-referrer-when-downgrade"
-                  />
-                </div>
-              </div>
+              <ActionPopup
+                title={actionPopup.title}
+                url={actionPopup.url}
+                onClose={() => setActionPopup(null)}
+              />
             )}
 
             {/* Points Info Modal */}
