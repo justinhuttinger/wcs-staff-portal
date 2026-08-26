@@ -406,3 +406,226 @@ body {
   right: 0.7rem;
   transform: translateY(-50%);
 }
+
+/* ---------------------------------------------------------------------------
+   Press theme (opt-in via Admin Panel → Appearance)
+   The westcoaststrength.com look brought into the portal: white ground, near
+   black ink, one red accent, Prohibition (WCSDisplay) for every header.
+   Palette lifted verbatim from the wcs-custom theme's assets/scss/main.scss so
+   the two stay in step — change one, change the other.
+
+   Unlike wp/spotlight this theme also changes STRUCTURE: App.jsx renders
+   PortalNav instead of the classic header, and every view sits underneath it.
+   The rules below only dress that shell; the switch itself is in App.jsx.
+   --------------------------------------------------------------------------- */
+[data-theme='press'] {
+  --press-ink: #16181d;
+  --press-red: #ff0000;
+  --press-red-hover: #cc0000;
+  --press-line: rgb(0 0 0 / 0.12);
+  --press-band: #f4f4f2;
+
+  /* Map onto the portal's semantic tokens. Every bg-surface / text-primary /
+     border-border utility in the app re-resolves from here. */
+  --color-navy: var(--press-ink);
+  --color-wcs-red: var(--press-red);
+  --color-wcs-red-hover: var(--press-red-hover);
+  --color-surface: #ffffff;
+  --color-bg: #ffffff;
+  --color-text-primary: var(--press-ink);
+  --color-text-secondary: rgb(22 24 29 / 0.82);
+  --color-text-muted: rgb(22 24 29 / 0.58);
+  --color-tile-sub: rgb(22 24 29 / 0.5);
+  --color-border: var(--press-line);
+
+  color-scheme: light;
+}
+
+/* Prohibition on every header, matching the site. The slant is baked into the
+   Oblique cut the woff2 was built from — never let the browser synthesize a
+   second one on top of it. */
+[data-theme='press'] h1,
+[data-theme='press'] h2,
+[data-theme='press'] h3 {
+  font-family: 'WCSDisplay', 'Arial Narrow', 'Inter', sans-serif;
+  font-style: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+
+/* The site's edges are near square. Pills and toggles keep rounded-full. */
+[data-theme='press'] .rounded-2xl,
+[data-theme='press'] .rounded-\[14px\] { border-radius: 0.25rem; }
+[data-theme='press'] .rounded-xl { border-radius: 0.25rem; }
+[data-theme='press'] .rounded-lg { border-radius: 0.1875rem; }
+
+/* --- The persistent nav ----------------------------------------------------
+   Sticky at the top of every view. Tabs are Prohibition uppercase; the active
+   one is marked by a solid red rule along its bottom edge, the way the site
+   marks its own current section. */
+.press-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  background: #ffffff;
+  border-bottom: 1px solid var(--press-line);
+}
+.press-nav__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 1.25rem;
+  border-right: 1px solid var(--press-line);
+  flex-shrink: 0;
+}
+.press-nav__brand img { width: 1.9rem; height: 1.9rem; border-radius: 9999px; }
+.press-nav__wordmark {
+  font-family: 'WCSDisplay', 'Arial Narrow', 'Inter', sans-serif;
+  text-transform: uppercase;
+  font-size: 1.1rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--press-ink);
+}
+.press-nav__tabs {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.press-nav__tabs::-webkit-scrollbar { display: none; }
+.press-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 1.35rem;
+  font-family: 'WCSDisplay', 'Arial Narrow', 'Inter', sans-serif;
+  text-transform: uppercase;
+  font-size: 1.05rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: rgb(22 24 29 / 0.58);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.press-tab:hover { color: var(--press-ink); background: var(--press-band); }
+.press-tab svg { width: 1.05rem; height: 1.05rem; flex-shrink: 0; }
+.press-tab.is-active { color: var(--press-ink); }
+/* Red rule on the active tab. inset-inline 0 so it spans the tab exactly. */
+.press-tab.is-active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;            /* sit on top of the nav's own hairline */
+  height: 3px;
+  background: var(--press-red);
+}
+.press-nav__right {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0 1.1rem;
+  border-left: 1px solid var(--press-line);
+  flex-shrink: 0;
+}
+.press-nav__loc {
+  font-family: 'WCSDisplay', 'Arial Narrow', 'Inter', sans-serif;
+  text-transform: uppercase;
+  font-size: 0.9rem;
+  letter-spacing: 0.03em;
+  color: rgb(22 24 29 / 0.58);
+}
+.press-nav__btn {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--press-line);
+  background: #ffffff;
+  color: rgb(22 24 29 / 0.58);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.press-nav__btn:hover { color: var(--press-red); border-color: var(--press-red); }
+
+/* The nav IS the navigation — every view's own back button is noise under this
+   theme. Hidden rather than removed so the other three themes keep theirs. */
+[data-theme='press'] .press-hide-back { display: none !important; }
+
+/* Board tiles: square edges, hairline borders, red icon. No lift on hover —
+   the site does not float its cards, it inverts them. */
+[data-theme='press'] .portal-tile {
+  border-radius: 0.25rem;
+  border: 1px solid var(--press-line);
+  background: #ffffff;
+  box-shadow: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+[data-theme='press'] .portal-tile:hover,
+[data-theme='press'] .portal-tile:focus-visible {
+  transform: none;
+  box-shadow: none;
+  background: var(--press-band);
+  border-color: var(--press-ink);
+}
+[data-theme='press'] .portal-tile__icon {
+  background: var(--press-band);
+  color: var(--press-red);
+}
+[data-theme='press'] .portal-tile__label {
+  font-family: 'WCSDisplay', 'Arial Narrow', 'Inter', sans-serif;
+  text-transform: uppercase;
+  font-weight: 400;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+}
+[data-theme='press'] .portal-tile__desc { color: rgb(22 24 29 / 0.5); }
+
+/* The classic board floats its section labels over a photo; on white they read
+   better as a plain rule-and-caption, like the site's section headers. */
+[data-theme='press'] .portal-section > p:first-child {
+  background: transparent;
+  backdrop-filter: none;
+  border: 0;
+  border-bottom: 2px solid var(--press-ink);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0 0 0.4rem 0;
+  display: block;
+  font-family: 'WCSDisplay', 'Arial Narrow', 'Inter', sans-serif;
+  font-weight: 400;
+  font-size: 1.15rem;
+  letter-spacing: 0.03em;
+}
+
+/* Single-column screens (Apps on its own tab) get more room per tile. */
+[data-theme='press'] .press-single .portal-columns { display: block; }
+[data-theme='press'] .press-single .portal-section { width: 100%; }
+[data-theme='press'] .press-single .portal-tile-grid {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+
+@media (max-width: 768px) {
+  .press-nav__brand .press-nav__wordmark { display: none; }
+  .press-tab { padding: 0.85rem 0.9rem; font-size: 0.95rem; }
+  .press-nav__loc { display: none; }
+}
+
+/* Back chip: same shape as a tab but set apart, since it leaves rather than
+   navigates. Never carries the active red rule. */
+.press-tab--back {
+  border-right: 1px solid var(--press-line);
+  color: var(--press-red);
+}
+.press-tab--back:hover { color: var(--press-red-hover); }

@@ -119,7 +119,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onNps, onTourCheckin, onAdsManager, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
+export default function ToolGrid({ only, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onNps, onTourCheckin, onAdsManager, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [showOrdering, setShowOrdering] = useState(false)
@@ -136,6 +136,12 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
   // about the board is identical across themes.
   const [theme, setThemeState] = useState(getTheme)
   const spotlight = theme === 'spotlight'
+  // `only` lets the Press theme show one column on its own tab ('apps') or the
+  // whole board ('other') without duplicating any of the role, location and
+  // custom-tile filtering below. Unset = both columns, the classic board.
+  const appsOnly = only === 'apps'
+  const showApps = only !== 'tools'
+  const showTools = only !== 'apps'
 
   useEffect(() => {
     const onChange = () => setThemeState(getTheme())
@@ -407,7 +413,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           optional. Classic and WP keep the board exactly as it was. */}
       {spotlight && <PortalSearch />}
       {/* Top banner row — Action buttons (Apps side) + Score Card (Tools side) */}
-      {leaderboardData && !hideScoreCard && (() => {
+      {leaderboardData && !hideScoreCard && !appsOnly && (() => {
         const totalAtLocation = leaderboardData.total_staff || totalStaff
         const displayRank = userRank || totalAtLocation || '—'
         return (
@@ -593,6 +599,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
 
       <div className="portal-columns flex gap-10">
       {/* Apps — left side */}
+      {showApps && (
       <div className="portal-section w-1/2">
         <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">Apps</p>
         <div className="portal-tile-grid grid grid-cols-4 gap-4">
@@ -619,8 +626,10 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           ))}
         </div>
       </div>
+      )}
 
       {/* Tools — right side, ordered */}
+      {showTools && (
       <div className="portal-section w-1/2">
         <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">Tools</p>
         <div className="portal-tile-grid grid grid-cols-4 gap-4">
@@ -714,6 +723,7 @@ export default function ToolGrid({ abcUrl, location, visibleTools, locationId, o
           })}
         </div>
       </div>
+      )}
       </div>
     </div>
   )

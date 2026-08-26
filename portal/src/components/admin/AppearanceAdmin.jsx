@@ -33,6 +33,15 @@ const OPTIONS = [
       radius: '8px', font: "'Inter', sans-serif", upper: false, dark: true,
     },
   },
+  {
+    key: 'press',
+    name: 'Press',
+    desc: 'The website look, with a top nav.',
+    swatch: {
+      bg: '#ffffff', surface: '#ffffff', ink: '#16181d', red: '#ff0000',
+      radius: '3px', font: "'WCSDisplay', 'Arial Narrow', sans-serif", upper: true,
+    },
+  },
 ]
 
 const LAYOUTS = [
@@ -136,7 +145,7 @@ export default function AppearanceAdmin() {
         not other staff.
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {OPTIONS.map((opt) => {
           const active = prefs.theme === opt.key
           return (

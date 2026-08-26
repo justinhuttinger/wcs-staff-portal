@@ -4,10 +4,12 @@
 // [data-theme="wp"] and a [data-theme="spotlight"] block that redefine the
 // design tokens, so every semantic utility (bg-surface, text-primary, …)
 // re-resolves without touching a single component.
-//   data-theme    classic | wp | spotlight   which palette
+//   data-theme    classic | wp | spotlight | press   which palette
 //   data-accent   signal_red | …             the one user-selectable color
 //   data-density  comfortable | compact      panel height + padding
 //   data-layout   spotlight | grid | rows    how the home board renders
+// Press additionally swaps the whole shell for a persistent top nav (see
+// PortalNav.jsx) — it is the one theme that changes structure, not just tokens.
 // Accent/density/layout only mean anything under the spotlight theme; they are
 // still written unconditionally so switching themes back and forth is lossless.
 //
@@ -20,7 +22,7 @@ export const ACCENT_KEY = 'wcs-portal-accent'
 export const DENSITY_KEY = 'wcs-portal-density'
 export const LAYOUT_KEY = 'wcs-portal-layout'
 
-export const THEMES = ['classic', 'wp', 'spotlight']
+export const THEMES = ['classic', 'wp', 'spotlight', 'press']
 export const LAYOUTS = ['spotlight', 'grid', 'rows']
 export const DENSITIES = ['comfortable', 'compact']
 

@@ -18,7 +18,7 @@
           var v = localStorage.getItem(key)
           return allowed.indexOf(v) >= 0 ? v : fallback
         }
-        var t = pick('wcs-portal-theme', ['classic', 'wp', 'spotlight'], 'classic')
+        var t = pick('wcs-portal-theme', ['classic', 'wp', 'spotlight', 'press'], 'classic')
         if (t !== 'classic') d.setAttribute('data-theme', t)
         d.setAttribute('data-accent', pick('wcs-portal-accent', ['signal_red', 'deep_red', 'ember', 'steel', 'lime'], 'signal_red'))
         d.setAttribute('data-density', pick('wcs-portal-density', ['comfortable', 'compact'], 'comfortable'))
