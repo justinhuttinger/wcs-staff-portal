@@ -23,6 +23,12 @@ function buildTourWebhookPayload(location, intake) {
     // tell "no pass" from "a pass of zero days".
     pass_days: intake.pass_days != null ? Number(intake.pass_days) : null,
 
+    // Who sent them, captured on a VIP pass. Carried so a workflow can credit
+    // the referrer without re-reading the contact.
+    referred_by_full_name: intake.referred_by_full_name || null,
+    referred_by_abc_id: intake.referred_by_abc_id || null,
+    vip_team_member: intake.vip_team_member || null,
+
     notes: intake.notes || null,
     referring_member_id: intake.referring_member_id || null,
     referring_member_name: intake.referring_member_name || null,
