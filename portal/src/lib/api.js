@@ -391,6 +391,16 @@ export async function getMe() {
   return api('/auth/me')
 }
 
+// Per-user portal UI preferences (appearance + pinned shortcuts). See
+// lib/uiPrefs.js for the sync layer that keeps these and localStorage in step.
+export async function getUiPreferences() {
+  return api('/ui-preferences')
+}
+
+export async function saveUiPreferences(prefs) {
+  return api('/ui-preferences', { method: 'PUT', body: JSON.stringify({ prefs }) })
+}
+
 // Per-user "What's New" read state (highest changelog entry id seen).
 export async function getChangelogSeen() {
   return api('/changelog/seen')

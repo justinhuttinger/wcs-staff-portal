@@ -19,8 +19,10 @@ export default function PinPicker({ catalog, pinned, onToggle, onClose }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const apps = catalog.filter(c => c.kind === 'app')
-  const tools = catalog.filter(c => c.kind === 'tool')
+  // Both lists read alphabetically, matching the boards.
+  const byLabel = (a, b) => (a.label || '').localeCompare(b.label || '', undefined, { sensitivity: 'base' })
+  const apps = catalog.filter(c => c.kind === 'app').sort(byLabel)
+  const tools = catalog.filter(c => c.kind === 'tool').sort(byLabel)
   const full = pinned.length >= MAX_PINNED
 
   const row = (item) => {
@@ -63,7 +65,7 @@ export default function PinPicker({ catalog, pinned, onToggle, onClose }) {
         <p className="press-pin-panel__hint">
           {full
             ? `That is all ${MAX_PINNED}. Unpin one to make room.`
-            : `Adds a tab to the right of Other. ${pinned.length} of ${MAX_PINNED} used.`}
+            : `Adds a tab to the right of Tools. ${pinned.length} of ${MAX_PINNED} used.`}
         </p>
 
         {apps.length > 0 && (
