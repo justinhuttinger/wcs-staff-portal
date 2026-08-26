@@ -118,7 +118,12 @@ async function reconcileLocation(loc) {
     if (stored?.outcome_recorded_at && live.status !== 'cancelled') {
       row.status = stored.status
     }
-    if (!stored) {
+    // Fill the booker whenever we do not already have one, not just on insert.
+    // A row can exist for a while with no attribution (the webhook fired before
+    // the field was set, or never fired at all), and GHL still knows who booked
+    // it for the staff-booked minority. Only ever fills a gap: a first-hand
+    // value from the webhook or the booking widget is never overwritten.
+    if (!row.booked_by_name) {
       const booker = bookerFromEvent(evt, usersById)
       if (booker) Object.assign(row, booker)
     }
