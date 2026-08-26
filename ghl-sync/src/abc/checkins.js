@@ -98,7 +98,92 @@ async function fetchCheckinsForRange(clubNumber, fromDate, toDate) {
 }
 
 /**
- * Refresh the current hour's bucket for every club in `clubs`.
+ * Re-read the hour that just closed, once, with its FULL range.
+ *
+ * refreshCurrentHourCheckins asks ABC for hourStart -> now, so the bucket it
+ * writes only ever covers up to the moment of that tick. When the hour rolls
+ * over nothing revisits it, and every check-in between the hour's last tick and
+ * the top of the next hour is lost for good. Measured against ABC directly,
+ * checkins_hourly was holding 5,617 check-ins for Keizer in July 2026 against
+ * an actual 10,147 — 55% of the truth.
+ *
+ * This closes that gap: once per hour per club, re-fetch the previous hour over
+ * its whole span and overwrite. Skipped when the stored row was already written
+ * after the hour ended, so the extra call happens once rather than on all six
+ * ticks of the following hour.
+ */
+async function finalizePreviousHour(clubs) {
+  const now = pacificNowAsUtc();
+  const currentHour = hourFloor(now);
+  const prevStart = new Date(currentHour);
+  prevStart.setUTCHours(prevStart.getUTCHours() - 1);
+  const prevEnd = new Date(currentHour);
+
+  const results = [];
+  for (const clubNumber of clubs) {
+    try {
+      const { data: existing } = await supabase
+        .from('checkins_hourly')
+        .select('fetched_at')
+        .eq('club_number', clubNumber)
+        .eq('hour_start', prevStart.toISOString())
+        .maybeSingle();
+
+      // fetched_at is a real timestamp; prevEnd is Pacific-disguised UTC, so
+      // compare against the same disguised clock rather than the wall clock.
+      if (existing?.fetched_at) {
+        const writtenAt = pacificNowAsUtc(new Date(existing.fetched_at));
+        if (writtenAt >= prevEnd) {
+          results.push({ clubNumber, ok: true, skipped: 'already final' });
+          continue;
+        }
+      }
+
+      const { totalCheckins, uniqueMembers } = await fetchCheckinsForRange(
+        clubNumber,
+        prevStart,
+        prevEnd,
+      );
+
+      const { error } = await supabase
+        .from('checkins_hourly')
+        .upsert(
+          {
+            club_number: clubNumber,
+            hour_start: prevStart.toISOString(),
+            total_checkins: totalCheckins,
+            unique_members: uniqueMembers,
+            fetched_at: new Date().toISOString(),
+          },
+          { onConflict: 'club_number,hour_start' },
+        );
+
+      if (error) {
+        results.push({ clubNumber, ok: false, error: `upsert: ${error.message}` });
+        continue;
+      }
+
+      console.log(
+        `[Checkins] finalized ${clubNumber} ${prevStart.toISOString().slice(0, 16)}Z: ` +
+          `${totalCheckins} check-ins, ${uniqueMembers} members`,
+      );
+      results.push({ clubNumber, ok: true, totalCheckins, uniqueMembers });
+    } catch (err) {
+      console.error(`[Checkins] finalize ${clubNumber} error: ${err.message}`);
+      results.push({ clubNumber, ok: false, error: `finalize: ${err.message}` });
+    }
+  }
+  return { hourStart: prevStart.toISOString(), results };
+}
+
+/**
+ * Refresh the current hour's bucket for every club in `clubs`, then close out
+ * the hour before it.
+ *
+ * The current-hour read is deliberately partial — it covers hourStart -> now so
+ * a live view has something to show. finalizePreviousHour is what makes the
+ * stored history complete.
+ *
  * Call this on every delta tick. Idempotent — UPSERTs by (club_number, hour_start).
  *
  * Returns a summary object: { hourStart, results: [{ clubNumber, ok, error?, totalCheckins?, uniqueMembers? }] }
@@ -151,7 +236,16 @@ async function refreshCurrentHourCheckins(clubs) {
     }
   }
 
-  return { hourStart: hourStart.toISOString(), results };
+  // Close out the hour that just ended. Done after the current-hour pass so a
+  // failure here cannot stop the live bucket from being written.
+  let finalized = null;
+  try {
+    finalized = await finalizePreviousHour(clubs);
+  } catch (err) {
+    console.error(`[Checkins] finalize pass failed: ${err.message}`);
+  }
+
+  return { hourStart: hourStart.toISOString(), results, finalized };
 }
 
 /**
@@ -202,6 +296,7 @@ async function backfillClub(clubNumber, startDate, endDate, sleepMs = 800) {
 module.exports = {
   fetchCheckinsForRange,
   refreshCurrentHourCheckins,
+  finalizePreviousHour,
   backfillClub,
   pacificNowAsUtc,
   fmtAbcTimestamp,
