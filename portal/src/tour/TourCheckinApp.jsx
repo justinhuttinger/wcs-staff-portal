@@ -2,25 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { publicTour } from '../lib/api'
 import { buildDayOneUrl } from '../lib/dayOnePrefill'
 import VipReferral from './VipReferral'
+import { OUTCOMES, VIP_PASS, CUSTOM_PASS, PASS_DAYS, grantsAPass, passDaysFor } from './outcomes'
 
-// 'Custom Pass' is not a plain outcome: choosing it reveals a day picker and
-// writes the pass to ABC. It sits in the same grid because that is where staff
-// already decide what happened, and a separate control above the outcome was
-// easy to miss.
-const VIP_PASS = 'Started VIP Pass'
-const CUSTOM_PASS = 'Custom Pass'
-const OUTCOMES = ['Membership Sale', 'Started Trial', VIP_PASS, 'Only Tour', CUSTOM_PASS]
-
-// Outcomes that hand out gym access, and for how long. A trial and a VIP pass
-// are just fixed-length versions of a custom pass, so they take the same route:
-// the expiration and visit allowance go to ABC and the desk gets the alert.
-// Keeping the lengths here means changing "a trial is 7 days" is a one-line
-// change rather than something staff have to remember to type.
-const PASS_DAYS = {
-  'Started Trial': 7,
-  [VIP_PASS]: 14,
-}
-const grantsAPass = outcome => outcome === CUSTOM_PASS || outcome in PASS_DAYS
 const REFRESH_MS = 2000   // poll fast so a new arrival shows within ~2s (only while the app is open)
 
 // Same per-location photo backgrounds as the mobile app (keyed by lowercase name).
@@ -336,9 +319,9 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
       let passDays = null
 
       if (grantsAPass(outcome)) {
-        const n = outcome === CUSTOM_PASS ? Number(days) : PASS_DAYS[outcome]
-        if (!Number.isInteger(n) || n < 1 || n > 90) {
-          setError('Enter between 1 and 90 days for the pass.')
+        const { days: n, error: bad } = passDaysFor(outcome, days)
+        if (bad) {
+          setError(bad)
           setSaving(false)
           return
         }
