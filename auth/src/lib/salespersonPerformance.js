@@ -35,14 +35,12 @@ function personKey(name) {
   return (name || '').trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
-// Display as "Last, First" to match the source tool's row labels.
+// Display as "First Last". ABC stores the name that way already but with
+// inconsistent inner whitespace ("Katie  Castlio"), so this only normalizes.
 function displayName(name) {
   const parts = (name || '').trim().split(/\s+/).filter(Boolean)
   if (parts.length === 0) return 'Unknown'
-  if (parts.length === 1) return parts[0]
-  const first = parts[0]
-  const last = parts.slice(1).join(' ')
-  return `${last}, ${first}`
+  return parts.join(' ')
 }
 
 function digits10(value) {

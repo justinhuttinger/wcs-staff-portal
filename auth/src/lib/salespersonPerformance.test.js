@@ -67,15 +67,15 @@ test('name helpers normalize ABC and Day One spellings to one key', () => {
   // ABC writes a doubled space; the Day One table writes a single one.
   assert.equal(personKey('Katie  Castlio'), 'katie castlio')
   assert.equal(personKey('Katie Castlio'), 'katie castlio')
-  assert.equal(displayName('Katie  Castlio'), 'Castlio, Katie')
-  assert.equal(displayName('DANIEL  JENSEN'), 'JENSEN, DANIEL')
+  assert.equal(displayName('Katie  Castlio'), 'Katie Castlio')
+  assert.equal(displayName('DANIEL  JENSEN'), 'DANIEL JENSEN')
   assert.equal(displayName(''), 'Unknown')
 })
 
 test('a sale and a booking by the same person land on one row', () => {
   const { rows } = buildReport([member()], [dayOne()], new Map(), NO_FILTERS)
   assert.equal(rows.length, 1)
-  assert.equal(rows[0].salesperson, 'Castlio, Katie')
+  assert.equal(rows[0].salesperson, 'Katie Castlio')
   assert.equal(rows[0].newMemberUnits, 1)
   assert.equal(rows[0].dayOneBookCount, 1)
   assert.equal(rows[0].club, 'East Side Athletic Club')
@@ -123,9 +123,9 @@ test('% of club total is scoped per club, not company-wide', () => {
     member({ id: 'd', club_number: SALEM, sales_person_name: 'Matt  Turnquist' }),
   ]
   const { rows } = buildReport(members, [], new Map(), NO_FILTERS)
-  const katie = rows.find(r => r.salesperson === 'Castlio, Katie')
-  const lisa = rows.find(r => r.salesperson === 'Ashy, Lisa')
-  const matt = rows.find(r => r.salesperson === 'Turnquist, Matt')
+  const katie = rows.find(r => r.salesperson === 'Katie Castlio')
+  const lisa = rows.find(r => r.salesperson === 'Lisa Ashy')
+  const matt = rows.find(r => r.salesperson === 'Matt Turnquist')
   assert.equal(katie.pctOfClubTotal, 66.7)
   assert.equal(lisa.pctOfClubTotal, 33.3)
   // Salem's only seller owns all of Salem, even though she sold 1 of 4 overall.
@@ -170,7 +170,7 @@ test('booking credit follows the booker, so book % can exceed 100', () => {
 test('a booker who sold nothing still gets a row, with a null book %', () => {
   const { rows } = buildReport([], [dayOne({ booked_by_name: 'Ryan Harris' })], new Map(), NO_FILTERS)
   assert.equal(rows.length, 1)
-  assert.equal(rows[0].salesperson, 'Harris, Ryan')
+  assert.equal(rows[0].salesperson, 'Ryan Harris')
   assert.equal(rows[0].newMemberUnits, 0)
   assert.equal(rows[0].dayOneBookCount, 1)
   // No denominator, so no percentage — not a divide-by-zero Infinity.
@@ -347,7 +347,7 @@ test('view by salesperson merges one person across clubs', () => {
   ]
   const { rows } = buildReport(members, [], new Map(), { ...NO_FILTERS, viewBy: 'salesperson' })
   assert.equal(rows.length, 2)
-  const katie = rows.find(r => r.salesperson === 'Castlio, Katie')
+  const katie = rows.find(r => r.salesperson === 'Katie Castlio')
   assert.equal(katie.newMemberUnits, 2)
   // The row spans clubs, so it is not tied to one.
   assert.equal(katie.club, null)
@@ -364,7 +364,7 @@ test('club + salesperson stays the default and scopes % to the club', () => {
   assert.equal(dflt.viewBy, 'club_salesperson')
   assert.equal(dflt.rows.length, 3)
   // Salem's only seller is 100% of Salem, not 33% of the company.
-  assert.equal(dflt.rows.find(r => r.salesperson === 'Turnquist, Matt').pctOfClubTotal, 100)
+  assert.equal(dflt.rows.find(r => r.salesperson === 'Matt Turnquist').pctOfClubTotal, 100)
   // An unknown viewBy falls back to the default rather than throwing.
   assert.equal(buildReport(members, [], new Map(), { ...NO_FILTERS, viewBy: 'nonsense' }).viewBy, 'club_salesperson')
 })
