@@ -288,19 +288,10 @@ export default function MobileCalendar({ user }) {
           locationSlug={locationSlug}
           readOnly={!selectedDayOne.canComplete}
           onClose={() => setSelectedDayOne(null)}
-          onSubmitted={confirmed => {
-            // Merge confirmed outcome into the local item so the calendar reflects it without a refetch
-            setItems(prev => prev.map(i => {
-              if (i.id !== selectedDayOne.id) return i
-              const mergedRaw = { ...i.raw, ...confirmed }
-              return {
-                ...i,
-                raw: mergedRaw,
-                status: normalizeStatus(mergedRaw),
-                sale: getSaleLabel(mergedRaw),
-                pending: !mergedRaw.day_one_status || mergedRaw.day_one_status === 'Scheduled',
-              }
-            }))
+          onSubmitted={() => {
+            // The embedded form owns the write and reports only that it
+            // happened, so close and let the next load reflect it rather than
+            // patching the item with a guess at the result.
             setSelectedDayOne(null)
           }}
         />

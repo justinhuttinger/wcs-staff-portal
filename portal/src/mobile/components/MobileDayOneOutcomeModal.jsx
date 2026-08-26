@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { submitDayOneResult, getDayOneFieldOptions } from '../../lib/api'
+import React, { useState } from 'react'
+import DayOneOutcomeFrame from '../../components/DayOneOutcomeFrame'
 
 function capitalize(str) {
   if (!str) return ''
@@ -26,63 +26,9 @@ export function isCompleted(apt) {
 export default function MobileDayOneOutcomeModal({ apt, locationSlug, onClose, onSubmitted, readOnly = false }) {
   // Already-recorded outcomes open in review mode so users can read first; pending ones jump into the form.
   const initialStep = readOnly || isCompleted(apt) ? 'review' : 1
-  const [step, setStep] = useState(initialStep)
-  const [showOrNoShow, setShowOrNoShow] = useState(apt.show_or_no_show || '')
-  const [saleOrNoSale, setSaleOrNoSale] = useState(apt.day_one_sale || '')
-  const [saleType, setSaleType] = useState(apt.pt_sale_type || '')
-  const [noSaleReason, setNoSaleReason] = useState(apt.why_no_sale || '')
-  const [saleTypeOptions, setSaleTypeOptions] = useState([])
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    let cancelled = false
-    getDayOneFieldOptions({ location_slug: locationSlug })
-      .then(res => { if (!cancelled) setSaleTypeOptions(res.pt_sale_types || []) })
-      .catch(() => { if (!cancelled) setSaleTypeOptions([]) })
-    return () => { cancelled = true }
-  }, [locationSlug])
-
-  useEffect(() => {
-    if (apt.show_or_no_show) setShowOrNoShow(apt.show_or_no_show)
-    if (apt.day_one_sale) setSaleOrNoSale(apt.day_one_sale)
-    if (apt.pt_sale_type) setSaleType(apt.pt_sale_type)
-    if (apt.why_no_sale) setNoSaleReason(apt.why_no_sale)
-  }, [apt])
-
-  async function handleSubmit() {
-    setSubmitting(true)
-    setError('')
-    try {
-      const result = await submitDayOneResult({
-        contact_id: apt.contact_id,
-        appointment_id: apt.id,
-        location_slug: locationSlug,
-        show_no_show: showOrNoShow,
-        sale_result: showOrNoShow === 'Show' ? saleOrNoSale : null,
-        pt_sale_type: saleOrNoSale === 'Sale' ? saleType : null,
-        why_no_sale: saleOrNoSale === 'No Sale' ? noSaleReason : null,
-      })
-      onSubmitted(result.confirmed || {
-        day_one_status: showOrNoShow === 'Show' ? 'Completed' : 'No Show',
-        show_or_no_show: showOrNoShow,
-        day_one_sale: showOrNoShow === 'Show' ? saleOrNoSale : null,
-        pt_sale_type: saleOrNoSale === 'Sale' ? saleType : null,
-        why_no_sale: saleOrNoSale === 'No Sale' ? noSaleReason : null,
-      })
-    } catch (err) {
-      setError(err.message || 'Failed to submit. Please try again.')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  function handleShowNoShow(val) {
-    setShowOrNoShow(val)
-    if (val === 'No Show') setStep(4)
-    else setStep(2)
-  }
-
+  const [step] = useState(initialStep)
+  // Review mode reads straight off the appointment; the form itself is embedded
+  // from the API, so this component no longer holds any outcome state of its own.
   const contactName = capitalize(apt.contact_name || apt.name || 'Unknown')
 
   return (
@@ -125,200 +71,15 @@ export default function MobileDayOneOutcomeModal({ apt, locationSlug, onClose, o
           </div>
         )}
 
-        {/* Existing status banner when re-submitting */}
-        {step !== 'review' && isCompleted(apt) && (
-          <div className="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-200">
-            <p className="text-xs text-blue-700 font-medium">This appointment already has an outcome recorded. You can re-submit to update it.</p>
-          </div>
-        )}
-
-        {/* Step 1: Show or No Show */}
-        {step === 1 && (
-          <div className="flex flex-col gap-4">
-            <p className="text-sm font-semibold text-text-secondary text-center mb-2">Did the member show up?</p>
-            <button
-              onClick={() => handleShowNoShow('Show')}
-              className={`w-full py-8 rounded-2xl text-lg font-bold border-2 transition-colors ${
-                showOrNoShow === 'Show'
-                  ? 'bg-green-50 border-green-400 text-green-700'
-                  : 'bg-surface border-border text-text-primary active:bg-bg'
-              }`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 mx-auto mb-2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Show
-            </button>
-            <button
-              onClick={() => handleShowNoShow('No Show')}
-              className={`w-full py-8 rounded-2xl text-lg font-bold border-2 transition-colors ${
-                showOrNoShow === 'No Show'
-                  ? 'bg-red-50 border-red-400 text-red-600'
-                  : 'bg-surface border-border text-text-primary active:bg-bg'
-              }`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 mx-auto mb-2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              No Show
-            </button>
-          </div>
-        )}
-
-        {/* Step 2: Sale or No Sale */}
-        {step === 2 && (
-          <div className="flex flex-col gap-4">
-            <button
-              onClick={() => { setStep(1); setSaleOrNoSale('') }}
-              className="self-start flex items-center gap-1 text-sm text-text-muted active:text-text-primary"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-              </svg>
-              Back
-            </button>
-            <p className="text-sm font-semibold text-text-secondary text-center mb-2">Was there a sale?</p>
-            <button
-              onClick={() => { setSaleOrNoSale('Sale'); setStep(3) }}
-              className={`w-full py-8 rounded-2xl text-lg font-bold border-2 transition-colors ${
-                saleOrNoSale === 'Sale'
-                  ? 'bg-green-50 border-green-400 text-green-700'
-                  : 'bg-surface border-border text-text-primary active:bg-bg'
-              }`}
-            >
-              Sale
-            </button>
-            <button
-              onClick={() => { setSaleOrNoSale('No Sale'); setStep(3) }}
-              className={`w-full py-8 rounded-2xl text-lg font-bold border-2 transition-colors ${
-                saleOrNoSale === 'No Sale'
-                  ? 'bg-gray-100 border-gray-400 text-gray-600'
-                  : 'bg-surface border-border text-text-primary active:bg-bg'
-              }`}
-            >
-              No Sale
-            </button>
-          </div>
-        )}
-
-        {/* Step 3: Sale type or No-sale reason */}
-        {step === 3 && (
-          <div className="flex flex-col gap-4">
-            <button
-              onClick={() => setStep(2)}
-              className="self-start flex items-center gap-1 text-sm text-text-muted active:text-text-primary"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-              </svg>
-              Back
-            </button>
-
-            {saleOrNoSale === 'Sale' ? (
-              <>
-                <p className="text-sm font-semibold text-text-secondary text-center mb-2">What type of sale?</p>
-                <select
-                  value={saleType}
-                  onChange={e => setSaleType(e.target.value)}
-                  className="w-full px-4 py-4 rounded-xl border border-border bg-surface text-text-primary text-base focus:outline-none focus:ring-2 focus:ring-wcs-red/30"
-                >
-                  <option value="">Select sale type...</option>
-                  {saleTypeOptions.map(opt => (
-                    <option key={typeof opt === 'string' ? opt : opt.value} value={typeof opt === 'string' ? opt : opt.value}>
-                      {typeof opt === 'string' ? opt : opt.label}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => setStep(4)}
-                  disabled={!saleType}
-                  className={`w-full py-4 rounded-xl text-base font-semibold transition-colors ${
-                    saleType
-                      ? 'bg-wcs-red text-white active:opacity-80'
-                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  }`}
-                >
-                  Continue
-                </button>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-semibold text-text-secondary text-center mb-2">Reason for no sale</p>
-                <textarea
-                  value={noSaleReason}
-                  onChange={e => setNoSaleReason(e.target.value)}
-                  placeholder="Enter the reason..."
-                  rows={4}
-                  className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-text-primary text-base resize-none focus:outline-none focus:ring-2 focus:ring-wcs-red/30"
-                />
-                <button
-                  onClick={() => setStep(4)}
-                  disabled={!noSaleReason.trim()}
-                  className={`w-full py-4 rounded-xl text-base font-semibold transition-colors ${
-                    noSaleReason.trim()
-                      ? 'bg-wcs-red text-white active:opacity-80'
-                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  }`}
-                >
-                  Continue
-                </button>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Step 4: Review & Submit */}
-        {step === 4 && (
-          <div className="flex flex-col gap-4">
-            <button
-              onClick={() => setStep(showOrNoShow === 'No Show' ? 1 : 3)}
-              className="self-start flex items-center gap-1 text-sm text-text-muted active:text-text-primary"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-              </svg>
-              Back
-            </button>
-
-            <p className="text-sm font-semibold text-text-secondary text-center mb-2">Review & Submit</p>
-
-            <div className="bg-bg rounded-2xl p-4 space-y-3">
-              <DetailRow label="Contact" value={contactName} />
-              <DetailRow label="Appointment" value={formatDateTime(apt.appointment_time)} />
-              <div className="border-t border-border" />
-              <DetailRow
-                label="Attendance"
-                value={showOrNoShow}
-                valueClassName={showOrNoShow === 'No Show' ? 'text-red-600 font-semibold' : 'text-green-700 font-semibold'}
-              />
-              {showOrNoShow !== 'No Show' && (
-                <>
-                  <DetailRow label="Outcome" value={saleOrNoSale} />
-                  {saleOrNoSale === 'Sale' && <DetailRow label="Sale Type" value={saleType} />}
-                  {saleOrNoSale === 'No Sale' && (
-                    <div className="text-sm">
-                      <span className="text-text-muted">Reason</span>
-                      <p className="mt-1 text-text-primary">{noSaleReason}</p>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm">
-                {error}
-              </div>
-            )}
-
-            <button
-              onClick={handleSubmit}
-              disabled={submitting}
-              className="w-full py-4 rounded-xl bg-wcs-red text-white text-base font-semibold active:opacity-80 disabled:opacity-50"
-            >
-              {submitting ? 'Submitting...' : 'Submit'}
-            </button>
-          </div>
+        {/* The outcome form itself is served by the API and embedded, not
+            reimplemented here. One form, one look, one write path: the portal
+            used to write outcomes to GHL custom fields only, which left 27 Day
+            Ones with an outcome GHL knew about and Supabase did not. */}
+        {step !== 'review' && (
+          <DayOneOutcomeFrame
+            contactId={apt.contact_id}
+            onRecorded={() => { if (onSubmitted) onSubmitted(); if (onClose) onClose() }}
+          />
         )}
       </div>
     </div>

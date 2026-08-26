@@ -101,11 +101,11 @@ export default function MobileDayOne({ user }) {
     setSelectedApt(apt)
   }
 
-  function handleSubmitted(confirmedFields) {
-    setAppointments(prev => prev.map(a =>
-      a.id === selectedApt.id ? { ...a, ...confirmedFields } : a
-    ))
+  function handleSubmitted() {
+    // The embedded form owns the write and reports only that it happened, so
+    // refetch rather than patching local state with a guess at the result.
     setSelectedApt(null)
+    fetchAppointments()
   }
 
   return (
