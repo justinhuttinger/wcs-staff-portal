@@ -43,7 +43,7 @@ async function loadMembers(clubNumbers, start, end) {
   return fetchAll(
     supabaseAdmin
       .from('abc_members')
-      .select('id, club_number, sales_person_name, sign_date, membership_type, membership_type_abc_code, agreement_number, agreement_entry_source, gender, birth_date, payment_frequency, next_due_amount, down_payment, email, primary_phone, mobile_phone, first_name, last_name')
+      .select('id, club_number, sales_person_name, sign_date, membership_type, membership_type_abc_code, agreement_number, agreement_entry_source, gender, birth_date, payment_frequency, agreement_payment_method, agreement_term, is_primary_member, next_due_amount, down_payment, email, primary_phone, mobile_phone, first_name, last_name')
       .in('club_number', clubNumbers)
       .gte('sign_date', start)
       .lte('sign_date', end)
@@ -113,6 +113,10 @@ router.get('/', async (req, res) => {
       membershipType: req.query.membershipType || null,
       gender: req.query.gender || null,
       paymentTerm: req.query.paymentTerm || null,
+      paymentMethod: req.query.paymentMethod || null,
+      memberRelationship: ['primary', 'secondary'].includes(req.query.memberRelationship)
+        ? req.query.memberRelationship
+        : null,
       ageGroup: req.query.ageGroup || null,
     }
 
@@ -121,7 +125,8 @@ router.get('/', async (req, res) => {
     const cacheKey = [
       'analytics:salesperson', start, end, slugs.slice().sort().join('+'),
       filters.exclusion, filters.joinSource, filters.membershipType,
-      filters.gender, filters.paymentTerm, filters.ageGroup,
+      filters.gender, filters.paymentTerm, filters.paymentMethod,
+      filters.memberRelationship, filters.ageGroup,
     ].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
@@ -144,9 +149,14 @@ router.get('/', async (req, res) => {
           memberRows: members.length,
           excludedTypes: filters.exclusion === 'include' ? [] : [...skipList].sort(),
           dayOneRows: dayOnes.length,
+          // How much of the window has a payment method on file. Until the
+          // migration-123 backfill has run this is 0, and % on ACH shows N/A
+          // rather than a fake 0%.
+          paymentMethodCoverage: members.length
+            ? Math.round((members.filter(m => m.agreement_payment_method).length / members.length) * 100)
+            : null,
           // Surfaced so the UI can be honest about what is not yet wired up.
           unavailable: {
-            pctOnAch: 'abc_members has no payment-method column yet',
             tours: 'tour events are live-fetched from GHL and never persisted',
           },
         },

@@ -114,6 +114,8 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
   const [gender, setGender] = useState('')
   const [ageGroup, setAgeGroup] = useState('')
   const [paymentTerm, setPaymentTerm] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('')
+  const [memberRelationship, setMemberRelationship] = useState('')
   const [hovered, setHovered] = useState(null)
 
   const query = useMemo(() => {
@@ -128,8 +130,10 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
     if (gender) p.set('gender', gender)
     if (ageGroup) p.set('ageGroup', ageGroup)
     if (paymentTerm) p.set('paymentTerm', paymentTerm)
+    if (paymentMethod) p.set('paymentMethod', paymentMethod)
+    if (memberRelationship) p.set('memberRelationship', memberRelationship)
     return p.toString()
-  }, [startDate, endDate, locationSlug, exclusion, joinSource, membershipType, gender, ageGroup, paymentTerm])
+  }, [startDate, endDate, locationSlug, exclusion, joinSource, membershipType, gender, ageGroup, paymentTerm, paymentMethod, memberRelationship])
 
   const { data, loading, error } = useCancellableFetch(
     (signal) => api(`/analytics/salesperson-performance?${query}`, { cache: true, signal }),
@@ -247,6 +251,8 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
         <Select label="Age Group" value={ageGroup} onChange={setAgeGroup} options={options.ageGroup || []} />
         <Select label="Gender" value={gender} onChange={setGender} options={options.gender || []} />
         <Select label="Payment Term" value={paymentTerm} onChange={setPaymentTerm} options={options.paymentTerm || []} />
+        <Select label="Payment Mode" value={paymentMethod} onChange={setPaymentMethod} options={options.paymentMethod || []} />
+        <Select label="Member Relationship" value={memberRelationship} onChange={setMemberRelationship} options={options.memberRelationship || []} />
       </div>
 
       {/* Table */}
@@ -338,6 +344,18 @@ function RowTooltip({ row, startDate, endDate }) {
         <Line label="New Member Units" value={fmt(row.newMemberUnits, 'int')} />
         <Line label="% of Club Total New Member Units" value={fmt(row.pctOfClubTotal, 'pct')} />
         <Line label="% of New Member Units on ACH" value={fmt(row.pctOnAch, 'pct')} />
+        {Object.keys(row.paymentMix || {}).length > 0 && (
+          <div className="pl-3 pt-0.5 space-y-0.5">
+            {Object.entries(row.paymentMix)
+              .sort((a, b) => b[1] - a[1])
+              .map(([method, count]) => (
+                <div key={method} className="flex justify-between gap-4 text-[11px]">
+                  <dt className="text-text-muted">{method}</dt>
+                  <dd className="text-text-muted tabular-nums flex-shrink-0">{count}</dd>
+                </div>
+              ))}
+          </div>
+        )}
         <div className="h-2" />
         <Line label="Total New Dues Draft" value={fmt(row.totalNewDuesDraft, 'money')} />
         <Line label="Avg New Dues Draft" value={fmt(row.avgNewDuesDraft, 'money')} />
@@ -375,6 +393,13 @@ function DataNotes({ meta }) {
         PT Intro Book Count. Booking credit follows whoever booked the Day One, so a person can book more Day Ones
         than they sold memberships and exceed 100%.
       </p>
+      {meta.paymentMethodCoverage !== null && meta.paymentMethodCoverage < 100 && (
+        <p>
+          <span className="font-semibold text-text-primary">% on ACH</span> is scored against the{' '}
+          {meta.paymentMethodCoverage}% of members that have a payment method on file. Run the
+          migration-123 backfill to cover the rest.
+        </p>
+      )}
       {meta.excludedTypes?.length > 0 && (
         <p>Excluded membership types: {meta.excludedTypes.join(', ')}.</p>
       )}
