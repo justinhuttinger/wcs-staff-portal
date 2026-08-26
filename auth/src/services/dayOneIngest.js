@@ -22,22 +22,12 @@
 // picks it up on its next pass. Clearing inside the GHL workflow instead would
 // destroy the value the moment a webhook failed, with no way to recover it.
 const { supabaseAdmin } = require('./supabase')
-const { getLocationBySlug, getLocationById } = require('../config/ghlLocations')
+const { LOCATIONS, getLocationBySlug, getLocationById } = require('../config/ghlLocations')
 const { ghlFetch } = require('./ghlClient')
 const { getFieldId } = require('./ghlCustomFields')
-const { pacificDate } = require('../lib/dayOneOutcomes')
+const { pacificDate, flattenWebhookBody, webhookLabels } = require('../lib/dayOneOutcomes')
 
 const COURIER_FIELD = 'contact.day_one_booking_team_member'
-
-function resolveLocation(body) {
-  const slug = String(body.location_slug || body.locationSlug || '').trim().toLowerCase()
-  if (slug) {
-    const bySlug = getLocationBySlug(slug)
-    if (bySlug) return bySlug
-  }
-  const id = String(body.location_id || body.locationId || '').trim()
-  return id ? getLocationById(id) : null
-}
 
 function pick(body, ...keys) {
   for (const k of keys) {
@@ -47,13 +37,51 @@ function pick(body, ...keys) {
   return null
 }
 
+function resolveLocation(body) {
+  const slug = String(body.location_slug || body.locationSlug || '').trim().toLowerCase()
+  if (slug) {
+    const bySlug = getLocationBySlug(slug)
+    if (bySlug) return bySlug
+  }
+  // GHL also sends the sub-account as `location: { id, name }` on workflow
+  // webhooks, so a payload with no slug at all is still resolvable.
+  const nestedId = body.location && typeof body.location === 'object'
+    ? String(body.location.id || '').trim() : ''
+  const id = pick(body, 'location_id', 'locationId') || nestedId
+  if (id) {
+    const byId = getLocationById(id)
+    if (byId) return byId
+  }
+  const nestedName = body.location && typeof body.location === 'object'
+    ? String(body.location.name || '').trim().toLowerCase() : ''
+  return nestedName ? getLocationBySlug(nestedName) : null
+}
+
 // Returns { ok, status, body } so the route stays a thin wrapper.
-async function ingestBooking(body = {}) {
+async function ingestBooking(raw = {}) {
+  const body = flattenWebhookBody(raw)
+
   const loc = resolveLocation(body)
-  if (!loc) return { ok: false, status: 400, body: { error: 'Unknown or missing location' } }
+  if (!loc) {
+    // Name the keys that DID arrive. Without this, a nesting mismatch looks
+    // identical to a typo and takes a deploy-and-guess cycle to tell apart.
+    console.warn(`[dayOneIngest] no location resolved; payload carried: ${webhookLabels(raw)}`)
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: 'Unknown or missing location',
+        hint: 'Send location_slug as one of: ' + LOCATIONS.map(l => l.slug).join(', '),
+        keys_received: webhookLabels(raw),
+      },
+    }
+  }
 
   const contactId = pick(body, 'contact_id', 'contactId')
-  if (!contactId) return { ok: false, status: 400, body: { error: 'contact_id is required' } }
+  if (!contactId) {
+    console.warn(`[dayOneIngest] no contact id; payload carried: ${webhookLabels(raw)}`)
+    return { ok: false, status: 400, body: { error: 'contact_id is required', keys_received: webhookLabels(raw) } }
+  }
 
   const appointmentId = pick(body, 'appointment_id', 'appointmentId')
   const start = pick(body, 'appointment_start', 'appointmentStart', 'start_time', 'startTime')

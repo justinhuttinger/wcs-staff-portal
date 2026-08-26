@@ -383,7 +383,33 @@ function bookerFromEvent(evt, usersById) {
   return { booked_by_name: user.name, booked_by_source: 'created_by' }
 }
 
+// A GHL workflow Webhook action sends the "Custom Data" key/value rows NESTED
+// under `customData`, while a form submission's answers arrive at the top level.
+// The two look identical when you configure them in GHL, so a reader that only
+// checks the top level silently sees nothing and falls back to a default. That
+// exact trap cost a Day One run its brand in PR #602.
+//
+// Flattening here means the endpoint accepts either shape, which is the only
+// sane contract when the sender's nesting depends on where a human clicked.
+function flattenWebhookBody(body = {}) {
+  const nested = body.customData || body.custom_data || {}
+  // Top level wins: a form answer is more specific than an action's Custom Data.
+  return { ...(typeof nested === 'object' && nested !== null ? nested : {}), ...body }
+}
+
+// Field LABELS only, never values: the payload carries member PII, and a
+// silently-defaulted run has to be diagnosable without logging a client's name.
+function webhookLabels(body = {}) {
+  const top = Object.keys(body)
+  const nested = body.customData || body.custom_data
+  const inner = (nested && typeof nested === 'object') ? Object.keys(nested) : []
+  return inner.length ? `${top.join(',')} + customData{${inner.join(',')}}` : top.join(',')
+}
+
+
 module.exports = {
+  flattenWebhookBody,
+  webhookLabels,
   rowFromEvent,
   bookerFromEvent,
   PT_SALE_TYPES,
