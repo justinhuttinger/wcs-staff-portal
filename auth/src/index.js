@@ -117,6 +117,7 @@ app.use('/analytics/salesperson-performance', require('./routes/analyticsSalespe
 app.use('/analytics/club-activity', require('./routes/analyticsClubActivity'))
 app.use('/analytics/topline', require('./routes/analyticsTopline'))
 app.use('/analytics/past-due', require('./routes/analyticsPastDue'))
+app.use('/analytics/membership-mix', require('./routes/analyticsMembershipMix'))
 app.use('/sync-status', require('./routes/syncStatus'))
 app.use('/day-one-program', require('./routes/dayOneProgram'))
 app.use('/day-one-tracker', require('./routes/dayOneTracker'))
