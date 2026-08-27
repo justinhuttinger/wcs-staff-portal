@@ -132,6 +132,30 @@ function startScheduler() {
     }
   });
 
+  // Member check-in months — nightly. This table is what the conditional
+  // membership rule reads (A2 CORE and Active and Fit Limited count only if
+  // they visited in the last two months), and what the check-in charts on Club
+  // Activity Trends and Topline draw from.
+  //
+  // It had NO refresh job at all: it was backfilled by hand and would have
+  // decayed from the day that stopped, silently dropping members out of every
+  // headcount in the Analytics tab as their last recorded visit aged past the
+  // window. Runs after the ABC sync so the day's check-ins are already posted.
+  const checkinMonthsHour = Number(process.env.CHECKIN_MONTHS_SYNC_HOUR || 5); // PST
+  const checkinMonthsHourUTC = (checkinMonthsHour + 8) % 24;
+  cron.schedule(`15 ${checkinMonthsHourUTC} * * *`, async () => {
+    console.log('[Scheduler] Starting member check-in months refresh...');
+    try {
+      const { refreshRecentMonths } = require('../scripts/backfill-member-checkin-months');
+      const summary = await refreshRecentMonths({ count: 2 });
+      const visits = summary.reduce((a, s) => a + s.visits, 0);
+      console.log(`[Scheduler] Check-in months refreshed: ${summary.length} club-months, ${visits.toLocaleString()} check-ins`);
+    } catch (err) {
+      console.error('[Scheduler] Check-in months refresh failed:', err.message);
+      await alertSyncFailed(err).catch(() => {});
+    }
+  });
+
   // Attribution enrichment — nightly incremental pass over recently added
   // contacts. The bulk contact sync (GET /contacts/) never returns
   // attributionSource, so without this the attribution_source columns only
@@ -252,6 +276,7 @@ function startScheduler() {
     console.log(`[Scheduler] NPS scheduled daily at ${npsHour}:00 PST (${npsHourUTC}:00 UTC), dryRun=${npsDryRun}`);
   }
 
+  console.log(`[Scheduler] Check-in months refresh daily at ${checkinMonthsHour}:15 PST (${checkinMonthsHourUTC}:15 UTC)`);
   console.log(`[Scheduler] Delta sync every ${intervalMinutes}m, full sync daily at ${fullSyncHour}:00 PST (${fullSyncHourUTC}:00 UTC)`);
   console.log(`[Scheduler] Email stats sync every ${emailStatsIntervalMinutes}m`);
   console.log(`[Scheduler] SMS stats sync every ${smsStatsIntervalMinutes}m`);
