@@ -14,6 +14,7 @@ import NetMembership from './analytics/NetMembership'
 import RevenueByProfitCenter from './analytics/RevenueByProfitCenter'
 import RevenueTrends from './analytics/RevenueTrends'
 import FirstPtPurchase from './analytics/FirstPtPurchase'
+import TrainerPerformance from './analytics/TrainerPerformance'
 import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 
 // ---------------------------------------------------------------------------
@@ -123,6 +124,12 @@ const ANALYTICS_REPORTS = [
     Component: RevenueTrends,
   },
   {
+    key: 'trainer-performance',
+    label: 'Trainer Performance',
+    desc: 'Sessions, Day Ones and Closes',
+    Component: TrainerPerformance,
+  },
+  {
     key: 'first-pt-purchase',
     label: 'First Purchases by Join Month',
     desc: 'How Soon Members Buy PT',
@@ -143,7 +150,7 @@ const REPORT_GROUPS = [
   { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member'] },
   { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due'] },
   { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase'] },
-  { key: 'employees', label: 'Employees',     reports: ['salesperson-performance'] },
+  { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance'] },
 ]
 
 // Pinned above the groups, in this order, outside any category.
