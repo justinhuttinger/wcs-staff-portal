@@ -5,16 +5,21 @@ import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
 import { useChartWidth } from './useChartWidth'
-import { colorFor, fmtMoney, fmtMonth, fmtYear } from './chartPalette'
+import { colorFor, fmtMoney, fmtMonth, fmtDay } from './chartPalette'
 
 // ---------------------------------------------------------------------------
 // Revenue Trends — Analytics (admin only)
 //
-// The same revenue at two grains, stacked: annual and monthly.
+// The same revenue at two grains, stacked: monthly and daily.
 //
-// TWO PANELS, TWO SCALES, ONE SEGMENT. A year of revenue and a month of it
-// share no useful axis — on one chart the monthly line flattens away. Splitting
-// into panels is the honest answer; a second y-axis is not.
+// TWO PANELS, TWO SCALES, ONE SEGMENT. A month of revenue and a day of it share
+// no useful axis — on one chart the daily line is a flat smear along the
+// bottom. Splitting into panels is the honest answer; a second y-axis is not.
+//
+// MONTHLY IS MONTH-TO-DATE COMPARABLE. Every month is cut at the same day as
+// the range end, so on the 26th it reads Aug 1-26, Jul 1-26, Jun 1-26. The
+// panel says which day it is cutting at, because a reader who assumed these
+// were whole months would read the newest point as a collapse.
 //
 // The segment ranking is computed once server-side across both grains, so
 // a series is the same colour and the same member of "Other" in every panel.
@@ -26,10 +31,10 @@ const PAD_R = 10
 const PAD_B = 20
 
 function labelFor(grain, bucket) {
-  return grain === 'annual' ? fmtYear(bucket) : fmtMonth(bucket)
+  return grain === 'monthly' ? fmtMonth(bucket) : fmtDay(bucket)
 }
 
-function Panel({ panel, segments, hoveredSeries }) {
+function Panel({ panel, segments, hoveredSeries, dayCut }) {
   const [wrapRef, W] = useChartWidth()
   const [hover, setHover] = useState(null)
   const plotW = (W || 0) - PAD_L - PAD_R
@@ -44,16 +49,12 @@ function Panel({ panel, segments, hoveredSeries }) {
   const x = (i) => (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW)
   const y = (v) => plotH - ((v - min) / span) * plotH
 
-  // Annual has very few buckets, so bars read better than a line through three
-  // points; monthly is usually dense enough for a line.
-  //
-  // BUT A LINE THROUGH ONE POINT DRAWS NOTHING. The default range is the
-  // current month, which gives the monthly panel exactly one bucket — so the
-  // panel came up blank and read as "not loading at all". Anything with fewer
-  // than two buckets is drawn as bars instead, and sparse line panels get a
-  // marker per point so a single reading is never invisible.
-  const asBars = panel.key === 'annual' || panel.buckets.length < 2
-  const showDots = !asBars && panel.buckets.length <= 12
+  // A LINE THROUGH ONE POINT DRAWS NOTHING, which is how the monthly panel once
+  // came up blank and read as "not loading at all". Anything with fewer than
+  // two buckets is drawn as bars instead, and sparse line panels get a marker
+  // per point, so a single reading is never invisible.
+  const asBars = panel.buckets.length < 2
+  const showDots = !asBars && panel.buckets.length <= 14
   const barW = n ? Math.min(48, (plotW / n) * 0.55) : 0
 
   const active = hover !== null ? panel.buckets[hover] : null
@@ -65,7 +66,9 @@ function Panel({ panel, segments, hoveredSeries }) {
         <p className="text-[11px] text-text-muted tabular-nums">
           {active
             ? `${labelFor(panel.key, active)} · ${fmtMoney(panel.totals[hover]?.revenue, { compact: true })}`
-            : `${n} ${panel.key === 'monthly' ? 'months' : 'years'}`}
+            : panel.key === 'monthly'
+              ? `${n} months${dayCut ? ` · each through day ${dayCut}` : ''}`
+              : `${n} days`}
         </p>
       </div>
 
@@ -193,6 +196,7 @@ export default function RevenueTrends({ startDate, endDate, locationSlug }) {
 
   const panels = data?.panels || []
   const segs = data?.segments || []
+  const dayCut = data?.meta?.dayCut ?? null
 
   return (
     <div className="space-y-3">
@@ -224,7 +228,7 @@ export default function RevenueTrends({ startDate, endDate, locationSlug }) {
           <p className="text-sm text-text-muted">No revenue in this range.</p>
         </div>
       ) : panels.map(p => (
-        <Panel key={p.key} panel={p} segments={segs} hoveredSeries={hoveredSeries} />
+        <Panel key={p.key} panel={p} segments={segs} hoveredSeries={hoveredSeries} dayCut={dayCut} />
       ))}
     </div>
   )
