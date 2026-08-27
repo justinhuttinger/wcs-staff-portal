@@ -115,7 +115,6 @@ function TrendTile({ tile, hovered, onHover }) {
 
   return (
     <div
-      ref={wrapRef}
       className="bg-surface rounded-xl border border-border p-3 flex flex-col"
       onMouseLeave={() => onHover(null)}
     >
@@ -132,6 +131,11 @@ function TrendTile({ tile, hovered, onHover }) {
           {fmtPct(headlinePct)}
         </span>
       </div>
+
+      {/* Measured here rather than on the card above: the card is padded, and
+          sizing the chart to the card's border box drew it wider than the box
+          it sits in. */}
+      <div ref={wrapRef}>
 
       {/* Line: this year solid, last year dashed */}
       <svg
@@ -195,6 +199,7 @@ function TrendTile({ tile, hovered, onHover }) {
           )
         })}
       </svg>
+      </div>
 
       <p className="text-[10px] text-text-muted text-center mt-1 min-h-[14px]">
         {active
