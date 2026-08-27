@@ -96,6 +96,8 @@ router.get('/', async (req, res) => {
           recurring: 'Recurring services are exact: counted from their sale date until the date they went inactive.',
           pif: `Paid in Full is an estimate. ABC marks a prepaid package inactive at the moment of sale and records no end date, so one counts for ${windowMonths} months after purchase.`,
           overlap: 'A member holding both a recurring service and a package is counted once in the total, so recurring and PIF do not sum to it.',
+          conditional: 'Members on A2 CORE and Active and Fit Limited count only if they checked in within 60 days, or joined within the last 60 days. Those two insurance plans bill whether or not anybody turns up and only about 10% of them do, against 66% on every other plan. It is a check-in test rather than a plan exclusion because A2 EXEC is also an insurance plan and 76% of its members do come in. It applies to both sides of the ratio, so penetration stays a share of the same population.',
+          series: 'The chart starts at the first month the 60-day rule can be answered, since check-in history reaches back only so far. Include shows more months than Exclude for that reason.',
         },
       },
     })
