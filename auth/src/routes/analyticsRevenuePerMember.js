@@ -83,12 +83,12 @@ router.get('/', async (req, res) => {
           // not, rather than presenting an approximation as a measurement.
           caveats: {
             join: 'Revenue is the WHOLE of what the club took, so this report totals the same as Revenue Trends, Revenue by Profit Center and Club Activity. Payments that belong to nobody we count — guests, non-members, purged accounts and members on an excluded plan — are gathered into Unattributed / Excluded rather than dropped.',
-            denominator: 'The member count keeps every filter: the excluded plan types and the 60-day conditional rule both still apply. So the rate is what we take per member we COUNT, which is the question the report is named after.',
+            denominator: 'The member count keeps every filter: the excluded plan types and the two-month conditional rule both still apply. So the rate is what we take per member we COUNT, which is the question the report is named after.',
             split: 'A payment sits on an agreement, so it is divided evenly across ALL the members sharing it. An excluded member still takes their share out of the attributed total, rather than leaving it to inflate the member beside them.',
             currentSegment: 'A member is grouped by the plan, age and payment details they hold TODAY, so a member who changed plan carries their whole revenue history under the new one.',
-            conditional: 'Members on A2 CORE and Active and Fit Limited count only if they checked in within 60 days, or joined within the last 60 days. Those two insurance plans bill whether or not anybody turns up and only about 10% of them do, against 66% on every other plan. It is a check-in test rather than a plan exclusion because A2 EXEC is also an insurance plan and 76% of its members do come in.',
+            conditional: 'Members on A2 CORE and Active and Fit Limited count only if they checked in this month or last month, or joined within that window. Those two insurance plans bill whether or not anybody turns up and only about 10% of them do, against 66% on every other plan. It is a check-in test rather than a plan exclusion because A2 EXEC is also an insurance plan and 76% of its members do come in.',
             conditionalRevenue: 'Only the member COUNT takes that rule; revenue does not. A payment that cleared is money we received whether or not the payer counts as a member, so revenue per member runs high on those two plans.',
-            series: 'The chart starts at the first month the 60-day rule can be answered, since check-in history reaches back only so far. Include shows more months than Exclude for that reason.',
+            series: 'The chart starts at the first month the two-month rule can be answered, since check-in history reaches back only so far. Include shows more months than Exclude for that reason.',
           },
         },
       }
