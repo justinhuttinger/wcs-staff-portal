@@ -57,7 +57,7 @@ function byDesc(pick) {
 function sortRows(rows, key) {
   const out = rows.slice()
   switch (key) {
-    case 'members_desc': return out.sort(byDesc(r => r.uniqueMembers))
+    case 'members_desc': return out.sort(byDesc(r => r.uniqueClients))
     case 'close_amount_desc': return out.sort(byDesc(r => r.closeAmount))
     case 'close_rate_desc': return out.sort(byDesc(r => r.closeRate))
     case 'day_ones_desc': return out.sort(byDesc(r => r.dayOnesBooked))
@@ -75,7 +75,7 @@ function buildRow(r, clubNameFor) {
     trainer: r.trainer,
     club: r.club_number ? clubNameFor(r.club_number) : null,
     lastSession: r.last_session ? String(r.last_session).slice(0, 10) : null,
-    uniqueMembers: num(r.unique_members),
+    uniqueClients: num(r.unique_members),
     completedSessions: completed,
     // Of everything scheduled that reached a conclusion. A cancellation is only
     // meaningful against the sessions that could have been cancelled.
@@ -125,7 +125,7 @@ function buildTrainerPerformance(rows, totals, opts = {}) {
     rows: sortRows(active, opts.sort),
     sorts: SORTS,
     tiles: [
-      { key: 'uniqueMembers', label: 'Unique Members Trained', format: 'int', value: num(t.unique_members) },
+      { key: 'uniqueClients', label: 'Unique Clients Trained', format: 'int', value: num(t.unique_members) },
       { key: 'trainers', label: 'Trainers', format: 'int', value: num(t.trainers) },
       { key: 'completedSessions', label: 'Completed Sessions', format: 'int', value: totalCompleted },
       { key: 'cancellationRate', label: 'Cancellation Rate', format: 'pct',
