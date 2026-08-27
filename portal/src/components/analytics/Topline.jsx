@@ -119,6 +119,9 @@ export default function Topline({ locationSlug }) {
 
   const cards = data?.cards || []
   const checkinNote = data?.meta?.notes?.checkins
+  // Only under Exclude: under Include no conditional rule is applied, so
+  // describing one would be describing something that did not happen.
+  const conditionalNote = exclusion === 'exclude' ? data?.meta?.notes?.conditional : null
 
   return (
     <div className="space-y-4">
@@ -143,6 +146,12 @@ export default function Topline({ locationSlug }) {
       {checkinNote && (
         <p className="text-xs text-text-muted px-1">
           <span className="font-semibold text-text-primary">Check-ins.</span> {checkinNote}
+        </p>
+      )}
+
+      {conditionalNote && (
+        <p className="text-xs text-text-muted px-1">
+          <span className="font-semibold text-text-primary">Member counts.</span> {conditionalNote}
         </p>
       )}
     </div>
