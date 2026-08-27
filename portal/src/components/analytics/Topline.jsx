@@ -118,10 +118,6 @@ export default function Topline({ locationSlug }) {
   }
 
   const cards = data?.cards || []
-  const checkinNote = data?.meta?.notes?.checkins
-  // Only under Exclude: under Include no conditional rule is applied, so
-  // describing one would be describing something that did not happen.
-  const conditionalNote = exclusion === 'exclude' ? data?.meta?.notes?.conditional : null
 
   return (
     <div className="space-y-4">
@@ -142,18 +138,6 @@ export default function Topline({ locationSlug }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {cards.map(card => <Card key={card.key} card={card} asOf={data?.asOf} />)}
       </div>
-
-      {checkinNote && (
-        <p className="text-xs text-text-muted px-1">
-          <span className="font-semibold text-text-primary">Check-ins.</span> {checkinNote}
-        </p>
-      )}
-
-      {conditionalNote && (
-        <p className="text-xs text-text-muted px-1">
-          <span className="font-semibold text-text-primary">Member counts.</span> {conditionalNote}
-        </p>
-      )}
     </div>
   )
 }

@@ -116,7 +116,6 @@ export default function NetMembership({ startDate, endDate, locationSlug }) {
   }
 
   const rows = data?.rows || []
-  const notes = Object.values(data?.meta?.notes || {}).filter(Boolean)
 
   return (
     <div className="space-y-3">
@@ -146,12 +145,6 @@ export default function NetMembership({ startDate, endDate, locationSlug }) {
           The vertical marker on each bar is the same span one year earlier
           {data?.meta?.priorStart ? ` (${data.meta.priorStart} to ${data.meta.priorEnd})` : ''}.
         </p>
-      )}
-
-      {notes.length > 0 && (
-        <div className="text-xs text-text-muted px-1 space-y-1">
-          {notes.map(n => <p key={n}>{n}</p>)}
-        </div>
       )}
     </div>
   )

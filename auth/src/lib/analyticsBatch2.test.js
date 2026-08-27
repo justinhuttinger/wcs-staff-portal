@@ -196,21 +196,40 @@ const rtRows = [
   { grain: 'annual', bucket: '2026-01-01', segment: 'A', revenue: 1200 },
   { grain: 'monthly', bucket: '2026-07-01', segment: 'A', revenue: 700 },
   { grain: 'monthly', bucket: '2026-08-01', segment: 'A', revenue: 500 },
-  { grain: 'daily', bucket: '2026-08-25', segment: 'A', revenue: 25 },
 ]
 
 test('revenue trends gives each grain its own panel and scale', () => {
   const out = buildRevenueTrends(rtRows)
-  assert.deepEqual(out.panels.map(p => p.key), ['annual', 'monthly', 'daily'])
-  // Per-panel maxima. One shared scale would flatten daily to a smear against
-  // an annual bucket, which is the dual-axis mistake in another costume.
+  // Annual and monthly only; daily was dropped in migration 142.
+  assert.deepEqual(out.panels.map(p => p.key), ['annual', 'monthly'])
+  // Per-panel maxima. One shared scale would flatten monthly against a whole
+  // year's revenue, which is the dual-axis mistake in another costume.
   assert.equal(out.panels.find(p => p.key === 'annual').max, 1200)
-  assert.equal(out.panels.find(p => p.key === 'daily').max, 25)
+  assert.equal(out.panels.find(p => p.key === 'monthly').max, 700)
+})
+
+test('revenue trends ignores a daily grain if one ever arrives', () => {
+  // The SQL no longer emits it; if a stale cache or an older function did, it
+  // must not appear as a third panel.
+  const out = buildRevenueTrends([...rtRows, { grain: 'daily', bucket: '2026-08-25', segment: 'A', revenue: 25 }])
+  assert.deepEqual(out.panels.map(p => p.key), ['annual', 'monthly'])
 })
 
 test('revenue trends drops a grain with no data rather than drawing an empty axis', () => {
-  const out = buildRevenueTrends(rtRows.filter(r => r.grain !== 'daily'))
-  assert.deepEqual(out.panels.map(p => p.key), ['annual', 'monthly'])
+  const out = buildRevenueTrends(rtRows.filter(r => r.grain !== 'annual'))
+  assert.deepEqual(out.panels.map(p => p.key), ['monthly'])
+})
+
+test('a single-bucket panel still carries its data', () => {
+  // The default range is the current month, so monthly comes back with exactly
+  // one bucket. The component draws that as a bar because a polyline through
+  // one point renders nothing at all — the panel looked like it had failed to
+  // load. The lib must still hand over the bucket and its total.
+  const out = buildRevenueTrends([{ grain: 'monthly', bucket: '2026-08-01', segment: 'Overall', revenue: 904228 }])
+  const monthly = out.panels.find(p => p.key === 'monthly')
+  assert.equal(monthly.buckets.length, 1)
+  assert.equal(monthly.totals[0].revenue, 904228)
+  assert.equal(monthly.max, 904228)
 })
 
 test('revenue trends ranks once so a segment is named in every panel', () => {

@@ -11,8 +11,8 @@ const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerfo
 // ---------------------------------------------------------------------------
 // Revenue Trends — Analytics (admin only)
 //
-// The same revenue at three grains — annual, monthly, daily — split by one
-// segment.
+// The same revenue at two grains — annual and monthly — split by one segment.
+// Daily was dropped in migration 142.
 //
 // SEGMENTS OFFERED: the transaction-level ones (profit centre, item, payment
 // type, dues vs discretionary) are exact and are the point of this report. The
@@ -30,9 +30,6 @@ router.use(requireRole('admin'))
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000
 
-// Daily is capped server-side; see migration 138. Named here so the report can
-// tell the reader which window the bottom panel covers.
-const DAILY_DAYS = 180
 const DEFAULT_YEARS = 3
 
 router.get('/', async (req, res) => {
@@ -60,14 +57,15 @@ router.get('/', async (req, res) => {
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       // PAGED, and this one is not theoretical: three grains x ~44 months x 9
       // series is ~1,400 rows, past PostgREST's 1000-row cap. The union orders
-      // by grain name, so 'annual' and 'daily' fitted and 'monthly' fell off
-      // the end — the middle panel rendered empty and the headline read $0.
+      // by grain name, so with three grains 'annual' and 'daily' fitted and
+      // 'monthly' fell off the end — the middle panel rendered empty and the
+      // headline read $0. Daily is gone now, but the paging stays: a
+      // high-cardinality segment over 30-odd months still clears 1000 rows.
       const data = await fetchAll(supabaseAdmin.rpc('analytics_revenue_trends', {
         p_start: start,
         p_end: end,
         p_clubs: allClubs ? null : slugs.map(s => CLUB_BY_SLUG[s].clubNumber),
         p_segment: segment,
-        p_daily_days: DAILY_DAYS,
       }))
 
       const built = buildRevenueTrends(data || [], {
@@ -82,10 +80,8 @@ router.get('/', async (req, res) => {
           end,
           segment,
           clubs: slugs,
-          dailyDays: DAILY_DAYS,
           definitions: {
-            grains: 'Each panel has its own vertical scale. A day of revenue and a year of it on one axis would flatten the daily line to a smear, so the three are separate charts that share a segment rather than one chart with two scales.',
-            daily: `The daily panel covers the last ${DAILY_DAYS} days of the range. Four years of daily points across a dozen series is more than a screen can draw or a reader can use; the annual and monthly panels carry the long view.`,
+            grains: 'Each panel has its own vertical scale. A month of revenue and a year of it on one axis would flatten the monthly line, so the two are separate charts that share a segment rather than one chart with two scales.',
             attribution: MEMBER_ATTRIBUTED.has(segment)
               ? 'This segment describes the MEMBER, so a payment has to be matched to one through the agreement number. Payments that match nobody appear as Unattributed, and a payment on a shared agreement is split evenly across the members on it.'
               : 'This segment comes from the transaction itself, so the split is exact — no member matching involved.',

@@ -89,7 +89,6 @@ export default function FirstPtPurchase({ locationSlug }) {
   const buckets = data?.buckets || []
   const overall = data?.overall || []
   const bySegment = data?.bySegment || []
-  const defs = Object.values(data?.meta?.definitions || {}).filter(Boolean)
 
   // One shared maximum across every small multiple, so a 30% bar is the same
   // height in every panel. Per-panel scaling would make each segment look alike.
@@ -171,12 +170,6 @@ export default function FirstPtPurchase({ locationSlug }) {
               </span>
             </span>
           ))}
-        </div>
-      )}
-
-      {defs.length > 0 && (
-        <div className="text-xs text-text-muted px-1 space-y-1">
-          {defs.map(d => <p key={d}>{d}</p>)}
         </div>
       )}
     </div>

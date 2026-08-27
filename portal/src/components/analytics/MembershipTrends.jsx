@@ -183,7 +183,6 @@ export default function MembershipTrends({ locationSlug }) {
 
   const months = data?.months || []
   const series = data?.series || []
-  const notes = Object.values(data?.meta?.notes || {}).filter(Boolean)
   const active = hovered !== null ? months[hovered] : null
 
   return (
@@ -232,12 +231,6 @@ export default function MembershipTrends({ locationSlug }) {
           <p className="text-[10px] text-text-muted mt-2">Total members / new members in {fmtMonth(active)}.</p>
         )}
       </div>
-
-      {notes.length > 0 && (
-        <div className="text-xs text-text-muted px-1 space-y-1">
-          {notes.map(n => <p key={n}>{n}</p>)}
-        </div>
-      )}
     </div>
   )
 }

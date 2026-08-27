@@ -203,14 +203,6 @@ export default function PastDue({ locationSlug }) {
           )}
         </div>
       )}
-
-      <p className="text-xs text-text-muted px-1">
-        Excludes {data?.meta?.excludedStatuses?.join(', ')}. Collections accounts alone carry far more
-        debt than everyone else combined, so including them would bury the members who can still be
-        recovered. <span className="font-semibold text-text-primary">Club Account</span> is whatever
-        ABC&rsquo;s total past due carries beyond dues and late fees — charges billed to the member&rsquo;s
-        account rather than paid at the till.
-      </p>
     </div>
   )
 }

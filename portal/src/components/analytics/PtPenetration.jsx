@@ -211,10 +211,6 @@ export default function PtPenetration({ locationSlug }) {
           })}
         </div>
       </div>
-
-      <div className="text-xs text-text-muted px-1 space-y-1">
-        {Object.values(data?.meta?.definition || {}).map(d => <p key={d}>{d}</p>)}
-      </div>
     </div>
   )
 }
