@@ -162,6 +162,19 @@ test('the shown window is the tail, and asOf is its last month', () => {
 test('empty input does not throw', () => {
   const out = buildTrends([], 13)
   assert.equal(out.asOfMonth, null)
-  assert.equal(out.tiles.length, 10)
+  // Eleven since Check-ins and Members Who Visited became separate tiles.
+  assert.equal(out.tiles.length, 11)
   assert.equal(out.tiles[0].ytd, null)
+})
+
+test('members who visited is a level, not a flow', () => {
+  // Summing it would count a regular member once per month; the YTD headline
+  // must be the latest month instead.
+  const rows = fullSeries(key => ({ unique_checkins: key === '2026-07' ? 12226 : 9000 }))
+  const { tiles } = buildTrends(rows, 13)
+  const visited = tiles.find(t => t.key === 'uniqueCheckins')
+  assert.equal(visited.kind, 'point')
+  assert.equal(visited.ytd, 12226)
+  // Total check-ins is genuinely additive and stays a sum.
+  assert.equal(tiles.find(t => t.key === 'totalCheckins').kind, 'sum')
 })

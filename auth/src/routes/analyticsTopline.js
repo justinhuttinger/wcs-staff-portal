@@ -71,9 +71,13 @@ router.get('/', async (req, res) => {
           anchoredOn: explicitEnd ? 'request' : 'latest revenue date',
           clubs: slugs,
           exclusion: exclude ? 'exclude' : 'include',
-          knownIssues: {
+          // Check-ins moved off checkins_hourly, which lost the minutes after
+          // each hour's last sync tick and undercounted recent months by ~43%.
+          // abc_member_checkin_months is complete but monthly, so the card
+          // compares whole months instead of the last 30 days.
+          notes: {
             checkins:
-              'Hourly check-in buckets are written from the top of the hour to the moment of the sync tick and never revisited once the hour rolls over, so the minutes after the last tick of each hour are lost. Totals are undercounted and the shortfall varies with sync reliability, so the year-over-year comparison on the check-in card is not trustworthy.',
+              'Check-ins are a whole-month comparison: the last complete month against the same month a year earlier. The accurate source records one row per member per month, so a 30-day or month-to-date window is not available for them.',
           },
         },
       }

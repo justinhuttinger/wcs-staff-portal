@@ -118,7 +118,7 @@ export default function Topline({ locationSlug }) {
   }
 
   const cards = data?.cards || []
-  const checkinIssue = data?.meta?.knownIssues?.checkins
+  const checkinNote = data?.meta?.notes?.checkins
 
   return (
     <div className="space-y-4">
@@ -131,7 +131,8 @@ export default function Topline({ locationSlug }) {
         </p>
         <p className="text-[11px] text-text-muted">
           Every comparison stops on the same day of the month, so a month to date is never measured
-          against a whole month.
+          against a whole month. Check-ins are the exception: they compare whole months, and the
+          card names the month it is showing.
         </p>
       </div>
 
@@ -139,9 +140,9 @@ export default function Topline({ locationSlug }) {
         {cards.map(card => <Card key={card.key} card={card} asOf={data?.asOf} />)}
       </div>
 
-      {checkinIssue && (
+      {checkinNote && (
         <p className="text-xs text-text-muted px-1">
-          <span className="font-semibold text-amber-600">Check-ins are undercounted.</span> {checkinIssue}
+          <span className="font-semibold text-text-primary">Check-ins.</span> {checkinNote}
         </p>
       )}
     </div>
