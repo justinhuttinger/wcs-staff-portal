@@ -19,6 +19,11 @@ import { zebra, HOVER_TINT } from './tableTints'
 // The columns for Available Hours and Utilization Rate from the source
 // dashboard are deliberately absent: ABC holds no hire date or scheduled
 // availability, so both would be invented.
+//
+// ZEBRA IS BY COLUMN, NOT BY ROW — fourteen columns wide, the risk is reading a
+// number against the wrong HEADER, not against the wrong trainer. Row striping
+// would be the answer to a problem this table does not have. The name column
+// stays unstriped as the anchor, and hover highlights the row instead.
 // ---------------------------------------------------------------------------
 
 const COLUMNS = [
@@ -120,10 +125,10 @@ export default function TrainerPerformance({ startDate, endDate, locationSlug })
                 <th className="sticky left-0 top-7 z-40 bg-surface text-left font-semibold text-text-primary px-4 py-2 min-w-[170px] border-b border-border">
                   Trainer
                 </th>
-                {COLUMNS.map(col => (
+                {COLUMNS.map((col, ci) => (
                   <th
                     key={col.key}
-                    className={`sticky top-7 z-30 bg-surface font-semibold text-text-muted px-3 py-2 text-xs whitespace-nowrap border-b border-border ${col.group ? 'border-l' : ''} ${col.align === 'left' ? 'text-left' : 'text-right'}`}
+                    className={`sticky top-7 z-30 font-semibold text-text-muted px-3 py-2 text-xs whitespace-nowrap border-b border-border ${zebra(ci)} ${col.group ? 'border-l' : ''} ${col.align === 'left' ? 'text-left' : 'text-right'}`}
                   >
                     {col.label}
                   </th>
@@ -131,15 +136,18 @@ export default function TrainerPerformance({ startDate, endDate, locationSlug })
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
+              {rows.map(r => (
                 <tr key={r.trainer} className="group">
-                  <td className={`sticky left-0 z-20 px-4 py-1.5 text-text-primary font-medium whitespace-nowrap border-b border-border/60 ${zebra(i)} ${HOVER_TINT}`}>
+                  {/* The name column never stripes — it is the anchor the eye
+                      comes back to, and it is sticky, so it needs one solid
+                      opaque background of its own. */}
+                  <td className={`sticky left-0 z-20 bg-surface px-4 py-1.5 text-text-primary font-medium whitespace-nowrap border-b border-border/60 ${HOVER_TINT}`}>
                     {r.trainer}
                   </td>
-                  {COLUMNS.map(col => (
+                  {COLUMNS.map((col, ci) => (
                     <td
                       key={col.key}
-                      className={`px-3 py-1.5 text-xs tabular-nums whitespace-nowrap border-b border-border/60 ${col.group ? 'border-l border-border' : ''} ${col.align === 'left' ? 'text-left' : 'text-right'} ${r[col.key] === null || r[col.key] === undefined ? 'text-text-muted' : 'text-text-primary'} ${zebra(i)} ${HOVER_TINT}`}
+                      className={`px-3 py-1.5 text-xs tabular-nums whitespace-nowrap border-b border-border/60 ${col.group ? 'border-l border-border' : ''} ${col.align === 'left' ? 'text-left' : 'text-right'} ${r[col.key] === null || r[col.key] === undefined ? 'text-text-muted' : 'text-text-primary'} ${zebra(ci)} ${HOVER_TINT}`}
                     >
                       {fmt(r[col.key], col.format)}
                       {col.key === 'closeAmount' && r.closeAmountEstimated && (
