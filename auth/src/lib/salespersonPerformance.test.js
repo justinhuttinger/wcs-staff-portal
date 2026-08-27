@@ -16,7 +16,8 @@ function member(over = {}) {
     club_number: MILWAUKIE,
     sales_person_name: 'Katie  Castlio',
     sign_date: '2026-07-10',
-    // since_date >= sign_date marks a genuinely new member; see isNewSale.
+    // The route selects on since_date, so a fixture is a member who joined in
+    // the window; see isNewSale.
     since_date: '2026-07-10',
     membership_type: 'SINGLE',
     agreement_entry_source: 'ABC',
@@ -304,22 +305,37 @@ test('phone normalization strips formatting and country codes', () => {
   assert.equal(digits10('555-0147'), '')
 })
 
-test('renewals are not new sales', () => {
-  // Already a member in 2024, signed a new agreement in 2026 — a rewrite.
-  assert.equal(isNewSale({ since_date: '2024-03-01', sign_date: '2026-07-10' }), false)
+test('a re-signed member still counts as the new member they were', () => {
+  // The population is selected on since_date by the route, so being IN the set
+  // already means the membership started in the window. sign_date moves onto
+  // the latest agreement, so a member who joined in March and re-signed in June
+  // has since_date March and sign_date June — they are still one new member in
+  // March, and the old since_date >= sign_date test threw them away entirely.
+  assert.equal(isNewSale({ since_date: '2026-03-01', sign_date: '2026-06-10' }), true)
   assert.equal(isNewSale({ since_date: '2026-07-10', sign_date: '2026-07-10' }), true)
+  // Only a row with no tenure at all is unusable.
   assert.equal(isNewSale({ since_date: null, sign_date: '2026-07-10' }), false)
 })
 
-test('renewals are excluded from units, matching the Membership report', () => {
+test('units count re-signed members and drop only rows with no tenure', () => {
   const members = [
     member({ id: 'a' }),
     member({ id: 'b' }),
-    member({ id: 'c', since_date: '2024-03-01' }), // renewal
-    member({ id: 'd', since_date: null }),         // no tenure on file
+    member({ id: 'c', since_date: '2026-07-01', sign_date: '2026-07-20' }), // re-signed
+    member({ id: 'd', since_date: null }),                                  // no tenure on file
   ]
   const { summary } = buildReport(members, [], new Map(), NO_FILTERS)
-  assert.equal(summary.newMemberUnits, 2)
+  assert.equal(summary.newMemberUnits, 3)
+})
+
+test('book-on-join compares against the join date, not the re-sign date', () => {
+  // A Day One booked the day they JOINED counts, even though the agreement was
+  // later rewritten and sign_date moved to 20 July. Comparing against sign_date
+  // would score this member zero for a booking made on exactly the right day.
+  const m = member({ id: 'a', since_date: '2026-07-01', sign_date: '2026-07-20', email: 'jane@example.com' })
+  const contacts = new Map([['c1', { id: 'c1', email: 'jane@example.com', phone: null, first_name: 'Jane', last_name: 'Doe' }]])
+  const r = buildReport([m], [dayOne({ ghl_contact_id: 'c1', booked_at: '2026-07-01T18:30:00Z' })], contacts, NO_FILTERS)
+  assert.equal(r.rows[0].bookOnJoinDateCount, 1)
 })
 
 test('view by club collapses every salesperson at the club', () => {

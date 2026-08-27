@@ -82,8 +82,9 @@ router.get('/', async (req, res) => {
           // Named so the report can be honest about what the split is and is
           // not, rather than presenting an approximation as a measurement.
           caveats: {
-            join: 'Revenue is matched to members through the agreement number; about 10% of transactions (5% of revenue) belong to guests, non-members or purged accounts and are not attributed to any segment.',
-            split: 'A payment sits on an agreement, so it is divided evenly across the members sharing that agreement.',
+            join: 'Revenue is the WHOLE of what the club took, so this report totals the same as Revenue Trends, Revenue by Profit Center and Club Activity. Payments that belong to nobody we count — guests, non-members, purged accounts and members on an excluded plan — are gathered into Unattributed / Excluded rather than dropped.',
+            denominator: 'The member count keeps every filter: the excluded plan types and the 60-day conditional rule both still apply. So the rate is what we take per member we COUNT, which is the question the report is named after.',
+            split: 'A payment sits on an agreement, so it is divided evenly across ALL the members sharing it. An excluded member still takes their share out of the attributed total, rather than leaving it to inflate the member beside them.',
             currentSegment: 'A member is grouped by the plan, age and payment details they hold TODAY, so a member who changed plan carries their whole revenue history under the new one.',
             conditional: 'Members on A2 CORE and Active and Fit Limited count only if they checked in within 60 days, or joined within the last 60 days. Those two insurance plans bill whether or not anybody turns up and only about 10% of them do, against 66% on every other plan. It is a check-in test rather than a plan exclusion because A2 EXEC is also an insurance plan and 76% of its members do come in.',
             conditionalRevenue: 'Only the member COUNT takes that rule; revenue does not. A payment that cleared is money we received whether or not the payer counts as a member, so revenue per member runs high on those two plans.',

@@ -12,6 +12,10 @@
 // members against a partial month's revenue, which drags the rate down for a
 // reason that has nothing to do with performance.
 
+// Revenue that belongs to no counted member. Named here and in migration 140;
+// the two must agree or the bucket silently becomes a chart line.
+const UNATTRIBUTED = 'Unattributed / Excluded'
+
 function num(v) {
   if (v === null || v === undefined) return null
   const n = Number(v)
@@ -100,8 +104,13 @@ function buildRevenuePerMember(rows, opts = {}) {
 
   // Segments ranked by member-months across the whole window, so a line keeps
   // its identity as the window scrolls.
+  // Unknown and the unattributed bucket are excluded from the LINES, not from
+  // the totals. The bucket holds revenue belonging to nobody we count, so it
+  // has 0 members and no rate to draw; leaving it in would put a permanently
+  // blank line on the chart. Its revenue is already in byMonth above, which is
+  // what the headline rate divides.
   const ranked = [...segmentTotals.entries()]
-    .filter(([name]) => name !== 'Unknown')
+    .filter(([name]) => name !== 'Unknown' && name !== UNATTRIBUTED)
     .sort((a, b) => b[1] - a[1])
   const kept = ranked.slice(0, maxSegments).map(([name]) => name)
 
@@ -174,5 +183,6 @@ function buildRevenuePerMember(rows, opts = {}) {
 }
 
 module.exports = {
+  UNATTRIBUTED,
   buildRevenuePerMember, quarterMonths, lastNMonths, shiftMonth, meanRate, pctChange, rate,
 }
