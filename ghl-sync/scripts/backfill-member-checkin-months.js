@@ -248,4 +248,47 @@ if (require.main === module) {
   });
 }
 
-module.exports = { chunksForMonth, monthRange, daysInMonth };
+/**
+ * Refresh the most recent `count` months, newest last.
+ *
+ * This is what the nightly scheduler calls. Two months by default, not one:
+ * ABC can post a check-in after the month rolls over, and the conditional
+ * membership rule reads the current month AND the one before it, so a stale
+ * previous month would quietly drop members out of every headcount.
+ *
+ * Upserts, so re-running a month is safe and simply restates it.
+ */
+async function refreshRecentMonths({ count = 2, clubs = CLUBS, today = new Date() } = {}) {
+  const y = today.getUTCFullYear();
+  const m = today.getUTCMonth() + 1;
+  const months = [];
+  for (let back = count - 1; back >= 0; back--) {
+    const total = y * 12 + (m - 1) - back;
+    months.push([Math.floor(total / 12), (total % 12) + 1]);
+  }
+
+  const summary = [];
+  for (const [yy, mm] of months) {
+    for (const club of clubs) {
+      try {
+        const r = await backfillMonth(club, yy, mm, false);
+        summary.push({ club, month: iso(yy, mm, 1), ...r });
+      } catch (err) {
+        console.error(`  ${club} ${iso(yy, mm, 1)} FAILED: ${err.message}`);
+        summary.push({ club, month: iso(yy, mm, 1), members: 0, visits: 0, written: 0, error: err.message });
+      }
+    }
+  }
+
+  const failed = summary.filter(s => s.error);
+  // Thrown, not swallowed: the scheduler alerts on it. A silent failure here
+  // does not break a report, it makes every member count drift downward by
+  // however many people checked in since the last good run — which nobody
+  // would spot.
+  if (failed.length) {
+    throw new Error(`checkin-months refresh: ${failed.length}/${summary.length} club-months failed`);
+  }
+  return summary;
+}
+
+module.exports = { chunksForMonth, monthRange, daysInMonth, backfillMonth, refreshRecentMonths, CLUBS };

@@ -77,7 +77,7 @@ router.get('/', async (req, res) => {
           // compares whole months instead of the last 30 days.
           notes: {
             conditional:
-              'Members on A2 CORE and Active and Fit Limited count only if they checked in within 60 days, or joined within the last 60 days. Those two insurance plans bill whether or not anybody turns up and only about 10% of them do, against 66% on every other plan. It is a check-in test rather than a plan exclusion because A2 EXEC is also an insurance plan and 76% of its members do come in. New members never take the rule, since joining is a fact about the day it happened; losses do, so attrition is not measured against a base that never contained them.',
+              'Members on A2 CORE and Active and Fit Limited count only if they checked in this month or last month, or joined within that window. Those two insurance plans bill whether or not anybody turns up and only about 10% of them do, against 66% on every other plan. It is a check-in test rather than a plan exclusion because A2 EXEC is also an insurance plan and 76% of its members do come in. New members never take the rule, since joining is a fact about the day it happened; losses do, so attrition is not measured against a base that never contained them.',
             checkins:
               'Check-ins are a whole-month comparison: the last complete month against the same month a year earlier. The accurate source records one row per member per month, so a 30-day or month-to-date window is not available for them.',
           },

@@ -81,9 +81,9 @@ router.get('/', async (req, res) => {
           // line rather than leaving it looking like a bug.
           checkinGapMonths: trends.checkinGapMonths,
           conditional: {
-            rule: 'Members on A2 CORE and Active and Fit Limited count only if they checked in within 60 days, or joined within the last 60 days. Those two insurance plans bill whether or not anybody turns up and only about 10% of them do, against 66% on every other plan. It is a check-in test rather than a plan exclusion because A2 EXEC is also an insurance plan and 76% of its members do come in.',
+            rule: 'Members on A2 CORE and Active and Fit Limited count only if they checked in this month or last month, or joined within that window. Those two insurance plans bill whether or not anybody turns up and only about 10% of them do, against 66% on every other plan. It is a check-in test rather than a plan exclusion because A2 EXEC is also an insurance plan and 76% of its members do come in.',
             flow: 'New members never take the rule: joining is a fact about the day it happened. Losses do take it, so attrition is not measured against a base that never contained them.',
-            series: 'The chart starts at the first month the 60-day rule can be answered, since check-in history reaches back only so far. Include shows more months than Exclude for that reason.',
+            series: 'The chart starts at the first month the two-month rule can be answered, since check-in history reaches back only so far. Include shows more months than Exclude for that reason.',
           },
         },
       }

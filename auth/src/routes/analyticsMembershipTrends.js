@@ -76,8 +76,8 @@ router.get('/', async (req, res) => {
           exclusion: exclude ? 'exclude' : 'include',
           notes: {
             level: 'Total Members is a level, not a running total: the headline is the latest complete month, never twelve months added together.',
-            conditional: 'Members on A2 CORE and Active and Fit Limited count only if they checked in within 60 days, or joined within the last 60 days. New members never take that rule, since joining is a fact about the day it happened.',
-            series: 'The chart starts at the first month the 60-day rule can be answered, since check-in history reaches back only so far. Include shows more months than Exclude for that reason.',
+            conditional: 'Members on A2 CORE and Active and Fit Limited count only if they checked in this month or last month, or joined within that window. New members never take that rule, since joining is a fact about the day it happened.',
+            series: 'The chart starts at the first month the two-month rule can be answered, since check-in history reaches back only so far. Include shows more months than Exclude for that reason.',
             other: built.other.length
               ? `The ${built.other.length} smallest segments are pooled into Other: ${built.other.slice(0, 12).join(', ')}${built.other.length > 12 ? '…' : ''}.`
               : undefined,
