@@ -193,56 +193,72 @@ test('revenue by profit center never calls Other the largest group', () => {
 // ---------------------------------------------------------------------------
 
 const rtRows = [
-  { grain: 'annual', bucket: '2026-01-01', segment: 'A', revenue: 1200 },
   { grain: 'monthly', bucket: '2026-07-01', segment: 'A', revenue: 700 },
   { grain: 'monthly', bucket: '2026-08-01', segment: 'A', revenue: 500 },
+  { grain: 'daily', bucket: '2026-08-25', segment: 'A', revenue: 25 },
 ]
 
 test('revenue trends gives each grain its own panel and scale', () => {
   const out = buildRevenueTrends(rtRows)
-  // Annual and monthly only; daily was dropped in migration 142.
-  assert.deepEqual(out.panels.map(p => p.key), ['annual', 'monthly'])
-  // Per-panel maxima. One shared scale would flatten monthly against a whole
-  // year's revenue, which is the dual-axis mistake in another costume.
-  assert.equal(out.panels.find(p => p.key === 'annual').max, 1200)
+  // Monthly first, then daily. Annual was dropped in migration 143.
+  assert.deepEqual(out.panels.map(p => p.key), ['monthly', 'daily'])
+  // Per-panel maxima. One shared scale would flatten the daily line to a smear
+  // against a month's revenue, which is the dual-axis mistake in another costume.
   assert.equal(out.panels.find(p => p.key === 'monthly').max, 700)
+  assert.equal(out.panels.find(p => p.key === 'daily').max, 25)
 })
 
-test('revenue trends ignores a daily grain if one ever arrives', () => {
-  // The SQL no longer emits it; if a stale cache or an older function did, it
-  // must not appear as a third panel.
-  const out = buildRevenueTrends([...rtRows, { grain: 'daily', bucket: '2026-08-25', segment: 'A', revenue: 25 }])
-  assert.deepEqual(out.panels.map(p => p.key), ['annual', 'monthly'])
+test('revenue trends ignores an annual grain if one ever arrives', () => {
+  // The SQL no longer emits it; a stale cache or an older function must not
+  // reintroduce it as a third panel.
+  const out = buildRevenueTrends([...rtRows, { grain: 'annual', bucket: '2026-01-01', segment: 'A', revenue: 1200 }])
+  assert.deepEqual(out.panels.map(p => p.key), ['monthly', 'daily'])
 })
 
 test('revenue trends drops a grain with no data rather than drawing an empty axis', () => {
-  const out = buildRevenueTrends(rtRows.filter(r => r.grain !== 'annual'))
+  const out = buildRevenueTrends(rtRows.filter(r => r.grain !== 'daily'))
   assert.deepEqual(out.panels.map(p => p.key), ['monthly'])
 })
 
 test('a single-bucket panel still carries its data', () => {
-  // The default range is the current month, so monthly comes back with exactly
-  // one bucket. The component draws that as a bar because a polyline through
-  // one point renders nothing at all — the panel looked like it had failed to
-  // load. The lib must still hand over the bucket and its total.
-  const out = buildRevenueTrends([{ grain: 'monthly', bucket: '2026-08-01', segment: 'Overall', revenue: 904228 }])
+  // Migration 143 means monthly no longer collapses to one bucket on the
+  // default range, but a one-day daily panel still can. The component draws
+  // that as a bar, because a polyline through one point renders nothing at all.
+  const out = buildRevenueTrends([{ grain: 'daily', bucket: '2026-08-26', segment: 'Overall', revenue: 30000 }])
+  const daily = out.panels.find(p => p.key === 'daily')
+  assert.equal(daily.buckets.length, 1)
+  assert.equal(daily.totals[0].revenue, 30000)
+  assert.equal(daily.max, 30000)
+})
+
+test('month-to-date buckets are comparable, so the newest is not a false collapse', () => {
+  // What migration 143 exists for. Each month is cut at the same day, so the
+  // current month sits beside like-for-like history instead of beside whole
+  // 31-day months. These are the real figures for a 26 August anchor.
+  const out = buildRevenueTrends([
+    { grain: 'monthly', bucket: '2026-06-01', segment: 'Overall', revenue: 809265 },
+    { grain: 'monthly', bucket: '2026-07-01', segment: 'Overall', revenue: 746160 },
+    { grain: 'monthly', bucket: '2026-08-01', segment: 'Overall', revenue: 739952 },
+  ])
   const monthly = out.panels.find(p => p.key === 'monthly')
-  assert.equal(monthly.buckets.length, 1)
-  assert.equal(monthly.totals[0].revenue, 904228)
-  assert.equal(monthly.max, 904228)
+  assert.equal(monthly.buckets.length, 3)
+  // August is within 1% of July, not the 18% drop that comparing 26 days
+  // against a whole 31-day July ($904,228) would have shown.
+  const [, jul, aug] = monthly.totals.map(t => t.revenue)
+  assert.ok(Math.abs(aug - jul) / jul < 0.02, `aug ${aug} vs jul ${jul}`)
 })
 
 test('revenue trends ranks once so a segment is named in every panel', () => {
   const rows = []
   for (let i = 0; i < 11; i++) {
     rows.push({ grain: 'monthly', bucket: '2026-08-01', segment: `s${i}`, revenue: 100 - i })
-    // In the annual panel the ranking is reversed; if each panel ranked itself,
-    // s10 would be named there and pooled in monthly.
-    rows.push({ grain: 'annual', bucket: '2026-01-01', segment: `s${i}`, revenue: i })
+    // In the daily panel the ranking is reversed; if each panel ranked itself,
+    // s10 would be named there and pooled in monthly, which reads as a bug.
+    rows.push({ grain: 'daily', bucket: '2026-08-25', segment: `s${i}`, revenue: i })
   }
   const out = buildRevenueTrends(rows)
   const names = p => out.panels.find(x => x.key === p).series.map(s => s.key).sort()
-  assert.deepEqual(names('annual'), names('monthly'))
+  assert.deepEqual(names('daily'), names('monthly'))
 })
 
 // ---------------------------------------------------------------------------

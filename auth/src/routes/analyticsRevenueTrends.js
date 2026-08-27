@@ -11,8 +11,8 @@ const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerfo
 // ---------------------------------------------------------------------------
 // Revenue Trends — Analytics (admin only)
 //
-// The same revenue at two grains — annual and monthly — split by one segment.
-// Daily was dropped in migration 142.
+// The same revenue at two grains — monthly and daily — split by one segment.
+// Monthly is month-to-date comparable; see migration 143.
 //
 // SEGMENTS OFFERED: the transaction-level ones (profit centre, item, payment
 // type, dues vs discretionary) are exact and are the point of this report. The
@@ -31,6 +31,23 @@ const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000
 
 const DEFAULT_YEARS = 3
+// How far the daily panel reaches back, and the FLOOR on the monthly series.
+// Monthly is a floor rather than a cap because the point of a trend is the
+// months before the one you selected — the default range is a single month.
+const DAILY_DAYS = 180
+const MONTHLY_MONTHS = 13
+
+/**
+ * The day of the month every monthly bucket is cut at, mirroring migration 143.
+ * Sent to the report so it can say which day it is comparing at, rather than
+ * leaving a reader to assume these are whole months.
+ */
+function dayCutFor(end) {
+  const d = new Date(`${end}T00:00:00Z`)
+  const lastOfMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate()
+  const day = d.getUTCDate()
+  return day === lastOfMonth ? null : day
+}
 
 router.get('/', async (req, res) => {
   try {
@@ -66,6 +83,8 @@ router.get('/', async (req, res) => {
         p_end: end,
         p_clubs: allClubs ? null : slugs.map(s => CLUB_BY_SLUG[s].clubNumber),
         p_segment: segment,
+        p_daily_days: DAILY_DAYS,
+        p_monthly_months: MONTHLY_MONTHS,
       }))
 
       const built = buildRevenueTrends(data || [], {
@@ -80,6 +99,10 @@ router.get('/', async (req, res) => {
           end,
           segment,
           clubs: slugs,
+          dailyDays: DAILY_DAYS,
+          monthlyMonths: MONTHLY_MONTHS,
+          // null when the range ends on a month end and nothing is truncated.
+          dayCut: dayCutFor(end),
           definitions: {
             grains: 'Each panel has its own vertical scale. A month of revenue and a year of it on one axis would flatten the monthly line, so the two are separate charts that share a segment rather than one chart with two scales.',
             attribution: MEMBER_ATTRIBUTED.has(segment)

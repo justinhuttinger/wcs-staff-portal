@@ -1,17 +1,22 @@
 // Pure shaping for Analytics > Revenue Trends. No I/O.
 //
-// The same revenue at two grains — annual and monthly — split by one segment.
-// Each grain is its own panel with its own y-scale, because a year of revenue
-// and a month of it on one axis flattens the smaller series to nothing. That is
-// two charts sharing a segment, NOT one chart with two axes.
+// The same revenue at two grains — monthly and daily — split by one segment.
+// Each grain is its own panel with its own y-scale, because a month of revenue
+// and a day of it on one axis flattens the daily line to a smear. That is two
+// charts sharing a segment, NOT one chart with two axes.
+//
+// MONTHLY IS MONTH-TO-DATE COMPARABLE (migration 143): every month is cut at
+// the same day as the range end, so Aug 1-26 sits beside Jul 1-26 rather than
+// beside a whole 31-day July.
 
 const { rankSegments, foldSegment, OTHER_LABEL } = require('./analyticsSegments')
 
-// Annual and monthly only. Daily was dropped in migration 142: it was the bulk
-// of the payload and answered a question nobody asks of this report.
+// Monthly leads because it is the trend a reader reaches for; daily sits under
+// it for the detail. Annual was dropped in migration 143 — three years of bars
+// answered less than thirteen comparable months do.
 const GRAINS = [
-  { key: 'annual', label: 'Annual' },
   { key: 'monthly', label: 'Monthly' },
+  { key: 'daily', label: 'Daily' },
 ]
 
 function num(v) {
@@ -36,11 +41,11 @@ function buildRevenueTrends(rows, opts = {}) {
 
   // Ranked ONCE across both grains, not per grain, so a segment is the same
   // colour and the same member of Other in both panels. Ranking per grain would
-  // let a segment be named in the annual chart and pooled in the monthly one,
+  // let a segment be named in the monthly chart and pooled in the daily one,
   // which reads as a data error.
   //
-  // Ranked on the MONTHLY grain's totals where available: annual buckets are
-  // few and coarse, monthly covers the whole range at useful resolution.
+  // Ranked on the MONTHLY grain: it spans the widest window at useful
+  // resolution, where daily only covers the recent tail.
   const rankBasis = src.filter(r => r.grain === 'monthly')
   const { keep, other } = rankSegments(
     rankBasis.length ? rankBasis : src, 'segment', 'revenue', opts.maxSeries
@@ -77,8 +82,8 @@ function buildRevenueTrends(rows, opts = {}) {
       buckets,
       series,
       totals,
-      // Per-panel scale. Shared across panels it would flatten monthly against
-      // a year's worth of revenue.
+      // Per-panel scale. Shared across panels a day's revenue would vanish
+      // against a month's.
       max: totals.reduce((m, t) => Math.max(m, t.revenue), 0),
       min: totals.reduce((m, t) => Math.min(m, t.revenue), 0),
     }
