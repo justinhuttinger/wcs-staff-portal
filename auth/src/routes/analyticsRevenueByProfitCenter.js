@@ -5,7 +5,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { buildRevenueByProfitCenter, SORTS } = require('../lib/revenueByProfitCenter')
-const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerformance')
+const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
 // Revenue by Profit Center — Analytics (admin only)
@@ -83,7 +83,7 @@ router.get('/', async (req, res) => {
 
     const built = buildRevenueByProfitCenter(rows, {
       sort,
-      labelFor: (v) => (view === 'club' ? (CLUB_BY_NUMBER[v]?.name || v) : v),
+      labelFor: (v) => (view === 'club' ? (clubName(v)) : v),
     })
 
     res.json({

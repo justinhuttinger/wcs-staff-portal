@@ -4,6 +4,7 @@ const assert = require('node:assert')
 // createClient() is happy with undefined env vars, but be explicit so this file
 // never depends on a developer's local .env.
 const {
+  clubName,
   buildReport, displayName, personKey, isExcludedType, ageOn, ageGroupKey, digits10, isNewSale,
 } = require('../lib/salespersonPerformance')
 
@@ -392,4 +393,15 @@ test('day one bookings follow the same grouping as memberships', () => {
   assert.equal(byClub.rows.length, 1)
   assert.equal(byClub.rows[0].newMemberUnits, 1)
   assert.equal(byClub.rows[0].dayOneBookCount, 1)
+})
+
+test('clubName tolerates the zero-padded club number revenue uses', () => {
+  // abc_members stores '7655'; abc_revenue_transactions stores '07655'. The
+  // padded form missed the lookup and printed a raw "07655" in the Revenue
+  // Trends legend beside six real club names.
+  assert.equal(clubName('7655'), clubName('07655'))
+  assert.notEqual(clubName('07655'), '07655')
+  // Anything genuinely unknown still falls back to what it was given.
+  assert.equal(clubName('99999'), '99999')
+  assert.equal(clubName(null), '')
 })

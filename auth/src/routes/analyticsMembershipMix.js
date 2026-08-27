@@ -6,7 +6,7 @@ const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { buildMembershipMix, BREAKDOWNS, VIEW_BY } = require('../lib/membershipMix')
-const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerformance')
+const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
 // Membership Mix — Analytics (admin only)
@@ -146,7 +146,7 @@ router.get('/', async (req, res) => {
         breakdown,
         viewBy,
         asOf: new Date().toISOString().slice(0, 10),
-        clubNameFor: (n) => CLUB_BY_NUMBER[n]?.name || n,
+        clubNameFor: (n) => clubName(n),
         checkinRateFor,
       })
 

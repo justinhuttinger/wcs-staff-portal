@@ -34,7 +34,7 @@ function labelFor(grain, bucket) {
   return grain === 'monthly' ? fmtMonth(bucket) : fmtDay(bucket)
 }
 
-function Panel({ panel, segments, hoveredSeries, dayCut }) {
+function Panel({ panel, hoveredSeries, dayCut }) {
   const [wrapRef, W] = useChartWidth()
   const [hover, setHover] = useState(null)
   const plotW = (W || 0) - PAD_L - PAD_R
@@ -195,18 +195,21 @@ export default function RevenueTrends({ startDate, endDate, locationSlug }) {
   }
 
   const panels = data?.panels || []
-  const segs = data?.segments || []
+  // The SERIES actually drawn — one per club, profit centre, and so on. Not to
+  // be confused with the segment TYPES that fill the dropdown, which is exactly
+  // the mix-up that put a meaningless key on this chart.
+  const series = data?.segments || []
   const dayCut = data?.meta?.dayCut ?? null
 
   return (
     <div className="space-y-3">
-      <Toolbar segment={segment} setSegment={setSegment} segments={data?.segments || []} allSegments={segs} />
+      <Toolbar segment={segment} setSegment={setSegment} options={data?.segmentOptions || []} />
 
-      {/* A single series needs no legend — the segment control names it. Two or
-          more always get one. */}
-      {segs.length > 1 && (
+      {/* A single series needs no legend — on Overall the chart is one line and
+          the control above already names it. Two or more always get one. */}
+      {series.length > 1 && (
         <div className="bg-surface rounded-xl border border-border p-3 flex flex-wrap gap-x-4 gap-y-1.5">
-          {segs.map((s, i) => (
+          {series.map((s, i) => (
             <button
               key={s.key}
               type="button"
@@ -228,13 +231,13 @@ export default function RevenueTrends({ startDate, endDate, locationSlug }) {
           <p className="text-sm text-text-muted">No revenue in this range.</p>
         </div>
       ) : panels.map(p => (
-        <Panel key={p.key} panel={p} segments={segs} hoveredSeries={hoveredSeries} dayCut={dayCut} />
+        <Panel key={p.key} panel={p} hoveredSeries={hoveredSeries} dayCut={dayCut} />
       ))}
     </div>
   )
 }
 
-function Toolbar({ segment, setSegment, segments }) {
+function Toolbar({ segment, setSegment, options }) {
   const [slot, setSlot] = useState(null)
   useEffect(() => { setSlot(document.getElementById(TOOLBAR_SLOT_ID)) }, [])
   if (!slot) return null
@@ -244,7 +247,7 @@ function Toolbar({ segment, setSegment, segments }) {
     <label className={wrap}>
       Segment
       <select value={segment} onChange={e => setSegment(e.target.value)} className={cls}>
-        {segments.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+        {options.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
       </select>
     </label>,
     slot
