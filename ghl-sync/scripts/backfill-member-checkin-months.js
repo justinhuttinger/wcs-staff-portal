@@ -60,13 +60,26 @@ function daysInMonth(year, month) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
-/** Month-aligned chunks of at most MAX_CHUNK_DAYS, so no chunk straddles a month. */
-function chunksForMonth(year, month) {
+/**
+ * Month-aligned chunks of at most MAX_CHUNK_DAYS, so no chunk straddles a month.
+ *
+ * Clipped to `today`: a chunk lying entirely in the future is never requested.
+ * ABC answers a future range with "No records found", and because a month is
+ * written all-or-nothing (see backfillMonth), that single refusal threw away
+ * every chunk already gathered — August 2026 was collected in full and then
+ * discarded because its 29th-31st chunk had not happened yet.
+ */
+function chunksForMonth(year, month, today = new Date()) {
   const last = daysInMonth(year, month);
+  const todayISO = today.toISOString().slice(0, 10);
   const out = [];
   for (let start = 1; start <= last; start += MAX_CHUNK_DAYS) {
+    const startISO = iso(year, month, start);
+    // The whole chunk is still ahead of us; nothing to collect yet.
+    if (startISO > todayISO) break;
     const end = Math.min(start + MAX_CHUNK_DAYS - 1, last);
-    out.push([iso(year, month, start), iso(year, month, end)]);
+    const endISO = iso(year, month, end);
+    out.push([startISO, endISO > todayISO ? todayISO : endISO]);
   }
   return out;
 }
@@ -211,7 +224,19 @@ async function main() {
   console.log(`\nDone. ${summary.length - failed.length} ok, ${failed.length} failed.`);
   console.log(`Members recorded: ${summary.reduce((a, s) => a + s.members, 0).toLocaleString()}`);
   console.log(`Check-ins recorded: ${summary.reduce((a, s) => a + s.visits, 0).toLocaleString()}`);
-  if (failed.length) console.table(failed);
+  if (failed.length) {
+    console.table(failed);
+    // A month is written all-or-nothing, because its total is the sum of its
+    // chunks and a partial sum is a wrong number rather than a missing one. A
+    // failure therefore leaves that month absent while its neighbours are
+    // present, which nobody reading the table could detect. Print exactly what
+    // to re-run, and exit non-zero so a scheduled run cannot report success.
+    const months = [...new Set(failed.map(f => String(f.month).slice(0, 7)))].sort();
+    const clubsFailed = [...new Set(failed.map(f => f.club))].sort();
+    console.error('\nIncomplete. These months are NOT in the table and must be re-run:');
+    console.error(`  node scripts/backfill-member-checkin-months.js ${months[0]} ${months[months.length - 1]} --clubs ${clubsFailed.join(',')}`);
+    process.exitCode = 1;
+  }
 }
 
 // Only when run directly — requiring this for its date helpers (or from a
