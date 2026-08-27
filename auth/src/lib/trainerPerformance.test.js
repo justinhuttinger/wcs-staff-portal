@@ -78,7 +78,7 @@ test('the headline comes from SQL because unique members do not add up', () => {
     [row({ trainer: 'A', unique_members: 300 }), row({ trainer: 'B', unique_members: 334 })],
     totals(), opts
   )
-  assert.equal(out.tiles.find(t => t.key === 'uniqueMembers').value, 583)
+  assert.equal(out.tiles.find(t => t.key === 'uniqueClients').value, 583)
 })
 
 test('headline rates are pooled, not averaged across trainers', () => {
