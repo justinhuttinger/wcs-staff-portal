@@ -71,9 +71,15 @@ router.get('/', async (req, res) => {
           anchoredOn: explicitEnd ? 'request' : 'latest revenue date',
           clubs: slugs,
           exclusion: exclude ? 'exclude' : 'include',
-          knownIssues: {
+          // Check-ins moved off checkins_hourly, which lost the minutes after
+          // each hour's last sync tick and undercounted recent months by ~43%.
+          // abc_member_checkin_months is complete but monthly, so the card
+          // compares whole months instead of the last 30 days.
+          notes: {
+            conditional:
+              'Members on A2 CORE and Active and Fit Limited count only if they checked in within 60 days, or joined within the last 60 days. Those two insurance plans bill whether or not anybody turns up and only about 10% of them do, against 66% on every other plan. It is a check-in test rather than a plan exclusion because A2 EXEC is also an insurance plan and 76% of its members do come in. New members never take the rule, since joining is a fact about the day it happened; losses do, so attrition is not measured against a base that never contained them.',
             checkins:
-              'Hourly check-in buckets are written from the top of the hour to the moment of the sync tick and never revisited once the hour rolls over, so the minutes after the last tick of each hour are lost. Totals are undercounted and the shortfall varies with sync reliability, so the year-over-year comparison on the check-in card is not trustworthy.',
+              'Check-ins are a whole-month comparison: the last complete month against the same month a year earlier. The accurate source records one row per member per month, so a 30-day or month-to-date window is not available for them.',
           },
         },
       }

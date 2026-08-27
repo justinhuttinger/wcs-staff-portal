@@ -17,7 +17,8 @@
 const TILES = [
   { key: 'totalMembers', label: 'Total Members', format: 'int', kind: 'point' },
   { key: 'newMemberUnits', label: 'New Member Units', format: 'int', kind: 'sum' },
-  { key: 'uniqueCheckins', label: 'Unique Daily Check-ins', format: 'int', kind: 'sum', needsCheckins: true },
+  { key: 'totalCheckins', label: 'Check-ins', format: 'int', kind: 'sum', needsCheckins: true },
+  { key: 'uniqueCheckins', label: 'Members Who Visited', format: 'int', kind: 'point', needsCheckins: true },
   { key: 'totalRevenue', label: 'Total Revenue', format: 'money', kind: 'sum' },
   { key: 'ptRevenue', label: 'PT Revenue', format: 'money', kind: 'sum' },
   { key: 'lostMembers', label: 'Lost Members', format: 'int', kind: 'sum', negate: true },
@@ -43,8 +44,14 @@ function ratio(numerator, denominator) {
 /**
  * Expand a raw month row into every metric a tile can read, including the
  * derived ones. Check-in metrics return null — not 0 — for months before
- * checkins_hourly starts, because a zero there would read as "nobody came in"
+ * collection starts, because a zero there would read as "nobody came in"
  * rather than "we weren't collecting yet".
+ *
+ * unique_checkins is now a TRUE count of distinct members who visited, from
+ * abc_member_checkin_months. The old source counted uniques per HOUR, so a
+ * member visiting twice in a day counted twice and the figure sat near the
+ * total check-in count. It is a level, not a flow: summing twelve months of
+ * "members who visited" would count a regular member twelve times.
  */
 function deriveMonth(row) {
   const hasCheckins = row.has_checkin_data !== false

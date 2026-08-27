@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { buildTopline, pctChange, ratio, pctOf, checkins } = require('./toplineMetrics')
+const { buildTopline, pctChange, ratio, pctOf, checkins, monthLabel } = require('./toplineMetrics')
 
 function win(over = {}) {
   return {
@@ -20,6 +20,10 @@ function payload(over = {}) {
       ytd: win(), py_ytd: win(),
       last30: win(), py_last30: win(),
       past3mo: win(), prior3mo: win(), py_past3mo: win(),
+    },
+    checkins: {
+      month: '2026-07-01', checkins: 86229, prior_checkins: 69085,
+      members_visited: 12226, prior_members_visited: 9687,
     },
     ...over,
   }
@@ -115,19 +119,34 @@ test('revenue per member divides each window by its own headcount', () => {
   assert.equal(rowOf(c, 'YOY Change').value, 0)
 })
 
-test('the check-in card carries its own health warning', () => {
-  const c = card(payload(), 'checkinsLast30')
-  // The hourly feed is structurally short, so this card must not present its
-  // year-over-year as trustworthy.
-  assert.ok(c.suspect)
-  assert.match(c.suspect, /undercounted/i)
+test('the check-in card names its month and compares whole months', () => {
+  const c = card(payload(), 'checkinsLastMonth')
+  // The label must say WHICH month: an unlabelled figure on the 3rd of the
+  // month reads as month-to-date and looks like a collapse.
+  assert.equal(c.label, 'Check-ins July 2026')
+  assert.equal(c.value, 86229)
+  assert.equal(rowOf(c, 'Same Month Prior Year').value, 69085)
+  assert.equal(rowOf(c, 'YOY Change').value, 24.8)
+  assert.equal(rowOf(c, 'Members Who Visited').value, 12226)
+  // The old hourly-feed health warning is gone with the feed it described.
+  assert.equal(c.suspect, undefined)
 })
 
-test('a check-in window with no data leaves the card N/A rather than 0', () => {
+test('monthLabel does not drift a month on a server west of UTC', () => {
+  // new Date('2026-07-01').getMonth() is June in Pacific time; this must not be.
+  assert.equal(monthLabel('2026-07-01'), 'July 2026')
+  assert.equal(monthLabel('2026-01-01'), 'January 2026')
+  assert.equal(monthLabel('2026-12-01'), 'December 2026')
+  assert.equal(monthLabel(null), null)
+  assert.equal(monthLabel('nonsense'), null)
+})
+
+test('a missing check-in block leaves the card N/A rather than 0', () => {
   const p = payload()
-  p.windows.py_last30 = win({ checkins: 0, has_checkin_data: false })
-  const c = card(p, 'checkinsLast30')
-  assert.equal(rowOf(c, 'Last 30 Days Prior Year').value, null)
+  delete p.checkins
+  const c = card(p, 'checkinsLastMonth')
+  assert.equal(c.label, 'Check-ins Last Month')
+  assert.equal(c.value, null)
   assert.equal(rowOf(c, 'YOY Change').value, null)
 })
 

@@ -44,11 +44,38 @@ function checkins(window) {
   return window.has_checkin_data === false ? null : num(window.checkins)
 }
 
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+/**
+ * "2026-07-01" -> "July 2026", for the check-in card's label.
+ *
+ * Parsed by hand rather than via Date: new Date('2026-07-01') is midnight UTC,
+ * and getMonth() on a server west of Greenwich reports June.
+ */
+function monthLabel(iso) {
+  const m = /^(\d{4})-(\d{2})/.exec(String(iso || ''))
+  if (!m) return null
+  const idx = Number(m[2]) - 1
+  return MONTHS[idx] ? `${MONTHS[idx]} ${m[1]}` : null
+}
+
 function buildTopline(payload) {
   const w = payload?.windows || {}
   const members = payload?.members || {}
   const win = (name) => w[name] || null
   const val = (name, field) => (win(name) ? num(win(name)[field]) : null)
+
+  // Check-ins come from their own monthly source, outside the window machinery.
+  const rawCi = payload?.checkins || {}
+  const ci = {
+    month: rawCi.month || null,
+    checkins: num(rawCi.checkins),
+    prior_checkins: num(rawCi.prior_checkins),
+    members_visited: num(rawCi.members_visited),
+  }
 
   const ytdLost = val('ytd', 'lost_members')
   const pyYtdLost = val('py_ytd', 'lost_members')
@@ -120,20 +147,22 @@ function buildTopline(payload) {
         { label: 'Start of Year', value: num(members.start_of_year), format: 'int' },
       ],
     },
+    // A WHOLE month, not the last 30 days, and not month-to-date.
+    //
+    // The accurate source (abc_member_checkin_months) has month granularity, so
+    // a 30-day window is not available from it. The month that IS available is
+    // the last complete one: month-to-date on the 3rd would compare three days
+    // against a full year-ago month and read as a 90% collapse.
     {
-      key: 'checkinsLast30',
-      label: 'Check-ins Last 30 Days',
+      key: 'checkinsLastMonth',
+      label: ci.month ? `Check-ins ${monthLabel(ci.month) || ''}`.trim() : 'Check-ins Last Month',
       format: 'int',
-      value: checkins(win('last30')),
+      value: ci.checkins,
       rows: [
-        { label: 'Last 30 Days Prior Year', value: checkins(win('py_last30')), format: 'int' },
-        { label: 'YOY Change', value: pctChange(checkins(win('last30')), checkins(win('py_last30'))), format: 'pct' },
+        { label: 'Same Month Prior Year', value: ci.prior_checkins, format: 'int' },
+        { label: 'YOY Change', value: pctChange(ci.checkins, ci.prior_checkins), format: 'pct' },
+        { label: 'Members Who Visited', value: ci.members_visited, format: 'int' },
       ],
-      // Every hourly bucket stops at the last sync tick of its hour and is
-      // never revisited, so totals are structurally short. Flagged rather than
-      // hidden — the shortfall is not evenly distributed over time and this
-      // card's year-over-year cannot be trusted until the feed is fixed.
-      suspect: 'Check-in totals are undercounted; see the note below.',
     },
     {
       key: 'attritionYtd',
@@ -184,4 +213,4 @@ function buildTopline(payload) {
   }
 }
 
-module.exports = { buildTopline, pctChange, ratio, pctOf, checkins }
+module.exports = { buildTopline, pctChange, ratio, pctOf, checkins, monthLabel }
