@@ -16,6 +16,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 //   options   — [{ slug, label }] in canonical display order. Do NOT include an
 //               "all" entry; we handle that at the top of the panel.
 //   className — optional extra classes on the trigger button
+// Panel geometry, shared by the placement effect below.
+const PANEL_WIDTH = 256      // was the w-64 utility class
+const MARGIN = 8             // breathing room from any viewport edge
+const GAP = 4                // between trigger and panel
+const MIN_PANEL_HEIGHT = 180 // below this it is not worth opening downwards
+
 export default function LocationMultiSelect({
   value, onChange, options, className = '',
   allLabel = 'All Locations', noneLabel = 'No Locations', nounPlural = 'locations', applyLabel = 'View Report',
@@ -23,6 +29,7 @@ export default function LocationMultiSelect({
   const [open, setOpen] = useState(false)
   const panelRef = useRef(null)
   const buttonRef = useRef(null)
+  const [coords, setCoords] = useState(null)
 
   const allSlugs = useMemo(() => options.map(o => o.slug), [options])
   const labelBySlug = useMemo(() => {
@@ -50,6 +57,55 @@ export default function LocationMultiSelect({
   useEffect(() => {
     if (!open) setPendingSet(new Set(committedSet))
   }, [committedSet, open])
+
+  // KEEP THE PANEL ON SCREEN.
+  //
+  // It used to be `absolute left-0`, which puts its left edge under the
+  // trigger and runs 256px to the right. Wherever the trigger sits near the
+  // right edge — which is exactly where the Analytics toolbar puts it — the
+  // panel rendered off screen and the options could not be reached.
+  //
+  // Positioned FIXED from the trigger's viewport rect rather than flipped to
+  // `right-0`: flipping only solves the right edge, and an absolutely
+  // positioned panel is still clipped by any scrolling ancestor. Fixed escapes
+  // the ancestor entirely, and clamping handles both edges plus the narrow
+  // case where the panel is wider than the viewport.
+  useEffect(() => {
+    if (!open) return
+
+    function place() {
+      const btn = buttonRef.current
+      if (!btn) return
+      const r = btn.getBoundingClientRect()
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      const width = Math.min(PANEL_WIDTH, vw - MARGIN * 2)
+      // Prefer aligned to the trigger's left edge, then clamp inside the viewport.
+      const left = Math.max(MARGIN, Math.min(r.left, vw - width - MARGIN))
+      // Flip above when there is not room below but there is above, so a
+      // trigger low on the page does not open into a sliver.
+      const below = vh - r.bottom - MARGIN
+      const above = r.top - MARGIN
+      const openUp = below < MIN_PANEL_HEIGHT && above > below
+      setCoords({
+        left,
+        width,
+        top: openUp ? undefined : r.bottom + GAP,
+        bottom: openUp ? vh - r.top + GAP : undefined,
+        maxHeight: Math.max(MIN_PANEL_HEIGHT, (openUp ? above : below) - GAP),
+      })
+    }
+
+    place()
+    // Capture phase so a scroll inside any ancestor repositions it, not just
+    // the window.
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => {
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
+    }
+  }, [open])
 
   const allSelected = committedSet.size === allSlugs.length
   const triggerText = useMemo(() => {
@@ -134,7 +190,22 @@ export default function LocationMultiSelect({
           ref={panelRef}
           role="listbox"
           aria-multiselectable="true"
-          className="absolute left-0 top-9 z-30 w-64 bg-surface border border-border rounded-xl shadow-lg p-2"
+          style={coords ? {
+            position: 'fixed',
+            left: coords.left,
+            top: coords.top,
+            bottom: coords.bottom,
+            width: coords.width,
+            maxHeight: coords.maxHeight,
+          } : undefined}
+          // Hidden until measured, so it never paints once at the wrong place
+          // and jumps. z-50 clears the Analytics header card, which is z-50
+          // itself and would otherwise cover a fixed panel.
+          className={
+            'z-50 overflow-y-auto bg-surface border border-border rounded-xl shadow-lg p-2 ' +
+            (coords ? '' : 'invisible ') +
+            'fixed'
+          }
         >
           <div className="flex items-center justify-between px-2 py-1 mb-1 border-b border-border">
             <button
