@@ -6,7 +6,7 @@ const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { buildFirstPtPurchase } = require('../lib/firstPtPurchase')
 const { isValidSegment } = require('../lib/analyticsSegments')
-const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerformance')
+const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
 // First Purchases by Join Month — Analytics (admin only)
@@ -78,7 +78,7 @@ router.get('/', async (req, res) => {
       }))
 
       const built = buildFirstPtPurchase(data || [], {
-        labelFor: (v) => (segment === 'club' ? (CLUB_BY_NUMBER[v]?.name || v) : v),
+        labelFor: (v) => (segment === 'club' ? (clubName(v)) : v),
       })
 
       return {

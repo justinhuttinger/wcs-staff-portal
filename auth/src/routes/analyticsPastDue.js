@@ -6,7 +6,7 @@ const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { buildPastDue, isChaseable, EXCLUDED_STATUSES, VIEW_BY } = require('../lib/pastDueReport')
-const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerformance')
+const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
 // Past Due — Analytics (admin only)
@@ -105,7 +105,7 @@ router.get('/', async (req, res) => {
 
       const report = buildPastDue(members, totals, {
         viewBy,
-        clubNameFor: (n) => CLUB_BY_NUMBER[n]?.name || n,
+        clubNameFor: (n) => clubName(n),
       })
 
       // The worst balances, for a call list. Capped, and the cap is reported
@@ -114,7 +114,7 @@ router.get('/', async (req, res) => {
       const worst = members.slice(0, TOP).map(m => ({
         memberId: m.member_id,
         name: [m.first_name, m.last_name].filter(Boolean).join(' ') || 'Unknown',
-        club: CLUB_BY_NUMBER[m.club_number]?.name || m.club_number,
+        club: clubName(m.club_number),
         status: m.member_status,
         membershipType: m.membership_type,
         paymentMethod: m.agreement_payment_method,
