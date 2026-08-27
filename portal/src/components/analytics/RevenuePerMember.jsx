@@ -249,14 +249,6 @@ export default function RevenuePerMember({ locationSlug }) {
           })}
         </div>
       </div>
-
-      <div className="text-xs text-text-muted px-1 space-y-1">
-        {data?.foldedSegments > 0 && (
-          <p>Showing the {data.series?.length} largest segments; {data.foldedSegments} smaller ones are not charted.</p>
-        )}
-        {Object.values(data?.meta?.caveats || {}).map(c => <p key={c}>{c}</p>)}
-        <p>Through {fmtMonth(data?.anchor)} — the last complete month, since a month still running pairs a full month of members with a partial month of revenue.</p>
-      </div>
     </div>
   )
 }

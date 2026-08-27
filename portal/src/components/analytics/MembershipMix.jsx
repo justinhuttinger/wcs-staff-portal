@@ -223,19 +223,6 @@ export default function MembershipMix({ locationSlug }) {
           </div>
         )}
       </div>
-
-      <p className="text-xs text-text-muted px-1">
-        {data?.foldedSegments > 0 && (
-          <>The {data.foldedSegments} smallest {activeBreakdown?.label?.toLowerCase()} values are grouped as
-          &ldquo;Other&rdquo; so the bars stay readable. </>
-        )}
-        Counts exclude {data?.meta?.excludedStatuses?.join(', ')}, and insurance-plan members who have not
-        checked in recently.
-        {data?.breakdown === 'checkin_frequency' && (
-          <> Averaged over the last {data?.meta?.checkinWindowMonths} months
-          {data?.meta?.checkinRowsRead === 0 && ' — no check-in history is loaded for these clubs yet, so everyone reads Unknown'}.</>
-        )}
-      </p>
     </div>
   )
 }

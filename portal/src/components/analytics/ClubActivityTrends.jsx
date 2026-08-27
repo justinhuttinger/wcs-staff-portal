@@ -242,13 +242,6 @@ export default function ClubActivityTrends({ locationSlug }) {
   // is driven by comparedMonths rather than by which SHOWN months have
   // check-ins: the shown months are all covered, it is their prior-year
   // partners that predate collection, and that is invisible from the chart.
-  const bestCoverage = Math.max(0, ...tiles.map(t => t.comparedMonths || 0))
-  const shortTiles = tiles.filter(t => (t.comparedMonths || 0) < bestCoverage)
-  // Only shown under Exclude — under Include no conditional rule is applied, so
-  // describing one would be describing something that did not happen.
-  const conditionalNotes = exclusion === 'exclude'
-    ? Object.values(data?.meta?.conditional || {})
-    : []
 
   return (
     <div className="space-y-4">
@@ -278,22 +271,6 @@ export default function ClubActivityTrends({ locationSlug }) {
           <TrendTile key={tile.key} tile={tile} hovered={hovered} onHover={setHovered} />
         ))}
       </div>
-
-      {shortTiles.length > 0 && (
-        <p className="text-xs text-text-muted px-1">
-          {shortTiles.map(t => t.label).join(', ')} compare only{' '}
-          {shortTiles[0].comparedMonths} of the {bestCoverage} months the other tiles do — check-in
-          collection starts part-way through the prior year, so the earlier months have nothing to
-          compare against. Their year-over-year figures cover that shorter period rather than the
-          full year to date, and the missing points are left blank instead of drawn as zero.
-        </p>
-      )}
-
-      {conditionalNotes.length > 0 && (
-        <div className="text-xs text-text-muted px-1 space-y-1">
-          {conditionalNotes.map(n => <p key={n}>{n}</p>)}
-        </div>
-      )}
     </div>
   )
 }

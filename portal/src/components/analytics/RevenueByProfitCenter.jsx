@@ -103,7 +103,6 @@ export default function RevenueByProfitCenter({ startDate, endDate, locationSlug
 
   const groups = data?.groups || []
   const rows = data?.rows || []
-  const defs = Object.values(data?.meta?.definitions || {}).filter(Boolean)
 
   return (
     <div className="space-y-3">
@@ -185,12 +184,6 @@ export default function RevenueByProfitCenter({ startDate, endDate, locationSlug
               ))}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {defs.length > 0 && (
-        <div className="text-xs text-text-muted px-1 space-y-1">
-          {defs.map(d => <p key={d}>{d}</p>)}
         </div>
       )}
     </div>

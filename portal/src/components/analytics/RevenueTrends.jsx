@@ -5,18 +5,18 @@ import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
 import { useChartWidth } from './useChartWidth'
-import { colorFor, fmtMoney, fmtMonth, fmtDay, fmtYear } from './chartPalette'
+import { colorFor, fmtMoney, fmtMonth, fmtYear } from './chartPalette'
 
 // ---------------------------------------------------------------------------
 // Revenue Trends — Analytics (admin only)
 //
-// The same revenue at three grains, stacked: annual, monthly, daily.
+// The same revenue at two grains, stacked: annual and monthly.
 //
-// THREE PANELS, THREE SCALES, ONE SEGMENT. A year of revenue and a day of it
-// share no useful axis — on one chart the daily line is a flat smear along the
-// bottom. Splitting into panels is the honest answer; a second y-axis is not.
+// TWO PANELS, TWO SCALES, ONE SEGMENT. A year of revenue and a month of it
+// share no useful axis — on one chart the monthly line flattens away. Splitting
+// into panels is the honest answer; a second y-axis is not.
 //
-// The segment ranking is computed once server-side across all three grains, so
+// The segment ranking is computed once server-side across both grains, so
 // a series is the same colour and the same member of "Other" in every panel.
 // ---------------------------------------------------------------------------
 
@@ -26,9 +26,7 @@ const PAD_R = 10
 const PAD_B = 20
 
 function labelFor(grain, bucket) {
-  if (grain === 'annual') return fmtYear(bucket)
-  if (grain === 'monthly') return fmtMonth(bucket)
-  return fmtDay(bucket)
+  return grain === 'annual' ? fmtYear(bucket) : fmtMonth(bucket)
 }
 
 function Panel({ panel, segments, hoveredSeries }) {
@@ -47,8 +45,15 @@ function Panel({ panel, segments, hoveredSeries }) {
   const y = (v) => plotH - ((v - min) / span) * plotH
 
   // Annual has very few buckets, so bars read better than a line through three
-  // points; monthly and daily are dense enough for lines.
-  const asBars = panel.key === 'annual'
+  // points; monthly is usually dense enough for a line.
+  //
+  // BUT A LINE THROUGH ONE POINT DRAWS NOTHING. The default range is the
+  // current month, which gives the monthly panel exactly one bucket — so the
+  // panel came up blank and read as "not loading at all". Anything with fewer
+  // than two buckets is drawn as bars instead, and sparse line panels get a
+  // marker per point so a single reading is never invisible.
+  const asBars = panel.key === 'annual' || panel.buckets.length < 2
+  const showDots = !asBars && panel.buckets.length <= 12
   const barW = n ? Math.min(48, (plotW / n) * 0.55) : 0
 
   const active = hover !== null ? panel.buckets[hover] : null
@@ -60,7 +65,7 @@ function Panel({ panel, segments, hoveredSeries }) {
         <p className="text-[11px] text-text-muted tabular-nums">
           {active
             ? `${labelFor(panel.key, active)} · ${fmtMoney(panel.totals[hover]?.revenue, { compact: true })}`
-            : `${n} ${panel.key === 'daily' ? 'days' : panel.key === 'monthly' ? 'months' : 'years'}`}
+            : `${n} ${panel.key === 'monthly' ? 'months' : 'years'}`}
         </p>
       </div>
 
@@ -125,22 +130,29 @@ function Panel({ panel, segments, hoveredSeries }) {
                 })
               }
               return (
-                <polyline
-                  key={s.key}
-                  points={s.points.map((p, i) => `${PAD_L + x(i)},${y(p.revenue)}`).join(' ')}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth="2"
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                  opacity={dim ? 0.2 : 1}
-                  vectorEffect="non-scaling-stroke"
-                />
+                <g key={s.key} opacity={dim ? 0.2 : 1}>
+                  <polyline
+                    points={s.points.map((p, i) => `${PAD_L + x(i)},${y(p.revenue)}`).join(' ')}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  {showDots && s.points.map((p, i) => (
+                    <circle
+                      key={p.bucket}
+                      cx={PAD_L + x(i)} cy={y(p.revenue)} r="4"
+                      fill={color} stroke="var(--color-surface)" strokeWidth="1.5"
+                    />
+                  ))}
+                </g>
               )
             })}
 
             {panel.buckets.map((b, i) => {
-              const every = Math.max(1, Math.ceil(n / (panel.key === 'daily' ? 8 : 12)))
+              const every = Math.max(1, Math.ceil(n / 12))
               if (i % every !== 0 && i !== n - 1) return null
               return (
                 <text key={b} x={PAD_L + x(i)} y={PANEL_H - 5} textAnchor="middle"
@@ -181,7 +193,6 @@ export default function RevenueTrends({ startDate, endDate, locationSlug }) {
 
   const panels = data?.panels || []
   const segs = data?.segments || []
-  const defs = Object.values(data?.meta?.definitions || {}).filter(Boolean)
 
   return (
     <div className="space-y-3">
@@ -215,12 +226,6 @@ export default function RevenueTrends({ startDate, endDate, locationSlug }) {
       ) : panels.map(p => (
         <Panel key={p.key} panel={p} segments={segs} hoveredSeries={hoveredSeries} />
       ))}
-
-      {defs.length > 0 && (
-        <div className="text-xs text-text-muted px-1 space-y-1">
-          {defs.map(d => <p key={d}>{d}</p>)}
-        </div>
-      )}
     </div>
   )
 }

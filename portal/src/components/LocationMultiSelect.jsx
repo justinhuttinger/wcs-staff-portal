@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 // Multi-location selector used across all reports. Value is a single string:
 //   - 'all'                  → every option selected (canonical)
@@ -70,6 +71,14 @@ export default function LocationMultiSelect({
   // positioned panel is still clipped by any scrolling ancestor. Fixed escapes
   // the ancestor entirely, and clamping handles both edges plus the narrow
   // case where the panel is wider than the viewport.
+  //
+  // AND IT IS PORTALLED TO document.body. `position: fixed` is only relative to
+  // the viewport while no ancestor has a transform, filter or containment — any
+  // one of those silently re-anchors it to that ancestor, and viewport
+  // coordinates then land the panel somewhere off screen. The first cut was not
+  // portalled and the picker opened into nowhere: clicking it appeared to do
+  // nothing at all. Rendering into body removes the entire class of failure
+  // rather than chasing whichever ancestor currently has a transform.
   useEffect(() => {
     if (!open) return
 
@@ -185,7 +194,7 @@ export default function LocationMultiSelect({
         </svg>
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
           ref={panelRef}
           role="listbox"
@@ -258,7 +267,8 @@ export default function LocationMultiSelect({
               {applyLabel}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
