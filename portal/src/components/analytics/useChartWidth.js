@@ -15,6 +15,12 @@ import { useEffect, useRef, useState } from 'react'
  * the drawing fills the box, text is not stretched, and `clientX - left` is the
  * viewBox x with no conversion.
  *
+ * Measures the CONTENT box, not the border box. getBoundingClientRect()
+ * returns the border box, so attaching this to a padded element sized the
+ * chart to the padding as well and the drawing overflowed its own container by
+ * exactly the horizontal padding. Club Activity Trends did that with a p-3
+ * card and leaked 26px past the card edge.
+ *
  * Returns [ref, width]. Width is null until first measurement; render a
  * placeholder rather than guessing, or the first paint will be at the wrong
  * scale and jump.
@@ -28,7 +34,11 @@ export function useChartWidth(fallback = null) {
     if (!el) return
 
     const measure = () => {
-      const w = el.getBoundingClientRect().width
+      // clientWidth excludes border and scrollbar but includes padding, so
+      // take the padding back off to land on the content box.
+      const cs = getComputedStyle(el)
+      const pad = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0)
+      const w = Math.max(0, el.clientWidth - pad)
       // Sub-pixel widths churn state on every scroll in some browsers.
       setWidth(prev => (prev !== null && Math.abs(prev - w) < 1 ? prev : w))
     }
