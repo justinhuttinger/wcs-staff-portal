@@ -9,6 +9,11 @@ import RevenuePerMember from './analytics/RevenuePerMember'
 import PtPenetration from './analytics/PtPenetration'
 import PtScorecard from './analytics/PtScorecard'
 import ClubActivityTrends from './analytics/ClubActivityTrends'
+import MembershipTrends from './analytics/MembershipTrends'
+import NetMembership from './analytics/NetMembership'
+import RevenueByProfitCenter from './analytics/RevenueByProfitCenter'
+import RevenueTrends from './analytics/RevenueTrends'
+import FirstPtPurchase from './analytics/FirstPtPurchase'
 import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 
 // ---------------------------------------------------------------------------
@@ -91,6 +96,41 @@ const ANALYTICS_REPORTS = [
     // history the balances do not have.
     dates: false,
   },
+  {
+    key: 'membership-trends',
+    label: 'Membership Trends',
+    desc: 'Members & Joins by Segment',
+    Component: MembershipTrends,
+    // A fixed 25-month trailing window, like Club Activity Trends.
+    dates: false,
+  },
+  {
+    key: 'net-membership',
+    label: 'Net Membership',
+    desc: 'In, Out and Net',
+    Component: NetMembership,
+  },
+  {
+    key: 'revenue-by-profit-center',
+    label: 'Revenue by Profit Center',
+    desc: 'Where the Money Comes From',
+    Component: RevenueByProfitCenter,
+  },
+  {
+    key: 'revenue-trends',
+    label: 'Revenue Trends',
+    desc: 'Annual, Monthly, Daily',
+    Component: RevenueTrends,
+  },
+  {
+    key: 'first-pt-purchase',
+    label: 'First Purchases by Join Month',
+    desc: 'How Soon Members Buy PT',
+    Component: FirstPtPurchase,
+    // The window here is the member's JOIN date, not a payment range, so the
+    // report supplies its own labelled controls.
+    dates: false,
+  },
 ]
 
 // Sidebar grouping. A report may appear in more than one group — Revenue Per
@@ -100,9 +140,9 @@ const ANALYTICS_REPORTS = [
 // Keys that do not (yet) exist in ANALYTICS_REPORTS are ignored rather than
 // rendering a dead link, so a group can name a report that ships later.
 const REPORT_GROUPS = [
-  { key: 'members',   label: 'Member Counts', reports: ['membership-mix', 'past-due', 'revenue-per-member'] },
-  { key: 'revenue',   label: 'Revenue',       reports: ['revenue-per-member', 'past-due'] },
-  { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard'] },
+  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member'] },
+  { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due'] },
+  { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase'] },
   { key: 'employees', label: 'Employees',     reports: ['salesperson-performance'] },
 ]
 
