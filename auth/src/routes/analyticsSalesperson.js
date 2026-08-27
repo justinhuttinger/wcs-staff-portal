@@ -15,7 +15,7 @@ const { getSkipList } = require('../utils/membershipSkipList')
 // step in our model.
 //
 // Two independent aggregations, unioned on (club, salesperson):
-//   1. New member units  — abc_members.sign_date in range, grouped by
+//   1. New member units  — abc_members.since_date in range, grouped by
 //                          club_number + sales_person_name.
 //   2. Day One bookings  — day_one_appointments.booked_at in range, grouped by
 //                          location_slug + booked_by_name (credit follows the
@@ -45,8 +45,12 @@ async function loadMembers(clubNumbers, start, end) {
       .from('abc_members')
       .select('id, club_number, sales_person_name, sign_date, membership_type, membership_type_abc_code, agreement_number, since_date, agreement_entry_source, gender, birth_date, payment_frequency, agreement_payment_method, agreement_term, is_primary_member, next_due_amount, down_payment, email, primary_phone, mobile_phone, first_name, last_name')
       .in('club_number', clubNumbers)
-      .gte('sign_date', start)
-      .lte('sign_date', end)
+      // Selected on since_date, the day the MEMBERSHIP started, not sign_date,
+      // the day the current agreement was signed. sign_date moves onto the
+      // latest agreement, so selecting on it both double-counts re-signs and
+      // loses the original sale. See isNewSale in the lib.
+      .gte('since_date', start)
+      .lte('since_date', end)
       .order('id', { ascending: true })
   )
 }

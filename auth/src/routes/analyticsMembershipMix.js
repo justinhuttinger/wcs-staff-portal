@@ -17,8 +17,8 @@ const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerfo
 // with a total there:
 //   * abc_members_counted, so dormant insurance plans do not inflate it
 //     (migration 126)
-//   * active only, minus Return For Collection / Cancelled / Expired /
-//     Pending Cancel
+//   * active only, minus Return For Collection / Cancelled / Expired. Pending
+//     Cancel IS counted — see EXCLUDED_STATUSES below.
 //   * minus the abc_membership_skip_list types
 //
 // The check-in frequency breakdown reads abc_member_checkin_months. A member
@@ -26,7 +26,15 @@ const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerfo
 // history for the club or period.
 // ---------------------------------------------------------------------------
 
-const EXCLUDED_STATUSES = ['Return For Collection', 'Cancelled', 'Expired', 'Pending Cancel']
+// PENDING CANCEL IS COUNTED. They have given notice but the membership has not
+// lapsed yet: they are still on the books and still paying, and every other
+// report in this tab counts them. This report was the only one that did not,
+// which put its base 294 members below Club Activity, Topline, Membership
+// Trends and Net Membership for the same day and made the tab look inconsistent.
+//
+// Excluding them everywhere was the alternative and would have moved twelve
+// reports instead of one.
+const EXCLUDED_STATUSES = ['Return For Collection', 'Cancelled', 'Expired']
 const CHECKIN_WINDOW_MONTHS = 6
 
 const router = Router()

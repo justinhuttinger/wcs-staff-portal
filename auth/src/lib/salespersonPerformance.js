@@ -80,13 +80,24 @@ function ageGroupKey(age) {
 // share of drafting members are.
 const ACH_PAYMENT_METHOD = 'EFT'
 
-// A member whose since_date predates the sign_date of this agreement was
-// already a member when it was signed, so the agreement is a renewal or
-// rewrite rather than a new sale. The Membership report has always dropped
-// these; counting them here made this report read ~40% high against it
-// (671 vs 473 for August 2026).
+// A NEW MEMBER IS ONE WHOSE MEMBERSHIP STARTED IN THE WINDOW — since_date.
+//
+// This used to select on sign_date and then drop anything where
+// since_date < sign_date, on the reasoning that such an agreement is a renewal.
+// That is true of the AGREEMENT and false of the MEMBER, and it lost real
+// sales: sign_date MOVES onto the latest agreement, so a member who joined in
+// March and re-signed in June has a June sign_date and a March since_date, and
+// the test threw them out of both months. 514 genuinely new members disappeared
+// from Jan-Jul 2026 that way — the salesperson who signed them got no credit at
+// all, and the report read 5,123 against Membership Trends' 5,650.
+//
+// since_date does not move on a re-sign, so selecting on it counts each member
+// exactly once, in the month they actually joined, and the two reports agree by
+// construction rather than by coincidence.
+//
+// The filter is kept only as a guard against rows with no since_date at all.
 function isNewSale(m) {
-  return !!(m.since_date && m.sign_date && m.since_date >= m.sign_date)
+  return !!m.since_date
 }
 
 // How rows are grouped. 'club_salesperson' is the default and matches the
@@ -152,7 +163,7 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
       const wantPrimary = filters.memberRelationship === 'primary'
       if (m.is_primary_member !== wantPrimary) return false
     }
-    if (filters.ageGroup && ageGroupKey(ageOn(m.birth_date, m.sign_date)) !== filters.ageGroup) return false
+    if (filters.ageGroup && ageGroupKey(ageOn(m.birth_date, m.since_date || m.sign_date)) !== filters.ageGroup) return false
     return true
   })
 
@@ -216,7 +227,10 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     const member = matchMember(index, contactsById.get(d.ghl_contact_id), d)
     if (member && d.booked_at) {
       const bookedOn = new Date(d.booked_at).toISOString().slice(0, 10)
-      if (bookedOn === member.sign_date) row.bookOnJoinDateCount += 1
+      // Compared against the day they JOINED, not the day their current
+      // agreement was signed — for a member who re-signed those are different
+      // days, and the Day One was booked against the first one.
+      if (bookedOn === (member.since_date || member.sign_date)) row.bookOnJoinDateCount += 1
     }
   }
 
