@@ -20,6 +20,19 @@ const CLUBS = [
 const CLUB_BY_NUMBER = Object.fromEntries(CLUBS.map(c => [c.clubNumber, c]))
 const CLUB_BY_SLUG = Object.fromEntries(CLUBS.map(c => [c.slug, c]))
 
+/**
+ * Club display name from a club number, tolerating a leading zero.
+ *
+ * abc_members stores '7655' while abc_revenue_transactions stores '07655', so a
+ * revenue-sourced report looked Eugene up by the padded form, missed, and
+ * printed a raw "07655" in its legend beside six real club names.
+ */
+function clubName(n) {
+  const raw = String(n ?? '')
+  const hit = CLUB_BY_NUMBER[raw] || CLUB_BY_NUMBER[raw.replace(/^0+/, '')]
+  return hit ? hit.name : raw
+}
+
 // Membership types dropped when `exclusion=exclude` come from
 // abc_membership_skip_list — the same list every other membership report uses,
 // so a unit count here always agrees with a unit count there. Exclusion is the
@@ -341,5 +354,5 @@ module.exports = {
   CLUBS, CLUB_BY_NUMBER, CLUB_BY_SLUG, AGE_GROUPS,
   buildReport, buildFilterOptions, buildMemberIndex, matchMember,
   isExcludedType, personKey, displayName, digits10, ageOn, ageGroupKey, pct,
-  ACH_PAYMENT_METHOD, VIEW_BY, isNewSale,
+  ACH_PAYMENT_METHOD, VIEW_BY, isNewSale, clubName,
 }

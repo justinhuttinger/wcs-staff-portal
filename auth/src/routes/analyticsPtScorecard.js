@@ -4,7 +4,7 @@ const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { wrapSWR } = require('../services/memoryCache')
 const { buildScorecard, GOAL_KEYS, DEFAULT_GOAL_PCT } = require('../lib/ptScorecard')
-const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerformance')
+const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
 // PT Scorecard — Analytics (admin only)
@@ -75,7 +75,7 @@ router.get('/', async (req, res) => {
 
     const built = buildScorecard(rows, {
       goals,
-      clubNameFor: (n) => CLUB_BY_NUMBER[n]?.name || n,
+      clubNameFor: (n) => clubName(n),
     })
 
     res.json({

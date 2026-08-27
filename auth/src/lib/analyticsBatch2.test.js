@@ -231,6 +231,28 @@ test('a single-bucket panel still carries its data', () => {
   assert.equal(daily.max, 30000)
 })
 
+test('segments returned are the SERIES drawn, not the segment types', () => {
+  // The route once overwrote this with the dropdown's list of segment types, so
+  // the legend read "Overall, Club, Dues vs Discretionary, ..." in colours that
+  // matched no line, and never hid itself because that list is always long.
+  // The names here must be the values being plotted.
+  const out = buildRevenueTrends([
+    { grain: 'monthly', bucket: '2026-08-01', segment: 'Salem', revenue: 10 },
+    { grain: 'monthly', bucket: '2026-08-01', segment: 'Keizer', revenue: 20 },
+  ])
+  assert.deepEqual(out.segments.map(s => s.key).sort(), ['Keizer', 'Salem'])
+})
+
+test('a single series yields one legend entry, so the chart can drop the key', () => {
+  // Overall is one line; the component hides the legend below two entries.
+  const out = buildRevenueTrends([
+    { grain: 'monthly', bucket: '2026-07-01', segment: 'Overall', revenue: 10 },
+    { grain: 'monthly', bucket: '2026-08-01', segment: 'Overall', revenue: 20 },
+  ])
+  assert.equal(out.segments.length, 1)
+  assert.equal(out.segments[0].key, 'Overall')
+})
+
 test('month-to-date buckets are comparable, so the newest is not a false collapse', () => {
   // What migration 143 exists for. Each month is cut at the same day, so the
   // current month sits beside like-for-like history instead of beside whole

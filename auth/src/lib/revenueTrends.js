@@ -63,7 +63,12 @@ function buildRevenueTrends(rows, opts = {}) {
     const bt = rankBasis.filter(r => r.segment === b).reduce((s, r) => s + r.revenue, 0)
     return bt - at
   })
-  if (other.length) segmentNames.push(OTHER_LABEL)
+  // Only if it is not already a segment in its own right. Profit Center Group
+  // has a REAL group called "Other", and pushing the fold label on top of it
+  // put the same name in the legend twice, sharing one React key. The folded
+  // revenue is already summed under that name by foldSegment above, so the
+  // numbers were right and only the key was doubled.
+  if (other.length && !segmentNames.includes(OTHER_LABEL)) segmentNames.push(OTHER_LABEL)
 
   const panels = GRAINS.map(g => {
     const buckets = [...new Set(src.filter(r => r.grain === g.key).map(r => r.bucket))].sort()

@@ -6,7 +6,7 @@ const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { buildRevenueTrends } = require('../lib/revenueTrends')
 const { REVENUE_SEGMENTS, MEMBER_ATTRIBUTED, isValidSegment } = require('../lib/analyticsSegments')
-const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerformance')
+const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
 // Revenue Trends — Analytics (admin only)
@@ -88,12 +88,18 @@ router.get('/', async (req, res) => {
       }))
 
       const built = buildRevenueTrends(data || [], {
-        labelFor: (v) => (segment === 'club' ? (CLUB_BY_NUMBER[v]?.name || v) : v),
+        labelFor: (v) => (segment === 'club' ? (clubName(v)) : v),
       })
 
       return {
         ...built,
-        segments: REVENUE_SEGMENTS,
+        // NOT `segments` — the builder already returns that, and it means the
+        // chart's SERIES (the clubs, the profit centres, whatever is being
+        // drawn). Overwriting it fed the legend the list of segment TYPES
+        // instead, so the key read "Overall, Club, Dues vs Discretionary, ..."
+        // in colours matching no line on the chart, and never hid itself
+        // because that list is always 13 long.
+        segmentOptions: REVENUE_SEGMENTS,
         meta: {
           start,
           end,

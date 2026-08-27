@@ -6,7 +6,7 @@ const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { buildNetMembership, SORTS } = require('../lib/netMembership')
 const { MEMBER_SEGMENTS, isValidSegment } = require('../lib/analyticsSegments')
-const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerformance')
+const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
 // Net Membership — Analytics (admin only)
@@ -70,7 +70,7 @@ router.get('/', async (req, res) => {
 
     const built = buildNetMembership(rows, {
       sort,
-      labelFor: (v) => (segment === 'club' ? (CLUB_BY_NUMBER[v]?.name || v) : v),
+      labelFor: (v) => (segment === 'club' ? (clubName(v)) : v),
     })
 
     res.json({
