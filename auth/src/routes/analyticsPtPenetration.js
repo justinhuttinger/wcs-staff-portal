@@ -3,7 +3,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { wrapSWR } = require('../services/memoryCache')
-const { buildPtPenetration, METRICS, WINDOWS } = require('../lib/ptPenetration')
+const { buildPtPenetration, METRICS } = require('../lib/ptPenetration')
 const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
@@ -50,9 +50,12 @@ router.get('/', async (req, res) => {
     if (slugs.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
 
     const metric = METRICS.some(m => m.key === req.query.metric) ? req.query.metric : 'penetration'
-    const windowMonths = WINDOWS.some(w => String(w.key) === String(req.query.window))
-      ? Number(req.query.window)
-      : DEFAULT_PIF_MONTHS
+    // No longer a reader-facing choice. A prepaid package's length is now
+    // derived per package from invoice_total / unit_price against a measured
+    // consumption rate (migration 134), so this only reaches the handful of
+    // rows with no usable price. Offering "PIF counts for 3 / 6 / 12 months"
+    // would describe a knob that no longer moves anything real.
+    const windowMonths = DEFAULT_PIF_MONTHS
     const exclude = req.query.exclusion !== 'include'
     const end = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.end || ''))
       ? String(req.query.end)
@@ -84,17 +87,18 @@ router.get('/', async (req, res) => {
 
     res.json({
       ...built,
-      windowMonths,
+      pifFallbackMonths: windowMonths,
       meta: {
         end,
         clubs: slugs,
         exclusion: exclude ? 'exclude' : 'include',
         rowsRead: raw.length,
-        pifMonths: windowMonths,
+        pifFallbackMonths: windowMonths,
         definition: {
           source: 'Counts members holding a PT service, from ABC /members/recurringservices — a real member id, not the agreement number that training revenue carries.',
           recurring: 'Recurring services are exact: counted from their sale date until the date they went inactive.',
-          pif: `Paid in Full is an estimate. ABC marks a prepaid package inactive at the moment of sale and records no end date, so one counts for ${windowMonths} months after purchase.`,
+          pif: 'Paid in Full is estimated per package. ABC marks a prepaid package inactive at the moment of sale and records no end date, so its length is worked out from the sessions bought (invoice total divided by unit price) against a measured rate of 5.3 sessions per 30 days. A typical 8-session package therefore counts for about 2 months and a 24-session package for about 5, rather than every package counting for the same 3.',
+          pifCalibration: 'That rate comes from actual PT appointments for packages sold since 15 Jan 2026: 157 packages that trained averaged 8.45 sessions over 61 days. The appointment feed itself only reaches back to January, so it calibrates the rate rather than driving the window directly — using it directly would put a step in the chart where the feed starts.',
           overlap: 'A member holding both a recurring service and a package is counted once in the total, so recurring and PIF do not sum to it.',
           conditional: 'Members on A2 CORE and Active and Fit Limited count only if they checked in within 60 days, or joined within the last 60 days. Those two insurance plans bill whether or not anybody turns up and only about 10% of them do, against 66% on every other plan. It is a check-in test rather than a plan exclusion because A2 EXEC is also an insurance plan and 76% of its members do come in. It applies to both sides of the ratio, so penetration stays a share of the same population.',
           series: 'The chart starts at the first month the 60-day rule can be answered, since check-in history reaches back only so far. Include shows more months than Exclude for that reason.',

@@ -126,13 +126,12 @@ function Chart({ months, series, format, hovered, onHover, dimmed }) {
 
 export default function PtPenetration({ locationSlug }) {
   const [metric, setMetric] = useState('penetration')
-  const [windowMonths, setWindowMonths] = useState(3)
   const [hovered, setHovered] = useState(null)
   const [dimmed, setDimmed] = useState(null)
 
   const query = useMemo(
-    () => new URLSearchParams({ clubs: locationSlug || 'all', metric, window: String(windowMonths) }).toString(),
-    [locationSlug, metric, windowMonths]
+    () => new URLSearchParams({ clubs: locationSlug || 'all', metric }).toString(),
+    [locationSlug, metric]
   )
 
   const { data, loading, error } = useCancellableFetch(
@@ -160,8 +159,7 @@ export default function PtPenetration({ locationSlug }) {
     <div className="space-y-4">
       <Toolbar
         metric={metric} setMetric={setMetric}
-        windowMonths={windowMonths} setWindowMonths={setWindowMonths}
-        metrics={data?.metrics || []} windows={data?.windows || []}
+        metrics={data?.metrics || []}
       />
 
       <div className="bg-surface rounded-xl border border-border overflow-x-auto">
@@ -221,7 +219,7 @@ export default function PtPenetration({ locationSlug }) {
   )
 }
 
-function Toolbar({ metric, setMetric, windowMonths, setWindowMonths, metrics, windows }) {
+function Toolbar({ metric, setMetric, metrics }) {
   const [slot, setSlot] = useState(null)
   useEffect(() => { setSlot(document.getElementById(TOOLBAR_SLOT_ID)) }, [])
   if (!slot) return null
@@ -234,13 +232,6 @@ function Toolbar({ metric, setMetric, windowMonths, setWindowMonths, metrics, wi
         <select value={metric} onChange={e => setMetric(e.target.value)} className={cls}>
           {(metrics.length ? metrics : [{ key: 'penetration', label: 'PT Member Penetration %' }])
             .map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
-        </select>
-      </label>
-      <label className={wrap}>
-        PT Qualification
-        <select value={String(windowMonths)} onChange={e => setWindowMonths(Number(e.target.value))} className={cls}>
-          {(windows.length ? windows : [{ key: 3, label: 'PIF counts for 3 months' }])
-            .map(w => <option key={w.key} value={String(w.key)}>{w.label}</option>)}
         </select>
       </label>
     </div>,

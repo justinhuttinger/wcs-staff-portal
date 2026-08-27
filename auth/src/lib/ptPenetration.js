@@ -46,11 +46,6 @@ const METRICS = [
 
 // How long a prepaid package counts for. Only PIF is affected — recurring
 // services carry real end dates and are unaffected by this choice.
-const WINDOWS = [
-  { key: 3, label: 'PIF counts for 3 months' },
-  { key: 6, label: 'PIF counts for 6 months' },
-  { key: 12, label: 'PIF counts for 12 months' },
-]
 
 function shiftMonth(ym, delta) {
   const [y, m] = ym.split('-').map(Number)
@@ -158,7 +153,6 @@ function buildPtPenetration(rows, opts = {}) {
     totals,
     metric,
     metrics: METRICS,
-    windows: WINDOWS,
     summary: latest ? {
       month: latest.month,
       penetration: latest.penetration,
@@ -176,4 +170,4 @@ function buildPtPenetration(rows, opts = {}) {
   }
 }
 
-module.exports = { buildPtPenetration, pct, pctChange, shiftMonth, METRICS, WINDOWS }
+module.exports = { buildPtPenetration, pct, pctChange, shiftMonth, METRICS }

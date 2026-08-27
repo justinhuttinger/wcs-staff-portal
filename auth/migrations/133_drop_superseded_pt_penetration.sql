@@ -1,0 +1,12 @@
+-- 133: drop the superseded PT penetration v1.
+--
+-- analytics_pt_penetration was replaced by _v2 in migration 129 and has had no
+-- caller since. Dropped rather than left in place, because a dead function is a
+-- second and staler answer to the same question waiting to be picked up:
+--
+--   * v1 counted PT clients from abc_revenue_transactions.member_number, which
+--     is the AGREEMENT number and not a member id, so it silently miscounted
+--     every shared agreement. That is the bug _v2 exists to fix.
+--   * It predates the conditional membership rule (migration 132), so its
+--     member counts would disagree with every other report.
+drop function if exists public.analytics_pt_penetration(date, integer, text[], integer, boolean);
