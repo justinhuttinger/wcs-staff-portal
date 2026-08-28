@@ -100,3 +100,17 @@ test('an empty window builds rather than throwing', () => {
   assert.equal(out.totals.leads, 0)
   assert.equal(out.totals.winRate, null)
 })
+
+test('what remains in No Source Recorded is inert, and stays out of totals', () => {
+  // After the walk-in rule, this bucket holds records with no attribution, no
+  // source and no trial. They did nothing, and including them would dilute the
+  // business-wide rate with rows that were never leads.
+  const out = buildLeadSources([
+    row('Walk-in / Manual', { leads: 763, trials: 260, won: 163 }),
+    row('No Source Recorded', { leads: 81, trials: 0, won: 0 }),
+  ], null, {})
+  assert.equal(out.totals.leads, 763)
+  assert.equal(out.totals.won, 163)
+  assert.equal(out.sources.find(s => s.source === 'No Source Recorded').notAChannel, true)
+  assert.match(out.notes.noSource, /counted as Walk-in/)
+})
