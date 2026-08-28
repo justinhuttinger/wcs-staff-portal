@@ -243,7 +243,21 @@ async function ingestBooking(raw = {}) {
     // A modify/cancel firing of the workflow carries no status of its own, so
     // take GHL's. This is what lets one workflow cover made, modified AND
     // cancelled without waiting for the next reconcile pass.
-    status: live?.status || stored?.status || 'scheduled',
+    //
+    // EXCEPT once an outcome has been recorded. GHL's calendar only ever says
+    // confirmed or cancelled; it has no idea the trainer reported a no-show or
+    // a sale. Letting it win here turned a Completed/No Sale row back into
+    // Scheduled while leaving the sale result attached, which is a row that
+    // contradicts itself. The reconciler already had this rule (#642) and the
+    // webhook path was missed.
+    //
+    // Nothing overrides it, cancellations included, which is exactly the rule
+    // the reconciler follows. The two paths MUST agree here: if one let a
+    // cancellation through and the other did not, they would overwrite each
+    // other on every pass and the row would flip forever.
+    status: stored?.outcome_recorded_at
+      ? stored.status
+      : (live?.status || stored?.status || 'scheduled'),
     outcome: stored?.outcome ?? null,
     pt_sale_type: stored?.pt_sale_type ?? null,
     why_no_sale: stored?.why_no_sale ?? null,
