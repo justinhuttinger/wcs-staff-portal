@@ -229,7 +229,7 @@ const REPORT_GROUPS = [
 ]
 
 // Pinned above the groups, in this order, outside any category.
-const PINNED_REPORTS = ['problem-areas', 'topline', 'kpis', 'club-activity']
+const PINNED_REPORTS = ['kpis', 'problem-areas', 'topline', 'club-activity']
 
 /**
  * Reports that belong in no group and are not pinned still need a way in.
