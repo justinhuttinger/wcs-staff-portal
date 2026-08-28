@@ -2,6 +2,13 @@
 //
 // Where leads come from, and what became of them, on FIRST touch.
 //
+// THE FUNNEL RECONCILES WITH GHL'S OWN BOARD. It counts OPPORTUNITIES in the
+// membership pipelines, by the opportunity's date, and a stage is "reached at
+// least" rather than "currently sitting in" — stage_id is a current position,
+// not a history, so an opportunity that progressed to Trial Started had already
+// passed Tour Booked and must still count as one. Salem 1-27 August returns 148
+// leads and 56 signed against GHL's 148 and 56.
+//
 // TWO ATTRIBUTIONS, NEVER BLENDED.
 //
 //   Real     what GHL observed on the contact's first touch. Evidence.
@@ -24,15 +31,21 @@ function rate(part, whole) {
   return Math.round((part / whole) * 1000) / 10
 }
 
-// Stated on the report. The "How Did you Hear About Us?" dropdown is filled in
-// on 42 of 88,419 contacts — 0.05%. Not a sync gap: 62,000 of those contacts
-// carry other custom fields. The column is built and will fill itself in the
-// day the question starts being asked, but until then a claimed-source chart is
-// a chart of almost nothing, and saying so is the difference between a useful
-// report and a misleading one.
+// Stated on the report.
+//
+// Claimed source reads contact.marketing_source, which covers 5,054 of the
+// 11,909 contacts created in the last 120 days — 42%.
+//
+// It is NOT "How Did you Hear About Us?", which is the field named after the
+// question and is filled in on 42 contacts of 88,419. I built the report on
+// that one first and wrote a note explaining why it was empty; the 0.05% should
+// have prompted a search for the field carrying the answer instead. Contacts
+// with no answer are reported as "Not Asked" rather than folded into a real
+// source.
 const CLAIMED_COVERAGE_NOTE =
-  'Claimed source is recorded on well under 1% of contacts, so these counts are ' +
-  'a sample rather than a picture. The observed source is on every lead.'
+  'Claimed source is recorded on about 42% of contacts; the rest show as Not ' +
+  'Asked. Observed source is on every lead, so the two views cover different ' +
+  'numbers of people and their totals will not match.'
 
 // Also stated. What is left in this bucket after the walk-in rule is applied.
 //
@@ -46,21 +59,36 @@ const NO_SOURCE_NOTE =
   'trial — records that arrived from nowhere and went nowhere. Contacts with no ' +
   'attribution who did start a trial are counted as Walk-in, not here.'
 
+// Stated wherever these two are shown.
+//
+// Both outcomes DELETE the opportunity in GHL, so somebody who was a lead and
+// then went not-interested has already left the funnel's lead count. They are
+// ADDITIONAL to the funnel, not a slice of it, and the arithmetic will not add
+// up if they are read as one.
+const OUTCOMES_NOTE =
+  'Not Interested and Day Pass are counted per contact, not from the pipeline: ' +
+  'both outcomes delete the opportunity in GHL, so these people have already ' +
+  'left the lead count beside them. Read them as additional to the funnel, not ' +
+  'as a slice of it. Medford and Milwaukie do not use the guest tag at all, and ' +
+  'Medford has no Not Interested workflow, so a zero there is an absent process ' +
+  'rather than an absent person.'
+
 /** A source that is a bookkeeping artefact rather than a channel. */
 const NOT_A_CHANNEL = new Set(['No Source Recorded'])
 
 function shapeRow(r) {
   const leads = num(r.leads)
+  const tours = num(r.tours)
   const trials = num(r.trials)
   const won = num(r.won)
   return {
     source: r.source,
     leads,
-    tours: num(r.tours),
+    tours,
     trials,
     won,
-    notInterested: num(r.not_interested),
     lost: num(r.lost),
+    tourRate: rate(tours, leads),
     // Of the leads this source produced, how many reached each step.
     trialRate: rate(trials, leads),
     winRate: rate(won, leads),
@@ -80,6 +108,20 @@ function buildLeadSources(rows, priorRows, opts = {}) {
   const attribution = opts.attribution === 'claimed' ? 'claimed' : 'real'
   const sources = (rows || []).map(shapeRow)
 
+  // Not Interested and Day Pass arrive separately because BOTH OUTCOMES DELETE
+  // THE OPPORTUNITY in GHL. Of 3,797 contacts who finished the Not Interested
+  // workflow only 474 still have one; of 377 day passes, one did. Counting
+  // either from the funnel missed almost all of them.
+  //
+  // They are folded onto the source rows for reading, never into the funnel's
+  // arithmetic — see OUTCOMES_NOTE for why they are not a slice of it.
+  const outcomeBySource = new Map(
+    (opts.outcomes || []).map(o => [o.source, {
+      notInterested: num(o.not_interested),
+      dayPasses: num(o.day_passes),
+    }])
+  )
+
   const priorBySource = new Map(
     (priorRows || []).map(r => [r.source, shapeRow(r)])
   )
@@ -88,6 +130,8 @@ function buildLeadSources(rows, priorRows, opts = {}) {
     const was = priorBySource.get(s.source)
     return {
       ...s,
+      notInterested: (outcomeBySource.get(s.source) || {}).notInterested ?? 0,
+      dayPasses: (outcomeBySource.get(s.source) || {}).dayPasses ?? 0,
       priorLeads: was ? was.leads : null,
       leadsChange: pctChange(s.leads, was ? was.leads : null),
       priorWon: was ? was.won : null,
@@ -105,14 +149,16 @@ function buildLeadSources(rows, priorRows, opts = {}) {
 
   return {
     attribution,
+    outcomesNote: OUTCOMES_NOTE,
     sources: withChange.sort((a, b) => b.leads - a.leads
       || String(a.source).localeCompare(String(b.source))),
     totals: {
       leads: totalLeads,
       tours: sum('tours'),
+      notInterested: [...outcomeBySource.values()].reduce((a, v) => a + v.notInterested, 0),
+      dayPasses: [...outcomeBySource.values()].reduce((a, v) => a + v.dayPasses, 0),
       trials: totalTrials,
       won: totalWon,
-      notInterested: sum('notInterested'),
       lost: sum('lost'),
       trialRate: rate(totalTrials, totalLeads),
       winRate: rate(totalWon, totalLeads),
@@ -134,5 +180,6 @@ function buildLeadSources(rows, priorRows, opts = {}) {
 }
 
 module.exports = {
-  buildLeadSources, shapeRow, CLAIMED_COVERAGE_NOTE, NO_SOURCE_NOTE, NOT_A_CHANNEL,
+  buildLeadSources, shapeRow,
+  CLAIMED_COVERAGE_NOTE, NO_SOURCE_NOTE, OUTCOMES_NOTE, NOT_A_CHANNEL,
 }
