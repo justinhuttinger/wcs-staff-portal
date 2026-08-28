@@ -19,6 +19,7 @@ import TrainerSnapshot from './analytics/TrainerSnapshot'
 import SalespersonSnapshot from './analytics/SalespersonSnapshot'
 import AttritionTrends from './analytics/AttritionTrends'
 import Checkins from './analytics/Checkins'
+import Compliance from './analytics/Compliance'
 import LeadSources from './analytics/LeadSources'
 import ProblemAreas from './analytics/ProblemAreas'
 import MemberJourney from './analytics/MemberJourney'
@@ -171,6 +172,12 @@ const ANALYTICS_REPORTS = [
     label: 'Check-ins',
     desc: 'Visits, Timing and Frequency',
     Component: Checkins,
+  },
+  {
+    key: 'compliance',
+    label: 'Compliance',
+    desc: 'Operational Task Completion',
+    Component: Compliance,
   },
   {
     key: 'kpis',
