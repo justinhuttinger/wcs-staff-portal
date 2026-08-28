@@ -258,7 +258,7 @@ const REPORT_GROUPS = [
   { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-trends', 'member-journey', 'checkins'] },
   { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due', 'pos-sales'] },
   { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase', 'pt-snapshot', 'trainer-snapshot'] },
-  { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot'] },
+  { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot', 'compliance', 'audits'] },
   // Club-wide overviews first, then the one-person-at-a-time cards.
   { key: 'snapshots', label: 'Snapshots',     reports: ['club-snapshot', 'pt-snapshot', 'salesperson-snapshot', 'trainer-snapshot'] },
 ]
