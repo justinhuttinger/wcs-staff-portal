@@ -45,8 +45,25 @@ function slotTimeFromOffset(offsetY) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
-export default function WeekGrid({ weekStart, classes, onClassClick, onSlotClick }) {
+// Arrow glyphs as inline SVG rather than a font or an entity, so they keep
+// their weight next to the label at every zoom level.
+function Chevron({ dir }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+      strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
+      <path d={dir === 'left' ? 'M15 19l-7-7 7-7' : 'M9 5l7 7-7 7'} />
+    </svg>
+  )
+}
+
+export default function WeekGrid({
+  weekStart, classes, onClassClick, onSlotClick,
+  weekLabel, onPrevWeek, onNextWeek, onThisWeek, loading,
+}) {
   const todayISO = toISODate(new Date())
+  // The nav belongs to the calendar, so it renders only when the caller
+  // actually wired it up. Other users of WeekGrid keep a bare grid.
+  const hasNav = !!(onPrevWeek || onNextWeek)
 
   // Bucket classes by local date, then assign lanes so overlapping classes at
   // the same club sit side by side instead of stacking on top of each other.
@@ -73,6 +90,45 @@ export default function WeekGrid({ weekStart, classes, onClassClick, onSlotClick
 
   return (
     <div className="bg-surface rounded-xl border border-border overflow-hidden">
+      {/* Week nav, on the calendar it actually drives. Prev sits hard left and
+          Next hard right, so the arrows bracket the week they move, and the
+          label they change reads between them. */}
+      {hasNav && (
+        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
+          <button
+            type="button"
+            onClick={onPrevWeek}
+            aria-label="Previous week"
+            className="shrink-0 p-2 rounded-lg border border-border text-text-primary hover:bg-bg transition"
+          >
+            <Chevron dir="left" />
+          </button>
+
+          <div className="flex-1 min-w-0 flex items-center justify-center gap-2">
+            <span className="text-sm font-semibold text-text-primary truncate">{weekLabel}</span>
+            {onThisWeek && (
+              <button
+                type="button"
+                onClick={onThisWeek}
+                className="shrink-0 px-2.5 py-1 text-xs rounded-lg border border-border text-text-muted hover:bg-bg hover:text-text-primary transition"
+              >
+                Today
+              </button>
+            )}
+            {loading && <span className="shrink-0 text-xs text-text-muted">Loading…</span>}
+          </div>
+
+          <button
+            type="button"
+            onClick={onNextWeek}
+            aria-label="Next week"
+            className="shrink-0 p-2 rounded-lg border border-border text-text-primary hover:bg-bg transition"
+          >
+            <Chevron dir="right" />
+          </button>
+        </div>
+      )}
+
       {/* Day headers */}
       <div className="grid grid-cols-[56px_repeat(7,1fr)] border-b border-border">
         <div />
