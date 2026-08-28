@@ -130,6 +130,79 @@ function PerClubGoalTable({ def, clubs, perClub, goals }) {
   )
 }
 
+// Per-club goal bars — the Analytics presentation of the same numbers the table
+// above shows. One shared scale across every club, or the bars would not be
+// comparable to each other, which is the only reason to draw them side by side.
+//
+// COLOUR IS NEVER THE ONLY SIGNAL. Green/red says hit or missed, but the value
+// is printed on every bar, the goal marker sits where the goal is, and the
+// status is spelled out in words. A reader who cannot separate the two hues
+// loses nothing.
+export function KpiGoalBars({ def, clubs, perClub, goals, latestByClub }) {
+  const isPct = def.format !== 'minutes'
+
+  const rows = clubs.map(slug => {
+    const value = def.timeless
+      ? (latestByClub?.[slug]?.score_pct ?? null)
+      : (perClub ? def.derive(perClub[slug]?.[def.source]) : null)
+    const goal = goalForSlug(def, goals, slug)
+    return { slug, value, goal, hit: onTarget(def, value, goal) }
+  })
+
+  // Percentages get a fixed 0-100 track so half a bar always means 50%. Minutes
+  // have no natural ceiling, so the scale is the largest value or goal in view
+  // plus headroom, shared by every row.
+  const maxSeen = rows.reduce(
+    (m, r) => Math.max(m, r.value ?? 0, r.goal ?? 0), 0)
+  const scale = isPct ? 100 : Math.max(1, maxSeen * 1.15)
+  const posOf = v => `${Math.min(100, Math.max(0, (v / scale) * 100))}%`
+
+  return (
+    <div className="bg-surface rounded-xl border border-border p-4 mt-3">
+      <ul className="space-y-3">
+        {rows.map(({ slug, value, goal, hit }) => (
+          <li key={slug}>
+            <div className="flex items-baseline justify-between gap-3 mb-1">
+              <span className="text-xs font-semibold text-text-primary truncate">
+                {CLUB_LABEL[slug] || slug}
+              </span>
+              <span className="text-[11px] tabular-nums text-text-muted flex-shrink-0">
+                <span className="text-text-primary font-semibold">{formatValue(def, value)}</span>
+                {goal != null && <> · goal {formatValue(def, goal)}</>}
+                {/* Hit/missed is spelled out per club rather than left to the
+                    bar's colour, and it also settles direction: Speed to Lead
+                    is a ceiling, where a SHORT bar is the good one. */}
+                {goal == null ? ' · no goal' : value == null ? '' : hit ? ' · hit' : ' · missed'}
+              </span>
+            </div>
+
+            <div className="relative h-5 rounded bg-bg overflow-hidden">
+              {value != null && (
+                <div
+                  className={`absolute inset-y-0 left-0 rounded ${
+                    goal == null ? 'bg-slate-400/70' : hit ? 'bg-green-600/80' : 'bg-red-500/80'
+                  }`}
+                  style={{ width: posOf(value) }}
+                />
+              )}
+              {/* The goal marker sits ON the track rather than beside it, so
+                  whether the bar clears it is read by looking, not by comparing
+                  two numbers in a row. */}
+              {goal != null && (
+                <div
+                  className="absolute inset-y-0 border-l-2 border-text-primary"
+                  style={{ left: posOf(goal) }}
+                  aria-hidden="true"
+                />
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 // Multi-club view for timeless audit KPIs: each club's MOST RECENT audit
 // score against its goal, plus when that audit was submitted (the cadence is
 // irregular, so the date matters as much as the score).
@@ -519,7 +592,13 @@ function onTarget(def, value, goal) {
   return def.lowerIsBetter ? value <= goal : value >= goal
 }
 
-export default function KpiReport({ startDate, endDate, locationSlug }) {
+/**
+ * @param multiClubView  how the multi-club expansion is drawn: 'table' (the
+ *   original Reporting view) or 'bars' (Analytics). The DATA IS IDENTICAL —
+ *   same fetchers, same goals out of app_config, same derive functions. Only
+ *   the presentation differs, so the two reports can never disagree.
+ */
+export default function KpiReport({ startDate, endDate, locationSlug, multiClubView = 'table' }) {
   // dataByPlan: { '<source>|<slugParam>': response } — one entry per unique
   // (source, enabled-club-set) combination among the KPI defs.
   const [dataByPlan, setDataByPlan] = useState(null)
@@ -836,7 +915,22 @@ export default function KpiReport({ startDate, endDate, locationSlug }) {
             {open && (
               <div id={`kpi-detail-${def.key}`}>
                 {isMulti ? (
-                  def.timeless ? (
+                  multiClubView === 'bars' ? (
+                    // Timeless defs already have their per-club values in the
+                    // combined response, so they draw immediately; the rest wait
+                    // on the per-club fetch.
+                    !def.timeless && !perClub ? (
+                      <p className="text-xs text-text-muted mt-3">Loading clubs…</p>
+                    ) : (
+                      <KpiGoalBars
+                        def={def}
+                        clubs={plan.enabled}
+                        perClub={perClub}
+                        goals={goals}
+                        latestByClub={latestByClub}
+                      />
+                    )
+                  ) : def.timeless ? (
                     <QaPerClubTable def={def} clubs={plan.enabled} latestByClub={latestByClub} goals={goals} />
                   ) : !perClub ? (
                     <p className="text-xs text-text-muted mt-3">Loading clubs…</p>
