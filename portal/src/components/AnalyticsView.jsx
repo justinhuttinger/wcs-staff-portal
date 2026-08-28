@@ -18,6 +18,7 @@ import TrainerPerformance from './analytics/TrainerPerformance'
 import TrainerSnapshot from './analytics/TrainerSnapshot'
 import SalespersonSnapshot from './analytics/SalespersonSnapshot'
 import AttritionTrends from './analytics/AttritionTrends'
+import ProblemAreas from './analytics/ProblemAreas'
 import ClubSnapshot from './analytics/ClubSnapshot'
 import KpiReport from './analytics/KpiReport'
 import PtSnapshot from './analytics/PtSnapshot'
@@ -139,6 +140,15 @@ const ANALYTICS_REPORTS = [
     dates: false,
   },
   {
+    key: 'problem-areas',
+    label: 'Problem Areas',
+    desc: 'What Needs Attention',
+    Component: ProblemAreas,
+    // Its own trailing window, chosen in the report: month-to-date would judge
+    // every club on two days of data on the 2nd of the month.
+    dates: false,
+  },
+  {
     key: 'kpis',
     label: 'KPIs',
     desc: 'Goals by Club',
@@ -201,7 +211,7 @@ const REPORT_GROUPS = [
 ]
 
 // Pinned above the groups, in this order, outside any category.
-const PINNED_REPORTS = ['topline', 'kpis', 'club-activity']
+const PINNED_REPORTS = ['problem-areas', 'topline', 'kpis', 'club-activity']
 
 /**
  * Reports that belong in no group and are not pinned still need a way in.
