@@ -10,6 +10,8 @@
 //
 // Uses a single CSS shimmer animation defined inline; no JS animation loop.
 
+import WcsLoadingMark from './WcsLoadingMark'
+
 const SHIMMER_STYLE = {
   background: 'linear-gradient(90deg, rgba(0,0,0,0.04) 0%, rgba(0,0,0,0.08) 50%, rgba(0,0,0,0.04) 100%)',
   backgroundSize: '200% 100%',
@@ -25,17 +27,6 @@ if (typeof document !== 'undefined' && !document.getElementById('wcs-shimmer-key
       0% { background-position: 200% 0; }
       100% { background-position: -200% 0; }
     }
-    /* Breathing, not spinning. A spinner implies progress it cannot know;
-       this reads as "working" without promising a finish line. */
-    @keyframes wcs-logo-pulse {
-      0%, 100% { transform: scale(1); opacity: 0.85; }
-      50%      { transform: scale(1.06); opacity: 1; }
-    }
-    @keyframes wcs-ring {
-      0%   { transform: scale(0.92); opacity: 0.55; }
-      70%  { transform: scale(1.28); opacity: 0; }
-      100% { transform: scale(1.28); opacity: 0; }
-    }
     @keyframes wcs-dots {
       0%, 20%  { content: ''; }
       40%      { content: '.'; }
@@ -47,8 +38,10 @@ if (typeof document !== 'undefined' && !document.getElementById('wcs-shimmer-key
       animation: wcs-dots 1.6s steps(1, end) infinite;
     }
     @media (prefers-reduced-motion: reduce) {
-      .wcs-loading-logo, .wcs-loading-ring { animation: none !important; }
+      /* Reaches the SMIL <animate> inside the mark too, which CSS cannot
+         otherwise stop. */
       .wcs-dots::after { animation: none; content: '...'; }
+      svg animate { animation-play-state: paused; }
     }
   `
   document.head.appendChild(style)
@@ -68,18 +61,9 @@ if (typeof document !== 'undefined' && !document.getElementById('wcs-shimmer-key
 export function LoadingBrand({ label = 'Getting your report', retrying = false }) {
   return (
     <div className="flex flex-col items-center justify-center py-8" role="status" aria-live="polite">
-      <div className="relative h-14 w-14 mb-3">
-        <span
-          className="wcs-loading-ring absolute inset-0 rounded-full border-2 border-wcs-red/40"
-          style={{ animation: 'wcs-ring 1.8s ease-out infinite' }}
-        />
-        <img
-          src="/wcs-logo.png"
-          alt=""
-          className="wcs-loading-logo relative h-14 w-14 rounded-full"
-          style={{ animation: 'wcs-logo-pulse 1.8s ease-in-out infinite' }}
-        />
-      </div>
+      {/* The mark fills and drains on its own, so there is no wrapper pulse to
+          fight with it. currentColor lets it follow the theme. */}
+      <WcsLoadingMark size={64} className="text-wcs-red mb-3" />
       <p className="text-sm font-semibold text-text-primary">
         <span className="wcs-dots">{retrying ? 'Still working on it' : label}</span>
       </p>
