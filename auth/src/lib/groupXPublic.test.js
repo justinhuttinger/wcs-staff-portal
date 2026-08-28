@@ -190,3 +190,28 @@ test('buildDays passes the instructor rule through', () => {
     buildDays('2026-07-31', [slot], { requireInstructor: false }).days[0].classes.length, 1,
   )
 })
+
+test('toPublicClass drops the length suffix members should not see', () => {
+  const out = toPublicClass({ ...CLASS, class_name: 'Butts and Guts - 30', duration_minutes: 30 })
+  assert.strictEqual(out.class_name, 'Butts and Guts')
+  // The length still reaches the board, which renders it as its own "30 min"
+  // tag. Dropping the suffix must not drop the fact.
+  assert.strictEqual(out.duration_minutes, 30)
+})
+
+test('toPublicClass leaves an ordinary class name alone', () => {
+  assert.strictEqual(
+    toPublicClass({ ...CLASS, class_name: 'Bootcamp', duration_minutes: 60 }).class_name,
+    'Bootcamp',
+  )
+  // Ends in a number, but it is the name, not a length.
+  assert.strictEqual(
+    toPublicClass({ ...CLASS, class_name: 'Zone 2', duration_minutes: 60 }).class_name,
+    'Zone 2',
+  )
+  // Suffix disagrees with the real duration, so it is part of the name.
+  assert.strictEqual(
+    toPublicClass({ ...CLASS, class_name: 'Studio - 60', duration_minutes: 30 }).class_name,
+    'Studio - 60',
+  )
+})

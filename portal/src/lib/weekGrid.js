@@ -89,3 +89,32 @@ export function layoutLanes(events) {
   for (const e of sorted) e._laneCount = totalLanes
   return sorted
 }
+
+// ABC has no way to set a class length per class: duration is a property of the
+// event type, so offering one class at two lengths means two event types. WCS
+// names those "Butts and Guts - 30" / "Butts and Guts - 60".
+//
+// Staff picking a class to schedule need to see that suffix, so the create
+// dropdown keeps the raw ABC name. Everywhere the class is merely displayed it
+// is noise: the length is already shown as a pill next to it, and "Butts and
+// Guts - 30  [30 min]" says the same thing twice.
+//
+// Deliberately narrow: only a trailing " - <number>" goes, and only when the
+// number matches the class's own duration, so a real class called "Studio 60"
+// or "Zone 2" is never truncated.
+export function displayClassName(name, durationMinutes) {
+  const raw = String(name || '')
+  const m = raw.match(/^(.*\S)\s*-\s*(\d{1,3})$/)
+  if (!m) return raw
+  if (durationMinutes != null && Number(m[2]) !== Number(durationMinutes)) return raw
+  return m[1]
+}
+
+// A pill is worth the space only when the length is not the usual 60 minutes.
+// Returns null when there is nothing worth saying, so callers can render
+// `{label && <span>{label}</span>}` without a length check of their own.
+export function durationLabel(durationMinutes) {
+  const mins = Number(durationMinutes)
+  if (!Number.isFinite(mins) || mins <= 0 || mins === 60) return null
+  return `${mins} min`
+}

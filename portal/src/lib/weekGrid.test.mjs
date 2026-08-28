@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   startOfWeek, addDays, toISODate, fmtHour, fmtTime12, parseLocalTimestamp, layoutLanes,
-  DAY_START_HOUR, DAY_END_HOUR, GRID_HEIGHT_PX,
+  DAY_START_HOUR, DAY_END_HOUR, GRID_HEIGHT_PX, displayClassName, durationLabel,
 } from './weekGrid.js'
 
 test('startOfWeek anchors to Sunday', () => {
@@ -82,4 +82,34 @@ test('grid config covers 6 AM to 10 PM', () => {
   assert.equal(DAY_START_HOUR, 6)
   assert.equal(DAY_END_HOUR, 22)
   assert.equal(GRID_HEIGHT_PX, 960)
+})
+
+test('displayClassName drops a length suffix that matches the duration', () => {
+  assert.equal(displayClassName('Butts and Guts - 30', 30), 'Butts and Guts')
+  assert.equal(displayClassName('Butts and Guts - 60', 60), 'Butts and Guts')
+  assert.equal(displayClassName('Butts and Guts-30', 30), 'Butts and Guts')
+  assert.equal(displayClassName('Butts and Guts  -  30', 30), 'Butts and Guts')
+})
+
+test('displayClassName keeps a number that is not the class length', () => {
+  // A real class name that merely ends in a number must survive untouched.
+  assert.equal(displayClassName('Zone 2', 60), 'Zone 2')
+  assert.equal(displayClassName('Studio - 60', 30), 'Studio - 60')
+  assert.equal(displayClassName('Bootcamp', 60), 'Bootcamp')
+})
+
+test('displayClassName is safe on missing input', () => {
+  assert.equal(displayClassName(null, 30), '')
+  assert.equal(displayClassName(undefined, undefined), '')
+  // No duration to compare against: trust the suffix and strip it.
+  assert.equal(displayClassName('Butts and Guts - 30', null), 'Butts and Guts')
+})
+
+test('durationLabel speaks up only for non-standard lengths', () => {
+  assert.equal(durationLabel(30), '30 min')
+  assert.equal(durationLabel(45), '45 min')
+  assert.equal(durationLabel(60), null, '60 is the norm and needs no pill')
+  assert.equal(durationLabel(null), null)
+  assert.equal(durationLabel(0), null)
+  assert.equal(durationLabel('30'), '30 min')
 })
