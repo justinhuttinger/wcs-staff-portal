@@ -20,6 +20,7 @@ the rest of the portal API).
 |---|---|---|---|
 | `clubNumber` | string | **yes** | One of `30935` Salem, `31599` Keizer, `7655` Eugene, `31598` Springfield, `31600` Clackamas, `31601` Milwaukie, `32073` Medford. |
 | `outcome` | string | **yes** | One of the keys from `GET /tours/outcomes`. Do not hardcode the list — fetch it. |
+| `passDays` | integer | **when the outcome grants access** | 1–90. Required for any outcome with `grants_pass: true`, refused on any outcome without it. For `Custom Pass` this is the only record of the length. |
 | `givenByEmployeeId` *or* `givenByName` | string | **yes** (either) | Who **gave** the tour. Send the ABC employee id where you have it; the name is accepted as a fallback. |
 | `tourIntakeId` *or* `ghlContactId` *or* `abcMemberId` | string | **yes** (any one) | Who the tour was for. |
 | `abcMemberId` | string | strongly preferred | The ABC member id. Without it the tour cannot be joined to membership, so conversion cannot be measured. |
@@ -34,7 +35,8 @@ the rest of the portal API).
   "abcMemberId": "4455",
   "ghlContactId": "kx8Fq2...",
   "clubNumber": "30935",
-  "outcome": "joined",
+  "outcome": "Custom Pass",
+  "passDays": 30,
   "givenByEmployeeId": "0f3c...",
   "givenByName": "Jane Doe",
   "completedAt": "2026-08-28T18:00:00.000Z",
@@ -47,8 +49,8 @@ the rest of the portal API).
 **200**
 
 ```json
-{ "ok": true, "tourId": "uuid", "created": false, "outcome": "joined",
-  "clubNumber": "30935", "givenBy": "Jane Doe" }
+{ "ok": true, "tourId": "uuid", "created": false, "outcome": "Custom Pass",
+  "passDays": 30, "clubNumber": "30935", "givenBy": "Jane Doe" }
 ```
 
 `created: true` means no matching check-in existed and a tour record was made
@@ -60,7 +62,8 @@ pass is enough:
 ```json
 { "error": "Invalid tour completion",
   "details": ["clubNumber must be one of 30935, 31599, ...",
-              "outcome must be one of joined, no_sale, ..."] }
+              "outcome must be one of Custom Pass, Membership Sale, ...",
+              "passDays is required for outcome Custom Pass"] }
 ```
 
 **404** — an explicit `tourIntakeId` was sent that does not exist.
@@ -73,18 +76,31 @@ The allowed outcomes, for populating your picker.
 
 ```json
 { "outcomes": [
-  { "outcome": "joined",      "label": "Joined",            "is_sale": true,  "sort_order": 10 },
-  { "outcome": "no_sale",     "label": "No Sale",           "is_sale": false, "sort_order": 20 },
-  { "outcome": "thinking",    "label": "Thinking About It", "is_sale": false, "sort_order": 30 },
-  { "outcome": "not_a_fit",   "label": "Not a Fit",         "is_sale": false, "sort_order": 40 },
-  { "outcome": "no_show",     "label": "No Show",           "is_sale": false, "sort_order": 50 },
-  { "outcome": "rescheduled", "label": "Rescheduled",       "is_sale": false, "sort_order": 60 }
+  { "outcome": "Membership Sale",  "is_sale": true,  "sort_order": 10, "grants_pass": false, "default_pass_days": null },
+  { "outcome": "Started Trial",    "is_sale": false, "sort_order": 20, "grants_pass": true,  "default_pass_days": 7 },
+  { "outcome": "Started VIP Pass", "is_sale": false, "sort_order": 30, "grants_pass": true,  "default_pass_days": 14 },
+  { "outcome": "Only Tour",        "is_sale": false, "sort_order": 40, "grants_pass": false, "default_pass_days": null },
+  { "outcome": "Custom Pass",      "is_sale": false, "sort_order": 50, "grants_pass": true,  "default_pass_days": null }
 ] }
 ```
+
+(`label` is returned too; it equals `outcome` for all five.)
 
 **Fetch this rather than hardcoding.** Outcomes live in the `tour_outcomes`
 table so a new one is a row, not a deploy on either side. `is_sale` is what the
 reports count as a converted tour.
+
+**These five replaced the sales vocabulary that shipped in 147.** They answer
+what the person LEFT WITH rather than whether they bought, and three of them do
+real work: Started Trial, Started VIP Pass and Custom Pass each write an
+expiration date and a visit allowance into ABC and put an alert on the front
+desk. A sales disposition carries no day count, so adopting one would have meant
+rebuilding pass granting as a separate control for no gain. Nothing was lost in
+the swap: no tour had ever been recorded with a 147 outcome.
+
+**`grants_pass` is not the same as `default_pass_days != null`.** Only Tour and
+Custom Pass both have a null length and mean opposite things — one grants
+nothing, the other grants whatever staff chose. Read the flag, not the number.
 
 ---
 
@@ -104,6 +120,13 @@ Matching by `ghlContactId` only ever attaches to the most recent **open** intake
 A completed one is left alone, so a second tour never overwrites the first
 tour's outcome.
 
+**A pass length is part of the outcome, not a detail.** A 30-day Custom Pass
+and a 3-day one are the same outcome and very different things to have given
+away, and nothing downstream can work the length out from the outcome alone. It
+is validated against the outcome in both directions: required where access is
+granted, refused where it is not. Sending it on `Only Tour` is a 400, because a
+length there is a mistake worth surfacing rather than a value worth storing.
+
 **Send `abcMemberId` whenever you have it.** It is the only field that lets a
 tour be joined to membership, and therefore the only way "tours given → members
 signed" can ever be measured. A tour without it still records, but it is a tally
@@ -115,5 +138,18 @@ rather than something a report can follow through to a join.
 
 The tour lands in `tour_intakes` with `status = 'completed'`, and becomes
 available to the Analytics reports — the tour panel on Membership Snapshot and
-the tour columns on Salesperson Performance, both of which currently read N/A
-for want of exactly this data.
+the tour columns on Salesperson Performance, both of which read N/A for want of
+exactly this data.
+
+They read N/A for a second reason that has now been fixed. The front-desk
+check-in **deleted** the row on completion, on the reasoning that the iPad is a
+transient queue and the outbound webhook is the record on the way out. So no
+tour had ever survived to be reported on, whatever posted here. The row is now
+kept and marked completed; the queue filters on `status = 'ready'` so nothing
+changed at the desk. A cancel still deletes — somebody who walked out before
+being seen is not a tour.
+
+The check-in fills the same columns directly rather than posting here, because
+`/tours/complete` sits behind the staff session middleware and the iPad app is
+deliberately login-free and token-gated. Both paths write the identical row
+shape, so a report cannot tell them apart.

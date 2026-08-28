@@ -41,7 +41,18 @@ function isIsoDate(v) {
  * field at a time across four round trips is a caller who gives up and writes
  * the tour down on paper.
  */
-function validateTourCompletion(body, allowedOutcomes) {
+/**
+ * Does this outcome hand out access? Driven by tour_outcomes.default_pass_days:
+ * a fixed length (Trial, VIP) or an explicitly variable one (Custom Pass). The
+ * route passes the rules in so the set of pass-granting outcomes stays a row
+ * rather than a constant to keep in step here.
+ */
+function grantsPass(outcome, passRules) {
+  if (!outcome || !passRules) return false
+  return passRules.has(outcome)
+}
+
+function validateTourCompletion(body, allowedOutcomes, passRules) {
   const b = body || {}
   const errors = []
 
@@ -75,6 +86,21 @@ function validateTourCompletion(body, allowedOutcomes) {
     errors.push('givenByEmployeeId or givenByName is required')
   }
 
+  // How long a pass this tour handed out. Validated against the outcome rather
+  // than on its own: a length on an outcome that grants nothing is a mistake
+  // worth surfacing, and a Custom Pass with no length is a pass nobody can say
+  // the end date of.
+  const passDays = b.passDays === null || b.passDays === undefined || b.passDays === ''
+    ? null : Number(b.passDays)
+  const grants = grantsPass(outcome, passRules)
+  if (passDays !== null && (!Number.isInteger(passDays) || passDays < 1 || passDays > 90)) {
+    errors.push('passDays must be a whole number between 1 and 90')
+  } else if (passDays !== null && outcome && !grants) {
+    errors.push(`passDays is not valid for outcome ${outcome}, which grants no access`)
+  } else if (passDays === null && grants) {
+    errors.push(`passDays is required for outcome ${outcome}`)
+  }
+
   const completedAt = clean(b.completedAt)
   if (completedAt && !isIsoDate(completedAt)) {
     errors.push('completedAt must be an ISO 8601 timestamp')
@@ -96,6 +122,7 @@ function validateTourCompletion(body, allowedOutcomes) {
       notes: clean(b.notes),
       // Defaulted here rather than in the database so a replay of the same
       // payload lands on the same timestamp it was recorded with.
+      passDays,
       completedAt: completedAt || new Date().toISOString(),
       contactName: cleanName(b.contactName),
       contactEmail: clean(b.contactEmail),
@@ -120,7 +147,8 @@ function toRow(v, { staffId = null } = {}) {
     contact_name: v.contactName,
     contact_email: v.contactEmail,
     contact_phone: v.contactPhone,
+    pass_days: v.passDays,
   }
 }
 
-module.exports = { validateTourCompletion, toRow, CLUB_NUMBERS }
+module.exports = { validateTourCompletion, toRow, grantsPass, CLUB_NUMBERS }
