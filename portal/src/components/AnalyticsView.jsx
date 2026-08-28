@@ -17,7 +17,7 @@ import FirstPtPurchase from './analytics/FirstPtPurchase'
 import TrainerPerformance from './analytics/TrainerPerformance'
 import TrainerSnapshot from './analytics/TrainerSnapshot'
 import SalespersonSnapshot from './analytics/SalespersonSnapshot'
-import MembershipSnapshot from './analytics/MembershipSnapshot'
+import ClubSnapshot from './analytics/ClubSnapshot'
 import PtSnapshot from './analytics/PtSnapshot'
 import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 
@@ -128,10 +128,10 @@ const ANALYTICS_REPORTS = [
     Component: RevenueTrends,
   },
   {
-    key: 'membership-snapshot',
-    label: 'Membership Snapshot',
-    desc: 'Whole Club Membership',
-    Component: MembershipSnapshot,
+    key: 'club-snapshot',
+    label: 'Club Snapshot',
+    desc: 'Membership, Day Ones and PT',
+    Component: ClubSnapshot,
   },
   {
     key: 'pt-snapshot',
@@ -175,12 +175,12 @@ const ANALYTICS_REPORTS = [
 // Keys that do not (yet) exist in ANALYTICS_REPORTS are ignored rather than
 // rendering a dead link, so a group can name a report that ships later.
 const REPORT_GROUPS = [
-  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'membership-snapshot'] },
+  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot'] },
   { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due'] },
   { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase', 'pt-snapshot', 'trainer-snapshot'] },
   { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot'] },
   // Club-wide overviews first, then the one-person-at-a-time cards.
-  { key: 'snapshots', label: 'Snapshots',     reports: ['membership-snapshot', 'pt-snapshot', 'salesperson-snapshot', 'trainer-snapshot'] },
+  { key: 'snapshots', label: 'Snapshots',     reports: ['club-snapshot', 'pt-snapshot', 'salesperson-snapshot', 'trainer-snapshot'] },
 ]
 
 // Pinned above the groups, in this order, outside any category.

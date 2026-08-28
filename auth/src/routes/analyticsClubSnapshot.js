@@ -7,18 +7,20 @@ const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { buildReport } = require('../lib/salespersonPerformance')
 const { loadSalespersonWindow } = require('../lib/salespersonData')
-const { buildClubMembershipSnapshot } = require('../lib/clubMembershipSnapshot')
+const { buildClubSnapshot } = require('../lib/clubSnapshot')
 const { monthToDate, priorMonthWindow, priorLabel, windowLabel } = require('../lib/snapshotWindow')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Membership Snapshot — Analytics (admin only)
+// Club Snapshot — Analytics (admin only)
 //
 // The whole club month to date, with the same window a month earlier beside it.
 // The per-person version of this is Salesperson Snapshot.
 //
-// Counts come from analytics_topline_window and rates from buildReport; the
-// reason for splitting them that way is written out in clubMembershipSnapshot.
+// Counts come from analytics_topline_window, rates from buildReport, and the
+// training half from analytics_pt_snapshot — the SAME function PT Snapshot
+// reads, so the two reports cannot disagree about a close rate. The reasoning
+// behind the split is written out in lib/clubSnapshot.
 // ---------------------------------------------------------------------------
 
 const router = Router()
@@ -59,7 +61,7 @@ router.get('/', async (req, res) => {
     const rpcClubs = allClubs ? null : clubNumbers
     const prior = priorMonthWindow(start, end)
 
-    const cacheKey = ['analytics:club-membership-snapshot', start, end, slugs.slice().sort().join('+')].join('|')
+    const cacheKey = ['analytics:club-snapshot', start, end, slugs.slice().sort().join('+')].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       const skipList = await getSkipList()
@@ -68,14 +70,18 @@ router.get('/', async (req, res) => {
         // Tours and VIPs come through buildReport with everything else rather
         // than being counted a second time here: two counts of one thing is two
         // chances to disagree, and the summary already carries both.
-        const [w, sales] = await Promise.all([
+        const [w, sales, pt] = await Promise.all([
           supabaseAdmin.rpc('analytics_topline_window', {
             p_start: s, p_end: e, p_clubs: rpcClubs, p_exclude: true,
           }),
           loadSalespersonWindow(clubNumbers, slugs, s, e),
+          supabaseAdmin.rpc('analytics_pt_snapshot', {
+            p_start: s, p_end: e, p_clubs: rpcClubs,
+          }),
         ])
         const row = firstRow(w)
         return {
+          pt: firstRow(pt),
           window: {
             ...(row || {}),
             // The stock is a point in time, not a window, so it is asked for
@@ -86,7 +92,7 @@ router.get('/', async (req, res) => {
         }
       }
 
-      const [current, priorWindow, membersNow, membersPrior, series] = await Promise.all([
+      const [current, priorWindow, membersNow, membersPrior, series, ptSeries] = await Promise.all([
         windowFor(start, end),
         windowFor(prior.start, prior.end),
         supabaseAdmin.rpc('analytics_topline_members_as_of', {
@@ -98,6 +104,9 @@ router.get('/', async (req, res) => {
         fetchAll(supabaseAdmin.rpc('analytics_membership_monthly', {
           p_end: end, p_months: SERIES_MONTHS, p_clubs: rpcClubs, p_exclude: true,
         })),
+        fetchAll(supabaseAdmin.rpc('analytics_pt_monthly', {
+          p_end: end, p_months: SERIES_MONTHS, p_clubs: rpcClubs,
+        })),
       ])
 
       if (membersNow.error) throw new Error(membersNow.error.message)
@@ -105,10 +114,23 @@ router.get('/', async (req, res) => {
       current.window.total_members = membersNow.data
       priorWindow.window.total_members = membersPrior.data
 
-      return { current, prior: priorWindow, series }
+      // The two series are keyed on the same month starts, both built from
+      // date_trunc over the same 13 months, so a plain merge lines them up.
+      const ptByMonth = new Map(
+        (ptSeries || []).map(r => [String(r.month_start).slice(0, 10), r])
+      )
+      const merged = (series || []).map(r => ({
+        ...r,
+        ...(ptByMonth.get(String(r.month_start).slice(0, 10)) || {}),
+        // month_start would otherwise be overwritten by the PT row's own copy;
+        // identical today, but not something to leave to luck.
+        month_start: r.month_start,
+      }))
+
+      return { current, prior: priorWindow, series: merged }
     })
 
-    const built = buildClubMembershipSnapshot(
+    const built = buildClubSnapshot(
       payload.current,
       payload.prior,
       payload.series,
@@ -128,7 +150,7 @@ router.get('/', async (req, res) => {
       },
     })
   } catch (err) {
-    console.error('[analytics/membership-snapshot] error:', err.message)
+    console.error('[analytics/club-snapshot] error:', err.message)
     res.status(500).json({ error: 'Failed to build membership snapshot' })
   }
 })
