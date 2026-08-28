@@ -1,12 +1,17 @@
-// Pure shaping for Analytics > Membership Snapshot. No I/O; the route fetches.
+// Pure shaping for Analytics > Club Snapshot. No I/O; the route fetches.
 //
-// The whole club, not one salesperson — the club-wide twin of Salesperson
-// Snapshot. Two sources feed it, and the split between them is deliberate:
+// The whole club in one card, not one person — the club-wide twin of
+// Salesperson Snapshot. Three sources feed it, and the split is deliberate:
 //
 //   COUNTS come from analytics_topline_window   members, joined, left, net,
-//                                               revenue, check-ins.
+//                                               revenue collected, check-ins.
 //   RATES come from buildReport                 ACH %, average dues, Day One
-//                                               book rates.
+//                                               book rates, VIPs, tours.
+//   TRAINING comes from analytics_pt_snapshot   the Day One funnel and PT sold
+//                                               against PT lost.
+//
+// The training half is READ FROM THE SAME FUNCTION PT Snapshot uses rather than
+// recomputed, so the two reports cannot disagree about a close rate.
 //
 // Deliberately absent: buildReport's own new-member COUNT. It filters to new
 // agreements attributable to a salesperson, so it lands near but not on
@@ -27,6 +32,11 @@ function money(v) {
   return Math.round(num(v) * 100) / 100
 }
 
+function rate(part, whole) {
+  if (!whole) return null
+  return Math.round((part / whole) * 1000) / 10
+}
+
 const STATS = [
   { key: 'totalMembers', label: 'Members', format: 'int', betterWhen: 'up' },
   { key: 'newMembers', label: 'Joined', format: 'int', betterWhen: 'up' },
@@ -34,7 +44,10 @@ const STATS = [
   { key: 'netMembers', label: 'Net Members', format: 'int', betterWhen: 'up' },
   { key: 'newDues', label: 'New Dues', format: 'money', betterWhen: 'up' },
   { key: 'revenue', label: 'Revenue', format: 'money', betterWhen: 'up' },
-  { key: 'ptRevenue', label: 'PT Revenue', format: 'money', betterWhen: 'up' },
+  // Money that came through the till against TRAINING, which is a different
+  // thing from the value of PT sold below: one is collected, the other is
+  // contracted. Labelled apart so the card never shows two "PT Revenue".
+  { key: 'ptRevenue', label: 'PT Revenue Collected', format: 'money', betterWhen: 'up' },
   { key: 'checkins', label: 'Check-ins', format: 'int', betterWhen: 'up' },
   { key: 'pctOnAch', label: 'ACH %', format: 'pct', betterWhen: 'up' },
   { key: 'avgNewDuesDraft', label: 'Avg New Dues Draft', format: 'money', betterWhen: 'up' },
@@ -53,15 +66,31 @@ const STATS = [
   // report the second as the first.
   { key: 'toursGiven', label: 'Tours Given', format: 'int', betterWhen: 'up' },
   { key: 'tourConversionRate', label: 'Tour Conversion', format: 'pct', betterWhen: 'up' },
+  // Days from a tour to that person joining. Fewer is better: it measures how
+  // long somebody sat on the decision, not how many signed.
+  { key: 'avgDaysToConversion', label: 'Avg Days Tour to Sale', format: 'num', betterWhen: 'down' },
+
+  // Training. Same definitions as PT Snapshot, read from the same function.
+  { key: 'dayOnes', label: 'Day Ones', format: 'int', betterWhen: 'up' },
+  { key: 'dayOneShowRate', label: 'Day One Show Rate', format: 'pct', betterWhen: 'up' },
+  { key: 'dayOneCloseRate', label: 'Day One Close Rate', format: 'pct', betterWhen: 'up' },
+  // The VALUE OF PT SOLD, not money collected — see PT Revenue Collected above.
+  // Lost is recurring-service deactivations only: no paid-in-full package has
+  // ever carried an inactive_date, so a spent package cannot be seen from here.
+  { key: 'newPtRevenue', label: 'New PT Revenue', format: 'money', betterWhen: 'up' },
+  { key: 'lostPtRevenue', label: 'Lost PT Revenue', format: 'money', betterWhen: 'down' },
+  { key: 'netPtRevenue', label: 'Net PT Revenue', format: 'money', betterWhen: 'up' },
 ]
 
 /**
  * @param window  one row from analytics_topline_window
  * @param summary the `summary` object from buildReport, or null
+ * @param pt      one row from analytics_pt_snapshot, or null
  */
-function shapeTotals(window, summary) {
+function shapeTotals(window, summary, pt) {
   const w = window || {}
   const s = summary || {}
+  const p = pt || {}
   const newMembers = num(w.new_members)
   const lostMembers = num(w.lost_members)
 
@@ -92,12 +121,35 @@ function shapeTotals(window, summary) {
 
     toursGiven: s.toursGiven ?? null,
     tourConversionRate: s.tourConversionRate ?? null,
+    avgDaysToConversion: s.avgDaysToConversion ?? null,
+
+    // --- training ---------------------------------------------------------
+    dayOnes: num(p.day_ones),
+    // Of the Day Ones that were MEANT to happen, how many did. Still-scheduled
+    // ones are excluded: a Day One in the future has not failed to happen yet,
+    // and counting it would make every show rate sag as a month filled up.
+    dayOneShowRate: rate(
+      num(p.day_ones_completed),
+      num(p.day_ones_completed) + num(p.day_ones_no_show) + num(p.day_ones_cancelled)
+    ),
+    // Of the ones that happened, how many closed.
+    dayOneCloseRate: rate(num(p.day_ones_sold), num(p.day_ones_completed)),
+    newPtRevenue: money(p.new_value),
+    lostPtRevenue: money(p.lost_value),
+    netPtRevenue: money(num(p.new_value) - num(p.lost_value)),
   }
 }
 
+/**
+ * One month. The membership half comes from analytics_membership_monthly and
+ * the training half is merged in from analytics_pt_monthly by the route, so a
+ * row here carries both.
+ */
 function seriesRow(r) {
   const newMembers = num(r.new_members)
   const lost = num(r.lost_members)
+  const ptNew = money(r.new_value)
+  const ptLost = money(r.lost_value)
   return {
     month: String(r.month_start).slice(0, 10),
     totalMembers: num(r.total_members),
@@ -111,12 +163,23 @@ function seriesRow(r) {
     revenue: money(r.revenue),
     ptRevenue: money(r.pt_revenue),
     checkins: r.has_checkin_data === false ? null : num(r.checkins),
+
+    dayOnes: num(r.day_ones),
+    dayOnesCompleted: num(r.day_ones_completed),
+    dayOnesSold: num(r.day_ones_sold),
+    dayOneCloseRate: rate(num(r.day_ones_sold), num(r.day_ones_completed)),
+    // Both POSITIVE: TrendPanel scales from zero and would draw a negative
+    // point below its own plot area, where it would simply vanish. The net
+    // keeps its sign on the stat card.
+    newPtRevenue: ptNew,
+    lostPtRevenue: ptLost,
+    netPtRevenue: money(ptNew - ptLost),
   }
 }
 
-function buildClubMembershipSnapshot(current, prior, series, opts = {}) {
-  const cur = shapeTotals(current.window, current.summary)
-  const was = prior ? shapeTotals(prior.window, prior.summary) : {}
+function buildClubSnapshot(current, prior, series, opts = {}) {
+  const cur = shapeTotals(current.window, current.summary, current.pt)
+  const was = prior ? shapeTotals(prior.window, prior.summary, prior.pt) : {}
 
   const stats = STATS.map(s => {
     const now = cur[s.key] ?? null
@@ -141,4 +204,4 @@ function buildClubMembershipSnapshot(current, prior, series, opts = {}) {
   }
 }
 
-module.exports = { buildClubMembershipSnapshot, shapeTotals, seriesRow, STATS }
+module.exports = { buildClubSnapshot, shapeTotals, seriesRow, STATS }

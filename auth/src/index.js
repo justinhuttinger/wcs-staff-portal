@@ -135,7 +135,7 @@ app.use('/analytics/revenue-trends', require('./routes/analyticsRevenueTrends'))
 app.use('/analytics/first-pt-purchase', require('./routes/analyticsFirstPtPurchase'))
 app.use('/analytics/trainer-performance', require('./routes/analyticsTrainerPerformance'))
 app.use('/analytics/salesperson-snapshot', require('./routes/analyticsSalespersonSnapshot'))
-app.use('/analytics/membership-snapshot', require('./routes/analyticsMembershipSnapshot'))
+app.use('/analytics/club-snapshot', require('./routes/analyticsClubSnapshot'))
 app.use('/analytics/pt-snapshot', require('./routes/analyticsPtSnapshot'))
 app.use('/analytics/trainer-snapshot', require('./routes/analyticsTrainerSnapshot'))
 // Second router on /tours, deliberately: routes/tours.js owns GET / (the

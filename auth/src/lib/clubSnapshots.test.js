@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert')
 const { buildPtSnapshot, shapeBreakdowns, seriesRow: ptSeriesRow } = require('./ptSnapshot')
-const { buildClubMembershipSnapshot, seriesRow: memSeriesRow } = require('./clubMembershipSnapshot')
+const { buildClubSnapshot, seriesRow: memSeriesRow } = require('./clubSnapshot')
 
 const ptRow = (over = {}) => ({
   day_ones: 100, day_ones_completed: 60, day_ones_no_show: 20,
@@ -95,16 +95,24 @@ const memWindow = (over = {}) => ({
 })
 const memSummary = { pctOnAch: 71.2, avgNewDuesDraft: 55.9, dayOneBookCount: 300, dayOneBookPct: 56.7, bookOnJoinDatePct: 40 }
 
+// The training half, shaped as analytics_pt_snapshot returns it.
+const ptWindow = (over = {}) => ({
+  day_ones: 317, day_ones_completed: 126, day_ones_no_show: 38,
+  day_ones_cancelled: 44, day_ones_scheduled: 109, day_ones_sold: 47,
+  new_value: 51781, lost_value: 23618,
+  ...over,
+})
+
 test('a club that lost more than it gained shows a negative net', () => {
-  const out = buildClubMembershipSnapshot(
-    { window: memWindow(), summary: memSummary }, null, []
+  const out = buildClubSnapshot(
+    { window: memWindow(), summary: memSummary, pt: ptWindow() }, null, []
   )
   // August 2026 really was negative; a report that cannot say so is useless.
   assert.equal(out.stats.find(s => s.key === 'netMembers').value, -34)
 })
 
 test('no second number labelled new members', () => {
-  const out = buildClubMembershipSnapshot(
+  const out = buildClubSnapshot(
     { window: memWindow(), summary: { ...memSummary, newMemberUnits: 999 } }, null, []
   )
   const labels = out.stats.map(s => s.label)
@@ -115,7 +123,7 @@ test('no second number labelled new members', () => {
 })
 
 test('an absent check-in feed is absent, not zero', () => {
-  const out = buildClubMembershipSnapshot(
+  const out = buildClubSnapshot(
     { window: memWindow({ checkins: 0, has_checkin_data: false }), summary: memSummary },
     null, []
   )
@@ -125,7 +133,7 @@ test('an absent check-in feed is absent, not zero', () => {
 })
 
 test('tours and VIPs are null where nothing is recorded, real where it is', () => {
-  const out = buildClubMembershipSnapshot(
+  const out = buildClubSnapshot(
     { window: memWindow(), summary: memSummary }, null, []
   )
   // buildReport reports null for a club that records neither, and the card has
@@ -135,7 +143,7 @@ test('tours and VIPs are null where nothing is recorded, real where it is', () =
   assert.equal(out.stats.find(s => s.key === 'toursGiven').value, null)
   assert.equal(out.stats.find(s => s.key === 'vipCount').value, null)
 
-  const live = buildClubMembershipSnapshot(
+  const live = buildClubSnapshot(
     { window: memWindow(), summary: {
       ...memSummary, toursGiven: 40, tourConversionRate: 25, vipCount: 120, vipPct: 22.7,
     } }, null, []
@@ -147,7 +155,7 @@ test('tours and VIPs are null where nothing is recorded, real where it is', () =
 })
 
 test('VIP % sits immediately after VIPs collected', () => {
-  const out = buildClubMembershipSnapshot({ window: memWindow(), summary: memSummary }, null, [])
+  const out = buildClubSnapshot({ window: memWindow(), summary: memSummary }, null, [])
   const keys = out.stats.map(s => s.key)
   // The order Justin asked for: VIPs Collected then VIP %.
   assert.equal(keys.indexOf('vipPct'), keys.indexOf('vipCount') + 1)
@@ -161,4 +169,63 @@ test('members leaving are positive in the series', () => {
   })
   assert.equal(row.lostMembers, 563)
   assert.equal(row.netMembers, -34)
+})
+
+
+test('the training half uses PT Snapshot definitions exactly', () => {
+  const out = buildClubSnapshot({ window: memWindow(), summary: memSummary, pt: ptWindow() }, null, [])
+  const at = k => out.stats.find(s => s.key === k).value
+
+  // Show rate excludes the 109 still scheduled: a Day One in the future has not
+  // failed to happen yet, and counting it would make the rate sag as a month
+  // fills up. 126 of the 208 that were meant to happen.
+  assert.equal(at('dayOneShowRate'), 60.6)
+  // Close rate is over the ones that actually happened, not all bookings.
+  assert.equal(at('dayOneCloseRate'), 37.3)
+  assert.equal(at('newPtRevenue'), 51781)
+  assert.equal(at('lostPtRevenue'), 23618)
+  assert.equal(at('netPtRevenue'), 51781 - 23618)
+})
+
+test('PT sold and PT collected are never the same stat', () => {
+  const out = buildClubSnapshot({ window: memWindow(), summary: memSummary, pt: ptWindow() }, null, [])
+  const labels = out.stats.map(s => s.label)
+  // One is money through the till, the other the value of contracts written.
+  // Two stats both called "PT Revenue" would be read as a discrepancy.
+  assert.equal(labels.filter(l => l === 'PT Revenue').length, 0)
+  assert.ok(labels.includes('PT Revenue Collected'))
+  assert.ok(labels.includes('New PT Revenue'))
+})
+
+test('average days from tour to sale is surfaced and lower is better', () => {
+  const out = buildClubSnapshot(
+    { window: memWindow(), summary: { ...memSummary, avgDaysToConversion: 2.4 }, pt: ptWindow() },
+    null, []
+  )
+  const stat = out.stats.find(s => s.key === 'avgDaysToConversion')
+  assert.equal(stat.value, 2.4)
+  // Sitting on the decision longer is worse, so the arrow must not be green.
+  assert.equal(stat.betterWhen, 'down')
+})
+
+test('a window with no PT activity still builds', () => {
+  assert.doesNotThrow(() => buildClubSnapshot({ window: memWindow(), summary: memSummary }, null, []))
+  const out = buildClubSnapshot({ window: memWindow(), summary: memSummary }, null, [])
+  assert.equal(out.stats.find(s => s.key === 'dayOneShowRate').value, null)
+  assert.equal(out.stats.find(s => s.key === 'newPtRevenue').value, 0)
+})
+
+test('the series carries both halves, losses positive', () => {
+  const row = memSeriesRow({
+    month_start: '2026-07-01', total_members: 17088, new_members: 703,
+    lost_members: 537, new_dues: 1, revenue: 2, pt_revenue: 3,
+    checkins: 4, has_checkin_data: true,
+    day_ones: 317, day_ones_completed: 126, day_ones_sold: 47,
+    new_value: 51781, lost_value: 23618,
+  })
+  assert.equal(row.dayOnes, 317)
+  assert.equal(row.dayOneCloseRate, 37.3)
+  // Positive, or TrendPanel draws it below its own plot area and it vanishes.
+  assert.equal(row.lostPtRevenue, 23618)
+  assert.equal(row.netPtRevenue, 51781 - 23618)
 })

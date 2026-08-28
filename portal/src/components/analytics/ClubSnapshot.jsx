@@ -5,18 +5,19 @@ import DesktopLoading from '../DesktopLoading'
 import { StatCard, TrendPanel } from './snapshotParts'
 
 // ---------------------------------------------------------------------------
-// Membership Snapshot — Analytics (admin only)
+// Club Snapshot — Analytics (admin only)
 //
-// The whole club, month to date, against the same window a month earlier. No
-// person picker: the per-salesperson version of this is Salesperson Snapshot.
+// The whole club, month to date, against the same window a month earlier: the
+// membership, the Day One funnel and the PT book of business in one card. No
+// person picker; the per-salesperson version of this is Salesperson Snapshot.
 //
 // Counts come from Topline's window function and rates from the Salesperson
 // Performance builder. The reason for splitting them that way is written out in
-// auth/src/lib/clubMembershipSnapshot.js — briefly, the two sources count new
+// auth/src/lib/clubSnapshot.js — briefly, the two sources count new
 // members slightly differently, so only one of them is allowed to say so.
 // ---------------------------------------------------------------------------
 
-export default function MembershipSnapshot({ startDate, endDate, locationSlug }) {
+export default function ClubSnapshot({ startDate, endDate, locationSlug }) {
   const query = useMemo(() => {
     const p = new URLSearchParams({ clubs: locationSlug || 'all' })
     if (startDate) p.set('start', startDate)
@@ -25,7 +26,7 @@ export default function MembershipSnapshot({ startDate, endDate, locationSlug })
   }, [startDate, endDate, locationSlug])
 
   const { data, loading, error } = useCancellableFetch(
-    (signal) => api(`/analytics/membership-snapshot?${query}`, { cache: true, signal }),
+    (signal) => api(`/analytics/club-snapshot?${query}`, { cache: true, signal }),
     [query]
   )
 
@@ -77,13 +78,27 @@ export default function MembershipSnapshot({ startDate, endDate, locationSlug })
         line('Left', 'lostMembers'),
       ]} />
 
-      {/* The stock on its own scale. Putting 17,000 members beside 500 joins
-          would flatten the joins into the axis. */}
-      <TrendPanel title="Total Members" months={months} series={[
-        line('Members', 'totalMembers'),
+      {/* Counts of one population, so they belong on one scale. */}
+      <TrendPanel title="Day Ones" months={months} series={[
+        line('Booked', 'dayOnes'),
+        line('Completed', 'dayOnesCompleted'),
+        line('Sold', 'dayOnesSold'),
       ]} />
 
-      <TrendPanel title="Revenue" months={months} series={[
+      {/* A rate never shares a panel with a count: on one axis a percentage
+          and a headcount flatten whichever is smaller. */}
+      <TrendPanel title="Day One Close Rate" kind="rate" months={months} series={[
+        line('Close Rate', 'dayOneCloseRate'),
+      ]} />
+
+      {/* The VALUE OF PT SOLD against PT lost. Both positive; the net is on the
+          card above. Lost is recurring deactivations only. */}
+      <TrendPanel title="PT Sold and PT Lost (recurring deactivations only)" months={months} series={[
+        line('New PT', 'newPtRevenue'),
+        line('Lost PT', 'lostPtRevenue'),
+      ]} />
+
+      <TrendPanel title="Revenue Collected" months={months} series={[
         line('Revenue', 'revenue'),
         line('PT Revenue', 'ptRevenue'),
         line('New Dues', 'newDues'),
