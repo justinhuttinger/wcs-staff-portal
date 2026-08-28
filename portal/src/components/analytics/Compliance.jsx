@@ -6,6 +6,7 @@ import DesktopLoading from '../DesktopLoading'
 import { fmtInt, fmtMonth } from './chartPalette'
 import { MonthlyTrend, ShareColumns, RankedBars } from './charts'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
+import { LOCATION_NAMES } from '../../config/locations'
 
 // ---------------------------------------------------------------------------
 // Compliance — Analytics (admin only)
@@ -22,7 +23,20 @@ import { TOOLBAR_SLOT_ID } from './toolbarSlot'
 // ---------------------------------------------------------------------------
 
 const DOW_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const CLUB_LABEL = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+
+// Proper names from the shared config rather than a capitalised slug, so a
+// multi-word club reads correctly and one rename updates every report.
+const CLUB_NAMES = Object.fromEntries(LOCATION_NAMES.map(n => [n.toLowerCase(), n]))
+const CLUB_LABEL = s => (s ? (CLUB_NAMES[s] || s.charAt(0).toUpperCase() + s.slice(1)) : s)
+
+// Four ways to read the same window. Overview answers "how are we doing"; the
+// other three answer questions an average cannot.
+const VIEWS = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'job', label: 'By Job' },
+  { key: 'day', label: 'By Day' },
+  { key: 'person', label: 'By Person' },
+]
 
 // Beyond this a feed is stale enough that a club's "missed" work may simply not
 // have been reported yet.
@@ -37,6 +51,7 @@ function hoursSince(iso) {
 
 export default function Compliance({ startDate, endDate, locationSlug }) {
   const [asTable, setAsTable] = useState(false)
+  const [view, setView] = useState('overview')
 
   const query = useMemo(() => {
     const p = new URLSearchParams({ clubs: locationSlug || 'all' })
@@ -68,7 +83,7 @@ export default function Compliance({ startDate, endDate, locationSlug }) {
 
   return (
     <div className="space-y-3">
-      <Toolbar asTable={asTable} setAsTable={setAsTable} />
+      <Toolbar asTable={asTable} setAsTable={setAsTable} view={view} setView={setView} />
 
       {loading && <DesktopLoading />}
 
@@ -126,7 +141,11 @@ export default function Compliance({ startDate, endDate, locationSlug }) {
             </div>
           </div>
 
-          {asTable ? (
+          {view === 'job' && <ByJob rows={data.byJob || []} />}
+          {view === 'day' && <ByDay rows={data.byDate || []} />}
+          {view === 'person' && <ByPerson rows={data.byPerson || []} />}
+
+          {view === 'overview' && (asTable ? (
             <TableView byClub={byClub} months={data.months || []} checklists={checklists} />
           ) : (
             <>
@@ -202,9 +221,146 @@ export default function Compliance({ startDate, endDate, locationSlug }) {
                 </div>
               )}
             </>
-          )}
+          ))}
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * How often each checklist actually gets done.
+ *
+ * A COUNT OF COMPLETIONS, not a rate: the question is "is this getting done at
+ * all". A checklist done twice out of two is not the same achievement as one
+ * done 88 times out of 88, so both numbers travel together.
+ */
+function ByJob({ rows }) {
+  return (
+    <div className="bg-surface rounded-xl border border-border p-3 overflow-x-auto">
+      <div className="flex items-baseline justify-between gap-3 mb-2">
+        <p className="text-xs font-bold text-text-primary">Completions by Job</p>
+        <p className="text-[11px] text-text-muted">most completed first</p>
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-[11px] uppercase tracking-wide text-text-muted border-b border-border">
+            <th className="text-left font-semibold py-1.5">Job</th>
+            <th className="text-left font-semibold py-1.5">Club</th>
+            <th className="text-right font-semibold py-1.5">Completed</th>
+            <th className="text-right font-semibold py-1.5">Missed</th>
+            <th className="text-right font-semibold py-1.5">Scheduled</th>
+            <th className="text-right font-semibold py-1.5">Task %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={`${r.name}-${r.slug}-${i}`} className="border-b border-border/60 last:border-0">
+              <td className="py-1.5 text-text-primary">{r.name}</td>
+              <td className="py-1.5 text-text-muted">{CLUB_LABEL(r.slug)}</td>
+              <td className="py-1.5 text-right tabular-nums text-text-primary font-semibold">{fmtInt(r.completed)}</td>
+              <td className={`py-1.5 text-right tabular-nums ${r.missed > 0 ? 'text-wcs-red' : 'text-text-muted'}`}>
+                {fmtInt(r.missed)}
+              </td>
+              <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(r.decided)}</td>
+              <td className="py-1.5 text-right tabular-nums text-text-muted">
+                {r.taskPct === null ? 'N/A' : `${r.taskPct}%`}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.length === 0 && <p className="text-sm text-text-muted text-center py-8">No jobs in this selection.</p>}
+    </div>
+  )
+}
+
+/** What got done on a given day, newest first. */
+function ByDay({ rows }) {
+  return (
+    <div className="bg-surface rounded-xl border border-border p-3 overflow-x-auto">
+      <div className="flex items-baseline justify-between gap-3 mb-2">
+        <p className="text-xs font-bold text-text-primary">By Day</p>
+        <p className="text-[11px] text-text-muted">newest first</p>
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-[11px] uppercase tracking-wide text-text-muted border-b border-border">
+            <th className="text-left font-semibold py-1.5">Date</th>
+            <th className="text-right font-semibold py-1.5">Completed</th>
+            <th className="text-right font-semibold py-1.5">Missed</th>
+            <th className="text-right font-semibold py-1.5">Scheduled</th>
+            {/* Shown so a thin afternoon is not mistaken for a bad day: those
+                jobs are not due yet. */}
+            <th className="text-right font-semibold py-1.5">Not Yet Due</th>
+            <th className="text-right font-semibold py-1.5">Task %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.date} className="border-b border-border/60 last:border-0">
+              <td className="py-1.5 text-text-primary">{r.date}</td>
+              <td className="py-1.5 text-right tabular-nums text-text-primary font-semibold">{fmtInt(r.completed)}</td>
+              <td className={`py-1.5 text-right tabular-nums ${r.missed > 0 ? 'text-wcs-red' : 'text-text-muted'}`}>
+                {fmtInt(r.missed)}
+              </td>
+              <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(r.decided)}</td>
+              <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(r.notYetDue)}</td>
+              <td className="py-1.5 text-right tabular-nums text-text-muted">
+                {r.taskPct === null ? 'N/A' : `${r.taskPct}%`}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.length === 0 && <p className="text-sm text-text-muted text-center py-8">No days in this selection.</p>}
+    </div>
+  )
+}
+
+/**
+ * Who is participating.
+ *
+ * PARTICIPATION, NOT QUALITY. This counts what somebody completed, not how well
+ * they did it, and the header says so — read as a performance ranking it would
+ * punish whoever works the quiet shifts.
+ */
+function ByPerson({ rows }) {
+  return (
+    <div className="bg-surface rounded-xl border border-border p-3 overflow-x-auto">
+      <div className="flex items-baseline justify-between gap-3 mb-1">
+        <p className="text-xs font-bold text-text-primary">By Person</p>
+        <p className="text-[11px] text-text-muted">most active first</p>
+      </div>
+      <p className="text-[11px] text-text-muted mb-2">
+        How much each person completed, not how well. Steps with no recorded name are not
+        counted, so this shows who is credited rather than everything that happened.
+      </p>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-[11px] uppercase tracking-wide text-text-muted border-b border-border">
+            <th className="text-left font-semibold py-1.5">Name</th>
+            <th className="text-left font-semibold py-1.5">Clubs</th>
+            <th className="text-right font-semibold py-1.5">Jobs</th>
+            <th className="text-right font-semibold py-1.5">Steps</th>
+            <th className="text-right font-semibold py-1.5">Days Active</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={`${r.person}-${i}`} className="border-b border-border/60 last:border-0">
+              <td className="py-1.5 text-text-primary">{r.person}</td>
+              <td className="py-1.5 text-text-muted">
+                {String(r.clubs || '').split(',').map(x => CLUB_LABEL(x.trim())).join(', ')}
+              </td>
+              <td className="py-1.5 text-right tabular-nums text-text-primary font-semibold">{fmtInt(r.jobsTouched)}</td>
+              <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(r.stepsDone)}</td>
+              <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(r.daysActive)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.length === 0 && <p className="text-sm text-text-muted text-center py-8">No named activity in this selection.</p>}
     </div>
   )
 }
@@ -301,19 +457,30 @@ function TableView({ byClub, months, checklists }) {
   )
 }
 
-function Toolbar({ asTable, setAsTable }) {
+function Toolbar({ asTable, setAsTable, view, setView }) {
   const [slot, setSlot] = useState(null)
   useEffect(() => { setSlot(document.getElementById(TOOLBAR_SLOT_ID)) }, [])
   if (!slot) return null
+  const cls = 'px-2.5 py-1.5 rounded-lg text-xs bg-bg border border-border text-text-primary normal-case tracking-normal font-medium'
   return createPortal(
     <div className="flex items-center gap-3 flex-wrap">
-      <button
-        type="button"
-        onClick={() => setAsTable(v => !v)}
-        className="text-xs font-semibold text-text-muted hover:text-wcs-red transition-colors"
-      >
-        {asTable ? 'Show charts' : 'Show table'}
-      </button>
+      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-text-muted uppercase tracking-wide">
+        View
+        <select value={view} onChange={e => setView(e.target.value)} className={cls}>
+          {VIEWS.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}
+        </select>
+      </label>
+      {/* The chart/table switch only means anything on the Overview; the other
+          three views are tables by nature. */}
+      {view === 'overview' && (
+        <button
+          type="button"
+          onClick={() => setAsTable(v => !v)}
+          className="text-xs font-semibold text-text-muted hover:text-wcs-red transition-colors"
+        >
+          {asTable ? 'Show charts' : 'Show table'}
+        </button>
+      )}
     </div>,
     slot
   )
