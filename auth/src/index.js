@@ -134,6 +134,8 @@ app.use('/analytics/revenue-by-profit-center', require('./routes/analyticsRevenu
 app.use('/analytics/revenue-trends', require('./routes/analyticsRevenueTrends'))
 app.use('/analytics/first-pt-purchase', require('./routes/analyticsFirstPtPurchase'))
 app.use('/analytics/trainer-performance', require('./routes/analyticsTrainerPerformance'))
+app.use('/analytics/membership-snapshot', require('./routes/analyticsMembershipSnapshot'))
+app.use('/analytics/trainer-snapshot', require('./routes/analyticsTrainerSnapshot'))
 app.use('/sync-status', require('./routes/syncStatus'))
 app.use('/day-one-program', require('./routes/dayOneProgram'))
 app.use('/day-one-tracker', require('./routes/dayOneTracker'))
