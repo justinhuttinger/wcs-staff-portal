@@ -296,7 +296,10 @@ export function BreakdownPanel({ title, rows, showValue = false, empty = 'Nothin
                   className="block h-full rounded-full"
                   style={{
                     width: `${max ? Math.max(2, (r.count / max) * 100) : 0}%`,
-                    background: colorFor(0),
+                    // colorFor(name, index) -- both arguments. colorFor(0)
+                    // read the 0 as the NAME and returned undefined, leaving
+                    // every bar with no fill at all.
+                    background: colorFor(null, 0),
                   }}
                 />
               </span>
