@@ -25,8 +25,69 @@ if (typeof document !== 'undefined' && !document.getElementById('wcs-shimmer-key
       0% { background-position: 200% 0; }
       100% { background-position: -200% 0; }
     }
+    /* Breathing, not spinning. A spinner implies progress it cannot know;
+       this reads as "working" without promising a finish line. */
+    @keyframes wcs-logo-pulse {
+      0%, 100% { transform: scale(1); opacity: 0.85; }
+      50%      { transform: scale(1.06); opacity: 1; }
+    }
+    @keyframes wcs-ring {
+      0%   { transform: scale(0.92); opacity: 0.55; }
+      70%  { transform: scale(1.28); opacity: 0; }
+      100% { transform: scale(1.28); opacity: 0; }
+    }
+    @keyframes wcs-dots {
+      0%, 20%  { content: ''; }
+      40%      { content: '.'; }
+      60%      { content: '..'; }
+      80%, 100%{ content: '...'; }
+    }
+    .wcs-dots::after {
+      content: '';
+      animation: wcs-dots 1.6s steps(1, end) infinite;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .wcs-loading-logo, .wcs-loading-ring { animation: none !important; }
+      .wcs-dots::after { animation: none; content: '...'; }
+    }
   `
   document.head.appendChild(style)
+}
+
+/**
+ * The branded header that sits above every report skeleton.
+ *
+ * Shown by default: DesktopLoading is the report loader, and a bare shimmer
+ * gives no sign that anything is happening on a slow report. Pass
+ * branded={false} for the inline widget cases where a logo would be too loud.
+ *
+ * `retrying` is surfaced rather than hidden. A request that silently retries
+ * for two seconds looks identical to one that has hung, and a user who is told
+ * "still trying" waits; one who is told nothing reloads the page.
+ */
+export function LoadingBrand({ label = 'Getting your report', retrying = false }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-8" role="status" aria-live="polite">
+      <div className="relative h-14 w-14 mb-3">
+        <span
+          className="wcs-loading-ring absolute inset-0 rounded-full border-2 border-wcs-red/40"
+          style={{ animation: 'wcs-ring 1.8s ease-out infinite' }}
+        />
+        <img
+          src="/wcs-logo.png"
+          alt=""
+          className="wcs-loading-logo relative h-14 w-14 rounded-full"
+          style={{ animation: 'wcs-logo-pulse 1.8s ease-in-out infinite' }}
+        />
+      </div>
+      <p className="text-sm font-semibold text-text-primary">
+        <span className="wcs-dots">{retrying ? 'Still working on it' : label}</span>
+      </p>
+      <p className="text-[11px] text-text-muted mt-0.5">
+        {retrying ? 'The last attempt did not come back, trying again' : 'Pulling the numbers together'}
+      </p>
+    </div>
+  )
 }
 
 function Bar({ width = '100%', height = 12, className = '' }) {
@@ -142,10 +203,13 @@ const VARIANTS = {
   'card-grid': CardGridSkeleton,
 }
 
-export default function DesktopLoading({ variant = 'list', count, className = '' }) {
+export default function DesktopLoading({
+  variant = 'list', count, className = '', branded = true, label, retrying = false,
+}) {
   const Component = VARIANTS[variant] || VARIANTS.list
   return (
     <div className={className}>
+      {branded && <LoadingBrand label={label} retrying={retrying} />}
       <Component count={count} />
     </div>
   )
