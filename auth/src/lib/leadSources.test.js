@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { buildLeadSources } = require('./leadSources')
+const { buildLeadSources, claimedCoverageNote } = require('./leadSources')
 
 // The funnel row: opportunities only. Not Interested and Day Pass are NOT here
 // — both outcomes delete the opportunity, so they arrive per contact.
@@ -120,7 +120,7 @@ test('outcomes are folded on for display but never into the funnel maths', () =>
   const out = buildLeadSources(
     [row('Website', { leads: 100, won: 20 })],
     null,
-    { outcomes: [{ source: 'Website', not_interested: 44, day_passes: 43 }] }
+    { outcomes: [{ source: 'Website', outcomes: 60, not_interested: 44, day_passes: 43 }] }
   )
   const s = out.sources[0]
   assert.equal(s.dayPasses, 43)
@@ -131,6 +131,11 @@ test('outcomes are folded on for display but never into the funnel maths', () =>
   assert.equal(out.totals.leads, 100)
   assert.equal(out.totals.dayPasses, 43)
   assert.equal(out.totals.notInterested, 44)
+  // The combined figure comes from SQL, which OR'd it over distinct contacts.
+  // It is NOT 44 + 43: anyone who is both is one person.
+  assert.equal(s.outcomes, 60)
+  assert.equal(out.totals.outcomes, 60)
+  assert.notEqual(out.totals.outcomes, 44 + 43)
   // They are additional to the funnel, not a slice of it: the opportunity is
   // gone, so these people already left the 100.
   assert.ok(out.outcomesNote.includes('additional to the funnel'))
@@ -138,13 +143,44 @@ test('outcomes are folded on for display but never into the funnel maths', () =>
 
 test('a source with outcomes but no leads still totals them', () => {
   const out = buildLeadSources([row('Website', { leads: 10 })], null,
-    { outcomes: [{ source: 'Walk-in / Manual', not_interested: 0, day_passes: 12 }] })
+    { outcomes: [{ source: 'Walk-in / Manual', outcomes: 12, not_interested: 0, day_passes: 12 }] })
   // The day pass total counts every source's, even one absent from the funnel.
   assert.equal(out.totals.dayPasses, 12)
+  assert.equal(out.totals.outcomes, 12)
   assert.equal(out.sources.find(s => s.source === 'Website').dayPasses, 0)
 })
 
 test('tour rate is reported per lead', () => {
   const out = buildLeadSources([row('Website', { leads: 148, tours: 92 })], null, {})
   assert.equal(out.sources[0].tourRate, 62.2)
+})
+
+test('the combined outcome is never recomputed as a sum of its parts', () => {
+  // Real August figures for Website: 347 not-interested, 335 day passes, 291
+  // people who are both. Adding the columns reports 682 where the truth is 391.
+  const out = buildLeadSources([row('Website')], null, {
+    outcomes: [{ source: 'Website', outcomes: 391, not_interested: 347, day_passes: 335 }],
+  })
+  assert.equal(out.totals.outcomes, 391)
+  assert.notEqual(out.totals.outcomes, 347 + 335)
+})
+
+test('claimed coverage describes the window on screen, not a constant', () => {
+  // The old note hardcoded "about 42%", an average over a period in which the
+  // question did not exist. Marketing Source became mandatory in May 2026.
+  const august = claimedCoverageNote({ total: 1900, answered: 644 })
+  assert.match(august, /33\.9%/)
+  assert.match(august, /644 of 1,900/)
+
+  const january = claimedCoverageNote({ total: 1350, answered: 1 })
+  assert.match(january, /0\.1%/)
+  // Both mention why an early window reads low, so a reader does not conclude
+  // the field is broken.
+  assert.match(january, /May 2026/)
+})
+
+test('claimed coverage survives an empty window without dividing by zero', () => {
+  const note = claimedCoverageNote({ total: 0, answered: 0 })
+  assert.ok(note.length > 0)
+  assert.doesNotMatch(note, /NaN|null|undefined/)
 })
