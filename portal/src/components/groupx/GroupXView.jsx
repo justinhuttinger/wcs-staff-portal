@@ -4,10 +4,8 @@ import { startOfWeek, addDays, toISODate, fmtTime12, parseLocalTimestamp, MONTH_
 import WeekGrid from './WeekGrid'
 import CreateClassModal from './CreateClassModal'
 import BoardLinks from './BoardLinks'
-import GroupXReport from './GroupXReport'
 import NewClassBadges from './NewClassBadges'
 import SeriesList from './SeriesList'
-import AttendanceModal from './AttendanceModal'
 import PrintScheduleModal from '../schedule/PrintScheduleModal'
 
 function weekLabel(weekStart) {
@@ -39,8 +37,6 @@ export default function GroupXView() {
   const [badgeBusy, setBadgeBusy] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [seriesListOpen, setSeriesListOpen] = useState(false)
-  const [tab, setTab] = useState('calendar')
-  const [attendanceFor, setAttendanceFor] = useState(null)
 
   useEffect(() => {
     api('/group-x/clubs')
@@ -149,20 +145,6 @@ export default function GroupXView() {
 
   return (
     <div className="space-y-4">
-      <div className="bg-surface rounded-xl border border-border p-1.5 flex gap-1.5">
-        {['calendar', 'performance'].map(t => (
-          <button key={t} type="button" onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm rounded-lg capitalize transition ${
-              tab === t ? 'bg-wcs-red text-white font-medium' : 'text-text-primary hover:bg-bg'
-            }`}>
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'performance' && <GroupXReport clubs={clubs} />}
-
-      {tab === 'calendar' && (<>
       <div className="bg-surface rounded-xl border border-border p-4 space-y-3">
         <div className="flex flex-wrap gap-1.5">
           {clubs.map(c => (
@@ -244,36 +226,6 @@ export default function GroupXView() {
 
       {linksOpen && <BoardLinks clubs={clubs} />}
 
-      {(() => {
-        const pending = classes.filter(c => c.needs_attendance)
-        // Nothing to chase means nothing rendered. We never show a card saying
-        // everything is logged.
-        if (pending.length === 0) return null
-        return (
-          <div className="bg-surface rounded-xl border border-border p-4">
-            <h3 className="font-semibold text-text-primary mb-2">
-              {pending.length} {pending.length === 1 ? 'class needs' : 'classes need'} an attendance count
-            </h3>
-            <div className="divide-y divide-border">
-              {pending.map(c => {
-                const p = parseLocalTimestamp(c.event_timestamp_local)
-                return (
-                  <button key={c.event_id} type="button" onClick={() => setAttendanceFor(c)}
-                    className="w-full text-left py-2 flex flex-wrap items-baseline gap-x-2 hover:bg-bg rounded px-1">
-                    <span className="text-sm font-medium text-text-primary">{c.class_name}</span>
-                    <span className="text-xs text-text-muted">
-                      {p ? `${p.date} at ${fmtTime12(p.hour, p.min)}` : c.event_timestamp_local}
-                      {c.instructor_name ? ` · ${c.instructor_name}` : ''}
-                    </span>
-                    <span className="ml-auto text-xs text-wcs-red font-medium">Add count</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )
-      })()}
-
       <WeekGrid
         weekStart={weekStart}
         classes={classes}
@@ -331,10 +283,6 @@ export default function GroupXView() {
                   ? 'Saving...'
                   : selected.is_new && selected.new_source === 'session' ? 'Remove New badge' : 'Mark as new'}
               </button>
-              <button type="button" onClick={() => { setAttendanceFor(selected); setSelected(null) }}
-                className="px-4 py-2 text-sm rounded-lg border border-border text-text-primary hover:bg-bg font-medium">
-                {selected.headcount != null ? 'Edit count' : 'Add count'}
-              </button>
               <button type="button" onClick={cancelClass} disabled={cancelBusy}
                 className="px-4 py-2 text-sm rounded-lg border border-red-300 bg-red-50 text-red-900 font-medium hover:bg-red-100 disabled:opacity-50">
                 {cancelBusy ? 'Cancelling...' : 'Cancel class'}
@@ -342,17 +290,6 @@ export default function GroupXView() {
             </div>
           </div>
         </div>
-      )}
-
-      </>)}
-
-      {attendanceFor && (
-        <AttendanceModal
-          club={club}
-          classEvent={attendanceFor}
-          onClose={() => setAttendanceFor(null)}
-          onSaved={async () => { setAttendanceFor(null); await load() }}
-        />
       )}
 
 
