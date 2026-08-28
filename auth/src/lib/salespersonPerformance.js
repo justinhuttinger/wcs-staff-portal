@@ -124,6 +124,45 @@ const VIEW_BY = ['club_salesperson', 'club', 'salesperson']
  * only activity is a tour) falls back to the whole selection, because refusing
  * to answer would blank the column for the very rows the reader came for.
  */
+// How long after a tour a signup is still credited to it. Long enough to catch
+// somebody thinking it over across a pay cycle, short enough that an unrelated
+// join months later is not credited to a tour they barely remember.
+const TOUR_ATTRIBUTION_DAYS = 30
+
+/**
+ * Days from a tour to that person's membership starting, or null if they never
+ * did within the window.
+ *
+ * 0 means they signed the same day. The tour is matched on email, phone or
+ * name rather than on abc_member_id, because that id is only stamped when the
+ * kiosk already recognised the person — which is to say, on existing members,
+ * exactly the population whose conversion is NOT in question. A first-time
+ * prospect has no ABC id until they sign.
+ *
+ * A member whose since_date precedes the tour cannot match, since the search is
+ * bounded below by the tour date. That is what keeps somebody who was already a
+ * member from being counted as a fresh conversion.
+ */
+function daysToSign(tour, joinerIndex) {
+  const tourDay = String(tour.completed_at || '').slice(0, 10)
+  if (!tourDay) return null
+  const member = matchMember(joinerIndex, null, {
+    contact_email: tour.contact_email,
+    contact_phone: tour.contact_phone,
+    contact_name: tour.contact_name,
+  })
+  const joined = member && (member.since_date || member.sign_date)
+  if (!joined) return null
+  const day = String(joined).slice(0, 10)
+  const diff = Math.round(
+    (Date.parse(day + 'T00:00:00Z') - Date.parse(tourDay + 'T00:00:00Z')) / 86400000
+  )
+  if (!Number.isFinite(diff)) return null
+  // A join BEFORE the tour is not a conversion; they were already a member.
+  if (diff < 0 || diff > TOUR_ATTRIBUTION_DAYS) return null
+  return diff
+}
+
 function anyIn(row, configuredClubs) {
   if (configuredClubs.size === 0) return false
   if (row.clubNumbers.size === 0) return true
@@ -160,7 +199,10 @@ function buildMemberIndex(members) {
 function matchMember(index, contact, dayOne) {
   const em = (contact?.email || dayOne.contact_email || '').trim().toLowerCase()
   if (em && index.byEmail.has(em)) return index.byEmail.get(em)
-  const ph = digits10(contact?.phone)
+  // Falls back to the row's own phone. Day Ones almost never carry one (3 of
+  // 1,696), but a tour check-in always does, and it is the field most likely to
+  // identify a walk-in prospect who is not in GHL at all.
+  const ph = digits10(contact?.phone || dayOne.contact_phone)
   if (ph && index.byPhone.has(ph)) return index.byPhone.get(ph)
   const nm = personKey(
     contact ? `${contact.first_name || ''} ${contact.last_name || ''}` : dayOne.contact_name
@@ -179,7 +221,6 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
   const vipClubs = extras.vips?.configuredClubs || new Set()
   const tourRows = extras.tours?.tours || []
   const tourClubs = extras.tours?.configuredClubs || new Set()
-  const saleOutcomes = extras.tours?.saleOutcomes || new Set()
   // --- filter members -----------------------------------------------------
   const kept = members.filter(m => {
     if (filters.exclusion !== 'include' && isExcludedType(m.membership_type, skipList)) return false
@@ -235,6 +276,7 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
         vipCount: 0,
         toursGiven: 0,
         toursConverted: 0,
+        daysToSign: [],
         clubNumbers: new Set(),
         memberIds: [],
       })
@@ -288,14 +330,31 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
   }
 
   // Tours are credited to whoever GAVE the tour, which is not necessarily
-  // whoever closed the sale or whoever closed the card out at the desk.
+  // whoever closed the sale or whoever closed the card out at the desk. That
+  // separation is the point: "somebody I toured signed up" is a fact about the
+  // tour, whatever name ends up on the agreement.
+  //
+  // CONVERSION IS AN ACTUAL SIGNUP, NOT THE OUTCOME PICKED AT THE DESK. The
+  // desk records what the person left with, in the moment. Somebody who tours
+  // on Monday and signs on Wednesday leaves with nothing on Monday, so reading
+  // the desk outcome would mark them a failure for ever and never look again.
+  // The tour is instead matched against members who joined, and the gap between
+  // the two dates is the answer.
+  const joinerIndex = buildMemberIndex(extras.tours?.joiners || [])
   for (const t of tourRows) {
     const club = CLUB_BY_NUMBER[t.club_number]
     if (!club) continue
     const row = rowFor(club.slug, t.given_by_name)
     row.clubNumbers.add(t.club_number)
     row.toursGiven += 1
-    if (saleOutcomes.has(t.outcome)) row.toursConverted += 1
+
+    const days = daysToSign(t, joinerIndex)
+    if (days === null) continue
+    // Conversion is the SAME-DAY close: did they join off the back of the tour
+    // they just took. A later signup is still real and is carried by the
+    // average below, but it is not the same achievement.
+    if (days === 0) row.toursConverted += 1
+    row.daysToSign.push(days)
   }
 
   // --- denominator for the "% of Total" column ----------------------------
@@ -334,8 +393,19 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     // that has never recorded one, because every window before 2026-08-28 is
     // empty by construction rather than because nobody gave a tour.
     toursGiven: anyIn(row, tourClubs) ? row.toursGiven : null,
+    // Same-day signups over tours given. Not over new member units: a tour is
+    // its own thing and is credited to whoever gave it, whatever name went on
+    // the agreement.
     tourConversionRate: anyIn(row, tourClubs) ? pct(row.toursConverted, row.toursGiven) : null,
-    avgDaysToConversion: null,
+    // Averaged over the tours that DID lead to a signup, not over all tours —
+    // dividing by tours that never converted would drag this toward zero and
+    // make a slow month look fast.
+    avgDaysToConversion: row.daysToSign.length
+      ? Math.round((row.daysToSign.reduce((a, b) => a + b, 0) / row.daysToSign.length) * 10) / 10
+      : null,
+    // How many tours that average is over, so the club total can weight rows by
+    // their volume instead of averaging averages.
+    daysCount: row.daysToSign.length,
     dayOneBookCount: row.dayOneBookCount,
     dayOneBookPct: pct(row.dayOneBookCount, row.newMemberUnits),
     bookOnJoinDateCount: row.bookOnJoinDateCount,
@@ -366,9 +436,16 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     acc.toursConverted += r.tourConversionRate === null
       ? 0
       : Math.round((r.tourConversionRate / 100) * (r.toursGiven || 0))
+    // Days are pooled as a SUM and a COUNT, never as an average of averages —
+    // that would weight a person with one tour the same as one with fifty.
+    if (r.avgDaysToConversion !== null) {
+      acc.daysSum += r.avgDaysToConversion * r.daysCount
+      acc.daysCount += r.daysCount
+    }
     return acc
   }, { newMemberUnits: 0, totalNewDuesDraft: 0, dayOneBookCount: 0, bookOnJoinDateCount: 0,
-       achUnits: 0, achKnownUnits: 0, vipCount: 0, toursGiven: 0, toursConverted: 0 })
+       achUnits: 0, achKnownUnits: 0, vipCount: 0, toursGiven: 0, toursConverted: 0,
+       daysSum: 0, daysCount: 0 })
 
   const anyVip = out.some(r => r.vipCount !== null)
   const anyTour = out.some(r => r.toursGiven !== null)
@@ -382,7 +459,9 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
       : null,
     toursGiven: anyTour ? totals.toursGiven : null,
     tourConversionRate: anyTour ? pct(totals.toursConverted, totals.toursGiven) : null,
-    avgDaysToConversion: null,
+    avgDaysToConversion: totals.daysCount
+      ? Math.round((totals.daysSum / totals.daysCount) * 10) / 10
+      : null,
     vipCount: anyVip ? totals.vipCount : null,
     vipPct: anyVip ? pct(totals.vipCount, totals.newMemberUnits) : null,
     dayOneBookCount: totals.dayOneBookCount,

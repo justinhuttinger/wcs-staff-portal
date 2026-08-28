@@ -8,6 +8,12 @@
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('./supabaseFetchAll')
 
+// Kept in step with TOUR_ATTRIBUTION_DAYS in salespersonPerformance: this
+// decides how far past the window joiners are loaded, that one decides how far
+// past a tour a signup still counts. If they disagree the report silently
+// stops matching conversions near the boundary.
+const TOUR_ATTRIBUTION_DAYS = 30
+
 const MEMBER_FIELDS = [
   'id', 'club_number', 'sales_person_name', 'sign_date', 'membership_type',
   'membership_type_abc_code', 'agreement_number', 'since_date',
@@ -102,13 +108,24 @@ async function loadVipCredits(clubNumbers, start, end) {
  *
  * Only `completed` counts. A row still at `ready` is a check-in nobody closed
  * out, not a tour that happened.
+ *
+ * The outcome the desk picked is deliberately NOT what decides a conversion —
+ * see daysToSign in salespersonPerformance. It is loaded only so the row can be
+ * shown; conversion is whether the person actually joined.
  */
 async function loadTourCompletions(clubNumbers, start, end) {
-  const [tours, everRows, outcomes] = await Promise.all([
+  // Members who joined between the window opening and 30 days after it closes.
+  // The tail matters: a tour on the last day of the month can convert well into
+  // the next one, and without it every late tour would be scored a failure by an
+  // accident of where the report boundary fell.
+  const joinerEnd = new Date(Date.parse(end + 'T00:00:00Z') + TOUR_ATTRIBUTION_DAYS * 86400000)
+    .toISOString().slice(0, 10)
+
+  const [tours, everRows, joiners] = await Promise.all([
     fetchAll(
       supabaseAdmin
         .from('tour_intakes')
-        .select('id, club_number, given_by_name, outcome, completed_at')
+        .select('id, club_number, given_by_name, outcome, completed_at, contact_email, contact_phone, contact_name')
         .eq('status', 'completed')
         .in('club_number', clubNumbers)
         .gte('completed_at', start + 'T00:00:00Z')
@@ -116,15 +133,23 @@ async function loadTourCompletions(clubNumbers, start, end) {
         .order('id', { ascending: true })
     ),
     fetchAll(supabaseAdmin.from('tour_intakes').select('club_number').eq('status', 'completed')),
-    // Which outcomes count as converted is read from the table, never
-    // hardcoded: migration 147 put no foreign key on outcome, and the whole
-    // vocabulary was already replaced once by #713.
-    fetchAll(supabaseAdmin.from('tour_outcomes').select('outcome, is_sale')),
+    // Matched on email, phone or name — NOT on abc_member_id, which is only
+    // stamped when the kiosk already recognised the person and so is present
+    // for existing members and absent for the prospects that matter.
+    fetchAll(
+      supabaseAdmin
+        .from('abc_members')
+        .select('id, club_number, since_date, sign_date, email, primary_phone, mobile_phone, first_name, last_name')
+        .in('club_number', clubNumbers)
+        .gte('since_date', start)
+        .lte('since_date', joinerEnd)
+        .order('id', { ascending: true })
+    ),
   ])
   return {
     tours,
+    joiners,
     configuredClubs: new Set(everRows.map(r => r.club_number)),
-    saleOutcomes: new Set(outcomes.filter(o => o.is_sale).map(o => o.outcome)),
   }
 }
 

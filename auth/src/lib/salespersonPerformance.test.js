@@ -418,10 +418,22 @@ const vipsFor = (credits, clubs) => ({
   credits,
   configuredClubs: new Set(clubs ?? credits.map(c => c.club_number)),
 })
-const toursFor = (tours, clubs) => ({
+const toursFor = (tours, clubs, joiners = []) => ({
   tours,
+  joiners,
   configuredClubs: new Set(clubs ?? tours.map(t => t.club_number)),
-  saleOutcomes: new Set(['Membership Sale']),
+})
+
+// A tour of somebody identifiable, on a given day.
+const tour = (over = {}) => ({
+  club_number: SALEM,
+  given_by_name: 'Katie Castlio',
+  outcome: 'Only Tour',
+  completed_at: '2026-08-10T18:00:00.000Z',
+  contact_email: 'walkin@example.com',
+  contact_phone: '5035550101',
+  contact_name: 'Walk In',
+  ...over,
 })
 
 const build = (members, extras) =>
@@ -481,18 +493,104 @@ test('somebody who only collected VIPs still gets a row', () => {
   assert.equal(row.vipPct, null)
 })
 
-test('tours are credited to who gave them, and only sale outcomes convert', () => {
-  const out = build([member({ club_number: SALEM })], {
-    tours: toursFor([
-      { club_number: SALEM, given_by_name: 'Katie Castlio', outcome: 'Membership Sale' },
-      { club_number: SALEM, given_by_name: 'Katie Castlio', outcome: 'Only Tour' },
-      { club_number: SALEM, given_by_name: 'Katie Castlio', outcome: 'Started Trial' },
-    ]),
+test('conversion is a real signup, not the outcome picked at the desk', () => {
+  const sameDay = member({
+    club_number: SALEM, id: 'm-same', since_date: '2026-08-10',
+    email: 'walkin@example.com', first_name: 'Walk', last_name: 'In',
   })
-  const row = out.rows.find(r => r.newMemberUnits === 1)
-  assert.equal(row.toursGiven, 3)
-  // Only Membership Sale carries is_sale; a trial pass is not a conversion.
-  assert.equal(row.tourConversionRate, 33.3)
+  const out = build([], {
+    // The desk recorded "Only Tour" — they left with nothing. They signed that
+    // same day anyway, which is what actually counts.
+    tours: toursFor([tour()], [SALEM], [sameDay]),
+  })
+  const row = out.rows.find(r => r.salesperson === 'Katie Castlio')
+  assert.equal(row.toursGiven, 1)
+  assert.equal(row.tourConversionRate, 100)
+  assert.equal(row.avgDaysToConversion, 0)
+})
+
+test('a signup two days later is logged but is not a same-day conversion', () => {
+  const later = member({
+    club_number: SALEM, id: 'm-late', since_date: '2026-08-12',
+    email: 'walkin@example.com', first_name: 'Walk', last_name: 'In',
+  })
+  const out = build([], { tours: toursFor([tour()], [SALEM], [later]) })
+  const row = out.rows.find(r => r.salesperson === 'Katie Castlio')
+  // Conversion % is the on-the-spot close, so this does not count toward it...
+  assert.equal(row.tourConversionRate, 0)
+  // ...but the fact that somebody they toured signed up is not lost.
+  assert.equal(row.avgDaysToConversion, 2)
+})
+
+test('a signup past the attribution window is not credited to the tour', () => {
+  const tooLate = member({
+    club_number: SALEM, id: 'm-far', since_date: '2026-10-01',
+    email: 'walkin@example.com', first_name: 'Walk', last_name: 'In',
+  })
+  const out = build([], { tours: toursFor([tour()], [SALEM], [tooLate]) })
+  const row = out.rows.find(r => r.salesperson === 'Katie Castlio')
+  assert.equal(row.tourConversionRate, 0)
+  // Seven weeks later is not a tour conversion, it is a coincidence.
+  assert.equal(row.avgDaysToConversion, null)
+})
+
+test('somebody who was already a member is not a fresh conversion', () => {
+  const existing = member({
+    club_number: SALEM, id: 'm-old', since_date: '2025-01-05',
+    email: 'walkin@example.com', first_name: 'Walk', last_name: 'In',
+  })
+  const out = build([], { tours: toursFor([tour()], [SALEM], [existing]) })
+  const row = out.rows.find(r => r.salesperson === 'Katie Castlio')
+  // Their membership predates the tour, so the tour did not cause it.
+  assert.equal(row.tourConversionRate, 0)
+  assert.equal(row.avgDaysToConversion, null)
+})
+
+test('the tour giver is credited even when someone else made the sale', () => {
+  const signed = member({
+    club_number: SALEM, id: 'm-x', since_date: '2026-08-10',
+    sales_person_name: 'A Different Closer',
+    email: 'walkin@example.com', first_name: 'Walk', last_name: 'In',
+  })
+  const out = build([signed], { tours: toursFor([tour()], [SALEM], [signed]) })
+  const giver = out.rows.find(r => r.salesperson === 'Katie Castlio')
+  const closer = out.rows.find(r => r.salesperson === 'A Different Closer')
+  // The tour belongs to whoever gave it, whatever name went on the agreement.
+  assert.equal(giver.tourConversionRate, 100)
+  // And the conversion is NOT bundled into the closer's units-based stats.
+  assert.equal(closer.newMemberUnits, 1)
+  assert.equal(closer.toursGiven, 0)
+})
+
+test('a prospect with no ABC id still matches, by phone', () => {
+  const byPhone = member({
+    club_number: SALEM, id: 'm-ph', since_date: '2026-08-10',
+    email: null, mobile_phone: '(503) 555-0101',
+    first_name: 'Someone', last_name: 'Else',
+  })
+  const out = build([], {
+    tours: toursFor([tour({ contact_email: null, contact_name: null })], [SALEM], [byPhone]),
+  })
+  // abc_member_id is only stamped for people the kiosk already knew, so a
+  // first-time prospect has to be found on their contact details.
+  assert.equal(out.rows.find(r => r.salesperson === 'Katie Castlio').tourConversionRate, 100)
+})
+
+test('the club average weights by tours, not by person', () => {
+  const j = (id, day) => member({
+    club_number: SALEM, id, since_date: day,
+    email: `${id}@example.com`, first_name: id, last_name: 'X',
+  })
+  const out = build([], {
+    tours: toursFor([
+      tour({ given_by_name: 'Busy', contact_email: 'a@example.com', contact_name: 'a X', contact_phone: null }),
+      tour({ given_by_name: 'Busy', contact_email: 'b@example.com', contact_name: 'b X', contact_phone: null }),
+      tour({ given_by_name: 'Quiet', contact_email: 'c@example.com', contact_name: 'c X', contact_phone: null }),
+    ], [SALEM], [j('a', '2026-08-10'), j('b', '2026-08-10'), j('c', '2026-08-20')]),
+  })
+  // Busy: two tours at 0 days. Quiet: one at 10. Averaging the two people's
+  // averages gives 5; weighting by tours gives the true 3.3.
+  assert.equal(out.summary.avgDaysToConversion, 3.3)
 })
 
 test('a club with no tour on record reports null rather than zero', () => {
