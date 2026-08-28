@@ -114,6 +114,11 @@ rather than something a report can follow through to a join.
 ## What happens after you post
 
 The tour lands in `tour_intakes` with `status = 'completed'`, and becomes
-available to the Analytics reports — the tour panel on Membership Snapshot and
-the tour columns on Salesperson Performance, both of which currently read N/A
-for want of exactly this data.
+available to the Analytics reports — Tours Given and Tour Conversion on
+Membership Snapshot, and the tour columns on Salesperson Performance. Both read
+as pending today for want of exactly this data, and start showing figures on
+the first completion you post.
+
+Only tours with `status = 'completed'` are counted. A row still sitting at
+`ready` is a check-in nobody closed out, not a tour that happened, so it is not
+reported as one.
