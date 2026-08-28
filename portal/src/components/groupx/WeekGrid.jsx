@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import {
   DAY_START_HOUR, DAY_END_HOUR, PX_PER_MINUTE, GRID_HEIGHT_PX, WEEKDAY_LABELS,
   addDays, toISODate, fmtHour, fmtTime12, parseLocalTimestamp, layoutLanes,
+  displayClassName, durationLabel,
 } from '../../lib/weekGrid'
 
 // Stable per-class-type color so a class keeps its color week to week. Hashing
@@ -141,13 +142,18 @@ export default function WeekGrid({ weekStart, classes, onClassClick, onSlotClick
                   const top = (c._startMin - DAY_START_HOUR * 60) * PX_PER_MINUTE
                   const height = Math.max(22, (c._endMin - c._startMin) * PX_PER_MINUTE - 2)
                   const widthPct = 100 / (c._laneCount || 1)
+                  // The "- 30"/"- 60" suffix on split-length classes is dropped
+                  // here and shown as a pill instead. Colour keys off the same
+                  // trimmed name so both lengths of one class share a colour.
+                  const label = displayClassName(c.class_name, c.duration_minutes)
+                  const lenLabel = durationLabel(c.duration_minutes)
                   return (
                     <button
                       key={c.event_id}
                       type="button"
                       onClick={e => { e.stopPropagation(); if (onClassClick) onClassClick(c) }}
-                      title={`${c.class_name} · ${fmtTime12(c._parsed.hour, c._parsed.min)}${c.instructor_name ? ' · ' + c.instructor_name : ''}`}
-                      className={`absolute rounded-md border px-1.5 py-1 text-left overflow-hidden hover:brightness-110 transition ${colorFor(c.class_name)}`}
+                      title={`${label}${lenLabel ? ` (${lenLabel})` : ''} · ${fmtTime12(c._parsed.hour, c._parsed.min)}${c.instructor_name ? ' · ' + c.instructor_name : ''}`}
+                      className={`absolute rounded-md border px-1.5 py-1 text-left overflow-hidden hover:brightness-110 transition ${colorFor(label)}`}
                       style={{
                         top,
                         height,
@@ -159,7 +165,12 @@ export default function WeekGrid({ weekStart, classes, onClassClick, onSlotClick
                         {fmtTime12(c._parsed.hour, c._parsed.min)}
                       </div>
                       <div className="text-[11px] font-semibold leading-tight truncate">
-                        {c.class_name}
+                        {label}
+                        {lenLabel && (
+                          <span className="ml-1 align-middle px-1 py-px rounded bg-black/25 text-[8px] font-bold tabular-nums leading-none whitespace-nowrap">
+                            {lenLabel}
+                          </span>
+                        )}
                       </div>
                       <div className="text-[10px] leading-tight truncate opacity-80">
                         {c.instructor_name || 'Unassigned'}

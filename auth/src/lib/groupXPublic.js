@@ -39,6 +39,25 @@ function time12(hhmm) {
   return `${h12}:${String(m).padStart(2, '0')} ${suffix}`
 }
 
+// ABC cannot set a class length per class — duration belongs to the event type
+// — so offering one class at two lengths means two event types, named
+// "Butts and Guts - 30" and "Butts and Guts - 60".
+//
+// Members should just see "Butts and Guts". The board already prints a "30 min"
+// tag beside any class that is not the usual 60 (see groupXBoard.js), so the
+// suffix would only repeat it.
+//
+// Narrow on purpose: only a trailing " - <number>" is dropped, and only when it
+// equals the class's own duration, so a genuine "Zone 2" survives intact.
+// Mirrors displayClassName in portal/src/lib/weekGrid.js.
+function displayClassName(name, durationMinutes) {
+  const raw = String(name || '')
+  const m = raw.match(/^(.*\S)\s*-\s*(\d{1,3})$/)
+  if (!m) return raw
+  if (durationMinutes != null && Number(m[2]) !== Number(durationMinutes)) return raw
+  return m[1]
+}
+
 // Members see a first name and a last initial. No full staff names, no ids.
 function shortenName(full) {
   if (!full) return null
@@ -56,7 +75,7 @@ function toPublicClass(c, opts) {
     // 6:00 - 7:00" is the useful fact. Group X shows a start; the class runs
     // as long as the class runs.
     time_label: showRange ? (timeRangeLabel(hhmm, c.duration_minutes) || time12(hhmm)) : time12(hhmm),
-    class_name: c.class_name,
+    class_name: displayClassName(c.class_name, c.duration_minutes),
     instructor: shortenName(c.instructor_name),
     duration_minutes: c.duration_minutes,
     // Always a boolean, never undefined, so the board never has to guess.
@@ -162,7 +181,7 @@ function publicCacheKeysForDates(clubNumber, dates, dayCount) {
 }
 
 module.exports = {
-  mondayOf, currentPacificDate, toPublicClass, isPublishable,
+  mondayOf, currentPacificDate, toPublicClass, isPublishable, displayClassName,
   buildDays, windowEnd, BOARD_DAYS,
   publicCacheKey, publicCacheKeysForDates,
   WEEKDAY_LABELS, WEEKDAY_BY_DOW, MONTH_LABELS,
