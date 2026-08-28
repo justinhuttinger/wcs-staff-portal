@@ -146,6 +146,140 @@ export function MonthlyTrend({ title, months, valueKey, format = 'int', subtitle
   )
 }
 
+
+/**
+ * Several series on one shared scale, over the same months.
+ *
+ * `series` is [{ key, label, points: [{ month, value }] }]. A null value BREAKS
+ * the line rather than joining across it — for audits that matters more than
+ * usual, because a month nobody audited is not a month that scored zero, and
+ * joining the gap would draw a dive that never happened.
+ *
+ * Colour is keyed to the series NAME, not its position, so adding a department
+ * or filtering to one club does not repaint the rest.
+ */
+export function MultiTrend({ title, months, series, format = 'pct', subtitle, height = 230 }) {
+  const [wrapRef, W] = useChartWidth()
+  const [hover, setHover] = useState(null)
+
+  const panelH = height
+  const plotW = Math.max(0, (W || 0) - PAD_L - PAD_R)
+  const plotH = panelH - PAD_T - PAD_B
+  const n = months.length
+
+  const values = series.flatMap(sr => sr.points.map(p => p.value)).filter(v => Number.isFinite(v))
+  const rawMax = Math.max(0, ...values)
+  const max = rawMax > 0 ? rawMax * 1.12 : 1
+
+  const x = i => (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW)
+  const y = v => plotH - (Math.max(0, Math.min(v, max)) / max) * plotH
+  const ticks = [0, 0.5, 1].map(f => f * max)
+
+  const activeMonth = hover !== null ? months[hover] : null
+
+  return (
+    <div className="bg-surface rounded-xl border border-border p-3">
+      <div className="flex items-baseline justify-between gap-3 mb-1">
+        <p className="text-xs font-bold text-text-primary">{title}</p>
+        <p className="text-[11px] text-text-muted tabular-nums truncate max-w-[65%] text-right">
+          {activeMonth ? fmtMonth(activeMonth) : (subtitle || `${n} months`)}
+        </p>
+      </div>
+
+      <div ref={wrapRef}>
+        {W ? (
+          <svg
+            viewBox={`0 0 ${W} ${panelH}`} width={W} height={panelH} className="block"
+            role="img" aria-label={title}
+            onMouseLeave={() => setHover(null)}
+            onMouseMove={e => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              const rel = (e.clientX - rect.left - PAD_L) / (plotW || 1)
+              setHover(Math.max(0, Math.min(n - 1, Math.round(rel * (n - 1)))))
+            }}
+          >
+            <g transform={`translate(${PAD_L},${PAD_T})`}>
+              {ticks.map((t, i) => (
+                <g key={i}>
+                  <line x1={0} x2={plotW} y1={y(t)} y2={y(t)} stroke="currentColor"
+                    className="text-border" strokeWidth="1" />
+                  <text x={-8} y={y(t) + 3} textAnchor="end" className="fill-text-muted"
+                    style={{ fontSize: 9 }}>{formatAxis(t, format)}</text>
+                </g>
+              ))}
+
+              {activeMonth && (
+                <line x1={x(hover)} x2={x(hover)} y1={0} y2={plotH} stroke="currentColor"
+                  className="text-text-muted" strokeWidth="1" strokeDasharray="2 2" />
+              )}
+
+              {series.map((sr, si) => {
+                const colour = colorFor(sr.key, si)
+                // Only runs of consecutive real readings are drawn.
+                const runs = []
+                let run = []
+                sr.points.forEach((pt, i) => {
+                  if (Number.isFinite(pt.value)) run.push({ i, v: pt.value })
+                  else if (run.length) { runs.push(run); run = [] }
+                })
+                if (run.length) runs.push(run)
+
+                return (
+                  <g key={sr.key}>
+                    {runs.map((r, ri) =>
+                      r.length === 1 ? (
+                        <circle key={ri} cx={x(r[0].i)} cy={y(r[0].v)} r="3.5" fill={colour} />
+                      ) : (
+                        <polyline key={ri} points={r.map(pt => `${x(pt.i)},${y(pt.v)}`).join(' ')}
+                          fill="none" stroke={colour} strokeWidth="2"
+                          strokeLinejoin="round" strokeLinecap="round" />
+                      )
+                    )}
+                    {sr.points.map((pt, i) =>
+                      Number.isFinite(pt.value) ? (
+                        <circle key={i} cx={x(i)} cy={y(pt.value)} r={hover === i ? 4 : 2.5} fill={colour}>
+                          <title>{`${sr.label} · ${fmtMonth(pt.month)}: ${formatValue(pt.value, format)}`}</title>
+                        </circle>
+                      ) : null
+                    )}
+                  </g>
+                )
+              })}
+            </g>
+
+            {months.map((m, i) =>
+              i % Math.ceil(Math.max(n, 1) / 12) === 0 ? (
+                <text key={m} x={PAD_L + x(i)} y={panelH - 6} textAnchor="middle"
+                  className="fill-text-muted" style={{ fontSize: 9 }}>{fmtMonth(m)}</text>
+              ) : null
+            )}
+          </svg>
+        ) : (
+          <div style={{ height: panelH }} />
+        )}
+      </div>
+
+      {/* A legend is always present for two or more series: identity is never
+          carried by colour alone. */}
+      {series.length > 0 && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 pt-2 mt-1 border-t border-border">
+          {series.map((sr, si) => (
+            <span key={sr.key} className="flex items-center gap-1.5 text-[11px] text-text-muted">
+              <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: colorFor(sr.key, si) }} />
+              {sr.label}
+              {activeMonth && (
+                <span className="tabular-nums text-text-primary">
+                  {formatValue(sr.points[hover]?.value, format)}
+                </span>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Vertical columns for a distribution read left to right (hour, weekday). */
 export function ShareColumns({ title, rows, labelFor, valueKey = 'share', format = 'pct', subtitle, seriesName = 'series' }) {
   const [wrapRef, W] = useChartWidth()

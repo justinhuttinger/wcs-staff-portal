@@ -206,3 +206,73 @@ test('QA-Cleaning is not an audit and is excluded', () => {
   assert.deepEqual(out.departments, ['PT Audit'])
   assert.equal(out.summary.avgScore, 90)
 })
+
+// --- the trailing-year, per-department trend -------------------------------
+//
+// Audits run about monthly per department per club, so a month's "average" is
+// one or two readings and lurches on a single low score. A year with one line
+// per department shows the real direction.
+
+test('the trend spans a full year regardless of the selected window', () => {
+  const out = buildAudits([r('PT Audit', 'salem', '2026-08-01', 80)], opts({ clubs: ['salem'] }))
+  assert.equal(out.trendMonths.length, 12)
+  assert.equal(out.trendMonths[11], '2026-08-01')
+  assert.equal(out.trendMonths[0], '2025-09-01')
+})
+
+test('a month with no audit is a gap, never a zero', () => {
+  // Joining across it would draw a dive that never happened.
+  const out = buildAudits([
+    r('PT Audit', 'salem', '2026-08-01', 80),
+    r('PT Audit', 'salem', '2026-06-01', 90),
+  ], opts({ clubs: ['salem'] }))
+
+  const pt = out.trendSeries.find(x => x.key === 'PT Audit')
+  const july = pt.points.find(p => p.month === '2026-07-01')
+  assert.equal(july.value, null)
+  assert.notEqual(july.value, 0)
+})
+
+test('several clubs average into ONE line per department', () => {
+  const out = buildAudits([
+    r('PT Audit', 'salem', '2026-08-01', 70),
+    r('PT Audit', 'eugene', '2026-08-05', 90),
+  ], opts({ clubs: ['salem', 'eugene'] }))
+
+  const pt = out.trendSeries.find(x => x.key === 'PT Audit')
+  const aug = pt.points.find(p => p.month === '2026-08-01')
+  assert.equal(aug.value, 80)      // mean of the clubs audited that month
+  assert.equal(aug.samples, 2)
+  assert.equal(out.trendSeries.length, 1)
+})
+
+test('a department with no audit all year is not drawn as an empty line', () => {
+  const out = buildAudits([
+    r('PT Audit', 'salem', '2026-08-01', 80),
+    r('Childcare Audit', 'salem', '2020-01-01', 60),
+  ], opts({ clubs: ['salem'] }))
+  assert.deepEqual(out.trendSeries.map(x => x.key), ['PT Audit'])
+})
+
+test('switched-off pairs stay out of the trend too', () => {
+  const out = buildAudits([
+    r('PT Audit', 'salem', '2026-08-01', 10),
+    r('PT Audit', 'eugene', '2026-08-01', 90),
+  ], opts({ clubs: ['salem', 'eugene'], toggles: { audit_off_pt_audit_salem: '1' } }))
+
+  const pt = out.trendSeries.find(x => x.key === 'PT Audit')
+  assert.equal(pt.points.find(p => p.month === '2026-08-01').value, 90)
+})
+
+test('the latest submission is carried so the cell can open its report', () => {
+  const out = buildAudits([
+    { department: 'PT Audit', location_slug: 'salem', submitted_date: '2026-08-01',
+      score_pct: 80, id: 'newer', report_url: 'https://example.test/b' },
+    { department: 'PT Audit', location_slug: 'salem', submitted_date: '2026-07-01',
+      score_pct: 70, id: 'older', report_url: 'https://example.test/a' },
+  ], opts({ clubs: ['salem'] }))
+
+  const cell = out.grid[0].cells[0]
+  assert.equal(cell.lastId, 'newer')
+  assert.equal(cell.lastReportUrl, 'https://example.test/b')
+})
