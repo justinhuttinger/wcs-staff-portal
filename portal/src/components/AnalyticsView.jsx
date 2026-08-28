@@ -287,7 +287,18 @@ function parseHash() {
 }
 
 export default function AnalyticsView({ user, onBack, location, isAdmin }) {
-  const defaultReportKey = ANALYTICS_REPORTS[0]?.key || null
+  // KPIs is the landing report. Topline only held the spot because it happened
+  // to be first in the registry, which meant the default silently moved
+  // whenever the list was reordered. Named explicitly, with a fallback so
+  // removing or renaming the KPIs entry degrades to the first report rather
+  // than to a blank pane.
+  //
+  // A #analytics/<report> deep link still wins, or shared links to a specific
+  // report would all land on KPIs instead.
+  const defaultReportKey =
+    ANALYTICS_REPORTS.find(r => r.key === 'kpis')?.key
+    || ANALYTICS_REPORTS[0]?.key
+    || null
   const [activeReport, setActiveReport] = useState(() => parseHash() || defaultReportKey)
   const initialRange = getQuickRange('this_month')
   const [startDate, setStartDate] = useState(initialRange.start)
