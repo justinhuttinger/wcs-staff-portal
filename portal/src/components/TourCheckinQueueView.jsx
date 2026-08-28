@@ -335,7 +335,8 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
-              <MemberBanner token={token} intakeId={intake.id} />
+              {/* Same "this is dealt with" path back to the queue as a save. */}
+              <MemberBanner token={token} intakeId={intake.id} onDismissed={onSaved} />
               <div>
                 <label className="block text-sm font-semibold text-text-primary mb-2">Tour member</label>
                 <select value={tourMember} onChange={e => setTourMember(e.target.value)}

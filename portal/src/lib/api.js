@@ -1206,6 +1206,14 @@ export const publicTour = {
   referral: (token, id) => publicFetch(`/public/tour/${token}/intake/${id}/referral`),
   // Whether this card is somebody who already trains here.
   abcStatus: (token, id) => publicFetch(`/public/tour/${token}/intake/${id}/abc-status`),
+  // Take a card off the queue WITHOUT recording a tour. The server has always
+  // accepted this; nothing ever called it, so the only way to clear a card was
+  // to complete it as a tour.
+  dismiss: (token, id) =>
+    publicFetch(`/public/tour/${token}/intake/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'cancelled' }),
+    }),
   // Backs the "who referred you" picker. Our synced abc_members, not ABC.
   memberSearch: (token, q) =>
     publicFetch(`/public/tour/${token}/member-search?q=${encodeURIComponent(q)}`),
