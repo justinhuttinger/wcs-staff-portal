@@ -7,15 +7,18 @@ const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { buildReport } = require('../lib/salespersonPerformance')
 const { loadSalespersonWindow } = require('../lib/salespersonData')
-const { buildProblemAreas } = require('../lib/problemAreas')
+const { buildProblemAreas, opsJobPct } = require('../lib/problemAreas')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
 // Problem Areas — Analytics (admin only)
 //
-// States what is wrong, per club, against thresholds set in Admin > Problem
-// Thresholds. Every other report answers a question you have to think to ask;
-// this one does the asking.
+// States what is wrong and WHOSE it is, against thresholds set in Admin >
+// Problem Thresholds. Every other report answers a question you have to think
+// to ask; this one does the asking.
+//
+// PEOPLE ONLY. A club figure is an average of the people in it, and averages
+// are what the other reports are for.
 //
 // A TRAILING WINDOW, NOT MONTH TO DATE. Run on the 2nd of the month, a
 // month-to-date report judges every club on two days of data and either cries
@@ -110,15 +113,31 @@ router.get('/', async (req, res) => {
 
         fetchAll(
           supabaseAdmin.from('operandio_api_jobs')
-            .select('location_slug, completed, skip_reason')
+            .select('id, location_slug, display_name, percent_complete, skip_reason')
             .gte('job_date', startISO)
             .lte('job_date', endISO)
             .in('location_slug', slugs)
         ),
       ])
 
-      return { window, dayOnes, openForms, ops, skipList }
+      // Who actually touched each below-standard job. completed_by on the JOB
+      // is only set once a job completes, so on a job that did not complete it
+      // is always null — the names have to come from the steps.
+      const opsIds = ops.filter(j => !j.skip_reason).map(j => j.id)
+      const steps = opsIds.length
+        ? await fetchAll(
+            supabaseAdmin.from('operandio_api_job_steps')
+              .select('job_id, completed_by')
+              .in('job_id', opsIds)
+              .not('completed_by', 'is', null)
+          )
+        : []
+
+      return { window, dayOnes, openForms, ops, steps, skipList }
     })
+
+    // Loaded before the folds below, which need the per-job completion bar.
+    const settings = await loadSettings()
 
     const report = buildReport(
       gathered.window.members, gathered.window.dayOnes, gathered.window.contactsById,
@@ -131,8 +150,8 @@ router.get('/', async (req, res) => {
     // Two tallies keyed the same way, so a club figure is always the sum of the
     // people in it rather than a separately computed number that can disagree.
     const norm = v => String(v || '').trim().replace(/\s+/g, ' ')
+    let formsUnowned = 0
 
-    const clubTally = new Map()
     const staffTally = new Map()
     const bump = (map, key, group, field, by = 1) => {
       const c = map.get(key) || {}
@@ -144,14 +163,9 @@ router.get('/', async (req, res) => {
     for (const d of gathered.dayOnes) {
       const trainer = norm(d.trainer_name)
       const staffKey = trainer ? `${d.location_slug}|${trainer}` : null
-      if (d.status === 'completed') {
-        bump(clubTally, d.location_slug, 'close', 'completed')
-        if (staffKey) bump(staffTally, staffKey, 'close', 'completed')
-      }
-      if (d.outcome === 'Sale') {
-        bump(clubTally, d.location_slug, 'close', 'sold')
-        if (staffKey) bump(staffTally, staffKey, 'close', 'sold')
-      }
+      if (!staffKey) continue
+      if (d.status === 'completed') bump(staffTally, staffKey, 'close', 'completed')
+      if (d.outcome === 'Sale') bump(staffTally, staffKey, 'close', 'sold')
     }
 
     for (const d of gathered.openForms) {
@@ -159,62 +173,52 @@ router.get('/', async (req, res) => {
       // completed with nobody recording what happened.
       const open = d.status === 'scheduled' || (d.status === 'completed' && !d.outcome)
       if (!open) continue
-      bump(clubTally, d.location_slug, 'open', 'n')
       const trainer = norm(d.trainer_name)
-      // A form with no trainer on it still counts against the CLUB. It just
-      // cannot be laid at anybody's door, and inventing an owner would be worse
-      // than leaving it at club level.
+      // A form with no trainer on it cannot be laid at anybody's door. Counted
+      // so the report can say how many went unattributed rather than dropping
+      // them without a word.
       if (trainer) bump(staffTally, `${d.location_slug}|${trainer}`, 'open', 'n')
+      else formsUnowned++
     }
 
+    // --- operational jobs, per job and per person -------------------------
+    //
+    // A job below the completion bar is flagged, and attributed to whoever
+    // actually worked it. A job NOBODY touched has no owner to name, so it
+    // stays at club level — 489 of 575 below-standard jobs in a 30-day window
+    // were never started, and pinning those on whoever happened to be assigned
+    // would blame people for work that was never picked up.
+    const jobBar = opsJobPct(settings)
+    const workersByJob = new Map()
+    for (const st of gathered.steps || []) {
+      const who = norm(st.completed_by)
+      if (!who) continue
+      const set = workersByJob.get(st.job_id) || new Set()
+      set.add(who)
+      workersByJob.set(st.job_id, set)
+    }
+
+    let opsUnowned = 0
+    let opsBelowTotal = 0
     for (const j of gathered.ops) {
       if (j.skip_reason) continue
-      bump(clubTally, j.location_slug, 'ops', 'due')
-      if (j.completed) bump(clubTally, j.location_slug, 'ops', 'done')
+      const below = Number(j.percent_complete ?? 0) < jobBar
+      if (!below) continue
+      opsBelowTotal++
+      const workers = [...(workersByJob.get(j.id) || [])]
+      if (workers.length === 0) {
+        opsUnowned++
+        continue
+      }
+      // Several people can have worked one job. Each is named, because the job
+      // is below standard whoever left it there.
+      for (const who of workers) {
+        bump(staffTally, `${j.location_slug}|${who}`, 'ops', 'below')
+        bump(staffTally, `${j.location_slug}|${who}`, 'ops', 'due')
+      }
     }
 
     const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : null)
-
-    // Membership metrics come from buildReport, which is now grouped by club
-    // AND salesperson, so the per-club figure is pooled from those same rows.
-    const memberByClub = new Map()
-    for (const r of report.rows || []) {
-      if (!r.clubSlug) continue
-      const c = memberByClub.get(r.clubSlug) || { units: 0, booked: 0, vips: 0, vipClub: false }
-      c.units += r.newMemberUnits || 0
-      c.booked += r.dayOneBookCount || 0
-      // vipCount is null at a club that does not collect VIPs at all; pooling
-      // those as zero would report a configuration gap as a staff failure.
-      if (r.vipCount !== null && r.vipCount !== undefined) {
-        c.vips += r.vipCount
-        c.vipClub = true
-      }
-      memberByClub.set(r.clubSlug, c)
-    }
-
-    const clubs = slugs.map(slug => {
-      const meta = CLUB_BY_SLUG[slug]
-      const m = memberByClub.get(slug) || { units: 0, booked: 0, vips: 0, vipClub: false }
-      const t = clubTally.get(slug) || {}
-      const close = t.close || {}
-      const ops = t.ops || {}
-
-      return {
-        slug,
-        name: meta.name,
-        metrics: {
-          dayone_book_pct: { value: pct(m.booked, m.units), sample: m.units },
-          vip_pct: { value: m.vipClub ? pct(m.vips, m.units) : null, sample: m.units },
-          dayone_close_pct: {
-            value: pct(close.sold || 0, close.completed || 0),
-            sample: close.completed || 0,
-          },
-          // A count, so its own value is the sample.
-          dayone_open_forms: { value: (t.open || {}).n || 0, sample: (t.open || {}).n || 0 },
-          ops_pct: { value: pct(ops.done || 0, ops.due || 0), sample: ops.due || 0 },
-        },
-      }
-    })
 
     // --- per-person subjects ----------------------------------------------
     const staff = []
@@ -228,33 +232,55 @@ router.get('/', async (req, res) => {
         name: r.salesperson,
         department: 'Membership',
         metrics: {
-          dayone_book_pct: { value: r.dayOneBookPct ?? null, sample: r.newMemberUnits || 0 },
-          vip_pct: { value: r.vipPct ?? null, sample: r.newMemberUnits || 0 },
+          dayone_book_pct: {
+            value: r.dayOneBookPct ?? null,
+            sample: r.newMemberUnits || 0,
+            numerator: r.dayOneBookCount ?? null,
+          },
+          vip_pct: {
+            value: r.vipPct ?? null,
+            sample: r.newMemberUnits || 0,
+            numerator: r.vipCount ?? null,
+          },
         },
       })
     }
 
-    // PT: one row per trainer, from the Day Ones they serviced.
+    // PT and Operations, from the per-person tallies. One person can appear in
+    // both departments; they are separate rows because they answer to different
+    // managers for different work.
     for (const [key, t] of staffTally) {
       const [slug, name] = key.split('|')
+      const club = CLUB_BY_SLUG[slug]?.name || slug
       const close = t.close || {}
-      staff.push({
-        slug,
-        club: CLUB_BY_SLUG[slug]?.name || slug,
-        name,
-        department: 'PT',
-        metrics: {
-          dayone_close_pct: {
-            value: pct(close.sold || 0, close.completed || 0),
-            sample: close.completed || 0,
+      const ops = t.ops || {}
+
+      if (close.completed || (t.open || {}).n) {
+        staff.push({
+          slug, club, name, department: 'PT',
+          metrics: {
+            dayone_close_pct: {
+              value: pct(close.sold || 0, close.completed || 0),
+              sample: close.completed || 0,
+              numerator: close.sold || 0,
+            },
+            dayone_open_forms: { value: (t.open || {}).n || 0, sample: (t.open || {}).n || 0 },
           },
-          dayone_open_forms: { value: (t.open || {}).n || 0, sample: (t.open || {}).n || 0 },
-        },
-      })
+        })
+      }
+
+      if (ops.below) {
+        staff.push({
+          slug, club, name, department: 'Operations',
+          metrics: {
+            ops_jobs_below: { value: ops.below, sample: ops.due || 0, numerator: ops.below },
+          },
+        })
+      }
     }
 
-    const settings = await loadSettings()
-    const built = buildProblemAreas(clubs, staff, settings)
+    // No club subjects: every check is staff-scoped now.
+    const built = buildProblemAreas([], staff, settings)
 
     res.json({
       ...built,
@@ -262,6 +288,14 @@ router.get('/', async (req, res) => {
         start: startISO, end: endISO, days,
         clubs: slugs,
         staffSubjects: staff.length,
+        opsJobPct: jobBar,
+        // What could NOT be attributed to a person, and so cannot appear on a
+        // people-only report. Returned rather than dropped in silence: 489 of
+        // 575 below-standard jobs in a 30-day window were never started by
+        // anybody, and an omission that size has to be visible.
+        opsUnowned,
+        opsBelowTotal,
+        formsUnowned,
       },
     })
   } catch (err) {
