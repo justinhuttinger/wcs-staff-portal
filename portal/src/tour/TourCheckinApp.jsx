@@ -381,7 +381,9 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
 
       <div className="flex-1 overflow-y-auto px-5 py-6 space-y-6 max-w-2xl mx-auto w-full">
         <div>
-          <MemberBanner token={token} intakeId={intake.id} />
+          {/* Removing the card is the same "this is dealt with" outcome as a
+              saved tour, so it takes the same path back to the queue. */}
+          <MemberBanner token={token} intakeId={intake.id} onDismissed={onSaved} />
           <label className="block text-sm font-semibold text-gray-900 mb-2">Tour member</label>
           <select value={tourMember} onChange={e => setTourMember(e.target.value)}
             className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base text-gray-900 focus:outline-none focus:border-red-500">
