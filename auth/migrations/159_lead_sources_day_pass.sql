@@ -1,0 +1,11 @@
+-- 159_lead_sources_day_pass.sql
+--
+-- SUPERSEDED BY MIGRATION 160 before it ever shipped.
+--
+-- This added a day-pass function alongside an opportunity funnel that still
+-- carried not_interested and day_pass columns of its own. Both were wrong for
+-- the same reason, discovered immediately afterwards: BOTH OUTCOMES DELETE THE
+-- OPPORTUNITY in GHL, so neither can be counted from the funnel at all.
+--
+-- Apply 160; it drops and recreates both functions. This file is kept only so
+-- the numbering is not a hole.

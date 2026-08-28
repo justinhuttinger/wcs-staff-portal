@@ -346,6 +346,31 @@ app.listen(PORT, () => {
     console.error('[rbac] role-tier startup failed:', err.message)
   }
 
+  // "Not interested" for Lead Sources is GHL WORKFLOW membership, which is not
+  // in any sync and cannot be read on a report load: it is a paginated POST per
+  // club against contacts/search. Synced here, daily, and once at startup so a
+  // fresh deploy is not reporting yesterday's answer as today's.
+  //
+  // Opt-in, because it needs the per-club GHL tokens. Without them every club
+  // records status 'failed' and the report says so rather than showing zero.
+  if (process.env.GHL_NOT_INTERESTED_SYNC_ENABLED === 'true') {
+    const { syncNotInterested } = require('./services/ghlNotInterestedSync')
+    const runNotInterested = () =>
+      syncNotInterested()
+        .then(rows => {
+          const total = rows.reduce((a, r) => a + r.contacts, 0)
+          const bad = rows.filter(r => r.status === 'failed')
+          console.log(`[not-interested] synced ${total} contacts across ${rows.length} clubs` +
+            (bad.length ? ` — ${bad.length} failed: ${bad.map(b => b.slug).join(', ')}` : ''))
+        })
+        .catch(err => console.error('[not-interested] sync failed:', err.message))
+
+    // A minute after boot rather than immediately, so it does not compete with
+    // the first requests a deploy has to serve.
+    setTimeout(runNotInterested, 60 * 1000).unref()
+    setInterval(runNotInterested, 24 * 60 * 60 * 1000).unref()
+  }
+
   // Memory verification instrumentation (see auth memory-leak fixes): log
   // process.memoryUsage() every 15 minutes so RSS growth in production is
   // visible in Render logs without attaching a profiler. `external` and
