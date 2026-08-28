@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useChartWidth } from './useChartWidth'
 import { colorFor, fmtInt, fmtPct, fmtMoney, fmtMonth } from './chartPalette'
 
@@ -27,7 +27,7 @@ export function fmtStat(v, format) {
  * The arrow and the sign both carry direction, so the colour is never the only
  * thing saying which way it went.
  */
-export function StatCard({ stat }) {
+export function StatCard({ stat, comparisonLabel }) {
   const { value, prior, change, betterWhen, label, format } = stat
   const good = change === null || betterWhen === 'flat'
     ? null
@@ -48,7 +48,12 @@ export function StatCard({ stat }) {
             <span aria-hidden="true"> {change > 0 ? '▲' : '▼'}</span>
           )}
         </span>
+        {/* The comparison is NAMED, not just a bare number: "vs 171" leaves a
+            reader guessing whether that is last month or another person. */}
         <span className="text-text-muted"> vs {fmtStat(prior, format)}</span>
+        {comparisonLabel && (
+          <span className="text-text-muted"> · {comparisonLabel}</span>
+        )}
       </p>
     </div>
   )
@@ -190,19 +195,61 @@ export function TrendPanel({ title, months, series, kind = 'count' }) {
   )
 }
 
-/** The person picker. One person at a time is the whole point of a snapshot. */
-export function PersonPicker({ label, people, value, onChange }) {
+/**
+ * A searchable person box.
+ *
+ * A plain <select> is unusable once the roster passes a couple of dozen — the
+ * trainer list is 54 — so this is a text input backed by a <datalist>: type a
+ * few letters and the browser filters. Native, so it keeps keyboard and screen
+ * reader behaviour for free, and needs no click-outside handling.
+ *
+ * The value is only committed when it MATCHES a real name, so half-typed text
+ * never fires a request for a person who does not exist. Matching is
+ * case-insensitive and whitespace-tolerant, because nobody types two spaces the
+ * way the source data sometimes stores them.
+ */
+export function PersonSearch({ label, people, value, onChange, placeholder, listId }) {
+  const [text, setText] = useState(value || '')
+
+  // Follow the committed value when it changes from outside (cleared, swapped).
+  useEffect(() => { setText(value || '') }, [value])
+
+  const norm = (v) => String(v || '').trim().replace(/\s+/g, ' ').toLowerCase()
+
+  function commit(next) {
+    setText(next)
+    const hit = people.find(p => norm(p) === norm(next))
+    if (hit) onChange(hit)
+    else if (next === '') onChange('')
+  }
+
   return (
     <label className="flex items-center gap-2 text-[11px] font-semibold text-text-muted uppercase tracking-wide">
       {label}
-      <select
-        value={value || ''}
-        onChange={e => onChange(e.target.value)}
-        className="px-2.5 py-1.5 rounded-lg text-xs bg-bg border border-border text-text-primary normal-case tracking-normal font-medium min-w-[200px]"
-      >
-        {people.length === 0 && <option value="">No one with activity in this range</option>}
-        {people.map(p => <option key={p} value={p}>{p}</option>)}
-      </select>
+      <input
+        type="text"
+        list={listId}
+        value={text}
+        placeholder={placeholder || 'Search a name'}
+        onChange={e => commit(e.target.value)}
+        className="px-2.5 py-1.5 rounded-lg text-xs bg-bg border border-border text-text-primary normal-case tracking-normal font-medium min-w-[190px]"
+      />
+      <datalist id={listId}>
+        {people.map(p => <option key={p} value={p} />)}
+      </datalist>
     </label>
+  )
+}
+
+/** Empty state before anyone has been picked. */
+export function ChooseSomeone({ what }) {
+  return (
+    <div className="bg-surface rounded-xl border border-border p-10 text-center">
+      <p className="text-sm font-semibold text-text-primary">Search for a {what} to begin</p>
+      <p className="text-xs text-text-muted mt-1">
+        Start typing a name in the box above. Nothing is shown until you pick someone,
+        so no one else&rsquo;s numbers can be mistaken for theirs.
+      </p>
+    </div>
   )
 }

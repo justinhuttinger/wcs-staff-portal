@@ -1,9 +1,9 @@
 // Pure shaping for Analytics > Trainer Snapshot. No I/O; the route fetches.
 //
-// One trainer, one window, with the same window a month earlier beside it and a
-// month-by-month trend underneath.
+// One trainer, one window, compared against EITHER the same window a month
+// earlier OR another trainer — the route decides which and passes a label.
 //
-// The metric definitions are NOT redefined here — the row comes from
+// The metric definitions are NOT redefined here: the row comes from
 // analytics_trainer_performance and is shaped by buildRow in trainerPerformance,
 // so a snapshot and the table it drills into can never disagree.
 
@@ -25,11 +25,15 @@ function round1(v) {
 }
 
 /**
- * Every stat on the card, paired with its prior-period value.
+ * Every stat on the card, paired with its comparison value.
  *
- * `betterWhen` says which direction is good, because the reader cannot be
+ * `betterWhen` says which direction is good, because a reader cannot be
  * expected to know that a rising cancellation rate is bad while a rising close
  * rate is good — and colour is the only thing carrying that here.
+ *
+ * "Day Ones" is what the trainer was GIVEN, not what they booked. Trainers
+ * service intros; the front desk books them. Labelling this "booked" credited
+ * trainers with somebody else's work.
  */
 const STATS = [
   { key: 'completedSessions', label: 'Sessions', format: 'int', betterWhen: 'up' },
@@ -38,7 +42,7 @@ const STATS = [
   { key: 'avgSessionMinutes', label: 'Avg Session Minutes', format: 'int', betterWhen: 'flat' },
   { key: 'cancellationRate', label: 'Cancellation Rate', format: 'pct', betterWhen: 'down' },
   { key: 'memberMonths', label: 'Months w/ Trainer', format: 'num', betterWhen: 'up' },
-  { key: 'dayOnesBooked', label: 'Day Ones Booked', format: 'int', betterWhen: 'up' },
+  { key: 'dayOnesBooked', label: 'Day Ones', format: 'int', betterWhen: 'up' },
   { key: 'dayOnesCompleted', label: 'Day Ones Completed', format: 'int', betterWhen: 'up' },
   { key: 'dayOnesSold', label: 'Day Ones Sold', format: 'int', betterWhen: 'up' },
   { key: 'closeRate', label: 'Close Rate', format: 'pct', betterWhen: 'up' },
@@ -48,6 +52,7 @@ const STATS = [
 function seriesRow(r) {
   const completed = num(r.completed_sessions)
   const cancelled = num(r.cancelled_sessions)
+  const dayOnes = num(r.day_ones)
   const dayOnesCompleted = num(r.day_ones_completed)
   return {
     month: String(r.month_start).slice(0, 10),
@@ -56,43 +61,43 @@ function seriesRow(r) {
     uniqueClients: num(r.unique_clients),
     ptHours: round1(num(r.pt_minutes) / 60),
     cancellationRate: rate(cancelled, completed + cancelled),
-    dayOnesBooked: num(r.day_ones_booked),
+    // Day Ones this trainer SERVICED, and what became of them.
+    dayOnes,
     dayOnesCompleted,
     dayOnesSold: num(r.day_ones_sold),
+    dayOnesCancelled: num(r.day_ones_cancelled),
+    dayOnesNoShow: num(r.day_ones_no_show),
     closeRate: rate(num(r.day_ones_sold), dayOnesCompleted),
     closeAmount: Math.round(num(r.close_amount) * 100) / 100,
   }
 }
 
 /**
- * @param current  the person's row from buildTrainerPerformance, or null
- * @param prior    the same row for the previous window, or null
- * @param series   rows from analytics_trainer_monthly()
+ * @param current     the person's row from buildTrainerPerformance, or null
+ * @param comparison  { label, row } — either the prior window or another trainer
+ * @param series      rows from analytics_trainer_monthly()
  */
-function buildTrainerSnapshot(current, prior, series, opts = {}) {
+function buildTrainerSnapshot(current, comparison, series, opts = {}) {
   const cur = current || {}
-  const prev = prior || {}
+  const cmp = (comparison && comparison.row) || {}
 
   const stats = STATS.map(s => {
     const now = cur[s.key] ?? null
-    const was = prev[s.key] ?? null
-    return {
-      ...s,
-      value: now,
-      prior: was,
-      // A change against nothing is not a percentage. The card shows the pair
-      // of numbers regardless, so nothing is hidden by the null.
-      change: pctChange(now, was),
-    }
+    const was = cmp[s.key] ?? null
+    // A change against nothing is not a percentage. The card shows the pair of
+    // numbers regardless, so nothing is hidden by the null.
+    return { ...s, value: now, prior: was, change: pctChange(now, was) }
   })
 
   return {
     trainer: cur.trainer || opts.person || null,
     club: cur.club || null,
     lastSession: cur.lastSession || null,
-    // A trainer with no activity at all still gets a card rather than an error:
+    // A trainer with no activity still gets a card rather than an error:
     // "nothing this month" is a finding, not a failure.
     hasActivity: Boolean(current),
+    comparisonLabel: (comparison && comparison.label) || null,
+    comparingTo: (comparison && comparison.person) || null,
     stats,
     series: (series || []).map(seriesRow),
   }
