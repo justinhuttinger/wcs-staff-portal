@@ -137,6 +137,7 @@ app.use('/analytics/trainer-performance', require('./routes/analyticsTrainerPerf
 app.use('/analytics/salesperson-snapshot', require('./routes/analyticsSalespersonSnapshot'))
 app.use('/analytics/attrition-trends', require('./routes/analyticsAttritionTrends'))
 app.use('/analytics/problem-areas', require('./routes/analyticsProblemAreas'))
+app.use('/analytics/member-journey', require('./routes/analyticsMemberJourney'))
 app.use('/analytics/club-snapshot', require('./routes/analyticsClubSnapshot'))
 app.use('/analytics/pt-snapshot', require('./routes/analyticsPtSnapshot'))
 app.use('/analytics/trainer-snapshot', require('./routes/analyticsTrainerSnapshot'))
