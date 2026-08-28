@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { publicTour } from '../lib/api'
 import { buildDayOneUrl } from '../lib/dayOnePrefill'
 import VipReferral from './VipReferral'
+import MemberBanner from './MemberBanner'
 import { OUTCOMES, VIP_PASS, CUSTOM_PASS, PASS_DAYS, grantsAPass, passDaysFor } from './outcomes'
 
 const REFRESH_MS = 2000   // poll fast so a new arrival shows within ~2s (only while the app is open)
@@ -380,6 +381,7 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
 
       <div className="flex-1 overflow-y-auto px-5 py-6 space-y-6 max-w-2xl mx-auto w-full">
         <div>
+          <MemberBanner token={token} intakeId={intake.id} />
           <label className="block text-sm font-semibold text-gray-900 mb-2">Tour member</label>
           <select value={tourMember} onChange={e => setTourMember(e.target.value)}
             className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base text-gray-900 focus:outline-none focus:border-red-500">

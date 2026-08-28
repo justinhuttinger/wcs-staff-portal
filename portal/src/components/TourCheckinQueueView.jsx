@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { tourAdmin, publicTour } from '../lib/api'
 import { buildDayOneUrl } from '../lib/dayOnePrefill'
 import VipReferral from '../tour/VipReferral'
+import MemberBanner from '../tour/MemberBanner'
 import { OUTCOMES, VIP_PASS, CUSTOM_PASS, PASS_DAYS, grantsAPass, passDaysFor } from '../tour/outcomes'
 
 // Native desktop rebuild of the front-desk Tour Check-In queue (the same flow
@@ -334,6 +335,7 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+              <MemberBanner token={token} intakeId={intake.id} />
               <div>
                 <label className="block text-sm font-semibold text-text-primary mb-2">Tour member</label>
                 <select value={tourMember} onChange={e => setTourMember(e.target.value)}

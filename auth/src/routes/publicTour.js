@@ -205,6 +205,7 @@ router.patch('/:token/intake/:id', async (req, res) => {
     // time staff complete the tour the contact exists.
     let contactId = existing.ghl_contact_id || null
     let abcId = withAbcId(existing).abc_member_id
+    let memberStatus = null
     const hasAnswers = !!(referred_by_full_name || referred_by_abc_id || vip_team_member)
     const loc = getLocationBySlug((ctx.location.name || '').trim().toLowerCase())
     const clubNumber = clubNumberForLocationName(ctx.location.name)
@@ -239,6 +240,7 @@ router.patch('/:token/intake/:id', async (req, res) => {
         })
         if (found) {
           abcId = found.id
+          memberStatus = found.status || null
           console.log(`[public-tour] resolved ABC ${found.type} ${found.id} for ${existing.id}`)
         } else {
           // Not an error -- a walk-in with neither record yet is a real tour --
@@ -250,6 +252,27 @@ router.patch('/:token/intake/:id', async (req, res) => {
           )
         }
       }
+    }
+
+    // The kiosk stamps its match straight into `raw`, so the resolver above never
+    // runs for a kiosk card and the status would be missed on exactly the cards
+    // most likely to be an existing member.
+    if (!cancelled && abcId && memberStatus === null && clubNumber) {
+      const { data } = await supabaseAdmin
+        .from('abc_members')
+        .select('member_status')
+        .eq('member_id', abcId)
+        .eq('club_number', String(clubNumber))
+        .maybeSingle()
+      memberStatus = (data && data.member_status) || null
+    }
+
+    if (!cancelled && memberStatus && /^active$/i.test(memberStatus)) {
+      // Recorded, not refused. Staff are standing with somebody and blocking the
+      // save would push them to work around it; the report can exclude the row.
+      console.warn(
+        `[public-tour] tour completed for an ACTIVE member: ${existing.id} abc=${abcId}`
+      )
     }
 
     if (!cancelled && hasAnswers) {
@@ -359,6 +382,9 @@ router.patch('/:token/intake/:id', async (req, res) => {
         // Whatever the kiosk stamped into `raw`, or what we just resolved. It
         // is the only field that lets a tour be joined to membership.
         abc_member_id: abcId,
+        // Whether this was already a member, kept whole rather than as a boolean:
+        // a CANCELLED member being toured is a win-back and still counts.
+        member_status_at_tour: memberStatus,
         completed_at: new Date().toISOString(),
       })
       .eq('id', req.params.id)
@@ -494,6 +520,66 @@ router.get('/:token/intake/:id/referral', async (req, res) => {
     console.error('[public-tour] referral read failed:', err.message)
     // Degrade to the prompts rather than blocking the tour on a GHL hiccup.
     res.json({ fullName: '', abcId: '', teamMember: '', known: false })
+  }
+})
+
+// GET /public/tour/:token/intake/:id/abc-status
+//
+// Whether this card is somebody who already trains here, answered when staff
+// OPEN the card rather than when they save it. A warning after the fact is no
+// use -- by then the tour is recorded and the number is already wrong.
+//
+// Deliberately not part of the queue list: that would be one ABC lookup per card
+// on a 2-second poll, to answer a question that only matters for the one card
+// somebody is actually looking at.
+router.get('/:token/intake/:id/abc-status', async (req, res) => {
+  const unknown = { type: null, status: null, isActiveMember: false }
+  try {
+    const ctx = await resolveToken(req.params.token)
+    if (!ctx) return res.status(404).json({ error: 'not found' })
+
+    const { data: intake } = await supabaseAdmin
+      .from('tour_intakes')
+      .select('id, location_id, contact_email, contact_phone, raw')
+      .eq('id', req.params.id)
+      .maybeSingle()
+    if (!intake || intake.location_id !== ctx.location.id) {
+      return res.status(404).json({ error: 'not found' })
+    }
+
+    const clubNumber = clubNumberForLocationName(ctx.location.name)
+    if (!clubNumber) return res.json(unknown)
+
+    let id = withAbcId(intake).abc_member_id
+    let type = id ? 'member' : null
+    let status = null
+
+    if (!id) {
+      const found = await resolveAbcId(clubNumber, {
+        phone: intake.contact_phone, email: intake.contact_email,
+      })
+      if (!found) return res.json(unknown)
+      id = found.id
+      type = found.type
+      status = found.status || null
+    }
+
+    if (type === 'member' && status === null) {
+      const { data } = await supabaseAdmin
+        .from('abc_members')
+        .select('member_status')
+        .eq('member_id', id)
+        .eq('club_number', String(clubNumber))
+        .maybeSingle()
+      status = (data && data.member_status) || null
+      if (!data) type = 'prospect'
+    }
+
+    res.json({ type, status, isActiveMember: !!status && /^active$/i.test(status) })
+  } catch (err) {
+    console.error('[public-tour] abc-status failed:', err.message)
+    // Never block a check-in on this: an unknown answer shows no banner.
+    res.json(unknown)
   }
 })
 
