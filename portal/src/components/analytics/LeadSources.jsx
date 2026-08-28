@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { api } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
-import { colorFor, fmtInt, fmtPct } from './chartPalette'
+import { PALETTE, OTHER_COLOR, UNKNOWN_COLOR, fmtInt, fmtPct } from './chartPalette'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
 
 // ---------------------------------------------------------------------------
@@ -18,9 +18,18 @@ import { TOOLBAR_SLOT_ID } from './toolbarSlot'
 // the funnel. That is the whole reason the stages are drawn as stacked bars
 // rather than four separate donuts.
 //
-// Colour is assigned by each source's rank across the WHOLE window, in the
-// server's stable order, so a hue means the same source in every bar and in the
-// legend.
+// COLOUR IS PINNED TO THE SOURCE, NEVER TO ITS RANK. Assigning by size order
+// meant that widening the date range reordered the sources and repainted them,
+// so a channel changed colour while you were trying to follow it across
+// windows. A hue now belongs to a name for good.
+//
+// Observed and claimed never render together, so each keeps its own slot map
+// and both get distinct hues for their whole working vocabulary. Facebook holds
+// the same slot in both, because it is the same thing said two ways.
+//
+// The long tail below the pinned names takes the neutral grey rather than
+// cycling back through the palette: two sources wearing one hue is worse than a
+// source wearing grey, and the legend and table still name every row.
 //
 // The funnel counts OPPORTUNITIES and reconciles with GHL's own board. Not
 // Interested / Day Pass counts CONTACTS and is drawn BELOW A DIVIDER, detached
@@ -39,6 +48,35 @@ const STAGES = [
 ]
 
 const OUTCOME_LABEL = 'Not Interested / Day Pass'
+
+const OBSERVED_SLOTS = {
+  'Website': 0,
+  'Facebook': 1,
+  'Walk-in / Manual': 2,
+}
+
+const CLAIMED_SLOTS = {
+  'Friend or Family Referral': 0,
+  'Facebook': 1,
+  'Google Search': 2,
+  'Instagram': 3,
+  'Google Maps': 4,
+  'Drove By / Saw the Gym': 5,
+  'TikTok': 6,
+  'Event or Pop-Up': 7,
+}
+
+// "We did not ask" and "it arrived from nowhere" are not peers of a real
+// channel and must never look like one.
+const NEUTRAL = new Set(['Not Asked', 'Unknown', 'No Source Recorded'])
+
+function sourceColor(name, attribution) {
+  if (NEUTRAL.has(name)) return UNKNOWN_COLOR
+  if (name === 'Other') return OTHER_COLOR
+  const slots = attribution === 'claimed' ? CLAIMED_SLOTS : OBSERVED_SLOTS
+  const slot = slots[name]
+  return slot === undefined ? OTHER_COLOR : PALETTE[slot]
+}
 
 export default function LeadSources({ startDate, endDate, locationSlug }) {
   const [attribution, setAttribution] = useState('real')
@@ -64,11 +102,13 @@ export default function LeadSources({ startDate, endDate, locationSlug }) {
   // stays visible in the table.
   const channels = useMemo(() => sources.filter(s => !s.notAChannel), [sources])
 
+  // Keyed by name, not by position, so the map is identical whatever the window
+  // returns or in what order.
   const colors = useMemo(() => {
     const out = {}
-    channels.forEach((s, i) => { out[s.source] = colorFor(s.source, i) })
+    for (const s of sources) out[s.source] = sourceColor(s.source, attribution)
     return out
-  }, [channels])
+  }, [sources, attribution])
 
   const leadTotal = data?.totals?.leads || 0
 
