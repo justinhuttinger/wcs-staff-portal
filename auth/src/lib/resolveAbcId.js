@@ -83,7 +83,11 @@ async function findMember(clubNumber, { phone, email }) {
   const wantEmail = String(email || '').trim().toLowerCase()
   if (!wantPhone && !wantEmail) return null
 
-  const cols = 'member_id, primary_phone, mobile_phone, email'
+  // Status comes back with the match but is NOT filtered on. The job here is
+  // "who is this", and a matcher that skipped active members would simply fail
+  // to find them -- losing the join rather than flagging the tour. Whether an
+  // active member should count as a tour is a question for the caller.
+  const cols = 'member_id, primary_phone, mobile_phone, email, member_status'
   const base = () =>
     supabaseAdmin.from('abc_members').select(cols).eq('club_number', String(clubNumber))
 
@@ -95,19 +99,23 @@ async function findMember(clubNumber, { phone, email }) {
     const hit = (data || []).find(
       r => phone10(r.primary_phone) === wantPhone || phone10(r.mobile_phone) === wantPhone
     )
-    if (hit) return { id: hit.member_id, type: 'member' }
+    if (hit) return { id: hit.member_id, type: 'member', status: hit.member_status || null }
   }
 
   if (wantEmail) {
     const { data } = await base().ilike('email', wantEmail).limit(5)
-    if (data && data[0]) return { id: data[0].member_id, type: 'member' }
+    if (data && data[0]) {
+      return { id: data[0].member_id, type: 'member', status: data[0].member_status || null }
+    }
   }
 
   return null
 }
 
 /**
- * @returns {Promise<{id, type}|null>} type is 'prospect' or 'member'.
+ * @returns {Promise<{id, type, status}|null>} type is 'prospect' or 'member';
+ *          status is the ABC member status ('Active', 'Cancelled', ...) and is
+ *          null for a prospect.
  */
 async function resolveAbcId(clubNumber, { phone, email }) {
   if (!clubNumber) return null
