@@ -1,0 +1,102 @@
+const test = require('node:test')
+const assert = require('node:assert')
+const { buildLeadSources } = require('./leadSources')
+
+const row = (source, over = {}) => ({
+  source, leads: 100, tours: 5, trials: 40, won: 20,
+  not_interested: 3, lost: 2, ...over,
+})
+
+test('rates are per lead, and trial-to-join is per trial', () => {
+  const out = buildLeadSources([row('Website')], null, {})
+  const s = out.sources[0]
+  assert.equal(s.trialRate, 40)
+  assert.equal(s.winRate, 20)
+  // The one that separates "cannot get them in the door" from "cannot close".
+  assert.equal(s.trialToWinRate, 50)
+})
+
+test('the artefact bucket is flagged and excluded from totals', () => {
+  const out = buildLeadSources([
+    row('Website', { leads: 100, trials: 40, won: 20 }),
+    row('No Source Recorded', { leads: 1000, trials: 500, won: 500 }),
+  ], null, {})
+
+  const artefact = out.sources.find(s => s.source === 'No Source Recorded')
+  assert.equal(artefact.notAChannel, true)
+
+  // Including it would report a business-wide join rate of 47% built from
+  // records that were never leads. Totals must be of real channels only.
+  assert.equal(out.totals.leads, 100)
+  assert.equal(out.totals.won, 20)
+  assert.equal(out.totals.winRate, 20)
+  assert.ok(out.notes.noSource)
+})
+
+test('the artefact bucket is still shown, not dropped', () => {
+  const out = buildLeadSources([row('No Source Recorded', { leads: 50 })], null, {})
+  // Hiding it would leave a reader wondering where a fifth of the contacts went.
+  assert.equal(out.sources.length, 1)
+})
+
+test('mix shares are of real channels only and sum to about 100', () => {
+  const out = buildLeadSources([
+    row('Website', { leads: 60 }),
+    row('Facebook', { leads: 40 }),
+    row('No Source Recorded', { leads: 900 }),
+  ], null, {})
+  assert.deepEqual(out.mix.map(m => m.share), [60, 40])
+})
+
+test('claimed attribution carries its coverage warning, observed does not', () => {
+  assert.ok(buildLeadSources([row('Google')], null, { attribution: 'claimed' }).notes.claimed)
+  assert.equal(buildLeadSources([row('Website')], null, { attribution: 'real' }).notes.claimed, null)
+})
+
+test('an unknown attribution value falls back to observed', () => {
+  const out = buildLeadSources([row('Website')], null, { attribution: 'nonsense' })
+  assert.equal(out.attribution, 'real')
+})
+
+test('a prior window produces a change, and no prior produces null', () => {
+  const out = buildLeadSources(
+    [row('Facebook', { leads: 200, won: 10 })],
+    [row('Facebook', { leads: 100, won: 20 })],
+    {}
+  )
+  const s = out.sources[0]
+  assert.equal(s.leadsChange, 100)
+  assert.equal(s.wonChange, -50)
+
+  // Number(null) is 0 and finite, so a careless pctChange reports -100% here.
+  const noPrior = buildLeadSources([row('Facebook')], null, {}).sources[0]
+  assert.equal(noPrior.leadsChange, null)
+  assert.equal(noPrior.priorLeads, null)
+})
+
+test('a source absent from the prior window is not treated as a collapse', () => {
+  const out = buildLeadSources([row('Brand New Channel')], [row('Website')], {})
+  assert.equal(out.sources[0].leadsChange, null)
+})
+
+test('sources sort by lead volume', () => {
+  const out = buildLeadSources([
+    row('Small', { leads: 5 }), row('Big', { leads: 500 }), row('Middle', { leads: 50 }),
+  ], null, {})
+  assert.deepEqual(out.sources.map(s => s.source), ['Big', 'Middle', 'Small'])
+})
+
+test('a source with no leads has no rates rather than zeroes', () => {
+  const out = buildLeadSources([row('Dormant', { leads: 0, trials: 0, won: 0 })], null, {})
+  // 0% would read as "we tried and failed"; null reads as "nothing to judge".
+  assert.equal(out.sources[0].winRate, null)
+  assert.equal(out.sources[0].trialToWinRate, null)
+})
+
+test('an empty window builds rather than throwing', () => {
+  assert.doesNotThrow(() => buildLeadSources(null, null, {}))
+  const out = buildLeadSources([], null, {})
+  assert.deepEqual(out.sources, [])
+  assert.equal(out.totals.leads, 0)
+  assert.equal(out.totals.winRate, null)
+})
