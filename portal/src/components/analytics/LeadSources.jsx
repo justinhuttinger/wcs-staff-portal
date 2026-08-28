@@ -13,13 +13,20 @@ import { colorFor, fmtInt, fmtPct } from './chartPalette'
 // answer different questions on different populations, and putting them in one
 // table invites reading the gap as a discrepancy rather than as the two
 // different facts it is.
+//
+// The funnel counts OPPORTUNITIES in the membership pipelines and reconciles
+// with GHL's own board. Day Pass counts CONTACTS, because a guest who never
+// became an opportunity is not on that board — it is shown in the row for
+// convenience but feeds none of the rates.
 // ---------------------------------------------------------------------------
 
 const STAGES = [
   { key: 'leads', label: 'Leads' },
+  { key: 'tours', label: 'Toured' },
   { key: 'trials', label: 'Trials' },
   { key: 'won', label: 'Joined' },
   { key: 'notInterested', label: 'Not Interested' },
+  { key: 'dayPasses', label: 'Day Passes' },
 ]
 
 function Bar({ value, max, tone }) {
@@ -103,12 +110,18 @@ export default function LeadSources({ startDate, endDate, locationSlug }) {
                   <th className="text-left font-semibold py-1">Source</th>
                   <th className="text-left font-semibold py-1 w-1/4">Share of Leads</th>
                   <th className="text-right font-semibold py-1">Leads</th>
+                  <th className="text-right font-semibold py-1">Toured</th>
                   <th className="text-right font-semibold py-1">Trials</th>
                   <th className="text-right font-semibold py-1">Joined</th>
                   <th className="text-right font-semibold py-1">Trial %</th>
                   <th className="text-right font-semibold py-1">Join %</th>
                   <th className="text-right font-semibold py-1">Trial → Join</th>
-                  <th className="text-right font-semibold py-1">Not Int.</th>
+                  {/* Both outcomes DELETE the opportunity in GHL, so these are
+                      counted per contact and are additional to the funnel on
+                      their left, not a slice of it. Divided visually for that
+                      reason. */}
+                  <th className="text-right font-semibold py-1 border-l border-border pl-2">Not Int.</th>
+                  <th className="text-right font-semibold py-1">Day Pass</th>
                 </tr>
               </thead>
               <tbody>
@@ -128,12 +141,14 @@ export default function LeadSources({ startDate, endDate, locationSlug }) {
                       <Bar value={s.leads} max={maxLeads} tone={colorFor(s.source, i)} />
                     </td>
                     <td className="py-1.5 text-right tabular-nums text-text-primary">{fmtInt(s.leads)}</td>
+                    <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(s.tours)}</td>
                     <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(s.trials)}</td>
                     <td className="py-1.5 text-right tabular-nums text-text-primary font-semibold">{fmtInt(s.won)}</td>
                     <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtPct(s.trialRate)}</td>
                     <td className="py-1.5 text-right tabular-nums text-text-primary">{fmtPct(s.winRate)}</td>
                     <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtPct(s.trialToWinRate)}</td>
-                    <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(s.notInterested)}</td>
+                    <td className="py-1.5 text-right tabular-nums text-text-muted border-l border-border pl-2">{fmtInt(s.notInterested)}</td>
+                    <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(s.dayPasses)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -144,16 +159,22 @@ export default function LeadSources({ startDate, endDate, locationSlug }) {
                       never leads. */}
                   <td className="py-1.5" colSpan={2}>Total (real channels)</td>
                   <td className="py-1.5 text-right tabular-nums">{fmtInt(data.totals?.leads)}</td>
+                  <td className="py-1.5 text-right tabular-nums">{fmtInt(data.totals?.tours)}</td>
                   <td className="py-1.5 text-right tabular-nums">{fmtInt(data.totals?.trials)}</td>
                   <td className="py-1.5 text-right tabular-nums">{fmtInt(data.totals?.won)}</td>
                   <td className="py-1.5 text-right tabular-nums">{fmtPct(data.totals?.trialRate)}</td>
                   <td className="py-1.5 text-right tabular-nums">{fmtPct(data.totals?.winRate)}</td>
                   <td className="py-1.5 text-right tabular-nums">{fmtPct(data.totals?.trialToWinRate)}</td>
-                  <td className="py-1.5 text-right tabular-nums">{fmtInt(data.totals?.notInterested)}</td>
+                  <td className="py-1.5 text-right tabular-nums border-l border-border pl-2">{fmtInt(data.totals?.notInterested)}</td>
+                  <td className="py-1.5 text-right tabular-nums">{fmtInt(data.totals?.dayPasses)}</td>
                 </tr>
               </tfoot>
             </table>
           </div>
+
+          {data.outcomesNote && (
+            <p className="text-[11px] text-text-muted px-1">{data.outcomesNote}</p>
+          )}
 
           {data.notes?.noSource && (
             <p className="text-[11px] text-text-muted px-1">{data.notes.noSource}</p>

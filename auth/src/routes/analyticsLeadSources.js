@@ -16,7 +16,11 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 // differ between the two, so the choice is not cosmetic.
 //
 // Real and claimed attribution are separate views of the same window, never
-// blended. Migration 155 holds the bucketing.
+// blended. Migrations 155-159 hold the bucketing and the funnel.
+//
+// The funnel counts OPPORTUNITIES in the membership pipelines so it reconciles
+// with GHL's own board; day passes are counted per CONTACT because a guest who
+// never became an opportunity is not on that board at all.
 //
 // CLUBS COME FROM ghl_locations.slug, not the ABC club number. This is the one
 // report whose world is GHL rather than ABC, and the two number things
@@ -59,18 +63,25 @@ router.get('/', async (req, res) => {
     ].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
-      const [rows, priorRows] = await Promise.all([
+      const [rows, priorRows, outcomes] = await Promise.all([
         fetchAll(supabaseAdmin.rpc('analytics_lead_sources', {
           p_start: start, p_end: end, p_clubs: clubSlugs, p_attribution: attribution,
         })),
         fetchAll(supabaseAdmin.rpc('analytics_lead_sources', {
           p_start: prior.start, p_end: prior.end, p_clubs: clubSlugs, p_attribution: attribution,
         })),
+        // Separate call because both outcomes DELETE the opportunity — see
+        // migration 160. Folded onto the source rows for display only.
+        fetchAll(supabaseAdmin.rpc('analytics_lead_outcomes', {
+          p_start: start, p_end: end, p_clubs: clubSlugs, p_attribution: attribution,
+        })),
       ])
-      return { rows, priorRows }
+      return { rows, priorRows, outcomes }
     })
 
-    const built = buildLeadSources(payload.rows, payload.priorRows, { attribution })
+    const built = buildLeadSources(payload.rows, payload.priorRows, {
+      attribution, outcomes: payload.outcomes,
+    })
 
     res.json({
       ...built,
