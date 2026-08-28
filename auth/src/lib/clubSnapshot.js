@@ -51,6 +51,16 @@ const STATS = [
   { key: 'checkins', label: 'Check-ins', format: 'int', betterWhen: 'up' },
   { key: 'pctOnAch', label: 'ACH %', format: 'pct', betterWhen: 'up' },
   { key: 'avgNewDuesDraft', label: 'Avg New Dues Draft', format: 'money', betterWhen: 'up' },
+  // TWO DIFFERENT DAY ONE COUNTS LIVE ON THIS CARD, ON DIFFERENT DATE FIELDS.
+  // This one counts the ACT OF BOOKING: appointments booked during the window,
+  // whenever they are due. The other counts appointments DATED in the window,
+  // whenever they were booked, and is the base the funnel rates divide into.
+  //
+  // For August 2026 that is 274 against 287, overlapping on only 233 — 41 were
+  // booked in August for September, and 54 happened in August off a July
+  // booking. Both are wanted; labelling them apart is not optional, because
+  // "Day Ones Booked" beside "Day Ones" reads as one number contradicting
+  // itself rather than as two measures.
   { key: 'dayOneBookCount', label: 'Day Ones Booked', format: 'int', betterWhen: 'up' },
   { key: 'dayOneBookPct', label: 'Day One Book %', format: 'pct', betterWhen: 'up' },
   { key: 'bookOnJoinDatePct', label: 'Booked on Join Date %', format: 'pct', betterWhen: 'up' },
@@ -71,7 +81,16 @@ const STATS = [
   { key: 'avgDaysToConversion', label: 'Avg Days Tour to Sale', format: 'num', betterWhen: 'down' },
 
   // Training. Same definitions as PT Snapshot, read from the same function.
-  { key: 'dayOnes', label: 'Day Ones', format: 'int', betterWhen: 'up' },
+  //
+  // Counted on the APPOINTMENT date, not the booking date — see the note on
+  // Day Ones Booked above. The funnel has to work this way: a Day One booked in
+  // July and held in August belongs to August's show rate, and counting it in
+  // July would put it in a month where it had not happened yet.
+  // NOT "Day Ones Scheduled": 'scheduled' is already a Day One STATUS meaning
+  // still-upcoming, and reusing the word for the whole cohort would collide
+  // with it. "On Calendar" says the appointment fell in this window whatever
+  // became of it.
+  { key: 'dayOnes', label: 'Day Ones on Calendar', format: 'int', betterWhen: 'up' },
   { key: 'dayOneShowRate', label: 'Day One Show Rate', format: 'pct', betterWhen: 'up' },
   { key: 'dayOneCloseRate', label: 'Day One Close Rate', format: 'pct', betterWhen: 'up' },
   // The VALUE OF PT SOLD, not money collected — see PT Revenue Collected above.
