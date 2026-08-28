@@ -20,6 +20,7 @@ import SalespersonSnapshot from './analytics/SalespersonSnapshot'
 import AttritionTrends from './analytics/AttritionTrends'
 import Checkins from './analytics/Checkins'
 import Compliance from './analytics/Compliance'
+import Audits from './analytics/Audits'
 import LeadSources from './analytics/LeadSources'
 import ProblemAreas from './analytics/ProblemAreas'
 import MemberJourney from './analytics/MemberJourney'
@@ -178,6 +179,12 @@ const ANALYTICS_REPORTS = [
     label: 'Compliance',
     desc: 'Operational Task Completion',
     Component: Compliance,
+  },
+  {
+    key: 'audits',
+    label: 'Audits',
+    desc: 'QA Coverage and Scores',
+    Component: Audits,
   },
   {
     key: 'kpis',
