@@ -44,7 +44,9 @@ function money(v) {
  * deactivations is the better month.
  */
 const STATS = [
-  { key: 'dayOnes', label: 'Day Ones', format: 'int', betterWhen: 'up' },
+  // Counted on the APPOINTMENT date. Named the same as on Club Snapshot, so one
+  // number does not travel under two names between two reports.
+  { key: 'dayOnes', label: 'Day Ones on Calendar', format: 'int', betterWhen: 'up' },
   { key: 'dayOnesCompleted', label: 'Completed', format: 'int', betterWhen: 'up' },
   { key: 'dayOnesNoShow', label: 'No Show', format: 'int', betterWhen: 'down' },
   { key: 'dayOnesCancelled', label: 'Cancelled', format: 'int', betterWhen: 'down' },

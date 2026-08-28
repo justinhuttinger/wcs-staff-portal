@@ -78,9 +78,11 @@ export default function ClubSnapshot({ startDate, endDate, locationSlug }) {
         line('Left', 'lostMembers'),
       ]} />
 
-      {/* Counts of one population, so they belong on one scale. */}
-      <TrendPanel title="Day Ones" months={months} series={[
-        line('Booked', 'dayOnes'),
+      {/* Counts of one population, so they belong on one scale. The first line
+          is Day Ones DATED in each month, not booked in it — calling it
+          "Booked" here contradicted the stat card above and was simply wrong. */}
+      <TrendPanel title="Day Ones on Calendar" months={months} series={[
+        line('On Calendar', 'dayOnes'),
         line('Completed', 'dayOnesCompleted'),
         line('Sold', 'dayOnesSold'),
       ]} />

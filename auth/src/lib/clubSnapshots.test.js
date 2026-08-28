@@ -229,3 +229,20 @@ test('the series carries both halves, losses positive', () => {
   assert.equal(row.lostPtRevenue, 23618)
   assert.equal(row.netPtRevenue, 51781 - 23618)
 })
+
+test('the two Day One counts are labelled apart', () => {
+  const out = buildClubSnapshot({ window: memWindow(), summary: memSummary, pt: ptWindow() }, null, [])
+  const labels = out.stats.map(s => s.label)
+
+  // They count different cohorts on different date fields: one is bookings
+  // taken in the window, the other is appointments dated in it. For August 2026
+  // that was 274 against 287. Two stats a reader cannot tell apart read as one
+  // number contradicting itself.
+  assert.ok(labels.includes('Day Ones Booked'))
+  assert.ok(labels.includes('Day Ones on Calendar'))
+  assert.equal(new Set(labels).size, labels.length, 'every stat label must be unique')
+
+  // 'Scheduled' is a Day One STATUS meaning still-upcoming, so it must not also
+  // name the whole cohort.
+  assert.ok(!labels.some(l => /Day Ones Scheduled/.test(l)))
+})
