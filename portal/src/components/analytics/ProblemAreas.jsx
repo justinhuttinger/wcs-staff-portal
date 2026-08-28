@@ -35,59 +35,111 @@ function pillStyle(checks, key) {
   return { background: `${hue}1f`, color: hue, borderColor: `${hue}66` }
 }
 
-function ProblemRow({ p, checks }) {
-  return (
-    <li className="py-2.5 flex items-start gap-3">
-      <span className="w-1 self-stretch rounded-full bg-wcs-red flex-shrink-0" aria-hidden="true" />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-text-primary">
-              {/* A staff problem names the person; a club problem names the
-                  club alone. */}
-              {p.person ? `${p.person} · ${p.club}` : p.club}
-            </p>
-            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-              <span
-                className="text-[10px] font-semibold rounded-full px-2 py-0.5 border"
-                style={pillStyle(checks, p.key)}
-              >
-                {p.label}
-              </span>
-              <span className="text-[10px] uppercase tracking-wide text-text-muted border border-border rounded px-1.5 py-0.5">
-                {p.department}
-              </span>
-            </div>
-          </div>
+function fmtDate(d) {
+  if (!d) return ''
+  const [, m, day] = String(d).slice(0, 10).split('-')
+  return `${Number(m)}/${Number(day)}`
+}
 
-          {/* The numbers behind the percentage, not just the percentage. A bare
-              "30%" tells a manager nothing they can act on; "12 of 40 booked,
-              needs 16" tells them the size of the gap in members. */}
-          <div className="text-right flex-shrink-0 tabular-nums">
-            <p className="text-sm">
-              <span className="font-bold text-wcs-red">{fmtValue(p.value, p.unit)}</span>
-              <span className="text-text-muted text-xs"> vs {fmtValue(p.threshold, p.unit)}</span>
-            </p>
-            {p.numerator !== null && p.numerator !== undefined && p.unit === 'pct' && (
-              <p className="text-[11px] text-text-muted">
-                {p.numerator} of {p.sample} {p.sampleLabel}
-              </p>
-            )}
-            {p.target !== null && p.target !== undefined && (
-              <p className="text-[11px] text-text-muted">
-                needs {p.target}
-                {p.shortBy ? ` · ${p.shortBy} short` : ''}
-              </p>
-            )}
-            {p.unit === 'count' && (
-              <p className="text-[11px] text-text-muted">
-                of {p.sample} {p.sampleLabel}
-              </p>
-            )}
-          </div>
+/**
+ * One problem, on ONE LINE.
+ *
+ * Everything that used to stack — name, pill, department, value, the numbers
+ * behind it — sits on a single row and truncates. A list of problems is read by
+ * scanning down it, and a three-line row means a third as many fit on screen.
+ *
+ * A row with rows behind it (the checklists a person missed) is clickable and
+ * opens underneath. Everything else is inert, and looks it.
+ */
+function ProblemRow({ p, checks }) {
+  const [open, setOpen] = useState(false)
+  const hasDetail = Array.isArray(p.details) && p.details.length > 0
+
+  const line = (
+    <>
+      <span className="w-1 self-stretch rounded-full bg-wcs-red flex-shrink-0" aria-hidden="true" />
+
+      {hasDetail ? (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+          className={`w-3 h-3 text-text-muted flex-shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      ) : <span className="w-3 flex-shrink-0" />}
+
+      <span className="text-xs font-semibold text-text-primary truncate max-w-[14rem]"
+        title={`${p.person} · ${p.club}`}>
+        {p.person}
+      </span>
+      <span className="text-[11px] text-text-muted truncate flex-shrink-0 hidden sm:inline">{p.club}</span>
+
+      <span className="text-[10px] font-semibold rounded-full px-2 py-0.5 border flex-shrink-0"
+        style={pillStyle(checks, p.key)}>
+        {p.label}
+      </span>
+
+      <span className="ml-auto flex items-baseline gap-2 flex-shrink-0 tabular-nums">
+        {/* The numbers behind the percentage, on the same line: a bare "30%"
+            tells a manager nothing they can act on. */}
+        {p.numerator !== null && p.numerator !== undefined && p.unit === 'pct' && (
+          <span className="text-[11px] text-text-muted hidden sm:inline">
+            {p.numerator}/{p.sample} {p.sampleLabel}
+          </span>
+        )}
+        {p.target !== null && p.target !== undefined && (
+          <span className="text-[11px] text-text-muted hidden md:inline">needs {p.target}</span>
+        )}
+        {p.unit === 'count' && (
+          <span className="text-[11px] text-text-muted hidden sm:inline">
+            of {p.sample} {p.sampleLabel}
+          </span>
+        )}
+        <span className="text-xs font-bold text-wcs-red">{fmtValue(p.value, p.unit)}</span>
+        <span className="text-[11px] text-text-muted">vs {fmtValue(p.threshold, p.unit)}</span>
+      </span>
+    </>
+  )
+
+  return (
+    <li className="py-1.5">
+      {hasDetail ? (
+        <div
+          role="button"
+          tabIndex={0}
+          aria-expanded={open}
+          onClick={() => setOpen(o => !o)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o) }
+          }}
+          className="flex items-center gap-2 cursor-pointer"
+          title={p.why}
+        >
+          {line}
         </div>
-        <p className="text-[11px] text-text-muted mt-1">{p.why}</p>
-      </div>
+      ) : (
+        <div className="flex items-center gap-2" title={p.why}>{line}</div>
+      )}
+
+      {open && hasDetail && (
+        <ul className="mt-1.5 ml-6 space-y-0.5 border-l border-border pl-3">
+          {p.details.map((d, i) => (
+            <li key={`${d.name}-${d.date}-${i}`} className="flex items-center gap-2 text-[11px]">
+              <span className="text-text-muted tabular-nums w-10 flex-shrink-0">{fmtDate(d.date)}</span>
+              <span className="text-text-primary truncate">{d.name}</span>
+              <span className="ml-auto flex items-center gap-2 flex-shrink-0 tabular-nums">
+                {/* How it was pinned on them. 'Rostered' is weaker evidence than
+                    having actually worked the job, and saying which is the
+                    difference between a fair conversation and an unfair one. */}
+                <span className="text-text-muted">
+                  {d.via === 'rostered'
+                    ? `rostered${d.coverPct ? ` ${d.coverPct}%` : ''}`
+                    : 'worked on it'}
+                </span>
+                <span className="text-wcs-red font-semibold w-10 text-right">{d.pct}%</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </li>
   )
 }
