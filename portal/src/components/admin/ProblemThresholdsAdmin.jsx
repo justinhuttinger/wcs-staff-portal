@@ -49,6 +49,13 @@ const FIELDS = [
     suffix: '%',
   },
   {
+    key: 'problem_ops_majority_pct',
+    label: 'Roster Attribution Majority %',
+    hint: 'When a job has no completed step, Operandio is asked who was rostered over the window it was open. Somebody must have covered at least this much of that window to be named. Lower it to catch more people, raise it to name only those who were clearly on. Blank uses 50%.',
+    placeholder: '50',
+    suffix: '%',
+  },
+  {
     key: 'problem_ops_jobs_below',
     label: 'Jobs Below Standard Tolerated',
     hint: 'Flag once a club or person has more than this many below-standard jobs. Zero means any below-standard job is worth seeing.',
