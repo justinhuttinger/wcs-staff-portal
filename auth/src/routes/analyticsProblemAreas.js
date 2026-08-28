@@ -123,15 +123,29 @@ router.get('/', async (req, res) => {
       // Who actually touched each below-standard job. completed_by on the JOB
       // is only set once a job completes, so on a job that did not complete it
       // is always null — the names have to come from the steps.
-      const opsIds = ops.filter(j => !j.skip_reason).map(j => j.id)
-      const steps = opsIds.length
-        ? await fetchAll(
-            supabaseAdmin.from('operandio_api_job_steps')
-              .select('job_id, completed_by')
-              .in('job_id', opsIds)
-              .not('completed_by', 'is', null)
-          )
-        : []
+      //
+      // ONLY THE BELOW-STANDARD JOBS, AND IN CHUNKS. Asking for every job's
+      // steps meant an `in` list of 1,728 ids, a URL around 64KB, and a gateway
+      // 400 that supabase-js reports as the bare message "Bad Request" — which
+      // is precisely how this route broke in production. Filtering to the jobs
+      // actually in question cuts it to a few hundred, and chunking keeps the
+      // URL bounded however wide the window gets.
+      const jobBarForFetch = opsJobPct(await loadSettings())
+      const belowIds = ops
+        .filter(j => !j.skip_reason && Number(j.percent_complete ?? 0) < jobBarForFetch)
+        .map(j => j.id)
+
+      const steps = []
+      const CHUNK = 150
+      for (let i = 0; i < belowIds.length; i += CHUNK) {
+        const batch = belowIds.slice(i, i + CHUNK)
+        steps.push(...await fetchAll(
+          supabaseAdmin.from('operandio_api_job_steps')
+            .select('job_id, completed_by')
+            .in('job_id', batch)
+            .not('completed_by', 'is', null)
+        ))
+      }
 
       return { window, dayOnes, openForms, ops, steps, skipList }
     })
