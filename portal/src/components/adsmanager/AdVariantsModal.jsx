@@ -1,9 +1,9 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
-import { createAdsManagerAds, previewAdsManagerVariant } from '../../lib/api'
+import { createAdsManagerAds, previewAdsManagerVariant, updateAdsManagerAdset } from '../../lib/api'
 import { CALL_TO_ACTIONS, COPY_LIMITS } from './constants'
 import { Modal, Field, TextInput, TextArea, Select, Button, CharCount, ErrorBanner } from './ui'
 import { MediaPicker, uploadFiles, useVideoProcessing, assetToVariantFields } from './MediaPicker'
-import { isInstantFormAdset, useLeadForms, LeadFormPicker } from './LeadFormPicker'
+import { isInstantFormAdset, needsInstantFormSwitch, useLeadForms, LeadFormPicker } from './LeadFormPicker'
 
 let variantSeq = 0
 function blankVariant(overrides = {}) {
@@ -37,7 +37,12 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
 
   // An Instant Form ad set has nowhere to send people — the form opens in
   // Facebook — so the builder swaps the destination URL for a form picker.
-  const instantForm = isInstantFormAdset(adset)
+  // An ad set that optimises for leads but still points at a website can be
+  // switched here rather than sending the whole batch to a certain rejection.
+  const [switched, setSwitched] = useState(false)
+  const instantForm = switched || isInstantFormAdset(adset)
+  const needsSwitch = !switched && needsInstantFormSwitch(adset)
+  const [switching, setSwitching] = useState(false)
 
   const [pageId, setPageId] = useState(defaultPage ? defaultPage.id : '')
   const [link, setLink] = useState('')
@@ -70,6 +75,20 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
       v.asset && v.asset.video_id === ready.video_id ? { ...v, asset: ready } : v
     )))
   )
+
+  async function switchToInstantForm() {
+    setSwitching(true)
+    setError('')
+    try {
+      await updateAdsManagerAdset(adset.id, { destination_type: 'ON_AD' })
+      setSwitched(true)
+      setCta('SIGN_UP')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSwitching(false)
+    }
+  }
 
   function patch(key, changes) {
     setVariants(list => list.map(v => (v.key === key ? { ...v, ...changes } : v)))
@@ -165,6 +184,7 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
   const problems = useMemo(() => {
     const list = []
     if (!pageId) list.push('Pick a Facebook Page')
+    if (needsSwitch) list.push('Switch this ad set to Instant Form first')
     if (instantForm) {
       if (!leadFormId) list.push('Choose the Instant form this ad opens')
       else if (!/^\d{6,}$/.test(leadFormId.trim())) list.push('The Instant form ID should be all digits')
@@ -183,7 +203,7 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
       else if (v.asset.kind === 'video' && !v.asset.ready) list.push(`${label}: video is still processing`)
     })
     return list
-  }, [pageId, link, leadFormId, instantForm, variants])
+  }, [pageId, link, leadFormId, instantForm, needsSwitch, variants])
 
   async function submit() {
     if (problems.length) return
@@ -259,6 +279,19 @@ export default function AdVariantsModal({ adset, campaign, account, onClose, onC
       }
     >
       <ErrorBanner error={error} onDismiss={() => setError('')} />
+
+      {needsSwitch && (
+        <div className="rounded-xl border border-amber-400/60 bg-amber-50 dark:bg-amber-500/10 p-4 mb-4">
+          <p className="text-sm font-semibold text-text-primary">This ad set still sends people to a website</p>
+          <p className="text-xs text-text-muted mt-1">
+            It optimizes for Instant form leads, but its destination is not set to the ad itself, so Meta
+            rejects every ad that carries a form. Switching it sets the destination to the Instant Form.
+          </p>
+          <Button className="mt-3" onClick={switchToInstantForm} disabled={switching}>
+            {switching ? 'Switching…' : 'Switch to Instant Form'}
+          </Button>
+        </div>
+      )}
 
       {/* Shared across every variant — the whole point is that only copy and
           media differ, so these live once at the top. */}

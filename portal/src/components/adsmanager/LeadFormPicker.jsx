@@ -3,14 +3,24 @@ import { getAdsManagerLeadForms } from '../../lib/api'
 import { Field, Select, TextInput } from './ui'
 
 // An Instant Form ad set delivers its form inside Facebook, so its ads carry a
-// lead form id instead of a destination URL. Meta records that two ways
-// depending on how the ad set was built — the explicit ON_AD destination, or
-// just the lead-generation optimisation goal — and either one means "no
-// website". Getting this wrong is what makes the ad builder ask for a URL it
-// will never use.
+// lead form id instead of a destination URL.
+//
+// Only destination_type ON_AD counts. The LEAD_GENERATION goal alone does NOT:
+// Meta lets an ad set optimise for leads while still pointing at a website, and
+// then rejects every creative that carries a form with "Creative with lead form
+// can only be used for Lead Generation objective and ON_AD destination". Ad
+// sets built before the portal started sending ON_AD sit in exactly that state
+// (destination_type "UNDEFINED"), which is why they have to be switched rather
+// than guessed about.
 export function isInstantFormAdset(adset) {
+  return !!adset && adset.destination_type === 'ON_AD'
+}
+
+// Optimising for leads but not delivering the form on the ad: a form ad here is
+// guaranteed to fail, and one PUT fixes it.
+export function needsInstantFormSwitch(adset) {
   if (!adset) return false
-  return adset.destination_type === 'ON_AD' || adset.optimization_goal === 'LEAD_GENERATION'
+  return adset.optimization_goal === 'LEAD_GENERATION' && adset.destination_type !== 'ON_AD'
 }
 
 // Loads the Page's active Instant Forms. Re-runs on Page change because the
