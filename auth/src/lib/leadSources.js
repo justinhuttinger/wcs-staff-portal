@@ -34,12 +34,17 @@ const CLAIMED_COVERAGE_NOTE =
   'Claimed source is recorded on well under 1% of contacts, so these counts are ' +
   'a sample rather than a picture. The observed source is on every lead.'
 
-// Also stated. This bucket is not a channel.
+// Also stated. What is left in this bucket after the walk-in rule is applied.
+//
+// A contact with no attribution who went straight into a trial is a WALK-IN and
+// is counted as one. What remains here has no attribution, no source AND no
+// trial: a record that arrived from nowhere and did nothing. It is shown so a
+// reader can see it exists, and kept out of the totals because a conversion rate
+// computed over rows that were never leads is not a conversion rate.
 const NO_SOURCE_NOTE =
-  'No Source Recorded has neither an observed attribution nor a contact source. ' +
-  'These are overwhelmingly records created at or after the point of sale rather ' +
-  'than leads that converted, so their conversion rate is not comparable to a ' +
-  'real source and should not be read as one.'
+  'No Source Recorded has no observed attribution, no contact source and no ' +
+  'trial — records that arrived from nowhere and went nowhere. Contacts with no ' +
+  'attribution who did start a trial are counted as Walk-in, not here.'
 
 /** A source that is a bookkeeping artefact rather than a channel. */
 const NOT_A_CHANNEL = new Set(['No Source Recorded'])
