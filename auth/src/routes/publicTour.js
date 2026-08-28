@@ -264,12 +264,54 @@ router.patch('/:token/intake/:id', async (req, res) => {
       }).catch(e => console.error('[public-tour] webhook post failed:', e.message))
     }
 
+    // Completed tours USED TO BE DELETED here, on the reasoning that the iPad is
+    // a transient queue and the outbound webhook is the record on the way out.
+    // That quietly meant no tour has ever been recorded: the Analytics reports
+    // read tour_intakes and every row was gone seconds after it was written.
+    //
+    // The row is kept and marked completed instead. The queue already filters on
+    // status = 'ready', so nothing changes at the desk.
+    //
+    // A cancel still deletes: somebody who walked out before being seen is not a
+    // tour, and keeping the card would leave the queue growing with people who
+    // were never toured.
+    if (cancelled) {
+      const { error } = await supabaseAdmin
+        .from('tour_intakes')
+        .delete()
+        .eq('id', req.params.id)
+      if (error) {
+        console.error('[public-tour] delete failed:', error.message)
+        return res.status(500).json({ error: 'failed to save' })
+      }
+      return res.json({ success: true })
+    }
+
+    // The columns reporting needs, which only this route is in a position to
+    // fill in: which club, who gave the tour, and how long a pass they handed
+    // out. club_number comes from the location rather than the request -- the
+    // token already fixes which club this is, and taking it from the body would
+    // let a card be filed under a gym it never happened at.
     const { error } = await supabaseAdmin
       .from('tour_intakes')
-      .delete()
+      .update({
+        status: 'completed',
+        outcome,
+        notes: notes || null,
+        tour_member: tour_member || null,
+        given_by_name: tour_member || null,
+        club_number: clubNumberForLocationName(ctx.location.name),
+        pass_days: pass_days ?? null,
+        ghl_contact_id: contactId,
+        // Promoted out of `raw`, where the kiosk stamps it. It is the only field
+        // that lets a tour be joined to membership, so leaving it buried makes
+        // "tours given -> members signed" unanswerable.
+        abc_member_id: withAbcId(existing).abc_member_id,
+        completed_at: new Date().toISOString(),
+      })
       .eq('id', req.params.id)
     if (error) {
-      console.error('[public-tour] delete failed:', error.message)
+      console.error('[public-tour] complete failed:', error.message)
       return res.status(500).json({ error: 'failed to save' })
     }
 

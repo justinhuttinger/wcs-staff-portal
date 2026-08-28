@@ -19,20 +19,32 @@ const { validateTourCompletion, toRow } = require('../lib/tourCompletion')
 const router = Router()
 router.use(authenticate)
 
-/** Allowed outcomes, read from the table so adding one is a row, not a deploy. */
-async function allowedOutcomes() {
+/**
+ * Allowed outcomes and which of them hand out access, read from the table so
+ * adding an outcome -- or changing what a trial is worth -- is a row rather than
+ * a deploy on either side.
+ *
+ * An outcome grants access when it has a fixed length (Started Trial, 7) or is
+ * explicitly variable (Custom Pass). Both are marked by grants_pass so the two
+ * cases do not have to be told apart by name.
+ */
+async function outcomeRules() {
   const { data, error } = await supabaseAdmin
     .from('tour_outcomes')
-    .select('outcome')
+    .select('outcome, default_pass_days, grants_pass')
   if (error) throw new Error(error.message)
-  return new Set((data || []).map(r => r.outcome))
+  const rows = data || []
+  return {
+    allowed: new Set(rows.map(r => r.outcome)),
+    passRules: new Set(rows.filter(r => r.grants_pass).map(r => r.outcome)),
+  }
 }
 
 router.get('/outcomes', async (_req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('tour_outcomes')
-      .select('outcome, label, is_sale, sort_order')
+      .select('outcome, label, is_sale, sort_order, default_pass_days, grants_pass')
       .order('sort_order', { ascending: true })
     if (error) throw new Error(error.message)
     res.json({ outcomes: data || [] })
@@ -44,8 +56,8 @@ router.get('/outcomes', async (_req, res) => {
 
 router.post('/complete', async (req, res) => {
   try {
-    const outcomes = await allowedOutcomes()
-    const { ok, errors, value } = validateTourCompletion(req.body, outcomes)
+    const { allowed, passRules } = await outcomeRules()
+    const { ok, errors, value } = validateTourCompletion(req.body, allowed, passRules)
     // Every problem at once: a caller fixing one field per round trip gives up.
     if (!ok) return res.status(400).json({ error: 'Invalid tour completion', details: errors })
 
@@ -93,6 +105,7 @@ router.post('/complete', async (req, res) => {
       tourId: saved.id,
       created: !existing,
       outcome: saved.outcome,
+      passDays: saved.pass_days ?? null,
       clubNumber: saved.club_number,
       givenBy: saved.given_by_name || saved.given_by_employee_id,
     })
