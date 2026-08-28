@@ -188,3 +188,60 @@ test('the Admin tile edits exactly the keys the builder reads', () => {
       `ProblemThresholdsAdmin is missing a field for ${settingKey(c.key)}`)
   }
 })
+
+test('a subject can attach the rows behind its number', () => {
+  const out = build([{
+    slug: 'salem', club: 'Salem', name: 'Kyra Scoggin', department: 'Operations',
+    metrics: { ops_jobs_below: { value: 2, sample: 10, numerator: 2 } },
+    details: {
+      ops_jobs_below: [
+        { name: 'Closing Checklist (Daily)', pct: 12, date: '2026-08-27', via: 'rostered' },
+        { name: 'Opening Checklist (Daily)', pct: 0, date: '2026-08-26', via: 'worked' },
+      ],
+    },
+  }])
+  const p = out.problems[0]
+  // A count of missed checklists is not actionable until you can see which.
+  assert.equal(p.details.length, 2)
+  assert.equal(p.details[0].name, 'Closing Checklist (Daily)')
+  assert.equal(p.details[0].via, 'rostered')
+})
+
+test('a check with no details attached carries null, not undefined', () => {
+  const out = build([seller({ vip_pct: { value: 1, sample: 60, numerator: 0 } })])
+  // Null so the UI can test for it plainly rather than guessing at absence.
+  assert.equal(out.problems[0].details, null)
+})
+
+const { clubOffKey } = require('./problemAreas')
+
+test('a check can be turned off for one club without touching the others', () => {
+  const staff = [
+    { slug: 'milwaukie', club: 'Milwaukie', name: 'M Person', department: 'Membership',
+      metrics: { vip_pct: { value: 0, sample: 60, numerator: 0 } } },
+    { slug: 'salem', club: 'Salem', name: 'S Person', department: 'Membership',
+      metrics: { vip_pct: { value: 0, sample: 60, numerator: 0 } } },
+  ]
+  // Milwaukie has no VIP fields in GHL, so a VIP check there measures the setup
+  // rather than the staff.
+  const out = build(staff, { [clubOffKey('vip_pct', 'milwaukie')]: '1' })
+  assert.deepEqual(out.problems.map(p => p.club), ['Salem'])
+})
+
+test('the global switch beats the per-club one', () => {
+  const staff = [{ slug: 'salem', club: 'Salem', name: 'S', department: 'Membership',
+    metrics: { vip_pct: { value: 0, sample: 60, numerator: 0 } } }]
+  // Turning a check off everywhere must not require unticking it seven times.
+  const out = build(staff, { [offKey('vip_pct')]: '1', [clubOffKey('vip_pct', 'keizer')]: '1' })
+  assert.equal(out.problems.length, 0)
+})
+
+test('the payload says which clubs a check is off at', () => {
+  const out = build([], {
+    [clubOffKey('vip_pct', 'milwaukie')]: '1',
+    [clubOffKey('vip_pct', 'eugene')]: '1',
+  })
+  const vip = out.checks.find(c => c.key === 'vip_pct')
+  assert.deepEqual(vip.offClubs.sort(), ['eugene', 'milwaukie'])
+  assert.equal(vip.off, false)
+})

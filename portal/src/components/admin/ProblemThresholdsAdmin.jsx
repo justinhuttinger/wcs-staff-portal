@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getAppSettings, saveAppSettings } from '../../lib/api'
+import { LOCATION_NAMES } from '../../config/locations'
 
 // ---------------------------------------------------------------------------
 // Admin > Problem Thresholds
@@ -15,6 +16,7 @@ import { getAppSettings, saveAppSettings } from '../../lib/api'
 const FIELDS = [
   {
     key: 'problem_dayone_book_pct',
+    check: true,
     label: 'Day One Booking %',
     hint: 'Flag a club below this share of new members booked into a Day One.',
     placeholder: '40',
@@ -22,6 +24,7 @@ const FIELDS = [
   },
   {
     key: 'problem_vip_pct',
+    check: true,
     label: 'VIP Collection %',
     hint: 'Flag a club below this share of new members with a VIP collected.',
     placeholder: '40',
@@ -29,6 +32,7 @@ const FIELDS = [
   },
   {
     key: 'problem_dayone_close_pct',
+    check: true,
     label: 'Day One Close %',
     hint: 'Flag a club below this share of completed Day Ones that sold.',
     placeholder: '30',
@@ -36,6 +40,7 @@ const FIELDS = [
   },
   {
     key: 'problem_dayone_open_forms',
+    check: true,
     label: 'Day One Forms Left Open',
     hint: 'Flag a club with more than this many Day Ones past their date and no outcome recorded. Counted across all time, not just the window — a form left open in March is still open.',
     placeholder: '10',
@@ -50,12 +55,16 @@ const FIELDS = [
   },
   {
     key: 'problem_ops_jobs_below',
+    check: true,
     label: 'Jobs Below Standard Tolerated',
     hint: 'Flag once a club or person has more than this many below-standard jobs. Zero means any below-standard job is worth seeing.',
     placeholder: '0',
     suffix: 'jobs',
   },
 ]
+
+// Slug + short label per club, for the per-club grid.
+const CLUB_SLUGS = LOCATION_NAMES.map(n => ({ slug: n.toLowerCase(), label: n }))
 
 export default function ProblemThresholdsAdmin() {
   const [settings, setSettings] = useState({})
@@ -154,6 +163,58 @@ export default function ProblemThresholdsAdmin() {
           )
         })}
       </ul>
+
+      {/* Per-club switches.
+          Not every club runs every programme: Milwaukie and Eugene have no VIP
+          fields configured in GHL at all, so a VIP check there measures the
+          setup rather than the staff. A permanent red row nobody can fix is how
+          a report stops being read. */}
+      <div className="border-t border-border pt-4">
+        <h4 className="text-xs font-bold text-text-primary">Turn Off Per Club</h4>
+        <p className="text-[11px] text-text-muted mt-0.5 mb-3">
+          Tick to stop a check firing at one club. The Off switch above turns a
+          check off everywhere and wins over these.
+        </p>
+
+        <div className="overflow-x-auto">
+          <table className="text-[11px] w-full">
+            <thead>
+              <tr className="text-text-muted">
+                <th className="text-left font-semibold py-1 pr-3">Check</th>
+                {CLUB_SLUGS.map(c => (
+                  <th key={c.slug} className="font-semibold py-1 px-2 text-center whitespace-nowrap">
+                    {c.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {FIELDS.filter(f => f.check).map(f => {
+                const allOff = settings[`${f.key}_off`] === '1'
+                return (
+                  <tr key={f.key} className="border-t border-border">
+                    <td className={`py-1.5 pr-3 text-text-primary ${allOff ? 'opacity-40' : ''}`}>
+                      {f.label}
+                    </td>
+                    {CLUB_SLUGS.map(c => (
+                      <td key={c.slug} className="py-1.5 px-2 text-center">
+                        <input
+                          type="checkbox"
+                          // Disabled when the check is off everywhere: ticking a
+                          // club would imply it does something, and it does not.
+                          disabled={allOff}
+                          checked={allOff || settings[`${f.key}_off_${c.slug}`] === '1'}
+                          onChange={e => set(`${f.key}_off_${c.slug}`, e.target.checked ? '1' : '')}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   )
 }
