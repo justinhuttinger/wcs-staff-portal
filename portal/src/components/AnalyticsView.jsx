@@ -20,6 +20,7 @@ import SalespersonSnapshot from './analytics/SalespersonSnapshot'
 import AttritionTrends from './analytics/AttritionTrends'
 import Checkins from './analytics/Checkins'
 import Compliance from './analytics/Compliance'
+import PosSales from './analytics/PosSales'
 import Audits from './analytics/Audits'
 import LeadSources from './analytics/LeadSources'
 import ProblemAreas from './analytics/ProblemAreas'
@@ -187,6 +188,12 @@ const ANALYTICS_REPORTS = [
     Component: Audits,
   },
   {
+    key: 'pos-sales',
+    label: 'POS Sales',
+    desc: 'Retail Goods and Margin',
+    Component: PosSales,
+  },
+  {
     key: 'kpis',
     label: 'KPIs',
     desc: 'Goals by Club',
@@ -242,7 +249,7 @@ const ANALYTICS_REPORTS = [
 const REPORT_GROUPS = [
   { key: 'marketing', label: 'Marketing',     reports: ['lead-sources'] },
   { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-trends', 'member-journey', 'checkins'] },
-  { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due'] },
+  { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due', 'pos-sales'] },
   { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase', 'pt-snapshot', 'trainer-snapshot'] },
   { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot'] },
   // Club-wide overviews first, then the one-person-at-a-time cards.
