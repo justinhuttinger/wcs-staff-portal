@@ -6,7 +6,7 @@ const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { buildTrainerPerformance } = require('../lib/trainerPerformance')
 const { buildTrainerSnapshot } = require('../lib/trainerSnapshot')
-const { monthToDate, priorMonthWindow } = require('../lib/snapshotWindow')
+const { monthToDate, priorMonthWindow, priorLabel, windowLabel } = require('../lib/snapshotWindow')
 const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
@@ -85,30 +85,48 @@ router.get('/', async (req, res) => {
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b))
 
-    // Default to the busiest trainer this window, so the report opens on
-    // something rather than an empty picker.
-    const chosen = person || (base.current.rows || [])[0]?.trainer || null
+    // NO DEFAULT PERSON. A snapshot that opens on whoever happens to top the
+    // list invites reading someone else's numbers as your own; the report waits
+    // to be asked.
+    const chosen = person || null
+    const compare = String(req.query.compare || '').trim() || null
 
-    const findRow = (report) =>
-      (report.rows || []).find(r => norm(r.trainer) === norm(chosen)) || null
+    const rowIn = (report, who) =>
+      (report.rows || []).find(r => norm(r.trainer) === norm(who)) || null
 
-    const series = chosen
-      ? await fetchAll(supabaseAdmin.rpc('analytics_trainer_monthly', {
+    // Comparison is EITHER another trainer over the same window, or the same
+    // trainer a month earlier. Never both.
+    const comparison = compare
+      ? { label: compare, person: compare, row: rowIn(base.current, compare) }
+      : { label: priorLabel(start, end), person: null, row: rowIn(base.prior, chosen) }
+
+    const seriesFor = (who) => (who
+      ? fetchAll(supabaseAdmin.rpc('analytics_trainer_monthly', {
         p_end: end,
         p_months: SERIES_MONTHS,
         p_clubs: clubNumbers,
-        p_person: chosen,
+        p_person: who,
       }))
-      : []
+      : Promise.resolve([]))
 
-    const built = buildTrainerSnapshot(findRow(base.current), findRow(base.prior), series, { person: chosen })
+    const [series, compareSeries] = await Promise.all([
+      seriesFor(chosen),
+      seriesFor(compare),
+    ])
+
+    const built = buildTrainerSnapshot(rowIn(base.current, chosen), comparison, series, { person: chosen })
 
     res.json({
       ...built,
       people,
+      compareSeries: compare
+        ? buildTrainerSnapshot(rowIn(base.current, compare), null, compareSeries, { person: compare }).series
+        : [],
       meta: {
         start, end,
         priorStart: prior.start, priorEnd: prior.end,
+        windowLabel: windowLabel(start, end),
+        comparisonLabel: comparison.label,
         clubs: slugs,
         seriesMonths: SERIES_MONTHS,
         anchoredOn: isDate(req.query.start) ? 'request' : 'month to date',

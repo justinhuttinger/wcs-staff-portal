@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert')
 
-const { monthToDate, priorMonthWindow, pctChange, daysInMonth } = require('./snapshotWindow')
+const { monthToDate, priorMonthWindow, pctChange, daysInMonth, formatDateLong, priorLabel, windowLabel, isMonthToDate } = require('./snapshotWindow')
 const { buildTrainerSnapshot, seriesRow: trainerSeriesRow } = require('./trainerSnapshot')
 const { buildMembershipSnapshot, seriesRow: memberSeriesRow } = require('./membershipSnapshot')
 
@@ -52,7 +52,7 @@ const trainerRow = (over = {}) => ({
 })
 
 test('each trainer stat carries its prior value and the change', () => {
-  const out = buildTrainerSnapshot(trainerRow(), trainerRow({ completedSessions: 171, closeAmount: 3850 }), [])
+  const out = buildTrainerSnapshot(trainerRow(), { label: 'July MTD', row: trainerRow({ completedSessions: 171, closeAmount: 3850 }) }, [])
   const sessions = out.stats.find(s => s.key === 'completedSessions')
   assert.equal(sessions.value, 126)
   assert.equal(sessions.prior, 171)
@@ -79,7 +79,7 @@ test('a trainer with no activity gets a card, not an error', () => {
 test('trainer series derives rates rather than trusting raw counts', () => {
   const r = trainerSeriesRow({
     month_start: '2026-07-01', completed_sessions: 171, cancelled_sessions: 9,
-    unique_clients: 44, pt_minutes: 9720, day_ones_booked: 24,
+    unique_clients: 44, pt_minutes: 9720, day_ones: 24,
     day_ones_completed: 11, day_ones_sold: 8, close_amount: 3850,
   })
   assert.equal(r.ptHours, 162)
@@ -97,17 +97,20 @@ test('a month with no intros has no close rate', () => {
 // Membership Snapshot
 // ---------------------------------------------------------------------------
 
+// Keys copied from what buildReport actually returns — see the STATS comment
+// in membershipSnapshot.js for why an invented key is not a harmless typo.
 const memberRow = (over = {}) => ({
   salesperson: 'Katie Castlio', club: 'East Side Athletic Club',
   newMemberUnits: 35, pctOfClubTotal: 42.1,
   dayOneBookCount: 12, dayOneBookPct: 34.3,
   bookOnJoinDateCount: 7, bookOnJoinDatePct: 20,
-  achCount: 30, achPct: 85.7,
-  avgNextDueAmount: 62.5, avgDownPayment: 0, ...over,
+  achUnits: 30, pctOnAch: 85.7, achKnownUnits: 35,
+  avgNewDuesDraft: 62.5, totalNewDuesDraft: 2187.5, totalDownPayment: 0,
+  toursGiven: null, tourConversionRate: null, avgDaysToConversion: null, ...over,
 })
 
 test('each membership stat carries its prior value and the change', () => {
-  const out = buildMembershipSnapshot(memberRow(), memberRow({ newMemberUnits: 65 }), [])
+  const out = buildMembershipSnapshot(memberRow(), { label: 'July MTD', row: memberRow({ newMemberUnits: 65 }) }, [])
   const units = out.stats.find(s => s.key === 'newMemberUnits')
   assert.equal(units.value, 35)
   assert.equal(units.prior, 65)
@@ -117,10 +120,8 @@ test('each membership stat carries its prior value and the change', () => {
 test('membership series computes book % against the members signed', () => {
   const r = memberSeriesRow({
     month_start: '2026-08-01', new_members: 35, day_ones_booked: 12,
-    day_ones_completed: 5, day_ones_sold: 1,
   })
   assert.equal(r.bookPct, 34.3)
-  assert.equal(r.closeRate, 20)
 })
 
 test('a month with no members signed has no book rate', () => {
@@ -133,4 +134,76 @@ test('snapshot builders survive empty input', () => {
   assert.doesNotThrow(() => buildTrainerSnapshot(null, null, null))
   assert.doesNotThrow(() => buildMembershipSnapshot(null, null, null))
   assert.deepEqual(buildMembershipSnapshot(null, null, null).series, [])
+})
+
+// ---------------------------------------------------------------------------
+// Labelling — the point of these is that a reader can name the comparison
+// ---------------------------------------------------------------------------
+
+test('a month-to-date window names the month it compares against', () => {
+  // "vs 2026-07-01 to 2026-07-28" tells a reader nothing they can hold;
+  // "July MTD" tells them everything.
+  assert.equal(priorLabel('2026-08-01', '2026-08-28'), 'July MTD')
+  assert.equal(priorLabel('2026-01-01', '2026-01-15'), 'December MTD')
+})
+
+test('a window that is not month-to-date falls back to a readable date', () => {
+  assert.equal(isMonthToDate('2026-08-05', '2026-08-28'), false)
+  assert.equal(priorLabel('2026-08-05', '2026-08-28'), 'July 28 2026')
+})
+
+test('dates read as words, and do not drift a day west of Greenwich', () => {
+  // new Date('2026-08-28') is midnight UTC and renders as the 27th in Pacific.
+  assert.equal(formatDateLong('2026-08-28'), 'August 28 2026')
+  assert.equal(formatDateLong('2026-01-01'), 'January 1 2026')
+  assert.equal(formatDateLong('nonsense'), '')
+})
+
+test('the window label says MTD rather than repeating the start date', () => {
+  assert.equal(windowLabel('2026-08-01', '2026-08-28'), 'August MTD · through August 28 2026')
+  assert.equal(windowLabel('2026-08-05', '2026-08-28'), 'August 5 2026 to August 28 2026')
+})
+
+test('comparison mode carries the other person, not a date', () => {
+  const out = buildTrainerSnapshot(
+    trainerRow(),
+    { label: 'Seth Tripp', person: 'Seth Tripp', row: trainerRow({ completedSessions: 218 }) },
+    []
+  )
+  assert.equal(out.comparisonLabel, 'Seth Tripp')
+  assert.equal(out.comparingTo, 'Seth Tripp')
+  assert.equal(out.stats.find(s => s.key === 'completedSessions').prior, 218)
+})
+
+test('trainer Day Ones are the ones serviced, with their outcomes', () => {
+  const r = trainerSeriesRow({
+    month_start: '2026-08-01', day_ones: 38, day_ones_completed: 16,
+    day_ones_sold: 1, day_ones_cancelled: 3, day_ones_no_show: 6,
+  })
+  assert.equal(r.dayOnes, 38)
+  assert.equal(r.dayOnesCancelled, 3)
+  assert.equal(r.dayOnesNoShow, 6)
+})
+
+test('membership stats use keys buildReport actually returns', () => {
+  // achCount / achPct / avgNextDueAmount were invented and rendered N/A
+  // forever. This pins the real names.
+  const out = buildMembershipSnapshot(memberRow(), null, [])
+  const val = k => out.stats.find(s => s.key === k)?.value
+  assert.equal(val('achUnits'), 30)
+  assert.equal(val('pctOnAch'), 85.7)
+  assert.equal(val('avgNewDuesDraft'), 62.5)
+  assert.equal(val('totalDownPayment'), 0)
+  // And Day One Sold is not a membership stat at all.
+  assert.equal(out.stats.some(s => s.key === 'dayOnesSold'), false)
+})
+
+test('tours are carried as pending rather than as zero', () => {
+  const out = buildMembershipSnapshot(memberRow(), null, [])
+  const tours = out.stats.find(s => s.key === 'toursGiven')
+  assert.equal(tours.pending, true)
+  assert.equal(tours.value, null)
+  // A zero would read as "no tours given" rather than "we do not record tours".
+  const r = memberSeriesRow({ month_start: '2026-08-01', new_members: 10, day_ones_booked: 2 })
+  assert.equal(r.toursGiven, null)
 })
