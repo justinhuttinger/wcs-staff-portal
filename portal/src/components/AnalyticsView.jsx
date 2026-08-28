@@ -18,6 +18,7 @@ import TrainerPerformance from './analytics/TrainerPerformance'
 import TrainerSnapshot from './analytics/TrainerSnapshot'
 import SalespersonSnapshot from './analytics/SalespersonSnapshot'
 import ClubSnapshot from './analytics/ClubSnapshot'
+import KpiReport from './analytics/KpiReport'
 import PtSnapshot from './analytics/PtSnapshot'
 import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 
@@ -128,6 +129,12 @@ const ANALYTICS_REPORTS = [
     Component: RevenueTrends,
   },
   {
+    key: 'kpis',
+    label: 'KPIs',
+    desc: 'Goals by Club',
+    Component: KpiReport,
+  },
+  {
     key: 'club-snapshot',
     label: 'Club Snapshot',
     desc: 'Membership, Day Ones and PT',
@@ -184,7 +191,7 @@ const REPORT_GROUPS = [
 ]
 
 // Pinned above the groups, in this order, outside any category.
-const PINNED_REPORTS = ['topline', 'club-activity']
+const PINNED_REPORTS = ['topline', 'kpis', 'club-activity']
 
 /**
  * Reports that belong in no group and are not pinned still need a way in.
