@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../../lib/api'
-import { fmtTime12, parseLocalTimestamp } from '../../lib/weekGrid'
+import { fmtTime12, parseLocalTimestamp, displayClassName } from '../../lib/weekGrid'
 import AttendanceModal from './AttendanceModal'
 import GroupXReport from './GroupXReport'
 
@@ -9,18 +9,18 @@ import GroupXReport from './GroupXReport'
 //
 // Split out of the scheduler because they are two different jobs done by two
 // different people at two different moments. Scheduling is planning work done
-// ahead of time; this is a queue you work through after the fact, the same
-// shape as the Tour Check-In queue -- a list of things that already happened,
-// each one a tap away from being recorded.
+// ahead of time; this is a queue you work through after the fact, so it is
+// built to match the Tour Check-In queue exactly -- one card per row, avatar,
+// detail, status pill on the right -- because staff already know how to work
+// that screen and there is no reason for a second visual language.
 //
 // Headcounts are staff-entered rather than read from ABC on purpose: of 37
 // Salem class events in July 2026, 31 had no members attached at all and the
 // rest had one, marked "Did Not Attend". Nobody books classes through ABC, so
 // its attendance data cannot be used.
 
-// How far back the queue looks for classes still missing a count. A week is
-// enough to catch up after a missed shift without the list becoming an
-// infinite backlog nobody ever clears.
+// How far back the queue looks. A week is enough to catch up after a missed
+// shift without the list becoming an infinite backlog nobody ever clears.
 const LOOKBACK_DAYS = 7
 
 function isoDaysAgo(n) {
@@ -29,44 +29,108 @@ function isoDaysAgo(n) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function todayIso() {
-  return isoDaysAgo(0)
-}
-
-// "Tue, Aug 26" — the queue is a flat list across several days, so each row has
-// to say its own date. A bare time would be ambiguous.
+// "Tue, Aug 26". The queue is a flat list spanning several days, so every row
+// has to carry its own date -- a bare time would be ambiguous.
 function fmtDay(iso) {
   if (!iso) return ''
   const d = new Date(iso + 'T00:00:00')
   return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
+function timeAgo(iso) {
+  if (!iso) return ''
+  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  return new Date(iso).toLocaleDateString()
+}
+
+// Avatar treatment lifted from TourCheckinQueueView so the two queues look like
+// one product. Keyed on the INSTRUCTOR, since that is the person in the row.
+function initials(name) {
+  const p = (name || '').trim().split(/\s+/).filter(Boolean)
+  if (!p.length) return '?'
+  if (p.length === 1) return p[0][0].toUpperCase()
+  return (p[0][0] + p[p.length - 1][0]).toUpperCase()
+}
+
+const AVATAR_COLORS = [
+  'bg-red-100 text-red-700', 'bg-blue-100 text-blue-700', 'bg-green-100 text-green-700',
+  'bg-purple-100 text-purple-700', 'bg-amber-100 text-amber-700', 'bg-teal-100 text-teal-700',
+]
+
+function avatarColor(name) {
+  let h = 0
+  for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) % AVATAR_COLORS.length
+  return AVATAR_COLORS[h]
+}
+
+function Avatar({ name }) {
+  return (
+    <div className={`w-14 h-14 shrink-0 rounded-full flex items-center justify-center font-bold text-lg ${avatarColor(name)}`}>
+      {initials(name)}
+    </div>
+  )
+}
+
+function Card({ children, tone }) {
+  const color = tone === 'error' ? 'text-wcs-red' : 'text-text-muted'
+  return <p className={`${color} text-sm bg-surface/95 border border-border rounded-xl px-4 py-8 text-center`}>{children}</p>
+}
+
+// One class, one row. Same card geometry as a tour check-in: avatar, the thing
+// itself, then a status pill hard right.
 function ClassRow({ c, onClick }) {
   const p = parseLocalTimestamp(c.event_timestamp_local)
   const logged = c.headcount != null
+  const name = displayClassName(c.class_name, c.duration_minutes)
+  const when = p ? `${fmtDay(p.date)} · ${fmtTime12(p.hour, p.min)}` : c.event_timestamp_local
+  // Fill only reads as a rate when there is a capacity to divide by.
+  const fill = logged && c.max_attendees > 0
+    ? Math.round((c.headcount / c.max_attendees) * 100)
+    : null
+
   return (
     <button
       type="button"
       onClick={() => onClick(c)}
-      className="w-full text-left py-2.5 px-2 flex flex-wrap items-baseline gap-x-2 hover:bg-bg rounded transition"
+      className="w-full text-left bg-surface border border-border rounded-2xl p-5 flex items-center gap-5 transition-all hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
     >
-      <span className="text-sm font-medium text-text-primary">{c.class_name}</span>
-      <span className="text-xs text-text-muted">
-        {p ? `${fmtDay(p.date)} at ${fmtTime12(p.hour, p.min)}` : c.event_timestamp_local}
-        {c.instructor_name ? ` · ${c.instructor_name}` : ''}
-      </span>
-      {logged ? (
-        <span className="ml-auto flex items-baseline gap-2">
-          {/* The number IS the status. A green tick beside it would say the
-              same thing twice and push the count off small screens. */}
-          <span className="text-sm font-bold tabular-nums text-text-primary">{c.headcount}</span>
-          <span className="text-[10px] uppercase tracking-wide text-text-muted">
-            {c.max_attendees ? `of ${c.max_attendees}` : 'logged'}
-          </span>
-        </span>
-      ) : (
-        <span className="ml-auto text-xs text-wcs-red font-medium">Add count</span>
-      )}
+      <Avatar name={c.instructor_name} />
+
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-lg text-text-primary truncate">{name}</p>
+        <p className="text-sm text-text-muted truncate">{when}</p>
+        <p className="text-sm text-text-muted truncate">{c.instructor_name || 'Unassigned'}</p>
+      </div>
+
+      <div className="shrink-0 text-right">
+        {logged ? (
+          <>
+            {/* The number IS the status, so it gets the emphasis and the pill
+                stays quiet. A separate "logged" tick would say it twice. */}
+            <span className="inline-flex items-baseline gap-1.5 px-3 py-1 rounded-full bg-green-50 text-green-700 border border-green-200">
+              <span className="text-base font-bold tabular-nums leading-none">{c.headcount}</span>
+              <span className="text-xs font-semibold">
+                {c.max_attendees ? `of ${c.max_attendees}` : 'in'}
+              </span>
+            </span>
+            <p className="text-xs text-text-muted mt-1">
+              {fill !== null ? `${fill}% full` : 'Recorded'}
+              {c.recorded_at ? ` · ${timeAgo(c.recorded_at)}` : ''}
+            </p>
+          </>
+        ) : (
+          <>
+            <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-red-50 text-wcs-red border border-red-200">
+              Needs a count
+            </span>
+            <p className="text-xs text-text-muted mt-1">Tap to record</p>
+          </>
+        )}
+      </div>
     </button>
   )
 }
@@ -92,7 +156,7 @@ export default function GroupXAttendanceView() {
     setError(null)
     try {
       const r = await api(
-        `/group-x/classes?club_number=${club.clubNumber}&start=${isoDaysAgo(LOOKBACK_DAYS)}&end=${todayIso()}`
+        `/group-x/classes?club_number=${club.clubNumber}&start=${isoDaysAgo(LOOKBACK_DAYS)}&end=${isoDaysAgo(0)}`
       )
       setClasses(r.classes || [])
     } catch (e) {
@@ -139,7 +203,10 @@ export default function GroupXAttendanceView() {
       {tab === 'history' && <GroupXReport clubs={clubs} />}
 
       {tab === 'log' && (<>
-        <div className="bg-surface rounded-xl border border-border p-4 space-y-3">
+        {/* Club picker and the count of outstanding work, on one line. The
+            number is the reason to be on this screen, so it is stated up front
+            rather than left to be counted off the list. */}
+        <div className="bg-surface rounded-xl border border-border p-4 flex flex-wrap items-center gap-3">
           <div className="flex flex-wrap gap-1.5">
             {clubs.map(c => (
               <button
@@ -156,52 +223,40 @@ export default function GroupXAttendanceView() {
               </button>
             ))}
           </div>
-          <p className="text-xs text-text-muted">
-            Classes from the last {LOOKBACK_DAYS} days at {club.name}. Tap one to record how many came.
-          </p>
+          {!loading && (
+            <span className="ml-auto text-sm text-text-muted">
+              {pending.length > 0
+                ? `${pending.length} of ${past.length} still need a count`
+                : `All ${past.length} logged`}
+              <span className="text-text-muted"> · last {LOOKBACK_DAYS} days</span>
+            </span>
+          )}
         </div>
 
-        {error && (
-          <div className="bg-surface rounded-xl border border-border p-4">
-            <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900 break-words">
-              {error}
-            </div>
-          </div>
-        )}
+        {error && <Card tone="error">{error}</Card>}
+        {loading && <Card>Loading classes…</Card>}
 
-        {loading && (
-          <div className="bg-surface rounded-xl border border-border p-6 text-sm text-text-muted">
-            Loading classes...
-          </div>
+        {!loading && !error && past.length === 0 && (
+          <Card>No classes have finished at {club.name} in the last {LOOKBACK_DAYS} days.</Card>
         )}
 
         {!loading && pending.length > 0 && (
-          <div className="bg-surface rounded-xl border border-border p-4">
-            <h3 className="font-semibold text-text-primary mb-2">
-              {pending.length} {pending.length === 1 ? 'class needs' : 'classes need'} a count
+          <div className="space-y-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted px-1">
+              Needs a count
             </h3>
-            <div className="divide-y divide-border">
-              {pending.map(c => <ClassRow key={c.event_id} c={c} onClick={setAttendanceFor} />)}
-            </div>
+            {pending.map(c => <ClassRow key={c.event_id} c={c} onClick={setAttendanceFor} />)}
           </div>
         )}
 
         {!loading && logged.length > 0 && (
-          <div className="bg-surface rounded-xl border border-border p-4">
-            <h3 className="font-semibold text-text-primary mb-2">
-              Recorded in the last {LOOKBACK_DAYS} days
+          <div className="space-y-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted px-1">
+              Recorded
             </h3>
             {/* Still tappable: a miscounted class is corrected by opening it
                 again, and the modal already loads the existing number. */}
-            <div className="divide-y divide-border">
-              {logged.map(c => <ClassRow key={c.event_id} c={c} onClick={setAttendanceFor} />)}
-            </div>
-          </div>
-        )}
-
-        {!loading && !error && past.length === 0 && (
-          <div className="bg-surface rounded-xl border border-border p-6 text-sm text-text-muted">
-            No classes have finished at {club.name} in the last {LOOKBACK_DAYS} days.
+            {logged.map(c => <ClassRow key={c.event_id} c={c} onClick={setAttendanceFor} />)}
           </div>
         )}
       </>)}
