@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { api } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
+import { colorFor } from './chartPalette'
 
 // ---------------------------------------------------------------------------
 // Problem Areas — Analytics (admin only)
@@ -9,9 +10,9 @@ import DesktopLoading from '../DesktopLoading'
 // States what is wrong, per club, so a manager does not have to go looking.
 // Thresholds are set in Admin > Problem Thresholds.
 //
-// WHAT WAS NOT CHECKED IS SHOWN AS PROMINENTLY AS WHAT FAILED. A club with too
-// little data to judge is not a club with no problems, and a report that
-// silently drops it teaches managers that a short list means a good week.
+// A check that cannot be judged — no data, or too small a sample — simply does
+// not fire. A manager wants the problems, not a register of everything that was
+// looked at.
 // ---------------------------------------------------------------------------
 
 function fmtValue(v, unit) {
@@ -19,36 +20,68 @@ function fmtValue(v, unit) {
   return unit === 'pct' ? `${v}%` : Number(v).toLocaleString()
 }
 
-function ProblemRow({ p }) {
-  const missBy = p.direction === 'below'
-    ? `${Math.round((p.threshold - p.value) * 10) / 10} under`
-    : `${Math.round((p.value - p.threshold) * 10) / 10} over`
+// One colour per KIND of problem, fixed by its position in the check list so a
+// colour always means the same thing. Scanning a long list, the eye finds three
+// of the same pill far faster than it reads three identical labels — which is
+// the point: repeated colours are repeated problems.
+function pillStyle(checks, key) {
+  const i = Math.max(0, (checks || []).findIndex(c => c.key === key))
+  const hue = colorFor(key, i)
+  return { background: `${hue}1f`, color: hue, borderColor: `${hue}66` }
+}
 
+function ProblemRow({ p, checks }) {
   return (
     <li className="py-2.5 flex items-start gap-3">
       <span className="w-1 self-stretch rounded-full bg-wcs-red flex-shrink-0" aria-hidden="true" />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-3 flex-wrap">
-          <p className="text-sm font-semibold text-text-primary">
-            {/* A staff problem names the person; a club problem names the club
-                alone. Both carry the department, because the point of the
-                filter is to hand each list to the right manager. */}
-            {p.person ? `${p.person} · ${p.club}` : p.club}
-            <span className="text-text-muted font-normal"> · {p.label}</span>
-            <span className="ml-2 text-[10px] uppercase tracking-wide text-text-muted border border-border rounded px-1 py-0.5">
-              {p.department}
-            </span>
-          </p>
-          <p className="text-sm tabular-nums flex-shrink-0">
-            <span className="font-bold text-wcs-red">{fmtValue(p.value, p.unit)}</span>
-            <span className="text-text-muted text-xs">
-              {' '}vs {fmtValue(p.threshold, p.unit)} · {missBy}
-            </span>
-          </p>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-text-primary">
+              {/* A staff problem names the person; a club problem names the
+                  club alone. */}
+              {p.person ? `${p.person} · ${p.club}` : p.club}
+            </p>
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+              <span
+                className="text-[10px] font-semibold rounded-full px-2 py-0.5 border"
+                style={pillStyle(checks, p.key)}
+              >
+                {p.label}
+              </span>
+              <span className="text-[10px] uppercase tracking-wide text-text-muted border border-border rounded px-1.5 py-0.5">
+                {p.department}
+              </span>
+            </div>
+          </div>
+
+          {/* The numbers behind the percentage, not just the percentage. A bare
+              "30%" tells a manager nothing they can act on; "12 of 40 booked,
+              needs 16" tells them the size of the gap in members. */}
+          <div className="text-right flex-shrink-0 tabular-nums">
+            <p className="text-sm">
+              <span className="font-bold text-wcs-red">{fmtValue(p.value, p.unit)}</span>
+              <span className="text-text-muted text-xs"> vs {fmtValue(p.threshold, p.unit)}</span>
+            </p>
+            {p.numerator !== null && p.numerator !== undefined && p.unit === 'pct' && (
+              <p className="text-[11px] text-text-muted">
+                {p.numerator} of {p.sample} {p.sampleLabel}
+              </p>
+            )}
+            {p.target !== null && p.target !== undefined && (
+              <p className="text-[11px] text-text-muted">
+                needs {p.target}
+                {p.shortBy ? ` · ${p.shortBy} short` : ''}
+              </p>
+            )}
+            {p.unit === 'count' && (
+              <p className="text-[11px] text-text-muted">
+                of {p.sample} {p.sampleLabel}
+              </p>
+            )}
+          </div>
         </div>
-        <p className="text-[11px] text-text-muted mt-0.5">
-          {p.why} <span className="opacity-70">({p.sample} {p.sampleLabel})</span>
-        </p>
+        <p className="text-[11px] text-text-muted mt-1">{p.why}</p>
       </div>
     </li>
   )
@@ -74,12 +107,8 @@ export default function ProblemAreas({ locationSlug }) {
     (dept === 'all' || p.department === dept) &&
     (scope === 'all' || p.scope === scope)
   )
-  // Filtered client-side: the payload is small, and switching department this
-  // way costs nothing rather than a round trip per click.
-  const skipped = (data?.skipped || []).filter(s =>
-    (dept === 'all' || s.department === dept) &&
-    (scope === 'all' || s.scope === scope)
-  )
+  // Filtered client-side: the payload is small, so switching department costs
+  // nothing rather than a round trip per click.
   const clubCount = new Set(problems.map(p => p.clubSlug)).size
 
   return (
@@ -163,7 +192,11 @@ export default function ProblemAreas({ locationSlug }) {
               </div>
               <ul className="divide-y divide-border">
                 {problems.map(p => (
-                  <ProblemRow key={`${p.scope}-${p.clubSlug}-${p.person || ''}-${p.key}`} p={p} />
+                  <ProblemRow
+                    key={`${p.scope}-${p.clubSlug}-${p.person || ''}-${p.key}`}
+                    p={p}
+                    checks={data.checks}
+                  />
                 ))}
               </ul>
             </div>
@@ -176,23 +209,6 @@ export default function ProblemAreas({ locationSlug }) {
                 {all.length} problem{all.length === 1 ? '' : 's'} found elsewhere. Widen the
                 department or level to see them.
               </p>
-            </div>
-          )}
-
-          {skipped.length > 0 && (
-            <div className="bg-surface rounded-xl border border-border p-4">
-              <p className="text-xs font-bold text-text-primary mb-2">Not judged</p>
-              {/* Shown, not hidden: a club with too little data to judge is not
-                  a club with no problems, and dropping it silently teaches
-                  people that a short list means a good week. */}
-              <ul className="space-y-1">
-                {skipped.map(s => (
-                  <li key={`${s.scope}-${s.clubSlug}-${s.person || ''}-${s.key}`} className="text-[11px] text-text-muted">
-                    <span className="text-text-primary">{s.person ? `${s.person} · ${s.club}` : s.club}</span> · {s.label}
-                    <span className="opacity-70"> — {s.reason}</span>
-                  </li>
-                ))}
-              </ul>
             </div>
           )}
 

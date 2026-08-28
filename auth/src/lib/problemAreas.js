@@ -37,7 +37,7 @@ const CHECKS = [
     unit: 'pct',
     direction: 'below',
     defaultThreshold: 40,
-    minSample: 10,
+    minSample: 4,
     sampleLabel: 'new members',
     why: 'New members are not being booked into a Day One.',
   },
@@ -49,7 +49,7 @@ const CHECKS = [
     unit: 'pct',
     direction: 'below',
     defaultThreshold: 40,
-    minSample: 10,
+    minSample: 4,
     sampleLabel: 'new members',
     why: 'New members are not being asked for VIP referrals.',
   },
@@ -62,7 +62,7 @@ const CHECKS = [
     unit: 'pct',
     direction: 'below',
     defaultThreshold: 30,
-    minSample: 10,
+    minSample: 4,
     sampleLabel: 'completed Day Ones',
     why: 'Day Ones are happening but not converting to PT.',
   },
@@ -79,21 +79,36 @@ const CHECKS = [
     why: 'Day Ones whose date has passed with no outcome recorded. Until the form is completed the appointment counts as neither held nor missed, so every close rate is measured on an incomplete picture.',
   },
   {
-    key: 'ops_pct',
-    label: 'Operational Compliance %',
+    key: 'ops_jobs_below',
+    label: 'Jobs Below Standard',
     department: 'Operations',
-    // CLUB ONLY. An Operandio job carries an assignment, not an owner, and a
-    // job nobody completed has nobody to name -- attributing it to whoever was
-    // assigned would blame people for work that was never picked up.
-    scopes: ['club'],
-    unit: 'pct',
-    direction: 'below',
-    defaultThreshold: 75,
-    minSample: 20,
+    // Both scopes. A job somebody part-did is attributed to them; a job NOBODY
+    // touched has no owner to name and stays at club level. 489 of 575
+    // below-standard jobs in the last 30 days were never started by anyone, so
+    // pinning those on whoever was assigned would blame people for work that
+    // was never picked up.
+    scopes: ['club', 'staff'],
+    unit: 'count',
+    direction: 'above',
+    // Any below-standard job is worth seeing, so the bar is "more than none".
+    // How complete a job must be to pass is a separate setting -- see
+    // problem_ops_job_pct.
+    defaultThreshold: 0,
+    minSample: 0,
     sampleLabel: 'jobs due',
-    why: 'Scheduled operational tasks are not being completed.',
+    why: 'Operational jobs left below the completion standard.',
   },
 ]
+
+// How complete a single Operandio job must be to count as done. Separate from
+// the threshold above, which is how many below-standard jobs are tolerated.
+const OPS_JOB_PCT_KEY = 'problem_ops_job_pct'
+const DEFAULT_OPS_JOB_PCT = 75
+
+function opsJobPct(settings) {
+  const v = num((settings || {})[OPS_JOB_PCT_KEY])
+  return v === null ? DEFAULT_OPS_JOB_PCT : v
+}
 
 const CHECK_BY_KEY = new Map(CHECKS.map(c => [c.key, c]))
 
@@ -126,10 +141,15 @@ function isOff(check, settings) {
  * — which is the order a manager would put them in.
  */
 function severityOf(check, value, threshold) {
-  if (value === null || threshold === null || !threshold) return 0
+  if (value === null || threshold === null) return 0
+  // Divided by at least 1. A tolerance of zero — which is the sensible default
+  // for "jobs below standard" — would otherwise divide by zero and score every
+  // such problem as severity 0, sinking the worst rows to the bottom of a list
+  // whose whole purpose is to put them at the top.
+  const scale = Math.max(Math.abs(threshold), 1)
   return check.direction === 'below'
-    ? Math.max(0, (threshold - value) / threshold)
-    : Math.max(0, (value - threshold) / threshold)
+    ? Math.max(0, (threshold - value) / scale)
+    : Math.max(0, (value - threshold) / scale)
 }
 
 function fails(check, value, threshold) {
@@ -153,8 +173,15 @@ function fails(check, value, threshold) {
  */
 function buildProblemAreas(clubs, staff = [], settings = {}) {
   const problems = []
-  const skipped = []
   let checked = 0
+
+  // A row with no name attached is not a person. Operandio and the Day One
+  // feed both leave a name blank rather than absent, and 'Unknown' on a
+  // problem list is an accusation nobody can act on.
+  const named = (n) => {
+    const v = String(n || '').trim()
+    return v !== '' && v.toLowerCase() !== 'unknown'
+  }
 
   const evaluate = (subject, scope) => {
     for (const check of CHECKS) {
@@ -179,19 +206,24 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
         label: check.label,
       }
 
-      // No data at all is not a pass. Reported separately so an absent feed
-      // cannot masquerade as a healthy club.
-      if (value === null) {
-        skipped.push({ ...base, reason: 'no data' })
-        continue
-      }
-      if (sample < check.minSample) {
-        skipped.push({ ...base, reason: `only ${sample} ${check.sampleLabel}` })
-        continue
-      }
+      // Nothing measured, or too little to judge on: the check simply does not
+      // fire. Silent rather than listed -- a manager wants the problems, not a
+      // register of everything that was looked at.
+      if (value === null) continue
+      if (sample < check.minSample) continue
 
       checked++
       if (!fails(check, value, threshold)) continue
+
+      // What the number is made of, so the row can say "12 of 40 booked, needs
+      // 16" rather than a bare percentage nobody can act on.
+      const numerator = num(m.numerator)
+      const target = check.unit === 'pct' && sample
+        ? Math.ceil((threshold / 100) * sample)
+        : null
+      const shortBy = target !== null && numerator !== null
+        ? Math.max(0, target - numerator)
+        : null
 
       problems.push({
         ...base,
@@ -201,6 +233,9 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
         threshold,
         sample,
         sampleLabel: check.sampleLabel,
+        numerator,
+        target,
+        shortBy,
         why: check.why,
         severity: Math.round(severityOf(check, value, threshold) * 1000) / 1000,
       })
@@ -208,7 +243,10 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
   }
 
   for (const club of clubs || []) evaluate({ ...club, club: club.name }, 'club')
-  for (const person of staff || []) evaluate(person, 'staff')
+  for (const person of staff || []) {
+    if (!named(person.name)) continue
+    evaluate(person, 'staff')
+  }
 
   const worstFirst = (a, b) =>
     b.severity - a.severity ||
@@ -248,7 +286,6 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
       || String(a.club).localeCompare(String(b.club))),
     byPerson: [...byPerson.values()].sort((a, b) => b.problems.length - a.problems.length
       || String(a.person).localeCompare(String(b.person))),
-    skipped,
     checksRun: checked,
     clean: problems.length === 0 && checked > 0,
     departments: DEPARTMENTS.map(d => ({ key: d, label: d, count: countBy(d) })),
@@ -269,5 +306,6 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
 
 module.exports = {
   buildProblemAreas, CHECKS, CHECK_BY_KEY, DEPARTMENTS,
+  OPS_JOB_PCT_KEY, DEFAULT_OPS_JOB_PCT, opsJobPct,
   settingKey, offKey, thresholdFor, isOff, severityOf, fails,
 }

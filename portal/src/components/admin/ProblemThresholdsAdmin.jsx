@@ -42,11 +42,18 @@ const FIELDS = [
     suffix: 'forms',
   },
   {
-    key: 'problem_ops_pct',
-    label: 'Operational Compliance %',
-    hint: 'Flag a club below this share of scheduled jobs completed.',
+    key: 'problem_ops_job_pct',
+    label: 'Job Completion Standard %',
+    hint: 'A single Operandio job counts as done at or above this. Anything below is flagged and attributed to whoever worked it; a job nobody started has no owner to name, so it is reported against the club.',
     placeholder: '75',
     suffix: '%',
+  },
+  {
+    key: 'problem_ops_jobs_below',
+    label: 'Jobs Below Standard Tolerated',
+    hint: 'Flag once a club or person has more than this many below-standard jobs. Zero means any below-standard job is worth seeing.',
+    placeholder: '0',
+    suffix: 'jobs',
   },
 ]
 
@@ -88,9 +95,9 @@ export default function ProblemThresholdsAdmin() {
           <h3 className="text-sm font-bold text-text-primary">Problem Thresholds</h3>
           <p className="text-xs text-text-muted mt-1">
             What counts as a problem in Analytics &rsaquo; Problem Areas. Leave a
-            field blank to use its built-in default. Each check stays silent at a
-            club with too little data to judge, so a quiet week is never reported
-            as a failure.
+            field blank to use its built-in default. A check stays silent where there is too
+            little to judge on — four new members, or four completed Day Ones — so
+            a quiet week is never reported as a failure.
           </p>
         </div>
         <div className="flex items-center gap-3">
