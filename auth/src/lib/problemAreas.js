@@ -21,10 +21,19 @@
  *
  * `minSample` is the denominator below which the check abstains.
  */
+// The three departments a problem can belong to. Operational Compliance is its
+// own rather than being forced into PT or Membership: the jobs are club-wide
+// and filing them under either would send the wrong manager after them.
+const DEPARTMENTS = ['Membership', 'PT', 'Operations']
+
 const CHECKS = [
   {
     key: 'dayone_book_pct',
     label: 'Day One Booking %',
+    department: 'Membership',
+    // Booking is credited to whoever BOOKED the Day One, which is a front-desk
+    // act, so this is measured per salesperson as well as per club.
+    scopes: ['club', 'staff'],
     unit: 'pct',
     direction: 'below',
     defaultThreshold: 40,
@@ -35,6 +44,8 @@ const CHECKS = [
   {
     key: 'vip_pct',
     label: 'VIP Collection %',
+    department: 'Membership',
+    scopes: ['club', 'staff'],
     unit: 'pct',
     direction: 'below',
     defaultThreshold: 40,
@@ -45,6 +56,9 @@ const CHECKS = [
   {
     key: 'dayone_close_pct',
     label: 'Day One Close %',
+    department: 'PT',
+    // Credited to the trainer who SERVICED the Day One, not whoever booked it.
+    scopes: ['club', 'staff'],
     unit: 'pct',
     direction: 'below',
     defaultThreshold: 30,
@@ -55,6 +69,8 @@ const CHECKS = [
   {
     key: 'dayone_open_forms',
     label: 'Day One Forms Left Open',
+    department: 'PT',
+    scopes: ['club', 'staff'],
     unit: 'count',
     direction: 'above',
     defaultThreshold: 10,
@@ -65,6 +81,11 @@ const CHECKS = [
   {
     key: 'ops_pct',
     label: 'Operational Compliance %',
+    department: 'Operations',
+    // CLUB ONLY. An Operandio job carries an assignment, not an owner, and a
+    // job nobody completed has nobody to name -- attributing it to whoever was
+    // assigned would blame people for work that was never picked up.
+    scopes: ['club'],
     unit: 'pct',
     direction: 'below',
     defaultThreshold: 75,
@@ -118,42 +139,54 @@ function fails(check, value, threshold) {
 
 /**
  * @param clubs    [{ slug, name, metrics: { <checkKey>: { value, sample } } }]
+ * @param staff    [{ slug, club, name, department, metrics: {...} }]
  * @param settings the app_config map for the `problem_` prefix
  *
- * Returns one row per firing check per club, worst first, plus everything that
- * was checked and passed so the reader can tell "no problems" from "not looked
- * at" — the distinction this whole report turns on.
+ * Returns one row per firing check per subject, worst first, plus everything
+ * that was looked at and could not be judged — so the reader can tell "no
+ * problems" from "not measured", which is the distinction this report turns on.
+ *
+ * A check is evaluated at CLUB level, STAFF level, or both, per its `scopes`.
+ * Operational Compliance is club-only: an Operandio job carries an assignment
+ * rather than an owner, and naming whoever was assigned to work nobody picked
+ * up would blame the wrong person.
  */
-function buildProblemAreas(clubs, settings = {}) {
+function buildProblemAreas(clubs, staff = [], settings = {}) {
   const problems = []
   const skipped = []
   let checked = 0
 
-  for (const club of clubs || []) {
+  const evaluate = (subject, scope) => {
     for (const check of CHECKS) {
       if (isOff(check, settings)) continue
+      if (!check.scopes.includes(scope)) continue
+      // A staff row only answers for its own department, so a trainer is never
+      // judged on a membership metric they have no hand in.
+      if (scope === 'staff' && subject.department !== check.department) continue
 
-      const m = (club.metrics || {})[check.key] || {}
+      const m = (subject.metrics || {})[check.key] || {}
       const value = num(m.value)
       const sample = num(m.sample) ?? 0
       const threshold = thresholdFor(check, settings)
 
-      // No data at all is not a pass. It is reported separately so an absent
-      // feed cannot masquerade as a healthy club.
+      const base = {
+        scope,
+        club: subject.club || subject.name,
+        clubSlug: subject.slug,
+        person: scope === 'staff' ? subject.name : null,
+        department: check.department,
+        key: check.key,
+        label: check.label,
+      }
+
+      // No data at all is not a pass. Reported separately so an absent feed
+      // cannot masquerade as a healthy club.
       if (value === null) {
-        skipped.push({
-          club: club.name, clubSlug: club.slug,
-          key: check.key, label: check.label,
-          reason: 'no data',
-        })
+        skipped.push({ ...base, reason: 'no data' })
         continue
       }
       if (sample < check.minSample) {
-        skipped.push({
-          club: club.name, clubSlug: club.slug,
-          key: check.key, label: check.label,
-          reason: `only ${sample} ${check.sampleLabel}`,
-        })
+        skipped.push({ ...base, reason: `only ${sample} ${check.sampleLabel}` })
         continue
       }
 
@@ -161,10 +194,7 @@ function buildProblemAreas(clubs, settings = {}) {
       if (!fails(check, value, threshold)) continue
 
       problems.push({
-        club: club.name,
-        clubSlug: club.slug,
-        key: check.key,
-        label: check.label,
+        ...base,
         unit: check.unit,
         direction: check.direction,
         value,
@@ -177,31 +207,56 @@ function buildProblemAreas(clubs, settings = {}) {
     }
   }
 
-  problems.sort((a, b) =>
+  for (const club of clubs || []) evaluate({ ...club, club: club.name }, 'club')
+  for (const person of staff || []) evaluate(person, 'staff')
+
+  const worstFirst = (a, b) =>
     b.severity - a.severity ||
     String(a.club).localeCompare(String(b.club)) ||
+    String(a.person || '').localeCompare(String(b.person || '')) ||
     String(a.label).localeCompare(String(b.label))
-  )
 
-  // Grouped by club as well, because a club with four problems is a different
+  problems.sort(worstFirst)
+
+  // Grouped by club, because a club with four problems is a different
   // conversation from four clubs with one each.
   const byClub = new Map()
-  for (const p of problems) {
+  for (const p of problems.filter(p => p.scope === 'club')) {
     const cur = byClub.get(p.clubSlug) || { club: p.club, clubSlug: p.clubSlug, problems: [] }
     cur.problems.push(p)
     byClub.set(p.clubSlug, cur)
   }
 
+  // And by person, so a manager can see whether one club is struggling or one
+  // person is. Keyed on club AND name: two clubs can employ the same name.
+  const byPerson = new Map()
+  for (const p of problems.filter(p => p.scope === 'staff')) {
+    const k = `${p.clubSlug}|${p.person}`
+    const cur = byPerson.get(k) || {
+      person: p.person, club: p.club, clubSlug: p.clubSlug,
+      department: p.department, problems: [],
+    }
+    cur.problems.push(p)
+    byPerson.set(k, cur)
+  }
+
+  const countBy = (dept) => problems.filter(p => p.department === dept).length
+
   return {
     problems,
     byClub: [...byClub.values()].sort((a, b) => b.problems.length - a.problems.length
       || String(a.club).localeCompare(String(b.club))),
+    byPerson: [...byPerson.values()].sort((a, b) => b.problems.length - a.problems.length
+      || String(a.person).localeCompare(String(b.person))),
     skipped,
     checksRun: checked,
     clean: problems.length === 0 && checked > 0,
+    departments: DEPARTMENTS.map(d => ({ key: d, label: d, count: countBy(d) })),
     checks: CHECKS.map(c => ({
       key: c.key,
       label: c.label,
+      department: c.department,
+      scopes: c.scopes,
       unit: c.unit,
       direction: c.direction,
       threshold: thresholdFor(c, settings),
@@ -211,7 +266,8 @@ function buildProblemAreas(clubs, settings = {}) {
   }
 }
 
+
 module.exports = {
-  buildProblemAreas, CHECKS, CHECK_BY_KEY,
+  buildProblemAreas, CHECKS, CHECK_BY_KEY, DEPARTMENTS,
   settingKey, offKey, thresholdFor, isOff, severityOf, fails,
 }

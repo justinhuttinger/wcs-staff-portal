@@ -31,8 +31,11 @@ const FRESH_MS = 5 * 60 * 1000
 const STALE_MS = 30 * 60 * 1000
 const DEFAULT_DAYS = 30
 
+// club_salesperson gives BOTH: a row per person, and enough to pool per club.
+// Pooling from these rows rather than running buildReport twice keeps the club
+// figure and the staff figures arithmetically consistent by construction.
 const CLUB_FILTERS = {
-  viewBy: 'club',
+  viewBy: 'club_salesperson',
   membershipType: null, entrySource: null, gender: null, ageGroup: null,
   paymentFrequency: null, term: null, relationship: null, exclusion: 'exclude',
 }
@@ -87,18 +90,20 @@ router.get('/', async (req, res) => {
         // pooled row and this needs a row per club.
         fetchAll(
           supabaseAdmin.from('day_one_appointments')
-            .select('location_slug, status, outcome')
+            .select('location_slug, trainer_name, status, outcome')
             .gte('scheduled_date', startISO)
             .lte('scheduled_date', endISO)
             .in('location_slug', slugs)
         ),
 
-        // Day Ones whose date has passed with no outcome recorded. NOT limited
-        // to the window: a form left open in March is still open today, and
-        // hiding it behind a 30-day view is how 480 of them accumulated.
+        // Day Ones whose date has passed with no outcome recorded, WITHIN THE
+        // WINDOW. An all-time count answers "how much has ever piled up", which
+        // never improves however hard a club works this month; windowing it
+        // makes the number something a manager can actually move.
         fetchAll(
           supabaseAdmin.from('day_one_appointments')
-            .select('location_slug, status, outcome, scheduled_date')
+            .select('location_slug, trainer_name, status, outcome, scheduled_date')
+            .gte('scheduled_date', startISO)
             .lt('scheduled_date', endISO)
             .in('location_slug', slugs)
         ),
@@ -121,37 +126,76 @@ router.get('/', async (req, res) => {
       { vips: gathered.window.vips, tours: gathered.window.tours }
     )
 
-    // --- fold the raw rows down to per-club metrics ------------------------
-    const tally = new Map()
-    const bump = (slug, key, field, by = 1) => {
-      const c = tally.get(slug) || {}
-      c[key] = c[key] || {}
-      c[key][field] = (c[key][field] || 0) + by
-      tally.set(slug, c)
+    // --- fold the raw rows into per-club and per-person metrics -----------
+    //
+    // Two tallies keyed the same way, so a club figure is always the sum of the
+    // people in it rather than a separately computed number that can disagree.
+    const norm = v => String(v || '').trim().replace(/\s+/g, ' ')
+
+    const clubTally = new Map()
+    const staffTally = new Map()
+    const bump = (map, key, group, field, by = 1) => {
+      const c = map.get(key) || {}
+      c[group] = c[group] || {}
+      c[group][field] = (c[group][field] || 0) + by
+      map.set(key, c)
     }
 
     for (const d of gathered.dayOnes) {
-      if (d.status === 'completed') bump(d.location_slug, 'close', 'completed')
-      if (d.outcome === 'Sale') bump(d.location_slug, 'close', 'sold')
+      const trainer = norm(d.trainer_name)
+      const staffKey = trainer ? `${d.location_slug}|${trainer}` : null
+      if (d.status === 'completed') {
+        bump(clubTally, d.location_slug, 'close', 'completed')
+        if (staffKey) bump(staffTally, staffKey, 'close', 'completed')
+      }
+      if (d.outcome === 'Sale') {
+        bump(clubTally, d.location_slug, 'close', 'sold')
+        if (staffKey) bump(staffTally, staffKey, 'close', 'sold')
+      }
     }
+
     for (const d of gathered.openForms) {
       // Past its date and never closed out: still 'scheduled', or marked
       // completed with nobody recording what happened.
       const open = d.status === 'scheduled' || (d.status === 'completed' && !d.outcome)
-      if (open) bump(d.location_slug, 'open', 'n')
+      if (!open) continue
+      bump(clubTally, d.location_slug, 'open', 'n')
+      const trainer = norm(d.trainer_name)
+      // A form with no trainer on it still counts against the CLUB. It just
+      // cannot be laid at anybody's door, and inventing an owner would be worse
+      // than leaving it at club level.
+      if (trainer) bump(staffTally, `${d.location_slug}|${trainer}`, 'open', 'n')
     }
+
     for (const j of gathered.ops) {
       if (j.skip_reason) continue
-      bump(j.location_slug, 'ops', 'due')
-      if (j.completed) bump(j.location_slug, 'ops', 'done')
+      bump(clubTally, j.location_slug, 'ops', 'due')
+      if (j.completed) bump(clubTally, j.location_slug, 'ops', 'done')
     }
 
     const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : null)
 
+    // Membership metrics come from buildReport, which is now grouped by club
+    // AND salesperson, so the per-club figure is pooled from those same rows.
+    const memberByClub = new Map()
+    for (const r of report.rows || []) {
+      if (!r.clubSlug) continue
+      const c = memberByClub.get(r.clubSlug) || { units: 0, booked: 0, vips: 0, vipClub: false }
+      c.units += r.newMemberUnits || 0
+      c.booked += r.dayOneBookCount || 0
+      // vipCount is null at a club that does not collect VIPs at all; pooling
+      // those as zero would report a configuration gap as a staff failure.
+      if (r.vipCount !== null && r.vipCount !== undefined) {
+        c.vips += r.vipCount
+        c.vipClub = true
+      }
+      memberByClub.set(r.clubSlug, c)
+    }
+
     const clubs = slugs.map(slug => {
       const meta = CLUB_BY_SLUG[slug]
-      const row = (report.rows || []).find(r => r.clubSlug === slug) || {}
-      const t = tally.get(slug) || {}
+      const m = memberByClub.get(slug) || { units: 0, booked: 0, vips: 0, vipClub: false }
+      const t = clubTally.get(slug) || {}
       const close = t.close || {}
       const ops = t.ops || {}
 
@@ -159,8 +203,8 @@ router.get('/', async (req, res) => {
         slug,
         name: meta.name,
         metrics: {
-          dayone_book_pct: { value: row.dayOneBookPct ?? null, sample: row.newMemberUnits ?? 0 },
-          vip_pct: { value: row.vipPct ?? null, sample: row.newMemberUnits ?? 0 },
+          dayone_book_pct: { value: pct(m.booked, m.units), sample: m.units },
+          vip_pct: { value: m.vipClub ? pct(m.vips, m.units) : null, sample: m.units },
           dayone_close_pct: {
             value: pct(close.sold || 0, close.completed || 0),
             sample: close.completed || 0,
@@ -172,16 +216,52 @@ router.get('/', async (req, res) => {
       }
     })
 
+    // --- per-person subjects ----------------------------------------------
+    const staff = []
+
+    // Membership: one row per salesperson, straight off buildReport.
+    for (const r of report.rows || []) {
+      if (!r.salesperson || !r.clubSlug) continue
+      staff.push({
+        slug: r.clubSlug,
+        club: CLUB_BY_SLUG[r.clubSlug]?.name || r.clubSlug,
+        name: r.salesperson,
+        department: 'Membership',
+        metrics: {
+          dayone_book_pct: { value: r.dayOneBookPct ?? null, sample: r.newMemberUnits || 0 },
+          vip_pct: { value: r.vipPct ?? null, sample: r.newMemberUnits || 0 },
+        },
+      })
+    }
+
+    // PT: one row per trainer, from the Day Ones they serviced.
+    for (const [key, t] of staffTally) {
+      const [slug, name] = key.split('|')
+      const close = t.close || {}
+      staff.push({
+        slug,
+        club: CLUB_BY_SLUG[slug]?.name || slug,
+        name,
+        department: 'PT',
+        metrics: {
+          dayone_close_pct: {
+            value: pct(close.sold || 0, close.completed || 0),
+            sample: close.completed || 0,
+          },
+          dayone_open_forms: { value: (t.open || {}).n || 0, sample: (t.open || {}).n || 0 },
+        },
+      })
+    }
+
     const settings = await loadSettings()
-    const built = buildProblemAreas(clubs, settings)
+    const built = buildProblemAreas(clubs, staff, settings)
 
     res.json({
       ...built,
       meta: {
         start: startISO, end: endISO, days,
         clubs: slugs,
-        // Stated so the reader knows the open-forms count is not windowed.
-        openFormsAllTime: true,
+        staffSubjects: staff.length,
       },
     })
   } catch (err) {
