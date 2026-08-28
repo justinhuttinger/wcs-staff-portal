@@ -21,6 +21,7 @@ import AttritionTrends from './analytics/AttritionTrends'
 import Checkins from './analytics/Checkins'
 import Compliance from './analytics/Compliance'
 import PosSales from './analytics/PosSales'
+import Till from './analytics/Till'
 import Audits from './analytics/Audits'
 import LeadSources from './analytics/LeadSources'
 import ProblemAreas from './analytics/ProblemAreas'
@@ -192,6 +193,12 @@ const ANALYTICS_REPORTS = [
     label: 'POS Sales',
     desc: 'Retail Goods and Margin',
     Component: PosSales,
+  },
+  {
+    key: 'till',
+    label: 'Till',
+    desc: 'Cash Reconciliation',
+    Component: Till,
   },
   {
     key: 'kpis',
