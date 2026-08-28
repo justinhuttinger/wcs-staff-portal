@@ -116,7 +116,11 @@ function TrendChart({ title, series, months, format, showTrend, labelPoints }) {
               )}
 
               {series.map((s, si) => {
-                const colour = colorFor(si)
+                // colorFor(name, index) -- BOTH arguments. Passing only the
+                // index made the index the name, so it returned
+                // PALETTE[undefined % 8] = undefined, every line got
+                // stroke={undefined}, and SVG drew nothing at all.
+                const colour = colorFor(s.key, si)
                 // Only the runs of consecutive real points are drawn. Joining
                 // across a gap would invent a month that was never measured.
                 const runs = []
@@ -180,7 +184,10 @@ function TrendChart({ title, series, months, format, showTrend, labelPoints }) {
         <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
           {series.map((s, si) => (
             <span key={s.key} className="inline-flex items-center gap-1.5 text-[11px] text-text-muted">
-              <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: colorFor(si) }} />
+              {/* Keyed on s.key, not s.label: the swatch has to resolve to the
+                  same colour the line did, and label is the club NAME while the
+                  line is drawn from the raw segment. */}
+              <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: colorFor(s.key, si) }} />
               {s.label}
             </span>
           ))}
