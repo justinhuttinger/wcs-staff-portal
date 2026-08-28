@@ -136,6 +136,10 @@ app.use('/analytics/first-pt-purchase', require('./routes/analyticsFirstPtPurcha
 app.use('/analytics/trainer-performance', require('./routes/analyticsTrainerPerformance'))
 app.use('/analytics/membership-snapshot', require('./routes/analyticsMembershipSnapshot'))
 app.use('/analytics/trainer-snapshot', require('./routes/analyticsTrainerSnapshot'))
+// Second router on /tours, deliberately: routes/tours.js owns GET / (the
+// tour list) and this owns /outcomes and /complete. No path collides, so
+// Express falls through from the first to the second.
+app.use('/tours', require('./routes/tourCompletion'))
 app.use('/sync-status', require('./routes/syncStatus'))
 app.use('/day-one-program', require('./routes/dayOneProgram'))
 app.use('/day-one-tracker', require('./routes/dayOneTracker'))
