@@ -164,21 +164,7 @@ export default function GroupXView() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => setWeekStart(addDays(weekStart, -7))}
-            className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
-            Prev
-          </button>
-          <button type="button" onClick={() => setWeekStart(startOfWeek(new Date()))}
-            className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
-            This week
-          </button>
-          <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))}
-            className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
-            Next
-          </button>
-          <span className="text-sm font-medium text-text-primary ml-1">{weekLabel(weekStart)}</span>
-          {loading && <span className="text-xs text-text-muted">Loading...</span>}
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex flex-wrap gap-2">
             <button type="button" onClick={() => setSeriesListOpen(v => !v)}
               className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
               {seriesListOpen ? 'Hide repeating' : 'Repeating'}
@@ -229,6 +215,11 @@ export default function GroupXView() {
       <WeekGrid
         weekStart={weekStart}
         classes={classes}
+        weekLabel={weekLabel(weekStart)}
+        loading={loading}
+        onPrevWeek={() => setWeekStart(addDays(weekStart, -7))}
+        onNextWeek={() => setWeekStart(addDays(weekStart, 7))}
+        onThisWeek={() => setWeekStart(startOfWeek(new Date()))}
         onClassClick={setSelected}
         onSlotClick={slot => setCreateOpen(slot)}
       />
