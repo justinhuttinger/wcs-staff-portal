@@ -49,6 +49,13 @@ app.use('/webhooks/tour-intake', express.json({ limit: '6mb' }))
 // field; a large submission (long notes, many custom fields) can exceed the
 // 100kb default and 413. The old standalone service hit this. Give it room.
 app.use('/day-one-program', express.json({ limit: '2mb' }))
+// Same trap again, and the third path to hit it. A GHL workflow webhook posts
+// the whole trigger payload, not just the Custom Data rows we read, so a contact
+// with a long history is comfortably over the 100kb default. Measured
+// 2026-08-28: roughly three quarters of Day One booking webhooks were 413ing
+// with PayloadTooLargeError before any of our code ran, which is why bookings
+// kept arriving with no booking team member.
+app.use('/webhooks/day-one-booked', express.json({ limit: '2mb' }))
 app.use(express.json())
 app.use(cookieParser())
 
