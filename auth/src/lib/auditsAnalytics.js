@@ -24,6 +24,13 @@
 // the pairs that genuinely are not being done. Disabled cells are marked and
 // excluded from gaps, staleness and the coverage figure alike.
 //
+// THE TREND IS A YEAR, ONE LINE PER DEPARTMENT, NOT A MONTHLY AVERAGE.
+// Audits run about once a month per department per club, so a monthly average
+// is one or two readings — it moves violently on a single 78% and says nothing
+// about direction. A trailing twelve months with a line per department shows
+// the actual change, and when several clubs are selected each point is the mean
+// across the clubs audited that month.
+//
 // ONLY DEPARTMENTS MATCHING /audit/i ARE INCLUDED. QA-Cleaning is scored into
 // the same table and is not an audit; the admin toggle list does not carry it
 // either.
@@ -35,6 +42,9 @@ const STALE_DAYS = 60
 // Below this an average is shown but never ranked on: it is a reading, not a
 // rate.
 const MIN_SAMPLE_TO_RANK = 3
+
+// A year. Long enough that a roughly-monthly audit draws a real shape.
+const TREND_MONTHS = 12
 
 /**
  * Settings key fragment for a department.
@@ -119,10 +129,16 @@ function buildAudits(rows, opts = {}) {
     const cur = cells.get(k) || {
       department: r.department, slug: r.location_slug,
       submissions: 0, windowScores: [], lastDate: null, lastScore: null,
+      lastId: null, lastReportUrl: null,
     }
     if (r.submitted_date && (!cur.lastDate || r.submitted_date > cur.lastDate)) {
       cur.lastDate = r.submitted_date
       cur.lastScore = r.score_pct === null || r.score_pct === undefined ? null : num(r.score_pct)
+      // Carried so the grid cell can open the full report, the same way the old
+      // Audits report did. openAuditReport needs the id and falls back to the
+      // stored URL when the detail fetch comes back empty.
+      cur.lastId = r.id || null
+      cur.lastReportUrl = r.report_url || null
     }
     cells.set(k, cur)
   }
@@ -142,12 +158,12 @@ function buildAudits(rows, opts = {}) {
       if (!enabled) {
         // Switched off in Admin. Not a gap, not stale, not counted anywhere —
         // this pair is not supposed to happen.
-        return { slug, enabled: false, everAudited: !!c, submissions: 0, avgScore: null, lastDate: c ? c.lastDate : null, lastScore: null, daysStale: null, stale: false }
+        return { slug, enabled: false, everAudited: !!c, submissions: 0, avgScore: null, lastDate: c ? c.lastDate : null, lastScore: null, daysStale: null, stale: false, lastId: null, lastReportUrl: null }
       }
       if (!c) {
         // Never audited. Distinct from "not audited lately", and the only one
         // of the two that cannot be fixed by waiting.
-        return { slug, enabled: true, everAudited: false, submissions: 0, avgScore: null, lastDate: null, lastScore: null, daysStale: null, stale: false }
+        return { slug, enabled: true, everAudited: false, submissions: 0, avgScore: null, lastDate: null, lastScore: null, daysStale: null, stale: false, lastId: null, lastReportUrl: null }
       }
       const daysStale = daysBetween(c.lastDate, today)
       return {
@@ -158,6 +174,8 @@ function buildAudits(rows, opts = {}) {
         avgScore: avg(c.windowScores),
         lastDate: c.lastDate,
         lastScore: c.lastScore,
+        lastId: c.lastId,
+        lastReportUrl: c.lastReportUrl,
         daysStale,
         stale: daysStale !== null && daysStale > STALE_DAYS,
       }
@@ -197,9 +215,58 @@ function buildAudits(rows, opts = {}) {
   const byClub = roll(r => r.location_slug)
 
   // --- trend ---------------------------------------------------------------
+  //
+  // A TRAILING YEAR, ONE SERIES PER DEPARTMENT, IGNORING THE SELECTED WINDOW.
+  // Audits happen about monthly, so a month-to-date selection would draw one
+  // point per department and a month with no audit would read as a collapse to
+  // zero rather than as "not audited yet".
+  //
+  // Every month in the year is emitted even when empty, so gaps stay gaps: the
+  // chart breaks the line rather than joining across a month nobody audited.
+  const trendMonths = []
+  {
+    const anchor = end ? new Date(`${end}T00:00:00Z`) : new Date()
+    anchor.setUTCDate(1)
+    for (let i = TREND_MONTHS - 1; i >= 0; i--) {
+      const d = new Date(anchor)
+      d.setUTCMonth(d.getUTCMonth() - i)
+      trendMonths.push(d.toISOString().slice(0, 8) + '01')
+    }
+  }
+  const firstTrendMonth = trendMonths[0]
+
+  const trendBucket = new Map()
+  for (const r of all) {
+    if (!r.submitted_date || !r.department || !r.location_slug) continue
+    if (!isEnabled(toggles, r.department, r.location_slug)) continue
+    if (clubs.length && !clubs.includes(r.location_slug)) continue
+    const month = `${r.submitted_date.slice(0, 7)}-01`
+    if (month < firstTrendMonth) continue
+    if (r.score_pct === null || r.score_pct === undefined) continue
+    const k = `${r.department}||${month}`
+    if (!trendBucket.has(k)) trendBucket.set(k, [])
+    // Averaged across whichever clubs were audited that month, so selecting
+    // several clubs gives one line per department rather than one per pair.
+    trendBucket.get(k).push(num(r.score_pct))
+  }
+
+  const trendSeries = departments.map(dept => ({
+    key: dept,
+    label: dept,
+    points: trendMonths.map(month => {
+      const scores = trendBucket.get(`${dept}||${month}`)
+      return { month, value: scores && scores.length ? avg(scores) : null, samples: scores ? scores.length : 0 }
+    }),
+  // A department with no audit anywhere in the year is not drawn at all rather
+  // than as a flat empty line.
+  })).filter(sr => sr.points.some(pt => pt.value !== null))
+
+  // Kept for the table view, which is a list of what happened rather than a
+  // shape over time.
   const monthMap = new Map()
   for (const r of inWindow) {
     if (!r.submitted_date) continue
+    if (!isEnabled(toggles, r.department, r.location_slug)) continue
     const month = `${r.submitted_date.slice(0, 7)}-01`
     const cur = monthMap.get(month) || { month, scores: [], submissions: 0 }
     cur.submissions += 1
@@ -245,6 +312,8 @@ function buildAudits(rows, opts = {}) {
     byDepartment,
     byClub,
     months,
+    trendMonths,
+    trendSeries,
     notes: {
       coverage: gaps.length === 0 && stale.length === 0 ? null
         : [
@@ -256,4 +325,4 @@ function buildAudits(rows, opts = {}) {
   }
 }
 
-module.exports = { buildAudits, auditKey, isEnabled, STALE_DAYS, MIN_SAMPLE_TO_RANK }
+module.exports = { buildAudits, auditKey, isEnabled, STALE_DAYS, MIN_SAMPLE_TO_RANK, TREND_MONTHS }

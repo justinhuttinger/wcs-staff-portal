@@ -4,8 +4,11 @@ import { api } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { fmtInt, fmtMonth } from './chartPalette'
-import { MonthlyTrend, RankedBars } from './charts'
+import { MultiTrend, RankedBars } from './charts'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
+import { LOCATION_NAMES } from '../../config/locations'
+import { getOperandioQaReport } from '../../lib/api'
+import { openAuditReport } from '../../lib/qaReportHtml'
 
 // ---------------------------------------------------------------------------
 // Audits — Analytics (admin only)
@@ -26,7 +29,9 @@ import { TOOLBAR_SLOT_ID } from './toolbarSlot'
 // being done.
 // ---------------------------------------------------------------------------
 
-const CLUB_LABEL = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+// Proper names from the shared config, so a rename lands everywhere at once.
+const CLUB_NAMES = Object.fromEntries(LOCATION_NAMES.map(n => [n.toLowerCase(), n]))
+const CLUB_LABEL = s => (s ? (CLUB_NAMES[s] || s.charAt(0).toUpperCase() + s.slice(1)) : s)
 
 // Scores live in a narrow band, so the scale is anchored to that band rather
 // than to 0-100, where every club would look identical.
@@ -37,7 +42,26 @@ function scoreTone(pct) {
   return { bg: 'rgba(227,73,72,0.14)', fg: '#c0322f' }
 }
 
+/**
+ * One department/club cell.
+ *
+ * A cell with an audit behind it OPENS THAT REPORT, the same way the old Audits
+ * report did — openAuditReport renders the full submission, falling back to the
+ * stored URL when the detail fetch comes back empty. Rendered as a real button
+ * so it is reachable by keyboard, not a div with an onClick.
+ */
 function Cell({ cell }) {
+  const canOpen = cell.enabled && cell.everAudited && (cell.lastId || cell.lastReportUrl)
+
+  const open = () => {
+    if (!canOpen) return
+    openAuditReport(
+      { id: cell.lastId, report_url: cell.lastReportUrl },
+      getOperandioQaReport,
+      CLUB_LABEL(cell.slug)
+    )
+  }
+
   if (!cell.enabled) {
     return (
       <td className="px-2 py-1.5 text-center align-middle">
@@ -57,10 +81,17 @@ function Cell({ cell }) {
   const tone = scoreTone(cell.lastScore)
   return (
     <td className="px-2 py-1.5 text-center align-middle">
-      <div
-        className="inline-flex flex-col items-center rounded px-2 py-1 min-w-[54px]"
+      <button
+        type="button"
+        onClick={open}
+        disabled={!canOpen}
+        className={`inline-flex flex-col items-center rounded px-2 py-1 min-w-[54px] transition-shadow ${
+          canOpen ? 'cursor-pointer hover:ring-2 hover:ring-wcs-red/40' : 'cursor-default'
+        }`}
         style={tone ? { background: tone.bg } : undefined}
-        title={`Last audited ${cell.lastDate}${cell.daysStale !== null ? ` (${cell.daysStale} days ago)` : ''}`}
+        title={canOpen
+          ? `Open the ${cell.lastDate} report`
+          : `Last audited ${cell.lastDate}${cell.daysStale !== null ? ` (${cell.daysStale} days ago)` : ''}`}
       >
         <span className="text-xs font-bold tabular-nums" style={tone ? { color: tone.fg } : undefined}>
           {cell.lastScore === null ? '—' : `${cell.lastScore}%`}
@@ -68,7 +99,7 @@ function Cell({ cell }) {
         <span className={`text-[9px] tabular-nums ${cell.stale ? 'text-wcs-red font-semibold' : 'text-text-muted'}`}>
           {cell.daysStale === null ? '' : `${cell.daysStale}d`}
         </span>
-      </div>
+      </button>
     </td>
   )
 }
@@ -137,7 +168,7 @@ export default function Audits({ startDate, endDate, locationSlug }) {
           <div className="bg-surface rounded-xl border border-border p-3 overflow-x-auto">
             <div className="flex items-baseline justify-between gap-3 mb-2">
               <p className="text-xs font-bold text-text-primary">Latest Audit by Department and Club</p>
-              <p className="text-[11px] text-text-muted">score, and days since</p>
+              <p className="text-[11px] text-text-muted">click a score to open the report</p>
             </div>
             <table className="w-full text-sm">
               <thead>
@@ -185,13 +216,18 @@ export default function Audits({ startDate, endDate, locationSlug }) {
                 />
               </div>
 
-              <MonthlyTrend
-                title="Average Score by Month"
-                months={data.months || []}
-                valueKey="avgScore"
+              {/* A trailing YEAR with one line per department, not a monthly
+                  average. Audits run about monthly per department per club, so
+                  a month's "average" is one or two readings and lurches on a
+                  single 78%. Over a year the real direction shows, and with
+                  several clubs selected each point is the mean across the clubs
+                  audited that month. */}
+              <MultiTrend
+                title="Score by Department, Trailing Year"
+                months={data.trendMonths || []}
+                series={data.trendSeries || []}
                 format="pct"
-                seriesName="audits"
-                subtitle={`${(data.months || []).reduce((a, m) => a + m.submissions, 0)} audits`}
+                subtitle={`${(data.trendSeries || []).length} departments`}
               />
             </>
           )}
