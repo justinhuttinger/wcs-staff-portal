@@ -16,7 +16,9 @@ import RevenueTrends from './analytics/RevenueTrends'
 import FirstPtPurchase from './analytics/FirstPtPurchase'
 import TrainerPerformance from './analytics/TrainerPerformance'
 import TrainerSnapshot from './analytics/TrainerSnapshot'
+import SalespersonSnapshot from './analytics/SalespersonSnapshot'
 import MembershipSnapshot from './analytics/MembershipSnapshot'
+import PtSnapshot from './analytics/PtSnapshot'
 import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 
 // ---------------------------------------------------------------------------
@@ -128,8 +130,20 @@ const ANALYTICS_REPORTS = [
   {
     key: 'membership-snapshot',
     label: 'Membership Snapshot',
-    desc: 'One Salesperson at a Time',
+    desc: 'Whole Club Membership',
     Component: MembershipSnapshot,
+  },
+  {
+    key: 'pt-snapshot',
+    label: 'PT Snapshot',
+    desc: 'Whole Club Training',
+    Component: PtSnapshot,
+  },
+  {
+    key: 'salesperson-snapshot',
+    label: 'Salesperson Snapshot',
+    desc: 'One Salesperson at a Time',
+    Component: SalespersonSnapshot,
   },
   {
     key: 'trainer-snapshot',
@@ -165,8 +179,8 @@ const REPORT_GROUPS = [
   { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due'] },
   { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase'] },
   { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance'] },
-  // One person at a time, rather than one row per person. More will follow.
-  { key: 'snapshots', label: 'Snapshots',     reports: ['membership-snapshot', 'trainer-snapshot'] },
+  // Club-wide overviews first, then the one-person-at-a-time cards.
+  { key: 'snapshots', label: 'Snapshots',     reports: ['membership-snapshot', 'pt-snapshot', 'salesperson-snapshot', 'trainer-snapshot'] },
 ]
 
 // Pinned above the groups, in this order, outside any category.

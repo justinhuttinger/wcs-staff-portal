@@ -7,25 +7,21 @@ import { TOOLBAR_SLOT_ID } from './toolbarSlot'
 import { StatCard, TrendPanel, PersonSearch, ChooseSomeone } from './snapshotParts'
 
 // ---------------------------------------------------------------------------
-// Trainer Snapshot — Analytics (admin only)
+// Salesperson Snapshot — Analytics (admin only)
 //
-// One trainer, month to date, compared against EITHER the same window a month
-// earlier or another trainer. Never both.
+// One salesperson, month to date, compared against EITHER the same window a
+// month earlier or another person. Never both: two comparisons on one card
+// means two readings of every arrow.
 //
-// Every number here is the same number the Trainer Performance table shows for
-// that person — both come from buildTrainerPerformance — so the drill-down
-// cannot disagree with the table it came from.
+// Every number here is the same number Salesperson Performance shows for that
+// person — both come from buildReport — so the drill-down cannot disagree with
+// the table it came from.
 //
-// DAY ONES ARE THE ONES THIS TRAINER SERVICED, not ones they booked. Trainers
-// run intros; the front desk books them. The Day One panel therefore shows what
-// became of the intros they were given: completed, sold, cancelled, no-showed.
-//
-// PT Close Amount is credited to the COMMISSION employee and split into
-// recurring versus paid in full. Lost revenue is credited to the SERVICE
-// employee instead: losing a client happens to whoever was training them.
+// Day One SOLD is deliberately absent. Closing a Day One is a training outcome
+// and belongs to the trainer who ran it, not to whoever signed the member.
 // ---------------------------------------------------------------------------
 
-export default function TrainerSnapshot({ startDate, endDate, locationSlug }) {
+export default function SalespersonSnapshot({ startDate, endDate, locationSlug }) {
   const [person, setPerson] = useState('')
   const [compare, setCompare] = useState('')
   const [comparing, setComparing] = useState(false)
@@ -40,7 +36,7 @@ export default function TrainerSnapshot({ startDate, endDate, locationSlug }) {
   }, [startDate, endDate, locationSlug, person, compare, comparing])
 
   const { data, loading, error } = useCancellableFetch(
-    (signal) => api(`/analytics/trainer-snapshot?${query}`, { cache: true, signal }),
+    (signal) => api(`/analytics/salesperson-snapshot?${query}`, { cache: true, signal }),
     [query]
   )
 
@@ -72,20 +68,17 @@ export default function TrainerSnapshot({ startDate, endDate, locationSlug }) {
         </div>
       )}
 
-      {!loading && !error && !person && <ChooseSomeone what="trainer" />}
+      {!loading && !error && !person && <ChooseSomeone what="team member" />}
 
       {!loading && !error && person && (
         <>
           <div className="bg-surface rounded-xl border border-border px-4 py-3 flex items-baseline justify-between gap-3 flex-wrap">
             <div>
               <p className="text-base font-bold text-text-primary">
-                {data?.trainer || person}
+                {data?.salesperson || person}
                 {cmpName && <span className="text-text-muted font-medium"> vs {cmpName}</span>}
               </p>
-              <p className="text-[11px] text-text-muted">
-                {[data?.club, data?.lastSession ? `last session ${data.lastSession}` : null]
-                  .filter(Boolean).join(' · ')}
-              </p>
+              <p className="text-[11px] text-text-muted">{data?.club || ''}</p>
             </div>
             <p className="text-[11px] text-text-muted">
               {data?.meta?.windowLabel}
@@ -97,79 +90,83 @@ export default function TrainerSnapshot({ startDate, endDate, locationSlug }) {
           {data && !data.hasActivity && (
             <div className="bg-surface rounded-xl border border-border p-6 text-center">
               <p className="text-sm text-text-muted">
-                No sessions, Day Ones or PT sales for this trainer in the selected range.
+                No memberships or Day Ones for this person in the selected range.
               </p>
             </div>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
             {(data?.stats || []).map(s => (
               <StatCard key={s.key} stat={s} comparisonLabel={data?.meta?.comparisonLabel} />
             ))}
           </div>
 
+          {/* Counts and rates never share a panel. In compare mode each panel
+              carries one metric for both people, which is the only way two
+              people's trends read against each other. */}
           {cmpName ? (
             <>
-              <TrendPanel title="Sessions" months={months} series={[
-                line(data?.trainer || person, 'completedSessions', series),
-                line(cmpName, 'completedSessions', compareSeries),
+              <TrendPanel title="New Members" months={months} series={[
+                line(data?.salesperson || person, 'newMembers', series),
+                line(cmpName, 'newMembers', compareSeries),
               ]} />
-              <TrendPanel title="Day Ones Serviced" months={months} series={[
-                line(data?.trainer || person, 'dayOnes', series),
-                line(cmpName, 'dayOnes', compareSeries),
+              <TrendPanel title="Day Ones Booked" months={months} series={[
+                line(data?.salesperson || person, 'dayOnesBooked', series),
+                line(cmpName, 'dayOnesBooked', compareSeries),
               ]} />
-              <TrendPanel title="PT Close Amount" months={months} series={[
-                line(data?.trainer || person, 'closeAmount', series),
-                line(cmpName, 'closeAmount', compareSeries),
+              <TrendPanel title="Day One Book %" kind="rate" months={months} series={[
+                line(data?.salesperson || person, 'bookPct', series),
+                line(cmpName, 'bookPct', compareSeries),
               ]} />
             </>
           ) : (
             <>
-              <TrendPanel title="Sessions and Clients" months={months} series={[
-                line('Sessions', 'completedSessions', series),
-                line('Clients', 'uniqueClients', series),
+              <TrendPanel title="Memberships and Day Ones" months={months} series={[
+                line('New Members', 'newMembers', series),
+                line('Day Ones Booked', 'dayOnesBooked', series),
               ]} />
-
-              {/* What became of the intros this trainer was given. All five are
-                  counts of the same population, so they belong on one scale. */}
-              <TrendPanel title="Day Ones Serviced" months={months} series={[
-                line('Day Ones', 'dayOnes', series),
-                line('Completed', 'dayOnesCompleted', series),
-                line('Sold', 'dayOnesSold', series),
-                line('Cancelled', 'dayOnesCancelled', series),
-                line('No Showed', 'dayOnesNoShow', series),
-              ]} />
-
-              <TrendPanel title="Close Rate and Cancellation Rate" kind="rate" months={months} series={[
-                line('Close Rate', 'closeRate', series),
-                line('Cancellation Rate', 'cancellationRate', series),
-              ]} />
-
-              <TrendPanel title="PT Close Amount" months={months} series={[
-                line('PT Close Amount', 'closeAmount', series),
-              ]} />
-
-              {/* The same money, split by what was sold. These two sum to the
-                  panel above. */}
-              <TrendPanel title="PT Close by Type" months={months} series={[
-                line('Recurring', 'closeAmountRs', series),
-                line('Paid in Full', 'closeAmountPif', series),
-              ]} />
-
-              {/* Won against lost. Both drawn positive because the chart scales
-                  from zero; the net is on the stat card. The qualifier is in the
-                  title rather than a footnote: paid-in-full packages that simply
-                  ran out are not counted, so this is not the whole story of
-                  churn and should not be read as if it were. */}
-              <TrendPanel title="Revenue Closed and Lost (recurring deactivations only)" months={months} series={[
-                line('Closed', 'closeAmount', series),
-                line('Lost', 'lostValue', series),
-              ]} />
+              <TourPanel months={months} series={series} />
             </>
           )}
         </>
       )}
     </div>
+  )
+}
+
+/**
+ * Tours given, tours sold, and average days to sign.
+ *
+ * All three are null today: tours are live-fetched from GHL and never stored,
+ * so there is nothing to aggregate over — the same reason the tour columns on
+ * Salesperson Performance read N/A. The panel says so rather than drawing three
+ * flat lines along zero, which would read as "no tours given" instead of "we do
+ * not record tours yet".
+ */
+function TourPanel({ months, series }) {
+  const hasTours = series.some(r => typeof r.toursGiven === 'number')
+  if (!hasTours) {
+    return (
+      <div className="bg-surface rounded-xl border border-border p-6 text-center">
+        <p className="text-xs font-bold text-text-primary">Tours</p>
+        <p className="text-xs text-text-muted mt-1">
+          Tours given, tours sold and average days to sign will appear here once tour events are
+          stored. They are fetched live from GHL today and nothing is kept, so there is nothing to
+          chart — the same reason the tour columns on Salesperson Performance read N/A.
+        </p>
+      </div>
+    )
+  }
+  return (
+    <TrendPanel
+      title="Tours"
+      months={months}
+      series={[
+        { key: 'Tours Given', label: 'Tours Given', points: series.map(r => ({ month: r.month, value: r.toursGiven })) },
+        { key: 'Tours Sold', label: 'Tours Sold', points: series.map(r => ({ month: r.month, value: r.toursSold })) },
+        { key: 'Avg Days to Sign', label: 'Avg Days to Sign', points: series.map(r => ({ month: r.month, value: r.avgDaysToSign })) },
+      ]}
+    />
   )
 }
 
@@ -180,8 +177,8 @@ function Toolbar({ people, person, setPerson, compare, setCompare, comparing, se
   return createPortal(
     <div className="flex items-center gap-3 flex-wrap">
       <PersonSearch
-        label="Trainer"
-        listId="trainer-people"
+        label="Team Member"
+        listId="membership-people"
         people={people}
         value={person}
         onChange={setPerson}
@@ -189,7 +186,7 @@ function Toolbar({ people, person, setPerson, compare, setCompare, comparing, se
       {comparing && (
         <PersonSearch
           label="Compare With"
-          listId="trainer-compare"
+          listId="membership-compare"
           people={people}
           value={compare}
           onChange={setCompare}

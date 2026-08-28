@@ -47,7 +47,25 @@ const STATS = [
   { key: 'dayOnesSold', label: 'Day Ones Sold', format: 'int', betterWhen: 'up' },
   { key: 'closeRate', label: 'Close Rate', format: 'pct', betterWhen: 'up' },
   { key: 'closeAmount', label: 'PT Close Amount', format: 'money', betterWhen: 'up' },
+  // The same money, split by what was actually sold. These two sum to
+  // closeAmount above; the split is credited to the same commission employee,
+  // so it cannot disagree with the total sitting beside it.
+  { key: 'closeAmountRs', label: 'Close: Recurring', format: 'money', betterWhen: 'up' },
+  { key: 'closeAmountPif', label: 'Close: Paid in Full', format: 'money', betterWhen: 'up' },
+  // What went the other way. Attributed to the SERVICE employee: losing a
+  // client happens to whoever was training them, not to whoever sold the
+  // package. Recurring services only — see migration 150.
+  { key: 'lostClients', label: 'Clients Lost', format: 'int', betterWhen: 'down' },
+  { key: 'lostValue', label: 'Lost Revenue', format: 'money', betterWhen: 'down' },
+  { key: 'netValue', label: 'Net Revenue', format: 'money', betterWhen: 'up' },
 ]
+
+// Stated on the card, for the same reason PT Snapshot states it: paid-in-full
+// packages that simply ran out of sessions are not counted as a loss, because
+// ABC only reveals that one member at a time.
+const LOSS_BASIS =
+  'Recurring service deactivations only. Paid-in-full packages that ran out of ' +
+  'sessions are not counted, because ABC only reveals that one member at a time.'
 
 function seriesRow(r) {
   const completed = num(r.completed_sessions)
@@ -69,6 +87,14 @@ function seriesRow(r) {
     dayOnesNoShow: num(r.day_ones_no_show),
     closeRate: rate(num(r.day_ones_sold), dayOnesCompleted),
     closeAmount: Math.round(num(r.close_amount) * 100) / 100,
+    closeAmountRs: Math.round(num(r.close_amount_rs) * 100) / 100,
+    closeAmountPif: Math.round(num(r.close_amount_pif) * 100) / 100,
+    lostClients: num(r.lost_count),
+    // POSITIVE, even though it is money going out: TrendPanel scales from zero
+    // and would draw a negative point below its own plot area. Won-against-lost
+    // is shown as two positive lines, and the net is read from the stat card.
+    lostValue: Math.round(num(r.lost_value) * 100) / 100,
+    netValue: Math.round((num(r.close_amount) - num(r.lost_value)) * 100) / 100,
   }
 }
 
@@ -98,9 +124,10 @@ function buildTrainerSnapshot(current, comparison, series, opts = {}) {
     hasActivity: Boolean(current),
     comparisonLabel: (comparison && comparison.label) || null,
     comparingTo: (comparison && comparison.person) || null,
+    lossBasis: LOSS_BASIS,
     stats,
     series: (series || []).map(seriesRow),
   }
 }
 
-module.exports = { buildTrainerSnapshot, seriesRow, STATS, rate }
+module.exports = { buildTrainerSnapshot, seriesRow, STATS, LOSS_BASIS, rate }

@@ -253,3 +253,65 @@ export function ChooseSomeone({ what }) {
     </div>
   )
 }
+
+/**
+ * A ranked breakdown: what the biggest reason was, then the next one.
+ *
+ * ONE HUE, not a categorical palette. These rows are a magnitude ranking of the
+ * same thing, not competing identities, so a colour per row would imply a
+ * difference in kind that is not there. Length carries the comparison and the
+ * count is printed, so colour is never the only signal.
+ *
+ * Rows with a zero count are dropped rather than listed: a reason nobody gave
+ * is not a finding.
+ */
+export function BreakdownPanel({ title, rows, showValue = false, empty = 'Nothing recorded in this range.' }) {
+  const shown = (rows || []).filter(r => r.count > 0)
+  const max = shown.reduce((m, r) => Math.max(m, r.count), 0)
+  const total = shown.reduce((sum, r) => sum + r.count, 0)
+
+  return (
+    <div className="bg-surface rounded-xl border border-border p-3">
+      <div className="flex items-baseline justify-between mb-2 gap-3">
+        <p className="text-xs font-bold text-text-primary">{title}</p>
+        {total > 0 && (
+          <p className="text-[11px] text-text-muted tabular-nums">{fmtInt(total)} total</p>
+        )}
+      </div>
+
+      {shown.length === 0 ? (
+        <p className="text-xs text-text-muted py-2">{empty}</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {shown.map(r => (
+            <li key={r.label} className="flex items-center gap-2">
+              <span
+                className="text-[11px] text-text-primary truncate flex-shrink-0 w-40"
+                title={r.label}
+              >
+                {r.label}
+              </span>
+              <span className="flex-1 h-2.5 bg-bg rounded-full overflow-hidden min-w-[2rem]">
+                <span
+                  className="block h-full rounded-full"
+                  style={{
+                    width: `${max ? Math.max(2, (r.count / max) * 100) : 0}%`,
+                    background: colorFor(0),
+                  }}
+                />
+              </span>
+              <span className="text-[11px] tabular-nums text-text-primary flex-shrink-0 w-8 text-right">
+                {fmtInt(r.count)}
+              </span>
+              {showValue && (
+                <span className="text-[11px] tabular-nums text-text-muted flex-shrink-0 w-20 text-right">
+                  {fmtMoney(r.value)}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}

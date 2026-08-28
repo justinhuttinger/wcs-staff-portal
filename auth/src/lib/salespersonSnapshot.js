@@ -70,7 +70,7 @@ function seriesRow(r) {
  * @param comparison  { label, row } — either the prior window or another person
  * @param series      rows from analytics_salesperson_monthly()
  */
-function buildMembershipSnapshot(current, comparison, series, opts = {}) {
+function buildSalespersonSnapshot(current, comparison, series, opts = {}) {
   const cur = current || {}
   const cmp = (comparison && comparison.row) || {}
 
@@ -91,4 +91,4 @@ function buildMembershipSnapshot(current, comparison, series, opts = {}) {
   }
 }
 
-module.exports = { buildMembershipSnapshot, seriesRow, STATS, rate }
+module.exports = { buildSalespersonSnapshot, seriesRow, STATS, rate }

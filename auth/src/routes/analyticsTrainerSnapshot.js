@@ -37,16 +37,36 @@ const FRESH_MS = 5 * 60 * 1000
 const STALE_MS = 30 * 60 * 1000
 const SERIES_MONTHS = 13
 
+// Must match the key migration 150 builds, or every merge below misses.
 const norm = (v) => String(v || '').trim().replace(/\s+/g, ' ').toLowerCase()
 
 async function windowRows(start, end, clubNumbers) {
   const args = { p_start: start, p_end: end, p_clubs: clubNumbers }
-  const [rows, totals] = await Promise.all([
+  const [rows, totals, breakdown] = await Promise.all([
     fetchAll(supabaseAdmin.rpc('analytics_trainer_performance', args)),
     supabaseAdmin.rpc('analytics_trainer_performance_totals', args),
+    // The recurring/paid-in-full split and the loss side, from migration 150.
+    // A companion function rather than four more columns on the one above, so
+    // migration 144 stays the single definition of who is credited for what.
+    fetchAll(supabaseAdmin.rpc('analytics_trainer_pt_breakdown', args)),
   ])
   if (totals.error) throw new Error(totals.error.message)
-  return buildTrainerPerformance(rows, (totals.data || [])[0] || null, { clubNameFor })
+
+  const report = buildTrainerPerformance(rows, (totals.data || [])[0] || null, { clubNameFor })
+  const byKey = new Map((breakdown || []).map(b => [b.trainer_key, b]))
+
+  // Merged onto the row rather than carried alongside it, so the snapshot reads
+  // every stat from one object. A trainer with no PT activity keeps zeroes: the
+  // breakdown only lists people who sold or lost something.
+  for (const row of report.rows || []) {
+    const b = byKey.get(norm(row.trainer)) || {}
+    row.closeAmountRs = Math.round(Number(b.close_amount_rs || 0) * 100) / 100
+    row.closeAmountPif = Math.round(Number(b.close_amount_pif || 0) * 100) / 100
+    row.lostClients = Number(b.lost_count || 0)
+    row.lostValue = Math.round(Number(b.lost_value || 0) * 100) / 100
+    row.netValue = Math.round((Number(row.closeAmount || 0) - Number(b.lost_value || 0)) * 100) / 100
+  }
+  return report
 }
 
 router.get('/', async (req, res) => {
@@ -100,14 +120,18 @@ router.get('/', async (req, res) => {
       ? { label: compare, person: compare, row: rowIn(base.current, compare) }
       : { label: priorLabel(start, end), person: null, row: rowIn(base.prior, chosen) }
 
-    const seriesFor = (who) => (who
-      ? fetchAll(supabaseAdmin.rpc('analytics_trainer_monthly', {
-        p_end: end,
-        p_months: SERIES_MONTHS,
-        p_clubs: clubNumbers,
-        p_person: who,
-      }))
-      : Promise.resolve([]))
+    // The monthly series needs the same two extra measures merged in by month,
+    // or the trend panels for them would be flat at zero.
+    const seriesFor = async (who) => {
+      if (!who) return []
+      const seriesArgs = { p_end: end, p_months: SERIES_MONTHS, p_clubs: clubNumbers, p_person: who }
+      const [months, extra] = await Promise.all([
+        fetchAll(supabaseAdmin.rpc('analytics_trainer_monthly', seriesArgs)),
+        fetchAll(supabaseAdmin.rpc('analytics_trainer_pt_breakdown_monthly', seriesArgs)),
+      ])
+      const byMonth = new Map((extra || []).map(e => [String(e.month_start).slice(0, 10), e]))
+      return (months || []).map(m => ({ ...m, ...(byMonth.get(String(m.month_start).slice(0, 10)) || {}) }))
+    }
 
     const [series, compareSeries] = await Promise.all([
       seriesFor(chosen),

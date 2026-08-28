@@ -3,7 +3,7 @@ const assert = require('node:assert')
 
 const { monthToDate, priorMonthWindow, pctChange, daysInMonth, formatDateLong, priorLabel, windowLabel, isMonthToDate } = require('./snapshotWindow')
 const { buildTrainerSnapshot, seriesRow: trainerSeriesRow } = require('./trainerSnapshot')
-const { buildMembershipSnapshot, seriesRow: memberSeriesRow } = require('./membershipSnapshot')
+const { buildSalespersonSnapshot, seriesRow: memberSeriesRow } = require('./salespersonSnapshot')
 
 // ---------------------------------------------------------------------------
 // snapshotWindow
@@ -98,7 +98,7 @@ test('a month with no intros has no close rate', () => {
 // ---------------------------------------------------------------------------
 
 // Keys copied from what buildReport actually returns — see the STATS comment
-// in membershipSnapshot.js for why an invented key is not a harmless typo.
+// in salespersonSnapshot.js for why an invented key is not a harmless typo.
 const memberRow = (over = {}) => ({
   salesperson: 'Katie Castlio', club: 'East Side Athletic Club',
   newMemberUnits: 35, pctOfClubTotal: 42.1,
@@ -110,7 +110,7 @@ const memberRow = (over = {}) => ({
 })
 
 test('each membership stat carries its prior value and the change', () => {
-  const out = buildMembershipSnapshot(memberRow(), { label: 'July MTD', row: memberRow({ newMemberUnits: 65 }) }, [])
+  const out = buildSalespersonSnapshot(memberRow(), { label: 'July MTD', row: memberRow({ newMemberUnits: 65 }) }, [])
   const units = out.stats.find(s => s.key === 'newMemberUnits')
   assert.equal(units.value, 35)
   assert.equal(units.prior, 65)
@@ -132,8 +132,8 @@ test('a month with no members signed has no book rate', () => {
 
 test('snapshot builders survive empty input', () => {
   assert.doesNotThrow(() => buildTrainerSnapshot(null, null, null))
-  assert.doesNotThrow(() => buildMembershipSnapshot(null, null, null))
-  assert.deepEqual(buildMembershipSnapshot(null, null, null).series, [])
+  assert.doesNotThrow(() => buildSalespersonSnapshot(null, null, null))
+  assert.deepEqual(buildSalespersonSnapshot(null, null, null).series, [])
 })
 
 // ---------------------------------------------------------------------------
@@ -188,7 +188,7 @@ test('trainer Day Ones are the ones serviced, with their outcomes', () => {
 test('membership stats use keys buildReport actually returns', () => {
   // achCount / achPct / avgNextDueAmount were invented and rendered N/A
   // forever. This pins the real names.
-  const out = buildMembershipSnapshot(memberRow(), null, [])
+  const out = buildSalespersonSnapshot(memberRow(), null, [])
   const val = k => out.stats.find(s => s.key === k)?.value
   assert.equal(val('achUnits'), 30)
   assert.equal(val('pctOnAch'), 85.7)
@@ -199,7 +199,7 @@ test('membership stats use keys buildReport actually returns', () => {
 })
 
 test('tours are carried as pending rather than as zero', () => {
-  const out = buildMembershipSnapshot(memberRow(), null, [])
+  const out = buildSalespersonSnapshot(memberRow(), null, [])
   const tours = out.stats.find(s => s.key === 'toursGiven')
   assert.equal(tours.pending, true)
   assert.equal(tours.value, null)
