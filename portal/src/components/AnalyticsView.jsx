@@ -175,10 +175,10 @@ const ANALYTICS_REPORTS = [
 // Keys that do not (yet) exist in ANALYTICS_REPORTS are ignored rather than
 // rendering a dead link, so a group can name a report that ships later.
 const REPORT_GROUPS = [
-  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member'] },
+  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'membership-snapshot'] },
   { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due'] },
-  { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase'] },
-  { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance'] },
+  { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase', 'pt-snapshot', 'trainer-snapshot'] },
+  { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot'] },
   // Club-wide overviews first, then the one-person-at-a-time cards.
   { key: 'snapshots', label: 'Snapshots',     reports: ['membership-snapshot', 'pt-snapshot', 'salesperson-snapshot', 'trainer-snapshot'] },
 ]
