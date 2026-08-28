@@ -5,6 +5,7 @@ const { buildTourWebhookPayload } = require('../lib/tourWebhook')
 const { getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
 const { readReferral, writeReferral } = require('../lib/vipReferral')
+const { resolveGhlContactId } = require('../lib/resolveGhlContact')
 const { searchMembersByName } = require('../lib/memberLookup')
 const { resolveAbcId } = require('../lib/resolveAbcId')
 
@@ -182,12 +183,38 @@ router.patch('/:token/intake/:id', async (req, res) => {
     // Stamp the referral onto the GHL contact before the row goes. Only
     // non-empty values are written, so leaving a question blank never clears
     // something already on the record.
-    if (!cancelled && existing.ghl_contact_id &&
-        (referred_by_full_name || referred_by_abc_id || vip_team_member)) {
-      const loc = getLocationBySlug((ctx.location.name || '').trim().toLowerCase())
-      if (loc) {
+    //
+    // The card may carry no contact id at all: a kiosk check-in announces the
+    // arrival before anything has mapped the person to a GHL contact, so every
+    // kiosk card has ghl_contact_id null. Look it up by email or phone -- by the
+    // time staff complete the tour the contact exists.
+    let contactId = existing.ghl_contact_id || null
+    const hasAnswers = !!(referred_by_full_name || referred_by_abc_id || vip_team_member)
+    const loc = getLocationBySlug((ctx.location.name || '').trim().toLowerCase())
+
+    if (!cancelled && hasAnswers) {
+      if (!contactId && loc) {
+        contactId = await resolveGhlContactId({
+          locationId: loc.id, apiKey: loc.apiKey,
+          email: existing.contact_email, phone: existing.contact_phone,
+        })
+        if (contactId) {
+          console.log(`[public-tour] resolved GHL contact ${contactId} for ${existing.id}`)
+        }
+      }
+
+      // Every one of these was previously a silent return. Staff had answered
+      // the questions and nothing anywhere said why the answers stopped.
+      if (!loc) {
+        console.error(`[public-tour] referral skipped: no GHL config for ${ctx.location.name}`)
+      } else if (!contactId) {
+        console.error(
+          `[public-tour] referral skipped: no GHL contact for ${existing.id} ` +
+          `(email=${existing.contact_email || 'none'} phone=${existing.contact_phone || 'none'})`
+        )
+      } else {
         const r = await writeReferral(
-          { locationId: loc.id, apiKey: loc.apiKey, contactId: existing.ghl_contact_id },
+          { locationId: loc.id, apiKey: loc.apiKey, contactId },
           {
             fullName: referred_by_full_name,
             abcId: referred_by_abc_id,
@@ -197,6 +224,8 @@ router.patch('/:token/intake/:id', async (req, res) => {
         if (!r.ok) console.error('[public-tour] referral write failed:', r.error)
         else if (r.written.length) {
           console.log(`[public-tour] referral written ${r.written.join(', ')} for ${existing.id}`)
+        } else {
+          console.error(`[public-tour] referral resolved no fields for ${existing.id}`)
         }
       }
     }
@@ -207,6 +236,9 @@ router.patch('/:token/intake/:id', async (req, res) => {
     if (ctx.cfg.webhook_url && !cancelled) {
       const payload = buildTourWebhookPayload(ctx.location, {
         ...existing,
+        // The resolved one when the card carried none, so a kiosk check-in
+        // reaches the workflow with a contact to act on rather than a null.
+        ghl_contact_id: contactId,
         tour_member: tour_member || null,
         outcome,
         notes: notes || null,
@@ -337,7 +369,7 @@ router.get('/:token/intake/:id/referral', async (req, res) => {
 
     const { data: intake } = await supabaseAdmin
       .from('tour_intakes')
-      .select('id, location_id, ghl_contact_id')
+      .select('id, location_id, ghl_contact_id, contact_email, contact_phone')
       .eq('id', req.params.id)
       .maybeSingle()
     if (!intake || intake.location_id !== ctx.location.id) {
@@ -345,13 +377,23 @@ router.get('/:token/intake/:id/referral', async (req, res) => {
     }
 
     const loc = getLocationBySlug((ctx.location.name || '').trim().toLowerCase())
-    if (!loc || !intake.ghl_contact_id) {
+    if (!loc) {
+      return res.json({ fullName: '', abcId: '', teamMember: '', known: false })
+    }
+
+    // Kiosk cards carry no contact id, so without this the prompts would come up
+    // blank even for somebody whose referrer GHL already knows.
+    const contactId = intake.ghl_contact_id || await resolveGhlContactId({
+      locationId: loc.id, apiKey: loc.apiKey,
+      email: intake.contact_email, phone: intake.contact_phone,
+    })
+    if (!contactId) {
       // No contact to read. Not an error: staff simply get the blank prompts.
       return res.json({ fullName: '', abcId: '', teamMember: '', known: false })
     }
 
     const referral = await readReferral({
-      locationId: loc.id, apiKey: loc.apiKey, contactId: intake.ghl_contact_id,
+      locationId: loc.id, apiKey: loc.apiKey, contactId,
     })
     res.json({ ...referral, known: true })
   } catch (err) {
