@@ -2,7 +2,15 @@
 //
 // This report exists so a manager does not have to go looking. Every other
 // report answers a question you have to think to ask; this one states what is
-// wrong, per club, against thresholds set in Admin.
+// wrong, and WHO it belongs to, against thresholds set in Admin.
+//
+// PEOPLE ONLY. Club-level rows were removed deliberately: a club figure is an
+// average of the people in it, and averages are what the other reports are for.
+// A problem worth acting on has somebody's name on it.
+//
+// The cost of that is stated rather than hidden: an operational job nobody ever
+// started has no name to attach, so it cannot appear here at all. The route
+// counts those and returns the number.
 //
 // A CHECK ONLY FIRES ON EVIDENCE. Every check declares the smallest sample it
 // will judge on, and stays silent below it. Two Day Ones and no sale is not a
@@ -31,13 +39,12 @@ const CHECKS = [
     key: 'dayone_book_pct',
     label: 'Day One Booking %',
     department: 'Membership',
-    // Booking is credited to whoever BOOKED the Day One, which is a front-desk
-    // act, so this is measured per salesperson as well as per club.
-    scopes: ['club', 'staff'],
+    // Credited to whoever BOOKED the Day One.
+    scopes: ['staff'],
     unit: 'pct',
     direction: 'below',
     defaultThreshold: 40,
-    minSample: 10,
+    minSample: 4,
     sampleLabel: 'new members',
     why: 'New members are not being booked into a Day One.',
   },
@@ -45,11 +52,11 @@ const CHECKS = [
     key: 'vip_pct',
     label: 'VIP Collection %',
     department: 'Membership',
-    scopes: ['club', 'staff'],
+    scopes: ['staff'],
     unit: 'pct',
     direction: 'below',
     defaultThreshold: 40,
-    minSample: 10,
+    minSample: 4,
     sampleLabel: 'new members',
     why: 'New members are not being asked for VIP referrals.',
   },
@@ -58,11 +65,11 @@ const CHECKS = [
     label: 'Day One Close %',
     department: 'PT',
     // Credited to the trainer who SERVICED the Day One, not whoever booked it.
-    scopes: ['club', 'staff'],
+    scopes: ['staff'],
     unit: 'pct',
     direction: 'below',
     defaultThreshold: 30,
-    minSample: 10,
+    minSample: 4,
     sampleLabel: 'completed Day Ones',
     why: 'Day Ones are happening but not converting to PT.',
   },
@@ -70,7 +77,7 @@ const CHECKS = [
     key: 'dayone_open_forms',
     label: 'Day One Forms Left Open',
     department: 'PT',
-    scopes: ['club', 'staff'],
+    scopes: ['staff'],
     unit: 'count',
     direction: 'above',
     defaultThreshold: 10,
@@ -79,21 +86,37 @@ const CHECKS = [
     why: 'Day Ones whose date has passed with no outcome recorded. Until the form is completed the appointment counts as neither held nor missed, so every close rate is measured on an incomplete picture.',
   },
   {
-    key: 'ops_pct',
-    label: 'Operational Compliance %',
+    key: 'ops_jobs_below',
+    label: 'Jobs Below Standard',
     department: 'Operations',
-    // CLUB ONLY. An Operandio job carries an assignment, not an owner, and a
-    // job nobody completed has nobody to name -- attributing it to whoever was
-    // assigned would blame people for work that was never picked up.
-    scopes: ['club'],
-    unit: 'pct',
-    direction: 'below',
-    defaultThreshold: 75,
-    minSample: 20,
+    // STAFF ONLY, like every check here. A job somebody part-did is attributed
+    // to them. A job NOBODY touched has no name to attach and therefore cannot
+    // appear at all -- 489 of 575 below-standard jobs in a 30-day window were
+    // never started by anyone. The route counts those and the report says how
+    // many, because a silent omission on that scale would be worse than the
+    // club row this replaced.
+    scopes: ['staff'],
+    unit: 'count',
+    direction: 'above',
+    // Any below-standard job is worth seeing, so the bar is "more than none".
+    // How complete a job must be to pass is a separate setting -- see
+    // problem_ops_job_pct.
+    defaultThreshold: 0,
+    minSample: 0,
     sampleLabel: 'jobs due',
-    why: 'Scheduled operational tasks are not being completed.',
+    why: 'Operational jobs left below the completion standard.',
   },
 ]
+
+// How complete a single Operandio job must be to count as done. Separate from
+// the threshold above, which is how many below-standard jobs are tolerated.
+const OPS_JOB_PCT_KEY = 'problem_ops_job_pct'
+const DEFAULT_OPS_JOB_PCT = 75
+
+function opsJobPct(settings) {
+  const v = num((settings || {})[OPS_JOB_PCT_KEY])
+  return v === null ? DEFAULT_OPS_JOB_PCT : v
+}
 
 const CHECK_BY_KEY = new Map(CHECKS.map(c => [c.key, c]))
 
@@ -126,10 +149,15 @@ function isOff(check, settings) {
  * — which is the order a manager would put them in.
  */
 function severityOf(check, value, threshold) {
-  if (value === null || threshold === null || !threshold) return 0
+  if (value === null || threshold === null) return 0
+  // Divided by at least 1. A tolerance of zero — which is the sensible default
+  // for "jobs below standard" — would otherwise divide by zero and score every
+  // such problem as severity 0, sinking the worst rows to the bottom of a list
+  // whose whole purpose is to put them at the top.
+  const scale = Math.max(Math.abs(threshold), 1)
   return check.direction === 'below'
-    ? Math.max(0, (threshold - value) / threshold)
-    : Math.max(0, (value - threshold) / threshold)
+    ? Math.max(0, (threshold - value) / scale)
+    : Math.max(0, (value - threshold) / scale)
 }
 
 function fails(check, value, threshold) {
@@ -153,8 +181,15 @@ function fails(check, value, threshold) {
  */
 function buildProblemAreas(clubs, staff = [], settings = {}) {
   const problems = []
-  const skipped = []
   let checked = 0
+
+  // A row with no name attached is not a person. Operandio and the Day One
+  // feed both leave a name blank rather than absent, and 'Unknown' on a
+  // problem list is an accusation nobody can act on.
+  const named = (n) => {
+    const v = String(n || '').trim()
+    return v !== '' && v.toLowerCase() !== 'unknown'
+  }
 
   const evaluate = (subject, scope) => {
     for (const check of CHECKS) {
@@ -179,19 +214,24 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
         label: check.label,
       }
 
-      // No data at all is not a pass. Reported separately so an absent feed
-      // cannot masquerade as a healthy club.
-      if (value === null) {
-        skipped.push({ ...base, reason: 'no data' })
-        continue
-      }
-      if (sample < check.minSample) {
-        skipped.push({ ...base, reason: `only ${sample} ${check.sampleLabel}` })
-        continue
-      }
+      // Nothing measured, or too little to judge on: the check simply does not
+      // fire. Silent rather than listed -- a manager wants the problems, not a
+      // register of everything that was looked at.
+      if (value === null) continue
+      if (sample < check.minSample) continue
 
       checked++
       if (!fails(check, value, threshold)) continue
+
+      // What the number is made of, so the row can say "12 of 40 booked, needs
+      // 16" rather than a bare percentage nobody can act on.
+      const numerator = num(m.numerator)
+      const target = check.unit === 'pct' && sample
+        ? Math.ceil((threshold / 100) * sample)
+        : null
+      const shortBy = target !== null && numerator !== null
+        ? Math.max(0, target - numerator)
+        : null
 
       problems.push({
         ...base,
@@ -201,14 +241,22 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
         threshold,
         sample,
         sampleLabel: check.sampleLabel,
+        numerator,
+        target,
+        shortBy,
         why: check.why,
         severity: Math.round(severityOf(check, value, threshold) * 1000) / 1000,
       })
     }
   }
 
-  for (const club of clubs || []) evaluate({ ...club, club: club.name }, 'club')
-  for (const person of staff || []) evaluate(person, 'staff')
+  // Clubs are accepted and ignored: no check is club-scoped any more, and the
+  // parameter is kept so the route's shape does not have to change if one ever
+  // is again.
+  for (const person of staff || []) {
+    if (!named(person.name)) continue
+    evaluate(person, 'staff')
+  }
 
   const worstFirst = (a, b) =>
     b.severity - a.severity ||
@@ -218,10 +266,10 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
 
   problems.sort(worstFirst)
 
-  // Grouped by club, because a club with four problems is a different
-  // conversation from four clubs with one each.
+  // Grouped by club, because a club with eight flagged people is a different
+  // conversation from eight clubs with one each.
   const byClub = new Map()
-  for (const p of problems.filter(p => p.scope === 'club')) {
+  for (const p of problems) {
     const cur = byClub.get(p.clubSlug) || { club: p.club, clubSlug: p.clubSlug, problems: [] }
     cur.problems.push(p)
     byClub.set(p.clubSlug, cur)
@@ -230,7 +278,7 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
   // And by person, so a manager can see whether one club is struggling or one
   // person is. Keyed on club AND name: two clubs can employ the same name.
   const byPerson = new Map()
-  for (const p of problems.filter(p => p.scope === 'staff')) {
+  for (const p of problems) {
     const k = `${p.clubSlug}|${p.person}`
     const cur = byPerson.get(k) || {
       person: p.person, club: p.club, clubSlug: p.clubSlug,
@@ -248,7 +296,6 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
       || String(a.club).localeCompare(String(b.club))),
     byPerson: [...byPerson.values()].sort((a, b) => b.problems.length - a.problems.length
       || String(a.person).localeCompare(String(b.person))),
-    skipped,
     checksRun: checked,
     clean: problems.length === 0 && checked > 0,
     departments: DEPARTMENTS.map(d => ({ key: d, label: d, count: countBy(d) })),
@@ -269,5 +316,6 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
 
 module.exports = {
   buildProblemAreas, CHECKS, CHECK_BY_KEY, DEPARTMENTS,
+  OPS_JOB_PCT_KEY, DEFAULT_OPS_JOB_PCT, opsJobPct,
   settingKey, offKey, thresholdFor, isOff, severityOf, fails,
 }
