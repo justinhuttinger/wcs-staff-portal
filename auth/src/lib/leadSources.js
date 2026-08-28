@@ -12,8 +12,8 @@
 // TWO ATTRIBUTIONS, NEVER BLENDED.
 //
 //   Real     what GHL observed on the contact's first touch. Evidence.
-//   Claimed  what the person said when asked. A different question, and a much
-//            emptier field — see CLAIMED_COVERAGE_NOTE.
+//   Claimed  what the person said when asked. A different question on a
+//            different population — see claimedCoverageNote().
 //
 // A lead can be observed as Facebook and claim Friend/Family. Both are true,
 // and the gap between them is the point of having both.
@@ -31,21 +31,39 @@ function rate(part, whole) {
   return Math.round((part / whole) * 1000) / 10
 }
 
-// Stated on the report.
+// Stated on the report, and MEASURED rather than asserted.
 //
-// Claimed source reads contact.marketing_source, which covers 5,054 of the
-// 11,909 contacts created in the last 120 days — 42%.
+// This note used to quote a constant "about 42%", which made a working field
+// look broken. Marketing Source became mandatory in MAY 2026:
 //
-// It is NOT "How Did you Hear About Us?", which is the field named after the
-// question and is filled in on 42 contacts of 88,419. I built the report on
-// that one first and wrote a note explaining why it was empty; the 0.05% should
-// have prompted a search for the field carrying the answer instead. Contacts
-// with no answer are reported as "Not Asked" rather than folded into a real
-// source.
-const CLAIMED_COVERAGE_NOTE =
-  'Claimed source is recorded on about 42% of contacts; the rest show as Not ' +
-  'Asked. Observed source is on every lead, so the two views cover different ' +
-  'numbers of people and their totals will not match.'
+//   Jan 2026  1.5%      May 2026  69.2%
+//   Apr 2026  7.5%      Aug 2026  80.5%   (share of trials carrying it)
+//
+// A window inside that era is well covered; a window spanning it is not, and
+// only the window on screen knows which it is. Coverage is computed over the
+// same population the funnel draws, so the sentence describes these numbers
+// rather than an average of a different period.
+//
+// It reads contact.marketing_source. NOT "How Did you Hear About Us?", the
+// field named after the question, which is filled in on 42 contacts of 88,419.
+// I built this on that one first and wrote a note explaining the emptiness; a
+// 0.05% reading should have prompted a hunt for the field carrying the answer
+// instead of prose justifying the hole.
+function claimedCoverageNote(coverage) {
+  const total = num(coverage && coverage.total)
+  const answered = num(coverage && coverage.answered)
+  const pct = rate(answered, total)
+  if (!total) {
+    return 'Claimed source is what the person said when asked. Observed source ' +
+      'is on every lead, so the two views cover different people.'
+  }
+  return `Claimed source is recorded on ${pct}% of this window ` +
+    `(${answered.toLocaleString()} of ${total.toLocaleString()}); the rest show as ` +
+    'Not Asked. The question became mandatory in May 2026, so windows reaching ' +
+    'back before then read low for that reason rather than because staff skipped ' +
+    'it. Observed source is on every lead, so the two views cover different ' +
+    'numbers of people and their totals will not match.'
+}
 
 // Also stated. What is left in this bucket after the walk-in rule is applied.
 //
@@ -59,19 +77,24 @@ const NO_SOURCE_NOTE =
   'trial — records that arrived from nowhere and went nowhere. Contacts with no ' +
   'attribution who did start a trial are counted as Walk-in, not here.'
 
-// Stated wherever these two are shown.
+// Stated wherever the outcome is shown.
+//
+// Not Interested and Day Pass are ONE measure, combined with OR over distinct
+// contacts rather than by adding the two counts. The overlap is not marginal:
+// for Website in August the two counts are 347 and 335 while the truth is 391,
+// because 291 people are both. Summing would have reported nearly double.
 //
 // Both outcomes DELETE the opportunity in GHL, so somebody who was a lead and
-// then went not-interested has already left the funnel's lead count. They are
+// then went not-interested has already left the funnel's lead count. This is
 // ADDITIONAL to the funnel, not a slice of it, and the arithmetic will not add
-// up if they are read as one.
+// up if it is read as one.
 const OUTCOMES_NOTE =
-  'Not Interested and Day Pass are counted per contact, not from the pipeline: ' +
+  'Not Interested / Day Pass counts people per contact, not from the pipeline: ' +
   'both outcomes delete the opportunity in GHL, so these people have already ' +
-  'left the lead count beside them. Read them as additional to the funnel, not ' +
-  'as a slice of it. Medford and Milwaukie do not use the guest tag at all, and ' +
-  'Medford has no Not Interested workflow, so a zero there is an absent process ' +
-  'rather than an absent person.'
+  'left the lead count beside them. Read it as additional to the funnel, not as ' +
+  'a slice of it. Anyone who is both is counted once. Medford and Milwaukie do ' +
+  'not use the guest tag at all, and Medford has no Not Interested workflow, so ' +
+  'a zero there is an absent process rather than an absent person.'
 
 /** A source that is a bookkeeping artefact rather than a channel. */
 const NOT_A_CHANNEL = new Set(['No Source Recorded'])
@@ -117,6 +140,9 @@ function buildLeadSources(rows, priorRows, opts = {}) {
   // arithmetic — see OUTCOMES_NOTE for why they are not a slice of it.
   const outcomeBySource = new Map(
     (opts.outcomes || []).map(o => [o.source, {
+      // Combined in SQL with OR over distinct contacts. Never recomputed here
+      // as notInterested + dayPasses — that double-counts anyone who is both.
+      outcomes: num(o.outcomes),
       notInterested: num(o.not_interested),
       dayPasses: num(o.day_passes),
     }])
@@ -130,6 +156,7 @@ function buildLeadSources(rows, priorRows, opts = {}) {
     const was = priorBySource.get(s.source)
     return {
       ...s,
+      outcomes: (outcomeBySource.get(s.source) || {}).outcomes ?? 0,
       notInterested: (outcomeBySource.get(s.source) || {}).notInterested ?? 0,
       dayPasses: (outcomeBySource.get(s.source) || {}).dayPasses ?? 0,
       priorLeads: was ? was.leads : null,
@@ -155,6 +182,9 @@ function buildLeadSources(rows, priorRows, opts = {}) {
     totals: {
       leads: totalLeads,
       tours: sum('tours'),
+      // Summing the per-source combined figures is safe: a contact has one
+      // source, so the OR already happened inside each bucket.
+      outcomes: [...outcomeBySource.values()].reduce((a, v) => a + v.outcomes, 0),
       notInterested: [...outcomeBySource.values()].reduce((a, v) => a + v.notInterested, 0),
       dayPasses: [...outcomeBySource.values()].reduce((a, v) => a + v.dayPasses, 0),
       trials: totalTrials,
@@ -173,13 +203,13 @@ function buildLeadSources(rows, priorRows, opts = {}) {
       winRate: s.winRate,
     })),
     notes: {
-      claimed: attribution === 'claimed' ? CLAIMED_COVERAGE_NOTE : null,
+      claimed: attribution === 'claimed' ? claimedCoverageNote(opts.coverage) : null,
       noSource: withChange.some(s => s.notAChannel) ? NO_SOURCE_NOTE : null,
     },
   }
 }
 
 module.exports = {
-  buildLeadSources, shapeRow,
-  CLAIMED_COVERAGE_NOTE, NO_SOURCE_NOTE, OUTCOMES_NOTE, NOT_A_CHANNEL,
+  buildLeadSources, shapeRow, claimedCoverageNote,
+  NO_SOURCE_NOTE, OUTCOMES_NOTE, NOT_A_CHANNEL,
 }

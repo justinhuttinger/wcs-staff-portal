@@ -19,8 +19,9 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 // blended. Migrations 155-159 hold the bucketing and the funnel.
 //
 // The funnel counts OPPORTUNITIES in the membership pipelines so it reconciles
-// with GHL's own board; day passes are counted per CONTACT because a guest who
-// never became an opportunity is not on that board at all.
+// with GHL's own board. Not Interested / Day Pass is ONE combined outcome
+// counted per CONTACT, because both delete the opportunity and a guest who
+// never became one is not on that board at all — migration 162.
 //
 // CLUBS COME FROM ghl_locations.slug, not the ABC club number. This is the one
 // report whose world is GHL rather than ABC, and the two number things
@@ -63,7 +64,7 @@ router.get('/', async (req, res) => {
     ].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
-      const [rows, priorRows, outcomes] = await Promise.all([
+      const [rows, priorRows, outcomes, coverage] = await Promise.all([
         fetchAll(supabaseAdmin.rpc('analytics_lead_sources', {
           p_start: start, p_end: end, p_clubs: clubSlugs, p_attribution: attribution,
         })),
@@ -75,12 +76,21 @@ router.get('/', async (req, res) => {
         fetchAll(supabaseAdmin.rpc('analytics_lead_outcomes', {
           p_start: start, p_end: end, p_clubs: clubSlugs, p_attribution: attribution,
         })),
+        // Only for the claimed view, and only to describe the window on screen.
+        // The old report quoted a fixed "42%" that averaged across the period
+        // before the question existed, which read as a broken field rather than
+        // a new one.
+        attribution === 'claimed'
+          ? fetchAll(supabaseAdmin.rpc('analytics_lead_claimed_coverage', {
+              p_start: start, p_end: end, p_clubs: clubSlugs,
+            }))
+          : Promise.resolve([]),
       ])
-      return { rows, priorRows, outcomes }
+      return { rows, priorRows, outcomes, coverage: coverage[0] || null }
     })
 
     const built = buildLeadSources(payload.rows, payload.priorRows, {
-      attribution, outcomes: payload.outcomes,
+      attribution, outcomes: payload.outcomes, coverage: payload.coverage,
     })
 
     res.json({
