@@ -97,7 +97,7 @@ const memSummary = { pctOnAch: 71.2, avgNewDuesDraft: 55.9, dayOneBookCount: 300
 
 test('a club that lost more than it gained shows a negative net', () => {
   const out = buildClubMembershipSnapshot(
-    { window: memWindow(), summary: memSummary, tours: { given: 0, joined: 0 } }, null, []
+    { window: memWindow(), summary: memSummary }, null, []
   )
   // August 2026 really was negative; a report that cannot say so is useless.
   assert.equal(out.stats.find(s => s.key === 'netMembers').value, -34)
@@ -105,7 +105,7 @@ test('a club that lost more than it gained shows a negative net', () => {
 
 test('no second number labelled new members', () => {
   const out = buildClubMembershipSnapshot(
-    { window: memWindow(), summary: { ...memSummary, newMemberUnits: 999 }, tours: null }, null, []
+    { window: memWindow(), summary: { ...memSummary, newMemberUnits: 999 } }, null, []
   )
   const labels = out.stats.map(s => s.label)
   // buildReport counts new members its own way. Two near-but-unequal figures
@@ -116,7 +116,7 @@ test('no second number labelled new members', () => {
 
 test('an absent check-in feed is absent, not zero', () => {
   const out = buildClubMembershipSnapshot(
-    { window: memWindow({ checkins: 0, has_checkin_data: false }), summary: memSummary, tours: null },
+    { window: memWindow({ checkins: 0, has_checkin_data: false }), summary: memSummary },
     null, []
   )
   // Check-in coverage has been wrong before. A zero would read as "nobody came
@@ -124,19 +124,33 @@ test('an absent check-in feed is absent, not zero', () => {
   assert.equal(out.stats.find(s => s.key === 'checkins').value, null)
 })
 
-test('tours are pending until the tour product starts posting, not zero', () => {
+test('tours and VIPs are null where nothing is recorded, real where it is', () => {
   const out = buildClubMembershipSnapshot(
-    { window: memWindow(), summary: memSummary, tours: { given: 0, joined: 0 } }, null, []
+    { window: memWindow(), summary: memSummary }, null, []
   )
-  const tours = out.stats.find(s => s.key === 'toursGiven')
-  assert.equal(tours.value, null)
-  assert.equal(tours.pending, true)
+  // buildReport reports null for a club that records neither, and the card has
+  // to pass that through: a zero would read as "none given" rather than "not
+  // being recorded", and for VIPs it would blame staff for a GHL field that
+  // was never configured.
+  assert.equal(out.stats.find(s => s.key === 'toursGiven').value, null)
+  assert.equal(out.stats.find(s => s.key === 'vipCount').value, null)
 
   const live = buildClubMembershipSnapshot(
-    { window: memWindow(), summary: memSummary, tours: { given: 40, joined: 10 } }, null, []
+    { window: memWindow(), summary: {
+      ...memSummary, toursGiven: 40, tourConversionRate: 25, vipCount: 120, vipPct: 22.7,
+    } }, null, []
   )
   assert.equal(live.stats.find(s => s.key === 'toursGiven').value, 40)
   assert.equal(live.stats.find(s => s.key === 'tourConversionRate').value, 25)
+  assert.equal(live.stats.find(s => s.key === 'vipCount').value, 120)
+  assert.equal(live.stats.find(s => s.key === 'vipPct').value, 22.7)
+})
+
+test('VIP % sits immediately after VIPs collected', () => {
+  const out = buildClubMembershipSnapshot({ window: memWindow(), summary: memSummary }, null, [])
+  const keys = out.stats.map(s => s.key)
+  // The order Justin asked for: VIPs Collected then VIP %.
+  assert.equal(keys.indexOf('vipPct'), keys.indexOf('vipCount') + 1)
 })
 
 test('members leaving are positive in the series', () => {

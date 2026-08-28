@@ -27,11 +27,6 @@ function money(v) {
   return Math.round(num(v) * 100) / 100
 }
 
-function rate(part, whole) {
-  if (!whole) return null
-  return Math.round((part / whole) * 1000) / 10
-}
-
 const STATS = [
   { key: 'totalMembers', label: 'Members', format: 'int', betterWhen: 'up' },
   { key: 'newMembers', label: 'Joined', format: 'int', betterWhen: 'up' },
@@ -46,10 +41,16 @@ const STATS = [
   { key: 'dayOneBookCount', label: 'Day Ones Booked', format: 'int', betterWhen: 'up' },
   { key: 'dayOneBookPct', label: 'Day One Book %', format: 'pct', betterWhen: 'up' },
   { key: 'bookOnJoinDatePct', label: 'Booked on Join Date %', format: 'pct', betterWhen: 'up' },
-  // Real data now, but only from the day the tour product starts posting
-  // completions. Until then the stat is PENDING rather than zero: "no tours
-  // given" and "tours not being recorded yet" are different findings, and a
-  // zero would report the second as the first.
+  // VIPs against memberships sold. The denominator is buildReport's new member
+  // units, which is the figure Justin means by "memberships sold" — deliberately
+  // not Topline's joined count above, because a percentage has to divide by the
+  // same population its numerator was credited against.
+  { key: 'vipCount', label: 'VIPs Collected', format: 'int', betterWhen: 'up' },
+  { key: 'vipPct', label: 'VIP %', format: 'pct', betterWhen: 'up' },
+  // Real from 2026-08-28, when the check-in stopped deleting completed rows.
+  // Null rather than zero where nothing is on record: "no tours given" and
+  // "tours were not being kept yet" are different findings, and a zero would
+  // report the second as the first.
   { key: 'toursGiven', label: 'Tours Given', format: 'int', betterWhen: 'up' },
   { key: 'tourConversionRate', label: 'Tour Conversion', format: 'pct', betterWhen: 'up' },
 ]
@@ -57,15 +58,12 @@ const STATS = [
 /**
  * @param window  one row from analytics_topline_window
  * @param summary the `summary` object from buildReport, or null
- * @param tours   { given, joined } counted from tour_intakes, or null
  */
-function shapeTotals(window, summary, tours) {
+function shapeTotals(window, summary) {
   const w = window || {}
   const s = summary || {}
-  const t = tours || {}
   const newMembers = num(w.new_members)
   const lostMembers = num(w.lost_members)
-  const given = num(t.given)
 
   return {
     totalMembers: num(w.total_members),
@@ -87,8 +85,13 @@ function shapeTotals(window, summary, tours) {
     bookOnJoinDateCount: s.bookOnJoinDateCount ?? null,
     bookOnJoinDatePct: s.bookOnJoinDatePct ?? null,
 
-    toursGiven: given || null,
-    tourConversionRate: given ? rate(num(t.joined), given) : null,
+    // Taken from the same summary as the other rates, so the club card and the
+    // Salesperson Performance total below it cannot disagree.
+    vipCount: s.vipCount ?? null,
+    vipPct: s.vipPct ?? null,
+
+    toursGiven: s.toursGiven ?? null,
+    tourConversionRate: s.tourConversionRate ?? null,
   }
 }
 
@@ -112,8 +115,8 @@ function seriesRow(r) {
 }
 
 function buildClubMembershipSnapshot(current, prior, series, opts = {}) {
-  const cur = shapeTotals(current.window, current.summary, current.tours)
-  const was = prior ? shapeTotals(prior.window, prior.summary, prior.tours) : {}
+  const cur = shapeTotals(current.window, current.summary)
+  const was = prior ? shapeTotals(prior.window, prior.summary) : {}
 
   const stats = STATS.map(s => {
     const now = cur[s.key] ?? null

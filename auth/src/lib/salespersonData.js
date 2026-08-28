@@ -63,14 +63,90 @@ async function loadGhlContacts(contactIds) {
   return out
 }
 
-/** Everything buildReport needs for one window, in one call. */
-async function loadSalespersonWindow(clubNumbers, clubSlugs, start, end) {
-  const [members, dayOnes] = await Promise.all([
-    loadMembers(clubNumbers, start, end),
-    loadDayOnes(clubSlugs, start, end),
+/**
+ * VIP credits in a window, plus WHICH CLUBS COLLECT THEM AT ALL.
+ *
+ * The second half matters more than the first. Milwaukie has never recorded a
+ * single VIP credit — not a quiet month, zero since the table began — because
+ * its GHL location has no VIP fields configured. Reporting that as "0 VIPs
+ * collected" makes a claim about the staff when the truth is a claim about
+ * setup, so a club that has never credited one is reported as not configured
+ * and its VIP cells stay blank.
+ *
+ * Judged on the LIFETIME of the table rather than the window, or a club that
+ * simply had a slow month would be branded unconfigured.
+ */
+async function loadVipCredits(clubNumbers, start, end) {
+  const [credits, everRows] = await Promise.all([
+    fetchAll(
+      supabaseAdmin
+        .from('vip_credits')
+        .select('id, club_number, employee_name, credited_at')
+        .in('club_number', clubNumbers)
+        .gte('credited_at', start + 'T00:00:00Z')
+        .lte('credited_at', end + 'T23:59:59.999Z')
+        .order('id', { ascending: true })
+    ),
+    fetchAll(supabaseAdmin.from('vip_credits').select('club_number')),
   ])
-  const contacts = await loadGhlContacts(dayOnes.map(d => d.ghl_contact_id))
-  return { members, dayOnes, contactsById: new Map(contacts.map(c => [c.id, c])) }
+  return { credits, configuredClubs: new Set(everRows.map(r => r.club_number)) }
 }
 
-module.exports = { loadMembers, loadDayOnes, loadGhlContacts, loadSalespersonWindow, MEMBER_FIELDS }
+/**
+ * Completed tours in a window, and which clubs have ever recorded one.
+ *
+ * Same reasoning as VIPs: tours only started being kept on 2026-08-28 (before
+ * that the check-in deleted the row on completion), so every earlier window is
+ * genuinely empty rather than a month nobody gave a tour. A club with no tour
+ * on record is reported as pending, not as zero.
+ *
+ * Only `completed` counts. A row still at `ready` is a check-in nobody closed
+ * out, not a tour that happened.
+ */
+async function loadTourCompletions(clubNumbers, start, end) {
+  const [tours, everRows, outcomes] = await Promise.all([
+    fetchAll(
+      supabaseAdmin
+        .from('tour_intakes')
+        .select('id, club_number, given_by_name, outcome, completed_at')
+        .eq('status', 'completed')
+        .in('club_number', clubNumbers)
+        .gte('completed_at', start + 'T00:00:00Z')
+        .lte('completed_at', end + 'T23:59:59.999Z')
+        .order('id', { ascending: true })
+    ),
+    fetchAll(supabaseAdmin.from('tour_intakes').select('club_number').eq('status', 'completed')),
+    // Which outcomes count as converted is read from the table, never
+    // hardcoded: migration 147 put no foreign key on outcome, and the whole
+    // vocabulary was already replaced once by #713.
+    fetchAll(supabaseAdmin.from('tour_outcomes').select('outcome, is_sale')),
+  ])
+  return {
+    tours,
+    configuredClubs: new Set(everRows.map(r => r.club_number)),
+    saleOutcomes: new Set(outcomes.filter(o => o.is_sale).map(o => o.outcome)),
+  }
+}
+
+/** Everything buildReport needs for one window, in one call. */
+async function loadSalespersonWindow(clubNumbers, clubSlugs, start, end) {
+  const [members, dayOnes, vips, tours] = await Promise.all([
+    loadMembers(clubNumbers, start, end),
+    loadDayOnes(clubSlugs, start, end),
+    loadVipCredits(clubNumbers, start, end),
+    loadTourCompletions(clubNumbers, start, end),
+  ])
+  const contacts = await loadGhlContacts(dayOnes.map(d => d.ghl_contact_id))
+  return {
+    members,
+    dayOnes,
+    contactsById: new Map(contacts.map(c => [c.id, c])),
+    vips,
+    tours,
+  }
+}
+
+module.exports = {
+  loadMembers, loadDayOnes, loadGhlContacts, loadVipCredits, loadTourCompletions,
+  loadSalespersonWindow, MEMBER_FIELDS,
+}

@@ -5,6 +5,10 @@ const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
+// This route keeps its own member/Day One loaders below, but VIPs and tours are
+// taken from the shared module so the table and the snapshots that drill into
+// it cannot disagree about which clubs record them.
+const { loadVipCredits, loadTourCompletions } = require('../lib/salespersonData')
 
 // ---------------------------------------------------------------------------
 // Salesperson Performance — Analytics (admin only)
@@ -136,14 +140,16 @@ router.get('/', async (req, res) => {
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       const clubNumbers = slugs.map(s => CLUB_BY_SLUG[s].clubNumber)
-      const [members, dayOnes] = await Promise.all([
+      const [members, dayOnes, vips, tours] = await Promise.all([
         loadMembers(clubNumbers, start, end),
         loadDayOnes(slugs, start, end),
+        loadVipCredits(clubNumbers, start, end),
+        loadTourCompletions(clubNumbers, start, end),
       ])
       const contacts = await loadGhlContacts(dayOnes.map(d => d.ghl_contact_id))
       const contactsById = new Map(contacts.map(c => [c.id, c]))
       const skipList = await getSkipList()
-      const report = buildReport(members, dayOnes, contactsById, filters, skipList)
+      const report = buildReport(members, dayOnes, contactsById, filters, skipList, { vips, tours })
       return {
         ...report,
         filterOptions: buildFilterOptions(members),

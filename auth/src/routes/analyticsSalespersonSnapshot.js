@@ -70,8 +70,8 @@ router.get('/', async (req, res) => {
         loadSalespersonWindow(clubNumbers, slugs, prior.start, prior.end),
       ])
       return {
-        current: buildReport(cur.members, cur.dayOnes, cur.contactsById, NO_FILTERS, skipList),
-        prior: buildReport(prev.members, prev.dayOnes, prev.contactsById, NO_FILTERS, skipList),
+        current: buildReport(cur.members, cur.dayOnes, cur.contactsById, NO_FILTERS, skipList, { vips: cur.vips, tours: cur.tours }),
+        prior: buildReport(prev.members, prev.dayOnes, prev.contactsById, NO_FILTERS, skipList, { vips: prev.vips, tours: prev.tours }),
       }
     })
 

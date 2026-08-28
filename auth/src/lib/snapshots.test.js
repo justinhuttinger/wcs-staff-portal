@@ -198,12 +198,27 @@ test('membership stats use keys buildReport actually returns', () => {
   assert.equal(out.stats.some(s => s.key === 'dayOnesSold'), false)
 })
 
-test('tours are carried as pending rather than as zero', () => {
+test('tours and VIPs are read off the row, null when not recorded', () => {
   const out = buildSalespersonSnapshot(memberRow(), null, [])
-  const tours = out.stats.find(s => s.key === 'toursGiven')
-  assert.equal(tours.pending, true)
-  assert.equal(tours.value, null)
-  // A zero would read as "no tours given" rather than "we do not record tours".
+  // buildReport hands up null for a club that does not record them; a zero
+  // would read as "none given" instead of "not recorded here".
+  assert.equal(out.stats.find(s => s.key === 'toursGiven').value, null)
+  assert.equal(out.stats.find(s => s.key === 'vipCount').value, null)
+
+  const live = buildSalespersonSnapshot(
+    memberRow({ toursGiven: 12, tourConversionRate: 25, vipCount: 30, vipPct: 50 }), null, []
+  )
+  assert.equal(live.stats.find(s => s.key === 'toursGiven').value, 12)
+  assert.equal(live.stats.find(s => s.key === 'vipCount').value, 30)
+  assert.equal(live.stats.find(s => s.key === 'vipPct').value, 50)
+
+  // The monthly series has no tour or VIP grain, so it stays a gap rather than
+  // a line along zero.
   const r = memberSeriesRow({ month_start: '2026-08-01', new_members: 10, day_ones_booked: 2 })
   assert.equal(r.toursGiven, null)
+})
+
+test('VIP % sits immediately after VIPs collected', () => {
+  const keys = buildSalespersonSnapshot(memberRow(), null, []).stats.map(s => s.key)
+  assert.equal(keys.indexOf('vipPct'), keys.indexOf('vipCount') + 1)
 })
