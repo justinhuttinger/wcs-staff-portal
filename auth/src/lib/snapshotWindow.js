@@ -1,8 +1,14 @@
-// Shared date maths for the Snapshot reports.
+// Shared date maths and labelling for the Snapshot reports.
 //
-// A snapshot always shows one window beside the SAME window a month earlier, so
-// month-to-date is compared with month-to-date rather than with a whole month.
-// Getting that shift wrong is the difference between "down 40%" and "flat".
+// A snapshot compares one window against something. Naming that something
+// precisely is most of the job: "vs 2026-07-01 to 2026-07-28" tells a reader
+// nothing they can hold in their head, where "vs July MTD" tells them
+// everything.
+
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
 
 const pad = (n) => String(n).padStart(2, '0')
 
@@ -14,10 +20,7 @@ function daysInMonth(year, month) {
 function monthToDate(today = new Date()) {
   const y = today.getUTCFullYear()
   const m = today.getUTCMonth() + 1
-  return {
-    start: `${y}-${pad(m)}-01`,
-    end: today.toISOString().slice(0, 10),
-  }
+  return { start: `${y}-${pad(m)}-01`, end: today.toISOString().slice(0, 10) }
 }
 
 /**
@@ -39,6 +42,54 @@ function priorMonthWindow(start, end) {
 }
 
 /**
+ * "2026-08-28" -> "August 28 2026".
+ *
+ * Parsed by hand rather than through Date: new Date('2026-08-28') is midnight
+ * UTC, and a server west of Greenwich renders it as the 27th.
+ */
+function formatDateLong(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''))
+  if (!m) return ''
+  const name = MONTHS[Number(m[2]) - 1]
+  return name ? `${name} ${Number(m[3])} ${m[1]}` : ''
+}
+
+/** "2026-07-01" -> "July". */
+function monthName(iso) {
+  const m = /^(\d{4})-(\d{2})/.exec(String(iso || ''))
+  return m ? (MONTHS[Number(m[2]) - 1] || '') : ''
+}
+
+/** True when the window runs from the 1st to some day of the SAME month. */
+function isMonthToDate(start, end) {
+  const s = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(start || ''))
+  const e = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(end || ''))
+  if (!s || !e) return false
+  return s[3] === '01' && s[1] === e[1] && s[2] === e[2]
+}
+
+/**
+ * What the comparison column should be called.
+ *
+ * Month-to-date against month-to-date is the common case and deserves the name
+ * of the month — "July MTD". Any other window falls back to its end date, which
+ * is at least readable.
+ */
+function priorLabel(start, end) {
+  const prior = priorMonthWindow(start, end)
+  return isMonthToDate(start, end)
+    ? `${monthName(prior.start)} MTD`
+    : formatDateLong(prior.end)
+}
+
+/** "August 28 2026 vs July 28 2026" — the header line. */
+function windowLabel(start, end) {
+  return isMonthToDate(start, end)
+    ? `${monthName(start)} MTD · through ${formatDateLong(end)}`
+    : `${formatDateLong(start)} to ${formatDateLong(end)}`
+}
+
+/**
  * Percentage change, guarding the zero base.
  *
  * From nothing to something is not "infinite percent" — it is a new thing, and
@@ -55,4 +106,7 @@ function pctChange(now, prior) {
   return Math.round(((a - b) / b) * 1000) / 10
 }
 
-module.exports = { monthToDate, priorMonthWindow, pctChange, daysInMonth }
+module.exports = {
+  monthToDate, priorMonthWindow, pctChange, daysInMonth,
+  formatDateLong, monthName, isMonthToDate, priorLabel, windowLabel,
+}
