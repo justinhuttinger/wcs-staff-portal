@@ -33,6 +33,8 @@ const EXCLUDED_NAMES = new Set([
 const TYPES_TTL_MS = 60 * 60 * 1000
 const EMPLOYEES_TTL_MS = 60 * 60 * 1000
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
 function abcHeaders() {
   // Read at call time, not module load: tests and scripts load dotenv after
   // require().
@@ -250,8 +252,20 @@ async function _fetchClassWindow(clubNumber, start, end) {
 }
 
 // startDate/endDate are 'YYYY-MM-DD' inclusive, interpreted club-local.
+//
+// Both dates are REQUIRED. A null endDate used to sail straight through:
+// `cursor <= null` is false, so _chunkDateRange returned no windows, no ABC
+// call was ever made, and the caller got an empty array that is indistinguish-
+// able from "this club has no classes". That is how cancelling an open-ended
+// series (ends_on IS NULL since migration 099) silently orphaned every class it
+// had already written to ABC. Fail loudly instead.
 async function listClasses(clubNumber, startDate, endDate) {
   assertClub(clubNumber)
+  for (const [label, value] of [['startDate', startDate], ['endDate', endDate]]) {
+    if (!DATE_RE.test(String(value || ''))) {
+      throw new Error(`listClasses: ${label} must be YYYY-MM-DD, got ${JSON.stringify(value)}`)
+    }
+  }
   const windows = _chunkDateRange(startDate, endDate)
   const batches = []
   for (const w of windows) {
