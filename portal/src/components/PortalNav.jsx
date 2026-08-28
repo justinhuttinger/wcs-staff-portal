@@ -12,7 +12,9 @@
 // To the right of the fixed tabs sit the user's own pinned shortcuts and the
 // "+" that manages them. A pinned App opens in a new tab (a real <a>, so the
 // Electron launcher opens it as a launcher tab and the vault can still
-// auto-fill); a pinned Tool opens in place like Reporting or Calendar.
+// auto-fill); a pinned Tool opens in place like Reporting or Calendar. A pin
+// may carry a `badge` number, which draws as a red count on the tab — Tickets
+// uses it for the open tickets waiting on the person looking at the bar.
 //
 // Reporting is gated on role. team_member never sees it, matching the tile's
 // own rule in ToolGrid. Finer per-role Tool Visibility is still enforced by the
@@ -115,7 +117,7 @@ export default function PortalNav({
             key={p.key}
             type="button"
             onClick={() => p.open && p.open()}
-            title={p.desc || p.label}
+            title={p.badge ? `${p.label} — ${p.badge} open` : (p.desc || p.label)}
             aria-current={active === p.key ? 'page' : undefined}
             className={`press-tab press-tab--pin${active === p.key ? ' is-active' : ''}`}
           >
@@ -123,6 +125,14 @@ export default function PortalNav({
               <path strokeLinecap="round" strokeLinejoin="round" d={ICONS[p.icon] || ICONS.tools} />
             </svg>
             {p.label}
+            {/* A count of what is waiting on you (Tickets today). The parent
+                only sets it when there is something to say, so there is no
+                zero state to design around. */}
+            {p.badge ? (
+              <span className="press-tab__badge" aria-label={`${p.badge} open`}>
+                {p.badge > 99 ? '99+' : p.badge}
+              </span>
+            ) : null}
           </button>
         )))}
 

@@ -30,6 +30,7 @@ import QuickActions from './components/QuickActions'
 import PointsChip from './components/PointsChip'
 import { getTheme, THEME_EVENT } from './lib/theme'
 import { getPinned, togglePin, PINNED_EVENT } from './lib/pinnedTabs'
+import { useOpenTicketCount } from './lib/useOpenTicketCount'
 import { hydrateUiPrefs, startUiPrefsSync } from './lib/uiPrefs'
 import { appsForLocation } from './lib/apps'
 import { roleAtLeast } from './lib/roles'
@@ -98,6 +99,12 @@ export default function App() {
   const [pinTiles, setPinTiles] = useState([])
   const isElectron = !!window.wcsElectron
   const isAdmin = user?.staff?.role === 'admin'
+  // Tickets waiting on this person, for the count on the pinned Tickets tab.
+  // Press-only, since that tab is the only place it is shown; the classic
+  // header has no pins. Re-reads when the Tickets view opens or closes, so
+  // working a ticket updates the bar on the way back.
+  // Declared up here because App returns early for the login screen below.
+  const openTickets = useOpenTicketCount(press && !!user, showTicketsBoard)
   // corporate sees all clubs portal-wide (same as Drive/report gating)
   const seesAllClubs = ['admin', 'corporate'].includes(user?.staff?.role)
   // Effective Marketing Tracker capabilities (tile + tabs + type scope).
@@ -461,6 +468,9 @@ export default function App() {
     .map(key => PINNABLE.find(p => p.key === key))
     .filter(Boolean)
     .map(p => (p.kind === 'app' ? p : { ...p, open: () => { handleBackToPortal(); p.open() } }))
+    // Counts are per-pin rather than a prop on the nav, so a second tab that
+    // wants one later is a line here and nothing else.
+    .map(p => (p.key === 'tool:ticketing' && openTickets ? { ...p, badge: openTickets } : p))
 
   // Which view is open, named the way the pin catalog names it, so a pinned
   // tab can light up when you are inside it.

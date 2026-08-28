@@ -663,6 +663,27 @@ body {
    apart by a leading divider so the fixed five still read as a group. */
 .press-tab--pin { text-decoration: none; }
 .press-nav__tabs .press-tab--pin:first-of-type { border-left: 1px solid var(--press-line); }
+/* Count of what is waiting on you, on a pinned tab. Inside the button, after
+   the label, so it moves with the tab and cannot be orphaned by the bar
+   wrapping. Set in Inter, not the display face: Prohibition is uppercase
+   narrow and reads badly at two digits in a 20px circle. */
+.press-tab__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--press-red);
+  color: #fff;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
 .press-tab--add {
   padding-inline: 0.9rem;
   color: rgb(22 24 29 / 0.4);
