@@ -273,8 +273,73 @@ async function deleteKnowledge(id) {
   return data.deleteKnowledge === true
 }
 
+
+// ---------------------------------------------------------------------------
+// Shifts — who was actually working over a window.
+//
+// THERE IS NO endsAt FILTER. ShiftsFilterInput offers startsAtFrom /
+// startsAtTo and nothing else, so a shift running 11:00-19:00 is invisible to a
+// query windowed on 15:00. The window is therefore widened BACKWARDS by a full
+// lookback and the end is filtered here, client-side.
+//
+// status: 'published' is not optional. Keizer mirrors every shift as a draft
+// twin and Salem has drafts naming different people than the published row, so
+// including drafts both double-counts and misattributes.
+//
+// Timestamps go out as ISO strings carrying an explicit offset. A bare local
+// string is interpreted by the server, and "which server, which zone" is not a
+// question worth betting an attribution on.
+// ---------------------------------------------------------------------------
+
+// The hard ceiling on a shift is absoluteMaxShiftLengthMinutes = 2880 (48h).
+// 24h covers anything realistic at a gym; the constant is here so the reason for
+// the number is not lost.
+const SHIFT_LOOKBACK_HOURS = 24
+
+const SHIFT_FIELDS = `
+  id
+  startsAt
+  endsAt
+  status
+  user { id firstName lastName }
+  group { id name }
+  location { id name timeZone }
+`
+
+/**
+ * Every published shift overlapping [from, to] at one location.
+ *
+ * @param locationId Operandio location id
+ * @param from       Date — start of the window of interest
+ * @param to         Date — end of it
+ * @returns [{ id, startsAt, endsAt, user, group }]
+ */
+async function fetchShiftsOverlapping(locationId, from, to) {
+  const lookback = new Date(from.getTime() - SHIFT_LOOKBACK_HOURS * 3600 * 1000)
+
+  const data = await graphql(
+    `query WhoWasOn($filter: ShiftsFilterInput!) {
+      shifts { list(filter: $filter, orderBy: "startsAt", limit: 500) { ${SHIFT_FIELDS} } }
+    }`,
+    {
+      filter: {
+        startsAtFrom: lookback.toISOString(),
+        startsAtTo: to.toISOString(),
+        locations: [locationId],
+        status: 'published',
+      },
+    }
+  )
+
+  const list = (data && data.shifts && data.shifts.list) || []
+  // The half of the window the server could not filter on: drop shifts that had
+  // already ended before the window opened.
+  return list.filter(sh => sh.endsAt && new Date(sh.endsAt) > from)
+}
+
 module.exports = {
   graphql, getToken, scheduleDate, fetchLocations, fetchJobs, fetchProcesses,
+  fetchShiftsOverlapping, SHIFT_LOOKBACK_HOURS,
   fetchJobStepDetail,
   listKnowledgeArticles, createKnowledgeArticle, updateKnowledgeArticle,
   fetchKnowledgeContent, deleteKnowledge,

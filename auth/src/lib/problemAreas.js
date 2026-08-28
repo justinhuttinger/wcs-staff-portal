@@ -123,6 +123,11 @@ const CHECK_BY_KEY = new Map(CHECKS.map(c => [c.key, c]))
 /** app_config keys, matching the prefix the Admin tile edits. */
 const settingKey = (key) => `problem_${key}`
 const offKey = (key) => `problem_${key}_off`
+// Per-club, because not every club runs every programme. Milwaukie and Eugene
+// have no VIP fields configured at all, so a VIP check there measures the setup
+// rather than the staff — and a permanent red row nobody can fix is how a
+// report gets ignored.
+const clubOffKey = (key, slug) => `problem_${key}_off_${slug}`
 
 function num(v) {
   if (v === null || v === undefined || v === '') return null
@@ -136,8 +141,17 @@ function thresholdFor(check, settings) {
   return set === null ? check.defaultThreshold : set
 }
 
-function isOff(check, settings) {
-  return (settings || {})[offKey(check.key)] === '1'
+/**
+ * @param clubSlug when given, a club-specific switch is consulted as well.
+ *
+ * The global switch wins: turning a check off everywhere should not require
+ * unticking it seven times.
+ */
+function isOff(check, settings, clubSlug = null) {
+  const map = settings || {}
+  if (map[offKey(check.key)] === '1') return true
+  if (clubSlug && map[clubOffKey(check.key, clubSlug)] === '1') return true
+  return false
 }
 
 /**
@@ -193,7 +207,7 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
 
   const evaluate = (subject, scope) => {
     for (const check of CHECKS) {
-      if (isOff(check, settings)) continue
+      if (isOff(check, settings, subject.slug)) continue
       if (!check.scopes.includes(scope)) continue
       // A staff row only answers for its own department, so a trainer is never
       // judged on a membership metric they have no hand in.
@@ -235,6 +249,9 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
 
       problems.push({
         ...base,
+        // The rows behind the number, where a subject supplies them. A count of
+        // missed checklists is not actionable until you can see WHICH.
+        details: (subject.details || {})[check.key] || null,
         unit: check.unit,
         direction: check.direction,
         value,
@@ -307,7 +324,11 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
       unit: c.unit,
       direction: c.direction,
       threshold: thresholdFor(c, settings),
+      // Off everywhere. Clubs it is off at individually are listed separately.
       off: isOff(c, settings),
+      offClubs: Object.keys(settings || {})
+        .filter(k => k.startsWith(`problem_${c.key}_off_`) && settings[k] === '1')
+        .map(k => k.slice(`problem_${c.key}_off_`.length)),
       minSample: c.minSample,
     })),
   }
@@ -317,5 +338,5 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
 module.exports = {
   buildProblemAreas, CHECKS, CHECK_BY_KEY, DEPARTMENTS,
   OPS_JOB_PCT_KEY, DEFAULT_OPS_JOB_PCT, opsJobPct,
-  settingKey, offKey, thresholdFor, isOff, severityOf, fails,
+  settingKey, offKey, clubOffKey, thresholdFor, isOff, severityOf, fails,
 }

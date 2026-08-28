@@ -3,11 +3,13 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
-const { wrapSWR } = require('../services/memoryCache')
+const { wrapSWR, wrap } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { buildReport } = require('../lib/salespersonPerformance')
 const { loadSalespersonWindow } = require('../lib/salespersonData')
 const { buildProblemAreas, opsJobPct } = require('../lib/problemAreas')
+const { resolveUntouchedJobs } = require('../lib/shiftCoverage')
+const { fetchShiftsOverlapping } = require('../lib/operandioApi')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
@@ -113,7 +115,10 @@ router.get('/', async (req, res) => {
 
         fetchAll(
           supabaseAdmin.from('operandio_api_jobs')
-            .select('id, location_slug, display_name, percent_complete, skip_reason')
+            // operandio_location_id, available_from and due_at feed the roster
+            // pass below. Without them every untouched job resolves to "no
+            // location or window" and nobody is ever attributed.
+            .select('id, location_slug, display_name, percent_complete, skip_reason, operandio_location_id, available_from, due_at')
             .gte('job_date', startISO)
             .lte('job_date', endISO)
             .in('location_slug', slugs)
@@ -212,8 +217,26 @@ router.get('/', async (req, res) => {
       workersByJob.set(st.job_id, set)
     }
 
-    let opsUnowned = 0
     let opsBelowTotal = 0
+    const untouched = []
+    // The jobs behind each person's count, so a row can be opened to show WHICH
+    // checklists were missed rather than only how many.
+    const staffJobs = new Map()
+    const noteJob = (key, j, via, coverPct = null) => {
+      const list = staffJobs.get(key) || []
+      list.push({
+        name: j.display_name || 'Untitled job',
+        pct: Math.round(Number(j.percent_complete ?? 0) * 10) / 10,
+        date: j.job_date || String(j.available_from || '').slice(0, 10) || null,
+        // 'worked' — they completed a step on it. 'rostered' — nobody touched
+        // it and they were on for coverPct% of the window. Saying which is the
+        // difference between a fair conversation and an unfair one.
+        via,
+        coverPct,
+      })
+      staffJobs.set(key, list)
+    }
+
     for (const j of gathered.ops) {
       if (j.skip_reason) continue
       const below = Number(j.percent_complete ?? 0) < jobBar
@@ -221,16 +244,57 @@ router.get('/', async (req, res) => {
       opsBelowTotal++
       const workers = [...(workersByJob.get(j.id) || [])]
       if (workers.length === 0) {
-        opsUnowned++
+        // Nobody touched a step, so there is no name on the work itself. Held
+        // back for the roster pass below rather than written off.
+        untouched.push(j)
         continue
       }
       // Several people can have worked one job. Each is named, because the job
       // is below standard whoever left it there.
       for (const who of workers) {
-        bump(staffTally, `${j.location_slug}|${who}`, 'ops', 'below')
-        bump(staffTally, `${j.location_slug}|${who}`, 'ops', 'due')
+        const key = `${j.location_slug}|${who}`
+        bump(staffTally, key, 'ops', 'below')
+        bump(staffTally, key, 'ops', 'due')
+        // 'worked' — this person actually completed a step on it.
+        noteJob(key, j, 'worked')
       }
     }
+
+    // --- jobs nobody touched, resolved against the roster ------------------
+    //
+    // A job with no completed step has no name on the work. Asking Operandio
+    // who was ROSTERED over the window it was open puts a name back on most of
+    // them: 489 of 575 below-standard jobs in a 30-day window are in this spot.
+    //
+    // Evidence, not proof. A rostered shift is not the same as having been
+    // handed the job, so the bar is a MAJORITY of the window, and a job with no
+    // clear majority stays unattributed rather than being spread across
+    // everybody who happened to be in the building.
+    const shiftFetch = (locationId, from, to) =>
+      // Cached separately and far longer than the report: a past roster does
+      // not change, and this is an external API on a page load.
+      wrap(
+        `operandio:shifts:${locationId}:${from.toISOString()}:${to.toISOString()}`,
+        6 * 60 * 60 * 1000,
+        () => fetchShiftsOverlapping(locationId, from, to)
+      )
+
+    const roster = await resolveUntouchedJobs(untouched, shiftFetch, {
+      majorityPct: Number(settings.problem_ops_majority_pct) || undefined,
+    })
+
+    for (const j of untouched) {
+      const people = roster.attributed.get(j.id)
+      if (!people) continue
+      for (const p of people) {
+        const key = `${j.location_slug}|${p.name}`
+        bump(staffTally, key, 'ops', 'below')
+        bump(staffTally, key, 'ops', 'due')
+        noteJob(key, j, 'rostered', p.pct)
+      }
+    }
+
+    const opsUnowned = roster.unresolved.length
 
     const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : null)
 
@@ -289,6 +353,13 @@ router.get('/', async (req, res) => {
           metrics: {
             ops_jobs_below: { value: ops.below, sample: ops.due || 0, numerator: ops.below },
           },
+          // Newest first: the checklist missed last night matters more than one
+          // missed three weeks ago.
+          details: {
+            ops_jobs_below: (staffJobs.get(key) || [])
+              .slice()
+              .sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))),
+          },
         })
       }
     }
@@ -309,6 +380,14 @@ router.get('/', async (req, res) => {
         // anybody, and an omission that size has to be visible.
         opsUnowned,
         opsBelowTotal,
+        opsByRoster: roster.attributed.size,
+        // Why the rest still have nobody's name on them, so "unattributed" is a
+        // diagnosis rather than a shrug.
+        opsUnownedReasons: roster.unresolved.reduce((acc, u) => {
+          acc[u.reason] = (acc[u.reason] || 0) + 1
+          return acc
+        }, {}),
+        opsRosterUnavailable: roster.fetchFailures > 0,
         formsUnowned,
       },
     })
