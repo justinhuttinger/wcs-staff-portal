@@ -2,7 +2,8 @@ const test = require('node:test')
 const assert = require('node:assert')
 const fs = require('node:fs')
 const path = require('node:path')
-const { buildProblemAreas, CHECKS, settingKey, offKey } = require('./problemAreas')
+const { buildProblemAreas, CHECKS, settingKey, offKey, isJudgeableJob, jobDay,
+} = require('./problemAreas')
 
 // Every subject is a PERSON. Club-level rows were removed deliberately: a club
 // figure is an average of the people in it, and averages are what the other
@@ -244,4 +245,62 @@ test('the payload says which clubs a check is off at', () => {
   const vip = out.checks.find(c => c.key === 'vip_pct')
   assert.deepEqual(vip.offClubs.sort(), ['eugene', 'milwaukie'])
   assert.equal(vip.off, false)
+})
+
+
+// --- a job is not a failure before it is due -----------------------------
+//
+// Salem at 3:12pm Pacific was being marked down for a Closing Checklist that
+// does not open until 8:00pm. Month-to-date that was 110 jobs not yet due, 75
+// of them below the bar and landing on somebody's name.
+
+const AT_312PM = Date.parse('2026-08-28T22:12:00Z') // 3:12pm Pacific
+
+test('a job whose deadline has not arrived is not judged', () => {
+  const closing = {
+    available_from: '2026-08-29T03:00:00Z', // 8:00pm Pacific on the 28th
+    due_at: '2026-08-29T06:30:00Z',         // 11:30pm Pacific on the 28th
+  }
+  assert.equal(isJudgeableJob(closing, AT_312PM), false)
+})
+
+test('a job past its due time is judged', () => {
+  const opening = {
+    available_from: '2026-08-28T11:00:00Z',
+    due_at: '2026-08-28T14:00:00Z', // 7:00am Pacific, long gone by 3:12pm
+  }
+  assert.equal(isJudgeableJob(opening, AT_312PM), true)
+})
+
+test('with no due_at, a job that has not opened is still not judged', () => {
+  // 14 jobs of 1,623 carry no due_at.
+  assert.equal(isJudgeableJob({ available_from: '2026-08-29T03:00:00Z' }, AT_312PM), false)
+  assert.equal(isJudgeableJob({ available_from: '2026-08-28T11:00:00Z' }, AT_312PM), true)
+})
+
+test('a job with no timestamps at all is judged, not silently dropped', () => {
+  // There is nothing to wait for, so it keeps the old behaviour rather than
+  // vanishing from the report.
+  assert.equal(isJudgeableJob({}, AT_312PM), true)
+  assert.equal(isJudgeableJob({ due_at: null, available_from: null }, AT_312PM), true)
+})
+
+// --- the day a job belongs to is the club's day, not UTC's ----------------
+
+test('job_date is used verbatim when present', () => {
+  assert.equal(jobDay({ job_date: '2026-08-28', available_from: '2026-08-29T03:00:00Z' }), '2026-08-28')
+})
+
+test('the fallback dates the closing shift in Pacific, not UTC', () => {
+  // 8:00pm Pacific on the 28th is 03:00Z on the 29th. Slicing the ISO string
+  // reported a missed job dated a day in the FUTURE, which is how this was
+  // spotted.
+  assert.equal(jobDay({ available_from: '2026-08-29T03:00:00Z' }), '2026-08-28')
+  assert.equal(jobDay({ due_at: '2026-08-29T06:30:00Z' }), '2026-08-28')
+})
+
+test('jobDay returns null rather than an invalid date', () => {
+  assert.equal(jobDay({}), null)
+  assert.equal(jobDay(null), null)
+  assert.equal(jobDay({ available_from: 'not a date' }), null)
 })
