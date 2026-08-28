@@ -193,7 +193,11 @@ async function fetchWithAuthAndRetry(path, options) {
   try {
     data = await res.json()
   } catch {
-    throw new Error('Server error — please try again')
+    // A body that is not JSON is usually a proxy or cold-start page rather than
+    // the API, so it carries the transport code and stays retryable.
+    const err = new Error('Server error — please try again')
+    err.httpStatus = res.status
+    throw err
   }
 
   // 401 handling: try refresh + retry once. If refresh fails, sign out.
@@ -225,7 +229,11 @@ async function fetchWithAuthAndRetry(path, options) {
     }
     clearToken()
     authExpiredListeners.forEach(fn => fn())
-    throw new Error('Session expired — please sign in again')
+    const expired = new Error('Session expired — please sign in again')
+    // 401 so the retry policy leaves it alone. Retrying a dead session would
+    // spin three times and still land the user on the login screen, slower.
+    expired.httpStatus = 401
+    throw expired
   }
 
   if (!res.ok) {
@@ -239,6 +247,10 @@ async function fetchWithAuthAndRetry(path, options) {
         if (!(k in err)) err[k] = data[k]
       }
     }
+    // Named httpStatus, not status, so it cannot be clobbered by a `status`
+    // field in the response body — the loop above copies those in. Retry logic
+    // needs the real transport code, not whatever the payload called itself.
+    err.httpStatus = res.status
     throw err
   }
 
