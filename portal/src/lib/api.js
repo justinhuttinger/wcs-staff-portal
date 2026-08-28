@@ -1204,6 +1204,8 @@ export const publicTour = {
   // back as an error the UI shows verbatim.
   // What the contact already says about who sent them.
   referral: (token, id) => publicFetch(`/public/tour/${token}/intake/${id}/referral`),
+  // Whether this card is somebody who already trains here.
+  abcStatus: (token, id) => publicFetch(`/public/tour/${token}/intake/${id}/abc-status`),
   // Backs the "who referred you" picker. Our synced abc_members, not ABC.
   memberSearch: (token, q) =>
     publicFetch(`/public/tour/${token}/member-search?q=${encodeURIComponent(q)}`),
