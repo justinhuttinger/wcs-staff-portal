@@ -334,9 +334,56 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
   }
 }
 
+/**
+ * Is this job old enough to be judged?
+ *
+ * A JOB CANNOT BE "NOT COMPLETED" BEFORE IT IS DUE. The report window runs to
+ * TODAY, so without this every club is marked against whatever hour the page
+ * happens to be opened on. Salem at 3:12pm was being judged on a Closing
+ * Checklist that does not open until 8:00pm and a Drawer Close Count that opens
+ * at 7:00pm — both sitting at 0% because nobody can start them yet. Across a
+ * month-to-date window that was 110 jobs not yet due, 75 of them below the bar
+ * and landing on somebody's name.
+ *
+ * The deadline is due_at. 14 jobs of 1,623 carry none, and those fall back to
+ * available_from so that a job which has not even opened is still never judged;
+ * a job with neither is judged as before, because there is nothing to wait for.
+ */
+function isJudgeableJob(job, nowMs = Date.now()) {
+  const at = (v) => {
+    if (v === null || v === undefined || v === '') return null
+    const t = v instanceof Date ? v.getTime() : Date.parse(v)
+    return Number.isFinite(t) ? t : null
+  }
+  const deadline = at(job && job.due_at) ?? at(job && job.available_from)
+  if (deadline === null) return true
+  return deadline <= nowMs
+}
+
+/**
+ * The day a job belongs to, as the club lived it.
+ *
+ * job_date is the Pacific business day and is the only correct answer. Slicing
+ * available_from gives the UTC day, which for anything on the closing shift is
+ * TOMORROW: Salem's 8pm Closing Checklist on 28 August is 03:00Z on the 29th,
+ * and the report showed a missed job dated a day in the future. The fallback
+ * formats in Pacific rather than slicing an ISO string for that reason.
+ */
+function jobDay(job) {
+  if (!job) return null
+  if (job.job_date) return String(job.job_date).slice(0, 10)
+  const raw = job.due_at || job.available_from
+  if (!raw) return null
+  const t = raw instanceof Date ? raw.getTime() : Date.parse(raw)
+  if (!Number.isFinite(t)) return null
+  // en-CA gives YYYY-MM-DD, which is what the UI already expects.
+  return new Date(t).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+}
+
 
 module.exports = {
   buildProblemAreas, CHECKS, CHECK_BY_KEY, DEPARTMENTS,
   OPS_JOB_PCT_KEY, DEFAULT_OPS_JOB_PCT, opsJobPct,
   settingKey, offKey, clubOffKey, thresholdFor, isOff, severityOf, fails,
+  isJudgeableJob, jobDay,
 }

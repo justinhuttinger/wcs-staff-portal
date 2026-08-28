@@ -7,7 +7,7 @@ const { wrapSWR, wrap } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { buildReport } = require('../lib/salespersonPerformance')
 const { loadSalespersonWindow } = require('../lib/salespersonData')
-const { buildProblemAreas, opsJobPct } = require('../lib/problemAreas')
+const { buildProblemAreas, opsJobPct, isJudgeableJob, jobDay } = require('../lib/problemAreas')
 const { resolveUntouchedJobs } = require('../lib/shiftCoverage')
 const { fetchShiftsOverlapping } = require('../lib/operandioApi')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
@@ -86,7 +86,7 @@ router.get('/', async (req, res) => {
     const gathered = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       const skipList = await getSkipList()
 
-      const [window, dayOnes, openForms, ops] = await Promise.all([
+      const [window, dayOnes, openForms, opsAll] = await Promise.all([
         loadSalespersonWindow(clubNumbers, slugs, startISO, endISO),
 
         // Close rate, by the SAME predicates PT Snapshot uses: completed on the
@@ -118,7 +118,11 @@ router.get('/', async (req, res) => {
             // operandio_location_id, available_from and due_at feed the roster
             // pass below. Without them every untouched job resolves to "no
             // location or window" and nobody is ever attributed.
-            .select('id, location_slug, display_name, percent_complete, skip_reason, operandio_location_id, available_from, due_at')
+            //
+            // job_date was filtered on but never SELECTED, so it arrived
+            // undefined and the display date fell back to slicing available_from
+            // in UTC — which dates the whole closing shift a day into the future.
+            .select('id, job_date, location_slug, display_name, percent_complete, skip_reason, operandio_location_id, available_from, due_at')
             .gte('job_date', startISO)
             .lte('job_date', endISO)
             .in('location_slug', slugs)
@@ -136,6 +140,12 @@ router.get('/', async (req, res) => {
       // actually in question cuts it to a few hundred, and chunking keeps the
       // URL bounded however wide the window gets.
       const jobBarForFetch = opsJobPct(await loadSettings())
+
+      // Filtered HERE, above the step fetch, so a job that is not due yet is
+      // absent from the score, from the drill-down and from the roster pass
+      // alike. Doing it lower down would leave one of the three disagreeing.
+      const ops = opsAll.filter(j => isJudgeableJob(j))
+
       const belowIds = ops
         .filter(j => !j.skip_reason && Number(j.percent_complete ?? 0) < jobBarForFetch)
         .map(j => j.id)
@@ -227,7 +237,7 @@ router.get('/', async (req, res) => {
       list.push({
         name: j.display_name || 'Untitled job',
         pct: Math.round(Number(j.percent_complete ?? 0) * 10) / 10,
-        date: j.job_date || String(j.available_from || '').slice(0, 10) || null,
+        date: jobDay(j),
         // 'worked' — they completed a step on it. 'rostered' — nobody touched
         // it and they were on for coverPct% of the window. Saying which is the
         // difference between a fair conversation and an unfair one.
