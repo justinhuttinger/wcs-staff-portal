@@ -177,13 +177,15 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
 
   const canSeeAll = ROLE_LEVELS[user?.staff?.role] >= ROLE_LEVELS.corporate
 
+  // Everyone asks: the route now answers with the clubs the caller may
+  // actually choose between — every club for corporate+, their own
+  // assignments below that. A manager over one club gets one back and never
+  // sees a picker; a manager over two finally gets to switch.
   useEffect(() => {
-    if (canSeeAll) {
-      getPaychexLocations()
-        .then(res => setLocations(res.locations || []))
-        .catch(() => {})
-    }
-  }, [canSeeAll])
+    getPaychexLocations()
+      .then(res => setLocations(res.locations || []))
+      .catch(() => {})
+  }, [])
 
   const needsLocationPick = canSeeAll && !locationSlug
 
@@ -196,7 +198,7 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
     setError(null)
     try {
       const res = await getPaychexWorkers(
-        canSeeAll && locationSlug ? locationSlug : undefined,
+        locationSlug || undefined,
         statusFilter,
         { refresh },
       )
@@ -224,7 +226,7 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
 
   return (
     <div className="space-y-4">
-      {canSeeAll && locations.length > 0 && (
+      {locations.length > 1 && (
         <div className="flex flex-wrap gap-2">
           {locations.map(loc => (
             <button
@@ -353,7 +355,10 @@ function WorkerList({ user, onSelectWorker, onLocationChange }) {
 // ---------------------------------------------------------------------------
 // Submit Document Form — multi-step: employee selected → form → preview → submit
 // ---------------------------------------------------------------------------
-function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
+// `locationSlug` is the club the worker was picked from. It has to travel with
+// the document: a manager over two clubs would otherwise file every one of
+// them under their primary and lose the other club's.
+function SubmitDocumentForm({ worker, user, locationSlug, onBack, onSuccess }) {
   const userName = user?.staff?.display_name || user?.staff?.first_name || ''
 
   const [reason, setReason] = useState('coaching_conversation')
@@ -381,6 +386,7 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
         action_plan: actionPlan.trim() || null,
         manager_signature: managerSignature,
         employee_signature: employeeSignature || null,
+        location_slug: locationSlug || undefined,
       })
       setSubmitMsg({ type: 'success', text: 'Document submitted and sent to Paychex.' })
     } catch (err) {
@@ -782,6 +788,7 @@ export default function HRView({ user, onBack }) {
         <SubmitDocumentForm
           worker={selectedWorker}
           user={user}
+          locationSlug={currentLocation}
           onBack={backToLanding}
           onSuccess={() => { setSelectedWorker(null); setView('submit-pick') }}
         />

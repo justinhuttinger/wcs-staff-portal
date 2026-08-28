@@ -127,7 +127,7 @@ function BackButton({ onClick }) {
 }
 
 // --- Worker List (GET employees first) ---
-function WorkerList({ user, onSelectWorker, actionLabel }) {
+function WorkerList({ user, onSelectWorker, onLocationChange, actionLabel }) {
   const [workers, setWorkers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -138,13 +138,14 @@ function WorkerList({ user, onSelectWorker, actionLabel }) {
 
   const canSeeAll = ['corporate', 'admin', 'director'].includes(user?.staff?.role)
 
+  // Everyone asks: the route answers with the clubs the caller may actually
+  // choose between — every club for corporate+, their own assignments below
+  // that. Mirrors HRView.
   useEffect(() => {
-    if (canSeeAll) {
-      getPaychexLocations()
-        .then(res => setLocations(res.locations || []))
-        .catch(() => {})
-    }
-  }, [canSeeAll])
+    getPaychexLocations()
+      .then(res => setLocations(res.locations || []))
+      .catch(() => {})
+  }, [])
 
   const needsLocationPick = canSeeAll && !locationSlug
 
@@ -154,12 +155,15 @@ function WorkerList({ user, onSelectWorker, actionLabel }) {
     setError(null)
     try {
       const res = await getPaychexWorkers(
-        canSeeAll && locationSlug ? locationSlug : undefined,
+        locationSlug || undefined,
         statusFilter,
         { refresh },
       )
       setWorkers(res.workers || [])
-      if (!locationSlug && res.location) setLocationSlug(res.location)
+      if (!locationSlug && res.location) {
+        setLocationSlug(res.location)
+        onLocationChange?.(res.location)
+      }
     } catch (err) {
       setError(err.message || 'Failed to load employees')
     } finally {
@@ -179,14 +183,14 @@ function WorkerList({ user, onSelectWorker, actionLabel }) {
 
   return (
     <div className="space-y-3">
-      {/* Location pills for corporate+ */}
-      {canSeeAll && locations.length > 0 && (
+      {/* Location pills, for anyone with more than one club to pick from */}
+      {locations.length > 1 && (
         <div className="bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-3">
           <div className="flex gap-2 overflow-x-auto scrollbar-hide">
             {locations.map(loc => (
               <button
                 key={loc.slug}
-                onClick={() => setLocationSlug(loc.slug)}
+                onClick={() => { setLocationSlug(loc.slug); onLocationChange?.(loc.slug) }}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap shrink-0 transition-colors ${
                   locationSlug === loc.slug
                     ? 'bg-wcs-red text-white border-wcs-red'
@@ -496,7 +500,9 @@ function WorkerDetail({ worker, user, onBack }) {
 }
 
 // --- Submit Document Form ---
-function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
+// `locationSlug` is the club the worker was picked from, and it travels with
+// the document — see HRView for why.
+function SubmitDocumentForm({ worker, user, locationSlug, onBack, onSuccess }) {
   const [reason, setReason] = useState('coaching_conversation')
   const [description, setDescription] = useState('')
   const [actionPlan, setActionPlan] = useState('')
@@ -521,6 +527,7 @@ function SubmitDocumentForm({ worker, user, onBack, onSuccess }) {
         description: description.trim(),
         action_plan: actionPlan.trim() || null,
         manager_signature: managerSignature,
+        location_slug: locationSlug || undefined,
       }
       if (offerEmployeeSignature && employeeSignature) {
         payload.employee_signature = employeeSignature
@@ -637,6 +644,7 @@ export default function MobileHR({ user }) {
   // Navigation: landing | submit-pick | worker-detail
   const [view, setView] = useState('landing')
   const [selectedWorker, setSelectedWorker] = useState(null)
+  const [currentLocation, setCurrentLocation] = useState('')
   const [toast, setToast] = useState(null)
 
   if (!isManager) {
@@ -668,6 +676,7 @@ export default function MobileHR({ user }) {
         <WorkerList
           user={user}
           onSelectWorker={w => { setSelectedWorker(w); setView('submit-form') }}
+          onLocationChange={setCurrentLocation}
         />
       </div>
     )
@@ -681,6 +690,7 @@ export default function MobileHR({ user }) {
         <SubmitDocumentForm
           worker={selectedWorker}
           user={user}
+          locationSlug={currentLocation}
           onBack={() => setView('submit-pick')}
           onSuccess={() => {
             setToast('Document submitted successfully')
@@ -706,6 +716,7 @@ export default function MobileHR({ user }) {
         <WorkerList
           user={user}
           onSelectWorker={w => { setSelectedWorker(w); setView('worker-detail') }}
+          onLocationChange={setCurrentLocation}
         />
       </div>
     )

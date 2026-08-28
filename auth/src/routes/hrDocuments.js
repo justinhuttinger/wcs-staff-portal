@@ -137,6 +137,8 @@ async function generatePDF(htmlContent) {
 
 /**
  * Resolve a staff member's location slug from their primary_location_id.
+ * This is the DEFAULT club, not the limit of what they can reach — see
+ * myLocationSlugs.
  */
 async function resolveLocationSlug(staff) {
   if (!staff.primary_location_id) return null
@@ -148,13 +150,39 @@ async function resolveLocationSlug(staff) {
   return data?.name?.toLowerCase() || null
 }
 
+/**
+ * Every club slug this person is assigned to, as staff_locations records it.
+ *
+ * HR used to scope on primary_location_id alone, which quietly locked a
+ * multi-club manager out of every club but one: assigned to Springfield
+ * (primary) and Eugene, they could not list Eugene's documents, could not see
+ * a single Eugene employee in the Paychex picker, and anything they did write
+ * was stamped springfield. The assignment list is what the admin panel
+ * actually sets when it adds a manager to a club, so it is what HR should
+ * read.
+ *
+ * `location_ids` rather than `report_location_ids`: can_view_reports gates the
+ * reporting tab, and reading it here could REMOVE access from someone whose
+ * primary club has the flag off. Primary is always a member of this list, so
+ * nobody can come out of this change with less than they had.
+ */
+async function myLocationSlugs(staff) {
+  const ids = staff.location_ids || []
+  if (ids.length === 0) return []
+  const { data } = await supabaseAdmin
+    .from('locations')
+    .select('name')
+    .in('id', ids)
+  return (data || []).map(l => l.name?.toLowerCase()).filter(Boolean)
+}
+
 // ---------------------------------------------------------------------------
 // POST /hr-documents  (manager+)
 // Accepts workerId to auto-upload to Paychex after PDF generation.
 // employee_signature is optional — if provided, document starts as 'completed'.
 // ---------------------------------------------------------------------------
 router.post('/', requireRole('manager'), async (req, res) => {
-  const { employee_name, reason, short_reason, body, description, action_plan, manager_signature, employee_signature, worker_id } = req.body
+  const { employee_name, reason, short_reason, body, description, action_plan, manager_signature, employee_signature, worker_id, location_slug } = req.body
   const docBody = body || description
 
   if (!employee_name || !reason || !docBody || !manager_signature) {
@@ -168,7 +196,19 @@ router.post('/', requireRole('manager'), async (req, res) => {
 
   try {
     const managerName = req.staff.display_name || [req.staff.first_name, req.staff.last_name].filter(Boolean).join(' ')
-    const locationSlug = await resolveLocationSlug(req.staff)
+    // The club the document belongs to is the club the EMPLOYEE was picked
+    // from, which the caller sends. It is not always the author's primary: a
+    // manager over two clubs writing about a Eugene employee would otherwise
+    // file it under Springfield and lose it. Falls back to primary so an older
+    // client that sends nothing behaves exactly as it did.
+    let locationSlug = location_slug || null
+    if (locationSlug && !canSeeAllLocations(req.staff.role)) {
+      const mine = await myLocationSlugs(req.staff)
+      if (!mine.includes(locationSlug)) {
+        return res.status(403).json({ error: 'You do not have access to that location' })
+      }
+    }
+    if (!locationSlug) locationSlug = await resolveLocationSlug(req.staff)
 
     const hasEmployeeSig = !!employee_signature
 
@@ -251,14 +291,25 @@ router.get('/', requireRole('manager'), async (req, res) => {
       .select('*')
       .order('created_at', { ascending: false })
 
-    // Location scoping
+    // Location scoping. Corporate and up see every club; everyone else sees
+    // the clubs they are assigned to, narrowed to one by ?location_slug=.
     if (canSeeAllLocations(req.staff.role)) {
       if (location_slug) {
         query = query.eq('location_slug', location_slug)
       }
     } else {
-      const primarySlug = await resolveLocationSlug(req.staff)
-      query = query.eq('location_slug', primarySlug)
+      const mine = await myLocationSlugs(req.staff)
+      if (mine.length === 0) return res.json([])
+      if (location_slug) {
+        // Refuse rather than quietly widening back to every club of theirs —
+        // a filter that silently does something else is worse than an error.
+        if (!mine.includes(location_slug)) {
+          return res.status(403).json({ error: 'You do not have access to that location' })
+        }
+        query = query.eq('location_slug', location_slug)
+      } else {
+        query = query.in('location_slug', mine)
+      }
     }
 
     if (employee_name) query = query.ilike('employee_name', `%${employee_name}%`)
@@ -284,7 +335,9 @@ router.get('/', requireRole('manager'), async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // GET /hr-documents/paychex-workers  (manager+)
-// Returns Paychex employees for the staff member's location (or ?slug= override for corporate/admin)
+// Returns Paychex employees for the staff member's location. ?slug= picks a
+// different club: any club for corporate+, any club they are assigned to for
+// everyone else. Without it you get your primary club.
 // ---------------------------------------------------------------------------
 router.get('/paychex-workers', requireRole('manager'), async (req, res) => {
   if (!process.env.PAYCHEX_API_KEY || !process.env.PAYCHEX_API_SECRET) {
@@ -293,7 +346,13 @@ router.get('/paychex-workers', requireRole('manager'), async (req, res) => {
 
   try {
     let slug = req.query.slug
-    if (!slug || !canSeeAllLocations(req.staff.role)) {
+    if (slug && !canSeeAllLocations(req.staff.role)) {
+      const mine = await myLocationSlugs(req.staff)
+      if (!mine.includes(slug)) {
+        return res.status(403).json({ error: 'You do not have access to that location' })
+      }
+    }
+    if (!slug) {
       slug = await resolveLocationSlug(req.staff)
     }
     if (!slug) {
@@ -403,11 +462,23 @@ router.get('/paychex-workers/:workerId/documents', requireRole('manager'), async
 
 // ---------------------------------------------------------------------------
 // GET /hr-documents/paychex-locations  (manager+)
-// Returns configured Paychex locations (for location selector)
+// Returns the Paychex locations the caller may actually choose between, which
+// is what the location selector should offer: every configured club for
+// corporate+, only their own assignments for everyone else. Offering a manager
+// a club whose employees the workers route will refuse is a dead end.
 // ---------------------------------------------------------------------------
 router.get('/paychex-locations', requireRole('manager'), async (req, res) => {
-  const locations = PAYCHEX_LOCATIONS.map(l => ({ name: l.name, slug: l.slug }))
-  res.json({ locations })
+  try {
+    let locs = PAYCHEX_LOCATIONS
+    if (!canSeeAllLocations(req.staff.role)) {
+      const mine = await myLocationSlugs(req.staff)
+      locs = locs.filter(l => mine.includes(l.slug))
+    }
+    res.json({ locations: locs.map(l => ({ name: l.name, slug: l.slug })) })
+  } catch (err) {
+    console.error('[HRDocuments] Error listing locations:', err.message)
+    res.status(500).json({ error: 'Failed to list locations' })
+  }
 })
 
 // ---------------------------------------------------------------------------
