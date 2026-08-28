@@ -8,6 +8,7 @@ const { readReferral, writeReferral } = require('../lib/vipReferral')
 const { resolveGhlContactId } = require('../lib/resolveGhlContact')
 const { searchMembersByName } = require('../lib/memberLookup')
 const { resolveAbcId } = require('../lib/resolveAbcId')
+const { resolveEmployeeId, employeeIdMap, normalize: normalizeName } = require('../lib/resolveEmployeeId')
 
 const router = Router()
 
@@ -139,10 +140,24 @@ router.get('/:token/employees', async (req, res) => {
       names = await rosterFromTable(ctx.location.name)
     }
 
+    // The id was the array position, which identifies nothing and changes the
+    // moment somebody joins or leaves. Carry the ABC employee id where the name
+    // resolves to exactly one person, so the picker has something stable to send
+    // and to show. Falls back to the name, which is what it always was.
+    const club = clubNumberForLocationName(ctx.location.name)
+    // One read for the whole roster, not one per name.
+    let ids = new Map()
+    try {
+      if (club) ids = await employeeIdMap(club)
+    } catch (err) {
+      // A picker of names still works; only the id is lost.
+      console.error('[public-tour] employee id map failed:', err.message)
+    }
+
     const employees = [...new Set(names)]
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b))
-      .map((name, i) => ({ id: String(i), name }))
+      .map(name => ({ id: ids.get(normalizeName(name)) || name, name }))
     res.json({ employees })
   } catch (err) {
     console.error('[public-tour] employees failed:', err.message)
@@ -189,10 +204,26 @@ router.patch('/:token/intake/:id', async (req, res) => {
     // kiosk card has ghl_contact_id null. Look it up by email or phone -- by the
     // time staff complete the tour the contact exists.
     let contactId = existing.ghl_contact_id || null
+    let abcId = withAbcId(existing).abc_member_id
     const hasAnswers = !!(referred_by_full_name || referred_by_abc_id || vip_team_member)
     const loc = getLocationBySlug((ctx.location.name || '').trim().toLowerCase())
+    const clubNumber = clubNumberForLocationName(ctx.location.name)
 
-    if (!cancelled && hasAnswers) {
+    // Resolve BOTH ids on every completion, not only when a referral needs
+    // somewhere to land.
+    //
+    // These two columns are the whole reason a tour row is worth keeping: without
+    // the ABC id a tour cannot be followed through to a membership, and without
+    // the GHL contact nothing downstream has anybody to act on. A tour recorded
+    // with neither is a tally.
+    //
+    // Neither arrives on its own. A GHL-survey card never carries an ABC id --
+    // the card is written ~20 seconds before the ABC record exists. A kiosk card
+    // never carries a GHL contact id, and only gets its ABC id if the member
+    // finishes the waiver before staff press save, which is a race staff have no
+    // idea they are running. Resolving here removes the ordering question
+    // entirely: by the time a tour is being completed, both records exist.
+    if (!cancelled) {
       if (!contactId && loc) {
         contactId = await resolveGhlContactId({
           locationId: loc.id, apiKey: loc.apiKey,
@@ -202,7 +233,26 @@ router.patch('/:token/intake/:id', async (req, res) => {
           console.log(`[public-tour] resolved GHL contact ${contactId} for ${existing.id}`)
         }
       }
+      if (!abcId && clubNumber) {
+        const found = await resolveAbcId(clubNumber, {
+          phone: existing.contact_phone, email: existing.contact_email,
+        })
+        if (found) {
+          abcId = found.id
+          console.log(`[public-tour] resolved ABC ${found.type} ${found.id} for ${existing.id}`)
+        } else {
+          // Not an error -- a walk-in with neither record yet is a real tour --
+          // but it is the row that will read N/A in every conversion report, so
+          // say so rather than leaving it to be discovered in a dashboard.
+          console.warn(
+            `[public-tour] no ABC record for ${existing.id} ` +
+            `(email=${existing.contact_email || 'none'} phone=${existing.contact_phone || 'none'})`
+          )
+        }
+      }
+    }
 
+    if (!cancelled && hasAnswers) {
       // Every one of these was previously a silent return. Staff had answered
       // the questions and nothing anywhere said why the answers stopped.
       if (!loc) {
@@ -300,13 +350,15 @@ router.patch('/:token/intake/:id', async (req, res) => {
         notes: notes || null,
         tour_member: tour_member || null,
         given_by_name: tour_member || null,
-        club_number: clubNumberForLocationName(ctx.location.name),
+        // The stable half of "who gave the tour". A name survives neither two
+        // staff sharing one nor one staffer changing theirs.
+        given_by_employee_id: await resolveEmployeeId(clubNumber, tour_member),
+        club_number: clubNumber,
         pass_days: pass_days ?? null,
         ghl_contact_id: contactId,
-        // Promoted out of `raw`, where the kiosk stamps it. It is the only field
-        // that lets a tour be joined to membership, so leaving it buried makes
-        // "tours given -> members signed" unanswerable.
-        abc_member_id: withAbcId(existing).abc_member_id,
+        // Whatever the kiosk stamped into `raw`, or what we just resolved. It
+        // is the only field that lets a tour be joined to membership.
+        abc_member_id: abcId,
         completed_at: new Date().toISOString(),
       })
       .eq('id', req.params.id)
