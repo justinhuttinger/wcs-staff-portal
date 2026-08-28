@@ -451,7 +451,15 @@ router.delete('/series/:id', async (req, res) => {
 
   try {
     const windowStart = from > series.starts_on ? from : series.starts_on
-    if (windowStart > series.ends_on) {
+    // An open-ended series has ends_on NULL (migration 099); how far it has
+    // actually been written to ABC is materialized_through. Using ends_on
+    // directly made this whole block a no-op for open-ended series — the
+    // comparison below was false against null, and listClasses then returned []
+    // without calling ABC, so the series was marked cancelled while every class
+    // it had created stayed on the calendar forever. Real occurrence: 4 orphaned
+    // Power Hour classes at Medford, 2026-08-28.
+    const windowEnd = series.ends_on || series.materialized_through
+    if (!windowEnd || windowStart > windowEnd) {
       await supabaseAdmin
         .from('group_x_series')
         .update({ canceled_at: new Date().toISOString(), canceled_by: req.user?.email || 'unknown' })
@@ -459,7 +467,7 @@ router.delete('/series/:id', async (req, res) => {
       return res.json({ canceled: 0, failed: 0, results: [] })
     }
 
-    const existing = await abc.listClasses(series.club_number, windowStart, series.ends_on)
+    const existing = await abc.listClasses(series.club_number, windowStart, windowEnd)
     const wall = String(series.start_time).slice(0, 5)
     const targets = existing.filter(e =>
       e.event_type_id === series.event_type_id &&

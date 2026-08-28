@@ -188,3 +188,35 @@ test('_createdEventId returns null when ABC sends no link', () => {
   assert.strictEqual(_createdEventId({}), null)
   assert.strictEqual(_createdEventId(null), null)
 })
+
+// Regression: an open-ended series carries ends_on = NULL (migration 099).
+// Passing that null straight through meant `cursor <= null` was false, so
+// _chunkDateRange produced no windows, listClasses never called ABC, and the
+// caller read the empty array as "no classes exist". Cancelling such a series
+// then orphaned every class it had already written. Guard the input instead.
+test('_chunkDateRange yields nothing for a null end date (the trap)', () => {
+  assert.deepStrictEqual(_chunkDateRange('2026-08-28', null), [])
+  assert.deepStrictEqual(_chunkDateRange('2026-08-28', undefined), [])
+})
+
+test('listClasses rejects a missing end date rather than returning []', async () => {
+  const { listClasses } = require('./abcGroupX')
+  await assert.rejects(
+    () => listClasses('30935', '2026-08-28', null),
+    /endDate must be YYYY-MM-DD/,
+    'a null endDate must throw, never silently read as an empty calendar',
+  )
+  await assert.rejects(
+    () => listClasses('30935', '2026-08-28', undefined),
+    /endDate must be YYYY-MM-DD/,
+  )
+  await assert.rejects(
+    () => listClasses('30935', null, '2026-08-28'),
+    /startDate must be YYYY-MM-DD/,
+  )
+  await assert.rejects(
+    () => listClasses('30935', '2026-08-28', '08/28/2026'),
+    /endDate must be YYYY-MM-DD/,
+    'a non-ISO date must not reach ABC',
+  )
+})
