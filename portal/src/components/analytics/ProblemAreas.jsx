@@ -10,9 +10,14 @@ import { colorFor } from './chartPalette'
 // States what is wrong, per club, so a manager does not have to go looking.
 // Thresholds are set in Admin > Problem Thresholds.
 //
+// PEOPLE ONLY. A club figure is an average of the people in it, and averages
+// are what the other reports are for; a problem worth acting on has somebody's
+// name on it.
+//
 // A check that cannot be judged — no data, or too small a sample — simply does
 // not fire. A manager wants the problems, not a register of everything that was
-// looked at.
+// looked at. What could not be ATTRIBUTED is different, and is stated: a job
+// nobody started has no name to put it against.
 // ---------------------------------------------------------------------------
 
 function fmtValue(v, unit) {
@@ -90,7 +95,6 @@ function ProblemRow({ p, checks }) {
 export default function ProblemAreas({ locationSlug }) {
   const [days, setDays] = useState(30)
   const [dept, setDept] = useState('all')
-  const [scope, setScope] = useState('all')
 
   const query = useMemo(() => new URLSearchParams({
     clubs: locationSlug || 'all',
@@ -103,13 +107,10 @@ export default function ProblemAreas({ locationSlug }) {
   )
 
   const all = data?.problems || []
-  const problems = all.filter(p =>
-    (dept === 'all' || p.department === dept) &&
-    (scope === 'all' || p.scope === scope)
-  )
+  const problems = all.filter(p => dept === 'all' || p.department === dept)
   // Filtered client-side: the payload is small, so switching department costs
   // nothing rather than a round trip per click.
-  const clubCount = new Set(problems.map(p => p.clubSlug)).size
+  const peopleCount = new Set(problems.map(p => `${p.clubSlug}|${p.person}`)).size
 
   return (
     <div className="space-y-3">
@@ -141,19 +142,6 @@ export default function ProblemAreas({ locationSlug }) {
           </select>
         </label>
 
-        <label className="flex flex-col gap-1 min-w-[150px]">
-          <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wide">Level</span>
-          <select
-            value={scope}
-            onChange={e => setScope(e.target.value)}
-            className="bg-bg border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary"
-          >
-            <option value="all">Club and Staff</option>
-            <option value="club">Club Only</option>
-            <option value="staff">Staff Only</option>
-          </select>
-        </label>
-
         <p className="text-[11px] text-text-muted pb-1.5 ml-auto">
           Thresholds are set in Admin &rsaquo; Problem Thresholds.
         </p>
@@ -170,7 +158,7 @@ export default function ProblemAreas({ locationSlug }) {
 
       {!loading && !error && data && (
         <>
-          {data.clean && dept === 'all' && scope === 'all' && (
+          {data.clean && dept === 'all' && (
             <div className="bg-surface rounded-xl border border-border p-6 text-center">
               <p className="text-sm font-semibold text-emerald-600">Nothing over the line</p>
               <p className="text-xs text-text-muted mt-1">
@@ -184,7 +172,7 @@ export default function ProblemAreas({ locationSlug }) {
               <div className="flex items-baseline justify-between gap-3 py-2">
                 <p className="text-xs font-bold text-text-primary">
                   {problems.length} problem{problems.length === 1 ? '' : 's'} across{' '}
-                  {clubCount} club{clubCount === 1 ? '' : 's'}
+                  {peopleCount} {peopleCount === 1 ? 'person' : 'people'}
                 </p>
                 {/* Ordered by how far past the line, not alphabetically: the
                     worst thing should be the first thing read. */}
@@ -210,6 +198,20 @@ export default function ProblemAreas({ locationSlug }) {
                 department or level to see them.
               </p>
             </div>
+          )}
+
+          {(data.meta?.opsUnowned > 0 || data.meta?.formsUnowned > 0) && (
+            <p className="text-[11px] text-text-muted px-1">
+              Not shown, because nobody is named on them:{' '}
+              {data.meta.opsUnowned > 0 && (
+                <>{data.meta.opsUnowned} of {data.meta.opsBelowTotal} below-standard jobs were never started</>
+              )}
+              {data.meta.opsUnowned > 0 && data.meta.formsUnowned > 0 && ', '}
+              {data.meta.formsUnowned > 0 && (
+                <>{data.meta.formsUnowned} open Day One forms have no trainer on them</>
+              )}
+              .
+            </p>
           )}
 
           {(data.checks || []).some(c => c.off) && (

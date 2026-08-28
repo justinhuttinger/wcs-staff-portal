@@ -2,7 +2,15 @@
 //
 // This report exists so a manager does not have to go looking. Every other
 // report answers a question you have to think to ask; this one states what is
-// wrong, per club, against thresholds set in Admin.
+// wrong, and WHO it belongs to, against thresholds set in Admin.
+//
+// PEOPLE ONLY. Club-level rows were removed deliberately: a club figure is an
+// average of the people in it, and averages are what the other reports are for.
+// A problem worth acting on has somebody's name on it.
+//
+// The cost of that is stated rather than hidden: an operational job nobody ever
+// started has no name to attach, so it cannot appear here at all. The route
+// counts those and returns the number.
 //
 // A CHECK ONLY FIRES ON EVIDENCE. Every check declares the smallest sample it
 // will judge on, and stays silent below it. Two Day Ones and no sale is not a
@@ -31,9 +39,8 @@ const CHECKS = [
     key: 'dayone_book_pct',
     label: 'Day One Booking %',
     department: 'Membership',
-    // Booking is credited to whoever BOOKED the Day One, which is a front-desk
-    // act, so this is measured per salesperson as well as per club.
-    scopes: ['club', 'staff'],
+    // Credited to whoever BOOKED the Day One.
+    scopes: ['staff'],
     unit: 'pct',
     direction: 'below',
     defaultThreshold: 40,
@@ -45,7 +52,7 @@ const CHECKS = [
     key: 'vip_pct',
     label: 'VIP Collection %',
     department: 'Membership',
-    scopes: ['club', 'staff'],
+    scopes: ['staff'],
     unit: 'pct',
     direction: 'below',
     defaultThreshold: 40,
@@ -58,7 +65,7 @@ const CHECKS = [
     label: 'Day One Close %',
     department: 'PT',
     // Credited to the trainer who SERVICED the Day One, not whoever booked it.
-    scopes: ['club', 'staff'],
+    scopes: ['staff'],
     unit: 'pct',
     direction: 'below',
     defaultThreshold: 30,
@@ -70,7 +77,7 @@ const CHECKS = [
     key: 'dayone_open_forms',
     label: 'Day One Forms Left Open',
     department: 'PT',
-    scopes: ['club', 'staff'],
+    scopes: ['staff'],
     unit: 'count',
     direction: 'above',
     defaultThreshold: 10,
@@ -82,12 +89,13 @@ const CHECKS = [
     key: 'ops_jobs_below',
     label: 'Jobs Below Standard',
     department: 'Operations',
-    // Both scopes. A job somebody part-did is attributed to them; a job NOBODY
-    // touched has no owner to name and stays at club level. 489 of 575
-    // below-standard jobs in the last 30 days were never started by anyone, so
-    // pinning those on whoever was assigned would blame people for work that
-    // was never picked up.
-    scopes: ['club', 'staff'],
+    // STAFF ONLY, like every check here. A job somebody part-did is attributed
+    // to them. A job NOBODY touched has no name to attach and therefore cannot
+    // appear at all -- 489 of 575 below-standard jobs in a 30-day window were
+    // never started by anyone. The route counts those and the report says how
+    // many, because a silent omission on that scale would be worse than the
+    // club row this replaced.
+    scopes: ['staff'],
     unit: 'count',
     direction: 'above',
     // Any below-standard job is worth seeing, so the bar is "more than none".
@@ -242,7 +250,9 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
     }
   }
 
-  for (const club of clubs || []) evaluate({ ...club, club: club.name }, 'club')
+  // Clubs are accepted and ignored: no check is club-scoped any more, and the
+  // parameter is kept so the route's shape does not have to change if one ever
+  // is again.
   for (const person of staff || []) {
     if (!named(person.name)) continue
     evaluate(person, 'staff')
@@ -256,10 +266,10 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
 
   problems.sort(worstFirst)
 
-  // Grouped by club, because a club with four problems is a different
-  // conversation from four clubs with one each.
+  // Grouped by club, because a club with eight flagged people is a different
+  // conversation from eight clubs with one each.
   const byClub = new Map()
-  for (const p of problems.filter(p => p.scope === 'club')) {
+  for (const p of problems) {
     const cur = byClub.get(p.clubSlug) || { club: p.club, clubSlug: p.clubSlug, problems: [] }
     cur.problems.push(p)
     byClub.set(p.clubSlug, cur)
@@ -268,7 +278,7 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
   // And by person, so a manager can see whether one club is struggling or one
   // person is. Keyed on club AND name: two clubs can employ the same name.
   const byPerson = new Map()
-  for (const p of problems.filter(p => p.scope === 'staff')) {
+  for (const p of problems) {
     const k = `${p.clubSlug}|${p.person}`
     const cur = byPerson.get(k) || {
       person: p.person, club: p.club, clubSlug: p.clubSlug,
