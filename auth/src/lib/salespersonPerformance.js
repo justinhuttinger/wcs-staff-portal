@@ -117,6 +117,20 @@ function isNewSale(m) {
 // source tool.
 const VIEW_BY = ['club_salesperson', 'club', 'salesperson']
 
+/**
+ * Does this row touch any club that records the thing at all?
+ *
+ * A row with no club attached (salesperson-only grouping, or a person whose
+ * only activity is a tour) falls back to the whole selection, because refusing
+ * to answer would blank the column for the very rows the reader came for.
+ */
+function anyIn(row, configuredClubs) {
+  if (configuredClubs.size === 0) return false
+  if (row.clubNumbers.size === 0) return true
+  for (const n of row.clubNumbers) if (configuredClubs.has(n)) return true
+  return false
+}
+
 function pct(numerator, denominator) {
   if (!denominator) return null
   return Math.round((numerator / denominator) * 1000) / 10
@@ -157,7 +171,15 @@ function matchMember(index, contact, dayOne) {
 
 // ---------------------------------------------------------------------------
 
-function buildReport(members, dayOnes, contactsById, filters, skipList = new Set()) {
+function buildReport(members, dayOnes, contactsById, filters, skipList = new Set(), extras = {}) {
+  // VIP credits and completed tours, each carrying the set of clubs that record
+  // them at all. A club outside that set gets null rather than 0 — see
+  // loadVipCredits for why that distinction is not pedantry.
+  const vipCredits = extras.vips?.credits || []
+  const vipClubs = extras.vips?.configuredClubs || new Set()
+  const tourRows = extras.tours?.tours || []
+  const tourClubs = extras.tours?.configuredClubs || new Set()
+  const saleOutcomes = extras.tours?.saleOutcomes || new Set()
   // --- filter members -----------------------------------------------------
   const kept = members.filter(m => {
     if (filters.exclusion !== 'include' && isExcludedType(m.membership_type, skipList)) return false
@@ -210,6 +232,10 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
         paymentMix: {},
         dayOneBookCount: 0,
         bookOnJoinDateCount: 0,
+        vipCount: 0,
+        toursGiven: 0,
+        toursConverted: 0,
+        clubNumbers: new Set(),
         memberIds: [],
       })
     }
@@ -220,6 +246,9 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     const club = CLUB_BY_NUMBER[m.club_number]
     if (!club) continue
     const row = rowFor(club.slug, m.sales_person_name)
+    // Which clubs this row draws on, so a salesperson-only row can tell whether
+    // VIPs are configured everywhere they worked.
+    row.clubNumbers.add(m.club_number)
     row.newMemberUnits += 1
     row.totalNewDues += Number(m.next_due_amount) || 0
     row.totalDownPayment += Number(m.down_payment) || 0
@@ -245,6 +274,28 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
       // days, and the Day One was booked against the first one.
       if (bookedOn === (member.since_date || member.sign_date)) row.bookOnJoinDateCount += 1
     }
+  }
+
+  // VIPs are credited to the employee named ON THE CREDIT, not to whoever sold
+  // the membership. All 35 names in the last three months resolve to a
+  // salesperson exactly once whitespace and case are normalised.
+  for (const v of vipCredits) {
+    const club = CLUB_BY_NUMBER[v.club_number]
+    if (!club) continue
+    const row = rowFor(club.slug, v.employee_name)
+    row.clubNumbers.add(v.club_number)
+    row.vipCount += 1
+  }
+
+  // Tours are credited to whoever GAVE the tour, which is not necessarily
+  // whoever closed the sale or whoever closed the card out at the desk.
+  for (const t of tourRows) {
+    const club = CLUB_BY_NUMBER[t.club_number]
+    if (!club) continue
+    const row = rowFor(club.slug, t.given_by_name)
+    row.clubNumbers.add(t.club_number)
+    row.toursGiven += 1
+    if (saleOutcomes.has(t.outcome)) row.toursConverted += 1
   }
 
   // --- denominator for the "% of Total" column ----------------------------
@@ -279,19 +330,27 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
       ? Math.round((row.totalNewDues / row.newMemberUnits) * 100) / 100
       : null,
     totalDownPayment: Math.round(row.totalDownPayment * 100) / 100,
-    // Pending a persisted tour-events table; tours are live-fetched from GHL
-    // today and nothing is stored, so there is nothing to aggregate over.
-    toursGiven: null,
-    tourConversionRate: null,
+    // Real now that the check-in keeps completed rows. Still null for a club
+    // that has never recorded one, because every window before 2026-08-28 is
+    // empty by construction rather than because nobody gave a tour.
+    toursGiven: anyIn(row, tourClubs) ? row.toursGiven : null,
+    tourConversionRate: anyIn(row, tourClubs) ? pct(row.toursConverted, row.toursGiven) : null,
     avgDaysToConversion: null,
     dayOneBookCount: row.dayOneBookCount,
     dayOneBookPct: pct(row.dayOneBookCount, row.newMemberUnits),
     bookOnJoinDateCount: row.bookOnJoinDateCount,
     bookOnJoinDatePct: pct(row.bookOnJoinDateCount, row.newMemberUnits),
+    // VIPs against memberships sold. Null, not zero, where the club does not
+    // collect VIPs at all — Milwaukie has no VIP fields in GHL, and printing 0%
+    // there blames the staff for a configuration gap.
+    vipCount: anyIn(row, vipClubs) ? row.vipCount : null,
+    vipPct: anyIn(row, vipClubs) ? pct(row.vipCount, row.newMemberUnits) : null,
   }))
   // Drop rows that carry no activity at all — a stale salesperson with zero
-  // units and zero bookings is noise, not a zero worth showing.
-  .filter(r => r.newMemberUnits > 0 || r.dayOneBookCount > 0)
+  // units and zero bookings is noise, not a zero worth showing. VIPs and tours
+  // count as activity: somebody who collected VIPs all month and sold nothing
+  // has still done something the report should show.
+  .filter(r => r.newMemberUnits > 0 || r.dayOneBookCount > 0 || r.vipCount > 0 || r.toursGiven > 0)
 
   const totals = out.reduce((acc, r) => {
     acc.newMemberUnits += r.newMemberUnits
@@ -300,8 +359,19 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     acc.bookOnJoinDateCount += r.bookOnJoinDateCount
     acc.achUnits += r.achUnits
     acc.achKnownUnits += r.achKnownUnits
+    // Summed off the ROWS, so a club that reports null contributes nothing
+    // rather than dragging the club total toward zero.
+    acc.vipCount += r.vipCount || 0
+    acc.toursGiven += r.toursGiven || 0
+    acc.toursConverted += r.tourConversionRate === null
+      ? 0
+      : Math.round((r.tourConversionRate / 100) * (r.toursGiven || 0))
     return acc
-  }, { newMemberUnits: 0, totalNewDuesDraft: 0, dayOneBookCount: 0, bookOnJoinDateCount: 0, achUnits: 0, achKnownUnits: 0 })
+  }, { newMemberUnits: 0, totalNewDuesDraft: 0, dayOneBookCount: 0, bookOnJoinDateCount: 0,
+       achUnits: 0, achKnownUnits: 0, vipCount: 0, toursGiven: 0, toursConverted: 0 })
+
+  const anyVip = out.some(r => r.vipCount !== null)
+  const anyTour = out.some(r => r.toursGiven !== null)
 
   const summary = {
     newMemberUnits: totals.newMemberUnits,
@@ -310,9 +380,11 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     avgNewDuesDraft: totals.newMemberUnits
       ? Math.round((totals.totalNewDuesDraft / totals.newMemberUnits) * 100) / 100
       : null,
-    toursGiven: null,
-    tourConversionRate: null,
+    toursGiven: anyTour ? totals.toursGiven : null,
+    tourConversionRate: anyTour ? pct(totals.toursConverted, totals.toursGiven) : null,
     avgDaysToConversion: null,
+    vipCount: anyVip ? totals.vipCount : null,
+    vipPct: anyVip ? pct(totals.vipCount, totals.newMemberUnits) : null,
     dayOneBookCount: totals.dayOneBookCount,
     dayOneBookPct: pct(totals.dayOneBookCount, totals.newMemberUnits),
     bookOnJoinDateCount: totals.bookOnJoinDateCount,

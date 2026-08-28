@@ -405,3 +405,119 @@ test('clubName tolerates the zero-padded club number revenue uses', () => {
   assert.equal(clubName('99999'), '99999')
   assert.equal(clubName(null), '')
 })
+
+// ---------------------------------------------------------------------------
+// VIPs and tours
+//
+// The whole point of these is the difference between "none" and "not recorded",
+// so most of what is asserted here is which of the two a cell shows.
+
+const VIP_FILTERS = { ...NO_FILTERS, viewBy: 'club_salesperson' }
+
+const vipsFor = (credits, clubs) => ({
+  credits,
+  configuredClubs: new Set(clubs ?? credits.map(c => c.club_number)),
+})
+const toursFor = (tours, clubs) => ({
+  tours,
+  configuredClubs: new Set(clubs ?? tours.map(t => t.club_number)),
+  saleOutcomes: new Set(['Membership Sale']),
+})
+
+const build = (members, extras) =>
+  buildReport(members, [], new Map(), VIP_FILTERS, new Set(), extras)
+
+test('VIPs are credited to the name on the credit and divided by units sold', () => {
+  const out = build(
+    [member({ club_number: SALEM }), member({ club_number: SALEM })],
+    { vips: vipsFor([
+      { club_number: SALEM, employee_name: 'Katie Castlio' },
+      { club_number: SALEM, employee_name: 'Katie  Castlio' },
+      { club_number: SALEM, employee_name: 'katie castlio' },
+    ]) }
+  )
+  const row = out.rows.find(r => r.salesperson && r.newMemberUnits === 2)
+  // Whitespace and case are normalised, so these are one person, not three.
+  assert.equal(row.vipCount, 3)
+  // VIP % is VIPs over new member units, and may exceed 100%.
+  assert.equal(row.vipPct, 150)
+})
+
+test('a club that has never collected a VIP reports null, not zero', () => {
+  // Milwaukie has no VIP fields configured in GHL and has never recorded one.
+  const out = build(
+    [member({ club_number: MILWAUKIE })],
+    { vips: vipsFor([{ club_number: SALEM, employee_name: 'Someone Else' }], [SALEM]) }
+  )
+  const row = out.rows.find(r => r.newMemberUnits === 1)
+  // A 0% here would read as a person collecting no VIPs, when the truth is that
+  // the club cannot collect them at all.
+  assert.equal(row.vipCount, null)
+  assert.equal(row.vipPct, null)
+})
+
+test('a real zero survives at a club that does collect VIPs', () => {
+  const out = build(
+    [member({ club_number: SALEM, sales_person_name: 'Nobody Collected' })],
+    { vips: vipsFor([{ club_number: SALEM, employee_name: 'Someone Else' }]) }
+  )
+  const row = out.rows.find(r => r.salesperson === 'Nobody Collected')
+  // The club records VIPs and this person got none. That is a finding.
+  assert.equal(row.vipCount, 0)
+  assert.equal(row.vipPct, 0)
+})
+
+test('somebody who only collected VIPs still gets a row', () => {
+  const out = build([], {
+    vips: vipsFor([{ club_number: SALEM, employee_name: 'Front Desk' }]),
+  })
+  // The old filter dropped any row with no units and no bookings, which would
+  // have hidden a month of VIP collection entirely.
+  const row = out.rows.find(r => r.salesperson === 'Front Desk')
+  assert.ok(row, 'expected a row for a VIP-only collector')
+  assert.equal(row.vipCount, 1)
+  assert.equal(row.newMemberUnits, 0)
+  // No units to divide by, so the percentage is not a number rather than 0.
+  assert.equal(row.vipPct, null)
+})
+
+test('tours are credited to who gave them, and only sale outcomes convert', () => {
+  const out = build([member({ club_number: SALEM })], {
+    tours: toursFor([
+      { club_number: SALEM, given_by_name: 'Katie Castlio', outcome: 'Membership Sale' },
+      { club_number: SALEM, given_by_name: 'Katie Castlio', outcome: 'Only Tour' },
+      { club_number: SALEM, given_by_name: 'Katie Castlio', outcome: 'Started Trial' },
+    ]),
+  })
+  const row = out.rows.find(r => r.newMemberUnits === 1)
+  assert.equal(row.toursGiven, 3)
+  // Only Membership Sale carries is_sale; a trial pass is not a conversion.
+  assert.equal(row.tourConversionRate, 33.3)
+})
+
+test('a club with no tour on record reports null rather than zero', () => {
+  const out = build([member({ club_number: MILWAUKIE })], { tours: toursFor([], []) })
+  const row = out.rows.find(r => r.newMemberUnits === 1)
+  // Every window before 2026-08-28 is empty because completed rows were being
+  // deleted, not because nobody gave a tour.
+  assert.equal(row.toursGiven, null)
+  assert.equal(row.tourConversionRate, null)
+})
+
+test('the club total ignores clubs that report nothing', () => {
+  const out = build(
+    [member({ club_number: SALEM }), member({ club_number: MILWAUKIE })],
+    { vips: vipsFor([{ club_number: SALEM, employee_name: 'Katie Castlio' }], [SALEM]) }
+  )
+  // Milwaukie contributes no VIPs and no denominator distortion; the total is
+  // 1 VIP against the 2 units sold across the selection.
+  assert.equal(out.summary.vipCount, 1)
+  assert.equal(out.summary.vipPct, 50)
+})
+
+test('with no VIP data at all the whole column stays blank', () => {
+  const out = build([member({ club_number: SALEM })], {})
+  assert.equal(out.rows[0].vipCount, null)
+  assert.equal(out.summary.vipCount, null)
+  assert.equal(out.summary.vipPct, null)
+})

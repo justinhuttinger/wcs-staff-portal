@@ -40,34 +40,6 @@ function firstRow(res) {
   return (res.data || [])[0] || null
 }
 
-/**
- * Tours given and how many joined, straight from tour_intakes.
- *
- * Only COMPLETED tours count as given: a row still sitting at 'ready' is a
- * check-in nobody has closed out, not a tour that happened.
- */
-async function loadTours(slugs, clubNumbers, start, end) {
-  let q = supabaseAdmin
-    .from('tour_intakes')
-    .select('outcome')
-    .eq('status', 'completed')
-    .gte('completed_at', `${start}T00:00:00`)
-    .lte('completed_at', `${end}T23:59:59.999`)
-  if (clubNumbers) q = q.in('club_number', clubNumbers)
-
-  // Which outcomes count as a join is read from the table, not embedded:
-  // migration 147 deliberately put NO foreign key on tour_intakes.outcome, so
-  // there is no relationship for PostgREST to traverse. Adding one would also
-  // mean an unrecognised outcome rejected the whole tour, which is the failure
-  // that migration set out to avoid.
-  const [rows, outcomes] = await Promise.all([
-    fetchAll(q),
-    fetchAll(supabaseAdmin.from('tour_outcomes').select('outcome, is_sale')),
-  ])
-  const sold = new Set(outcomes.filter(o => o.is_sale).map(o => o.outcome))
-  return { given: rows.length, joined: rows.filter(r => sold.has(r.outcome)).length }
-}
-
 router.get('/', async (req, res) => {
   try {
     const mtd = monthToDate()
@@ -93,12 +65,14 @@ router.get('/', async (req, res) => {
       const skipList = await getSkipList()
 
       const windowFor = async (s, e) => {
-        const [w, sales, tours] = await Promise.all([
+        // Tours and VIPs come through buildReport with everything else rather
+        // than being counted a second time here: two counts of one thing is two
+        // chances to disagree, and the summary already carries both.
+        const [w, sales] = await Promise.all([
           supabaseAdmin.rpc('analytics_topline_window', {
             p_start: s, p_end: e, p_clubs: rpcClubs, p_exclude: true,
           }),
           loadSalespersonWindow(clubNumbers, slugs, s, e),
-          loadTours(slugs, rpcClubs, s, e),
         ])
         const row = firstRow(w)
         return {
@@ -108,8 +82,7 @@ router.get('/', async (req, res) => {
             // separately at the window's end.
             total_members: null,
           },
-          summary: buildReport(sales.members, sales.dayOnes, sales.contactsById, NO_FILTERS, skipList).summary,
-          tours,
+          summary: buildReport(sales.members, sales.dayOnes, sales.contactsById, NO_FILTERS, skipList, { vips: sales.vips, tours: sales.tours }).summary,
         }
       }
 

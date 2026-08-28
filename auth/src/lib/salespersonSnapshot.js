@@ -40,10 +40,17 @@ const STATS = [
   { key: 'avgNewDuesDraft', label: 'Avg New Dues Draft', format: 'money', betterWhen: 'up' },
   { key: 'totalNewDuesDraft', label: 'Total New Dues Draft', format: 'money', betterWhen: 'up' },
   { key: 'totalDownPayment', label: 'Down Payment Collected', format: 'money', betterWhen: 'up' },
-  // Live-fetched from GHL today and never stored, so there is nothing to
-  // aggregate. Carried so the card appears the day a tour table lands.
-  { key: 'toursGiven', label: 'Tours Given', format: 'int', betterWhen: 'up', pending: true },
-  { key: 'tourConversionRate', label: 'Tour Conversion', format: 'pct', betterWhen: 'up', pending: true },
+  // VIPs against memberships sold, in the order Justin asked for them. Null
+  // rather than zero at a club that does not collect VIPs at all — Milwaukie
+  // has never recorded one, and a 0% there reads as a person underperforming
+  // when it is a GHL field that was never configured.
+  { key: 'vipCount', label: 'VIPs Collected', format: 'int', betterWhen: 'up' },
+  { key: 'vipPct', label: 'VIP %', format: 'pct', betterWhen: 'up' },
+  // Real from 2026-08-28, when the check-in stopped deleting completed rows.
+  // Still null for a club with no tour on record, because every window before
+  // that is empty by construction rather than by anyone's inactivity.
+  { key: 'toursGiven', label: 'Tours Given', format: 'int', betterWhen: 'up' },
+  { key: 'tourConversionRate', label: 'Tour Conversion', format: 'pct', betterWhen: 'up' },
   { key: 'avgDaysToConversion', label: 'Avg Days to Sign', format: 'num', betterWhen: 'down', pending: true },
 ]
 
@@ -57,8 +64,9 @@ function seriesRow(r) {
     // Day Ones booked as a share of the members they signed. Can exceed 100%
     // where somebody books more intros than they sign.
     bookPct: rate(booked, newMembers),
-    // Tours have no source yet; carried as null so the panel draws a gap
-    // rather than a line along zero, which would read as "no tours given".
+    // The monthly series has no tour or VIP grain yet — analytics_salesperson_
+    // monthly predates both — so these stay null and the panel draws a gap
+    // rather than a line along zero, which would read as "none given".
     toursGiven: null,
     toursSold: null,
     avgDaysToSign: null,

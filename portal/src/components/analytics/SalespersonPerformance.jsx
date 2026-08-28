@@ -32,6 +32,11 @@ const COLUMNS = [
   { key: 'dayOneBookPct', label: 'Day One Book %', format: 'pct', bar: 'pct', barTone: 'slate' },
   { key: 'bookOnJoinDateCount', label: 'Book on Join Date Count', format: 'int', bar: 'count', barTone: 'orange' },
   { key: 'bookOnJoinDatePct', label: 'Book on Join Date %', format: 'pct', bar: 'pct', barTone: 'blue' },
+  // To the right of the Day One stats, in this order. Both read N/A rather than
+  // 0 at a club that does not collect VIPs at all — Milwaukie has no VIP fields
+  // configured in GHL, and a 0% there would read as staff underperforming.
+  { key: 'vipCount', label: 'VIPs Collected', format: 'int', bar: 'count', barTone: 'violet' },
+  { key: 'vipPct', label: 'VIP %', format: 'pct', bar: 'pct', barTone: 'teal' },
 ]
 
 const BAR_TONES = {
@@ -41,6 +46,7 @@ const BAR_TONES = {
   red: 'bg-rose-500/70',
   slate: 'bg-slate-400/70',
   orange: 'bg-orange-500/70',
+  violet: 'bg-violet-500/70',
 }
 
 
@@ -72,6 +78,8 @@ const SORT_OPTIONS = [
   { key: 'dayOneBookCount', label: 'Day One Book Count' },
   { key: 'dayOneBookPct', label: 'Day One Book %' },
   { key: 'bookOnJoinDateCount', label: 'Book on Join Date Count' },
+  { key: 'vipCount', label: 'VIPs Collected' },
+  { key: 'vipPct', label: 'VIP %' },
 ]
 
 function fmt(value, format) {
@@ -104,6 +112,8 @@ const SUMMARY_TILES = [
   { key: 'dayOneBookPct', label: 'Day One Book %', format: 'pct' },
   { key: 'bookOnJoinDateCount', label: 'Book on Join Date Count', format: 'int' },
   { key: 'bookOnJoinDatePct', label: 'Book on Join Date %', format: 'pct' },
+  { key: 'vipCount', label: 'VIPs Collected', format: 'int' },
+  { key: 'vipPct', label: 'VIP %', format: 'pct' },
 ]
 
 // allLabel={null} marks a setting rather than a filter — it has no "All"
