@@ -17,6 +17,7 @@ import FirstPtPurchase from './analytics/FirstPtPurchase'
 import TrainerPerformance from './analytics/TrainerPerformance'
 import TrainerSnapshot from './analytics/TrainerSnapshot'
 import SalespersonSnapshot from './analytics/SalespersonSnapshot'
+import AttritionTrends from './analytics/AttritionTrends'
 import ClubSnapshot from './analytics/ClubSnapshot'
 import KpiReport from './analytics/KpiReport'
 import PtSnapshot from './analytics/PtSnapshot'
@@ -129,6 +130,15 @@ const ANALYTICS_REPORTS = [
     Component: RevenueTrends,
   },
   {
+    key: 'attrition-trends',
+    label: 'Attrition Trends',
+    desc: 'Losses, Dues and Revenue',
+    Component: AttritionTrends,
+    // The report picks its own trailing month range, so the shared date
+    // controls would only be a second answer to the same question.
+    dates: false,
+  },
+  {
     key: 'kpis',
     label: 'KPIs',
     desc: 'Goals by Club',
@@ -182,7 +192,7 @@ const ANALYTICS_REPORTS = [
 // Keys that do not (yet) exist in ANALYTICS_REPORTS are ignored rather than
 // rendering a dead link, so a group can name a report that ships later.
 const REPORT_GROUPS = [
-  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot'] },
+  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-trends'] },
   { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due'] },
   { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase', 'pt-snapshot', 'trainer-snapshot'] },
   { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot'] },
