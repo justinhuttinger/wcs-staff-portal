@@ -49,15 +49,20 @@ const STAGES = [
 
 const OUTCOME_LABEL = 'Not Interested / Day Pass'
 
+// Slot 0 is the palette's blue and slot 7 its red, so Facebook wears its own
+// brand colour and Website wears ours. Both are categorical hues from the
+// validated eight, not the reserved status red — nothing here means "bad".
 const OBSERVED_SLOTS = {
-  'Website': 0,
-  'Facebook': 1,
+  'Facebook': 0,
   'Walk-in / Manual': 2,
+  'Website': 7,
 }
 
+// Facebook holds slot 0 here too. It is the one name that appears in both
+// vocabularies, and a reader switching the toggle should not have to relearn it.
 const CLAIMED_SLOTS = {
-  'Friend or Family Referral': 0,
-  'Facebook': 1,
+  'Facebook': 0,
+  'Friend or Family Referral': 1,
   'Google Search': 2,
   'Instagram': 3,
   'Google Maps': 4,
