@@ -127,3 +127,61 @@ test('missing series numbers become zero, not NaN', () => {
   assert.equal(out.days[0].revenue, 0)
   assert.ok(Number.isFinite(out.days[0].ptNewValue))
 })
+
+// --- a revenue stat on an un-imported day is unknown, not zero --------------
+
+test('revenue stats read as unavailable, never as a confident zero', () => {
+  // $0 tells whoever opens this each morning that the club took nothing, which
+  // is a different and much worse claim than "not in yet".
+  const out = buildDailySnapshot(
+    day({ window: win({ revenue: 0, pt_revenue: 0 }) }),
+    day(),
+    [], { day: '2026-08-29', latestRevenueDay: '2026-08-27' }
+  )
+  const byKey = Object.fromEntries(out.stats.map(s => [s.key, s]))
+
+  assert.equal(byKey.revenue.unavailable, true)
+  assert.equal(byKey.revenue.value, null)
+  assert.equal(byKey.ptRevenue.unavailable, true)
+  assert.equal(byKey.ptRevenue.value, null)
+})
+
+test('an unavailable stat gets no delta against yesterday', () => {
+  // Subtracting a real number from an unknown is not a movement.
+  const out = buildDailySnapshot(
+    day({ window: win({ revenue: 0 }) }),
+    day({ window: win({ revenue: 54570 }) }),
+    [], { day: '2026-08-29', latestRevenueDay: '2026-08-27' }
+  )
+  assert.equal(out.stats.find(s => s.key === 'revenue').delta, null)
+})
+
+test('NEW DUES stays real on an un-imported day', () => {
+  // It comes from the member records, which are live — greying it out would
+  // hide a number that is perfectly good.
+  const out = buildDailySnapshot(day(), null, [], {
+    day: '2026-08-29', latestRevenueDay: '2026-08-27',
+  })
+  const dues = out.stats.find(s => s.key === 'newDues')
+  assert.equal(dues.unavailable, false)
+  assert.equal(dues.value, 400)
+})
+
+test('everything non-revenue stays live and comparable', () => {
+  const out = buildDailySnapshot(
+    day(),
+    day({ window: win({ new_members: 10 }) }),
+    [], { day: '2026-08-29', latestRevenueDay: '2026-08-27' }
+  )
+  const joined = out.stats.find(s => s.key === 'newMembers')
+  assert.equal(joined.unavailable, false)
+  assert.equal(joined.delta, 3)
+})
+
+test('on a day inside the import nothing is greyed', () => {
+  const out = buildDailySnapshot(day(), null, [], {
+    day: '2026-08-26', latestRevenueDay: '2026-08-27',
+  })
+  assert.ok(out.stats.every(s => !s.unavailable))
+  assert.equal(out.stats.find(s => s.key === 'revenue').value, 20000)
+})

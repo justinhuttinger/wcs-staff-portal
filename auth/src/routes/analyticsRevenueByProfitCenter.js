@@ -3,7 +3,8 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
-const { wrapSWR } = require('../services/memoryCache')
+const { wrap, wrapSWR } = require('../services/memoryCache')
+const { latestRevenueDay, clampToRevenueEdge, edgeNote } = require('../lib/revenueDataEdge')
 const { buildRevenueByProfitCenter, SORTS } = require('../lib/revenueByProfitCenter')
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
@@ -56,9 +57,20 @@ router.get('/', async (req, res) => {
   try {
     const lc = lastCompleteMonth()
     const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))
-    const start = isDate(req.query.start) ? String(req.query.start) : lc.start
-    const end = isDate(req.query.end) ? String(req.query.end) : lc.end
-    if (start > end) return res.status(400).json({ error: 'start must not be after end' })
+    const requestedStart = isDate(req.query.start) ? String(req.query.start) : lc.start
+    const requestedEnd = isDate(req.query.end) ? String(req.query.end) : lc.end
+    if (requestedStart > requestedEnd) {
+      return res.status(400).json({ error: 'start must not be after end' })
+    }
+
+    // The default here is the last COMPLETE month, which is already safe. This
+    // guards the other case: a caller who picks a range running to today would
+    // otherwise include a day the import has not delivered yet.
+    const edge = await latestRevenueDay(supabaseAdmin, wrap)
+    const clamp = clampToRevenueEdge(requestedStart, requestedEnd, edge)
+    clamp.requestedEnd = requestedEnd
+    const start = clamp.start
+    const end = clamp.end
 
     const clubsParam = String(req.query.clubs || 'all')
     const slugs = clubsParam === 'all'
@@ -90,9 +102,16 @@ router.get('/', async (req, res) => {
       ...built,
       views: VIEWS,
       sorts: SORTS,
+      // Surfaced rather than clamped in silence: a number for a shorter period
+      // than the one asked for is worse when nothing says so.
+      dataEdgeNote: edgeNote(clamp),
       meta: {
         start,
         end,
+        requestedEnd,
+        revenueEdge: edge,
+        clampedToEdge: clamp.clamped,
+        noDataYet: clamp.empty,
         view,
         sort,
         clubs: slugs,

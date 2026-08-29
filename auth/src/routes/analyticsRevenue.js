@@ -3,13 +3,14 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
-const { wrapSWR } = require('../services/memoryCache')
+const { wrap, wrapSWR } = require('../services/memoryCache')
 const { buildRevenue } = require('../lib/revenueAnalytics')
 const { monthToDate, windowLabel } = require('../lib/snapshotWindow')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 // Kept in their own module, free of this route's dependencies, so the window
 // arithmetic can be tested without standing up Supabase.
 const { shiftedWindow, spanDays } = require('../lib/comparisonWindow')
+const { latestRevenueDay, clampToRevenueEdge, edgeNote } = require('../lib/revenueDataEdge')
 
 // ---------------------------------------------------------------------------
 // Revenue — Analytics (admin only)
@@ -48,9 +49,22 @@ router.get('/', async (req, res) => {
   try {
     const mtd = monthToDate()
     const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))
-    const start = isDate(req.query.start) ? String(req.query.start) : mtd.start
-    const end = isDate(req.query.end) ? String(req.query.end) : mtd.end
-    if (start > end) return res.status(400).json({ error: 'start must not be after end' })
+    const requestedStart = isDate(req.query.start) ? String(req.query.start) : mtd.start
+    const requestedEnd = isDate(req.query.end) ? String(req.query.end) : mtd.end
+    if (requestedStart > requestedEnd) {
+      return res.status(400).json({ error: 'start must not be after end' })
+    }
+
+    // Revenue is imported and runs about a day behind, so a month-to-date
+    // window ending today carries an empty day that drags every total and every
+    // comparison down. The window is pulled back to the last day with data —
+    // and the report says so, because a number for a shorter period than the
+    // one asked for is worse when it is silent.
+    const edge = await latestRevenueDay(supabaseAdmin, wrap)
+    const clamp = clampToRevenueEdge(requestedStart, requestedEnd, edge)
+    clamp.requestedEnd = requestedEnd
+    const start = clamp.start
+    const end = clamp.end
 
     const clubsParam = String(req.query.clubs || 'all')
     const slugs = clubsParam === 'all'
@@ -145,8 +159,13 @@ router.get('/', async (req, res) => {
       byClub: [...clubTotals.values()]
         .map(c => ({ ...c, revenue: Math.round(c.revenue * 100) / 100 }))
         .sort((a, b) => b.revenue - a.revenue),
+      notes: { ...built.notes, dataEdge: edgeNote(clamp) },
       meta: {
         start, end,
+        requestedEnd,
+        revenueEdge: edge,
+        clampedToEdge: clamp.clamped,
+        noDataYet: clamp.empty,
         spanDays: spanDays(start, end),
         lastMonthStart: lastMonth.start, lastMonthEnd: lastMonth.end,
         lastYearStart: lastYear.start, lastYearEnd: lastYear.end,
