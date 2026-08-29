@@ -352,6 +352,14 @@ export default function Revenue({ startDate, endDate, locationSlug }) {
 
       {!loading && !error && data && (
         <>
+          {/* Above the numbers: a window shorter than the one asked for is not
+              something to discover afterwards. */}
+          {data.notes?.dataEdge && (
+            <div className="bg-surface rounded-xl border border-amber-500/40 p-3">
+              <p className="text-[11px] text-amber-600">{data.notes.dataEdge}</p>
+            </div>
+          )}
+
           <div className="bg-surface rounded-xl border border-border overflow-x-auto">
             <div className="flex min-w-max divide-x divide-border">
               {[

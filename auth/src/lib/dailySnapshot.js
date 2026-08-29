@@ -28,6 +28,11 @@ const { shapeTotals, STATS } = require('./clubSnapshot')
 // Measured on a single day, this is a gap between dates in different weeks.
 const DROPPED_STATS = new Set(['avgDaysToConversion'])
 
+// The two stats that come from abc_revenue_transactions. New Dues does NOT:
+// it is derived from the member records, which are live, so it stays real on a
+// day the revenue import has not reached.
+const REVENUE_STATS = new Set(['revenue', 'ptRevenue'])
+
 // Stats that are a stock rather than a flow. A day's "members" is the count at
 // close of play, so comparing it to yesterday's is a net change already
 // expressed elsewhere, and showing a delta on both invites double-reading.
@@ -53,19 +58,31 @@ function buildDailySnapshot(current, prior, series, opts = {}) {
   const today = shapeTotals(current.window, current.summary, current.pt)
   const yesterday = prior ? shapeTotals(prior.window, prior.summary, prior.pt) : null
 
+  // Declared before the stats so a revenue-backed measure can be marked as
+  // having no data rather than a confident zero.
+  const latest = opts.latestRevenueDay || null
+  const chosenDay = opts.day || null
+  const revenueStale = !!(latest && chosenDay && chosenDay > latest)
+
   const stats = STATS
     .filter(s => !DROPPED_STATS.has(s.key))
     .map(s => {
-      const now = today[s.key]
+      // A revenue stat on a day the import has not reached is NOT zero — it is
+      // unknown. Reporting $0 tells whoever opens this each morning that the
+      // club took nothing, which is a different and much worse claim.
+      const unavailable = revenueStale && REVENUE_STATS.has(s.key)
+      const now = unavailable ? null : today[s.key]
       const before = yesterday ? yesterday[s.key] : null
       const bothNumeric = Number.isFinite(now) && Number.isFinite(before)
       return {
         ...s,
-        value: now ?? null,
+        unavailable,
+        value: unavailable ? null : (now ?? null),
         prior: before ?? null,
         // A plain difference, not a percentage. On one day a base of 1 turns a
         // single extra sale into +100%, which reads as a story and is not one.
-        delta: bothNumeric && !STOCK_STATS.has(s.key) ? r2(now - before) : null,
+        // Never computed against an unknown.
+        delta: !unavailable && bothNumeric && !STOCK_STATS.has(s.key) ? r2(now - before) : null,
       }
     })
 
@@ -85,15 +102,8 @@ function buildDailySnapshot(current, prior, series, opts = {}) {
     ptLostValue: r2(num(r.pt_lost_value)),
   }))
 
-  // Revenue is imported rather than live. Comparing the chosen day against the
-  // latest day that actually has revenue is the only honest way to say whether
-  // the figure on screen is final.
-  const latest = opts.latestRevenueDay || null
-  const day = opts.day || null
-  const revenueStale = !!(latest && day && day > latest)
-
   return {
-    day,
+    day: chosenDay,
     stats,
     today,
     yesterday,
@@ -102,9 +112,9 @@ function buildDailySnapshot(current, prior, series, opts = {}) {
     revenueStale,
     notes: {
       revenue: revenueStale
-        ? `Revenue is imported daily and currently runs to ${latest}. The revenue and ` +
-          'PT Revenue Collected figures for this day are not in yet and will read low, ' +
-          'or zero. Everything else on this card is live.'
+        ? `Revenue is imported daily and currently runs to ${latest}, so Revenue and PT ` +
+          'Revenue Collected show no data for this day rather than a zero. Everything else ' +
+          'on this card is live.'
         : null,
       comparison:
         'Compared with the day before. A single day is small enough that one sale moves ' +
@@ -113,4 +123,4 @@ function buildDailySnapshot(current, prior, series, opts = {}) {
   }
 }
 
-module.exports = { buildDailySnapshot, DROPPED_STATS, STOCK_STATS }
+module.exports = { buildDailySnapshot, DROPPED_STATS, STOCK_STATS, REVENUE_STATS }

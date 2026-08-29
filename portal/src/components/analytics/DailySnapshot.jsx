@@ -172,14 +172,35 @@ export default function DailySnapshot({ locationSlug }) {
 
           <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-2">
             {stats.map(s => (
-              <div key={s.key} className="bg-surface rounded-xl border border-border px-3 py-2.5">
-                <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wide leading-tight">
+              // A revenue stat on a day the import has not reached is dimmed and
+              // says so. A greyed "No data" cannot be mistaken for a bad day the
+              // way a confident $0 can.
+              <div
+                key={s.key}
+                className={`rounded-xl border px-3 py-2.5 ${
+                  s.unavailable
+                    ? 'bg-surface/60 border-dashed border-border'
+                    : 'bg-surface border-border'
+                }`}
+              >
+                <p className={`text-[10px] font-semibold uppercase tracking-wide leading-tight ${
+                  s.unavailable ? 'text-text-muted/70' : 'text-text-muted'
+                }`}>
                   {s.label}
                 </p>
-                <p className="text-xl font-bold tabular-nums text-text-primary mt-0.5">
-                  {formatValue(s.value, s.format)}
-                </p>
-                <Delta stat={s} />
+                {s.unavailable ? (
+                  <>
+                    <p className="text-xl font-bold text-text-muted/60 mt-0.5">No data</p>
+                    <span className="text-[11px] text-text-muted/70">not imported yet</span>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xl font-bold tabular-nums text-text-primary mt-0.5">
+                      {formatValue(s.value, s.format)}
+                    </p>
+                    <Delta stat={s} />
+                  </>
+                )}
               </div>
             ))}
           </div>
