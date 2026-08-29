@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { buildAudits, auditKey, isEnabled, STALE_DAYS } = require('./auditsAnalytics')
+const { buildAudits, auditKey, isEnabled, auditCycleMonth, STALE_DAYS, CYCLE_SPLIT_DAY } = require('./auditsAnalytics')
 
 const r = (department, slug, submitted_date, score_pct) => ({
   department, location_slug: slug, submitted_date, score_pct,
@@ -107,9 +107,9 @@ test('the window filters submissions but never the department list', () => {
 
 test('the trend is monthly, ordered, and carries its sample count', () => {
   const out = buildAudits([
-    r('PT Audit', 'salem', '2026-08-01', 80),
-    r('PT Audit', 'salem', '2026-08-15', 90),
-    r('PT Audit', 'salem', '2026-07-10', 70),
+    r('PT Audit', 'salem', '2026-08-26', 80),
+    r('PT Audit', 'salem', '2026-08-28', 90),
+    r('PT Audit', 'salem', '2026-07-26', 70),
   ], opts({ clubs: ['salem'] }))
 
   assert.deepEqual(out.months.map(m => m.month), ['2026-07-01', '2026-08-01'])
@@ -223,8 +223,8 @@ test('the trend spans a full year regardless of the selected window', () => {
 test('a month with no audit is a gap, never a zero', () => {
   // Joining across it would draw a dive that never happened.
   const out = buildAudits([
-    r('PT Audit', 'salem', '2026-08-01', 80),
-    r('PT Audit', 'salem', '2026-06-01', 90),
+    r('PT Audit', 'salem', '2026-08-26', 80),
+    r('PT Audit', 'salem', '2026-06-26', 90),
   ], opts({ clubs: ['salem'] }))
 
   const pt = out.trendSeries.find(x => x.key === 'PT Audit')
@@ -235,8 +235,8 @@ test('a month with no audit is a gap, never a zero', () => {
 
 test('several clubs average into ONE line per department', () => {
   const out = buildAudits([
-    r('PT Audit', 'salem', '2026-08-01', 70),
-    r('PT Audit', 'eugene', '2026-08-05', 90),
+    r('PT Audit', 'salem', '2026-08-26', 70),
+    r('PT Audit', 'eugene', '2026-08-30', 90),
   ], opts({ clubs: ['salem', 'eugene'] }))
 
   const pt = out.trendSeries.find(x => x.key === 'PT Audit')
@@ -256,8 +256,8 @@ test('a department with no audit all year is not drawn as an empty line', () => 
 
 test('switched-off pairs stay out of the trend too', () => {
   const out = buildAudits([
-    r('PT Audit', 'salem', '2026-08-01', 10),
-    r('PT Audit', 'eugene', '2026-08-01', 90),
+    r('PT Audit', 'salem', '2026-08-26', 10),
+    r('PT Audit', 'eugene', '2026-08-26', 90),
   ], opts({ clubs: ['salem', 'eugene'], toggles: { audit_off_pt_audit_salem: '1' } }))
 
   const pt = out.trendSeries.find(x => x.key === 'PT Audit')
@@ -275,4 +275,70 @@ test('the latest submission is carried so the cell can open its report', () => {
   const cell = out.grid[0].cells[0]
   assert.equal(cell.lastId, 'newer')
   assert.equal(cell.lastReportUrl, 'https://example.test/b')
+})
+
+// --- an audit belongs to its cycle, not its calendar month -----------------
+//
+// The window runs about the 25th to the 5th of the next month, so a submission
+// on 3 September is September's date and August's audit. Bucketing on the raw
+// date gave August two audits and September none.
+
+test('a submission early in the month counts for the previous month', () => {
+  assert.equal(auditCycleMonth('2026-09-03'), '2026-08-01')
+  assert.equal(auditCycleMonth('2026-09-01'), '2026-08-01')
+  assert.equal(auditCycleMonth('2026-09-05'), '2026-08-01')
+})
+
+test('a submission in the audit window counts for its own month', () => {
+  assert.equal(auditCycleMonth('2026-08-25'), '2026-08-01')
+  assert.equal(auditCycleMonth('2026-08-31'), '2026-08-01')
+  assert.equal(auditCycleMonth('2026-08-24'), '2026-08-01')
+})
+
+test('the split sits in the empty gap, not on the exact boundary', () => {
+  // The window is "something like" the 25th to the 5th. A rule that only worked
+  // if that were exact would break the first time somebody filed on the 7th.
+  assert.equal(auditCycleMonth('2026-09-06'), '2026-08-01')
+  assert.equal(auditCycleMonth('2026-09-10'), '2026-08-01')
+  assert.equal(auditCycleMonth(`2026-09-${CYCLE_SPLIT_DAY}`), '2026-08-01')
+  assert.equal(auditCycleMonth('2026-09-16'), '2026-09-01')
+})
+
+test('the year boundary does not produce month zero', () => {
+  // Naive month arithmetic on 3 January underflows; shifting the date does not.
+  assert.equal(auditCycleMonth('2026-01-03'), '2025-12-01')
+  assert.equal(auditCycleMonth('2026-01-28'), '2026-01-01')
+})
+
+test('a bad or missing date yields null rather than a bogus month', () => {
+  assert.equal(auditCycleMonth(null), null)
+  assert.equal(auditCycleMonth(''), null)
+  assert.equal(auditCycleMonth('not a date'), null)
+})
+
+test('the spillover audit lands in the same trend point as its cycle', () => {
+  // One club audited on 26 August, another on 3 September. Same cycle, so one
+  // point averaging both — not August=x and September=y.
+  const out = buildAudits([
+    r('PT Audit', 'salem', '2026-08-26', 70),
+    r('PT Audit', 'eugene', '2026-09-03', 90),
+  ], opts({ clubs: ['salem', 'eugene'], end: '2026-09-30', today: '2026-09-30' }))
+
+  const pt = out.trendSeries.find(x => x.key === 'PT Audit')
+  const aug = pt.points.find(p => p.month === '2026-08-01')
+  const sep = pt.points.find(p => p.month === '2026-09-01')
+
+  assert.equal(aug.value, 80)
+  assert.equal(aug.samples, 2)
+  // September must be empty, not a second reading of the same cycle.
+  assert.equal(sep.value, null)
+})
+
+test('staleness still measures from the real submission date', () => {
+  // Which cycle it counted for is a different question from how long ago it
+  // actually happened.
+  const out = buildAudits([r('PT Audit', 'salem', '2026-09-03', 90)],
+    opts({ end: '2026-09-30', today: '2026-09-10', clubs: ['salem'] }))
+  assert.equal(out.grid[0].cells[0].lastDate, '2026-09-03')
+  assert.equal(out.grid[0].cells[0].daysStale, 7)
 })

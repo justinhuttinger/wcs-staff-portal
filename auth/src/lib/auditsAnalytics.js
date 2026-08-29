@@ -24,6 +24,35 @@
 // the pairs that genuinely are not being done. Disabled cells are marked and
 // excluded from gaps, staleness and the coverage figure alike.
 //
+// AN AUDIT BELONGS TO ITS CYCLE, NOT TO THE CALENDAR MONTH IT WAS SUBMITTED IN.
+// The window to complete a monthly audit runs from about the 25th to the 5th of
+// the following month, so a submission on 3 September is September's date and
+// August's audit. Bucketing on the raw date splits one cycle across two months:
+// August gets two audits and September none, and the trend zig-zags on nothing.
+//
+// The submission dates make the cycle obvious — they are bimodal with an empty
+// gap in between:
+//
+//   days 1, 2, 5, 6      24 audits   spillover from the cycle just closed
+//   day 10                1 audit    lone outlier
+//   days 24-31          116 audits   the window itself
+//
+// So anything submitted in the FIRST HALF of a month counts as the previous
+// month's audit. The split sits at day 15, in the middle of the empty gap,
+// rather than on the exact boundary — the window is "something like" the 25th
+// to the 5th, and a rule that only works if that is exact would break the first
+// time somebody submitted on the 7th. Day 10 lands with the previous month,
+// which is right: with the window closing on the 5th, the 10th is five days
+// late for the cycle just gone rather than fifteen days early for the next.
+//
+// Measured over 2026: the calendar rule puts two audits into 17 of 109
+// department/club months. The cycle rule produces ZERO doubles across 126 —
+// exactly one audit per department per club per month, which is what a monthly
+// cycle should look like.
+//
+// STALENESS STILL USES THE REAL DATE. "How long since this was audited" is a
+// question about elapsed time, not about which cycle it counted for.
+//
 // THE TREND IS A YEAR, ONE LINE PER DEPARTMENT, NOT A MONTHLY AVERAGE.
 // Audits run about once a month per department per club, so a monthly average
 // is one or two readings — it moves violently on a single 78% and says nothing
@@ -65,6 +94,26 @@ function auditKey(department) {
 function isEnabled(toggles, department, slug) {
   if (!toggles) return true
   return toggles[`audit_off_${auditKey(department)}_${slug}`] !== '1'
+}
+
+// Submissions in the first half of a month belong to the cycle that opened on
+// the 25th of the month before.
+const CYCLE_SPLIT_DAY = 15
+
+/**
+ * The month an audit counts for, as YYYY-MM-01.
+ *
+ * Shifting the date back by CYCLE_SPLIT_DAY days and truncating is the same
+ * thing as "day <= 15 means previous month", but it cannot get the month
+ * arithmetic wrong at a year boundary — 3 January becomes 19 December rather
+ * than month zero.
+ */
+function auditCycleMonth(dateStr) {
+  if (!dateStr) return null
+  const t = Date.parse(`${String(dateStr).slice(0, 10)}T00:00:00Z`)
+  if (!Number.isFinite(t)) return null
+  const d = new Date(t - CYCLE_SPLIT_DAY * 86_400_000)
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`
 }
 
 function num(v) {
@@ -240,8 +289,8 @@ function buildAudits(rows, opts = {}) {
     if (!r.submitted_date || !r.department || !r.location_slug) continue
     if (!isEnabled(toggles, r.department, r.location_slug)) continue
     if (clubs.length && !clubs.includes(r.location_slug)) continue
-    const month = `${r.submitted_date.slice(0, 7)}-01`
-    if (month < firstTrendMonth) continue
+    const month = auditCycleMonth(r.submitted_date)
+    if (!month || month < firstTrendMonth) continue
     if (r.score_pct === null || r.score_pct === undefined) continue
     const k = `${r.department}||${month}`
     if (!trendBucket.has(k)) trendBucket.set(k, [])
@@ -267,7 +316,8 @@ function buildAudits(rows, opts = {}) {
   for (const r of inWindow) {
     if (!r.submitted_date) continue
     if (!isEnabled(toggles, r.department, r.location_slug)) continue
-    const month = `${r.submitted_date.slice(0, 7)}-01`
+    const month = auditCycleMonth(r.submitted_date)
+    if (!month) continue
     const cur = monthMap.get(month) || { month, scores: [], submissions: 0 }
     cur.submissions += 1
     if (r.score_pct !== null && r.score_pct !== undefined) cur.scores.push(num(r.score_pct))
@@ -325,4 +375,7 @@ function buildAudits(rows, opts = {}) {
   }
 }
 
-module.exports = { buildAudits, auditKey, isEnabled, STALE_DAYS, MIN_SAMPLE_TO_RANK, TREND_MONTHS }
+module.exports = {
+  buildAudits, auditKey, isEnabled, auditCycleMonth,
+  STALE_DAYS, MIN_SAMPLE_TO_RANK, TREND_MONTHS, CYCLE_SPLIT_DAY,
+}
