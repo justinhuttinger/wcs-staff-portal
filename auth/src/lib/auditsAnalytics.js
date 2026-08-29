@@ -50,6 +50,16 @@
 // exactly one audit per department per club per month, which is what a monthly
 // cycle should look like.
 //
+// THE HISTORY BEFORE THE EMAIL FEED IS A PARTIAL BACKFILL, AND THE REPORT SAYS
+// SO. Everything before June 2026 came from a one-off PDF import covering one
+// to four clubs a month; November 2025 and January 2026 have no rows at all.
+// From June the audits arrive by email and cover six clubs. A gap in the early
+// months therefore means "not backfilled", not "not audited", and a trend that
+// let those be read as failures would be accusing people of missing work they
+// did. The boundary is derived from the data — the first cycle month carrying
+// an emailed audit — rather than hardcoded, so it moves if more history is
+// imported.
+//
 // STALENESS STILL USES THE REAL DATE. "How long since this was audited" is a
 // question about elapsed time, not about which cycle it counted for.
 //
@@ -333,6 +343,15 @@ function buildAudits(rows, opts = {}) {
   const countedInWindow = inWindow.filter(
     x => isEnabled(toggles, x.department, x.location_slug)
   )
+  // The first month the live email feed produced an audit. Everything before it
+  // is backfill and is flagged rather than trusted as a complete record.
+  let firstLiveMonth = null
+  for (const x of all) {
+    if (String(x.source || '').toLowerCase() !== 'email') continue
+    const m = auditCycleMonth(x.submitted_date)
+    if (m && (firstLiveMonth === null || m < firstLiveMonth)) firstLiveMonth = m
+  }
+
   const windowScores = countedInWindow
     .filter(x => x.score_pct !== null && x.score_pct !== undefined)
     .map(x => num(x.score_pct))
@@ -364,7 +383,15 @@ function buildAudits(rows, opts = {}) {
     months,
     trendMonths,
     trendSeries,
+    firstLiveMonth,
     notes: {
+      // Stated whenever the trend reaches back into the backfill, so an empty
+      // month there is not read as a club that skipped its audit.
+      history: firstLiveMonth && trendMonths.length && trendMonths[0] < firstLiveMonth
+        ? `Audits before ${firstLiveMonth.slice(0, 7)} come from a one-off PDF import that ` +
+          'covered one to four clubs a month, and some months were not imported at all. ' +
+          'A gap before that point means the audit was not backfilled, not that it was not done.'
+        : null,
       coverage: gaps.length === 0 && stale.length === 0 ? null
         : [
             gaps.length ? `${gaps.length} department/club pairs have never been audited.` : null,

@@ -342,3 +342,68 @@ test('staleness still measures from the real submission date', () => {
   assert.equal(out.grid[0].cells[0].lastDate, '2026-09-03')
   assert.equal(out.grid[0].cells[0].daysStale, 7)
 })
+
+// --- the early history is a backfill, not a record -------------------------
+//
+// Everything before June 2026 came from a one-off PDF import covering one to
+// four clubs a month; November 2025 and January 2026 have no rows at all. A gap
+// there means "not backfilled", not "not audited".
+
+const sourced = (dept, slug, date, score, source) => ({
+  ...r(dept, slug, date, score), source,
+})
+
+test('a trend reaching into the backfill era says so', () => {
+  const out = buildAudits([
+    sourced('PT Audit', 'salem', '2025-12-30', 85, 'pdf_backfill'),
+    sourced('PT Audit', 'salem', '2026-06-26', 90, 'email'),
+  ], opts({ clubs: ['salem'], end: '2026-08-28', today: '2026-08-28' }))
+
+  assert.equal(out.firstLiveMonth, '2026-06-01')
+  assert.match(out.notes.history, /2026-06/)
+  assert.match(out.notes.history, /not backfilled, not that it was not done/)
+})
+
+test('the warning tracks the CHART, not the selected window', () => {
+  // The trend always spans a trailing year, so it keeps showing backfill months
+  // regardless of the date filter — and the caveat has to stay up while those
+  // months are on screen, not disappear because the picker moved.
+  const out = buildAudits([
+    sourced('PT Audit', 'salem', '2026-06-26', 90, 'email'),
+    sourced('PT Audit', 'salem', '2026-07-26', 92, 'email'),
+  ], opts({ clubs: ['salem'], start: '2026-07-01', end: '2026-07-31', today: '2026-07-31' }))
+
+  assert.equal(out.firstLiveMonth, '2026-06-01')
+  assert.ok(out.trendMonths[0] < out.firstLiveMonth)
+  assert.match(out.notes.history, /not backfilled/)
+})
+
+test('once the whole trend sits in the live era the warning stops', () => {
+  // A year after the email feed started, nothing on the chart is backfill and
+  // the caveat retires itself rather than nagging for ever.
+  const out = buildAudits([
+    sourced('PT Audit', 'salem', '2026-06-26', 90, 'email'),
+    sourced('PT Audit', 'salem', '2027-07-26', 92, 'email'),
+  ], opts({ clubs: ['salem'], start: '2027-07-01', end: '2027-07-31', today: '2027-07-31' }))
+
+  assert.equal(out.firstLiveMonth, '2026-06-01')
+  assert.ok(out.trendMonths[0] >= out.firstLiveMonth)
+  assert.equal(out.notes.history, null)
+})
+
+test('with no emailed audits at all there is no boundary to claim', () => {
+  const out = buildAudits([
+    sourced('PT Audit', 'salem', '2026-02-25', 80, 'pdf_backfill'),
+  ], opts({ clubs: ['salem'] }))
+  assert.equal(out.firstLiveMonth, null)
+  assert.equal(out.notes.history, null)
+})
+
+test('the boundary is the earliest emailed audit, not the earliest audit', () => {
+  const out = buildAudits([
+    sourced('PT Audit', 'salem', '2025-10-31', 70, 'pdf_backfill'),
+    sourced('PT Audit', 'salem', '2026-07-26', 90, 'email'),
+    sourced('PT Audit', 'eugene', '2026-06-26', 88, 'email'),
+  ], opts({ clubs: ['salem', 'eugene'], end: '2026-08-28', today: '2026-08-28' }))
+  assert.equal(out.firstLiveMonth, '2026-06-01')
+})
