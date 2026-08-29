@@ -3,38 +3,45 @@ import { createPortal } from 'react-dom'
 import { api } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
-import { fmtInt, fmtMoney, fmtMonth, GOOD_COLOR, BAD_COLOR } from './chartPalette'
-import { MultiTrend, RankedBars } from './charts'
+import { fmtInt, fmtMoney, fmtMonth, GOOD_COLOR, BAD_COLOR, colorFor } from './chartPalette'
+import { MultiTrend, RankedBars, zebraColumn } from './charts'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
 import { LOCATION_NAMES } from '../../config/locations'
 
 // ---------------------------------------------------------------------------
-// Revenue — Analytics (admin only)
+// Revenue Analysis — Analytics (admin only)
 //
-// Every profit centre against the same span a month ago and a year ago.
+// Every profit center against the same span a month ago and a year ago.
 //
-// BOTH COMPARISONS ARE THE SAME NUMBER OF DAYS as the window on screen. The
-// default is month-to-date, so 27 days of August against all 31 of July would
-// report a 13% fall that is nothing but a shorter window.
+// TWO TABLES, BOTH ALWAYS PRESENT. Priority carries the centers that get
+// managed; All carries every one of them. Hiding the long tail behind a toggle
+// meant a $289,021 guest-fee line was one click further away than a $4,138
+// snack line, which is backwards.
 //
-// THE EIGHT MANAGED CATEGORIES LEAD; EVERY OTHER CENTRE STILL GETS ITS OWN ROW.
-// A revenue report that hides $289,021 of guest fees behind "Other" is not a
-// revenue report.
-//
-// EACH CATEGORY OPENS INTO THE RAW CENTRES BEHIND IT, because Dues folds ten
-// spellings and Training folds a rename, and a reader has no way to check that
-// mapping — or to spot a new code landing in the wrong place — unless the
-// report shows its working.
+// ANY ROW OPENS INTO ITS LAST SIX MONTHS. A single period against two
+// comparisons says whether something moved; it does not say whether the move is
+// a trend or a blip, and that is usually the actual question. Small rows get
+// the same treatment as large ones — the reason to open a small row is to ask
+// whether it is small and shrinking or small and growing.
 // ---------------------------------------------------------------------------
 
 const CLUB_NAMES = Object.fromEntries(LOCATION_NAMES.map(n => [n.toLowerCase(), n]))
 const CLUB_LABEL = s => (s ? (CLUB_NAMES[s] || s.charAt(0).toUpperCase() + s.slice(1)) : s)
 
+const COLUMNS = [
+  { label: 'Profit Center', align: 'left' },
+  { label: 'This Period', align: 'right' },
+  { label: 'Last Month', align: 'right' },
+  { label: 'MoM', align: 'right' },
+  { label: 'Last Year', align: 'right' },
+  { label: 'YoY', align: 'right' },
+]
+
 /** A change, coloured, with its sign always printed. */
 function Change({ pct, delta }) {
   if (pct === null || pct === undefined) {
-    // No base to compare against. The absolute delta is still real, so it is
-    // shown rather than leaving the cell blank.
+    // No base to compare against. The absolute movement is still real, so it is
+    // shown rather than leaving the cell empty.
     return (
       <span className="tabular-nums text-text-muted">
         {delta === null || delta === undefined || delta === 0 ? '—' : fmtMoney(delta)}
@@ -49,71 +56,167 @@ function Change({ pct, delta }) {
   )
 }
 
-function CategoryRows({ rows, openKey, setOpenKey }) {
-  return rows.map(r => {
-    const open = openKey === r.category
-    const canOpen = r.centers && r.centers.length > 1
-    return (
-      <Fragment key={r.category}>
-        <tr
-          className={`border-b border-border/60 ${canOpen ? 'cursor-pointer hover:bg-bg/50' : ''}`}
-          onClick={() => canOpen && setOpenKey(open ? null : r.category)}
-        >
-          <td className="py-1.5 text-text-primary">
-            <span className="inline-flex items-center gap-1.5">
-              {/* Only categories made of more than one centre can be opened —
-                  an arrow on a single-centre row promises detail that is just
-                  the row again. */}
-              <span className="text-text-muted text-[10px] w-2" aria-hidden="true">
-                {canOpen ? (open ? '▼' : '▶') : ''}
-              </span>
-              {r.category}
-              {r.negative && (
-                <span className="text-[10px] text-text-muted border border-border rounded px-1">
-                  reduces revenue
-                </span>
-              )}
-            </span>
-          </td>
-          <td className="py-1.5 text-right tabular-nums text-text-primary font-semibold">{fmtMoney(r.revenue)}</td>
-          <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtMoney(r.lastMonthRevenue)}</td>
-          <td className="py-1.5 text-right"><Change pct={r.momChange} delta={r.momDelta} /></td>
-          <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtMoney(r.lastYearRevenue)}</td>
-          <td className="py-1.5 text-right"><Change pct={r.yoyChange} delta={r.yoyDelta} /></td>
-        </tr>
+/**
+ * Six months of one category, drawn small.
+ *
+ * Zero-based, because these are revenue amounts and a floating baseline would
+ * turn a 3% wobble into a cliff on a chart this size — exactly the misreading a
+ * sparkline invites when it is glanced at rather than studied.
+ */
+function Sparkline({ points, width = 420, height = 78 }) {
+  const real = points.filter(p => Number.isFinite(p.value))
+  if (real.length < 2) {
+    return <p className="text-[11px] text-text-muted">Not enough history to draw a trend.</p>
+  }
 
-        {open && (
-          <tr className="border-b border-border/60">
-            <td colSpan={6} className="p-0">
-              <div className="bg-bg/40 px-6 py-2">
-                <p className="text-[11px] text-text-muted mb-1">
-                  Profit centres folded into {r.category}. A centre showing nothing this period
-                  and something last year has been renamed, not lost.
-                </p>
-                <table className="w-full text-sm">
-                  <tbody>
-                    {r.centers.map(c => (
-                      <tr key={c.profitCenter} className="border-b border-border/30 last:border-0">
-                        <td className="py-1 text-text-muted">{c.profitCenter}</td>
-                        <td className="py-1 text-right tabular-nums text-text-primary">{fmtMoney(c.revenue)}</td>
-                        <td className="py-1 text-right tabular-nums text-text-muted">{fmtMoney(c.lastMonthRevenue)}</td>
-                        <td className="py-1 text-right tabular-nums text-text-muted">{fmtMoney(c.lastYearRevenue)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </td>
+  const padL = 4
+  const padB = 16
+  const plotW = width - padL * 2
+  const plotH = height - padB
+  const max = Math.max(...real.map(p => p.value)) * 1.12 || 1
+  const n = points.length
+
+  const x = i => padL + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW)
+  const y = v => plotH - (Math.max(0, v) / max) * plotH
+  const colour = colorFor('revenue', 0)
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} className="block" role="img"
+        aria-label="Revenue over the last six months">
+        <line x1={padL} x2={width - padL} y1={plotH} y2={plotH} stroke="currentColor"
+          className="text-border" strokeWidth="1" />
+        <polyline
+          points={points.map((p, i) => `${x(i)},${y(p.value || 0)}`).join(' ')}
+          fill="none" stroke={colour} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"
+        />
+        {points.map((p, i) => (
+          <circle key={p.month} cx={x(i)} cy={y(p.value || 0)} r="2.5" fill={colour}>
+            <title>{`${fmtMonth(p.month)}: ${fmtMoney(p.value || 0)}`}</title>
+          </circle>
+        ))}
+        {points.map((p, i) => (
+          <text key={`l-${p.month}`} x={x(i)} y={height - 4} textAnchor="middle"
+            className="fill-text-muted" style={{ fontSize: 9 }}>
+            {fmtMonth(p.month)}
+          </text>
+        ))}
+      </svg>
+    </div>
+  )
+}
+
+function CategoryTable({ title, subtitle, rows, sparklines, openKey, setOpenKey }) {
+  return (
+    <div className="bg-surface rounded-xl border border-border p-3 overflow-x-auto">
+      <div className="flex items-baseline justify-between gap-3 mb-2">
+        <p className="text-xs font-bold text-text-primary">{title}</p>
+        <p className="text-[11px] text-text-muted">{subtitle}</p>
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-[11px] uppercase tracking-wide text-text-muted border-b border-border">
+            {COLUMNS.map((c, i) => (
+              <th
+                key={c.label}
+                className={`py-1.5 px-2 font-semibold ${c.align === 'right' ? 'text-right' : 'text-left'}`}
+                style={zebraColumn(i)}
+              >
+                {c.label}
+              </th>
+            ))}
           </tr>
-        )}
-      </Fragment>
-    )
-  })
+        </thead>
+        <tbody>
+          {rows.map(r => {
+            const open = openKey === r.category
+            const points = sparklines[r.category] || []
+            return (
+              <Fragment key={r.category}>
+                <tr
+                  className="border-b border-border/60 cursor-pointer hover:bg-black/[0.03]"
+                  onClick={() => setOpenKey(open ? null : r.category)}
+                >
+                  <td className="py-1.5 px-2 text-text-primary" style={zebraColumn(0)}>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="text-text-muted text-[10px] w-2" aria-hidden="true">
+                        {open ? '▼' : '▶'}
+                      </span>
+                      {r.category}
+                      {r.negative && (
+                        <span className="text-[10px] text-text-muted border border-border rounded px-1">
+                          reduces revenue
+                        </span>
+                      )}
+                    </span>
+                  </td>
+                  <td className="py-1.5 px-2 text-right tabular-nums text-text-primary font-semibold" style={zebraColumn(1)}>
+                    {fmtMoney(r.revenue)}
+                  </td>
+                  <td className="py-1.5 px-2 text-right tabular-nums text-text-muted" style={zebraColumn(2)}>
+                    {fmtMoney(r.lastMonthRevenue)}
+                  </td>
+                  <td className="py-1.5 px-2 text-right" style={zebraColumn(3)}>
+                    <Change pct={r.momChange} delta={r.momDelta} />
+                  </td>
+                  <td className="py-1.5 px-2 text-right tabular-nums text-text-muted" style={zebraColumn(4)}>
+                    {fmtMoney(r.lastYearRevenue)}
+                  </td>
+                  <td className="py-1.5 px-2 text-right" style={zebraColumn(5)}>
+                    <Change pct={r.yoyChange} delta={r.yoyDelta} />
+                  </td>
+                </tr>
+
+                {open && (
+                  <tr className="border-b border-border/60">
+                    <td colSpan={6} className="p-0">
+                      <div className="px-6 py-3" style={{ background: 'rgba(128,128,128,0.05)' }}>
+                        <p className="text-[11px] font-semibold text-text-primary mb-1">
+                          {r.category} — last six months
+                        </p>
+                        <Sparkline points={points} />
+
+                        {/* The centers folded into this category. A reader has
+                            no way to audit a mapping, or to notice a new code
+                            landing in the wrong place, unless it is shown. */}
+                        {r.centers && r.centers.length > 1 && (
+                          <div className="mt-2">
+                            <p className="text-[11px] text-text-muted mb-1">
+                              Profit centers folded into {r.category}. One showing nothing this period
+                              and something last year has been renamed, not lost.
+                            </p>
+                            <table className="w-full text-sm">
+                              <tbody>
+                                {r.centers.map(c => (
+                                  <tr key={c.profitCenter} className="border-b border-border/30 last:border-0">
+                                    <td className="py-1 text-text-muted">{c.profitCenter}</td>
+                                    <td className="py-1 text-right tabular-nums text-text-primary">{fmtMoney(c.revenue)}</td>
+                                    <td className="py-1 text-right tabular-nums text-text-muted">{fmtMoney(c.lastMonthRevenue)}</td>
+                                    <td className="py-1 text-right tabular-nums text-text-muted">{fmtMoney(c.lastYearRevenue)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            )
+          })}
+        </tbody>
+      </table>
+      {rows.length === 0 && (
+        <p className="text-sm text-text-muted text-center py-8">Nothing in this selection.</p>
+      )}
+    </div>
+  )
 }
 
 export default function Revenue({ startDate, endDate, locationSlug }) {
   const [openKey, setOpenKey] = useState(null)
-  const [showAll, setShowAll] = useState(false)
 
   const query = useMemo(() => {
     const p = new URLSearchParams({ clubs: locationSlug || 'all' })
@@ -129,11 +232,12 @@ export default function Revenue({ startDate, endDate, locationSlug }) {
 
   const s = data?.summary || {}
   const headline = data?.headline || []
-  const others = data?.others || []
+  const all = data?.all || []
+  const sparklines = data?.sparklines || {}
 
   return (
     <div className="space-y-3">
-      <Toolbar showAll={showAll} setShowAll={setShowAll} />
+      <Toolbar />
 
       {loading && <DesktopLoading retrying={retrying} />}
 
@@ -164,7 +268,7 @@ export default function Revenue({ startDate, endDate, locationSlug }) {
                 },
                 { label: 'Refunds', value: fmtMoney(s.refunds), muted: true },
                 { label: 'Net', value: fmtMoney(s.net), muted: true },
-                { label: 'Profit Centres', value: fmtInt(s.categories), muted: true },
+                { label: 'Profit Centers', value: fmtInt(s.categories), muted: true },
               ].map(t => (
                 <div key={t.label} className="px-5 py-4 text-center min-w-[130px] flex-1">
                   <p
@@ -192,52 +296,30 @@ export default function Revenue({ startDate, endDate, locationSlug }) {
           </div>
 
           <MultiTrend
-            title="Revenue by Category"
+            title="Revenue by Priority Profit Center"
             months={data.trendMonths || []}
             series={data.trendSeries || []}
             format="int"
-            subtitle={`${(data.trendSeries || []).length} categories`}
+            subtitle={`${(data.trendSeries || []).length} centers`}
           />
 
-          <div className="bg-surface rounded-xl border border-border p-3 overflow-x-auto">
-            <div className="flex items-baseline justify-between gap-3 mb-2">
-              <p className="text-xs font-bold text-text-primary">By Profit Centre</p>
-              <p className="text-[11px] text-text-muted">click a category to see the centres behind it</p>
-            </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-[11px] uppercase tracking-wide text-text-muted border-b border-border">
-                  <th className="text-left font-semibold py-1.5">Category</th>
-                  <th className="text-right font-semibold py-1.5">This Period</th>
-                  <th className="text-right font-semibold py-1.5">Last Month</th>
-                  <th className="text-right font-semibold py-1.5">MoM</th>
-                  <th className="text-right font-semibold py-1.5">Last Year</th>
-                  <th className="text-right font-semibold py-1.5">YoY</th>
-                </tr>
-              </thead>
-              <tbody>
-                <CategoryRows rows={headline} openKey={openKey} setOpenKey={setOpenKey} />
+          <CategoryTable
+            title="Priority Profit Centers"
+            subtitle="click a row for its last six months"
+            rows={headline}
+            sparklines={sparklines}
+            openKey={openKey}
+            setOpenKey={setOpenKey}
+          />
 
-                {others.length > 0 && (
-                  <tr className="border-b border-border">
-                    <td colSpan={6} className="py-2">
-                      <button
-                        type="button"
-                        onClick={() => setShowAll(v => !v)}
-                        className="text-[11px] font-semibold text-text-muted hover:text-wcs-red transition-colors"
-                      >
-                        {showAll
-                          ? 'Hide the other profit centres'
-                          : `Show the other ${others.length} profit centres`}
-                      </button>
-                    </td>
-                  </tr>
-                )}
-
-                {showAll && <CategoryRows rows={others} openKey={openKey} setOpenKey={setOpenKey} />}
-              </tbody>
-            </table>
-          </div>
+          <CategoryTable
+            title="All Profit Centers"
+            subtitle={`every center, largest first — ${all.length} in total`}
+            rows={all}
+            sparklines={sparklines}
+            openKey={openKey}
+            setOpenKey={setOpenKey}
+          />
 
           <RankedBars
             title="Revenue by Club"
@@ -253,20 +335,14 @@ export default function Revenue({ startDate, endDate, locationSlug }) {
   )
 }
 
-function Toolbar({ showAll, setShowAll }) {
+function Toolbar() {
   const [slot, setSlot] = useState(null)
   useEffect(() => { setSlot(document.getElementById(TOOLBAR_SLOT_ID)) }, [])
   if (!slot) return null
   return createPortal(
-    <div className="flex items-center gap-3 flex-wrap">
-      <button
-        type="button"
-        onClick={() => setShowAll(v => !v)}
-        className="text-xs font-semibold text-text-muted hover:text-wcs-red transition-colors"
-      >
-        {showAll ? 'Headline categories only' : 'Show every profit centre'}
-      </button>
-    </div>,
+    <span className="text-[11px] text-text-muted">
+      Both tables open a row for its six-month trend
+    </span>,
     slot
   )
 }

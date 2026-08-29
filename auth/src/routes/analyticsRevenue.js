@@ -14,7 +14,7 @@ const { shiftedWindow, spanDays } = require('../lib/comparisonWindow')
 // ---------------------------------------------------------------------------
 // Revenue — Analytics (admin only)
 //
-// Every profit centre, against the same span a month ago and a year ago.
+// Every profit center, against the same span a month ago and a year ago.
 // abc_revenue_transactions runs from January 2024 — 32 months, $17.9M, every
 // club and every day present — so this is the one source in the rebuild that
 // needed no caveat about its own completeness.
@@ -91,13 +91,34 @@ router.get('/', async (req, res) => {
     const built = buildRevenue(payload.current, payload.prevMonth, payload.prevYear)
 
     // One series per headline category over the trend window. Non-headline
-    // centres are left off the chart — 60-odd lines is not a chart — but they
+    // centers are left off the chart — 60-odd lines is not a chart — but they
     // are all present in the table below it.
     const months = [...new Set((payload.monthly || []).map(r => String(r.month).slice(0, 10)))].sort()
     const headlineNames = built.headline.map(h => h.category)
     const idx = new Map(
       (payload.monthly || []).map(r => [`${r.category}||${String(r.month).slice(0, 10)}`, r])
     )
+    // Six months per category, for the row drill-down. Every category gets one,
+    // not just the headline eight: the reason to open a small row is usually to
+    // ask whether it is small and shrinking or small and growing.
+    const RECENT = 6
+    const recentMonths = months.slice(-RECENT)
+    const sparkByCategory = {}
+    for (const r of payload.monthly || []) {
+      const m = String(r.month).slice(0, 10)
+      if (!recentMonths.includes(m)) continue
+      if (!sparkByCategory[r.category]) sparkByCategory[r.category] = {}
+      sparkByCategory[r.category][m] = Math.round(Number(r.revenue) * 100) / 100
+    }
+    const sparklines = Object.fromEntries(
+      Object.entries(sparkByCategory).map(([cat, byMonth]) => [
+        cat,
+        // A month with no revenue is a real zero here — the category existed and
+        // took nothing — so it is emitted as 0 rather than left as a gap.
+        recentMonths.map(m => ({ month: m, value: byMonth[m] ?? 0 })),
+      ])
+    )
+
     const trendSeries = headlineNames.map(name => ({
       key: name,
       label: name,
@@ -119,6 +140,8 @@ router.get('/', async (req, res) => {
       ...built,
       trendMonths: months,
       trendSeries,
+      recentMonths,
+      sparklines,
       byClub: [...clubTotals.values()]
         .map(c => ({ ...c, revenue: Math.round(c.revenue * 100) / 100 }))
         .sort((a, b) => b.revenue - a.revenue),

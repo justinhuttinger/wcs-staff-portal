@@ -173,3 +173,44 @@ test('a single day compares against a single day', () => {
   assert.deepEqual(shiftedWindow('2026-08-27', '2026-08-27', { months: 1 }),
     { start: '2026-07-27', end: '2026-07-27' })
 })
+
+// --- Dues is DUES alone (migration 171) --------------------------------------
+
+test('the All list is largest first, not priority-first', () => {
+  // This table answers "what is big". A $4,138 snack line above a $289,021
+  // guest-fee line, because snacks happen to be a priority center, answers a
+  // different question badly.
+  const out = buildRevenue([
+    row('Snacks', 'WCS SNACKS', 4138, 6),
+    row('Guest Fees', 'GUEST FEES', 289021),
+    row('Dues', 'DUES', 515345, 1),
+  ], [], [])
+
+  assert.deepEqual(out.all.map(r => r.category), ['Dues', 'Guest Fees', 'Snacks'])
+  // The priority table keeps its own curated order.
+  assert.deepEqual(out.headline.map(r => r.category), ['Dues', 'Snacks'])
+})
+
+test('every center appears in All, priority ones included', () => {
+  const out = buildRevenue([
+    row('Dues', 'DUES', 515345, 1),
+    row('A2 Exec Dues', 'A2EXECDUES', 12879),
+  ], [], [])
+  assert.equal(out.all.length, 2)
+  assert.equal(out.headline.length, 1)
+  assert.equal(out.others.length, 1)
+})
+
+test('a separated dues product keeps its own comparison', () => {
+  // Rolled into Dues it was $12,879 hidden inside $528,224, where nobody could
+  // see it move.
+  const out = buildRevenue(
+    [row('A2 Exec Dues', 'A2EXECDUES', 12879)],
+    [row('A2 Exec Dues', 'A2EXECDUES', 11000)],
+    [row('A2 Exec Dues', 'A2EXECDUES', 9000)],
+  )
+  const a2 = out.others[0]
+  assert.equal(a2.category, 'A2 Exec Dues')
+  assert.equal(a2.momChange, 17.1)
+  assert.equal(a2.yoyChange, 43.1)
+})
