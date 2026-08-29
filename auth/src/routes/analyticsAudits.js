@@ -75,7 +75,7 @@ router.get('/', async (req, res) => {
         // The WHOLE table, deliberately — see the header. It is 173 rows.
         fetchAll(supabaseAdmin
           .from('operandio_qa_reports')
-          .select('id, department, location_slug, submitted_date, score_pct, job_name, report_url')
+          .select('id, department, location_slug, submitted_date, score_pct, job_name, report_url, source')
           .order('submitted_date', { ascending: false })),
         loadAuditToggles(),
       ])

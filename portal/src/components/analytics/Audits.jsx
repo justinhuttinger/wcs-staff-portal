@@ -138,6 +138,15 @@ export default function Audits({ startDate, endDate, locationSlug }) {
 
       {!loading && !error && data && (
         <>
+          {/* The history warning comes first: an empty month in the backfill era
+              is not a club that skipped its audit, and reading it that way
+              would accuse people of missing work they did. */}
+          {data.notes?.history && (
+            <div className="bg-surface rounded-xl border border-amber-500/40 p-3">
+              <p className="text-[11px] text-amber-600">{data.notes.history}</p>
+            </div>
+          )}
+
           {data.notes?.coverage && (
             <div className="bg-surface rounded-xl border border-amber-500/40 p-3">
               <p className="text-[11px] text-amber-600">{data.notes.coverage}</p>
