@@ -251,8 +251,13 @@ async function refreshCurrentHourCheckins(clubs) {
 /**
  * Backfill an inclusive range of full hours for one club. The end hour is
  * computed as the floor of `endDate`. Use the script in scripts/ to drive this.
+ *
+ * `progress`, when given, is mutated with running counts of hours written and
+ * hours that failed. Without it a run in which EVERY hour failed still finished
+ * with an empty error list and looked like a success — which is exactly how a
+ * mistyped club number produced a 9-minute no-op that reported no errors.
  */
-async function backfillClub(clubNumber, startDate, endDate, sleepMs = 800) {
+async function backfillClub(clubNumber, startDate, endDate, sleepMs = 800, progress = null) {
   const start = hourFloor(startDate);
   const end = hourFloor(endDate);
 
@@ -281,12 +286,22 @@ async function backfillClub(clubNumber, startDate, endDate, sleepMs = 800) {
           { onConflict: 'club_number,hour_start' },
         );
 
+      if (progress) progress.written = (progress.written || 0) + 1;
+
       console.log(
         `[Backfill] ${clubNumber} ${hourStart.toISOString().slice(0, 13)}Z: ` +
           `${totalCheckins} check-ins, ${uniqueMembers} members`,
       );
     } catch (err) {
       console.error(`[Backfill] ${clubNumber} ${hourStart.toISOString()} error: ${err.message}`);
+      if (progress) {
+        progress.failedHours = (progress.failedHours || 0) + 1;
+        // One sample per club is enough to diagnose; keeping thousands would
+        // turn the status payload into a log file.
+        if (!progress.errors.some((e) => e.club === clubNumber)) {
+          progress.errors.push({ club: clubNumber, error: err.message, sample: hourStart.toISOString() });
+        }
+      }
     }
 
     if (sleepMs > 0) await new Promise((r) => setTimeout(r, sleepMs));
