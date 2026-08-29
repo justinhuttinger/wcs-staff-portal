@@ -304,6 +304,25 @@ export function MultiTrend({ title, months, series, format = 'pct', subtitle, he
   )
 }
 
+
+/**
+ * Zebra stripe for a table COLUMN.
+ *
+ * Returns a style, not a class, and uses a neutral grey alpha rather than a
+ * theme token. `bg-bg/40` looked right and rendered nothing: in one theme
+ * --color-bg is #ffffff, the same as --color-surface, so the stripe was white
+ * on white, and even at #f4f5f7 a 40% wash is imperceptible.
+ *
+ * A mid-grey at low alpha darkens a light surface and lightens a dark one, so
+ * one value works in every theme without knowing which is active.
+ *
+ * Striping the COLUMN, not the row: reading these tables means running an eye
+ * down a column, and row stripes tie neighbouring columns together instead.
+ */
+export function zebraColumn(index) {
+  return index % 2 === 1 ? { background: 'rgba(128,128,128,0.07)' } : undefined
+}
+
 /** Vertical columns for a distribution read left to right (hour, weekday). */
 export function ShareColumns({ title, rows, labelFor, valueKey = 'share', format = 'pct', subtitle, seriesName = 'series' }) {
   const [wrapRef, W] = useChartWidth()

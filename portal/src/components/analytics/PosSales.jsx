@@ -4,7 +4,7 @@ import { api } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { fmtInt, fmtMoney, fmtMonth } from './chartPalette'
-import { MultiTrend, RankedBars } from './charts'
+import { MultiTrend, RankedBars, zebraColumn } from './charts'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
 import { LOCATION_NAMES } from '../../config/locations'
 
@@ -200,9 +200,11 @@ const ITEM_COLUMNS = [
 
 // Zebra by COLUMN, not by row. Reading this table means running an eye down a
 // column — cost against price, or margin against units — and row stripes work
-// against that by tying neighbouring columns together. Kept faint enough to
-// guide the eye without becoming a grid.
-const colTint = (i) => (i % 2 === 1 ? 'bg-bg/40' : '')
+// against that by tying neighbouring columns together.
+//
+// The first attempt used `bg-bg/40`, which rendered nothing: in one theme
+// --color-bg is #ffffff, identical to --color-surface. zebraColumn uses a
+// neutral grey alpha that shows on any surface.
 
 function ItemTable({ rows, sort, onSort }) {
   return (
@@ -221,7 +223,8 @@ function ItemTable({ rows, sort, onSort }) {
               return (
                 <th
                   key={c.key}
-                  className={`py-1.5 px-2 font-semibold ${c.align === 'right' ? 'text-right' : 'text-left'} ${colTint(i)}`}
+                  className={`py-1.5 px-2 font-semibold ${c.align === 'right' ? 'text-right' : 'text-left'}`}
+                  style={zebraColumn(i)}
                 >
                   <button
                     type="button"
@@ -247,21 +250,21 @@ function ItemTable({ rows, sort, onSort }) {
         <tbody>
           {rows.map((r, ri) => (
             <tr key={`${r.name}-${r.profitCenter}-${ri}`} className="border-b border-border/60 last:border-0">
-              <td className={`py-1.5 px-2 text-text-primary ${colTint(0)}`}>{r.name}</td>
-              <td className={`py-1.5 px-2 text-text-muted ${colTint(1)}`}>
+              <td className="py-1.5 px-2 text-text-primary" style={zebraColumn(0)}>{r.name}</td>
+              <td className="py-1.5 px-2 text-text-muted" style={zebraColumn(1)}>
                 {String(r.profitCenter || '').replace(/^WCS /, '')}
               </td>
-              <td className={`py-1.5 px-2 text-right tabular-nums text-text-muted ${colTint(2)}`}>
+              <td className="py-1.5 px-2 text-right tabular-nums text-text-muted" style={zebraColumn(2)}>
                 {r.unitCost === null ? '—' : fmtMoney(r.unitCost)}
               </td>
-              <td className={`py-1.5 px-2 text-right tabular-nums text-text-muted ${colTint(3)}`}>
+              <td className="py-1.5 px-2 text-right tabular-nums text-text-muted" style={zebraColumn(3)}>
                 {r.unitPrice === null ? '—' : fmtMoney(r.unitPrice)}
               </td>
-              <td className={`py-1.5 px-2 text-right tabular-nums text-text-primary ${colTint(4)}`}>
+              <td className="py-1.5 px-2 text-right tabular-nums text-text-primary" style={zebraColumn(4)}>
                 {r.marginPct === null ? '—' : `${r.marginPct}%`}
               </td>
-              <td className={`py-1.5 px-2 text-right tabular-nums text-text-muted ${colTint(5)}`}>{fmtInt(r.units)}</td>
-              <td className={`py-1.5 px-2 text-right tabular-nums text-text-primary font-semibold ${colTint(6)}`}>
+              <td className="py-1.5 px-2 text-right tabular-nums text-text-muted" style={zebraColumn(5)}>{fmtInt(r.units)}</td>
+              <td className="py-1.5 px-2 text-right tabular-nums text-text-primary font-semibold" style={zebraColumn(6)}>
                 {fmtMoney(r.revenue)}
               </td>
             </tr>
