@@ -176,19 +176,21 @@ test('a single day compares against a single day', () => {
 
 // --- Dues is DUES alone (migration 171) --------------------------------------
 
-test('the All list is largest first, not priority-first', () => {
-  // This table answers "what is big". A $4,138 snack line above a $289,021
-  // guest-fee line, because snacks happen to be a priority center, answers a
-  // different question badly.
+test('the All list is alphabetical, and stays that way as the data moves', () => {
+  // A lookup table, not a ranking. Someone reading it has a center in mind and
+  // wants to find it; sorting by size makes them hunt for a known name in a
+  // list whose order changes with the date filter.
   const out = buildRevenue([
     row('Snacks', 'WCS SNACKS', 4138, 6),
     row('Guest Fees', 'GUEST FEES', 289021),
     row('Dues', 'DUES', 515345, 1),
+    row('Annual Fee', 'ANNUALFEE', 22090, 2),
   ], [], [])
 
-  assert.deepEqual(out.all.map(r => r.category), ['Dues', 'Guest Fees', 'Snacks'])
-  // The priority table keeps its own curated order.
-  assert.deepEqual(out.headline.map(r => r.category), ['Dues', 'Snacks'])
+  assert.deepEqual(out.all.map(r => r.category),
+    ['Annual Fee', 'Dues', 'Guest Fees', 'Snacks'])
+  // The priority table keeps its own curated order regardless.
+  assert.deepEqual(out.headline.map(r => r.category), ['Dues', 'Annual Fee', 'Snacks'])
 })
 
 test('every center appears in All, priority ones included', () => {
