@@ -191,20 +191,20 @@ const ANALYTICS_REPORTS = [
   },
   {
     key: 'pos-sales',
-    label: 'POS Sales',
-    desc: 'Retail Goods and Margin',
+    label: 'Retail Analysis',
+    desc: 'Goods, Margin and Items',
     Component: PosSales,
   },
   {
     key: 'till',
-    label: 'Till',
+    label: 'Till Analysis',
     desc: 'Cash Reconciliation',
     Component: Till,
   },
   {
     key: 'revenue',
-    label: 'Revenue',
-    desc: 'Profit Centres vs Last Month and Last Year',
+    label: 'Revenue Analysis',
+    desc: 'Profit Centers vs Last Month and Last Year',
     Component: Revenue,
   },
   {

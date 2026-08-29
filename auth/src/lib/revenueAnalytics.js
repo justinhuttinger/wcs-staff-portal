@@ -6,22 +6,26 @@
 // window, and month-to-date is the default view. The route cuts all three to
 // the same number of days and this module never second-guesses it.
 //
-// EVERY PROFIT CENTRE APPEARS. The eight that get managed lead; the rest follow
+// EVERY PROFIT CENTER APPEARS. The eight that get managed lead; the rest follow
 // individually rather than collapsing into "Other", because a report that hides
 // $289,021 of guest fees behind one row is not a revenue report.
 //
-// EACH CATEGORY OPENS INTO THE RAW CENTRES BEHIND IT. Dues folds ten different
-// spellings and Training folds a rename, and a reader has no way to check that
-// mapping — or to notice when a new code starts landing in the wrong place —
+// A CENTER FOLDS ITS OWN SPELLINGS, NEVER TWO DIFFERENT PRODUCTS. Training
+// folds a rename; Dues is DUES alone, with A2 Exec, First Month and Paid In Full
+// dues each keeping their own row (migration 171). Folding two spellings of one
+// thing is repair; folding two things is data loss.
+//
+// EACH ROW OPENS INTO THE RAW CENTERS BEHIND IT, because a reader has no way to
+// check that mapping — or to notice a new code landing in the wrong place —
 // unless the report shows its working.
 //
-// REFUNDS AND CHARGEBACKS ARE NEGATIVE CENTRES. They are not attributable to a
+// REFUNDS AND CHARGEBACKS ARE NEGATIVE CENTERS. They are not attributable to a
 // category, so they are neither netted into one nor hidden. The totals say
 // plainly whether they are included.
 
-// Centres that reduce revenue rather than earning it. Surfaced separately so a
+// Centers that reduce revenue rather than earning it. Surfaced separately so a
 // total can be read either way round.
-const NEGATIVE_CENTRES = new Set(['Refunds', 'Chargeback', 'Chargeback Repost', 'Balance Refunds', 'Prior System Chargeback', 'Return'])
+const NEGATIVE_CENTERS = new Set(['Refunds', 'Chargeback', 'Chargeback Repost', 'Balance Refunds', 'Prior System Chargeback', 'Return'])
 
 function num(v) {
   if (v === null || v === undefined) return 0
@@ -93,7 +97,7 @@ function buildRevenue(current, lastMonth, lastYear, opts = {}) {
     const lastMonthRevenue = r2(m ? m.revenue : 0)
     const lastYearRevenue = r2(y ? y.revenue : 0)
 
-    // The centres behind the category, so the mapping can be audited.
+    // The centers behind the category, so the mapping can be audited.
     const centerNames = new Set([
       ...(a ? a.centers.keys() : []),
       ...(m ? m.centers.keys() : []),
@@ -117,7 +121,7 @@ function buildRevenue(current, lastMonth, lastYear, opts = {}) {
       yoyChange: pctChange(revenue, lastYearRevenue),
       momDelta: r2(revenue - lastMonthRevenue),
       yoyDelta: r2(revenue - lastYearRevenue),
-      negative: NEGATIVE_CENTRES.has(cat),
+      negative: NEGATIVE_CENTERS.has(cat),
       centers,
     }
   })
@@ -132,7 +136,7 @@ function buildRevenue(current, lastMonth, lastYear, opts = {}) {
 
   const sum = (list, key) => r2(list.reduce((acc, r) => acc + r[key], 0))
 
-  // Gross excludes the negative centres; net includes them. Both are shown
+  // Gross excludes the negative centers; net includes them. Both are shown
   // because "revenue" means different things to different readers and a single
   // number would be quietly answering only one of them.
   const earning = rows.filter(r => !r.negative)
@@ -155,20 +159,24 @@ function buildRevenue(current, lastMonth, lastYear, opts = {}) {
     },
     headline,
     others,
-    // Everything, in one list, for the table view.
-    all: [...headline, ...others],
+    // Every center, largest first. NOT headline-order-then-the-rest: this table
+    // exists to answer "what is big", and a $4,138 snack line sitting above a
+    // $289,021 guest-fee line because it happens to be a priority center would
+    // answer a different question badly.
+    all: [...rows].sort((a, b) => b.revenue - a.revenue),
     notes: {
       totals:
         'Gross excludes refunds and chargebacks; net includes them. Both are shown ' +
         'because a single "revenue" figure would quietly answer only one of the two ' +
         'questions people ask.',
       mapping:
-        'Profit centres have been renamed and respelled over time, so each category ' +
-        'folds its variants before anything is compared — Training includes the ' +
-        'Personal Training label Eugene used until September 2024, and Dues folds ten ' +
-        'spellings. Open a category to see the centres behind it.',
+        'Profit centers have been renamed and respelled over time, so a center folds ' +
+        'its own SPELLINGS before anything is compared — Training includes the Personal ' +
+        'Training label Eugene used until September 2024. Different products are never ' +
+        'folded together: Dues is DUES alone, and A2 Exec, First Month and Paid In Full ' +
+        'dues each keep their own row. Open a center to see what is behind it.',
     },
   }
 }
 
-module.exports = { buildRevenue, pctChange, NEGATIVE_CENTRES }
+module.exports = { buildRevenue, pctChange, NEGATIVE_CENTERS }
