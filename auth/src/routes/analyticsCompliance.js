@@ -62,7 +62,7 @@ router.get('/', async (req, res) => {
     const cacheKey = ['analytics:compliance', start, end, slugs.slice().sort().join('+')].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
-      const [monthly, priorMonthly, trendMonthly, processes, dow, syncState, byJob, byPerson, byDate] = await Promise.all([
+      const [monthly, priorMonthly, trendMonthly, processes, dow, syncState, byJob, byPerson, byDate, dayJobs] = await Promise.all([
         fetchAll(supabaseAdmin.rpc('analytics_compliance_monthly', {
           p_start: start, p_end: end, p_clubs: clubSlugs,
         })),
@@ -93,8 +93,15 @@ router.get('/', async (req, res) => {
         fetchAll(supabaseAdmin.rpc('analytics_compliance_by_date', {
           p_start: start, p_end: end, p_clubs: clubSlugs,
         })),
+        // Fetched for the whole window in one call rather than per day on
+        // click: a month is about 1,600 rows, cheap to group in the browser,
+        // and expanding a row is then instant instead of a round trip that can
+        // fail on its own.
+        fetchAll(supabaseAdmin.rpc('analytics_compliance_day_jobs', {
+          p_start: start, p_end: end, p_clubs: clubSlugs,
+        })),
       ])
-      return { monthly, priorMonthly, trendMonthly, processes, dow, syncState, byJob, byPerson, byDate }
+      return { monthly, priorMonthly, trendMonthly, processes, dow, syncState, byJob, byPerson, byDate, dayJobs }
     })
 
     const built = buildCompliance(payload.monthly, payload.processes, payload.dow, {
@@ -120,6 +127,16 @@ router.get('/', async (req, res) => {
         stepsDone: Number(r.steps_done) || 0,
         daysActive: Number(r.days_active) || 0,
         clubs: r.clubs,
+      })),
+      dayJobs: (payload.dayJobs || []).map(r => ({
+        date: String(r.job_date).slice(0, 10),
+        slug: r.slug,
+        name: r.name,
+        status: r.status,
+        stepsTotal: Number(r.steps_total) || 0,
+        stepsDone: Number(r.steps_done) || 0,
+        pct: r.pct === null || r.pct === undefined ? null : Number(r.pct),
+        dueAt: r.due_at || null,
       })),
       byDate: (payload.byDate || []).map(r => ({
         date: String(r.job_date).slice(0, 10),

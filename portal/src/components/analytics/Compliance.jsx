@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
@@ -142,7 +142,7 @@ export default function Compliance({ startDate, endDate, locationSlug }) {
           </div>
 
           {view === 'job' && <ByJob rows={data.byJob || []} />}
-          {view === 'day' && <ByDay rows={data.byDate || []} />}
+          {view === 'day' && <ByDay rows={data.byDate || []} jobs={data.dayJobs || []} />}
           {view === 'person' && <ByPerson rows={data.byPerson || []} />}
 
           {view === 'overview' && (asTable ? (
@@ -160,8 +160,10 @@ export default function Compliance({ startDate, endDate, locationSlug }) {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                 <RankedBars
                   title="Task Completion by Club"
-                  rows={byClub}
-                  labelKey="slug"
+                  // Mapped to proper names here: RankedBars prints labelKey
+                  // verbatim, so passing the slug printed the slug.
+                  rows={byClub.map(c => ({ ...c, label: CLUB_LABEL(c.slug) }))}
+                  labelKey="label"
                   valueKey="taskPct"
                   format="pct"
                   secondary={c => `${fmtInt(c.onTime)} on time of ${fmtInt(c.decided)}`}
@@ -275,13 +277,39 @@ function ByJob({ rows }) {
   )
 }
 
-/** What got done on a given day, newest first. */
-function ByDay({ rows }) {
+const STATUS_TONE = {
+  on_time: 'text-text-muted',
+  late: 'text-amber-600',
+  missed: 'text-wcs-red font-semibold',
+  pending: 'text-text-muted/70',
+  in_progress: 'text-text-muted/70',
+}
+
+/**
+ * What got done on a given day, newest first, expandable into the jobs.
+ *
+ * The obvious next question after "27 done, 24 missed" is "which ones", and it
+ * should not require leaving the report. Jobs for the whole window arrive with
+ * the rest of the payload, so opening a day is instant rather than a round trip
+ * that can fail on its own.
+ */
+function ByDay({ rows, jobs }) {
+  const [openDate, setOpenDate] = useState(null)
+
+  const jobsByDate = useMemo(() => {
+    const m = new Map()
+    for (const j of jobs) {
+      if (!m.has(j.date)) m.set(j.date, [])
+      m.get(j.date).push(j)
+    }
+    return m
+  }, [jobs])
+
   return (
     <div className="bg-surface rounded-xl border border-border p-3 overflow-x-auto">
       <div className="flex items-baseline justify-between gap-3 mb-2">
         <p className="text-xs font-bold text-text-primary">By Day</p>
-        <p className="text-[11px] text-text-muted">newest first</p>
+        <p className="text-[11px] text-text-muted">newest first, click a day for its jobs</p>
       </div>
       <table className="w-full text-sm">
         <thead>
@@ -297,20 +325,75 @@ function ByDay({ rows }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map(r => (
-            <tr key={r.date} className="border-b border-border/60 last:border-0">
-              <td className="py-1.5 text-text-primary">{r.date}</td>
-              <td className="py-1.5 text-right tabular-nums text-text-primary font-semibold">{fmtInt(r.completed)}</td>
-              <td className={`py-1.5 text-right tabular-nums ${r.missed > 0 ? 'text-wcs-red' : 'text-text-muted'}`}>
-                {fmtInt(r.missed)}
-              </td>
-              <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(r.decided)}</td>
-              <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(r.notYetDue)}</td>
-              <td className="py-1.5 text-right tabular-nums text-text-muted">
-                {r.taskPct === null ? 'N/A' : `${r.taskPct}%`}
-              </td>
-            </tr>
-          ))}
+          {rows.map(r => {
+            const open = openDate === r.date
+            const dayJobs = jobsByDate.get(r.date) || []
+            return (
+              <Fragment key={r.date}>
+                <tr
+                  className="border-b border-border/60 cursor-pointer hover:bg-bg/50"
+                  onClick={() => setOpenDate(open ? null : r.date)}
+                >
+                  <td className="py-1.5 text-text-primary">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="text-text-muted text-[10px]" aria-hidden="true">{open ? '\u25BC' : '\u25B6'}</span>
+                      {r.date}
+                    </span>
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums text-text-primary font-semibold">{fmtInt(r.completed)}</td>
+                  <td className={`py-1.5 text-right tabular-nums ${r.missed > 0 ? 'text-wcs-red' : 'text-text-muted'}`}>
+                    {fmtInt(r.missed)}
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(r.decided)}</td>
+                  <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(r.notYetDue)}</td>
+                  <td className="py-1.5 text-right tabular-nums text-text-muted">
+                    {r.taskPct === null ? 'N/A' : `${r.taskPct}%`}
+                  </td>
+                </tr>
+
+                {open && (
+                  <tr className="border-b border-border/60">
+                    <td colSpan={6} className="p-0">
+                      <div className="bg-bg/40 px-4 py-3">
+                        {dayJobs.length === 0 ? (
+                          <p className="text-[11px] text-text-muted">No jobs recorded for this day.</p>
+                        ) : (
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="text-[10px] uppercase tracking-wide text-text-muted border-b border-border">
+                                <th className="text-left font-semibold py-1">Job</th>
+                                <th className="text-left font-semibold py-1">Club</th>
+                                <th className="text-left font-semibold py-1">Status</th>
+                                <th className="text-right font-semibold py-1">Steps</th>
+                                <th className="text-right font-semibold py-1">Complete</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {dayJobs.map((j, i) => (
+                                <tr key={`${j.name}-${j.slug}-${i}`} className="border-b border-border/40 last:border-0">
+                                  <td className="py-1 text-text-primary">{j.name}</td>
+                                  <td className="py-1 text-text-muted">{CLUB_LABEL(j.slug)}</td>
+                                  <td className={`py-1 text-[11px] ${STATUS_TONE[j.status] || 'text-text-muted'}`}>
+                                    {String(j.status || '').replace(/_/g, ' ')}
+                                  </td>
+                                  <td className="py-1 text-right tabular-nums text-text-muted">
+                                    {fmtInt(j.stepsDone)} / {fmtInt(j.stepsTotal)}
+                                  </td>
+                                  <td className="py-1 text-right tabular-nums text-text-primary">
+                                    {j.pct === null ? '—' : `${j.pct}%`}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            )
+          })}
         </tbody>
       </table>
       {rows.length === 0 && <p className="text-sm text-text-muted text-center py-8">No days in this selection.</p>}
