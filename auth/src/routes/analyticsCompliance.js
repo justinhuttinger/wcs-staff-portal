@@ -62,7 +62,7 @@ router.get('/', async (req, res) => {
     const cacheKey = ['analytics:compliance', start, end, slugs.slice().sort().join('+')].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
-      const [monthly, priorMonthly, trendMonthly, processes, dow, syncState] = await Promise.all([
+      const [monthly, priorMonthly, trendMonthly, processes, dow, syncState, byJob, byPerson, byDate] = await Promise.all([
         fetchAll(supabaseAdmin.rpc('analytics_compliance_monthly', {
           p_start: start, p_end: end, p_clubs: clubSlugs,
         })),
@@ -82,8 +82,19 @@ router.get('/', async (req, res) => {
         // so the report shows when each club last synced.
         fetchAll(supabaseAdmin.from('operandio_api_sync_state')
           .select('location_slug,last_success_at,last_error')),
+        // The three slices from migration 167: is this checklist getting done,
+        // who is participating, and what happened on a given day.
+        fetchAll(supabaseAdmin.rpc('analytics_compliance_by_job', {
+          p_start: start, p_end: end, p_clubs: clubSlugs,
+        })),
+        fetchAll(supabaseAdmin.rpc('analytics_compliance_by_person', {
+          p_start: start, p_end: end, p_clubs: clubSlugs,
+        })),
+        fetchAll(supabaseAdmin.rpc('analytics_compliance_by_date', {
+          p_start: start, p_end: end, p_clubs: clubSlugs,
+        })),
       ])
-      return { monthly, priorMonthly, trendMonthly, processes, dow, syncState }
+      return { monthly, priorMonthly, trendMonthly, processes, dow, syncState, byJob, byPerson, byDate }
     })
 
     const built = buildCompliance(payload.monthly, payload.processes, payload.dow, {
@@ -94,6 +105,30 @@ router.get('/', async (req, res) => {
 
     res.json({
       ...built,
+      // Passed straight through: these are already the shape the view needs and
+      // reshaping them in the builder would only add a place to disagree.
+      byJob: (payload.byJob || []).map(r => ({
+        name: r.name, slug: r.slug,
+        decided: Number(r.decided) || 0,
+        completed: Number(r.completed) || 0,
+        missed: Number(r.missed) || 0,
+        taskPct: r.task_pct === null || r.task_pct === undefined ? null : Number(r.task_pct),
+      })),
+      byPerson: (payload.byPerson || []).map(r => ({
+        person: r.person,
+        jobsTouched: Number(r.jobs_touched) || 0,
+        stepsDone: Number(r.steps_done) || 0,
+        daysActive: Number(r.days_active) || 0,
+        clubs: r.clubs,
+      })),
+      byDate: (payload.byDate || []).map(r => ({
+        date: String(r.job_date).slice(0, 10),
+        decided: Number(r.decided) || 0,
+        completed: Number(r.completed) || 0,
+        missed: Number(r.missed) || 0,
+        notYetDue: Number(r.not_yet_due) || 0,
+        taskPct: r.task_pct === null || r.task_pct === undefined ? null : Number(r.task_pct),
+      })),
       meta: {
         start, end,
         priorStart: prior.start, priorEnd: prior.end,
