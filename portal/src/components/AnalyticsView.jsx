@@ -22,6 +22,7 @@ import Checkins from './analytics/Checkins'
 import Compliance from './analytics/Compliance'
 import PosSales from './analytics/PosSales'
 import Revenue from './analytics/Revenue'
+import DailySnapshot from './analytics/DailySnapshot'
 import Till from './analytics/Till'
 import Audits from './analytics/Audits'
 import LeadSources from './analytics/LeadSources'
@@ -208,6 +209,16 @@ const ANALYTICS_REPORTS = [
     Component: Revenue,
   },
   {
+    key: 'daily-snapshot',
+    label: 'Daily Snapshot',
+    desc: 'A Single Day, End to End',
+    Component: DailySnapshot,
+    // It owns its own date — Today, Yesterday or a specific day — because the
+    // whole report is about one day. A shared range picker would let a caller
+    // ask for a month and get a card whose every label says "day".
+    dates: false,
+  },
+  {
     key: 'kpis',
     label: 'KPIs',
     desc: 'Goals by Club',
@@ -267,7 +278,7 @@ const REPORT_GROUPS = [
   { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase', 'pt-snapshot', 'trainer-snapshot'] },
   { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot', 'compliance', 'audits', 'till'] },
   // Club-wide overviews first, then the one-person-at-a-time cards.
-  { key: 'snapshots', label: 'Snapshots',     reports: ['club-snapshot', 'pt-snapshot', 'salesperson-snapshot', 'trainer-snapshot'] },
+  { key: 'snapshots', label: 'Snapshots',     reports: ['daily-snapshot', 'club-snapshot', 'pt-snapshot', 'salesperson-snapshot', 'trainer-snapshot'] },
 ]
 
 // Pinned above the groups, in this order, outside any category.
