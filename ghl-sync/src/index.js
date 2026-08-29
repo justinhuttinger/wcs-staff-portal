@@ -260,8 +260,33 @@ app.post('/api/sync/checkins/backfill', requireSecret, async (req, res) => {
   try {
     const allClubs = LOCATIONS.map(l => l.clubNumber).filter(Boolean);
     let clubs = allClubs;
-    if (req.query.clubs && req.query.clubs !== 'all') {
-      clubs = req.query.clubs.split(',').map(s => s.trim()).filter(Boolean);
+    if (req.query.clubs && req.query.clubs.trim() !== 'all') {
+      // Trimmed of stray quotes as well as whitespace. A shell that lets a `"`
+      // through turns `all` into `all"`, which is not the literal 'all', so the
+      // old code treated it as a CLUB NUMBER and ran the entire backfill against
+      // one club that does not exist. Every hour failed, backfillClub swallowed
+      // the errors into console.error, and the run reported success with an
+      // empty error list having written nothing.
+      const asked = req.query.clubs
+        .split(',')
+        .map((x) => x.trim().replace(/^["']+|["']+$/g, ''))
+        .filter(Boolean);
+
+      if (asked.length === 1 && asked[0] === 'all') {
+        clubs = allClubs;
+      } else {
+        // Unknown club numbers are REJECTED rather than attempted. A backfill
+        // that quietly does nothing is worse than one that refuses to start.
+        const unknown = asked.filter((c) => !allClubs.includes(c));
+        if (unknown.length) {
+          return res.status(400).json({
+            error: 'Unknown club numbers',
+            unknown,
+            known: allClubs,
+          });
+        }
+        clubs = asked;
+      }
     }
 
     let fromDate;
@@ -282,12 +307,31 @@ app.post('/api/sync/checkins/backfill', requireSecret, async (req, res) => {
     // backfillClub doesn't try to fetch future Pacific hours.
     const toDate = req.query.to ? new Date(req.query.to + 'T23:59:59Z') : pacificNowAsUtc();
 
+    if (!(fromDate instanceof Date) || Number.isNaN(fromDate.getTime())
+        || !(toDate instanceof Date) || Number.isNaN(toDate.getTime())) {
+      return res.status(400).json({ error: 'from and to must be YYYY-MM-DD' });
+    }
+    if (fromDate > toDate) {
+      return res.status(400).json({ error: 'from must not be after to' });
+    }
+
+    const hours = Math.max(0, Math.round((toDate - fromDate) / 3600000));
+
     checkinsBackfillState = {
       running: true,
       startedAt: new Date().toISOString(),
       from: fromDate.toISOString(),
       to: toDate.toISOString(),
       clubs,
+      hoursPerClub: hours,
+      // Echoed so a caller can tell at a glance whether the run is the one they
+      // intended. A default window is a handful of hours; a repair is thousands.
+      note: req.query.from
+        ? undefined
+        : 'No `from` given, so this resumes from the latest stored hour. Pass '
+          + 'from=YYYY-MM-DD to repair history.',
+      written: 0,
+      failedHours: 0,
       finishedAt: null,
       errors: [],
     };
@@ -297,7 +341,10 @@ app.post('/api/sync/checkins/backfill', requireSecret, async (req, res) => {
     // Fan out: one club at a time concurrently (so all 7 progress in parallel)
     // with a short per-hour sleep inside each. Total wall time ≈ hours × 100ms.
     Promise.all(clubs.map(c =>
-      backfillClub(c, fromDate, toDate, 100).catch(err => {
+      // The progress object is threaded in so per-hour failures land in the
+      // status rather than only in the logs. `errors: []` used to be reported
+      // after every single hour had failed.
+      backfillClub(c, fromDate, toDate, 100, checkinsBackfillState).catch(err => {
         console.error(`[API] backfill ${c} failed:`, err.message);
         checkinsBackfillState.errors.push({ club: c, error: err.message });
       })
