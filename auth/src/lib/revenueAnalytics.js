@@ -159,11 +159,12 @@ function buildRevenue(current, lastMonth, lastYear, opts = {}) {
     },
     headline,
     others,
-    // Every center, largest first. NOT headline-order-then-the-rest: this table
-    // exists to answer "what is big", and a $4,138 snack line sitting above a
-    // $289,021 guest-fee line because it happens to be a priority center would
-    // answer a different question badly.
-    all: [...rows].sort((a, b) => b.revenue - a.revenue),
+    // Every center, ALPHABETICAL. This is a lookup table, not a ranking: the
+    // Priority table above already answers "what is big", and someone reading
+    // this one has a center in mind and wants to find it. Sorting by size means
+    // hunting for a known name in a list of sixty whose order changes with the
+    // date filter.
+    all: [...rows].sort((a, b) => a.category.localeCompare(b.category)),
     notes: {
       totals:
         'Gross excludes refunds and chargebacks; net includes them. Both are shown ' +

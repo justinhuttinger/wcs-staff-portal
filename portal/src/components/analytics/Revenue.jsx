@@ -57,56 +57,133 @@ function Change({ pct, delta }) {
 }
 
 /**
- * Six months of one category, drawn small.
+ * Six months of one category.
  *
- * Zero-based, because these are revenue amounts and a floating baseline would
- * turn a 3% wobble into a cliff on a chart this size — exactly the misreading a
- * sparkline invites when it is glanced at rather than studied.
+ * Fluid width via a viewBox rather than a fixed pixel width, so it fills the
+ * drill-down however wide the table is. Only native <title> tooltips are used,
+ * so the usual objection to a scaled viewBox — that pointer maths stops lining
+ * up — does not apply here.
+ *
+ * Zero-based, because these are revenue amounts and a floating baseline turns a
+ * 3% wobble into a cliff. Values are printed on the points: at this size the
+ * shape answers "which way", and the numbers answer "by how much".
  */
-function Sparkline({ points, width = 420, height = 78 }) {
+function Sparkline({ points, height = 168 }) {
   const real = points.filter(p => Number.isFinite(p.value))
   if (real.length < 2) {
     return <p className="text-[11px] text-text-muted">Not enough history to draw a trend.</p>
   }
 
-  const padL = 4
-  const padB = 16
-  const plotW = width - padL * 2
-  const plotH = height - padB
-  const max = Math.max(...real.map(p => p.value)) * 1.12 || 1
+  const W = 720
+  const padL = 8
+  const padT = 16
+  const padB = 20
+  const plotW = W - padL * 2
+  const plotH = height - padT - padB
+  const max = Math.max(...real.map(p => p.value)) * 1.18 || 1
   const n = points.length
 
   const x = i => padL + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW)
-  const y = v => plotH - (Math.max(0, v) / max) * plotH
+  const y = v => padT + plotH - (Math.max(0, v) / max) * plotH
   const colour = colorFor('revenue', 0)
 
   return (
-    <div>
-      <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} className="block" role="img"
-        aria-label="Revenue over the last six months">
-        <line x1={padL} x2={width - padL} y1={plotH} y2={plotH} stroke="currentColor"
-          className="text-border" strokeWidth="1" />
-        <polyline
-          points={points.map((p, i) => `${x(i)},${y(p.value || 0)}`).join(' ')}
-          fill="none" stroke={colour} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"
-        />
-        {points.map((p, i) => (
-          <circle key={p.month} cx={x(i)} cy={y(p.value || 0)} r="2.5" fill={colour}>
+    <svg
+      viewBox={`0 0 ${W} ${height}`}
+      className="block w-full"
+      style={{ height }}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="Revenue over the last six months"
+    >
+      <line x1={padL} x2={W - padL} y1={padT + plotH} y2={padT + plotH}
+        stroke="currentColor" className="text-border" strokeWidth="1" />
+      <polyline
+        points={points.map((p, i) => `${x(i)},${y(p.value || 0)}`).join(' ')}
+        fill="none" stroke={colour} strokeWidth="2.5"
+        strokeLinejoin="round" strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+      />
+      {points.map((p, i) => (
+        <g key={p.month}>
+          <circle cx={x(i)} cy={y(p.value || 0)} r="4" fill={colour}>
             <title>{`${fmtMonth(p.month)}: ${fmtMoney(p.value || 0)}`}</title>
           </circle>
-        ))}
-        {points.map((p, i) => (
-          <text key={`l-${p.month}`} x={x(i)} y={height - 4} textAnchor="middle"
-            className="fill-text-muted" style={{ fontSize: 9 }}>
+          <text x={x(i)} y={y(p.value || 0) - 8} textAnchor="middle"
+            className="fill-text-muted" style={{ fontSize: 10 }}>
+            {fmtMoney(p.value || 0)}
+          </text>
+          <text x={x(i)} y={height - 5} textAnchor="middle"
+            className="fill-text-muted" style={{ fontSize: 10 }}>
             {fmtMonth(p.month)}
           </text>
+        </g>
+      ))}
+    </svg>
+  )
+}
+
+/**
+ * This period against the same span a month and a year ago, as bars.
+ *
+ * ONE HUE FOR ALL THREE. These are the same measure at three points in time, a
+ * magnitude comparison rather than three categories, and colouring them
+ * differently would imply a distinction that is not there. The current period
+ * is the solid one; the two comparisons are dimmed so the eye knows which bar
+ * it is being asked about.
+ *
+ * Shares the row's own numbers rather than fetching anything, so it always
+ * agrees with the table it sits inside.
+ */
+function ComparisonBars({ row, meta, height = 168 }) {
+  const bars = [
+    { key: 'now', label: 'This period', value: row.revenue, strong: true },
+    { key: 'mom', label: 'Last month', value: row.lastMonthRevenue },
+    { key: 'yoy', label: 'Last year', value: row.lastYearRevenue },
+  ]
+
+  // Negative centers (refunds) would otherwise draw off the bottom.
+  const max = Math.max(1, ...bars.map(b => Math.abs(b.value || 0)))
+  const colour = colorFor('revenue', 0)
+
+  return (
+    <div style={{ height }} className="flex flex-col justify-between">
+      <p className="text-[11px] font-semibold text-text-primary">
+        Same {meta?.spanDays ?? ''} days, three periods
+      </p>
+      <div className="flex-1 flex items-end gap-4 pt-2">
+        {bars.map(b => {
+          const h = (Math.abs(b.value || 0) / max) * 100
+          return (
+            <div key={b.key} className="flex-1 flex flex-col items-center justify-end h-full">
+              <span className="text-[11px] tabular-nums text-text-primary mb-1">
+                {fmtMoney(b.value || 0)}
+              </span>
+              <div
+                className="w-full rounded-t"
+                style={{
+                  height: `${Math.max(2, h)}%`,
+                  background: colour,
+                  opacity: b.strong ? 1 : 0.42,
+                }}
+                title={`${b.label}: ${fmtMoney(b.value || 0)}`}
+              />
+            </div>
+          )
+        })}
+      </div>
+      <div className="flex gap-4 pt-1">
+        {bars.map(b => (
+          <span key={b.key} className="flex-1 text-center text-[10px] text-text-muted leading-tight">
+            {b.label}
+          </span>
         ))}
-      </svg>
+      </div>
     </div>
   )
 }
 
-function CategoryTable({ title, subtitle, rows, sparklines, openKey, setOpenKey }) {
+function CategoryTable({ title, subtitle, rows, sparklines, meta, openKey, setOpenKey }) {
   return (
     <div className="bg-surface rounded-xl border border-border p-3 overflow-x-auto">
       <div className="flex items-baseline justify-between gap-3 mb-2">
@@ -171,10 +248,19 @@ function CategoryTable({ title, subtitle, rows, sparklines, openKey, setOpenKey 
                   <tr className="border-b border-border/60">
                     <td colSpan={6} className="p-0">
                       <div className="px-6 py-3" style={{ background: 'rgba(128,128,128,0.05)' }}>
-                        <p className="text-[11px] font-semibold text-text-primary mb-1">
-                          {r.category} — last six months
-                        </p>
-                        <Sparkline points={points} />
+                        <div className="flex flex-col lg:flex-row gap-6">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[11px] font-semibold text-text-primary mb-1">
+                              {r.category} — last six months
+                            </p>
+                            <Sparkline points={points} />
+                          </div>
+                          {/* Fixed-ish width so the trend keeps the space it
+                              needs; the bars only ever hold three values. */}
+                          <div className="w-full lg:w-72 flex-shrink-0">
+                            <ComparisonBars row={r} meta={meta} />
+                          </div>
+                        </div>
 
                         {/* The centers folded into this category. A reader has
                             no way to audit a mapping, or to notice a new code
@@ -308,15 +394,17 @@ export default function Revenue({ startDate, endDate, locationSlug }) {
             subtitle="click a row for its last six months"
             rows={headline}
             sparklines={sparklines}
+            meta={data.meta}
             openKey={openKey}
             setOpenKey={setOpenKey}
           />
 
           <CategoryTable
             title="All Profit Centers"
-            subtitle={`every center, largest first — ${all.length} in total`}
+            subtitle={`every center, A to Z — ${all.length} in total`}
             rows={all}
             sparklines={sparklines}
+            meta={data.meta}
             openKey={openKey}
             setOpenKey={setOpenKey}
           />
