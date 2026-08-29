@@ -4,31 +4,37 @@ import { api } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { fmtInt, fmtMoney, fmtMonth } from './chartPalette'
-import { MonthlyTrend, RankedBars } from './charts'
+import { MultiTrend, RankedBars } from './charts'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
+import { LOCATION_NAMES } from '../../config/locations'
 
 // ---------------------------------------------------------------------------
 // POS Sales — Analytics (admin only)
 //
-// TWO STREAMS, SHOWN APART. Retail is goods sold. Pass-through is dues,
-// personal training, guest fees and account payments taken at the desk — money
-// collected, but nothing sold, so no margin is ever computed on it.
+// GOODS ONLY: Drinks, Snacks, Supplements, Merchandise.
 //
-// That split is the whole report. 89% of what crosses the till is
-// pass-through, so a blended "POS Sales" figure of $430k describes something
-// nobody can manage, while retail is about $58k and has a real margin.
+// Pass-through — dues, personal training, guest fees, club account payments —
+// is gone from this report entirely. It is real money and belongs on a revenue
+// report, but it is eight times the size of the thing being managed here, and
+// any figure that mixed it in described nothing anyone can act on.
 //
-// A MARGIN IS LEFT BLANK RATHER THAN GUESSED. Six clubs cost 79-91% of their
-// retail lines; Milwaukie costs 1.9%, where a margin would come from $55 of a
-// $2,955 month. Blank with an explanation beats a confident wrong number.
+// A MARGIN IS LEFT BLANK RATHER THAN GUESSED. Cost coverage varies by category
+// (Supplements 90%, Merchandise 46%), and a margin computed as though missing
+// costs were zero reads as near-100%. Where coverage is too thin the number is
+// withheld and the reason given.
 // ---------------------------------------------------------------------------
 
-const CLUB_LABEL = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+// Proper names from the shared config, so a rename lands everywhere at once.
+const CLUB_NAMES = Object.fromEntries(LOCATION_NAMES.map(n => [n.toLowerCase(), n]))
+const CLUB_LABEL = s => (s ? (CLUB_NAMES[s] || s.charAt(0).toUpperCase() + s.slice(1)) : s)
 
 const pctOrDash = v => (v === null || v === undefined ? '—' : `${v}%`)
 
 export default function PosSales({ startDate, endDate, locationSlug }) {
   const [asTable, setAsTable] = useState(false)
+  // Sorted by revenue to begin with, because that is the question most
+  // people arrive with; every column is sortable from there.
+  const [sort, setSort] = useState({ key: 'revenue', dir: 'desc' })
 
   const query = useMemo(() => {
     const p = new URLSearchParams({ clubs: locationSlug || 'all' })
@@ -45,9 +51,34 @@ export default function PosSales({ startDate, endDate, locationSlug }) {
   const s = data?.summary || {}
   const byClub = data?.byClub || []
   const products = data?.topProducts || []
-  const centers = data?.profitCenters || []
+  const items = data?.items || []
 
   const top = useMemo(() => products.slice(0, 12), [products])
+
+  const sortedItems = useMemo(() => {
+    const rows = items.slice()
+    const { key, dir } = sort
+    const mul = dir === 'asc' ? 1 : -1
+    rows.sort((a, b) => {
+      const av = a[key]
+      const bv = b[key]
+      // Nulls always sink, whichever way the column is sorted: an item with no
+      // cost is not the cheapest item, and it must not head the list.
+      if (av === null || av === undefined) return 1
+      if (bv === null || bv === undefined) return -1
+      if (typeof av === 'string') return mul * av.localeCompare(bv)
+      return mul * (av - bv)
+    })
+    return rows
+  }, [items, sort])
+
+  const toggleSort = (key) => setSort(prev => (
+    prev.key === key
+      // Second click on the same column reverses it; a new column starts
+      // descending, which is what "show me the biggest" expects.
+      ? { key, dir: prev.dir === 'desc' ? 'asc' : 'desc' }
+      : { key, dir: 'desc' }
+  ))
 
   return (
     <div className="space-y-3">
@@ -64,10 +95,6 @@ export default function PosSales({ startDate, endDate, locationSlug }) {
 
       {!loading && !error && data && (
         <>
-          <div className="bg-surface rounded-xl border border-border p-3">
-            <p className="text-[11px] text-text-muted">{data.notes?.streams}</p>
-          </div>
-
           {data.notes?.coverage && (
             <div className="bg-surface rounded-xl border border-amber-500/40 p-3">
               <p className="text-[11px] text-amber-600">{data.notes.coverage}</p>
@@ -77,16 +104,13 @@ export default function PosSales({ startDate, endDate, locationSlug }) {
           <div className="bg-surface rounded-xl border border-border overflow-x-auto">
             <div className="flex min-w-max divide-x divide-border">
               {[
-                { label: 'Retail Revenue', value: fmtMoney(s.retailRevenue) },
+                { label: 'Revenue', value: fmtMoney(s.retailRevenue) },
                 { label: 'Gross Profit', value: s.grossProfit === null || s.grossProfit === undefined ? '—' : fmtMoney(s.grossProfit) },
                 { label: 'Margin', value: pctOrDash(s.marginPct) },
                 { label: 'Units Sold', value: fmtInt(s.retailUnits) },
-                // Muted: real money, but not a sale, and it must not read as
-                // the headline.
-                { label: 'Pass-Through', value: fmtMoney(s.passthroughRevenue), muted: true },
-                { label: 'Transactions', value: fmtInt(s.transactions), muted: true },
+                { label: 'Items Sold', value: fmtInt(items.length), muted: true },
                 {
-                  label: `Retail vs ${data.meta?.comparisonLabel || 'prior'}`,
+                  label: `vs ${data.meta?.comparisonLabel || 'prior'}`,
                   value: s.retailChange === null || s.retailChange === undefined
                     ? 'N/A' : `${s.retailChange > 0 ? '+' : ''}${s.retailChange}%`,
                 },
@@ -102,16 +126,17 @@ export default function PosSales({ startDate, endDate, locationSlug }) {
           </div>
 
           {asTable ? (
-            <TableView byClub={byClub} months={data.months || []} products={products} centers={centers} />
+            <TableView byClub={byClub} months={data.months || []} products={products} />
           ) : (
             <>
-              <MonthlyTrend
-                title="Retail Revenue by Month"
-                months={data.months || []}
-                valueKey="retailRevenue"
+              {/* One line per category. The total alone hides that Drinks
+                  moves on volume and Supplements on price. */}
+              <MultiTrend
+                title="Revenue by Category"
+                months={data.categoryMonths || []}
+                series={data.categorySeries || []}
                 format="int"
-                seriesName="retail"
-                subtitle="goods only"
+                subtitle={`${(data.categorySeries || []).length} categories`}
               />
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -133,63 +158,18 @@ export default function PosSales({ startDate, endDate, locationSlug }) {
                 />
               </div>
 
-              {/* The split made visible, so nobody has to take my word for it. */}
-              <div className="bg-surface rounded-xl border border-border p-3 overflow-x-auto">
-                <div className="flex items-baseline justify-between gap-3 mb-2">
-                  <p className="text-xs font-bold text-text-primary">Profit Centres</p>
-                  <p className="text-[11px] text-text-muted">retail carries a cost; pass-through does not</p>
-                </div>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-[11px] uppercase tracking-wide text-text-muted border-b border-border">
-                      <th className="text-left font-semibold py-1.5">Profit Centre</th>
-                      <th className="text-left font-semibold py-1.5">Stream</th>
-                      <th className="text-right font-semibold py-1.5">Revenue</th>
-                      <th className="text-right font-semibold py-1.5">Lines</th>
-                      <th className="text-right font-semibold py-1.5">Lines Costed</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {centers.map((c, i) => (
-                      <tr key={`${c.profitCenter}-${i}`} className="border-b border-border/60 last:border-0">
-                        <td className="py-1.5 text-text-primary">{c.profitCenter}</td>
-                        <td className="py-1.5">
-                          <span className={`text-[10px] font-semibold rounded px-1.5 py-0.5 border ${
-                            c.isRetail
-                              ? 'text-wcs-red border-wcs-red/40'
-                              : 'text-text-muted border-border'
-                          }`}>
-                            {c.isRetail ? 'retail' : 'pass-through'}
-                          </span>
-                        </td>
-                        <td className="py-1.5 text-right tabular-nums text-text-primary">{fmtMoney(c.revenue)}</td>
-                        <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(c.lines)}</td>
-                        <td className="py-1.5 text-right tabular-nums text-text-muted">{pctOrDash(c.pctCosted)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {(s.retailReturns !== 0 || s.passthroughReturns !== 0) && (
+              {s.retailReturns !== 0 && (
                 <div className="bg-surface rounded-xl border border-border p-3">
-                  <p className="text-xs font-bold text-text-primary mb-1">Returns</p>
-                  <p className="text-[11px] text-text-muted mb-2">
-                    Split by stream. Most refunds are reversed dues and account payments, not
-                    product coming back, and one combined figure would read as a return rate on goods.
+                  <p className="text-xs font-bold text-text-primary mb-1">Product Returned</p>
+                  <p className="text-lg font-bold tabular-nums text-text-primary">{fmtMoney(s.retailReturns)}</p>
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    Goods only. Refunded dues and account payments are not on this report.
                   </p>
-                  <div className="flex gap-6">
-                    <div>
-                      <p className="text-lg font-bold tabular-nums text-text-primary">{fmtMoney(s.retailReturns)}</p>
-                      <p className="text-[11px] text-text-muted">Product returned</p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-bold tabular-nums text-text-muted">{fmtMoney(s.passthroughReturns)}</p>
-                      <p className="text-[11px] text-text-muted">Pass-through refunded</p>
-                    </div>
-                  </div>
                 </div>
               )}
+
+              <ItemTable rows={sortedItems} sort={sort} onSort={toggleSort} />
+
             </>
           )}
         </>
@@ -198,7 +178,78 @@ export default function PosSales({ startDate, endDate, locationSlug }) {
   )
 }
 
-function TableView({ byClub, months, products, centers }) {
+
+// Sortable columns. Every header is a button so the sort is reachable by
+// keyboard and announces its direction, rather than being a click target that
+// only a mouse can find.
+const ITEM_COLUMNS = [
+  { key: 'name', label: 'Item', align: 'left' },
+  { key: 'profitCenter', label: 'Category', align: 'left' },
+  { key: 'unitCost', label: 'Cost', align: 'right' },
+  { key: 'unitPrice', label: 'Sales Price', align: 'right' },
+  { key: 'marginPct', label: 'Margin', align: 'right' },
+  { key: 'units', label: 'Units Sold', align: 'right' },
+  { key: 'revenue', label: 'Revenue', align: 'right' },
+]
+
+function ItemTable({ rows, sort, onSort }) {
+  return (
+    <div className="bg-surface rounded-xl border border-border p-3 overflow-x-auto">
+      <div className="flex items-baseline justify-between gap-3 mb-2">
+        <p className="text-xs font-bold text-text-primary">Items</p>
+        <p className="text-[11px] text-text-muted">click a column to sort</p>
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-[11px] uppercase tracking-wide text-text-muted border-b border-border">
+            {ITEM_COLUMNS.map(c => {
+              const active = sort.key === c.key
+              return (
+                <th key={c.key} className={`py-1.5 font-semibold ${c.align === 'right' ? 'text-right' : 'text-left'}`}>
+                  <button
+                    type="button"
+                    onClick={() => onSort(c.key)}
+                    className={`inline-flex items-center gap-1 uppercase tracking-wide transition-colors ${
+                      active ? 'text-text-primary' : 'hover:text-text-primary'
+                    }`}
+                    aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  >
+                    {c.label}
+                    <span className={active ? 'opacity-100' : 'opacity-0'}>
+                      {sort.dir === 'asc' ? '\u25B2' : '\u25BC'}
+                    </span>
+                  </button>
+                </th>
+              )
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={`${r.name}-${r.profitCenter}-${i}`} className="border-b border-border/60 last:border-0">
+              <td className="py-1.5 text-text-primary">{r.name}</td>
+              <td className="py-1.5 text-text-muted">{String(r.profitCenter || '').replace(/^WCS /, '')}</td>
+              <td className="py-1.5 text-right tabular-nums text-text-muted">
+                {r.unitCost === null ? '—' : fmtMoney(r.unitCost)}
+              </td>
+              <td className="py-1.5 text-right tabular-nums text-text-muted">
+                {r.unitPrice === null ? '—' : fmtMoney(r.unitPrice)}
+              </td>
+              <td className="py-1.5 text-right tabular-nums text-text-primary">
+                {r.marginPct === null ? '—' : `${r.marginPct}%`}
+              </td>
+              <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(r.units)}</td>
+              <td className="py-1.5 text-right tabular-nums text-text-primary font-semibold">{fmtMoney(r.revenue)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.length === 0 && <p className="text-sm text-text-muted text-center py-8">No items sold in this selection.</p>}
+    </div>
+  )
+}
+
+function TableView({ byClub, months, products }) {
   return (
     <div className="space-y-3">
       <div className="bg-surface rounded-xl border border-border p-3 overflow-x-auto">
@@ -212,7 +263,6 @@ function TableView({ byClub, months, products, centers }) {
               <th className="text-right font-semibold py-1.5">Margin</th>
               <th className="text-right font-semibold py-1.5">Costed</th>
               <th className="text-right font-semibold py-1.5">Units</th>
-              <th className="text-right font-semibold py-1.5">Pass-Through</th>
             </tr>
           </thead>
           <tbody>
@@ -228,7 +278,6 @@ function TableView({ byClub, months, products, centers }) {
                   {pctOrDash(c.costCoverage)}
                 </td>
                 <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(c.retailUnits)}</td>
-                <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtMoney(c.passthroughRevenue)}</td>
               </tr>
             ))}
           </tbody>
@@ -244,7 +293,6 @@ function TableView({ byClub, months, products, centers }) {
               <th className="text-right font-semibold py-1.5">Retail</th>
               <th className="text-right font-semibold py-1.5">Margin</th>
               <th className="text-right font-semibold py-1.5">Units</th>
-              <th className="text-right font-semibold py-1.5">Pass-Through</th>
             </tr>
           </thead>
           <tbody>
@@ -254,7 +302,6 @@ function TableView({ byClub, months, products, centers }) {
                 <td className="py-1.5 text-right tabular-nums text-text-primary">{fmtMoney(m.retailRevenue)}</td>
                 <td className="py-1.5 text-right tabular-nums text-text-muted">{pctOrDash(m.marginPct)}</td>
                 <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(m.retailUnits)}</td>
-                <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtMoney(m.passthroughRevenue)}</td>
               </tr>
             ))}
           </tbody>
@@ -267,7 +314,7 @@ function TableView({ byClub, months, products, centers }) {
           <thead>
             <tr className="text-[11px] uppercase tracking-wide text-text-muted border-b border-border">
               <th className="text-left font-semibold py-1.5">Product</th>
-              <th className="text-left font-semibold py-1.5">Profit Centre</th>
+              <th className="text-left font-semibold py-1.5">Category</th>
               <th className="text-right font-semibold py-1.5">Units</th>
               <th className="text-right font-semibold py-1.5">Revenue</th>
               <th className="text-right font-semibold py-1.5">Margin</th>
@@ -277,7 +324,7 @@ function TableView({ byClub, months, products, centers }) {
             {products.map((p, i) => (
               <tr key={`${p.name}-${i}`} className="border-b border-border/60 last:border-0">
                 <td className="py-1.5 text-text-primary">{p.name}</td>
-                <td className="py-1.5 text-text-muted">{p.profitCenter}</td>
+                <td className="py-1.5 text-text-muted">{String(p.profitCenter || '').replace(/^WCS /, '')}</td>
                 <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(p.units)}</td>
                 <td className="py-1.5 text-right tabular-nums text-text-primary">{fmtMoney(p.revenue)}</td>
                 <td className="py-1.5 text-right tabular-nums text-text-muted">{pctOrDash(p.marginPct)}</td>
