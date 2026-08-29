@@ -32,9 +32,11 @@ const pctOrDash = v => (v === null || v === undefined ? '—' : `${v}%`)
 
 export default function PosSales({ startDate, endDate, locationSlug }) {
   const [asTable, setAsTable] = useState(false)
-  // Sorted by revenue to begin with, because that is the question most
-  // people arrive with; every column is sortable from there.
-  const [sort, setSort] = useState({ key: 'revenue', dir: 'desc' })
+  // null means "default", which is revenue descending — the question most
+  // people arrive with. Clicking a header cycles most-to-least, least-to-most,
+  // then back here, so there is always a way back to the view you started on
+  // without reloading.
+  const [sort, setSort] = useState(null)
 
   const query = useMemo(() => {
     const p = new URLSearchParams({ clubs: locationSlug || 'all' })
@@ -57,13 +59,14 @@ export default function PosSales({ startDate, endDate, locationSlug }) {
 
   const sortedItems = useMemo(() => {
     const rows = items.slice()
-    const { key, dir } = sort
-    const mul = dir === 'asc' ? 1 : -1
+    // The default: biggest sellers first.
+    const active = sort || { key: 'revenue', dir: 'desc' }
+    const mul = active.dir === 'asc' ? 1 : -1
     rows.sort((a, b) => {
-      const av = a[key]
-      const bv = b[key]
+      const av = a[active.key]
+      const bv = b[active.key]
       // Nulls always sink, whichever way the column is sorted: an item with no
-      // cost is not the cheapest item, and it must not head the list.
+      // recorded cost is not the cheapest item, and it must not head the list.
       if (av === null || av === undefined) return 1
       if (bv === null || bv === undefined) return -1
       if (typeof av === 'string') return mul * av.localeCompare(bv)
@@ -72,13 +75,16 @@ export default function PosSales({ startDate, endDate, locationSlug }) {
     return rows
   }, [items, sort])
 
-  const toggleSort = (key) => setSort(prev => (
-    prev.key === key
-      // Second click on the same column reverses it; a new column starts
-      // descending, which is what "show me the biggest" expects.
-      ? { key, dir: prev.dir === 'desc' ? 'asc' : 'desc' }
-      : { key, dir: 'desc' }
-  ))
+  /**
+   * Three positions, not two: most-to-least, least-to-most, then back to the
+   * default. A two-way toggle strands you in a sort you did not want with no
+   * way back to the original order.
+   */
+  const toggleSort = (key) => setSort(prev => {
+    if (!prev || prev.key !== key) return { key, dir: 'desc' }
+    if (prev.dir === 'desc') return { key, dir: 'asc' }
+    return null
+  })
 
   return (
     <div className="space-y-3">
@@ -180,8 +186,8 @@ export default function PosSales({ startDate, endDate, locationSlug }) {
 
 
 // Sortable columns. Every header is a button so the sort is reachable by
-// keyboard and announces its direction, rather than being a click target that
-// only a mouse can find.
+// keyboard and announces its direction, rather than being a click target only a
+// mouse can find.
 const ITEM_COLUMNS = [
   { key: 'name', label: 'Item', align: 'left' },
   { key: 'profitCenter', label: 'Category', align: 'left' },
@@ -192,20 +198,31 @@ const ITEM_COLUMNS = [
   { key: 'revenue', label: 'Revenue', align: 'right' },
 ]
 
+// Zebra by COLUMN, not by row. Reading this table means running an eye down a
+// column — cost against price, or margin against units — and row stripes work
+// against that by tying neighbouring columns together. Kept faint enough to
+// guide the eye without becoming a grid.
+const colTint = (i) => (i % 2 === 1 ? 'bg-bg/40' : '')
+
 function ItemTable({ rows, sort, onSort }) {
   return (
     <div className="bg-surface rounded-xl border border-border p-3 overflow-x-auto">
       <div className="flex items-baseline justify-between gap-3 mb-2">
         <p className="text-xs font-bold text-text-primary">Items</p>
-        <p className="text-[11px] text-text-muted">click a column to sort</p>
+        <p className="text-[11px] text-text-muted">
+          click a column to sort: most, least, then back to default
+        </p>
       </div>
       <table className="w-full text-sm">
         <thead>
           <tr className="text-[11px] uppercase tracking-wide text-text-muted border-b border-border">
-            {ITEM_COLUMNS.map(c => {
-              const active = sort.key === c.key
+            {ITEM_COLUMNS.map((c, i) => {
+              const active = sort && sort.key === c.key
               return (
-                <th key={c.key} className={`py-1.5 font-semibold ${c.align === 'right' ? 'text-right' : 'text-left'}`}>
+                <th
+                  key={c.key}
+                  className={`py-1.5 px-2 font-semibold ${c.align === 'right' ? 'text-right' : 'text-left'} ${colTint(i)}`}
+                >
                   <button
                     type="button"
                     onClick={() => onSort(c.key)}
@@ -213,11 +230,14 @@ function ItemTable({ rows, sort, onSort }) {
                       active ? 'text-text-primary' : 'hover:text-text-primary'
                     }`}
                     aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                    title={active
+                      ? (sort.dir === 'desc' ? 'Sort least to most' : 'Back to default')
+                      : 'Sort most to least'}
                   >
                     {c.label}
-                    <span className={active ? 'opacity-100' : 'opacity-0'}>
-                      {sort.dir === 'asc' ? '\u25B2' : '\u25BC'}
-                    </span>
+                    {/* Only the active column shows an arrow. Reserving space on
+                        every header would push the numbers off their alignment. */}
+                    {active && <span aria-hidden="true">{sort.dir === 'asc' ? '\u25B2' : '\u25BC'}</span>}
                   </button>
                 </th>
               )
@@ -225,21 +245,25 @@ function ItemTable({ rows, sort, onSort }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => (
-            <tr key={`${r.name}-${r.profitCenter}-${i}`} className="border-b border-border/60 last:border-0">
-              <td className="py-1.5 text-text-primary">{r.name}</td>
-              <td className="py-1.5 text-text-muted">{String(r.profitCenter || '').replace(/^WCS /, '')}</td>
-              <td className="py-1.5 text-right tabular-nums text-text-muted">
+          {rows.map((r, ri) => (
+            <tr key={`${r.name}-${r.profitCenter}-${ri}`} className="border-b border-border/60 last:border-0">
+              <td className={`py-1.5 px-2 text-text-primary ${colTint(0)}`}>{r.name}</td>
+              <td className={`py-1.5 px-2 text-text-muted ${colTint(1)}`}>
+                {String(r.profitCenter || '').replace(/^WCS /, '')}
+              </td>
+              <td className={`py-1.5 px-2 text-right tabular-nums text-text-muted ${colTint(2)}`}>
                 {r.unitCost === null ? '—' : fmtMoney(r.unitCost)}
               </td>
-              <td className="py-1.5 text-right tabular-nums text-text-muted">
+              <td className={`py-1.5 px-2 text-right tabular-nums text-text-muted ${colTint(3)}`}>
                 {r.unitPrice === null ? '—' : fmtMoney(r.unitPrice)}
               </td>
-              <td className="py-1.5 text-right tabular-nums text-text-primary">
+              <td className={`py-1.5 px-2 text-right tabular-nums text-text-primary ${colTint(4)}`}>
                 {r.marginPct === null ? '—' : `${r.marginPct}%`}
               </td>
-              <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(r.units)}</td>
-              <td className="py-1.5 text-right tabular-nums text-text-primary font-semibold">{fmtMoney(r.revenue)}</td>
+              <td className={`py-1.5 px-2 text-right tabular-nums text-text-muted ${colTint(5)}`}>{fmtInt(r.units)}</td>
+              <td className={`py-1.5 px-2 text-right tabular-nums text-text-primary font-semibold ${colTint(6)}`}>
+                {fmtMoney(r.revenue)}
+              </td>
             </tr>
           ))}
         </tbody>
