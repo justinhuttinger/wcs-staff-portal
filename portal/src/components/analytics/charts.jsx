@@ -150,15 +150,29 @@ export function MonthlyTrend({ title, months, valueKey, format = 'int', subtitle
 /**
  * Several series on one shared scale, over the same months.
  *
- * `series` is [{ key, label, points: [{ month, value }] }]. A null value BREAKS
- * the line rather than joining across it — for audits that matters more than
- * usual, because a month nobody audited is not a month that scored zero, and
- * joining the gap would draw a dive that never happened.
+ * `series` is [{ key, label, points: [{ month, value }] }].
+ *
+ * WHAT A MISSING MONTH MEANS DEPENDS ON THE REPORT, so connecting across one is
+ * a choice the caller makes rather than a house rule.
+ *
+ *   connectGaps=false (default)  a gap BREAKS the line. Right where a missing
+ *                                month means zero — a category that sold
+ *                                nothing did sell nothing, and drawing through
+ *                                it would hide a real collapse.
+ *
+ *   connectGaps=true             the line runs between consecutive readings.
+ *                                Right where a missing month means NOT MEASURED
+ *                                — audits are roughly monthly and skip months,
+ *                                and a broken line reads as a series of
+ *                                disconnected dots rather than a trajectory.
+ *
+ * Markers are drawn only on real readings either way, so which months were
+ * actually measured stays visible even when the line runs through them.
  *
  * Colour is keyed to the series NAME, not its position, so adding a department
  * or filtering to one club does not repaint the rest.
  */
-export function MultiTrend({ title, months, series, format = 'pct', subtitle, height = 230 }) {
+export function MultiTrend({ title, months, series, format = 'pct', subtitle, height = 230, connectGaps = false }) {
   const [wrapRef, W] = useChartWidth()
   const [hover, setHover] = useState(null)
 
@@ -215,14 +229,24 @@ export function MultiTrend({ title, months, series, format = 'pct', subtitle, he
 
               {series.map((sr, si) => {
                 const colour = colorFor(sr.key, si)
-                // Only runs of consecutive real readings are drawn.
-                const runs = []
-                let run = []
+                const real = []
                 sr.points.forEach((pt, i) => {
-                  if (Number.isFinite(pt.value)) run.push({ i, v: pt.value })
-                  else if (run.length) { runs.push(run); run = [] }
+                  if (Number.isFinite(pt.value)) real.push({ i, v: pt.value })
                 })
-                if (run.length) runs.push(run)
+                // Connecting: one run through every reading. Breaking: a run per
+                // stretch of consecutive readings.
+                let runs
+                if (connectGaps) {
+                  runs = real.length ? [real] : []
+                } else {
+                  runs = []
+                  let run = []
+                  sr.points.forEach((pt, i) => {
+                    if (Number.isFinite(pt.value)) run.push({ i, v: pt.value })
+                    else if (run.length) { runs.push(run); run = [] }
+                  })
+                  if (run.length) runs.push(run)
+                }
 
                 return (
                   <g key={sr.key}>

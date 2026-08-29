@@ -237,6 +237,13 @@ export default function Audits({ startDate, endDate, locationSlug }) {
                 series={data.trendSeries || []}
                 format="pct"
                 subtitle={`${(data.trendSeries || []).length} departments`}
+                // Audits skip months, and a missing month means NOT MEASURED
+                // rather than zero. Breaking the line there turned each
+                // department into a scatter of disconnected dots and hid the
+                // trajectory, which is the whole point of the chart. Markers
+                // still sit only on real readings, so which months were audited
+                // remains visible.
+                connectGaps
               />
             </>
           )}
