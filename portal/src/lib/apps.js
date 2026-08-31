@@ -7,7 +7,7 @@
 import allTools from '../config/tools.json'
 
 // Which built-in tool IDs are Apps rather than in-portal Tools.
-export const APP_IDS = ['grow', 'abc', 'wheniwork', 'paychex', 'gmail']
+export const APP_IDS = ['grow', 'abc', 'paychex', 'gmail']
 
 /**
  * ABC is not a plain link — it opens the in-portal kiosk shim, which needs the
@@ -31,7 +31,6 @@ export function appsForLocation({ location, abcUrl } = {}) {
   const isMilwaukie = (location || '').toLowerCase() === 'milwaukie'
   return allTools
     .filter(t => APP_IDS.includes(t.id))
-    .filter(t => !(isMilwaukie && t.id === 'wheniwork'))
     .map(t => (isMilwaukie && t.id === 'gmail'
       ? { ...t, label: 'Zoho Mail', description: 'Email', icon: 'zohomail', url: 'https://www.zoho.com/mail/login.html' }
       : t))
