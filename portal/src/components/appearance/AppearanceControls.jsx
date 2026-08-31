@@ -1,44 +1,47 @@
-import { THEME_OPTIONS, LAYOUT_OPTIONS, DENSITY_OPTIONS } from './themeOptions'
+import { useRef, useState } from 'react'
+import { THEME_OPTIONS } from './themeOptions'
 import ThemePreview from './ThemePreview'
-
-function Segmented({ value, options, onChange }) {
-  return (
-    <div className="inline-flex rounded-lg border border-border overflow-hidden">
-      {options.map(o => (
-        <button
-          key={o.key}
-          onClick={() => onChange(o.key)}
-          title={o.hint}
-          className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
-            value === o.key
-              ? 'bg-wcs-red text-white'
-              : 'bg-surface text-text-muted hover:text-text-primary'
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  )
-}
+import ThemePreviewModal from './ThemePreviewModal'
 
 /**
- * The theme / layout / density / accent pickers, with no opinion about where
- * the prefs come from or go. The profile page and the admin panel both render
- * this; only their onPatch differs.
+ * The theme picker, with no opinion about where the prefs come from or go.
+ * The profile page and the admin panel both render this; only their onPatch
+ * differs.
+ *
+ * Clicking a card does NOT apply the theme. It opens a large preview modal,
+ * and the theme is only ever changed from the Apply button inside that
+ * modal (see Justin's ask: a popup showing what each theme looks like,
+ * opened by clicking the card).
  */
 export default function AppearanceControls({ prefs, onPatch }) {
-  const activeLayout = LAYOUT_OPTIONS.find(l => l.key === prefs.layout)
+  const [previewKey, setPreviewKey] = useState(null)
+  const cardRefs = useRef({})
+
+  const previewOption = THEME_OPTIONS.find(o => o.key === previewKey) || null
+
+  function closePreview() {
+    setPreviewKey(null)
+    // Return focus to the card that opened the modal.
+    cardRefs.current[previewKey]?.focus()
+  }
+
+  function applyTheme(key) {
+    onPatch({ theme: key })
+    setPreviewKey(null)
+    cardRefs.current[key]?.focus()
+  }
 
   return (
     <>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {THEME_OPTIONS.map((opt) => {
           const active = prefs.theme === opt.key
           return (
             <button
               key={opt.key}
-              onClick={() => onPatch({ theme: opt.key })}
+              ref={(el) => { cardRefs.current[opt.key] = el }}
+              type="button"
+              onClick={() => setPreviewKey(opt.key)}
               className={`text-left rounded-xl border-2 p-3 transition-colors ${
                 active ? 'border-wcs-red' : 'border-border hover:border-wcs-red/40'
               }`}
@@ -66,29 +69,13 @@ export default function AppearanceControls({ prefs, onPatch }) {
         })}
       </div>
 
-      {/* Layout, density and accent only mean anything under Spotlight. They
-          stay saved when you switch away, so coming back restores your setup. */}
-      {prefs.theme === 'spotlight' && (
-        <div className="mt-6 pt-6 border-t border-border space-y-5">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-2">Layout</p>
-            <Segmented
-              value={prefs.layout}
-              options={LAYOUT_OPTIONS}
-              onChange={(layout) => onPatch({ layout })}
-            />
-            {activeLayout && <p className="text-xs text-text-muted mt-2">{activeLayout.hint}</p>}
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-2">Density</p>
-            <Segmented
-              value={prefs.density}
-              options={DENSITY_OPTIONS}
-              onChange={(density) => onPatch({ density })}
-            />
-          </div>
-        </div>
+      {previewOption && (
+        <ThemePreviewModal
+          option={previewOption}
+          active={prefs.theme === previewOption.key}
+          onApply={applyTheme}
+          onClose={closePreview}
+        />
       )}
     </>
   )
