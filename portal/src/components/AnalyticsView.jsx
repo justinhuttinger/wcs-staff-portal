@@ -25,6 +25,7 @@ import Compliance from './analytics/Compliance'
 import PosSales from './analytics/PosSales'
 import Revenue from './analytics/Revenue'
 import DailySnapshot from './analytics/DailySnapshot'
+import Payroll from './analytics/Payroll'
 import GroupX from './analytics/GroupX'
 import Till from './analytics/Till'
 import Audits from './analytics/Audits'
@@ -228,6 +229,16 @@ const ANALYTICS_REPORTS = [
     Component: GroupX,
   },
   {
+    key: 'payroll',
+    label: 'Payroll',
+    desc: 'Commission by Person',
+    Component: Payroll,
+    // Commission is paid per month, so the report picks a period rather than
+    // taking the shell's range — a window straddling two would produce a figure
+    // nobody pays anyone.
+    dates: false,
+  },
+  {
     key: 'kpis',
     label: 'KPIs',
     desc: 'Goals by Club',
@@ -285,7 +296,7 @@ export const REPORT_GROUPS = [
   { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-trends', 'member-journey', 'checkins'] },
   { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due', 'pos-sales', 'revenue'] },
   { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase', 'pt-snapshot', 'trainer-snapshot'] },
-  { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot', 'compliance', 'audits', 'till'] },
+  { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot', 'compliance', 'audits', 'till', 'payroll'] },
   // Club-wide overviews first, then the one-person-at-a-time cards.
   { key: 'snapshots', label: 'Snapshots',     reports: ['daily-snapshot', 'club-snapshot', 'pt-snapshot', 'salesperson-snapshot', 'trainer-snapshot'] },
   { key: 'misc',      label: 'Misc',          reports: ['group-x'] },
