@@ -23,7 +23,6 @@ import DriveHub from './components/DriveHub'
 import MediaLibraryView from './components/MediaLibraryView'
 import FormsView from './components/forms/FormsView'
 import NpsView from './components/nps/NpsView'
-import TourCheckinQueueView from './components/TourCheckinQueueView'
 import AdsManagerView from './components/AdsManagerView'
 import AnalyticsView from './components/AnalyticsView'
 import ProfileView from './components/ProfileView'
@@ -86,7 +85,6 @@ export default function App() {
   const [showMediaLibrary, setShowMediaLibrary] = useState(false)
   const [showForms, setShowForms] = useState(false)
   const [showNps, setShowNps] = useState(false)
-  const [showTourCheckin, setShowTourCheckin] = useState(false)
   const [showAdsManager, setShowAdsManager] = useState(false)
   const [showAnalytics, setShowAnalytics] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
@@ -433,7 +431,7 @@ export default function App() {
     )
   }
 
-  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showGroupX && !showFacility && !showTill && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms && !showNps && !showTourCheckin && !showAdsManager && !showAnalytics && !showProfile
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showGroupX && !showFacility && !showTill && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms && !showNps && !showAdsManager && !showAnalytics && !showProfile
 
   function exitImpersonation() {
     setImpersonateId(null)
@@ -464,7 +462,6 @@ export default function App() {
     setShowAdsManager(false)
     setShowForms(false)
     setShowNps(false)
-    setShowTourCheckin(false)
     setShowAnalytics(false)
     setShowProfile(false)
     if (window.location.hash) window.location.hash = ''
@@ -523,7 +520,6 @@ export default function App() {
     { key: 'tool:forms', label: 'Forms', desc: 'Signups', open: () => setShowForms(true) },
     { key: 'tool:nps', label: 'Feedback', desc: 'Member surveys', open: () => setShowNps(true) },
     { key: 'tool:marketingTracker', label: 'Marketing', desc: 'Campaigns', icon: 'reporting', show: mAccess.tracker, open: () => setShowMarketingTracker(true) },
-    { key: 'tool:tourCheckin', label: 'Tour Queue', desc: 'Check-ins', show: isAdmin, open: () => setShowTourCheckin(true) },
     { key: 'tool:adsManager', label: 'Ads Manager', desc: 'Meta', show: isAdmin, open: () => setShowAdsManager(true) },
     { key: 'tool:analytics', label: 'Analytics', desc: 'Admin Reports', icon: 'reporting', show: isAdmin, open: () => { window.location.hash = '#analytics'; setShowAnalytics(true) } },
   ]
@@ -561,7 +557,6 @@ export default function App() {
     : showForms ? 'tool:forms'
     : showNps ? 'tool:nps'
     : showMarketingTracker ? 'tool:marketingTracker'
-    : showTourCheckin ? 'tool:tourCheckin'
     : showAdsManager ? 'tool:adsManager'
     : showAnalytics ? 'tool:analytics'
     : null
@@ -749,11 +744,9 @@ export default function App() {
         <AnalyticsView user={user} onBack={() => { window.location.hash = ''; setShowAnalytics(false) }} location={location} isAdmin={isAdmin} />
       ) : showAdsManager && isAdmin ? (
         <AdsManagerView onBack={() => setShowAdsManager(false)} />
-      ) : showTourCheckin && isAdmin ? (
-        <TourCheckinQueueView location={location} />
       ) : (
         <main className={`flex-1 flex items-start pt-1 pb-12${press ? ' press-single' : ''}`}>
-          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} cancelInApps={press} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onNps={() => setShowNps(true)} onGroupX={() => setShowGroupX(true)} onFacility={() => setShowFacility(true)} onTill={() => setShowTill(true)} onTourCheckin={() => setShowTourCheckin(true)} onAdsManager={() => setShowAdsManager(true)} onAnalytics={() => { window.location.hash = '#analytics'; setShowAnalytics(true) }} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
+          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} cancelInApps={press} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onNps={() => setShowNps(true)} onGroupX={() => setShowGroupX(true)} onFacility={() => setShowFacility(true)} onTill={() => setShowTill(true)} onAdsManager={() => setShowAdsManager(true)} onAnalytics={() => { window.location.hash = '#analytics'; setShowAnalytics(true) }} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>

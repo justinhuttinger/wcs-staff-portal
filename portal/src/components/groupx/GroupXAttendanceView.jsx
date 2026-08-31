@@ -46,8 +46,8 @@ function timeAgo(iso) {
   return new Date(iso).toLocaleDateString()
 }
 
-// Avatar treatment lifted from TourCheckinQueueView so the two queues look like
-// one product. Keyed on the INSTRUCTOR, since that is the person in the row.
+// Avatar treatment lifted from the Tour Check-In queue so the two queues look
+// like one product. Keyed on the INSTRUCTOR, since that is the person in the row.
 function initials(name) {
   const p = (name || '').trim().split(/\s+/).filter(Boolean)
   if (!p.length) return '?'
