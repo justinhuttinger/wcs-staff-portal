@@ -43,6 +43,7 @@ function canSeeTool(tool, { role, visibleTools }) {
     case 'inventory': return role !== 'custom' && idx >= ROLE_LEVELS.lead
     case 'forms': return idx >= ROLE_LEVELS.admin || (visibleTools || []).includes('forms')
     case 'trainerAvail': return (visibleTools || []).includes('trainerAvail')
+    case 'till': return (visibleTools || []).includes('till')
     case 'admin': return role === 'admin'
     default: return true
   }
@@ -65,6 +66,18 @@ export function visibleChangelog(ctx) {
 }
 
 export const CHANGELOG = [
+  {
+    id: 12, date: '2026-08-31',
+    title: 'Log cash in and out of the till from the portal',
+    body: 'New Till tile: when you pull cash from the drawer for the bank, the safe or a payout, tap it in there instead of ringing the Cash Drop item on the register. Pick Cash OUT or Cash IN, enter the amount, choose a reason, submit. It comes straight off what the drawer should hold at close, so your count reconciles. You can see everything logged at your club over the last week, and take back a mistake you made today with Void — nothing is ever deleted, so a void stays on the record with the reason. Ringing Cash Drop on the register still works, but do one or the other, never both for the same pull.',
+    audience: { tool: 'till' },
+  },
+  {
+    id: 11, date: '2026-08-31',
+    title: 'Till report: portal cash entries in their own columns',
+    body: 'The Till report’s Daily tab now splits drawer pulls by where they were recorded: Drops is the Cash Drop item rung on the ABC register, Out and In are what staff logged in the new Till tile. Both count toward Expected. A day showing an amount in Drops AND in Out turns amber — that is usually one pull recorded twice, which makes the drawer read over by that amount. Click any day to expand it and see each portal entry: amount, reason, who logged it, and any note. Both columns are in the CSV export.',
+    audience: { report: 'till' },
+  },
   {
     id: 10, date: '2026-07-13',
     title: 'D1 Availability is now grantable per role and per person',
