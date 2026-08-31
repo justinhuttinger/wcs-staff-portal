@@ -1,5 +1,6 @@
 const { Router } = require('express')
 const multer = require('multer')
+const crypto = require('crypto')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
@@ -12,6 +13,7 @@ const {
   canReuseTicket,
 } = require('../services/ticketingSchema')
 const { notifiableMentionIds } = require('../services/ticketMentions')
+const { SHARE_TOKEN_BYTES, apiOrigin, buildShareUrl } = require('../lib/ticketShareLink')
 const ticketNotify = require('../services/ticketNotify')
 
 const router = Router()
@@ -65,6 +67,33 @@ async function nameMap(ids) {
 async function signAttachment(path) {
   const { data } = await supabaseAdmin.storage.from(BUCKET).createSignedUrl(path, 60 * 60)
   return data?.signedUrl || null
+}
+
+// --- Public share links -------------------------------------------------
+// A signed URL dies in an hour and can only be minted by a logged-in staff
+// member, so it is useless for handing a file to a vendor, a landlord, or a
+// new hire's phone. A share token gives ONE attachment a permanent,
+// login-free URL served by /public/ticket-file/:token. The bucket stays
+// private; only the token holder gets the bytes, and clearing the token
+// revokes every copy of the link that was ever sent.
+
+// The full URL of the public API this request arrived on, so the link works
+// whether we're on Render, a preview, or localhost. PUBLIC_API_BASE_URL wins
+// when set (custom domains), otherwise trust proxy gives us the real host.
+function shareUrl(req, token) {
+  const origin = apiOrigin({
+    configured: process.env.PUBLIC_API_BASE_URL,
+    protocol: req.protocol,
+    host: req.get('host'),
+  })
+  return buildShareUrl(origin, token)
+}
+
+// Shape the attachment rows the portal renders. share_token itself never
+// leaves the server bare — it only goes out inside the finished URL.
+function publicAttachment(req, a, extra = {}) {
+  const { share_token, ...rest } = a || {}
+  return { ...rest, share_url: shareUrl(req, share_token), ...extra }
 }
 
 // Add someone to a ticket's watcher list (idempotent via the unique index).
@@ -502,7 +531,7 @@ router.get('/:id', async (req, res) => {
       is_submitter: ticket.submitter_id === req.staff.id,
       current_user_id: req.staff.id,
       comments: (comments || []).map(c => ({ ...c, author_name: c.author_id ? (names[c.author_id] || 'Unknown') : 'System' })),
-      attachments: (attachments || []).map((a, i) => ({ ...a, uploader_name: names[a.uploaded_by] || 'Unknown', url: signed[i] })),
+      attachments: (attachments || []).map((a, i) => publicAttachment(req, a, { uploader_name: names[a.uploaded_by] || 'Unknown', url: signed[i] })),
       watchers: (watchers || []).map(w => ({ staff_user_id: w.staff_user_id, reason: w.reason, name: names[w.staff_user_id] || 'Unknown' })),
     })
   } catch (err) {
@@ -665,7 +694,7 @@ router.post('/:id/attachments', uploadSingle, async (req, res) => {
     }).select().single()
     if (error) throw error
     const url = await signAttachment(storagePath)
-    res.status(201).json({ attachment: { ...data, url, uploader_name: req.staff.display_name || 'You' } })
+    res.status(201).json({ attachment: publicAttachment(req, data, { url, uploader_name: req.staff.display_name || 'You' }) })
   } catch (err) {
     console.error('[Ticketing] upload attachment failed:', err.message)
     res.status(500).json({ error: 'Failed to upload file' })
@@ -683,6 +712,57 @@ router.get('/attachments/:id/url', async (req, res) => {
   } catch (err) {
     console.error('[Ticketing] sign attachment failed:', err.message)
     res.status(500).json({ error: 'Failed to get download link' })
+  }
+})
+
+// POST /ticketing/attachments/:id/share — mint (or return) the public link.
+// DELETE the same path revokes it. Handlers of the ticket's type and admins
+// only: publishing a file outside the company is a heavier act than viewing
+// it, so the submitter alone can't do it.
+async function loadAttachmentForShare(req) {
+  const { data: att } = await supabaseAdmin.from('ticket_attachments')
+    .select('id, ticket_id, file_name, share_token').eq('id', req.params.id).maybeSingle()
+  if (!att) return { error: [404, 'Attachment not found'] }
+  const { data: ticket } = await supabaseAdmin.from('tickets').select('id, type_id').eq('id', att.ticket_id).maybeSingle()
+  if (!ticket) return { error: [404, 'Ticket not found'] }
+  const type = await getType(ticket.type_id)
+  if (!canHandleType(req.staff, type)) return { error: [403, 'Only handlers of this ticket type can share a file'] }
+  return { att }
+}
+
+router.post('/attachments/:id/share', async (req, res) => {
+  try {
+    const { att, error } = await loadAttachmentForShare(req)
+    if (error) return res.status(error[0]).json({ error: error[1] })
+    // Already shared: hand back the SAME link rather than rotating it, so a
+    // second click doesn't silently break a link already sitting in someone's
+    // inbox.
+    if (att.share_token) return res.json({ share_url: shareUrl(req, att.share_token) })
+
+    const token = crypto.randomBytes(SHARE_TOKEN_BYTES).toString('hex')
+    const { error: upErr } = await supabaseAdmin.from('ticket_attachments')
+      .update({ share_token: token, shared_by: req.staff.id, shared_at: new Date().toISOString() })
+      .eq('id', att.id)
+    if (upErr) throw upErr
+    res.json({ share_url: shareUrl(req, token) })
+  } catch (err) {
+    console.error('[Ticketing] share attachment failed:', err.message)
+    res.status(500).json({ error: 'Failed to create share link' })
+  }
+})
+
+router.delete('/attachments/:id/share', async (req, res) => {
+  try {
+    const { att, error } = await loadAttachmentForShare(req)
+    if (error) return res.status(error[0]).json({ error: error[1] })
+    const { error: upErr } = await supabaseAdmin.from('ticket_attachments')
+      .update({ share_token: null, shared_by: null, shared_at: null })
+      .eq('id', att.id)
+    if (upErr) throw upErr
+    res.json({ share_url: null })
+  } catch (err) {
+    console.error('[Ticketing] revoke share failed:', err.message)
+    res.status(500).json({ error: 'Failed to revoke share link' })
   }
 })
 

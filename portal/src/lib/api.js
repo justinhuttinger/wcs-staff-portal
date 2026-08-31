@@ -2024,6 +2024,9 @@ export const ticketing = {
     return api('/ticketing/' + id + '/attachments', { method: 'POST', body: fd })
   },
   attachmentUrl: (attachmentId) => api('/ticketing/attachments/' + attachmentId + '/url'),
+  // Public share link: no login, no expiry, revocable. Handlers/admins only.
+  shareAttachment: (attachmentId) => api('/ticketing/attachments/' + attachmentId + '/share', { method: 'POST' }),
+  unshareAttachment: (attachmentId) => api('/ticketing/attachments/' + attachmentId + '/share', { method: 'DELETE' }),
 }
 
 // Google Chat connection for the ticket bridge. When a staff member assigns or
