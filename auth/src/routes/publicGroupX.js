@@ -99,6 +99,11 @@ router.get('/board', (req, res) => {
   // ?safe=N (0-10) widens the overscan inset for a TV that crops harder than
   // the 3% default.
   const safePercent = req.query.safe !== undefined ? parseFloat(req.query.safe) : undefined
+  // Only an EXPLICIT start pins the window. resolve() falls back to today for
+  // the feed, but handing that back to the page would freeze a wall TV on the
+  // day it was switched on instead of letting it roll over at local midnight.
+  const asked = req.query.start || req.query.week
+  const startDate = DATE_RE.test(asked || '') ? asked : null
   res.type('html').send(renderBoardHtml({
     clubSlug: r.club.slug,
     clubName: r.club.name,
@@ -106,6 +111,10 @@ router.get('/board', (req, res) => {
     // ?embed=1 strips the board's own title block, status line and overscan
     // padding, for the iframe on westcoaststrength.com. See renderBoardHtml.
     embed: req.query.embed === '1',
+    startDate,
+    // ?print=1 renders the board and prints itself. The portal's Print button
+    // opens this, so the printed sheet IS the board rather than a copy of it.
+    autoPrint: req.query.print === '1',
   }))
 })
 

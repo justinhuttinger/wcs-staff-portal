@@ -149,3 +149,27 @@ test('the week range and class times are full ink, not muted', () => {
   assert.match(time, /color: var\(--color-text\)/)
   assert.doesNotMatch(time, /--color-muted/)
 })
+
+test('the board pins its window only when a start date is given', () => {
+  const rolling = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem' })
+  // A wall TV must roll over at local midnight, so START stays empty and the
+  // page keeps asking for today.
+  assert.match(rolling, /var START = "";/)
+
+  const pinned = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem', startDate: '2026-09-07' })
+  assert.match(pinned, /var START = "2026-09-07";/)
+  assert.match(pinned, /START \|\| pacificToday\(\)/)
+})
+
+test('autoPrint makes the board print itself and stop polling', () => {
+  const normal = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem' })
+  assert.match(normal, /var AUTO_PRINT = false;/)
+
+  const printing = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem', autoPrint: true })
+  assert.match(printing, /var AUTO_PRINT = true;/)
+  // Fonts first: the display face is an embedded data URI, and printing before
+  // it swaps in prints the fallback's metrics instead of the board's.
+  assert.match(printing, /document\.fonts\.ready\.then\(go, go\)/)
+  // A poll mid-print would re-render the page out from under the print job.
+  assert.match(printing, /if \(!AUTO_PRINT\) \{\s*\n\s*setInterval/)
+})

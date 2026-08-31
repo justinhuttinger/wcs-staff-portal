@@ -6,7 +6,7 @@ import CreateClassModal from './CreateClassModal'
 import BoardLinks from './BoardLinks'
 import NewClassBadges from './NewClassBadges'
 import SeriesList from './SeriesList'
-import PrintScheduleModal from '../schedule/PrintScheduleModal'
+import PrintBoardModal from './PrintBoardModal'
 
 function weekLabel(weekStart) {
   const end = addDays(weekStart, 6)
@@ -70,14 +70,6 @@ export default function GroupXView({ canEdit = true, showBoardLinks = true }) {
       setLoading(false)
     }
   }, [club, weekStart])
-
-  // The print sheet picks its own week, which is usually not the one on screen
-  // (the point is to run off next week's sheet ahead of time), so it fetches
-  // its own range rather than reusing `classes`.
-  const fetchPrintWeek = useCallback(async (start, end) => {
-    const r = await api(`/group-x/classes?club_number=${club.clubNumber}&start=${start}&end=${end}`)
-    return r.classes || []
-  }, [club])
 
   useEffect(() => { load() }, [load])
 
@@ -313,13 +305,7 @@ export default function GroupXView({ canEdit = true, showBoardLinks = true }) {
       )}
 
       {printOpen && (
-        <PrintScheduleModal
-          title="Class Schedule"
-          colored
-          clubName={club.name}
-          fetchWeek={fetchPrintWeek}
-          onClose={() => setPrintOpen(false)}
-        />
+        <PrintBoardModal club={club} onClose={() => setPrintOpen(false)} />
       )}
     </div>
   )
