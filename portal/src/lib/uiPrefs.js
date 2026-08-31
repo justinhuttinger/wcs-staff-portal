@@ -14,7 +14,7 @@
 // Classic and switches once hydrate() returns. Only the first load, and only
 // on a machine that person has never used.
 
-import { getPrefs, setPrefs, THEME_EVENT } from './theme'
+import { getPrefs, setPrefs, THEME_EVENT, getBackgroundPrefs, setBackgroundPrefs } from './theme'
 import { getPinned, setPinned, PINNED_EVENT } from './pinnedTabs'
 import { getUiPreferences, saveUiPreferences, getAppSettings } from './api'
 import { resolveHydration } from './uiPrefsResolve'
@@ -30,7 +30,12 @@ let started = false
 /** The full local snapshot, in the shape the server stores. */
 function snapshot() {
   const p = getPrefs()
-  return { theme: p.theme, accent: p.accent, density: p.density, layout: p.layout, pinned: getPinned() }
+  const b = getBackgroundPrefs()
+  return {
+    theme: p.theme, accent: p.accent, density: p.density, layout: p.layout,
+    background: b.background, backgroundDim: b.backgroundDim,
+    pinned: getPinned(),
+  }
 }
 
 /**
@@ -71,6 +76,7 @@ export async function hydrateUiPrefs() {
     // setPrefs and setPinned both normalize: an unknown theme or a retired pin
     // key falls back rather than rendering something broken.
     setPrefs({ theme: prefs.theme, accent: prefs.accent, density: prefs.density, layout: prefs.layout })
+    setBackgroundPrefs({ background: prefs.background, backgroundDim: prefs.backgroundDim })
     setPinned(Array.isArray(prefs.pinned) ? prefs.pinned : [])
   } finally {
     applyingFromServer = false

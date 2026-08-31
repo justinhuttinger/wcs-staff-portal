@@ -13,9 +13,11 @@
 // Accent/density/layout only mean anything under the spotlight theme; they are
 // still written unconditionally so switching themes back and forth is lossless.
 //
-// Persistence is localStorage (per-device, per-person). No backend. index.html
-// has a tiny inline copy of the read+apply step so nobody flashes Classic
-// before this module loads — keep the storage keys in sync with that script.
+// Persistence: localStorage is the pre-paint MIRROR, not the source of truth.
+// The server row (user_ui_preferences.prefs) is authoritative and is synced by
+// lib/uiPrefs.js. index.html has a tiny inline copy of the read+apply step so
+// nobody flashes Classic before this module loads — keep the storage keys in
+// sync with that script.
 
 export const THEME_KEY = 'wcs-portal-theme'
 export const ACCENT_KEY = 'wcs-portal-accent'
@@ -47,6 +49,72 @@ export const DEFAULTS = {
 
 /** Event fired on <window> whenever prefs change, so live views can re-render. */
 export const THEME_EVENT = 'wcs-appearance-change'
+
+export const BACKGROUND_KEY = 'wcs-portal-background'
+export const BACKGROUND_DIM_KEY = 'wcs-portal-background-dim'
+
+// 'location' keeps the club photo the portal has always shown; 'none' is a
+// flat ground; 'gallery' and 'upload' both carry a storage path in `value`.
+export const BACKGROUND_KINDS = ['location', 'gallery', 'upload', 'none']
+export const DEFAULT_BACKGROUND = { kind: 'location', value: '' }
+// 60 is not arbitrary: it is the black/60 scrim App.jsx used to hardcode, so
+// everyone who never touches this sees exactly what they saw before.
+export const DEFAULT_BACKGROUND_DIM = 60
+
+const MAX_BACKGROUND_VALUE = 200
+
+/** Coerce anything into a usable { kind, value }. Never throws. */
+export function normalizeBackground(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...DEFAULT_BACKGROUND }
+  if (!BACKGROUND_KINDS.includes(raw.kind)) return { ...DEFAULT_BACKGROUND }
+  const value = typeof raw.value === 'string' ? raw.value : ''
+  if (value.length > MAX_BACKGROUND_VALUE) return { ...DEFAULT_BACKGROUND }
+  // gallery and upload are meaningless without a path; location and none are
+  // meaningless with one.
+  if ((raw.kind === 'gallery' || raw.kind === 'upload') && !value) return { ...DEFAULT_BACKGROUND }
+  if (raw.kind === 'location' || raw.kind === 'none') return { kind: raw.kind, value: '' }
+  return { kind: raw.kind, value }
+}
+
+/** Coerce anything into an integer percentage in 0-80. Never throws. */
+export function normalizeDim(raw) {
+  const n = typeof raw === 'number' ? raw : (typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN)
+  if (!Number.isFinite(n)) return DEFAULT_BACKGROUND_DIM
+  return Math.min(80, Math.max(0, Math.round(n)))
+}
+
+/** Read the saved background pair. Never throws. */
+export function getBackgroundPrefs() {
+  let background = DEFAULT_BACKGROUND
+  let backgroundDim = DEFAULT_BACKGROUND_DIM
+  try {
+    background = normalizeBackground(JSON.parse(localStorage.getItem(BACKGROUND_KEY) || 'null'))
+  } catch {}
+  try {
+    backgroundDim = normalizeDim(localStorage.getItem(BACKGROUND_DIM_KEY))
+  } catch {}
+  return { background, backgroundDim }
+}
+
+/**
+ * Persist + apply a partial background patch. Fires THEME_EVENT so the sync
+ * layer in uiPrefs.js pushes it up, exactly as it does for the theme.
+ */
+export function setBackgroundPrefs(patch) {
+  const cur = getBackgroundPrefs()
+  const next = {
+    background: normalizeBackground(patch?.background !== undefined ? patch.background : cur.background),
+    backgroundDim: normalizeDim(patch?.backgroundDim !== undefined ? patch.backgroundDim : cur.backgroundDim),
+  }
+  try {
+    localStorage.setItem(BACKGROUND_KEY, JSON.stringify(next.background))
+    localStorage.setItem(BACKGROUND_DIM_KEY, String(next.backgroundDim))
+  } catch {}
+  try {
+    window.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: next }))
+  } catch {}
+  return next
+}
 
 function read(key, allowed, fallback) {
   try {

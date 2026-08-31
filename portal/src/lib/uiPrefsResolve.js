@@ -12,7 +12,8 @@
  *      before org defaults existed and keeps an existing user's setup.
  *
  * Pins are deliberately never seeded from the org default: a shortcut bar is
- * personal, and half of what is pinnable is role-gated anyway.
+ * personal, and half of what is pinnable is role-gated anyway. A background
+ * is just as personal, so it is never seeded from the org default either.
  *
  * Pure and import-free on purpose, so it is unit-testable without a DOM.
  */
@@ -28,6 +29,8 @@ export function resolveHydration({ remote, orgDefault, local }) {
       accent: d.accent || local.accent,
       density: d.density || local.density,
       layout: d.layout || local.layout,
+      background: local.background,
+      backgroundDim: local.backgroundDim,
       pinned: local.pinned,
     },
   }
