@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { normalizeBackground, normalizeDim, DEFAULT_BACKGROUND, DEFAULT_BACKGROUND_DIM } from './theme.js'
+import { normalizeBackground, normalizeDim, DEFAULT_BACKGROUND, DEFAULT_BACKGROUND_DIM, THEMES, applyPrefs } from './theme.js'
 
 test('a well-formed background passes through', () => {
   assert.deepEqual(normalizeBackground({ kind: 'gallery', value: 'shared/abc.jpg' }),
@@ -53,4 +53,23 @@ test('a non-numeric dim falls back to the default', () => {
 
 test('the default dim reproduces the old hardcoded scrim', () => {
   assert.equal(DEFAULT_BACKGROUND_DIM, 60)
+})
+
+test('only classic and press are offered', () => {
+  assert.deepEqual([...THEMES].sort(), ['classic', 'press'])
+})
+
+test('a retired theme falls back to classic', () => {
+  // Users who chose wp or spotlight before they were removed must land
+  // somewhere sensible rather than rendering unstyled. This normalizer is
+  // what replaces a data migration.
+  assert.equal(applyPrefs({ theme: 'spotlight' }).theme, 'classic')
+  assert.equal(applyPrefs({ theme: 'wp' }).theme, 'classic')
+  assert.equal(applyPrefs({ theme: 'nonsense' }).theme, 'classic')
+  assert.equal(applyPrefs({}).theme, 'classic')
+  assert.equal(applyPrefs(null).theme, 'classic')
+})
+
+test('press survives', () => {
+  assert.equal(applyPrefs({ theme: 'press' }).theme, 'press')
 })

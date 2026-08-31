@@ -1,17 +1,20 @@
-// Portal appearance switch (Classic ↔ WP-style ↔ Spotlight).
+// Portal appearance switch (Classic ↔ Press).
 //
-// The whole mechanism is attributes on <html>. index.css defines a
-// [data-theme="wp"] and a [data-theme="spotlight"] block that redefine the
-// design tokens, so every semantic utility (bg-surface, text-primary, …)
-// re-resolves without touching a single component.
-//   data-theme    classic | wp | spotlight | press   which palette
-//   data-accent   signal_red | …             the one user-selectable color
-//   data-density  comfortable | compact      panel height + padding
-//   data-layout   spotlight | grid | rows    how the home board renders
+// The whole mechanism is a single attribute on <html>. index.css defines a
+// [data-theme="press"] block that redefines the design tokens, so every
+// semantic utility (bg-surface, text-primary, …) re-resolves without
+// touching a single component.
+//   data-theme    classic | press   which palette
 // Press additionally swaps the whole shell for a persistent top nav (see
 // PortalNav.jsx) — it is the one theme that changes structure, not just tokens.
-// Accent/density/layout only mean anything under the spotlight theme; they are
-// still written unconditionally so switching themes back and forth is lossless.
+//
+// WP-style and Spotlight themes, and the accent/density/layout settings that
+// went with them, were removed: those three settings only ever did anything
+// under Spotlight, and Spotlight itself is gone, so there was nothing left
+// for them to control. Do not reintroduce ACCENTS, DENSITIES, LAYOUTS or their
+// storage keys without a theme that actually reads them. Anyone who had `wp`
+// or `spotlight` saved falls back to classic via the normalizer in
+// `applyPrefs` below; that fallback is the whole migration story, so keep it.
 //
 // Persistence: localStorage is the pre-paint MIRROR, not the source of truth.
 // The server row (user_ui_preferences.prefs) is authoritative and is synced by
@@ -20,31 +23,11 @@
 // sync with that script.
 
 export const THEME_KEY = 'wcs-portal-theme'
-export const ACCENT_KEY = 'wcs-portal-accent'
-export const DENSITY_KEY = 'wcs-portal-density'
-export const LAYOUT_KEY = 'wcs-portal-layout'
 
-export const THEMES = ['classic', 'wp', 'spotlight', 'press']
-export const LAYOUTS = ['spotlight', 'grid', 'rows']
-export const DENSITIES = ['comfortable', 'compact']
-
-// Enumerated accents. `ink` is the text color that sits on top of the accent,
-// picked once for contrast against the accent (WCAG ratio in `contrast`) rather
-// than computed on every render. Adding one here means adding a matching
-// [data-accent='…'] block in index.css.
-export const ACCENTS = [
-  { key: 'signal_red', hex: '#ff2e2e', ink: '#0b0b0d', contrast: 5.7, label: 'Signal Red' },
-  { key: 'deep_red', hex: '#c8102e', ink: '#ffffff', contrast: 5.9, label: 'Deep Red' },
-  { key: 'ember', hex: '#ff5b1f', ink: '#0b0b0d', contrast: 6.8, label: 'Ember' },
-  { key: 'steel', hex: '#4fc3d9', ink: '#0b0b0d', contrast: 10.1, label: 'Steel' },
-  { key: 'lime', hex: '#a3e635', ink: '#0b0b0d', contrast: 13.4, label: 'Lime' },
-]
+export const THEMES = ['classic', 'press']
 
 export const DEFAULTS = {
   theme: 'classic',
-  accent: 'signal_red',
-  density: 'comfortable',
-  layout: 'spotlight',
 }
 
 /** Event fired on <window> whenever prefs change, so live views can re-render. */
@@ -129,9 +112,6 @@ function read(key, allowed, fallback) {
 export function getPrefs() {
   return {
     theme: read(THEME_KEY, THEMES, DEFAULTS.theme),
-    accent: read(ACCENT_KEY, ACCENTS.map(a => a.key), DEFAULTS.accent),
-    density: read(DENSITY_KEY, DENSITIES, DEFAULTS.density),
-    layout: read(LAYOUT_KEY, LAYOUTS, DEFAULTS.layout),
   }
 }
 
@@ -143,20 +123,20 @@ export function getTheme() {
 /** Reflect prefs onto <html> without persisting them. */
 export function applyPrefs(prefs) {
   const raw = { ...DEFAULTS, ...(prefs || {}) }
-  // Normalize here so an unknown value (a retired accent, a hand-edited
-  // localStorage key) falls back to the default rather than rendering unstyled.
+  // Normalize here so an unknown value (a retired theme like wp or spotlight,
+  // a hand-edited localStorage key) falls back to the default rather than
+  // rendering unstyled. This is the whole migration story for anyone who had
+  // a removed theme saved.
   const p = {
     theme: THEMES.includes(raw.theme) ? raw.theme : DEFAULTS.theme,
-    accent: ACCENTS.some(a => a.key === raw.accent) ? raw.accent : DEFAULTS.accent,
-    density: DENSITIES.includes(raw.density) ? raw.density : DEFAULTS.density,
-    layout: LAYOUTS.includes(raw.layout) ? raw.layout : DEFAULTS.layout,
   }
-  const el = document.documentElement
-  if (p.theme === 'classic') el.removeAttribute('data-theme')
-  else el.setAttribute('data-theme', p.theme)
-  el.setAttribute('data-accent', p.accent)
-  el.setAttribute('data-density', p.density)
-  el.setAttribute('data-layout', p.layout)
+  // node --test has no `document`; guard so the normalization above stays
+  // testable without a DOM.
+  const el = typeof document === 'undefined' ? null : document.documentElement
+  if (el) {
+    if (p.theme === 'classic') el.removeAttribute('data-theme')
+    else el.setAttribute('data-theme', p.theme)
+  }
   return p
 }
 
@@ -166,18 +146,15 @@ export function applyTheme(theme) {
 }
 
 /**
- * Persist + apply a partial prefs patch. Unknown values fall back to the
- * current value, so a removed accent option degrades to the default instead of
- * breaking the user. Returns the full resolved prefs actually applied.
+ * Persist + apply a partial prefs patch. An unknown theme falls back to the
+ * default instead of breaking the user. Returns the full resolved prefs
+ * actually applied.
  */
 export function setPrefs(patch) {
   const next = { ...getPrefs(), ...(patch || {}) }
   const resolved = applyPrefs(next)
   try {
     localStorage.setItem(THEME_KEY, resolved.theme)
-    localStorage.setItem(ACCENT_KEY, resolved.accent)
-    localStorage.setItem(DENSITY_KEY, resolved.density)
-    localStorage.setItem(LAYOUT_KEY, resolved.layout)
   } catch {}
   try {
     window.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: resolved }))

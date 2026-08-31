@@ -26,9 +26,6 @@ export function resolveHydration({ remote, orgDefault, local }) {
     action: 'adopt',
     prefs: {
       theme: d.theme || local.theme,
-      accent: d.accent || local.accent,
-      density: d.density || local.density,
-      layout: d.layout || local.layout,
       background: local.background,
       backgroundDim: local.backgroundDim,
       pinned: local.pinned,
