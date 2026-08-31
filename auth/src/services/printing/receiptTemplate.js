@@ -27,9 +27,23 @@ function prettyDate(iso) {
 
 function renderReceiptHtml(p, opts = {}) {
   const logo = opts.logoDataUri || ''
+  // Itemization under the totals: each register-rung drop, then each cash
+  // movement logged in the portal. Movements carry a sign so a close-out reads
+  // as a ledger -- money out is what shrank the drawer, money in is what grew it.
   const dropRows = (p.drops || []).map(
     d => `<tr><td>${esc(d.name)}</td><td class="r">${money(d.amount)}</td></tr>`
   ).join('')
+  const movementRows = (p.movements || []).map(
+    m => `<tr><td>${esc(m.name)}</td><td class="r">${signedMoney(m.direction === 'in' ? Number(m.amount || 0) : -Number(m.amount || 0))}</td></tr>`
+  ).join('')
+  const itemRows = dropRows + movementRows
+  // Portal cash-in/out lines only appear on a day that had some, so a club
+  // still ringing drops on the register prints exactly the receipt it did before.
+  const manualOut = Number(p.manualOut || 0)
+  const manualIn = Number(p.manualIn || 0)
+  const manualRows =
+    (manualOut ? `<tr><td>Cash out (portal)</td><td class="r">${money(manualOut)}</td></tr>` : '') +
+    (manualIn ? `<tr><td>Cash in (portal)</td><td class="r">${money(manualIn)}</td></tr>` : '')
   const loc = esc(String(p.location || '')).replace(/^\w/, c => c.toUpperCase())
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><style>
@@ -56,7 +70,8 @@ function renderReceiptHtml(p, opts = {}) {
     <tr><td>Cash sales</td><td class="r">${money(p.cashSales)}</td></tr>
     <tr><td>Cash refunds</td><td class="r">${money(p.cashRefunds)}</td></tr>
     <tr><td>Cash drops</td><td class="r">${money(p.dropsTotal)}</td></tr>
-    ${dropRows ? `<tr><td colspan="2"><div class="rule"></div></td></tr>${dropRows}` : ''}
+    ${manualRows}
+    ${itemRows ? `<tr><td colspan="2"><div class="rule"></div></td></tr>${itemRows}` : ''}
     <tr><td colspan="2"><div class="rule"></div></td></tr>
     <tr><td>Expected in drawer</td><td class="r">${money(p.expected)}</td></tr>
     <tr><td><strong>Counted in drawer</strong></td><td class="r"><strong>${money(p.counted)}</strong></td></tr>
