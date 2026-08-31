@@ -4,6 +4,11 @@
 // and with how ToolGrid renders the custom-role layout.
 //
 // `group` is just for organizing the admin picker (Apps vs Tools).
+//
+// An entry with `capability: true` is not a tile — it is an extra permission
+// that changes what an already-granted tile can DO (editing a schedule, say).
+// It appears in the picker so an admin can hand it out, and is skipped by the
+// board renderer, which has no tile to draw for it.
 
 export const PORTAL_TILE_CATALOG = [
   // Apps (external services + in-portal Drive)
@@ -25,6 +30,19 @@ export const PORTAL_TILE_CATALOG = [
   { key: 'trainerAvail',    label: 'D1 Availability',  desc: 'Trainers',      group: 'tools' },
   { key: 'reporting',       label: 'Reporting',        desc: 'Reports',       group: 'tools' },
   { key: 'forms',           label: 'Forms',            desc: 'Signups',       group: 'tools' },
+  { key: 'groupX',          label: 'Group X',          desc: 'Classes',       group: 'tools' },
+  { key: 'facility',        label: 'Courts & Pool',    desc: 'Schedules',     group: 'tools' },
+  // Till is lead-tier and the custom role sits above lead, so a granted member
+  // clears the /till/movements gate. The Till REPORT is separate and stays
+  // manager+ — this grants logging cash, not seeing anyone's over/short.
+  { key: 'till',            label: 'Till',             desc: 'Cash in / out', group: 'tools' },
+  // Capabilities on the three tiles above. Group X and Courts & Pool both gate
+  // their write routes on these exact keys (requireTile in routes/groupX.js and
+  // routes/facilitySchedule.js), so without them a granted member can read a
+  // schedule but never change it.
+  { key: 'groupX:schedule-edit',   label: 'Group X — Edit Schedule',       group: 'tools', capability: true },
+  { key: 'groupX:attendance',      label: 'Group X — Log Attendance',      group: 'tools', capability: true },
+  { key: 'facility:schedule-edit', label: 'Courts & Pool — Edit Schedule', group: 'tools', capability: true },
   // Note: the Marketing Tracker tile is NOT listed here — it is controlled by
   // the marketing add-on toggle (with its own club/type scope), not the custom
   // tile picker, so the tile and its API gate never disagree.

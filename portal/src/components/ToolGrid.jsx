@@ -373,6 +373,14 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
           return onReporting && <SvgTileButton key={key} onClick={() => { window.location.hash = '#reporting'; onReporting() }} iconPath={TILE_ICONS.reporting} label="Reporting" desc="Reports" />
         case 'forms':
           return onForms && <SvgTileButton key={key} onClick={onForms} iconPath={TILE_ICONS.forms} label="Forms" desc="Signups" />
+        case 'groupX':
+          return onGroupX && <SvgTileButton key={key} onClick={onGroupX} iconPath={TILE_ICONS.groupX} label="Group X" desc="Classes" />
+        case 'facility':
+          return onFacility && <SvgTileButton key={key} onClick={onFacility} iconPath={TILE_ICONS.facility} label="Courts & Pool" desc="Schedules" />
+        // The custom board is exactly the tiles an admin granted, so it is
+        // short by construction and has no "More" drawer to nest Till in.
+        case 'till':
+          return onTill && <SvgTileButton key={key} onClick={onTill} iconPath={TILE_ICONS.till} label="Till" desc="Cash in / out" />
         case 'nps':
           return onNps && <SvgTileButton key={key} onClick={onNps} iconPath={TILE_ICONS.nps} label="Feedback" desc="Member surveys" />
         case 'marketingTracker':
@@ -386,6 +394,9 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
     const APP_KEYS = new Set(['grow', 'abc', 'paychex', 'gmail', 'insights', 'notifications'])
     if (!driveInTools) APP_KEYS.add('drive')
     const grantedKeys = PORTAL_TILE_CATALOG
+      // Capability entries change what a tile can do; they have no tile of
+      // their own to draw.
+      .filter(t => !t.capability)
       .map(t => t.key)
       .filter(k => (k === 'reporting' ? showReporting : granted.has(k)))
       .filter(k => !omitted.has(k))
