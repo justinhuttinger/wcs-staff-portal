@@ -1,10 +1,8 @@
-import { useState } from 'react'
-import { getPrefs, setPrefs } from '../../lib/theme'
+import { useAppearancePrefs } from '../../lib/useAppearancePrefs'
 import AppearanceControls from '../appearance/AppearanceControls'
 
 export default function AppearanceAdmin() {
-  const [prefs, setLocalPrefs] = useState(getPrefs)
-  const patch = (p) => setLocalPrefs(setPrefs(p)) // persist + apply to <html> live
+  const [prefs, patch] = useAppearancePrefs() // persist + apply to <html> live, stays in step with THEME_EVENT
 
   return (
     <div className="bg-surface rounded-xl border border-border p-6 max-w-3xl">

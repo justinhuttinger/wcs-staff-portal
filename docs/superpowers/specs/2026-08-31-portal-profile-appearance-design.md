@@ -109,8 +109,9 @@ contained the key still loads their board.
 `App.jsx` alongside the other `show*` views and cleared by `handleBackToPortal`
 like the rest. Three sections:
 
-- **Theme** — the four theme cards with their live previews
-- **Layout & Density** — the existing layout and density pickers
+- **Theme** — the four theme cards with their live previews, always shown
+- **Layout, Density & Accent** — the existing pickers, shown only when Spotlight
+  is the selected theme, since those settings are the only ones Spotlight honors
 
 PR 2 ships those two only. The Background section is added to this same file
 in PR 3; nothing is stubbed in the meantime.

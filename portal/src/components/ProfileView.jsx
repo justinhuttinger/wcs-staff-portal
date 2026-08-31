@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { getPrefs, setPrefs } from '../lib/theme'
+import { useAppearancePrefs } from '../lib/useAppearancePrefs'
 import AppearanceControls from './appearance/AppearanceControls'
 
 /**
@@ -12,8 +11,7 @@ import AppearanceControls from './appearance/AppearanceControls'
  * debounced listener in lib/uiPrefs.js. There is no Save button, on purpose.
  */
 export default function ProfileView({ user }) {
-  const [prefs, setLocalPrefs] = useState(getPrefs)
-  const patch = (p) => setLocalPrefs(setPrefs(p))
+  const [prefs, patch] = useAppearancePrefs()
 
   const name = user?.staff?.display_name || user?.staff?.email || ''
 
