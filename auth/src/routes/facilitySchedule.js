@@ -1,5 +1,13 @@
 /**
- * /facility-schedule — Courts and Pool schedules (admin only).
+ * /facility-schedule — Courts and Pool schedules.
+ *
+ * Permission model, deliberately identical to Group X (see routes/groupX.js):
+ *   facility                — see the schedules. Everyone.
+ *   facility:schedule-edit  — add and cancel slots, run recurring series.
+ * Admins always pass, so the Admin Panel keeps working whatever the grid says.
+ *
+ * Clubs are narrowed to the caller's assigned locations on the SERVER, because
+ * club_number comes straight off the request.
  *
  * Unlike Group X these do not come from ABC. We own the events outright, so
  * Supabase is the source of truth and there is no external calendar to keep in
@@ -8,7 +16,7 @@
  */
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
-const { CLUBS, isKnownClubNumber } = require('../lib/groupXClubs')
+const { isKnownClubNumber } = require('../lib/groupXClubs')
 const { FACILITIES, isKnownFacility } = require('../lib/facilities')
 const { DATE_RE, buildLocalTimestamp } = require('../lib/abcTime')
 const { expandSeries, MAX_OCCURRENCES } = require('../lib/groupXSeries')
@@ -17,11 +25,43 @@ const { padDate, toIsoDate } = require('../lib/abcTime')
 const { publicCacheKeysForDates } = require('../lib/groupXPublic')
 const memoryCache = require('../services/memoryCache')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { roleLevel } = require('../middleware/role')
+const { requireTile } = require('../middleware/tile')
+const { allowedClubsFor } = require('../lib/groupXScope')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+
+// Gate on a permission key, with admins always allowed through. Mirrors
+// requirePerm in routes/groupX.js: an admin unticking a box in the roles grid
+// should not lock the admin out of the screen they manage it from.
+function requirePerm(permKey) {
+  const tileGate = requireTile(permKey)
+  return (req, res, next) => {
+    if (roleLevel(req.staff?.role) >= roleLevel('admin')) return next()
+    return tileGate(req, res, next)
+  }
+}
+
+router.use(requirePerm('facility'))
+
+// The caller's clubs, resolved once per request. Facilities are club-scoped
+// exactly as Group X classes are, so this is the same helper.
+router.use(async (req, res, next) => {
+  try {
+    req.fxClubs = await allowedClubsFor(req.staff)
+    next()
+  } catch (err) {
+    console.error('[facility] club scope failed:', err.message)
+    res.status(500).json({ error: 'could not resolve club access' })
+  }
+})
+
+const requireEdit = requirePerm('facility:schedule-edit')
+
+function canUseClub(req, clubNumber) {
+  return (req.fxClubs || []).some(c => c.clubNumber === String(clubNumber))
+}
 
 const MAX_TITLE = 80
 
@@ -50,6 +90,10 @@ function requireScope(req, res) {
     res.status(400).json({ error: 'facility must be one of: ' + FACILITIES.map(f => f.slug).join(', ') })
     return null
   }
+  if (!canUseClub(req, clubNumber)) {
+    res.status(403).json({ error: 'no access to that club' })
+    return null
+  }
   return { clubNumber, facility }
 }
 
@@ -58,7 +102,9 @@ function cleanTitle(v) {
   return t.slice(0, MAX_TITLE)
 }
 
-router.get('/facilities', (req, res) => res.json({ facilities: FACILITIES, clubs: CLUBS }))
+// Only the caller's own clubs. The view builds its club pills straight off
+// this, so scoping here scopes the whole screen.
+router.get('/facilities', (req, res) => res.json({ facilities: FACILITIES, clubs: req.fxClubs }))
 
 // GET /facility-schedule/events?club_number=&facility=&start=&end=
 router.get('/events', async (req, res) => {
@@ -88,9 +134,9 @@ router.get('/events', async (req, res) => {
 })
 
 // POST /facility-schedule/events — one event.
-router.post('/events', async (req, res) => {
+router.post('/events', requireEdit, async (req, res) => {
   const b = req.body || {}
-  if (!isKnownClubNumber(b.club_number)) {
+  if (!isKnownClubNumber(b.club_number) || !canUseClub(req, b.club_number)) {
     return res.status(400).json({ error: 'valid club_number is required in body' })
   }
   if (!isKnownFacility(b.facility)) {
@@ -137,7 +183,7 @@ router.post('/events', async (req, res) => {
 
 // DELETE /facility-schedule/events/:id?club_number=&facility=
 // Soft delete: keeps the row so a cancelled slot can be audited later.
-router.delete('/events/:id', async (req, res) => {
+router.delete('/events/:id', requireEdit, async (req, res) => {
   const scope = requireScope(req, res); if (!scope) return
   try {
     const { data, error } = await supabaseAdmin
@@ -154,7 +200,7 @@ router.delete('/events/:id', async (req, res) => {
 })
 
 // POST /facility-schedule/series/preview — dry run, no writes.
-router.post('/series/preview', (req, res) => {
+router.post('/series/preview', requireEdit, (req, res) => {
   const b = req.body || {}
   const openEnded = !b.ends_on
   try {
@@ -178,9 +224,9 @@ router.post('/series/preview', (req, res) => {
 //
 // Unlike the Group X series this writes to our own table, so the whole fan-out
 // is a single insert. There is no partial-failure case to report.
-router.post('/series', async (req, res) => {
+router.post('/series', requireEdit, async (req, res) => {
   const b = req.body || {}
-  if (!isKnownClubNumber(b.club_number)) {
+  if (!isKnownClubNumber(b.club_number) || !canUseClub(req, b.club_number)) {
     return res.status(400).json({ error: 'valid club_number is required in body' })
   }
   if (!isKnownFacility(b.facility)) {
@@ -265,7 +311,7 @@ router.post('/series', async (req, res) => {
 // This is the shape staff actually want. "Remove everything from today" throws
 // away classes people are already turning up to; "we know it stops in two
 // weeks" is the normal case.
-router.delete('/series/:id', async (req, res) => {
+router.delete('/series/:id', requireEdit, async (req, res) => {
   const scope = requireScope(req, res); if (!scope) return
   const today = toIsoDate(new Date())
   const through = DATE_RE.test(req.query.through || '') ? req.query.through : null

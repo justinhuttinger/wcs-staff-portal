@@ -13,6 +13,7 @@ const DRIVE_ICON = 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 2
 
 const TILE_ICONS = {
   dayOne: 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9 2 2 4-4',
+  facility: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5M12 12.75h.008v.008H12v-.008z',
   groupX: 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z',
   tours: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5',
   reporting: 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z',
@@ -107,7 +108,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onNps, onTourCheckin, onAdsManager, onAnalytics, onGroupX, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
+export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onNps, onTourCheckin, onAdsManager, onAnalytics, onGroupX, onFacility, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [showOrdering, setShowOrdering] = useState(false)
@@ -632,6 +633,10 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
               built-in role in migration 174). What the tile can DO inside is
               gated separately by groupX:schedule-edit / groupX:attendance. */}
           {onGroupX && (visibleTools || []).includes('groupX') && <SvgTileButton onClick={onGroupX} iconPath={TILE_ICONS.groupX} label="Group X" desc="Classes" />}
+          {/* 6.45. Courts & Pool -- role/override-driven via 'facility' (seeded
+              for every built-in role in migration 176). Editing is gated
+              separately by facility:schedule-edit, exactly as Group X. */}
+          {onFacility && (visibleTools || []).includes('facility') && <SvgTileButton onClick={onFacility} iconPath={TILE_ICONS.facility} label="Courts & Pool" desc="Schedules" />}
           {/* 6.5. Marketing Tracker — corporate/admin, or anyone with the marketing add-on */}
           {onMarketingTracker && (canMarketingTracker ?? (roleIdx >= ROLE_LEVELS.corporate || marketingAddon)) && <SvgTileButton onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />}
           {/* 6.6. Inventory (experimental) — lead+ (leads get restock/adjust, no Sales/margin) */}

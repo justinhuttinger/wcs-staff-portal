@@ -30,7 +30,14 @@ function toGridShape(e) {
   }
 }
 
-export default function FacilityView() {
+// `canEdit` splits the two audiences, exactly as GroupXView does. Everyone can
+// read and print the court and pool weeks; lead and above get the write
+// controls. Defaults to FALSE so a caller that forgets to pass it hands out the
+// read-only screen.
+//
+// `showBoardLinks` is separate: the TV and website embed URLs are an admin
+// concern, handed out once when a board is set up.
+export default function FacilityView({ canEdit = false, showBoardLinks = false }) {
   const [clubs, setClubs] = useState([])
   const [facilities, setFacilities] = useState([])
   const [club, setClub] = useState(null)
@@ -151,39 +158,45 @@ export default function FacilityView() {
           <span className="text-sm font-medium text-text-primary ml-1">{weekLabel(weekStart)}</span>
           {loading && <span className="text-xs text-text-muted">Loading...</span>}
           <div className="ml-auto flex gap-2">
-            <button type="button" onClick={() => setLinksOpen(v => !v)}
-              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
-              {linksOpen ? 'Hide board links' : 'Board links'}
-            </button>
+            {showBoardLinks && (
+              <button type="button" onClick={() => setLinksOpen(v => !v)}
+                className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
+                {linksOpen ? 'Hide board links' : 'Board links'}
+              </button>
+            )}
             <button type="button" onClick={() => setPrintOpen(true)}
               title="Print a Monday-Sunday sheet for a chosen week"
               className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
               Print
             </button>
-            <button type="button" onClick={() => setCreateOpen({ date: toISODate(weekStart), time: '06:00' })}
-              className="px-3 py-1.5 text-sm rounded-lg bg-wcs-red text-white font-medium hover:bg-wcs-red-hover">
-              Add event
-            </button>
+            {canEdit && (
+              <button type="button" onClick={() => setCreateOpen({ date: toISODate(weekStart), time: '06:00' })}
+                className="px-3 py-1.5 text-sm rounded-lg bg-wcs-red text-white font-medium hover:bg-wcs-red-hover">
+                Add event
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="rounded-lg border border-border bg-bg px-3 py-2 text-xs text-text-muted">
-          {facility.label} events live in the portal only, they are not sent to ABC.
-          Click any empty spot on the calendar to add one at that time.
-        </div>
+        {canEdit && (
+          <div className="rounded-lg border border-border bg-bg px-3 py-2 text-xs text-text-muted">
+            {facility.label} events live in the portal only, they are not sent to ABC.
+            Click any empty spot on the calendar to add one at that time.
+          </div>
+        )}
       </div>
 
       {error && (
         <div className="bg-surface rounded-xl border border-red-300 p-4 text-sm text-red-900">{error}</div>
       )}
 
-      {linksOpen && <BoardLinks clubs={clubs} facilities={facilities} />}
+      {showBoardLinks && linksOpen && <BoardLinks clubs={clubs} facilities={facilities} />}
 
       <WeekGrid
         weekStart={weekStart}
         classes={gridEvents}
         onClassClick={setSelected}
-        onSlotClick={slot => setCreateOpen(slot)}
+        onSlotClick={canEdit ? (slot => setCreateOpen(slot)) : undefined}
       />
 
       {selected && (
@@ -219,6 +232,7 @@ export default function FacilityView() {
             <div className="px-5 py-4 border-t border-border flex flex-wrap justify-end gap-2">
               <button type="button" onClick={() => setSelected(null)}
                 className="px-4 py-2 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">Close</button>
+              {canEdit && (<>
               {selected.series_id && (
                 <button type="button" onClick={endSeries} disabled={busy}
                   className="px-4 py-2 text-sm rounded-lg border border-red-300 bg-red-50 text-red-900 font-medium hover:bg-red-100 disabled:opacity-50">
@@ -229,6 +243,7 @@ export default function FacilityView() {
                 className="px-4 py-2 text-sm rounded-lg border border-red-300 bg-red-50 text-red-900 font-medium hover:bg-red-100 disabled:opacity-50">
                 {busy ? 'Removing...' : 'Remove'}
               </button>
+              </>)}
             </div>
           </div>
         </div>
