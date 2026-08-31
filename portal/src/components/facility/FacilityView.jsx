@@ -3,7 +3,7 @@ import { api } from '../../lib/api'
 import { startOfWeek, addDays, toISODate, fmtTime12, parseLocalTimestamp, MONTH_LABELS } from '../../lib/weekGrid'
 import WeekGrid from '../groupx/WeekGrid'
 import BoardLinks from './FacilityBoardLinks'
-import PrintScheduleModal from '../schedule/PrintScheduleModal'
+import PrintBoardModal from '../schedule/PrintBoardModal'
 import CreateEventModal from './CreateEventModal'
 
 function weekLabel(weekStart) {
@@ -72,14 +72,6 @@ export default function FacilityView() {
 
   useEffect(() => { load() }, [load])
 
-  // Fetches its own range: the print sheet picks a week independently of the
-  // one on screen. Mapped onto the Group X shape for the same reason WeekGrid
-  // is -- one renderer, not a forked copy per facility.
-  const fetchPrintWeek = useCallback(async (start, end) => {
-    const qs = `club_number=${club.clubNumber}&facility=${facility.slug}&start=${start}&end=${end}`
-    const r = await api(`/facility-schedule/events?${qs}`)
-    return (r.events || []).map(toGridShape)
-  }, [club, facility])
 
   async function cancelEvent() {
     if (!selected) return
@@ -254,19 +246,7 @@ export default function FacilityView() {
       )}
 
       {printOpen && (
-        <PrintScheduleModal
-          title={facility.title || `${facility.label} Schedule`}
-          clubName={club.name}
-          fetchWeek={fetchPrintWeek}
-          // Lap swim and open gym have nobody assigned by design. Requiring an
-          // instructor here would print an empty sheet.
-          requireInstructor={false}
-          // "The pool is open 6:00 - 7:00" is the useful fact for a facility,
-          // the way it is on the public board. Group X shows a start only: a
-          // class runs as long as it runs.
-          showEndTime
-          onClose={() => setPrintOpen(false)}
-        />
+        <PrintBoardModal club={club} facility={facility} onClose={() => setPrintOpen(false)} />
       )}
 
     </div>

@@ -12,7 +12,7 @@ const cache = require('../services/memoryCache')
 const { supabaseAdmin } = require('../services/supabase')
 const { clubBySlug } = require('../lib/groupXClubs')
 const { facilityBySlug } = require('../lib/facilities')
-const { currentPacificDate, buildDays, windowEnd, publicCacheKey } = require('../lib/groupXPublic')
+const { currentPacificDate, mondayOf, buildDays, windowEnd, publicCacheKey } = require('../lib/groupXPublic')
 const { renderBoardHtml } = require('../templates/groupXBoard')
 
 const router = Router()
@@ -69,7 +69,12 @@ function resolve(req) {
   const club = clubBySlug(req.query.club)
   const facility = facilityBySlug(req.query.facility)
   if (!club || !facility) return null
-  const requested = req.query.start
+  // `week` as well as `start`: the board's own client script asks the feed with
+  // &week=, so reading only `start` meant this endpoint silently ignored the
+  // window the page had been given and always answered with today. Invisible
+  // while the board rolls from today anyway -- and exactly wrong the moment a
+  // printed sheet asks for a specific Monday. Mirrors publicGroupX.
+  const requested = req.query.start || req.query.week
   const start = DATE_RE.test(requested || '') ? requested : currentPacificDate()
   return { club, facility, start }
 }
@@ -93,6 +98,14 @@ router.get('/board', (req, res) => {
   }
   res.set('Cache-Control', 'public, max-age=300')
   const safePercent = req.query.safe !== undefined ? parseFloat(req.query.safe) : undefined
+  // Only an EXPLICIT start pins the window; otherwise a wall TV would freeze
+  // on the day it was switched on instead of rolling over at local midnight.
+  const asked = req.query.start || req.query.week
+  let startDate = DATE_RE.test(asked || '') ? asked : null
+  // A printed sheet is a Monday-to-Sunday grid whatever day it was run off, so
+  // its columns line up with every other sheet in the building.
+  const autoPrint = req.query.print === '1'
+  if (autoPrint) startDate = mondayOf(startDate || currentPacificDate())
   res.type('html').send(renderBoardHtml({
     clubSlug: r.club.slug,
     clubName: r.club.name,
@@ -114,6 +127,9 @@ router.get('/board', (req, res) => {
     // four times a 1 hour booking. Group X uses time positioning instead,
     // because one 6am class stretched down a column read as an all-day event.
     layout: 'fill',
+    startDate,
+    // ?print=1 renders the board and prints itself, so the sheet IS the board.
+    autoPrint,
   }))
 })
 

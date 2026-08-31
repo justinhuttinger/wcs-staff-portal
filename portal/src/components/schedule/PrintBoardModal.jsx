@@ -32,18 +32,28 @@ function toISO(d) {
   return `${y}-${m}-${day}`
 }
 
-function boardUrl(slug, startISO, forPrint) {
-  return `${API_URL}/public/group-x/board?club=${encodeURIComponent(slug)}`
+// One builder for both boards. A facility (courts, pool) is served by a
+// different route and needs its slug in the query; Group X is the no-facility
+// case. Everything else -- the pinned week, the self-print flag -- is identical,
+// which is the point of both boards sharing one renderer.
+function boardUrl({ clubSlug, facilitySlug, startISO, forPrint }) {
+  const base = facilitySlug ? '/public/facility/board' : '/public/group-x/board'
+  return `${API_URL}${base}?club=${encodeURIComponent(clubSlug)}`
+    + (facilitySlug ? `&facility=${encodeURIComponent(facilitySlug)}` : '')
     + `&start=${encodeURIComponent(startISO)}${forPrint ? '&print=1' : ''}`
 }
 
-export default function PrintBoardModal({ club, onClose }) {
+export default function PrintBoardModal({ club, facility, onClose }) {
   // Defaults to next week: the sheet is normally run off on a Friday for the
   // week ahead. "This week" is one click away for a reprint.
   const [monday, setMonday] = useState(() => addDays(startOfPrintWeek(new Date()), 7))
 
   const thisMonday = useMemo(() => startOfPrintWeek(new Date()), [])
   const startISO = toISO(monday)
+  const label = facility ? (facility.label || 'facility') : 'class'
+  const urlFor = forPrint => boardUrl({
+    clubSlug: club.slug, facilitySlug: facility ? facility.slug : null, startISO, forPrint,
+  })
   const isThisWeek = startISO === toISO(thisMonday)
   const isNextWeek = startISO === toISO(addDays(thisMonday, 7))
 
@@ -53,7 +63,7 @@ export default function PrintBoardModal({ club, onClose }) {
     // page and letting it print ITSELF is the only route that does not need
     // same-origin access, and it is a direct result of a click so no blocker
     // trips on it.
-    const w = window.open(boardUrl(club.slug, startISO, true), '_blank', 'noopener,width=1280,height=860')
+    const w = window.open(urlFor(true), '_blank', 'noopener,width=1280,height=860')
     if (!w) {
       // Popups blocked. Say so rather than leaving a dead button -- the
       // window.open return value is the only signal we get.
@@ -70,7 +80,7 @@ export default function PrintBoardModal({ club, onClose }) {
         onClick={e => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-border flex items-center justify-between shrink-0">
-          <h3 className="font-semibold text-text-primary">Print the class board</h3>
+          <h3 className="font-semibold text-text-primary">Print the {label.toLowerCase()} board</h3>
           <button type="button" onClick={onClose}
             className="text-text-muted hover:text-text-primary text-xl leading-none">&times;</button>
         </div>
@@ -109,9 +119,9 @@ export default function PrintBoardModal({ club, onClose }) {
             printing is handled by the page in its own window. */}
         <div className="flex-1 overflow-auto bg-bg p-5">
           <iframe
-            key={`${club.slug}-${startISO}`}
-            src={boardUrl(club.slug, startISO, false)}
-            title={`${club.name} class board preview`}
+            key={`${club.slug}-${facility ? facility.slug : 'groupx'}-${startISO}`}
+            src={urlFor(false)}
+            title={`${club.name} ${label} board preview`}
             className="w-full bg-white rounded-lg border border-border shadow-lg"
             style={{ height: '640px' }}
           />
