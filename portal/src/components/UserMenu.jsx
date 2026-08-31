@@ -45,6 +45,11 @@ export default function UserMenu({ name, onProfile, onSignOut, variant = 'plain'
     return () => {
       window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', place)
+      // Clear on close so a reopen always re-measures before painting. Without
+      // this, stale coords from before the trigger moved (window resize,
+      // layout reflow) would skip the invisible guard and flash the panel at
+      // the old position for one frame.
+      setCoords(null)
     }
   }, [open])
 
