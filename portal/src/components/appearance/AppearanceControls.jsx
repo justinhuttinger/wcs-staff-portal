@@ -1,4 +1,3 @@
-import { ACCENTS } from '../../lib/theme'
 import { THEME_OPTIONS, LAYOUT_OPTIONS, DENSITY_OPTIONS } from './themeOptions'
 import ThemePreview from './ThemePreview'
 
@@ -29,7 +28,6 @@ function Segmented({ value, options, onChange }) {
  * this; only their onPatch differs.
  */
 export default function AppearanceControls({ prefs, onPatch }) {
-  const accent = ACCENTS.find(a => a.key === prefs.accent) || ACCENTS[0]
   const activeLayout = LAYOUT_OPTIONS.find(l => l.key === prefs.layout)
 
   return (
@@ -45,7 +43,7 @@ export default function AppearanceControls({ prefs, onPatch }) {
                 active ? 'border-wcs-red' : 'border-border hover:border-wcs-red/40'
               }`}
             >
-              <ThemePreview s={opt.swatch} accent={accent} />
+              <ThemePreview s={opt.swatch} />
               <div className="flex items-center justify-between gap-2 mt-3 px-1">
                 <div className="min-w-0">
                   <div className="text-sm font-bold text-text-primary">{opt.name}</div>
@@ -89,38 +87,6 @@ export default function AppearanceControls({ prefs, onPatch }) {
               options={DENSITY_OPTIONS}
               onChange={(density) => onPatch({ density })}
             />
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-2">Accent</p>
-            <div className="flex flex-wrap items-center gap-2">
-              {ACCENTS.map(a => {
-                const active = prefs.accent === a.key
-                return (
-                  <button
-                    key={a.key}
-                    onClick={() => onPatch({ accent: a.key })}
-                    title={`${a.label}, ${a.contrast}:1 against the dark surface`}
-                    aria-label={a.label}
-                    aria-pressed={active}
-                    className={`w-8 h-8 rounded-full border-2 transition-transform ${
-                      active ? 'scale-110' : 'hover:scale-105'
-                    }`}
-                    style={{ background: a.hex, borderColor: active ? a.ink : 'transparent' }}
-                  >
-                    {active && (
-                      <svg viewBox="0 0 24 24" fill="none" stroke={a.ink} strokeWidth="3" className="w-3.5 h-3.5 mx-auto">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-            <p className="text-xs text-text-muted mt-2">
-              Every accent is checked for contrast against the dark surface. The
-              background stays dark; only the accent changes.
-            </p>
           </div>
         </div>
       )}
