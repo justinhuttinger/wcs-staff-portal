@@ -27,6 +27,7 @@ import Revenue from './analytics/Revenue'
 import DailySnapshot from './analytics/DailySnapshot'
 import Payroll from './analytics/Payroll'
 import GroupX from './analytics/GroupX'
+import Childcare from './analytics/Childcare'
 import Till from './analytics/Till'
 import Audits from './analytics/Audits'
 import LeadSources from './analytics/LeadSources'
@@ -223,6 +224,12 @@ const ANALYTICS_REPORTS = [
     dates: false,
   },
   {
+    key: 'childcare',
+    label: 'Childcare',
+    desc: 'Headcounts by Day and Shift',
+    Component: Childcare,
+  },
+  {
     key: 'group-x',
     label: 'Group X',
     desc: 'Class Attendance',
@@ -299,7 +306,7 @@ export const REPORT_GROUPS = [
   { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot', 'compliance', 'audits', 'till', 'payroll'] },
   // Club-wide overviews first, then the one-person-at-a-time cards.
   { key: 'snapshots', label: 'Snapshots',     reports: ['daily-snapshot', 'club-snapshot', 'pt-snapshot', 'salesperson-snapshot', 'trainer-snapshot'] },
-  { key: 'misc',      label: 'Misc',          reports: ['group-x'] },
+  { key: 'misc',      label: 'Misc',          reports: ['childcare', 'group-x'] },
 ]
 
 /**

@@ -28,15 +28,35 @@ function parseCount(response) {
   return Number(trimmed)
 }
 
-// The two headcounts from one job's step rows: { over1, under1 }, each possibly
-// null. Steps that aren't one of the two metrics are ignored.
+// The two headcounts from one job's step rows: { over1, under1, conflicts },
+// each count possibly null. Steps that aren't one of the two metrics are
+// ignored.
+//
+// ONE CHECKLIST CAN ASK THE SAME QUESTION TWICE. Duplicating a step in the
+// Operandio UI leaves the original AND the copy live on the same checklist, and
+// Milwaukie's evening list is in exactly that state: on 2026-08-24 it collected
+// "older than 1" as both 9 and 10, and "younger than 1" as both 9 and 2.
+//
+// Taking whichever row happened to arrive last made the answer depend on the
+// order PostgREST returned rows in — the same day could read 9 or 10 between
+// two loads of the report. When the two answers disagree the HIGHER is kept:
+// this report advises staffing, and undercounting is the direction that leaves
+// a room short. The disagreement is counted so the report can say the question
+// needs de-duplicating in Operandio rather than quietly picking for you.
 function countsFromSteps(steps) {
-  const out = { over1: null, under1: null }
+  const out = { over1: null, under1: null, conflicts: 0 }
   for (const s of steps || []) {
     const metric = METRICS[normalizeStepName(s.name)]
     if (!metric) continue
     const value = parseCount(s.response)
-    if (value !== null) out[metric] = value
+    if (value === null) continue
+    const prior = out[metric]
+    if (prior === null) {
+      out[metric] = value
+      continue
+    }
+    if (prior !== value) out.conflicts += 1
+    out[metric] = Math.max(prior, value)
   }
   return out
 }
@@ -74,6 +94,7 @@ function buildEntries(jobs, stepsByJob, blockByProcessId) {
         submitted_by: job.submitted_by || null,
         job_id: job.id,
         submissions: 1,
+        conflicts: counts.conflicts,
       })
       continue
     }
@@ -85,6 +106,7 @@ function buildEntries(jobs, stepsByJob, blockByProcessId) {
       existing.submitted_at = job.submitted_at || null
       existing.submitted_by = job.submitted_by || null
       existing.job_id = job.id
+      existing.conflicts = counts.conflicts
     }
   }
 

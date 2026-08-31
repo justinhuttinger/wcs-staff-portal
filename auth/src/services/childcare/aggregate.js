@@ -124,6 +124,7 @@ function buildTotals(entries) {
     blocks_reported: entries.length,
     days_reported: new Set(entries.map((e) => e.date)).size,
     corrections: entries.reduce((a, e) => a + Math.max(0, e.submissions - 1), 0),
+    conflicts: entries.reduce((a, e) => a + (e.conflicts || 0), 0),
   }
 }
 
