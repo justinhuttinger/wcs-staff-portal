@@ -4,31 +4,9 @@ import {
   addDays, toISODate, fmtHour, fmtTime12, parseLocalTimestamp, layoutLanes,
   displayClassName, durationLabel,
 } from '../../lib/weekGrid'
-
-// Stable per-class-type color so a class keeps its color week to week. Hashing
-// the event_type_id rather than the name means a rename does not reshuffle
-// every color in the grid.
-// Solid, saturated fills rather than the old -50 tints, which washed out
-// against the white surface and were hard to pick apart at a glance.
-//
-// Same order and same hash as the public board's collar palette, keyed on the
-// class NAME, so a class is the same colour in here as it is on the wall. Red
-// is absent on purpose: it belongs to the WCS accent.
-const CLASS_COLORS = [
-  'bg-sky-600 border-sky-700 text-white',
-  'bg-emerald-600 border-emerald-700 text-white',
-  'bg-violet-600 border-violet-700 text-white',
-  'bg-amber-600 border-amber-700 text-white',
-  'bg-indigo-600 border-indigo-700 text-white',
-  'bg-teal-600 border-teal-700 text-white',
-]
-
-function colorFor(className) {
-  const s = String(className || '')
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
-  return CLASS_COLORS[h % CLASS_COLORS.length]
-}
+// The palette moved to its own module so the printed sheet can render the same
+// colours from the same hash. See lib/classColors.js.
+import { colorFor } from '../../lib/classColors'
 
 const HOURS = Array.from({ length: DAY_END_HOUR - DAY_START_HOUR }, (_, i) => DAY_START_HOUR + i)
 
@@ -105,12 +83,12 @@ export default function WeekGrid({
           </button>
 
           <div className="flex-1 min-w-0 flex items-center justify-center gap-2">
-            <span className="text-sm font-semibold text-text-primary truncate">{weekLabel}</span>
+            <span className="text-base font-bold text-text-primary truncate">{weekLabel}</span>
             {onThisWeek && (
               <button
                 type="button"
                 onClick={onThisWeek}
-                className="shrink-0 px-2.5 py-1 text-xs rounded-lg border border-border text-text-muted hover:bg-bg hover:text-text-primary transition"
+                className="shrink-0 px-2.5 py-1 text-xs rounded-lg border border-border text-text-primary hover:bg-bg transition"
               >
                 Today
               </button>
@@ -159,7 +137,7 @@ export default function WeekGrid({
             {HOURS.map(h => (
               <div
                 key={h}
-                className="absolute right-1 text-[10px] text-text-muted -translate-y-1/2"
+                className="absolute right-1 text-[10px] font-semibold text-text-primary -translate-y-1/2"
                 style={{ top: (h - DAY_START_HOUR) * 60 * PX_PER_MINUTE }}
               >
                 {fmtHour(h)}
@@ -217,7 +195,7 @@ export default function WeekGrid({
                         width: `calc(${widthPct}% - 4px)`,
                       }}
                     >
-                      <div className="text-[10px] leading-tight opacity-80">
+                      <div className="text-[10px] font-bold leading-tight tabular-nums">
                         {fmtTime12(c._parsed.hour, c._parsed.min)}
                       </div>
                       <div className="text-[11px] font-semibold leading-tight truncate">

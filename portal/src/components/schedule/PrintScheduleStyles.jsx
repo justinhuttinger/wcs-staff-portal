@@ -77,6 +77,39 @@ export default function PrintScheduleStyles({ orientation }) {
       .ps-ev__name { font-weight: 600; }
       .ps-ev__who { color: #444; }
 
+      /* ---- Coloured blocks (Group X) --------------------------------- */
+      /* The sheet mirrors the on-screen calendar: same palette, same hash. The
+         fill and edge arrive as inline style from lib/classColors so one hash
+         drives both renderings; only the shape lives here.
+
+         print-color-adjust: exact is already set on the sheet root, which is
+         what stops a browser helpfully dropping the backgrounds to save ink --
+         without it the whole point of a coloured sheet is lost. */
+      .ps--colored .ps-ev--block {
+        color: #fff;
+        border: 1px solid;
+        border-radius: 4px;
+        padding: .04in .06in;
+        margin-bottom: .05in;
+      }
+      /* The plain-list rules give each row a hairline separator and kill the
+         first one; blocks are their own boxes and need neither. */
+      .ps--colored .ps-ev--block { border-top-width: 1px; }
+      .ps--colored .ps-ev--block:last-child { margin-bottom: 0; }
+      .ps--colored .ps-ev__time { font-size: 8pt; font-weight: 700; }
+      .ps--colored .ps-ev__name { font-size: 9pt; font-weight: 700; }
+      /* The "- 30"/"- 60" suffix is stripped off the name and shown as a pill,
+         exactly as the grid does it. */
+      .ps--colored .ps-ev__len {
+        display: inline-block; margin-left: .04in;
+        padding: 0 .03in; border-radius: 3px;
+        background: rgba(0, 0, 0, .25);
+        font-size: 6.5pt; font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        vertical-align: middle; white-space: nowrap;
+      }
+      .ps--colored .ps-ev__who { font-size: 7.5pt; color: rgba(255, 255, 255, .92); }
+
       /* ---- Landscape: seven columns ---------------------------------- */
       /* A wall grid. Columns are equal width and never break across pages --
          a class schedule split down the middle of Wednesday is unusable. */
@@ -106,6 +139,7 @@ export default function PrintScheduleStyles({ orientation }) {
         padding: .035in 0; border-top: 1px solid #ececec;
       }
       .ps--landscape .ps-ev:first-child { border-top: 0; }
+      .ps--landscape.ps--colored .ps-ev { border-top: 1px solid; padding: .04in .06in; }
       .ps--landscape .ps-ev > span { display: block; }
       .ps--landscape .ps-ev__time { font-size: 8.5pt; }
       .ps--landscape .ps-ev__who { font-size: 7.8pt; }
@@ -143,6 +177,7 @@ export default function PrintScheduleStyles({ orientation }) {
       }
       .ps--portrait .ps-ev > span { display: block; }
       .ps--portrait .ps-ev__who { font-size: 7.8pt; }
+      .ps--portrait.ps--colored .ps-ev { border-left-width: 1px; padding: .04in .06in; }
       .ps--portrait .ps-empty { padding-top: .01in; }
 
       /* ---- On-screen preview ----------------------------------------- */

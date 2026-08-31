@@ -1,4 +1,6 @@
 import { PRINT_DAY_LABELS } from '../../lib/printWeek'
+import { printColorFor } from '../../lib/classColors'
+import { displayClassName, durationLabel } from '../../lib/weekGrid'
 
 // The printed sheet itself. Rendered off-screen and only made visible by the
 // print stylesheet, the same trick PTSessionsReport uses.
@@ -31,13 +33,37 @@ function EventLine({ ev }) {
   )
 }
 
+// Group X prints as coloured blocks instead, so the sheet on the wall reads
+// like the calendar on the screen: same palette, same hash, same trimmed name
+// and length pill. A class is findable by its colour in both places, which is
+// the whole point of having a stable palette at all.
+//
+// The time stays. Unlike the on-screen grid, where a block's POSITION says when
+// it runs, this is a list -- drop the time and the sheet is unusable.
+function EventBlock({ ev }) {
+  const label = displayClassName(ev.class_name, ev.duration_minutes)
+  const len = durationLabel(ev.duration_minutes)
+  const color = printColorFor(label)
+  return (
+    <div className="ps-ev ps-ev--block" style={{ background: color.bg, borderColor: color.border }}>
+      <span className="ps-ev__time">{ev.time_label}</span>
+      <span className="ps-ev__name">
+        {label}
+        {len && <span className="ps-ev__len">{len}</span>}
+      </span>
+      {ev.instructor_name && <span className="ps-ev__who">{ev.instructor_name}</span>}
+    </div>
+  )
+}
+
 export default function PrintScheduleSheet({
-  week, title, clubName, orientation, logoSrc,
+  week, title, clubName, orientation, logoSrc, colored = false,
 }) {
   const isPortrait = orientation === 'portrait'
+  const Line = colored ? EventBlock : EventLine
 
   return (
-    <div className={`schedule-print-sheet ps--${isPortrait ? 'portrait' : 'landscape'}`}>
+    <div className={`schedule-print-sheet ps--${isPortrait ? 'portrait' : 'landscape'}${colored ? ' ps--colored' : ''}`}>
       <header className="ps-head">
         {logoSrc && <img className="ps-head__logo" src={logoSrc} alt="West Coast Strength" />}
         <div className="ps-head__titles">
@@ -55,7 +81,7 @@ export default function PrintScheduleSheet({
                 // An empty column headed "Sunday" says "nothing on Sunday". A
                 // missing one says "we forgot Sunday".
                 ? <div className="ps-empty">&mdash;</div>
-                : day.events.map(ev => <EventLine key={ev.event_id} ev={ev} />)}
+                : day.events.map(ev => <Line key={ev.event_id} ev={ev} />)}
             </div>
           </section>
         ))}

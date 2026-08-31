@@ -315,6 +315,7 @@ export default function GroupXView({ canEdit = true, showBoardLinks = true }) {
       {printOpen && (
         <PrintScheduleModal
           title="Class Schedule"
+          colored
           clubName={club.name}
           fetchWeek={fetchPrintWeek}
           onClose={() => setPrintOpen(false)}
