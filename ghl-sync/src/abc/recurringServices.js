@@ -6,18 +6,20 @@
  *
  * Total contract value rules:
  *   - PIF (recurringTypeDesc contains "Paid in Full"): invoiceTotal * 1
- *   - Recurring monthly: invoiceTotal * totalPeriods
+ *   - Recurring monthly: invoiceTotal * billablePeriods(svc)
  *   - Fallback: invoiceTotal * max(totalPeriods, 1)
+ *
+ * See billablePeriods() for why that is not simply totalPeriods.
  */
 const axios = require('axios');
 const supabase = require('../db/supabase');
 const LOCATIONS = require('../config/locations');
+const { billablePeriods, totalContractValue, COMMISSION_RATE } = require('./recurringPeriods');
 
 const ABC_BASE_URL = process.env.ABC_BASE_URL || 'https://api.abcfinancial.com/rest';
 const ABC_APP_ID = process.env.ABC_APP_ID;
 const ABC_APP_KEY = process.env.ABC_APP_KEY;
 
-const COMMISSION_RATE = 0.04;
 const PAGE_SIZE = 200;
 
 function fmtDate(d) {
@@ -31,14 +33,6 @@ function periodForDate(saleDate) {
   const m = String(saleDate).match(/^(\d{4})-(\d{2})/);
   if (!m) return null;
   return `${m[1]}-${m[2]}-01`;
-}
-
-function totalContractValue(svc) {
-  const invoice = parseFloat(svc.invoiceTotal || '0') || 0;
-  const periods = parseInt(svc.totalPeriods || '1', 10) || 1;
-  // For PIF the invoiceTotal IS the full amount; totalPeriods is typically 1.
-  // For monthly recurring, multiply.
-  return Math.round(invoice * Math.max(periods, 1) * 100) / 100;
 }
 
 async function fetchRecurringServicesForRange(clubNumber, fromDate, toDate, page = 1) {
@@ -213,4 +207,5 @@ module.exports = {
   totalContractValue,
   periodForDate,
   COMMISSION_RATE,
+  billablePeriods,
 };
