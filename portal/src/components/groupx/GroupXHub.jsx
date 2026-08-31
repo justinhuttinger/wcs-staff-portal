@@ -36,21 +36,13 @@ export default function GroupXHub({ onBack, canEdit = false, canRecord = false }
   if (section) {
     return (
       <div className="w-full max-w-[1400px] mx-auto px-8 pb-12">
-        <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
+        <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border px-4 py-2.5 mb-3 flex items-center gap-3">
           <button onClick={() => setSection(null)}
-            className="press-hide-back text-sm text-tile-sub hover:text-text-primary">&larr; Group X</button>
-          <h2 className="text-lg font-bold text-text-primary mt-3">
+            className="press-hide-back text-sm text-tile-sub hover:text-text-primary shrink-0">&larr; Group X</button>
+          <span className="text-border" aria-hidden="true">|</span>
+          <h2 className="text-sm font-bold text-text-primary">
             {section === 'schedule' ? 'Class Schedule' : 'Class Attendance'}
           </h2>
-          <p className="text-sm text-tile-sub mt-1">
-            {section === 'schedule'
-              ? (canEdit
-                ? 'Add, cancel and print the week at your club.'
-                : 'This week at your club. Use Print for a sheet to hand out.')
-              : (canRecord
-                ? 'Log how many people came to each class that has finished.'
-                : 'How many people came to each class that has finished.')}
-          </p>
         </div>
         {section === 'schedule'
           ? <GroupXView canEdit={canEdit} showBoardLinks={false} />

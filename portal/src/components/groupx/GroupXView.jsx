@@ -149,64 +149,68 @@ export default function GroupXView({ canEdit = true, showBoardLinks = true }) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="bg-surface rounded-xl border border-border p-4 space-y-3">
-        <div className="flex flex-wrap gap-1.5">
-          {clubs.map(c => (
-            <button
-              key={c.slug}
-              type="button"
-              onClick={() => setClub(c)}
-              className={`px-3 py-1.5 text-sm rounded-lg border transition ${
-                c.slug === club.slug
-                  ? 'bg-wcs-red text-white border-wcs-red font-medium'
-                  : 'border-border text-text-primary hover:bg-bg'
-              }`}
-            >
-              {c.name}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="ml-auto flex flex-wrap gap-2">
-            {canEdit && (
-              <button type="button" onClick={() => setSeriesListOpen(v => !v)}
-                className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
-                {seriesListOpen ? 'Hide repeating' : 'Repeating'}
+    <div className="space-y-3">
+      <div className="bg-surface rounded-xl border border-border px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+        {/* One assigned club is a label, not a choice. A lone pill invites a
+            click that changes nothing and reads as a disabled control. */}
+        {clubs.length === 1 ? (
+          <span className="text-sm font-semibold text-text-primary">{club.name}</span>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {clubs.map(c => (
+              <button
+                key={c.slug}
+                type="button"
+                onClick={() => setClub(c)}
+                className={`px-3 py-1.5 text-sm rounded-lg border transition ${
+                  c.slug === club.slug
+                    ? 'bg-wcs-red text-white border-wcs-red font-medium'
+                    : 'border-border text-text-primary hover:bg-bg'
+                }`}
+              >
+                {c.name}
               </button>
-            )}
-            {canEdit && (
-              <button type="button" onClick={refreshStaff} disabled={refreshing}
-                title="Reload instructors and class types from ABC"
-                className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg disabled:opacity-50">
-                {refreshing ? 'Refreshing...' : 'Refresh staff'}
-              </button>
-            )}
-            {canEdit && (
-              <button type="button" onClick={() => setBadgesOpen(v => !v)}
-                className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
-                {badgesOpen ? 'Hide new badges' : 'New badges'}
-              </button>
-            )}
-            {showBoardLinks && (
-              <button type="button" onClick={() => setLinksOpen(v => !v)}
-                className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
-                {linksOpen ? 'Hide board links' : 'Board links'}
-              </button>
-            )}
-            <button type="button" onClick={() => setPrintOpen(true)}
-              title="Print a Monday-Sunday sheet for a chosen week"
-              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
-              Print
-            </button>
-            {canEdit && (
-              <button type="button" onClick={() => setCreateOpen({ date: toISODate(weekStart), time: '06:00' })}
-                className="px-3 py-1.5 text-sm rounded-lg bg-wcs-red text-white font-medium hover:bg-wcs-red-hover">
-                Add class
-              </button>
-            )}
+            ))}
           </div>
+        )}
+
+        <div className="ml-auto flex flex-wrap gap-2">
+          {canEdit && (
+            <button type="button" onClick={() => setSeriesListOpen(v => !v)}
+              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
+              {seriesListOpen ? 'Hide repeating' : 'Repeating'}
+            </button>
+          )}
+          {canEdit && (
+            <button type="button" onClick={refreshStaff} disabled={refreshing}
+              title="Reload instructors and class types from ABC"
+              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg disabled:opacity-50">
+              {refreshing ? 'Refreshing...' : 'Refresh staff'}
+            </button>
+          )}
+          {canEdit && (
+            <button type="button" onClick={() => setBadgesOpen(v => !v)}
+              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
+              {badgesOpen ? 'Hide new badges' : 'New badges'}
+            </button>
+          )}
+          {showBoardLinks && (
+            <button type="button" onClick={() => setLinksOpen(v => !v)}
+              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
+              {linksOpen ? 'Hide board links' : 'Board links'}
+            </button>
+          )}
+          <button type="button" onClick={() => setPrintOpen(true)}
+            title="Print a Monday-Sunday sheet for a chosen week"
+            className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
+            Print
+          </button>
+          {canEdit && (
+            <button type="button" onClick={() => setCreateOpen({ date: toISODate(weekStart), time: '06:00' })}
+              className="px-3 py-1.5 text-sm rounded-lg bg-wcs-red text-white font-medium hover:bg-wcs-red-hover">
+              Add class
+            </button>
+          )}
         </div>
       </div>
 

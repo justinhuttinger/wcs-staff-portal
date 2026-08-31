@@ -216,23 +216,29 @@ export default function GroupXAttendanceView({ canRecord = true, showHistory = t
         {/* Club picker and the count of outstanding work, on one line. The
             number is the reason to be on this screen, so it is stated up front
             rather than left to be counted off the list. */}
-        <div className="bg-surface rounded-xl border border-border p-4 flex flex-wrap items-center gap-3">
-          <div className="flex flex-wrap gap-1.5">
-            {clubs.map(c => (
-              <button
-                key={c.slug}
-                type="button"
-                onClick={() => setClub(c)}
-                className={`px-3 py-1.5 text-sm rounded-lg border transition ${
-                  club.slug === c.slug
-                    ? 'bg-wcs-red text-white border-wcs-red font-medium'
-                    : 'border-border text-text-primary hover:bg-bg'
-                }`}
-              >
-                {c.name}
-              </button>
-            ))}
-          </div>
+        <div className="bg-surface rounded-xl border border-border px-3 py-2.5 flex flex-wrap items-center gap-3">
+          {/* One assigned club is a label, not a choice -- same as the
+              scheduler's toolbar. */}
+          {clubs.length === 1 ? (
+            <span className="text-sm font-semibold text-text-primary">{club.name}</span>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {clubs.map(c => (
+                <button
+                  key={c.slug}
+                  type="button"
+                  onClick={() => setClub(c)}
+                  className={`px-3 py-1.5 text-sm rounded-lg border transition ${
+                    club.slug === c.slug
+                      ? 'bg-wcs-red text-white border-wcs-red font-medium'
+                      : 'border-border text-text-primary hover:bg-bg'
+                  }`}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
           {!loading && (
             <span className="ml-auto text-sm text-text-muted">
               {pending.length > 0
