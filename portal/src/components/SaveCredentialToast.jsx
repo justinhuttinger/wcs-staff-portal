@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react'
 const SERVICE_NAMES = {
   abc: 'ABC Financial',
   ghl: 'Grow (GHL)',
-  wheniwork: 'WhenIWork',
   paychex: 'Paychex',
 }
 

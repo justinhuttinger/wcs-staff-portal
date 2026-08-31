@@ -9,7 +9,6 @@ export const PORTAL_TILE_CATALOG = [
   // Apps (external services + in-portal Drive)
   { key: 'grow',          label: 'Grow (CRM)',        desc: 'CRM',           group: 'apps' },
   { key: 'abc',           label: 'ABC Financial',     desc: 'Billing',       group: 'apps' },
-  { key: 'wheniwork',     label: 'WhenIWork',         desc: 'Scheduling',    group: 'apps' },
   { key: 'paychex',       label: 'Paychex',           desc: 'Payroll',       group: 'apps' },
   { key: 'gmail',         label: 'Gmail',             desc: 'Email',         group: 'apps' },
   { key: 'drive',         label: 'Shared Drive',      desc: 'Documents',     group: 'apps' },

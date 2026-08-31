@@ -237,9 +237,9 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
     return () => clearInterval(interval)
   }, [])
 
-  // Apps for this club, URLs already resolved (lib/apps handles the ABC kiosk
-  // shim and Milwaukie's WhenIWork/Zoho differences). Still honors the role's
-  // Tool Visibility list, which lib/apps knows nothing about.
+  // Apps for this club, URLs already resolved (lib/apps handles the ABC
+  // kiosk shim and Milwaukie's Zoho swap). Still honors the role's Tool
+  // Visibility list, which lib/apps knows nothing about.
   const clubApps = appsForLocation({ location, abcUrl })
   const visibleApp = (t) => !(visibleTools && visibleTools.length > 0) || visibleTools.includes(t.id)
 
@@ -320,7 +320,7 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
     const appTool = (id) => clubApps.find(t => t.id === id)
     const tile = (key) => {
       switch (key) {
-        case 'grow': case 'abc': case 'wheniwork': case 'paychex': case 'gmail': {
+        case 'grow': case 'abc': case 'paychex': case 'gmail': {
           const t = appTool(key)
           return t ? <ToolButton key={key} label={t.label} description={t.description} icon={t.icon} url={t.url} star={key === 'grow' || key === 'abc'} /> : null
         }
@@ -358,7 +358,7 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
     }
     // Which catalog keys count as "Apps" — external services and file stores.
     // Everything else in the catalog is a Tool.
-    const APP_KEYS = new Set(['grow', 'abc', 'wheniwork', 'paychex', 'gmail', 'insights', 'notifications'])
+    const APP_KEYS = new Set(['grow', 'abc', 'paychex', 'gmail', 'insights', 'notifications'])
     if (!driveInTools) APP_KEYS.add('drive')
     const grantedKeys = PORTAL_TILE_CATALOG
       .map(t => t.key)

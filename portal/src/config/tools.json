@@ -14,13 +14,6 @@
     "icon": "abc"
   },
   {
-    "id": "wheniwork",
-    "label": "WhenIWork",
-    "description": "Scheduling",
-    "url": "https://app.wheniwork.com",
-    "icon": "wheniwork"
-  },
-  {
     "id": "paychex",
     "label": "Paychex",
     "description": "Payroll",

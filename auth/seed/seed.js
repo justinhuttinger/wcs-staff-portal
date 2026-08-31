@@ -16,7 +16,7 @@ const LOCATIONS = [
   { name: 'Medford', abc_url: '', booking_url: 'https://api.westcoaststrength.com/widget/booking/Gq92GXsDRAgTGZeHh7mx', vip_survey_url: 'https://api.westcoaststrength.com/widget/survey/FkrsORfLFVMiVS26LV9V' },
 ]
 
-const TOOLS = ['grow', 'abc', 'wheniwork', 'paychex', 'gmail', 'drive']
+const TOOLS = ['grow', 'abc', 'paychex', 'gmail', 'drive']
 const ROLES = ['team_member', 'lead', 'manager', 'marketing', 'corporate', 'admin']
 
 async function seed() {

@@ -42,7 +42,7 @@ const MARKETING_TYPE_SLUGS = new Set([
 // Marketing Tracker (rides on the add-on) and HR Docs (manager-gated, above the
 // custom tier) are intentionally absent from the custom tile picker.
 const CUSTOM_TILE_KEYS = new Set([
-  'grow', 'abc', 'wheniwork', 'paychex', 'gmail', 'drive', 'insights', 'notifications',
+  'grow', 'abc', 'paychex', 'gmail', 'drive', 'insights', 'notifications',
   'calendar', 'leaderboard', 'helpCenter', 'ordering', 'ticketing',
   'trainerAvail', 'reporting', 'forms',
 ])

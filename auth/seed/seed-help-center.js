@@ -30,7 +30,7 @@ Open the Portal app on the kiosk computer or navigate to the portal URL. Enter y
 HOME SCREEN LAYOUT
 The home screen is split into two sections:
 
-Apps (left side): Quick links to external tools you use daily — Grow (CRM), ABC Financial, WhenIWork (scheduling), Paychex (payroll), Gmail, and Google Drive.
+Apps (left side): Quick links to external tools you use daily: Grow (CRM), ABC Financial, Paychex (payroll), Gmail, and Google Drive.
 
 Tools (right side): Built-in portal features — Tours Calendar, Day Ones Calendar, Leaderboard, Communication Notes, Help Center, and more.
 
