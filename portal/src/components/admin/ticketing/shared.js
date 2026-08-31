@@ -60,6 +60,23 @@ export function newFieldId() {
   return 'f_' + Math.random().toString(36).slice(2, 10)
 }
 
+// Render one stored answer as the exact string the detail view shows AND the
+// copy button puts on the clipboard. Answers arrive as whatever the field type
+// stored: a string, a number, a checkbox array, a boolean. Keeping one function
+// for it means the two can never drift, and nothing can render "[object
+// Object]" — a value a handler would then paste into ABC or Paychex.
+export function answerText(v) {
+  if (v == null) return ''
+  if (Array.isArray(v)) return v.map(answerText).filter(s => s !== '').join(', ')
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No'
+  if (typeof v === 'object') {
+    // Defensive: no current field type stores an object, but a hand-edited
+    // schema or a future type shouldn't be able to poison the clipboard.
+    return v.name || v.label || v.value || JSON.stringify(v)
+  }
+  return String(v)
+}
+
 // Normalize a file field's value to an array — the field holds a File[], but
 // tolerate a bare File from older state.
 export function asFileList(v) {
