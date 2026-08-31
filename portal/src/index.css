@@ -84,7 +84,7 @@ body {
    Palette lifted verbatim from the wcs-custom theme's assets/scss/main.scss so
    the two stay in step — change one, change the other.
 
-   Unlike wp/spotlight this theme also changes STRUCTURE: App.jsx renders
+   Unlike Classic, this theme also changes STRUCTURE: App.jsx renders
    PortalNav instead of the classic header, and every view sits underneath it.
    The rules below only dress that shell; the switch itself is in App.jsx.
    --------------------------------------------------------------------------- */

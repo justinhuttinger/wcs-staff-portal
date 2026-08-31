@@ -98,8 +98,8 @@ export async function hydrateUiPrefs() {
 }
 
 /**
- * Push the local snapshot up, debounced. Clicking through four accents in a
- * row should be one write, not four.
+ * Push the local snapshot up, debounced. Dragging the background dim slider
+ * or toggling several pins in a row should be one write, not one per change.
  */
 function schedulePush() {
   if (applyingFromServer) return
