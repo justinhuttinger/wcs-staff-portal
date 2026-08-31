@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { api } from '../../lib/api'
 import { startOfWeek, addDays, toISODate, fmtTime12, parseLocalTimestamp, MONTH_LABELS } from '../../lib/weekGrid'
 import WeekGrid from '../groupx/WeekGrid'
@@ -39,7 +39,7 @@ function toGridShape(e) {
 // concern, handed out once when a board is set up.
 export default function FacilityView({ canEdit = false, showBoardLinks = false }) {
   const [clubs, setClubs] = useState([])
-  const [facilities, setFacilities] = useState([])
+  const [allFacilities, setAllFacilities] = useState([])
   const [club, setClub] = useState(null)
   const [facility, setFacility] = useState(null)
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
@@ -57,10 +57,29 @@ export default function FacilityView({ canEdit = false, showBoardLinks = false }
     api('/facility-schedule/facilities')
       .then(r => {
         setClubs(r.clubs); setClub(r.clubs[0])
-        setFacilities(r.facilities); setFacility(r.facilities[0])
+        setAllFacilities(r.facilities)
       })
       .catch(e => setError(e.message))
   }, [])
+
+  // Only the facilities this club actually has. A club with no pool should not
+  // be offered a Pool pill that leads to a permanently empty week -- which
+  // reads as "nothing booked" rather than "there is no pool". The server sends
+  // the list per club; see Admin -> Courts & Pool -> Locations.
+  const facilities = useMemo(() => {
+    if (!club) return []
+    // A club with no facilities list at all is one the server has not scoped,
+    // so show everything rather than an empty screen.
+    if (!Array.isArray(club.facilities)) return allFacilities
+    return allFacilities.filter(f => club.facilities.includes(f.slug))
+  }, [club, allFacilities])
+
+  // Keep the selection valid as the club changes: the facility that was picked
+  // may not exist at the new one.
+  useEffect(() => {
+    if (!facilities.length) { setFacility(null); return }
+    setFacility(prev => (prev && facilities.some(f => f.slug === prev.slug) ? prev : facilities[0]))
+  }, [facilities])
 
   const load = useCallback(async () => {
     if (!club || !facility) return
