@@ -84,6 +84,24 @@
   background: rgb(255 255 255 / 0.18);
 }
 
+/* The badge is a fixed red pill, so on the default accent it dissolves into
+   the hover fill. Invert it: the accent's own ink becomes the pill and the
+   accent becomes the text, which contrasts for any color the user picks,
+   including one identical to the badge's normal red. */
+:root:not([data-theme]) .portal-tile:hover .portal-tile__badge,
+:root:not([data-theme]) .portal-tile:focus-visible .portal-tile__badge {
+  background: var(--portal-accent-ink);
+  color: var(--portal-accent);
+}
+
+/* The star is a fixed amber, which can lose contrast against a pale or
+   yellow accent fill. Switch it to the computed ink on hover for the same
+   reason the label and icon already do. */
+:root:not([data-theme]) .portal-tile:hover .portal-tile__star,
+:root:not([data-theme]) .portal-tile:focus-visible .portal-tile__star {
+  color: var(--portal-accent-ink);
+}
+
 @font-face {
   font-family: 'Inter';
   font-style: normal;
