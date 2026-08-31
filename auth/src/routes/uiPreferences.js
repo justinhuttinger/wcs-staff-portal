@@ -22,14 +22,48 @@ router.use(authenticate)
 // payload in the row.
 const MAX_BYTES = 4096
 
+const BACKGROUND_BUCKET = 'portal-backgrounds'
+
+/**
+ * A 1-hour signed URL for the user's chosen background, or null.
+ *
+ * An upload resolves under the user's own folder and a gallery pick under
+ * shared/, so a user cannot name another person's folder here even if they
+ * hand-edit their prefs blob: the prefix is derived from the token, and `kind`
+ * only chooses between "mine" and "shared".
+ *
+ * A failure is not an error. A deleted image should paint no background, not
+ * break the login.
+ */
+async function signBackground(staffId, background) {
+  const kind = background?.kind
+  const value = background?.value
+  if ((kind !== 'upload' && kind !== 'gallery') || typeof value !== 'string' || !value) return null
+  const prefix = kind === 'gallery' ? 'shared' : staffId
+  try {
+    const { data } = await supabaseAdmin.storage.from(BACKGROUND_BUCKET)
+      .createSignedUrl(`${prefix}/${value}`, 60 * 60)
+    return data?.signedUrl || null
+  } catch {
+    return null
+  }
+}
+
 // GET /ui-preferences — this user's saved prefs ({} if never saved).
+//
+// backgroundUrl rides along so the client does not need a second round trip
+// before it can paint. The prefs blob stores a storage PATH; the bucket is
+// private, so a signed URL is minted here on every read. A signed URL is
+// deliberately not persisted anywhere: it expires, and a stale one in the
+// client's localStorage mirror would 403 on the next load.
 router.get('/', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('user_ui_preferences').select('prefs')
       .eq('staff_id', req.staff.id).maybeSingle()
     if (error) throw error
-    res.json({ prefs: data?.prefs || {} })
+    const prefs = data?.prefs || {}
+    res.json({ prefs, backgroundUrl: await signBackground(req.staff.id, prefs.background) })
   } catch (err) {
     console.error('[ui-preferences] read failed:', err.message)
     res.status(500).json({ error: 'preferences read failed' })
