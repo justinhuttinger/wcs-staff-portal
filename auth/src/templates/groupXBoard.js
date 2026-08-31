@@ -149,6 +149,7 @@ ${WCS_DISPLAY_FACE}
   .eyebrow {
     font-family: var(--font-body); font-size: clamp(.8rem, .55rem + .7vw, 1.35rem);
     font-weight: 600;
+    line-height: 1;
     letter-spacing: .22em; text-transform: uppercase; color: var(--color-accent);
   }
   .accent { color: var(--color-accent); }
@@ -162,7 +163,13 @@ ${WCS_DISPLAY_FACE}
     border-bottom: 5px solid var(--color-accent);
     margin-bottom: clamp(.5rem, 1.2vh, 1.3rem);
   }
-  .head__titles { display: flex; flex-direction: column; gap: .18em; }
+  /* No gap, and the eyebrow carries no leading of its own. The header is
+     bottom-aligned, so the title's position is fixed and every bit of space
+     taken out above it moves "Salem - Group X" DOWN toward it. Body line-height
+     1.5 on a line of small caps was putting a quarter of its own height of air
+     under it, which read as the club name floating away from the board it
+     names. */
+  .head__titles { display: flex; flex-direction: column; gap: 0; }
   /* The badge is sized off the same fluid step as the board title so the two
      stay in proportion from a phone to a 4K panel, rather than the logo
      swallowing the header on one and vanishing on the other. It is a circular
@@ -438,7 +445,14 @@ ${WCS_DISPLAY_FACE}
      TV browsers can report widths well under 1000px, and a 16:9 screen must
      never stack, so this is gated on portrait orientation too. Here the page
      is allowed to scroll again, because a phone has someone holding it. */
-  @media (max-width: 760px) and (orientation: portrait) {
+  /* "screen and" matters more than it looks. Everything in here is a phone
+     concern, and one rule -- hiding empty days -- was reaching the printer and
+     dropping Tuesday and Thursday off the sheet. A print job evaluates
+     max-width against the page box, which at 150-200% Windows display scaling
+     can land under 760px, and "orientation: portrait" is about the PAGE, not
+     the screen. Scoping the whole block to screen makes that impossible rather
+     than unlikely. */
+  @media screen and (max-width: 760px) and (orientation: portrait) {
     body { height: auto; min-height: 100vh; overflow: visible; }
     .week { grid-template-columns: 1fr; gap: 7px; flex: 0 0 auto; }
     /* Nothing may scroll inside the board once it stacks. The whole point of
@@ -555,6 +569,14 @@ ${WCS_DISPLAY_FACE}
       flex: 1 1 auto;
       min-height: 0;
     }
+    /* Seven columns means SEVEN. A quiet Tuesday prints as a column headed
+       Tuesday saying "No classes" -- an absent one reads as a sheet that lost
+       a day, and someone has to work out whether the gym is shut or the
+       printer ate it. The stacked phone layout hides empty days on purpose and
+       is now scoped to screen; this is the belt to that braces. */
+    .day--empty, .day--empty:not(.day--today) { display: flex !important; }
+    .list, .list--time { overflow: hidden; }
+
     /* One page is the whole point, so nothing may paginate. */
     .day, .cls { break-inside: avoid; page-break-inside: avoid; }
   }
@@ -586,7 +608,7 @@ ${isEmbed ? `
      board taller than its content, but it does stop the frame ever shrinking
      back down once something transient made it tall. Body height here is
      exactly the content, which is also what makes the beacon exact. */
-  @media (max-width: 760px) and (orientation: portrait) {
+  @media screen and (max-width: 760px) and (orientation: portrait) {
     body { min-height: 0; }
   }
 ` : ''}

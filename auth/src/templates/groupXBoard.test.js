@@ -79,8 +79,12 @@ test('nothing inside the board can scroll once it stacks', () => {
   // every element that scrolls or clips in the TV layout has to be released at
   // the narrow breakpoint -- including .list--time, whose `overflow` shorthand
   // sets overflow-y and would otherwise survive a .list override.
+  //
+  // Scoped to `screen`: one rule in here hides empty days, which is right on a
+  // phone and wrong on paper, where it was dropping quiet weekdays off the
+  // printed sheet.
   const html = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem', embed: true })
-  const start = html.indexOf('@media (max-width: 760px) and (orientation: portrait)')
+  const start = html.indexOf('@media screen and (max-width: 760px) and (orientation: portrait)')
   assert.notStrictEqual(start, -1)
   const stacked = html.slice(start, html.indexOf('@media (prefers-reduced-motion', start))
 
@@ -100,7 +104,7 @@ test('the stacked embed measures its content, not the frame it was given', () =>
   // so the beacon takes the largest of four measurements.
   assert.match(embed, /h\.scrollHeight, h\.offsetHeight,\s*b\.scrollHeight, b\.offsetHeight/)
   // The floor that would stop the frame shrinking back down is dropped.
-  assert.match(embed, /@media \(max-width: 760px\) and \(orientation: portrait\) \{\s*body \{ min-height: 0; \}/)
+  assert.match(embed, /@media screen and \(max-width: 760px\) and \(orientation: portrait\) \{\s*body \{ min-height: 0; \}/)
   // Re-measure when the display face swaps in and class names rewrap.
   assert.ok(embed.includes('document.fonts.ready.then(postHeight)'))
   // The grid is watched as well as the body.
@@ -198,4 +202,29 @@ test('the printed body is smaller than the sheet it prints on', () => {
     Number(body[1]) < Number(page[1]),
     `body ${body[1]}in must stay under the ${page[1]}in sheet or rounding adds a blank page`,
   )
+})
+
+test('the stacked phone layout is scoped to screen so print never gets it', () => {
+  const html = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem' })
+  // A bare max-width query applies to print too. This one hides empty days,
+  // which took Tuesday and Thursday off the printed sheet.
+  assert.doesNotMatch(html, /@media \(max-width: 760px\)/)
+  assert.match(html, /@media screen and \(max-width: 760px\)/)
+})
+
+test('print insists on all seven day columns, empty ones included', () => {
+  const html = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem' })
+  const printBlock = html.slice(html.indexOf('@media print'))
+  // A column headed Tuesday saying "No classes" is a fact. A missing one is a
+  // sheet that lost a day.
+  assert.match(printBlock, /\.day--empty[^{]*\{ display: flex !important; \}/)
+})
+
+test('the eyebrow sits tight to the title it labels', () => {
+  const html = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem' })
+  // The header is bottom-aligned, so space removed above the title is space
+  // the club name moves DOWN by.
+  assert.match(html, /\.head__titles \{ display: flex; flex-direction: column; gap: 0; \}/)
+  const eyebrow = html.match(/\.eyebrow \{[^}]*\}/)[0]
+  assert.match(eyebrow, /line-height: 1;/)
 })
