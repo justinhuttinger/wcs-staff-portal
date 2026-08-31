@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getAppSettings, saveAppSettings } from '../../lib/api'
 import { THEME_OPTIONS } from '../appearance/themeOptions'
+import { ACCENT_PRESETS, DEFAULT_ACCENT } from '../../lib/theme'
 
 /**
  * Sets the theme a brand-new staff member sees before they have ever opened
@@ -10,13 +11,17 @@ import { THEME_OPTIONS } from '../appearance/themeOptions'
  */
 export default function OrgAppearanceDefault() {
   const [theme, setTheme] = useState('')
+  const [accent, setAccentValue] = useState(DEFAULT_ACCENT)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState(null)
 
   useEffect(() => {
     getAppSettings('appearance_default_')
-      .then(settings => setTheme(settings?.appearance_default_theme || THEME_OPTIONS[0].key))
+      .then(settings => {
+        setTheme(settings?.appearance_default_theme || THEME_OPTIONS[0].key)
+        setAccentValue(settings?.appearance_default_accent || DEFAULT_ACCENT)
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
@@ -25,7 +30,7 @@ export default function OrgAppearanceDefault() {
     setSaving(true)
     setMessage(null)
     try {
-      await saveAppSettings({ appearance_default_theme: theme })
+      await saveAppSettings({ appearance_default_theme: theme, appearance_default_accent: accent })
       setMessage({ type: 'success', text: 'Saved!' })
     } catch (err) {
       setMessage({ type: 'error', text: err.message || 'Save failed.' })
@@ -54,6 +59,16 @@ export default function OrgAppearanceDefault() {
         >
           {THEME_OPTIONS.map(opt => (
             <option key={opt.key} value={opt.key}>{opt.name}</option>
+          ))}
+        </select>
+        <select
+          value={accent}
+          onChange={(e) => setAccentValue(e.target.value)}
+          aria-label="Default accent color for new staff"
+          className="text-sm rounded-lg border border-border bg-surface px-3 py-1.5"
+        >
+          {ACCENT_PRESETS.map(preset => (
+            <option key={preset.hex} value={preset.hex}>{preset.label}</option>
           ))}
         </select>
         <button

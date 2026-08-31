@@ -80,7 +80,8 @@
   color: var(--portal-accent-ink);
 }
 /* The icon sits in a tinted circle; on hover it must not fight the fill. */
-:root:not([data-theme]) .portal-tile:hover .portal-tile__icon {
+:root:not([data-theme]) .portal-tile:hover .portal-tile__icon,
+:root:not([data-theme]) .portal-tile:focus-visible .portal-tile__icon {
   background: rgb(255 255 255 / 0.18);
 }
 

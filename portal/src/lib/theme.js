@@ -96,6 +96,13 @@ export function accentInk(hex) {
   // and it is the right floor here: at 16px semibold on a solid fill, white
   // above that ratio reads cleanly, while below it (pale yellows, near-whites)
   // it starts to disappear.
+  //
+  // The same ink also paints the 12px uppercase description on hover, where
+  // the default red's white-on-red ratio (4.13:1) clears AA for the label but
+  // misses AA for text that small, and where that description previously sat
+  // as grey-on-white. That is a real, if minor, readability regression on
+  // hover for the default accent, traded for one consistent ink across the
+  // whole tile rather than a second computed color for a secondary line.
   const contrastWithWhite = 1.05 / (L + 0.05)
   return contrastWithWhite >= 3 ? '#ffffff' : '#0b0b0d'
 }
@@ -192,11 +199,6 @@ export function getTheme() {
   return getPrefs().theme
 }
 
-/** Read the saved accent, defaulting to DEFAULT_ACCENT. Never throws. */
-export function getAccent() {
-  return getPrefs().accent
-}
-
 /** Reflect prefs onto <html> without persisting them. */
 export function applyPrefs(prefs) {
   const raw = { ...DEFAULTS, accent: DEFAULT_ACCENT, ...(prefs || {}) }
@@ -251,7 +253,3 @@ export function setTheme(theme) {
   return setPrefs({ theme }).theme
 }
 
-/** Persist + apply an accent. Returns the normalized value actually set. */
-export function setAccent(hex) {
-  return setPrefs({ accent: hex }).accent
-}
