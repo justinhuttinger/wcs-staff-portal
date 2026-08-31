@@ -28,6 +28,7 @@ import DailySnapshot from './analytics/DailySnapshot'
 import Payroll from './analytics/Payroll'
 import GroupX from './analytics/GroupX'
 import Childcare from './analytics/Childcare'
+import Nps from './analytics/Nps'
 import Till from './analytics/Till'
 import Audits from './analytics/Audits'
 import LeadSources from './analytics/LeadSources'
@@ -224,6 +225,12 @@ const ANALYTICS_REPORTS = [
     dates: false,
   },
   {
+    key: 'nps',
+    label: 'NPS',
+    desc: 'Member Feedback and Response Rates',
+    Component: Nps,
+  },
+  {
     key: 'childcare',
     label: 'Childcare',
     desc: 'Headcounts by Day and Shift',
@@ -300,7 +307,7 @@ const ANALYTICS_REPORTS = [
 // rendering a dead link, so a group can name a report that ships later.
 export const REPORT_GROUPS = [
   { key: 'marketing', label: 'Marketing',     reports: ['lead-sources'] },
-  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-trends', 'member-journey', 'checkins'] },
+  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-trends', 'member-journey', 'checkins', 'nps'] },
   { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due', 'pos-sales', 'revenue'] },
   { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase', 'pt-snapshot', 'trainer-snapshot'] },
   { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot', 'compliance', 'audits', 'till', 'payroll'] },
