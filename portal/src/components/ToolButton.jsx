@@ -56,14 +56,14 @@ export default function ToolButton({ label, description, icon, emoji, url, star 
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="portal-tile group relative flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)] no-underline"
+      className="portal-tile group relative flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-6 h-[140px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)] no-underline"
     >
       {star && (
         <svg viewBox="0 0 24 24" fill="currentColor" className="absolute top-2.5 left-2.5 w-3.5 h-3.5 text-amber-400">
           <path d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" />
         </svg>
       )}
-      <div className="portal-tile__icon flex items-center justify-center w-14 h-14 rounded-full bg-bg text-wcs-red group-hover:bg-wcs-red/10 transition-all duration-200">
+      <div className="portal-tile__icon flex items-center justify-center w-12 h-12 rounded-full bg-bg text-wcs-red group-hover:bg-wcs-red/10 transition-all duration-200">
         {icon && ICONS[icon] ? (
           ICONS[icon]
         ) : LABEL_ICONS[(label || '').toLowerCase()] ? (
@@ -78,8 +78,8 @@ export default function ToolButton({ label, description, icon, emoji, url, star 
           </svg>
         )}
       </div>
-      <div className="portal-tile__text text-center">
-        <span className="portal-tile__label block text-base font-semibold text-text-primary">{label}</span>
+      <div className="portal-tile__text text-center min-w-0">
+        <span className="portal-tile__label block text-base font-semibold text-text-primary line-clamp-2">{label}</span>
         <span className="portal-tile__desc block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">{description}</span>
       </div>
     </a>
