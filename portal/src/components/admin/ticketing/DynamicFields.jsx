@@ -1,4 +1,5 @@
-import { OPTION_TYPES, DISPLAY_TYPES, asFileList, fmtBytes } from './shared'
+import { useState } from 'react'
+import { OPTION_TYPES, DISPLAY_TYPES, asFileList, fmtBytes, answerText } from './shared'
 import { isDownscalable } from '../../../lib/downscaleImage'
 
 // Only allow http(s) links so a schema can't smuggle a javascript: URL.
@@ -139,6 +140,53 @@ function FileField({ files, onChange }) {
 }
 
 // Read-only presentation of a submitted ticket's answers.
+// Copy one answer to the clipboard. Handlers retype emails, phone numbers and
+// UPCs out of a ticket into another system all day, and a typo there is a real
+// mistake, so every answer gets its own button rather than making someone
+// select the text by hand (which is fiddly on a phone).
+function CopyAnswerButton({ value, label }) {
+  const [copied, setCopied] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  function copy() {
+    // Older WebViews and any non-secure origin have no clipboard API; say so
+    // rather than silently doing nothing.
+    if (!navigator.clipboard?.writeText) { setFailed(true); setTimeout(() => setFailed(false), 1500); return }
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }).catch(() => {
+      setFailed(true)
+      setTimeout(() => setFailed(false), 1500)
+    })
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title={failed ? 'Could not copy' : `Copy ${label || 'answer'}`}
+      aria-label={failed ? 'Could not copy' : `Copy ${label || 'answer'}`}
+      className={`shrink-0 self-start inline-flex items-center gap-1 px-1.5 py-1 rounded-md border text-[11px] font-semibold transition-colors ${
+        copied ? 'border-green-300 bg-green-100 text-green-700'
+        : failed ? 'border-wcs-red/40 text-wcs-red'
+        : 'border-transparent text-text-muted hover:border-border hover:text-wcs-red'
+      }`}
+    >
+      {copied ? (
+        <>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+          Copied!
+        </>
+      ) : failed ? 'Failed' : (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
+        </svg>
+      )}
+    </button>
+  )
+}
+
 export function DynamicAnswers({ schema = [], data = {} }) {
   const inputs = schema.filter(f => !DISPLAY_TYPES.includes(f.type))
   const answered = inputs.filter(f => {
@@ -149,11 +197,17 @@ export function DynamicAnswers({ schema = [], data = {} }) {
   return (
     <dl className="divide-y divide-border">
       {answered.map(f => {
-        const v = data[f.id]
+        // One source of truth for the string: what you copy is character-for-
+        // character what the row shows, so a multi-select or a file field can
+        // never put "[object Object]" on the clipboard.
+        const text = answerText(data[f.id])
         return (
           <div key={f.id} className="py-2 grid grid-cols-3 gap-3">
             <dt className="text-xs font-semibold text-text-muted col-span-1">{f.label}</dt>
-            <dd className="text-sm text-text-primary col-span-2 whitespace-pre-wrap">{Array.isArray(v) ? v.join(', ') : String(v)}</dd>
+            <dd className="col-span-2 flex items-start gap-2">
+              <span className="text-sm text-text-primary whitespace-pre-wrap break-words flex-1 min-w-0">{text}</span>
+              <CopyAnswerButton value={text} label={f.label} />
+            </dd>
           </div>
         )
       })}
