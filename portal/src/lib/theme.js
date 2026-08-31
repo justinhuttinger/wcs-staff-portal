@@ -77,9 +77,10 @@ export function normalizeAccent(raw) {
  * because the custom field lets someone pick a pale color where white text
  * would disappear.
  *
- * Uses the WCAG relative-luminance formula with sRGB gamma expansion, and the
- * conventional 0.179 threshold, which is the luminance at which white and
- * black give equal contrast.
+ * Uses the WCAG relative-luminance formula with sRGB gamma expansion to get
+ * the accent's luminance, then prefers white unless white's contrast ratio
+ * against the accent drops below 3:1 (see the fallback below for why 3:1 and
+ * why white is the default rather than whichever ink scores higher).
  */
 export function accentInk(hex) {
   const h = normalizeAccent(hex)
@@ -88,7 +89,15 @@ export function accentInk(hex) {
     return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
   }
   const L = 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2)
-  return L > 0.179 ? '#0b0b0d' : '#ffffff'
+  // Prefer white, which is what the design calls for and what the rest of the
+  // portal already pairs with the brand red. Fall back to near-black only when
+  // white would genuinely be hard to read, which the free custom hex field
+  // makes possible. 3:1 is the WCAG floor for large text and UI components,
+  // and it is the right floor here: at 16px semibold on a solid fill, white
+  // above that ratio reads cleanly, while below it (pale yellows, near-whites)
+  // it starts to disappear.
+  const contrastWithWhite = 1.05 / (L + 0.05)
+  return contrastWithWhite >= 3 ? '#ffffff' : '#0b0b0d'
 }
 
 export const BACKGROUND_KEY = 'wcs-portal-background'

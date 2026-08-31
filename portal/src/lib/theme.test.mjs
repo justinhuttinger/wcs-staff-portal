@@ -111,6 +111,14 @@ test('ink is computed from luminance, not from a lookup of known values', () => 
   assert.equal(accentInk('#fffacd'), '#0b0b0d')
 })
 
+test('white is preferred even when black would score higher', () => {
+  // #e53e3e scores 4.13:1 with white and 5.09:1 with black. White wins anyway:
+  // the design calls for white, the rest of the portal already pairs white with
+  // this red, and 4.13 is comfortably readable. The fallback exists for colors
+  // where white genuinely disappears, not to chase the optimum.
+  assert.equal(accentInk('#e53e3e'), '#ffffff')
+})
+
 test('every preset is a valid hex and survives normalization', () => {
   for (const p of ACCENT_PRESETS) {
     assert.equal(normalizeAccent(p.hex), p.hex, `${p.label} is not already normalized`)
