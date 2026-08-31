@@ -291,6 +291,14 @@ app.listen(PORT, () => {
     console.error('[meetingNotes] failed to start:', err.message)
   }
 
+  // Weekly Day One data integrity check. Silent unless something is wrong.
+  // Opt-in via DAY_ONE_INTEGRITY_ENABLED=true.
+  try {
+    require('./services/dayOneIntegrity').start()
+  } catch (err) {
+    console.error('[dayOneIntegrity] failed to start:', err.message)
+  }
+
   // Day One calendar reconciler. Keeps day_one_appointments self-healing when a
   // booking webhook is missed. Opt-in via DAY_ONE_RECONCILE_ENABLED=true.
   try {
