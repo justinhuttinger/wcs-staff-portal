@@ -10,34 +10,42 @@
 
 const CHECK_META = {
   orphan_rows: {
+    short: 'orphan rows',
     label: 'Booking rows with no GHL appointment id',
     why: 'GHL appointment merge fields stopped resolving, or orphan adoption is failing.',
   },
   phantom_calendars: {
+    short: 'wrong calendar',
     label: 'Rows from a calendar that is not a Day One calendar',
     why: 'A GHL workflow trigger is no longer scoped to the Day One calendar.',
   },
   recorded_without_outcome: {
+    short: 'recorded but blank',
     label: 'Marked as recorded but still scheduled with no outcome',
     why: 'Something set the recorded timestamp without recording a result. These are invisible to the trainer form.',
   },
   sale_without_attendance: {
+    short: 'sale w/o attendance',
     label: 'Sale result on a Day One that was not attended',
     why: 'A status write is overriding a recorded outcome.',
   },
   backfill_duplicates_live: {
+    short: 'backfill dupes',
     label: 'Backfilled row duplicating a live appointment',
     why: 'The backfill was re-run without its all-sources duplicate guard.',
   },
   duplicate_appointment_id: {
+    short: 'duplicate appts',
     label: 'Same GHL appointment stored twice',
     why: 'The unique index on ghl_appointment_id is missing or was dropped.',
   },
   missing_scheduled_date: {
+    short: 'no date',
     label: 'Row with no scheduled date',
     why: 'A writer bypassed the date fallback. These drop out of every report.',
   },
   repeated_reconciler_events: {
+    short: 'repeat events',
     label: 'Appointments logging the same change over and over',
     why: 'The history diff is running against GHL state instead of the row being written.',
   },
@@ -84,4 +92,18 @@ function failures(rows) {
   return out
 }
 
-module.exports = { CHECK_META, COVERAGE_KEY, formatReport, failures }
+// The same finding as one SMS line.
+//
+// A text is read on a lock screen, so it has to say what is wrong and nothing
+// else. The counts and the likely causes are in the log; this exists to get
+// somebody to go and look.
+//
+// Returns null when clean, for the same reason formatReport does.
+function formatSms(rows) {
+  const bad = failures(rows)
+  if (!bad.length) return null
+  const parts = bad.map(f => `${f.count} ${f.short || f.key}`)
+  return `Day One data check FAILED: ${parts.join(', ')}. See Render logs (dayOneIntegrity).`
+}
+
+module.exports = { CHECK_META, COVERAGE_KEY, formatReport, formatSms, failures }

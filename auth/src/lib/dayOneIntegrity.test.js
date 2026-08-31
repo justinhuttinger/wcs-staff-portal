@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { CHECK_META, COVERAGE_KEY, formatReport, failures } = require('./dayOneIntegrity')
+const { CHECK_META, COVERAGE_KEY, formatReport, formatSms, failures } = require('./dayOneIntegrity')
 
 const clean = Object.keys(CHECK_META).map(key => ({ key, count: 0 }))
   .concat([{ key: COVERAGE_KEY, count: 0 }])
@@ -67,5 +67,41 @@ test('every check has a label and a cause', () => {
   for (const [key, meta] of Object.entries(CHECK_META)) {
     assert.ok(meta.label, key + ' needs a label')
     assert.ok(meta.why, key + ' needs a likely cause, or an alert is just a number')
+  }
+})
+
+// --- the SMS form ----------------------------------------------------------
+
+test('says nothing by SMS when clean', () => {
+  assert.equal(formatSms(clean), null)
+})
+
+test('a data-entry gap alone never sends a text', () => {
+  const rows = clean.map(r => r.key === COVERAGE_KEY ? { ...r, count: 40 } : r)
+  assert.equal(formatSms(rows), null)
+})
+
+test('the SMS is short enough to read on a lock screen', () => {
+  // Every check failing at once is the worst case; it still has to be readable.
+  const rows = Object.keys(CHECK_META).map(key => ({ key, count: 9 }))
+  const sms = formatSms(rows)
+  assert.ok(sms.length < 320, `SMS was ${sms.length} chars: ${sms}`)
+  assert.match(sms, /^Day One data check FAILED/)
+  assert.match(sms, /dayOneIntegrity/)
+})
+
+test('the SMS names each failing check and its count', () => {
+  const rows = clean.map(r =>
+    r.key === 'orphan_rows' ? { ...r, count: 2 } :
+    r.key === 'phantom_calendars' ? { ...r, count: 3 } : r)
+  const sms = formatSms(rows)
+  assert.match(sms, /2 orphan rows/)
+  assert.match(sms, /3 wrong calendar/)
+})
+
+test('every check has a short label, or the SMS falls back to a raw key', () => {
+  for (const [key, meta] of Object.entries(CHECK_META)) {
+    assert.ok(meta.short, key + ' needs a short label for the SMS')
+    assert.ok(meta.short.length <= 20, key + ' short label is too long for a text')
   }
 })

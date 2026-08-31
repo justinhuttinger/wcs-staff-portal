@@ -7,9 +7,14 @@
 //
 // SILENT when clean, deliberately. A job that reports "all fine" every week is a
 // job people stop opening, and then it is quiet at the exact moment it matters.
+//
+// Failures go out as an SMS through the same GHL webhook the blog generator
+// uses, rather than a Chat DM: this is the channel that reaches somebody who is
+// not at a desk, which is when a weekly job tends to fire.
 const cron = require('node-cron')
 const { supabaseAdmin } = require('./supabase')
-const { formatReport, failures } = require('../lib/dayOneIntegrity')
+const { formatReport, formatSms, failures } = require('../lib/dayOneIntegrity')
+const { sendAlert } = require('./alertSms')
 
 // Counting is one stable SQL function (migration 121) rather than strings built
 // here, so there is no dynamic SQL and no table name assembled in JavaScript.
@@ -29,25 +34,16 @@ async function runOnce() {
     return { ok: true, rows }
   }
 
-  // The log is the durable record; the DM is a convenience on top of it.
-  console.error('[dayOneIntegrity] FAILURES:\n' + text)
+  // The log is the durable record and carries the counts and the likely causes.
+  // The SMS exists only to get somebody to go and look at it.
+  console.error(`[dayOneIntegrity] FAILURES:\n${text}`)
 
-  const to = process.env.DAY_ONE_INTEGRITY_ALERT_EMAIL
-  if (!to) {
-    console.warn('[dayOneIntegrity] no DAY_ONE_INTEGRITY_ALERT_EMAIL set, logged only')
-    return { ok: false, rows, alerted: false }
-  }
+  const sms = formatSms(rows)
+  const res = await sendAlert(sms)
+  if (res.sent) console.log('[dayOneIntegrity] SMS alert sent')
+  else console.warn(`[dayOneIntegrity] SMS not sent (${res.reason}); the log above stands`)
 
-  try {
-    const { sendTicketDmAsSystem } = require('./googleChat')
-    await sendTicketDmAsSystem({ targetEmail: to, text })
-    console.log(`[dayOneIntegrity] alerted ${to}`)
-    return { ok: false, rows, alerted: true }
-  } catch (e) {
-    // A Chat outage must not swallow the finding or fail the job.
-    console.error('[dayOneIntegrity] could not send the alert:', e.message)
-    return { ok: false, rows, alerted: false }
-  }
+  return { ok: false, rows, alerted: !!res.sent }
 }
 
 function start() {
