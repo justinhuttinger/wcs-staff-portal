@@ -176,7 +176,7 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
         <div className="bg-surface border border-border rounded-xl p-5">
           <h3 className="text-sm font-bold text-text-primary mb-2">Attachments</h3>
           <ul className="space-y-1.5">
-            {submitAttachments.map(a => <AttachmentRow key={a.id} att={a} />)}
+            {submitAttachments.map(a => <AttachmentRow key={a.id} att={a} canShare={can_handle} />)}
           </ul>
         </div>
       )}
@@ -199,7 +199,7 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
                       <span className="text-[11px] text-text-muted">{fmtDate(c.created_at)}</span>
                     </div>
                     <p className="text-sm text-text-primary"><MentionText body={c.body} currentUserId={current_user_id} /></p>
-                    {catt.length > 0 && <ul className="mt-2 space-y-1">{catt.map(a => <AttachmentRow key={a.id} att={a} />)}</ul>}
+                    {catt.length > 0 && <ul className="mt-2 space-y-1">{catt.map(a => <AttachmentRow key={a.id} att={a} canShare={can_handle} />)}</ul>}
                   </>
                 )}
               </div>
@@ -259,7 +259,15 @@ export default function TicketDetail({ ticketId, onBack, onChanged }) {
   )
 }
 
-function AttachmentRow({ att }) {
+function AttachmentRow({ att, canShare = false }) {
+  // The public link, once minted, is the whole point: it survives logout and
+  // never expires, so it is safe to paste into an email. Held in state so the
+  // row reflects a share/revoke without refetching the ticket.
+  const [shareUrl, setShareUrl] = useState(att.share_url || null)
+  const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [err, setErr] = useState('')
+
   async function open() {
     try {
       // The signed URL from the detail payload may have expired; mint a fresh one.
@@ -269,15 +277,74 @@ function AttachmentRow({ att }) {
       if (att.url) window.open(att.url, '_blank', 'noopener')
     }
   }
+
+  async function toggleShare() {
+    setBusy(true); setErr('')
+    try {
+      const res = shareUrl
+        ? await ticketing.unshareAttachment(att.id)
+        : await ticketing.shareAttachment(att.id)
+      setShareUrl(res.share_url || null)
+    } catch (e) {
+      setErr(e.message || 'Could not update the link')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function copyLink() {
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }).catch(() => {})
+  }
+
   return (
     <li>
-      <button onClick={open} className="flex items-center gap-2 text-xs bg-bg border border-border rounded-lg px-2.5 py-1.5 w-full text-left hover:border-wcs-red">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5 text-wcs-red shrink-0">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
-        </svg>
-        <span className="truncate text-text-primary font-medium">{att.file_name}</span>
-        <span className="text-text-muted ml-auto shrink-0">{fmtBytes(att.size_bytes)}</span>
-      </button>
+      <div className="flex items-center gap-2 text-xs bg-bg border border-border rounded-lg px-2.5 py-1.5">
+        <button onClick={open} className="flex items-center gap-2 flex-1 min-w-0 text-left hover:text-wcs-red">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5 text-wcs-red shrink-0">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+          </svg>
+          <span className="truncate text-text-primary font-medium">{att.file_name}</span>
+        </button>
+        <span className="text-text-muted shrink-0">{fmtBytes(att.size_bytes)}</span>
+        {canShare && (
+          <button onClick={toggleShare} disabled={busy}
+            title={shareUrl ? 'Stop sharing — the public link stops working immediately' : 'Create a public link anyone can open, with no login and no expiry'}
+            className={`shrink-0 px-2 py-1 rounded-md border text-[11px] font-semibold disabled:opacity-50 ${
+              shareUrl
+                ? 'border-green-300 bg-green-100 text-green-700 hover:bg-green-200'
+                : 'border-border text-text-muted hover:border-wcs-red hover:text-wcs-red'
+            }`}>
+            {busy ? '…' : shareUrl ? 'Shared' : 'Share'}
+          </button>
+        )}
+      </div>
+
+      {shareUrl && (
+        <div className="mt-1 ml-2.5 flex items-center gap-2">
+          <code className="flex-1 min-w-0 truncate text-[11px] text-text-muted bg-bg/60 border border-border rounded px-2 py-1">{shareUrl}</code>
+          <button onClick={copyLink}
+            className={`relative shrink-0 px-2 py-1 rounded-md border text-[11px] font-semibold ${
+              copied ? 'bg-green-100 text-green-700 border-green-300' : 'border-border text-text-muted hover:border-wcs-red hover:text-wcs-red'
+            }`}>
+            <span className={copied ? 'opacity-0' : 'opacity-100'}>Copy link</span>
+            {copied && (
+              <span className="absolute inset-0 flex items-center justify-center gap-1 text-green-700">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                Copied!
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+      {shareUrl && (
+        <p className="mt-1 ml-2.5 text-[11px] text-text-muted">
+          Anyone with this link can open the file — no login, no expiry. Click <span className="font-semibold">Shared</span> to turn it off.
+        </p>
+      )}
+      {err && <p className="mt-1 ml-2.5 text-[11px] text-wcs-red">{err}</p>}
     </li>
   )
 }

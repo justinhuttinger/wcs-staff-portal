@@ -27,6 +27,9 @@ const ALLOWED_ORIGINS = [
 app.use('/public/day-one', cors({ origin: '*', methods: ['GET', 'POST'] }))
 app.use('/public/group-x', cors({ origin: '*', methods: ['GET'] }))
 app.use('/public/facility', cors({ origin: '*', methods: ['GET'] }))
+// Shared ticket files are pasted into emails and opened from anywhere, so the
+// permissive CORS has to be mounted ahead of the origin-locked one below.
+app.use('/public/ticket-file', cors({ origin: '*', methods: ['GET'] }))
 
 app.use(cors({
   origin: (origin, cb) => {
@@ -94,6 +97,9 @@ app.use('/dayone', require('./routes/dayOneBooking'))
 app.use('/meetjustin', require('./routes/meetBooking'))
 app.use('/public/group-x', require('./routes/publicGroupX'))
 app.use('/public/facility', require('./routes/publicFacility'))
+// Public, unauthenticated delivery of a ticket attachment a handler chose to
+// share. Token-gated per file; the Storage bucket itself stays private.
+app.use('/public/ticket-file', require('./routes/publicTicketFile'))
 app.use('/oidc', require('./routes/oidc'))
 
 // OIDC discovery at root level (some providers look here)

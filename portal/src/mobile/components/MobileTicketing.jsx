@@ -174,7 +174,7 @@ function Detail({ id, onBack }) {
         <DynamicAnswers schema={type?.schema || []} data={ticket.data || {}} />
         {submitAtt.length > 0 && (
           <ul className="mt-3 space-y-1.5">
-            {submitAtt.map(a => <AttRow key={a.id} att={a} />)}
+            {submitAtt.map(a => <AttRow key={a.id} att={a} canShare={can_handle} />)}
           </ul>
         )}
       </div>
@@ -218,17 +218,59 @@ function Detail({ id, onBack }) {
   )
 }
 
-function AttRow({ att }) {
+function AttRow({ att, canShare = false }) {
+  // Same public-link control as the desktop detail view: mint once, paste
+  // anywhere, revoke when done. See TicketDetail's AttachmentRow.
+  const [shareUrl, setShareUrl] = useState(att.share_url || null)
+  const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
+
   async function open() {
     try { const r = await ticketing.attachmentUrl(att.id); window.open(r.url || att.url, '_blank', 'noopener') }
     catch { if (att.url) window.open(att.url, '_blank', 'noopener') }
   }
+
+  async function toggleShare() {
+    setBusy(true)
+    try {
+      const res = shareUrl ? await ticketing.unshareAttachment(att.id) : await ticketing.shareAttachment(att.id)
+      setShareUrl(res.share_url || null)
+    } catch { /* leave the row as-is; the desktop view surfaces the reason */ }
+    finally { setBusy(false) }
+  }
+
+  function copyLink() {
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }).catch(() => {})
+  }
+
   return (
     <li>
-      <button onClick={open} className="flex items-center gap-2 text-xs bg-bg border border-border rounded-lg px-2.5 py-2 w-full text-left">
-        <span className="truncate text-text-primary font-medium">{att.file_name}</span>
-        <span className="text-text-muted ml-auto shrink-0">{fmtBytes(att.size_bytes)}</span>
-      </button>
+      <div className="flex items-center gap-2 text-xs bg-bg border border-border rounded-lg px-2.5 py-2">
+        <button onClick={open} className="flex-1 min-w-0 text-left truncate text-text-primary font-medium">{att.file_name}</button>
+        <span className="text-text-muted shrink-0">{fmtBytes(att.size_bytes)}</span>
+        {canShare && (
+          <button onClick={toggleShare} disabled={busy}
+            className={`shrink-0 px-2 py-1 rounded-md border text-[11px] font-semibold disabled:opacity-50 ${
+              shareUrl ? 'border-green-300 bg-green-100 text-green-700' : 'border-border text-text-muted'
+            }`}>
+            {busy ? '…' : shareUrl ? 'Shared' : 'Share'}
+          </button>
+        )}
+      </div>
+      {shareUrl && (
+        <div className="mt-1 flex items-center gap-2">
+          <code className="flex-1 min-w-0 truncate text-[11px] text-text-muted bg-bg/60 border border-border rounded px-2 py-1">{shareUrl}</code>
+          <button onClick={copyLink}
+            className={`shrink-0 px-2 py-1 rounded-md border text-[11px] font-semibold ${
+              copied ? 'bg-green-100 text-green-700 border-green-300' : 'border-border text-text-muted'
+            }`}>
+            {copied ? 'Copied!' : 'Copy link'}
+          </button>
+        </div>
+      )}
     </li>
   )
 }
