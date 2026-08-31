@@ -44,7 +44,10 @@ const MARKETING_TYPE_SLUGS = new Set([
 const CUSTOM_TILE_KEYS = new Set([
   'grow', 'abc', 'paychex', 'gmail', 'drive', 'insights', 'notifications',
   'calendar', 'leaderboard', 'helpCenter', 'ordering', 'ticketing',
-  'trainerAvail', 'reporting', 'forms',
+  'trainerAvail', 'reporting', 'forms', 'groupX', 'facility', 'till',
+  // Capabilities on the tiles above rather than tiles themselves — the write
+  // routes gate on these exact keys. Keep in sync with PORTAL_TILE_CATALOG.
+  'groupX:schedule-edit', 'groupX:attendance', 'facility:schedule-edit',
 ])
 // Reports an admin may grant to a custom-role member. Lead-tier reports the
 // custom role can already load, plus the higher-tier reports now unlocked per
