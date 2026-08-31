@@ -10,6 +10,10 @@
 
 const MAX_DIMENSION = 1600   // longest edge, px
 const JPEG_QUALITY = 0.82
+
+// A full-bleed background is stretched across the whole viewport, so it needs
+// more resolution than a ticket attachment, which is only ever viewed inline.
+export const BACKGROUND_MAX_DIMENSION = 2560
 const SKIP_UNDER_BYTES = 400 * 1024  // already small enough to not be worth it
 
 // Formats we deliberately leave alone: GIF (would lose animation) and SVG
@@ -33,7 +37,7 @@ function jpegName(name) {
  * re-encode it as JPEG. Returns the original File when it isn't an image,
  * is already small, can't be decoded, or when the re-encode came out larger.
  */
-export async function downscaleImage(file) {
+export async function downscaleImage(file, { maxDimension = MAX_DIMENSION } = {}) {
   if (!isDownscalable(file)) return file
   if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return file
 
@@ -50,7 +54,7 @@ export async function downscaleImage(file) {
     const { width, height } = bitmap
     if (!width || !height) return file
 
-    const scale = Math.min(1, MAX_DIMENSION / Math.max(width, height))
+    const scale = Math.min(1, maxDimension / Math.max(width, height))
     // Already within bounds and only mildly heavy: re-encoding buys little.
     const targetW = Math.round(width * scale)
     const targetH = Math.round(height * scale)
