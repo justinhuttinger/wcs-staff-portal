@@ -231,11 +231,11 @@ const ANALYTICS_REPORTS = [
   {
     key: 'payroll',
     label: 'Payroll',
-    desc: 'Commission by Person',
+    desc: 'POS, PT and Sessions',
     Component: Payroll,
-    // Commission is paid per month, so the report picks a period rather than
-    // taking the shell's range — a window straddling two would produce a figure
-    // nobody pays anyone.
+    // Commission is paid per month, so the report picks a pay period rather
+    // than taking the shell's range — a window straddling two would produce a
+    // figure nobody pays anyone.
     dates: false,
   },
   {
