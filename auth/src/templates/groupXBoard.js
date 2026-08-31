@@ -52,7 +52,7 @@ function escapeHtml(s) {
 // Shared by the Group X board and the facility (courts / pool) boards. The
 // only differences are the heading, the eyebrow and which endpoint it polls, so
 // they are parameters rather than a forked copy of 300 lines of CSS.
-function renderBoardHtml({ clubSlug, clubName, safePercent, boardTitle, eyebrowLabel, scheduleUrl, showDurationTag, layout, embed, emptyLabel }) {
+function renderBoardHtml({ clubSlug, clubName, safePercent, boardTitle, eyebrowLabel, scheduleUrl, showDurationTag, layout, embed, emptyLabel, startDate, autoPrint }) {
   const title = boardTitle || 'Class Schedule'
   const eyebrow = eyebrowLabel || 'Group X'
   const feed = scheduleUrl || '/public/group-x/schedule'
@@ -616,6 +616,13 @@ ${isEmbed ? '' : `    <div class="head__titles">
   var FEED = ${JSON.stringify(feed)};
   var SHOW_LEN = ${JSON.stringify(durationTag)};
   var LAYOUT = ${JSON.stringify(layoutMode)};
+  // Pin the window to one week instead of rolling from today. Only the print
+  // URL sets this: a wall TV must stay empty here or it would freeze on
+  // whatever day it was switched on.
+  var START = ${JSON.stringify(startDate || '')};
+  // Opened from the portal's Print button. The page renders the real board and
+  // prints itself, so there is no second rendering to drift from this one.
+  var AUTO_PRINT = ${autoPrint ? 'true' : 'false'};
   var EMPTY = ${JSON.stringify(empty)};
   var COLLARS = ${JSON.stringify(COLLARS)};
   var REFRESH_MS = 5 * 60 * 1000;
@@ -848,7 +855,7 @@ ${isEmbed ? '' : `    <div class="head__titles">
     // ?facility=pool), so pick the separator rather than always using '?'.
     var sep = FEED.indexOf('?') === -1 ? '?' : '&';
     var url = FEED + sep + 'club=' + encodeURIComponent(CLUB)
-      + '&week=' + encodeURIComponent(pacificToday());
+      + '&week=' + encodeURIComponent(START || pacificToday());
     fetch(url, { cache: 'no-store' })
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -858,11 +865,31 @@ ${isEmbed ? '' : `    <div class="head__titles">
         lastGood = data;
         render(data);
         setStatus('Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), false);
+        maybePrint();
       })
       .catch(function () {
         // Keep the last good board on screen. A stale schedule beats a blank TV.
         setStatus(lastGood ? 'Showing last update, reconnecting' : 'Schedule unavailable, retrying', true);
       });
+  }
+
+  // Print once the board is actually on screen. Waiting on document.fonts
+  // matters more here than it looks: the display face is an embedded data URI,
+  // and printing before it swaps in lays the whole board out in the fallback
+  // and then prints THAT -- different metrics, different line breaks, a sheet
+  // that does not match the wall.
+  var printed = false;
+  function maybePrint() {
+    if (!AUTO_PRINT || printed) return;
+    printed = true;
+    var go = function () { setTimeout(function () { window.print(); }, 250); };
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(go, go);
+    else go();
+  }
+  if (AUTO_PRINT) {
+    // The tab has done its job. Closing on afterprint covers cancel as well as
+    // print, which is what you want -- either way the reader is finished.
+    window.addEventListener('afterprint', function () { window.close(); });
   }
 
   // ---- class detail popup --------------------------------------------------
@@ -965,10 +992,12 @@ ${isEmbed ? `
   load();
   // Refreshing while someone is reading a description would yank it away, so
   // hold off until the popup is closed.
-  setInterval(function () { if (scrim.getAttribute('data-open') !== '1') load(); }, REFRESH_MS);
-  // The clock and the marker move on their own minute, not the poll's five: a
-  // class starting at 9:30 has to light up at 9:30, not at 9:34.
-  setInterval(markNow, 30 * 1000);
+  if (!AUTO_PRINT) {
+    setInterval(function () { if (scrim.getAttribute('data-open') !== '1') load(); }, REFRESH_MS);
+    // The clock and the marker move on their own minute, not the poll's five: a
+    // class starting at 9:30 has to light up at 9:30, not at 9:34.
+    setInterval(markNow, 30 * 1000);
+  }
 })();
 </script>
 </body>

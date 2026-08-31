@@ -77,39 +77,6 @@ export default function PrintScheduleStyles({ orientation }) {
       .ps-ev__name { font-weight: 600; }
       .ps-ev__who { color: #444; }
 
-      /* ---- Coloured blocks (Group X) --------------------------------- */
-      /* The sheet mirrors the on-screen calendar: same palette, same hash. The
-         fill and edge arrive as inline style from lib/classColors so one hash
-         drives both renderings; only the shape lives here.
-
-         print-color-adjust: exact is already set on the sheet root, which is
-         what stops a browser helpfully dropping the backgrounds to save ink --
-         without it the whole point of a coloured sheet is lost. */
-      .ps--colored .ps-ev--block {
-        color: #fff;
-        border: 1px solid;
-        border-radius: 4px;
-        padding: .04in .06in;
-        margin-bottom: .05in;
-      }
-      /* The plain-list rules give each row a hairline separator and kill the
-         first one; blocks are their own boxes and need neither. */
-      .ps--colored .ps-ev--block { border-top-width: 1px; }
-      .ps--colored .ps-ev--block:last-child { margin-bottom: 0; }
-      .ps--colored .ps-ev__time { font-size: 8pt; font-weight: 700; }
-      .ps--colored .ps-ev__name { font-size: 9pt; font-weight: 700; }
-      /* The "- 30"/"- 60" suffix is stripped off the name and shown as a pill,
-         exactly as the grid does it. */
-      .ps--colored .ps-ev__len {
-        display: inline-block; margin-left: .04in;
-        padding: 0 .03in; border-radius: 3px;
-        background: rgba(0, 0, 0, .25);
-        font-size: 6.5pt; font-weight: 700;
-        font-variant-numeric: tabular-nums;
-        vertical-align: middle; white-space: nowrap;
-      }
-      .ps--colored .ps-ev__who { font-size: 7.5pt; color: rgba(255, 255, 255, .92); }
-
       /* ---- Landscape: seven columns ---------------------------------- */
       /* A wall grid. Columns are equal width and never break across pages --
          a class schedule split down the middle of Wednesday is unusable. */
@@ -139,86 +106,10 @@ export default function PrintScheduleStyles({ orientation }) {
         padding: .035in 0; border-top: 1px solid #ececec;
       }
       .ps--landscape .ps-ev:first-child { border-top: 0; }
-      .ps--landscape.ps--colored .ps-ev { border-top: 1px solid; padding: .04in .06in; }
       .ps--landscape .ps-ev > span { display: block; }
       .ps--landscape .ps-ev__time { font-size: 8.5pt; }
       .ps--landscape .ps-ev__who { font-size: 7.8pt; }
 
-
-      /* ---- Time-positioned landscape grid (Group X) ------------------- */
-      /* The wall sheet as a calendar: an hour rail down the left, a column per
-         day, blocks placed against the clock. A gap between classes prints as
-         a gap, which is the point -- stacked blocks made a 6am and a 10am
-         class look like they ran back to back.
-
-         THIS BLOCK MUST STAY BELOW THE LANDSCAPE ONE, and every selector here
-         carries .ps--landscape. The generic .ps-week--grid it started as
-         lost to ".ps--landscape .ps-week" on specificity, so the seven-column
-         template and the 6.75in floor above were still winning: eight children
-         went into a seven-column grid, Sunday wrapped onto a second row, and
-         the sheet ran to a second page. Two classes, not one, and later in the
-         file, or it silently reverts.
-
-         The heights are budgeted against the page, because "fits on one page"
-         is a measurement, not a hope. Landscape is 8.5in less .8in of margins
-         = 7.7in. Header and its margin measure .85in, the day-name row is
-         .24in, so the body gets 6.4in and .21in stays as slack. GRID_HEIGHT_IN
-         in PrintScheduleSheet.jsx MUST match the 6.4in here. */
-      .ps--landscape .ps-week--grid {
-        display: grid;
-        grid-template-columns: .42in repeat(7, 1fr);
-        gap: 0 .07in;
-        /* The landscape floor would be ADDED to an explicitly sized body. */
-        min-height: 0;
-      }
-      .ps--landscape .ps-week--grid .ps-day__name,
-      .ps--landscape .ps-week--grid .ps-rail__spacer {
-        height: .24in;
-        padding: .04in .06in; font-size: 9pt;
-        display: flex; align-items: center;
-      }
-      .ps--landscape .ps-week--grid .ps-rail__spacer {
-        background: none; border: 0; padding: 0;
-      }
-
-      .ps--landscape .ps-rail__body { position: relative; }
-      .ps--landscape .ps-rail__hour {
-        position: absolute; right: .04in;
-        transform: translateY(-50%);
-        font-size: 6.5pt; font-weight: 700; color: #333;
-        font-variant-numeric: tabular-nums; white-space: nowrap;
-      }
-
-      /* Beats ".ps--landscape .ps-day__body", which is the same specificity
-         but earlier -- its .05in padding would offset every absolutely
-         positioned block by that much, and flex:1 would fight the set height. */
-      .ps--landscape .ps-week--grid .ps-day__body {
-        position: relative; padding: 0; flex: 0 0 auto; overflow: hidden;
-      }
-      .ps--landscape .ps-hourline {
-        position: absolute; left: 0; right: 0;
-        border-top: 1px solid #ededed;
-      }
-
-      .ps--landscape .ps-block {
-        position: absolute; overflow: hidden;
-        color: #fff; border: 1px solid; border-radius: 3px;
-        padding: .015in .04in;
-        line-height: 1.15;
-      }
-      .ps--landscape .ps-block > span { display: block; }
-      .ps--landscape .ps-block .ps-ev__time { font-size: 7pt; font-weight: 700; font-variant-numeric: tabular-nums; }
-      .ps--landscape .ps-block .ps-ev__name { font-size: 8pt; font-weight: 700; }
-      .ps--landscape .ps-block .ps-ev__who { font-size: 6.8pt; color: rgba(255, 255, 255, .92); }
-      /* Too short for three lines. Losing the instructor beats clipping a name
-         through the middle of a word. */
-      .ps--landscape .ps-block--tight .ps-ev__who { display: none; }
-
-      /* Nothing in the grid may paginate: the whole point is one page. */
-      .ps--landscape .ps-week--grid,
-      .ps--landscape .ps-week--grid .ps-day {
-        break-inside: avoid; page-break-inside: avoid;
-      }
 
       /* ---- Portrait: seven rows -------------------------------------- */
       /* Seven columns on 8.5in leaves ~1.1in each, which wraps "Barbell
@@ -253,7 +144,6 @@ export default function PrintScheduleStyles({ orientation }) {
       }
       .ps--portrait .ps-ev > span { display: block; }
       .ps--portrait .ps-ev__who { font-size: 7.8pt; }
-      .ps--portrait.ps--colored .ps-ev { border-left-width: 1px; padding: .04in .06in; }
       .ps--portrait .ps-empty { padding-top: .01in; }
 
       /* ---- On-screen preview ----------------------------------------- */
