@@ -14,6 +14,7 @@ const DRIVE_ICON = 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 2
 const TILE_ICONS = {
   dayOne: 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9 2 2 4-4',
   facility: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5M12 12.75h.008v.008H12v-.008z',
+  more: 'M6.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM12.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM18.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z',
   till: 'M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z',
   groupX: 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z',
   tours: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5',
@@ -49,11 +50,11 @@ const ORDERING_LINKS = [
 // pinned-tab picker has to agree with this board about both, and it cannot
 // import from a component.
 
-function SvgTileButton({ onClick, iconPath, label, desc, badge, star }) {
+function SvgTileButton({ onClick, iconPath, label, desc, badge, star, last }) {
   return (
     <button
       onClick={onClick}
-      className="portal-tile group relative flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-4 h-40 overflow-hidden cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+      className={(last ? 'portal-tile--last ' : '') + "portal-tile group relative flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-4 h-40 overflow-hidden cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"}
     >
       {star && (
         <svg viewBox="0 0 24 24" fill="currentColor" className="portal-tile__star absolute top-2.5 left-2.5 w-3.5 h-3.5 text-amber-400">
@@ -110,10 +111,11 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onNps, onAdsManager, onAnalytics, onGroupX, onFacility, onTill, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
+export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onNps, onAdsManager, onAnalytics, onGroupX, onFacility, onTill, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [showOrdering, setShowOrdering] = useState(false)
+  const [showMore, setShowMore] = useState(false)
   const [tilesLoaded, setTilesLoaded] = useState(false)
   const [calendarBadge, setCalendarBadge] = useState(0)
   const [leaderboardData, setLeaderboardData] = useState(null)
@@ -155,7 +157,12 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
       return
     }
     document.querySelectorAll('.portal-tile-grid').forEach(grid => {
-      const tiles = [...grid.querySelectorAll(':scope > .portal-tile')]
+      const all = [...grid.querySelectorAll(':scope > .portal-tile')]
+      // "More" is a drawer for everything that did not fit, so it belongs after
+      // the tiles it is a drawer for — alphabetizing it into the middle of the
+      // board would read as just another tile.
+      const last = all.filter(el => el.classList.contains('portal-tile--last'))
+      const tiles = all.filter(el => !el.classList.contains('portal-tile--last'))
       const label = (el) => (el.querySelector('.portal-tile__label')?.textContent || '').trim()
       tiles
         .map((el, i) => ({ el, key: label(el), i }))
@@ -163,6 +170,7 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
         // them; the original index breaks ties so the order stays stable.
         .sort((a, b) => a.key.localeCompare(b.key, undefined, { sensitivity: 'base' }) || a.i - b.i)
         .forEach(({ el }, idx) => { el.style.order = String(idx) })
+      last.forEach((el, i) => { el.style.order = String(tiles.length + i) })
     })
   })
 
@@ -291,6 +299,35 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
     )
   }
 
+  // Tools that live inside the "More" drawer instead of on the Tools board.
+  // Add an entry here to move a tile into the drawer; nothing else changes.
+  // Each carries the same gate it would have had on the board, so More never
+  // offers a screen the board itself would have withheld.
+  const moreCells = [
+    onTill && (visibleTools || []).includes('till') && (
+      <SvgTileButton key="till" onClick={() => { setShowMore(false); onTill() }}
+        iconPath={TILE_ICONS.till} label="Till" desc="Cash in / out" />
+    ),
+  ].filter(Boolean)
+
+  if (showMore) {
+    return (
+      <div className="w-full max-w-4xl mx-auto px-8">
+        <button
+          onClick={() => setShowMore(false)}
+          className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary hover:border-text-muted transition-colors mb-4 mt-2"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to Portal
+        </button>
+        <h2 className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-4 shadow-sm">More</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">{moreCells}</div>
+      </div>
+    )
+  }
+
   if (!tilesLoaded) return null
 
   // Custom role: render exactly the tiles an admin granted (visibleTools holds
@@ -372,10 +409,14 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
     )
   }
 
-  // Labels that should be in Apps even if their section isn't "main"
-  const APP_LABELS = ['indeed', 'operandio', 'vistaprint', 'vista']
-  // Labels that should be in Tools even if their section is "main"
-  const TOOL_LABELS = ['cancel', 'cancel tool']
+  // Labels that should be in Apps even if their section isn't "main".
+  // Cancel is here because it is a link out to the cancellation service, not an
+  // in-portal screen — it used to be pinned to Tools, and to Apps only in the
+  // Press theme, which meant its home moved depending on the theme.
+  const APP_LABELS = ['indeed', 'operandio', 'vistaprint', 'vista', 'cancel', 'cancel tool']
+  // Labels that should be in Tools even if their section is "main". Empty
+  // today; kept as the hook for pinning a "main" tile to the Tools board.
+  const TOOL_LABELS = []
 
   const appTools = clubApps.filter(visibleApp)
 
@@ -386,18 +427,17 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
 
   // All custom tiles, categorized
   const allCustom = [...mainTiles, ...topLevelTiles]
+  // Cancel still renders first on the Apps board with a star, so it stays the
+  // fastest thing to reach; this only identifies it for that ordering.
   const isCancel = (label) => ['cancel', 'cancel tool'].includes(label)
   const appCustomTiles = allCustom.filter(t => {
     const label = (t.label || '').toLowerCase()
-    // Cancel is pinned to Tools by TOOL_LABELS; cancelInApps moves it across.
-    if (isCancel(label)) return !!cancelInApps
     if (TOOL_LABELS.includes(label)) return false
     if (APP_LABELS.includes(label)) return true
     return t.section === 'main' // default: main section = apps
   })
   const toolCustomTiles = allCustom.filter(t => {
     const label = (t.label || '').toLowerCase()
-    if (isCancel(label)) return !cancelInApps
     if (TOOL_LABELS.includes(label)) return true
     if (APP_LABELS.includes(label)) return false
     return t.section !== 'main' // default: non-main = tools
@@ -571,8 +611,8 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
       <div className="portal-section w-1/2">
         <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">Apps</p>
         <div className="portal-tile-grid grid grid-cols-4 gap-4">
-          {/* Cancel leads the Apps board when it has been moved here. */}
-          {cancelInApps && appCustomTiles.filter(t => isCancel((t.label || '').toLowerCase())).map(tile => (
+          {/* Cancel leads the Apps board. */}
+          {appCustomTiles.filter(t => isCancel((t.label || '').toLowerCase())).map(tile => (
             <ToolButton key={'custom-' + tile.id} label={tile.label} description={tile.description || ''} url={tile.url} star />
           ))}
           {appTools.map((tool) => (
@@ -610,10 +650,7 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
       <div className="portal-section w-1/2">
         <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">Tools</p>
         <div className="portal-tile-grid grid grid-cols-4 gap-4">
-          {/* 1. Cancel Tool (custom tile — direct link) */}
-          {toolCustomTiles.filter(t => isCancel((t.label || '').toLowerCase())).map(tile => (
-            <ToolButton key={'custom-' + tile.id} label={tile.label} description={tile.description || ''} url={tile.url} star />
-          ))}
+          {/* Cancel used to lead this board; it is an App now. */}
           {/* 2. Calendar (Tours + Day Ones combined) */}
           {onCalendar && !omitted.has('calendar') && <SvgTileButton onClick={onCalendar} iconPath={TILE_ICONS.tours} label="Calendar" desc="Tours & Day Ones" badge={calendarBadge} star />}
           {/* 4. Leaderboard */}
@@ -639,11 +676,6 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
               for every built-in role in migration 176). Editing is gated
               separately by facility:schedule-edit, exactly as Group X. */}
           {onFacility && (visibleTools || []).includes('facility') && <SvgTileButton onClick={onFacility} iconPath={TILE_ICONS.facility} label="Courts & Pool" desc="Schedules" />}
-          {/* 6.46. Till -- log cash in/out of the drawer so the nightly
-              reconciliation adds up. Role/override-driven via 'till' (seeded
-              lead+ in migration 179); the Till REPORT stays manager+ under
-              Reporting, so a lead can log cash without seeing over/short. */}
-          {onTill && (visibleTools || []).includes('till') && <SvgTileButton onClick={onTill} iconPath={TILE_ICONS.till} label="Till" desc="Cash in / out" />}
           {/* 6.5. Marketing Tracker — corporate/admin, or anyone with the marketing add-on */}
           {onMarketingTracker && (canMarketingTracker ?? (roleIdx >= ROLE_LEVELS.corporate || marketingAddon)) && <SvgTileButton onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />}
           {/* 6.6. Inventory (experimental) — lead+ (leads get restock/adjust, no Sales/margin) */}
@@ -716,6 +748,14 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
               <ToolButton key={'custom-' + tile.id} label={tile.label} description={tile.description || ''} emoji={tile.icon} url={tile.url} />
             )
           })}
+          {/* More — the drawer for tools that do not warrant a board slot.
+              Its contents are the moreCells list above; it hides itself
+              entirely when the user can see none of them. `last` keeps it at
+              the end of the board under the Press theme's alphabetical sort. */}
+          {moreCells.length > 0 && (
+            <SvgTileButton onClick={() => setShowMore(true)} iconPath={TILE_ICONS.more}
+              label="More" desc={moreCells.length === 1 ? '1 more tool' : `${moreCells.length} more tools`} last />
+          )}
         </div>
       </div>
       )}
