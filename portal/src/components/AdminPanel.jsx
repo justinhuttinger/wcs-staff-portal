@@ -213,7 +213,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'audit-log' && <AuditLogAdmin />}
         {activeSection === 'pt-scheduler' && <PtSchedulerView />}
         {activeSection === 'group-x-admin' && <GroupXAdminView />}
-        {activeSection === 'facility-schedules' && <FacilityView />}
+        {activeSection === 'facility-schedules' && <FacilityView canEdit showBoardLinks />}
         {activeSection === 'class-seeding' && <ClassSeedingAdmin />}
         {activeSection === 'online-join' && <OnlineJoinAdmin />}
         {activeSection === 'vip-referrals' && <VipReferralsAdmin />}
