@@ -2,29 +2,29 @@ import { useMemo, useState } from 'react'
 import { npsReport } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
-import { fmtInt, fmtPct, colorFor, GOOD_COLOR, BAD_COLOR } from './chartPalette'
+import { fmtInt, GOOD_COLOR, BAD_COLOR } from './chartPalette'
 import { RankedBars, zebraColumn } from './charts'
 
 
 // ---------------------------------------------------------------------------
 // NPS — Analytics
 //
-// THE SAMPLE COMES FIRST, ABOVE THE SCORE. 550 invites were delivered in
-// August, 8 were opened and 4 were answered. An NPS computed on four answers is
-// arithmetic, not a measurement: one more detractor moves it 50 points. So the
-// headline is suppressed below MIN_REPORTABLE and the delivery funnel sits at
-// the top of the report, because "nobody opens the email" is the finding, and
-// no amount of scoring the four replies will surface it.
+// WHAT MEMBERS SAID, AND NOTHING ABOUT THE EMAIL THAT ASKED THEM. Scores, the
+// per-question averages behind them, and the free text. Delivery — who it
+// reached, who opened it, who answered — is deliberately absent: it is a
+// question about the survey tool, and mixing it in here turns a page about
+// members into a page about mailing.
+//
+// THE SAMPLE STILL TRAVELS WITH THE SCORE. Four answers make an NPS that moves
+// 50 points on one more detractor, so below MIN_REPORTABLE the figures are
+// marked as reference rather than result, and every average carries its n. That
+// is not a delivery statistic, it is what the number is worth.
 //
 // EMAILED AND POSTER ANSWERS ARE KEPT APART. Poster (walk-up) answers are
 // self-selected and lean to the extremes; emailed answers are closer to a
 // random cohort sample. Blended silently, company NPS moves when a poster gets
 // hung nearer the door, and somebody spends a month chasing an artifact of
 // poster placement.
-//
-// A FAILED SEND IS NOT A NON-RESPONSE. It never arrived, so it stays out of
-// every rate and is reported on its own line: a delivery problem and a
-// response problem get fixed in completely different places.
 // ---------------------------------------------------------------------------
 
 // Below this many answers the score is shown as unreportable rather than as a
@@ -72,11 +72,6 @@ export default function Nps({ startDate, endDate, locationSlug }) {
     [startDate, endDate, locationSlug]
   )
 
-  const rates = data?.responseRates || []
-  const delivery = useMemo(() => rates.reduce((a, r) => ({
-    sent: a.sent + r.sent, opened: a.opened + r.opened, responded: a.responded + r.responded,
-  }), { sent: 0, opened: 0, responded: 0 }), [rates])
-
   const overall = data?.overall || {}
   const answered = overall.blended?.n || 0
   const reportable = answered >= MIN_REPORTABLE
@@ -92,10 +87,20 @@ export default function Nps({ startDate, endDate, locationSlug }) {
         </div>
       )}
 
-      {!loading && !error && data && (
+      {!loading && !error && data && answered === 0 && (
+        <div className="bg-surface rounded-xl border border-border p-8 text-center">
+          <p className="text-sm text-text-muted">Nobody answered in this range.</p>
+          <p className="text-[11px] text-text-muted/70 mt-2 max-w-md mx-auto">
+            Scores come from the emailed survey and the in-club poster. A range with no answers
+            is not a bad month, it is an empty one.
+          </p>
+        </div>
+      )}
+
+      {!loading && !error && data && answered > 0 && (
         <>
           {/* The caveat goes above the number it qualifies, not under it. */}
-          {answered > 0 && !reportable && (
+          {!reportable && (
             <div className="bg-surface rounded-xl border border-amber-500/40 p-3">
               <p className="text-[11px] text-amber-600">
                 {fmtInt(answered)} {answered === 1 ? 'answer' : 'answers'} in this range. Below{' '}
@@ -111,7 +116,7 @@ export default function Nps({ startDate, endDate, locationSlug }) {
                 {
                   label: 'NPS (Emailed)',
                   value: overall.invited?.n ? signed(overall.invited.nps) : '—',
-                  sub: `${fmtInt(overall.invited?.n || 0)} answers`,
+                  sub: `${fmtInt(overall.invited?.n || 0)} answered the score question`,
                   muted: !reportable,
                 },
                 {
@@ -121,15 +126,21 @@ export default function Nps({ startDate, endDate, locationSlug }) {
                   muted: !reportable,
                 },
                 {
-                  label: 'Answered',
-                  value: fmtInt(delivery.responded),
-                  sub: delivery.sent ? `${fmtPct((delivery.responded / delivery.sent) * 100)} of delivered` : 'nothing sent',
+                  label: 'Promoters',
+                  value: fmtInt(overall.invited?.promoters || 0),
+                  // Passives are in the denominator and never the numerator,
+                  // which is what makes NPS mean anything: indifference is not
+                  // endorsement. Showing all three stops the gap between
+                  // promoters and detractors reading as the whole sample.
+                  sub: `${fmtInt(overall.invited?.passives || 0)} passive`,
                   muted: true,
                 },
                 {
-                  label: 'Opened',
-                  value: fmtInt(delivery.opened),
-                  sub: delivery.sent ? `${fmtPct((delivery.opened / delivery.sent) * 100)} of delivered` : 'nothing sent',
+                  label: 'Detractors',
+                  value: fmtInt(overall.invited?.detractors || 0),
+                  // A 6 reads like a pass mark and is a detractor. Saying so
+                  // here is cheaper than having the argument every quarter.
+                  sub: '6 or below',
                   muted: true,
                 },
               ].map(c => (
@@ -143,8 +154,6 @@ export default function Nps({ startDate, endDate, locationSlug }) {
               ))}
             </div>
           </div>
-
-          <Funnel rates={rates} totals={delivery} />
 
           <div className="bg-surface rounded-xl border border-border p-3 flex items-center justify-between gap-3">
             <p className="text-xs font-bold text-text-primary">Scores</p>
@@ -162,91 +171,6 @@ export default function Nps({ startDate, endDate, locationSlug }) {
           <Comments rows={data.comments || []} />
         </>
       )}
-    </div>
-  )
-}
-
-// --- delivery ---------------------------------------------------------------
-
-/**
- * Delivered, opened, answered.
- *
- * At the top of the report on purpose. When 550 invites produce 4 answers the
- * scores are downstream of a delivery and open-rate problem, and a report that
- * opened on "NPS +75" would send somebody to fix member sentiment instead of
- * the email.
- */
-function Funnel({ rates, totals }) {
-  if (rates.length === 0) {
-    return (
-      <div className="bg-surface rounded-xl border border-border p-8 text-center">
-        <p className="text-sm text-text-muted">No invites went out in this range.</p>
-      </div>
-    )
-  }
-
-  const steps = [
-    { key: 'Delivered', value: totals.sent, colour: colorFor('delivered', 0) },
-    { key: 'Opened', value: totals.opened, colour: colorFor('opened', 1) },
-    { key: 'Answered', value: totals.responded, colour: colorFor('answered', 2) },
-  ]
-  const max = Math.max(1, totals.sent)
-
-  return (
-    <div className="bg-surface rounded-xl border border-border p-3 space-y-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-xs font-bold text-text-primary">Did the invite reach anyone</p>
-        {/* A failed send never arrived, so it is not a non-response. */}
-        <p className="text-[11px] text-text-muted">failed sends excluded from every rate</p>
-      </div>
-
-      <div className="space-y-1.5">
-        {steps.map((s, i) => (
-          <div key={s.key} className="flex items-center gap-3">
-            <span className="text-xs text-text-primary w-24 text-right flex-shrink-0">{s.key}</span>
-            <div className="flex-1 min-w-[100px] h-6 rounded-sm bg-bg overflow-hidden">
-              <div className="h-full rounded-sm flex items-center justify-end pr-1.5"
-                style={{ width: `${Math.max(1, (s.value / max) * 100)}%`, background: s.colour }}>
-                <span className="text-[10px] font-semibold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)]">
-                  {fmtInt(s.value)}
-                </span>
-              </div>
-            </div>
-            <span className="text-[11px] text-text-muted tabular-nums w-24 text-right flex-shrink-0">
-              {i === 0 ? '' : totals.sent > 0 ? `${fmtPct((s.value / totals.sent) * 100)} of delivered` : ''}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-text-muted">
-              {['Survey', 'Delivered', 'Opened', 'Answered', 'Open Rate', 'Answer Rate'].map((h, i) => (
-                <th key={h} className={`py-1.5 px-2 text-[11px] font-semibold uppercase tracking-wide ${i ? 'text-right' : 'text-left'}`}
-                  style={zebraColumn(i)}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rates.map(r => (
-              <tr key={r.survey_id} className="border-b border-border/60 last:border-0">
-                <td className="py-1.5 px-2 text-text-primary" style={zebraColumn(0)}>{r.survey_title || r.survey_id}</td>
-                <td className="py-1.5 px-2 text-right tabular-nums text-text-muted" style={zebraColumn(1)}>{fmtInt(r.sent)}</td>
-                <td className="py-1.5 px-2 text-right tabular-nums text-text-muted" style={zebraColumn(2)}>{fmtInt(r.opened)}</td>
-                <td className="py-1.5 px-2 text-right tabular-nums text-text-muted" style={zebraColumn(3)}>{fmtInt(r.responded)}</td>
-                <td className="py-1.5 px-2 text-right tabular-nums text-text-muted" style={zebraColumn(4)}>
-                  {r.open_rate === null ? '—' : `${r.open_rate}%`}
-                </td>
-                <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-text-primary" style={zebraColumn(5)}>
-                  {r.response_rate === null ? '—' : `${r.response_rate}%`}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   )
 }
