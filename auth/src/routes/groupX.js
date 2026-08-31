@@ -1,5 +1,17 @@
 /**
- * /group-x — Group X class scheduler (admin only).
+ * /group-x — Group X class scheduler.
+ *
+ * Permission model (all three keys live in permission_catalog under Tools, so
+ * Admin -> Roles drives them):
+ *   groupX                — see the schedule and the attendance log. Everyone.
+ *   groupX:schedule-edit  — add/cancel classes, run series, badge new classes.
+ *   groupX:attendance     — record a headcount.
+ * Admins always pass, so the Admin Panel keeps working whatever the grid says.
+ * Reading is deliberately open to every tile holder: the schedule is a printed
+ * lobby handout, not sensitive data.
+ *
+ * Clubs are narrowed to the caller's assigned locations by allowedClubsFor().
+ * That check is on the server on purpose — club_number comes off the request.
  *
  * ABC is the source of truth for what is scheduled. Supabase (group_x_series,
  * group_x_class_attendance) owns only the recurring-series definition and the
@@ -11,7 +23,7 @@
  */
 const { Router } = require('express')
 const abc = require('../services/abcGroupX')
-const { CLUBS, isKnownClubNumber } = require('../lib/groupXClubs')
+const { isKnownClubNumber } = require('../lib/groupXClubs')
 const { buildLocalTimestamp, DATE_RE } = require('../lib/abcTime')
 const { expandSeries, MAX_OCCURRENCES } = require('../lib/groupXSeries')
 const { OPEN_ENDED_HORIZON_DAYS } = require('../lib/scheduleTimes')
@@ -22,14 +34,50 @@ const { aggregate } = require('../lib/groupXReport')
 const { markNewClasses } = require('../lib/groupXNewClasses')
 const memoryCache = require('../services/memoryCache')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { requireRole, roleLevel } = require('../middleware/role')
+const { requireTile } = require('../middleware/tile')
+const { allowedClubsFor } = require('../lib/groupXScope')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+
+// Gate on a permission key, with admins always allowed through. The Admin Panel
+// hosts the same views, and an admin unticking a Group X box in the roles grid
+// should not lock the admin out of the screen they manage it from.
+function requirePerm(permKey) {
+  const tileGate = requireTile(permKey)
+  return (req, res, next) => {
+    if (roleLevel(req.staff?.role) >= roleLevel('admin')) return next()
+    return tileGate(req, res, next)
+  }
+}
+
+router.use(requirePerm('groupX'))
+
+// Resolve the caller's clubs once per request. Every handler below reads
+// req.gxClubs rather than the full CLUBS list.
+router.use(async (req, res, next) => {
+  try {
+    req.gxClubs = await allowedClubsFor(req.staff)
+    next()
+  } catch (err) {
+    console.error('[groupX] club scope failed:', err.message)
+    res.status(500).json({ error: 'could not resolve club access' })
+  }
+})
+
+const requireEdit = requirePerm('groupX:schedule-edit')
+const requireAttendance = requirePerm('groupX:attendance')
+
+// True when the caller is assigned to this club. Unknown club numbers are
+// rejected the same way as unassigned ones — the caller learns nothing about
+// which numbers are real.
+function canUseClub(req, clubNumber) {
+  return (req.gxClubs || []).some(c => c.clubNumber === String(clubNumber))
+}
 
 // Resolves and validates club_number off the query string. Returns null and
-// sends the 400 itself when invalid, so handlers can `if (!club) return`.
+// sends the 400/403 itself, so handlers can `if (!club) return`.
 function requireClub(req, res) {
   const clubNumber = String(req.query.club_number || '')
   if (!clubNumber) {
@@ -40,7 +88,24 @@ function requireClub(req, res) {
     res.status(400).json({ error: 'unknown club_number' })
     return null
   }
+  if (!canUseClub(req, clubNumber)) {
+    res.status(403).json({ error: 'no access to that club' })
+    return null
+  }
   return clubNumber
+}
+
+// Same check for the handlers that take club_number in the body.
+function requireBodyClub(req, res, clubNumber) {
+  if (!isKnownClubNumber(clubNumber)) {
+    res.status(400).json({ error: 'valid club_number is required in body' })
+    return false
+  }
+  if (!canUseClub(req, clubNumber)) {
+    res.status(403).json({ error: 'no access to that club' })
+    return false
+  }
+  return true
 }
 
 // The public board serves each club-week from a stale-while-revalidate cache,
@@ -93,7 +158,9 @@ function fail(res, err, where) {
   res.status(500).json({ error: err.message })
 }
 
-router.get('/clubs', (req, res) => res.json({ clubs: CLUBS }))
+// Only the caller's own clubs. The UI builds its club pills straight off this,
+// so scoping here scopes the whole screen.
+router.get('/clubs', (req, res) => res.json({ clubs: req.gxClubs }))
 
 // POST /group-x/refresh-staff?club_number=
 // Instructors and class types are cached for an hour. Onboarding a new
@@ -178,11 +245,9 @@ router.get('/classes', async (req, res) => {
 // Staff-entered rather than read from ABC: of 37 Salem class events in July
 // 2026, 31 had zero members attached and the rest had one, all marked "Did Not
 // Attend". Nobody books classes through ABC, so its attendance data is unusable.
-router.put('/classes/:eventId/attendance', async (req, res) => {
+router.put('/classes/:eventId/attendance', requireAttendance, async (req, res) => {
   const b = req.body || {}
-  if (!isKnownClubNumber(b.club_number)) {
-    return res.status(400).json({ error: 'valid club_number is required in body' })
-  }
+  if (!requireBodyClub(req, res, b.club_number)) return
   const headcount = parseInt(b.headcount, 10)
   if (!Number.isInteger(headcount) || headcount < 0) {
     return res.status(400).json({ error: 'headcount must be a whole number, zero or more' })
@@ -225,11 +290,9 @@ router.put('/classes/:eventId/attendance', async (req, res) => {
 // POST /group-x/classes — create one class on the ABC calendar.
 // Duration is deliberately not accepted: ABC takes it from the event type and
 // silently ignores a duration in the payload (asked for 30, stored 60).
-router.post('/classes', async (req, res) => {
+router.post('/classes', requireEdit, async (req, res) => {
   const b = req.body || {}
-  if (!isKnownClubNumber(b.club_number)) {
-    return res.status(400).json({ error: 'valid club_number is required in body' })
-  }
+  if (!requireBodyClub(req, res, b.club_number)) return
   if (!b.event_type_id || !b.employee_id) {
     return res.status(400).json({ error: 'event_type_id and employee_id are required' })
   }
@@ -270,7 +333,7 @@ router.post('/classes', async (req, res) => {
 })
 
 // DELETE /group-x/classes/:eventId?club_number= — cancel one class in ABC.
-router.delete('/classes/:eventId', async (req, res) => {
+router.delete('/classes/:eventId', requireEdit, async (req, res) => {
   const club = requireClub(req, res); if (!club) return
   try {
     const result = await abc.cancelClass(club, req.params.eventId)
@@ -292,7 +355,7 @@ router.delete('/classes/:eventId', async (req, res) => {
 // ---------------------------------------------------------------------------
 
 // POST /group-x/series/preview — dry run, no writes anywhere.
-router.post('/series/preview', (req, res) => {
+router.post('/series/preview', requireEdit, (req, res) => {
   const b = req.body || {}
   const openEnded = !b.ends_on
   try {
@@ -313,11 +376,9 @@ router.post('/series/preview', (req, res) => {
 })
 
 // POST /group-x/series — create the series and fan out one ABC event per date.
-router.post('/series', async (req, res) => {
+router.post('/series', requireEdit, async (req, res) => {
   const b = req.body || {}
-  if (!isKnownClubNumber(b.club_number)) {
-    return res.status(400).json({ error: 'valid club_number is required in body' })
-  }
+  if (!requireBodyClub(req, res, b.club_number)) return
   if (!b.event_type_id || !b.employee_id || !b.class_name || !b.instructor_name) {
     return res.status(400).json({ error: 'event_type_id, employee_id, class_name and instructor_name are required' })
   }
@@ -436,7 +497,7 @@ router.get('/series', async (req, res) => {
 //
 // "Remove everything from today" threw away classes people are already turning
 // up to; "we know it stops in two weeks" is the normal case.
-router.delete('/series/:id', async (req, res) => {
+router.delete('/series/:id', requireEdit, async (req, res) => {
   const through = DATE_RE.test(req.query.through || '') ? req.query.through : null
   const from = through
     ? padDate(through, 1)
@@ -496,7 +557,11 @@ router.delete('/series/:id', async (req, res) => {
 
 // GET /group-x/report?club_number=&start=&end=
 // Which classes are worth keeping. club_number=all aggregates every club.
-router.get('/report', async (req, res) => {
+//
+// Admin only, and so not club-scoped: this is the cross-club "which classes do
+// we keep" view that lives in the Admin Panel. The home-board Attendance tile
+// deliberately does not offer it.
+router.get('/report', requireRole('admin'), async (req, res) => {
   const clubParam = String(req.query.club_number || '')
   const isAll = clubParam === 'all'
   if (!isAll && !isKnownClubNumber(clubParam)) {
@@ -552,11 +617,9 @@ router.get('/new-classes', async (req, res) => {
   } catch (err) { fail(res, err, 'GET /new-classes') }
 })
 
-router.put('/new-classes', async (req, res) => {
+router.put('/new-classes', requireEdit, async (req, res) => {
   const b = req.body || {}
-  if (!isKnownClubNumber(b.club_number)) {
-    return res.status(400).json({ error: 'valid club_number is required in body' })
-  }
+  if (!requireBodyClub(req, res, b.club_number)) return
   if (!b.event_type_id || !b.class_name) {
     return res.status(400).json({ error: 'event_type_id and class_name are required' })
   }
@@ -587,11 +650,9 @@ router.put('/new-classes', async (req, res) => {
 })
 
 // PUT /group-x/new-classes/events — badge one existing session as new.
-router.put('/new-classes/events', async (req, res) => {
+router.put('/new-classes/events', requireEdit, async (req, res) => {
   const b = req.body || {}
-  if (!isKnownClubNumber(b.club_number)) {
-    return res.status(400).json({ error: 'valid club_number is required in body' })
-  }
+  if (!requireBodyClub(req, res, b.club_number)) return
   if (!b.abc_event_id) return res.status(400).json({ error: 'abc_event_id is required' })
   if (!DATE_RE.test(b.show_until || '')) {
     return res.status(400).json({ error: 'show_until must be YYYY-MM-DD' })
@@ -609,7 +670,7 @@ router.put('/new-classes/events', async (req, res) => {
 })
 
 // DELETE /group-x/new-classes/events/:eventId?club_number=
-router.delete('/new-classes/events/:eventId', async (req, res) => {
+router.delete('/new-classes/events/:eventId', requireEdit, async (req, res) => {
   const club = requireClub(req, res); if (!club) return
   try {
     const { error } = await supabaseAdmin
@@ -623,7 +684,7 @@ router.delete('/new-classes/events/:eventId', async (req, res) => {
   } catch (err) { fail(res, err, 'DELETE /new-classes/events') }
 })
 
-router.delete('/new-classes/:eventTypeId', async (req, res) => {
+router.delete('/new-classes/:eventTypeId', requireEdit, async (req, res) => {
   const club = requireClub(req, res); if (!club) return
   try {
     const { error } = await supabaseAdmin

@@ -83,6 +83,9 @@ function Card({ children, tone }) {
 // One class, one row. Same card geometry as a tour check-in: avatar, the thing
 // itself, then a status pill hard right.
 function ClassRow({ c, onClick }) {
+  // Without permission to record, the row is a card rather than a button: no
+  // hover lift, no pointer, nothing that promises an action that would 403.
+  const Tag = onClick ? 'button' : 'div'
   const p = parseLocalTimestamp(c.event_timestamp_local)
   const logged = c.headcount != null
   const name = displayClassName(c.class_name, c.duration_minutes)
@@ -93,10 +96,11 @@ function ClassRow({ c, onClick }) {
     : null
 
   return (
-    <button
-      type="button"
-      onClick={() => onClick(c)}
-      className="w-full text-left bg-surface border border-border rounded-2xl p-5 flex items-center gap-5 transition-all hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+    <Tag
+      {...(onClick ? { type: 'button', onClick: () => onClick(c) } : {})}
+      className={`w-full text-left bg-surface border border-border rounded-2xl p-5 flex items-center gap-5${
+        onClick ? ' transition-all hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]' : ''
+      }`}
     >
       <Avatar name={c.instructor_name} />
 
@@ -127,15 +131,19 @@ function ClassRow({ c, onClick }) {
             <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-red-50 text-wcs-red border border-red-200">
               Needs a count
             </span>
-            <p className="text-xs text-text-muted mt-1">Tap to record</p>
+            <p className="text-xs text-text-muted mt-1">{onClick ? 'Tap to record' : 'Not recorded'}</p>
           </>
         )}
       </div>
-    </button>
+    </Tag>
   )
 }
 
-export default function GroupXAttendanceView() {
+// `canRecord` gates writing a headcount; everyone with the tile can read the
+// queue. `showHistory` is admin-only -- the cross-club "which classes are worth
+// keeping" report belongs with the rest of the reporting, not on a front-desk
+// screen whose whole job is clearing today's queue.
+export default function GroupXAttendanceView({ canRecord = true, showHistory = true }) {
   const [clubs, setClubs] = useState([])
   const [club, setClub] = useState(null)
   const [classes, setClasses] = useState([])
@@ -189,20 +197,22 @@ export default function GroupXAttendanceView() {
 
   return (
     <div className="space-y-4">
-      <div className="bg-surface rounded-xl border border-border p-1.5 flex gap-1.5">
-        {[['log', 'Log'], ['history', 'History']].map(([key, label]) => (
-          <button key={key} type="button" onClick={() => setTab(key)}
-            className={`px-4 py-2 text-sm rounded-lg transition ${
-              tab === key ? 'bg-wcs-red text-white font-medium' : 'text-text-primary hover:bg-bg'
-            }`}>
-            {label}
-          </button>
-        ))}
-      </div>
+      {showHistory && (
+        <div className="bg-surface rounded-xl border border-border p-1.5 flex gap-1.5">
+          {[['log', 'Log'], ['history', 'History']].map(([key, label]) => (
+            <button key={key} type="button" onClick={() => setTab(key)}
+              className={`px-4 py-2 text-sm rounded-lg transition ${
+                tab === key ? 'bg-wcs-red text-white font-medium' : 'text-text-primary hover:bg-bg'
+              }`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {tab === 'history' && <GroupXReport clubs={clubs} />}
+      {showHistory && tab === 'history' && <GroupXReport clubs={clubs} />}
 
-      {tab === 'log' && (<>
+      {(!showHistory || tab === 'log') && (<>
         {/* Club picker and the count of outstanding work, on one line. The
             number is the reason to be on this screen, so it is stated up front
             rather than left to be counted off the list. */}
@@ -245,7 +255,7 @@ export default function GroupXAttendanceView() {
             <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted px-1">
               Needs a count
             </h3>
-            {pending.map(c => <ClassRow key={c.event_id} c={c} onClick={setAttendanceFor} />)}
+            {pending.map(c => <ClassRow key={c.event_id} c={c} onClick={canRecord ? setAttendanceFor : null} />)}
           </div>
         )}
 
@@ -256,7 +266,7 @@ export default function GroupXAttendanceView() {
             </h3>
             {/* Still tappable: a miscounted class is corrected by opening it
                 again, and the modal already loads the existing number. */}
-            {logged.map(c => <ClassRow key={c.event_id} c={c} onClick={setAttendanceFor} />)}
+            {logged.map(c => <ClassRow key={c.event_id} c={c} onClick={canRecord ? setAttendanceFor : null} />)}
           </div>
         )}
       </>)}

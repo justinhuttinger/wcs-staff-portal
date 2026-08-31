@@ -214,8 +214,8 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'portal-refresh' && <PortalRefreshAdmin />}
         {activeSection === 'audit-log' && <AuditLogAdmin />}
         {activeSection === 'pt-scheduler' && <PtSchedulerView />}
-        {activeSection === 'group-x' && <GroupXView />}
-        {activeSection === 'group-x-attendance' && <GroupXAttendanceView />}
+        {activeSection === 'group-x' && <GroupXView canEdit showBoardLinks />}
+        {activeSection === 'group-x-attendance' && <GroupXAttendanceView canRecord showHistory />}
         {activeSection === 'facility-schedules' && <FacilityView />}
         {activeSection === 'class-seeding' && <ClassSeedingAdmin />}
         {activeSection === 'online-join' && <OnlineJoinAdmin />}

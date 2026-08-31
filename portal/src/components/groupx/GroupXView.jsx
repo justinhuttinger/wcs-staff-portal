@@ -17,7 +17,12 @@ function weekLabel(weekStart) {
   return `${a} - ${b}, ${end.getFullYear()}`
 }
 
-export default function GroupXView() {
+// `canEdit` splits the two audiences this screen now serves. Front desk gets a
+// read-and-print view of the calendar; lead and above get the write controls.
+// `showBoardLinks` is separate because the TV/website embed URLs are an admin
+// concern, not an editing one -- they are handed out once when a board is set
+// up, and nobody working the schedule needs them on screen.
+export default function GroupXView({ canEdit = true, showBoardLinks = true }) {
   const [clubs, setClubs] = useState([])
   const [club, setClub] = useState(null)
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
@@ -165,38 +170,43 @@ export default function GroupXView() {
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="ml-auto flex flex-wrap gap-2">
-            <button type="button" onClick={() => setSeriesListOpen(v => !v)}
-              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
-              {seriesListOpen ? 'Hide repeating' : 'Repeating'}
-            </button>
-            <button type="button" onClick={refreshStaff} disabled={refreshing}
-              title="Reload instructors and class types from ABC"
-              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg disabled:opacity-50">
-              {refreshing ? 'Refreshing...' : 'Refresh staff'}
-            </button>
-            <button type="button" onClick={() => setBadgesOpen(v => !v)}
-              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
-              {badgesOpen ? 'Hide new badges' : 'New badges'}
-            </button>
-            <button type="button" onClick={() => setLinksOpen(v => !v)}
-              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
-              {linksOpen ? 'Hide board links' : 'Board links'}
-            </button>
+            {canEdit && (
+              <button type="button" onClick={() => setSeriesListOpen(v => !v)}
+                className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
+                {seriesListOpen ? 'Hide repeating' : 'Repeating'}
+              </button>
+            )}
+            {canEdit && (
+              <button type="button" onClick={refreshStaff} disabled={refreshing}
+                title="Reload instructors and class types from ABC"
+                className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg disabled:opacity-50">
+                {refreshing ? 'Refreshing...' : 'Refresh staff'}
+              </button>
+            )}
+            {canEdit && (
+              <button type="button" onClick={() => setBadgesOpen(v => !v)}
+                className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
+                {badgesOpen ? 'Hide new badges' : 'New badges'}
+              </button>
+            )}
+            {showBoardLinks && (
+              <button type="button" onClick={() => setLinksOpen(v => !v)}
+                className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
+                {linksOpen ? 'Hide board links' : 'Board links'}
+              </button>
+            )}
             <button type="button" onClick={() => setPrintOpen(true)}
               title="Print a Monday-Sunday sheet for a chosen week"
               className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
               Print
             </button>
-            <button type="button" onClick={() => setCreateOpen({ date: toISODate(weekStart), time: '06:00' })}
-              className="px-3 py-1.5 text-sm rounded-lg bg-wcs-red text-white font-medium hover:bg-wcs-red-hover">
-              Add class
-            </button>
+            {canEdit && (
+              <button type="button" onClick={() => setCreateOpen({ date: toISODate(weekStart), time: '06:00' })}
+                className="px-3 py-1.5 text-sm rounded-lg bg-wcs-red text-white font-medium hover:bg-wcs-red-hover">
+                Add class
+              </button>
+            )}
           </div>
-        </div>
-
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          Classes created or cancelled here are written straight to the live ABC calendar.
-          Click any empty spot on the calendar to add a class at that time.
         </div>
       </div>
 
@@ -206,11 +216,11 @@ export default function GroupXView() {
         </div>
       )}
 
-      {seriesListOpen && <SeriesList club={club} onChanged={load} />}
+      {canEdit && seriesListOpen && <SeriesList club={club} onChanged={load} />}
 
-      {badgesOpen && <NewClassBadges club={club} classTypes={classTypes} />}
+      {canEdit && badgesOpen && <NewClassBadges club={club} classTypes={classTypes} />}
 
-      {linksOpen && <BoardLinks clubs={clubs} />}
+      {showBoardLinks && linksOpen && <BoardLinks clubs={clubs} />}
 
       <WeekGrid
         weekStart={weekStart}
@@ -221,7 +231,7 @@ export default function GroupXView() {
         onNextWeek={() => setWeekStart(addDays(weekStart, 7))}
         onThisWeek={() => setWeekStart(startOfWeek(new Date()))}
         onClassClick={setSelected}
-        onSlotClick={slot => setCreateOpen(slot)}
+        onSlotClick={canEdit ? (slot => setCreateOpen(slot)) : undefined}
       />
 
       {selected && (
@@ -264,6 +274,7 @@ export default function GroupXView() {
                 className="px-4 py-2 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
                 Close
               </button>
+              {canEdit && (<>
               <button type="button" onClick={toggleSessionBadge}
                 disabled={badgeBusy || (selected.is_new && selected.new_source === 'class')}
                 title={selected.is_new && selected.new_source === 'class'
@@ -278,6 +289,7 @@ export default function GroupXView() {
                 className="px-4 py-2 text-sm rounded-lg border border-red-300 bg-red-50 text-red-900 font-medium hover:bg-red-100 disabled:opacity-50">
                 {cancelBusy ? 'Cancelling...' : 'Cancel class'}
               </button>
+              </>)}
             </div>
           </div>
         </div>
