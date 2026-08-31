@@ -1,3 +1,5 @@
+import UserMenu from './UserMenu'
+
 // Persistent top nav for the Press theme.
 //
 // This is the one thing the appearance system cannot do with tokens alone: it
@@ -48,6 +50,8 @@ export default function PortalNav({
   onOpenPicker,
   onAdmin,
   onSignOut,
+  onProfile,
+  userName,
   location,
   isAdmin,
   userRole,
@@ -162,9 +166,7 @@ export default function PortalNav({
             Admin
           </button>
         )}
-        <button type="button" onClick={onSignOut} className="press-nav__btn">
-          Sign Out
-        </button>
+        <UserMenu name={userName} variant="press" onProfile={onProfile} onSignOut={onSignOut} />
       </div>
     </nav>
   )

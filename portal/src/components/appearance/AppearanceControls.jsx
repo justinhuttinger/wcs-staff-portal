@@ -100,7 +100,7 @@ export default function AppearanceControls({ prefs, onPatch }) {
                   <button
                     key={a.key}
                     onClick={() => onPatch({ accent: a.key })}
-                    title={`${a.label} — ${a.contrast}:1 against the dark surface`}
+                    title={`${a.label}, ${a.contrast}:1 against the dark surface`}
                     aria-label={a.label}
                     aria-pressed={active}
                     className={`w-8 h-8 rounded-full border-2 transition-transform ${
@@ -119,7 +119,7 @@ export default function AppearanceControls({ prefs, onPatch }) {
             </div>
             <p className="text-xs text-text-muted mt-2">
               Every accent is checked for contrast against the dark surface. The
-              background stays dark — only the accent changes.
+              background stays dark; only the accent changes.
             </p>
           </div>
         </div>

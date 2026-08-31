@@ -26,6 +26,7 @@ import AnalyticsView from './components/AnalyticsView'
 import ProfileView from './components/ProfileView'
 import GlobalProgressBar from './components/GlobalProgressBar'
 import PortalNav from './components/PortalNav'
+import UserMenu from './components/UserMenu'
 import PinPicker from './components/PinPicker'
 import QuickActions from './components/QuickActions'
 import PointsChip from './components/PointsChip'
@@ -553,6 +554,8 @@ export default function App() {
           onOpenPicker={() => setShowPinPicker(true)}
           onAdmin={() => { handleBackToPortal(); setShowAdmin(true) }}
           onSignOut={handleLogout}
+          onProfile={() => { window.location.hash = '#profile'; setShowProfile(true) }}
+          userName={user?.staff?.display_name || user?.staff?.email}
           location={location}
           isAdmin={isAdmin}
           userRole={user?.staff?.role}
@@ -606,16 +609,12 @@ export default function App() {
             </button>
           )}
           <span className={`text-sm font-semibold uppercase tracking-[0.8px] ${bgImage ? 'text-white/70' : 'text-text-muted'}`}>{location}</span>
-          <button
-            onClick={handleLogout}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
-              bgImage
-                ? 'border-white/30 bg-white/10 text-white/80 hover:text-white hover:border-white/60'
-                : 'border-border bg-surface text-text-muted hover:text-wcs-red hover:border-wcs-red'
-            }`}
-          >
-            Sign Out
-          </button>
+          <UserMenu
+            name={user?.staff?.display_name || user?.staff?.email}
+            variant={bgImage ? 'photo' : 'plain'}
+            onProfile={() => { window.location.hash = '#profile'; setShowProfile(true) }}
+            onSignOut={handleLogout}
+          />
         </div>
       </header>
       )}
