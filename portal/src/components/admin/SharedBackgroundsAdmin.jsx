@@ -51,9 +51,15 @@ export default function SharedBackgroundsAdmin() {
     try {
       const shrunk = await downscaleImage(file, { maxDimension: BACKGROUND_MAX_DIMENSION })
       await uploadSharedBackground(shrunk)
-      await refresh()
     } catch (err) {
       setError(err?.message || 'Upload failed.')
+      setBusy(false)
+      return
+    }
+    try {
+      await refresh()
+    } catch {
+      setError('Uploaded, but could not refresh the gallery.')
     } finally {
       setBusy(false)
     }
@@ -64,9 +70,15 @@ export default function SharedBackgroundsAdmin() {
     setError('')
     try {
       await deleteSharedBackground(id)
-      await refresh()
     } catch (err) {
       setError(err?.message || 'Could not remove that image.')
+      setBusy(false)
+      return
+    }
+    try {
+      await refresh()
+    } catch {
+      setError('Removed, but could not refresh the gallery.')
     } finally {
       setBusy(false)
     }

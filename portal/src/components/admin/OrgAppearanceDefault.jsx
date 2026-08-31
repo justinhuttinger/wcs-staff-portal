@@ -49,6 +49,7 @@ export default function OrgAppearanceDefault() {
         <select
           value={theme}
           onChange={(e) => setTheme(e.target.value)}
+          aria-label="Default theme for new staff"
           className="text-sm rounded-lg border border-border bg-surface px-3 py-1.5"
         >
           {THEME_OPTIONS.map(opt => (
