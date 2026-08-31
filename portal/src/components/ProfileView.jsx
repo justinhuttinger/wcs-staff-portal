@@ -13,7 +13,7 @@ import { getBackgroundPrefs, setBackgroundPrefs } from '../lib/theme'
  * attributes onto <html> synchronously) and are pushed to the server by the
  * debounced listener in lib/uiPrefs.js. There is no Save button, on purpose.
  */
-export default function ProfileView({ user }) {
+export default function ProfileView({ user, onBackgroundUrlChange }) {
   const [prefs, patch] = useAppearancePrefs()
   const [bg, setBg] = useState(getBackgroundPrefs)
   const patchBg = (p) => setBg(setBackgroundPrefs(p))
@@ -47,6 +47,7 @@ export default function ProfileView({ user }) {
             background={bg.background}
             backgroundDim={bg.backgroundDim}
             onPatch={patchBg}
+            onBackgroundUrlChange={onBackgroundUrlChange}
             locationLabel={user?.staff?.locations?.find(l => l.is_primary)?.name}
           />
         </section>

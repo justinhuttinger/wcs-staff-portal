@@ -20,7 +20,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const {
-  MAX_UPLOAD_BYTES, MAX_PER_USER, isAllowedMime, extForMime, toPrune,
+  MAX_UPLOAD_BYTES, MAX_PER_USER, ID_RE, isAllowedMime, extForMime, toPrune,
 } = require('./backgroundsHelpers')
 
 const router = Router()
@@ -61,7 +61,12 @@ async function signed(prefix, name) {
 }
 
 async function withUrls(prefix, files) {
-  return Promise.all(files.map(async f => ({ id: f.name, url: await signed(prefix, f.name) })))
+  const withMaybeUrls = await Promise.all(
+    files.map(async f => ({ id: f.name, url: await signed(prefix, f.name) })),
+  )
+  // A signing failure should just drop the image from the list, not hand the
+  // client a null url it would put straight into a CSS url(...).
+  return withMaybeUrls.filter(f => f.url)
 }
 
 // GET /backgrounds — this user's uploads plus the shared gallery.
@@ -89,17 +94,21 @@ async function store(prefix, req, res) {
   }
   await ensureBucket()
 
-  if (prefix !== SHARED) {
-    const existing = await listFolder(prefix)
-    for (const name of toPrune(existing, MAX_PER_USER)) {
-      await supabaseAdmin.storage.from(BUCKET).remove([`${prefix}/${name}`])
-    }
-  }
+  // Prune AFTER a successful upload, not before: pruning first and then
+  // having the upload throw would cost the user an image for nothing.
+  const existing = prefix !== SHARED ? await listFolder(prefix) : []
 
   const name = `${crypto.randomUUID()}.${extForMime(req.file.mimetype)}`
   const { error } = await supabaseAdmin.storage.from(BUCKET)
     .upload(`${prefix}/${name}`, req.file.buffer, { contentType: req.file.mimetype, upsert: false })
   if (error) throw error
+
+  if (prefix !== SHARED) {
+    for (const oldName of toPrune(existing, MAX_PER_USER)) {
+      await supabaseAdmin.storage.from(BUCKET).remove([`${prefix}/${oldName}`])
+    }
+  }
+
   res.status(201).json({ image: { id: name, url: await signed(prefix, name) } })
 }
 
@@ -122,10 +131,6 @@ router.post('/shared', requireRole('admin'), uploadSingle, async (req, res) => {
     res.status(500).json({ error: 'Upload failed' })
   }
 })
-
-// A stored id is a uuid plus one of three extensions. Anything else is either
-// a bug or an attempt at traversal, so it is refused rather than sanitized.
-const ID_RE = /^[0-9a-f-]{36}\.(jpg|png|webp)$/i
 
 async function destroy(prefix, req, res) {
   if (!ID_RE.test(req.params.id || '')) return res.status(400).json({ error: 'Bad image id' })

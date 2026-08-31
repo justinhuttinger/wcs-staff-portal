@@ -14,6 +14,7 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
+const { ID_RE } = require('./backgroundsHelpers')
 
 const router = Router()
 router.use(authenticate)
@@ -39,6 +40,14 @@ async function signBackground(staffId, background) {
   const kind = background?.kind
   const value = background?.value
   if ((kind !== 'upload' && kind !== 'gallery') || typeof value !== 'string' || !value) return null
+  // This is NOT semantic validation of the preference (the module comment
+  // above still holds: this route does not interpret prefs, and the
+  // allow-lists stay client-side). It is path-safety: `value` comes straight
+  // from the user's own prefs blob, PUT does not validate its shape, and it
+  // is about to be concatenated into a storage key. Without this, a hand-
+  // edited PUT like { kind: 'gallery', value: '../<other-id>/<uuid>.jpg' }
+  // could point the signer outside shared/.
+  if (!ID_RE.test(value)) return null
   const prefix = kind === 'gallery' ? 'shared' : staffId
   try {
     const { data } = await supabaseAdmin.storage.from(BACKGROUND_BUCKET)

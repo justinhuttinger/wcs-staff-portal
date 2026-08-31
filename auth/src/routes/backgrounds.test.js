@@ -1,6 +1,6 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { isAllowedMime, extForMime, toPrune, MAX_PER_USER } = require('./backgroundsHelpers')
+const { isAllowedMime, extForMime, toPrune, MAX_PER_USER, ID_RE } = require('./backgroundsHelpers')
 
 test('only the three image types are accepted', () => {
   assert.equal(isAllowedMime('image/jpeg'), true)
@@ -63,4 +63,15 @@ test('a file with no timestamp sorts oldest rather than throwing', () => {
 
 test('the per-user cap is 3', () => {
   assert.equal(MAX_PER_USER, 3)
+})
+
+test('ID_RE accepts a valid uuid plus extension', () => {
+  assert.equal(ID_RE.test('3fa85f64-5717-4562-b3fc-2c963f66afa6.jpg'), true)
+})
+
+test('ID_RE rejects traversal, missing extension, empty string, and a slash', () => {
+  assert.equal(ID_RE.test('../3fa85f64-5717-4562-b3fc-2c963f66afa6.jpg'), false)
+  assert.equal(ID_RE.test('3fa85f64-5717-4562-b3fc-2c963f66afa6'), false)
+  assert.equal(ID_RE.test(''), false)
+  assert.equal(ID_RE.test('shared/3fa85f64-5717-4562-b3fc-2c963f66afa6.jpg'), false)
 })

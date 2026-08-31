@@ -369,6 +369,12 @@ export default function App() {
   //                               expired) fall back to the club photo rather
   //                               than painting a blank shell
   //   location (the default)   -> the club photo, as it has always been
+  //
+  // First-paint note: if localStorage's pre-paint mirror already says
+  // gallery/upload, the very first render still shows the club photo, because
+  // the signed URL cannot exist before the GET /ui-preferences hydrate above
+  // resolves. It swaps to the real image within that round trip. This is
+  // expected, not a bug.
   const clubPhoto = LOCATION_BACKGROUNDS[location.toLowerCase()]
   const bgImage =
     bgPrefs.background.kind === 'none' ? null
@@ -651,7 +657,7 @@ export default function App() {
       {showAdmin ? (
         <AdminPanel onBack={() => setShowAdmin(false)} isElectron={isElectron} onLocationChange={(loc) => { setLocationOverride(loc); localStorage.setItem('wcs_location_override', loc) }} userRole={user?.staff?.role} />
       ) : showProfile ? (
-        <ProfileView user={user} />
+        <ProfileView user={user} onBackgroundUrlChange={setBackgroundUrl} />
       ) : showCalendar ? (
         <CalendarView user={user} onBack={() => setShowCalendar(false)} location={location} isAdmin={isAdmin} />
       ) : showTrainerAvail ? (

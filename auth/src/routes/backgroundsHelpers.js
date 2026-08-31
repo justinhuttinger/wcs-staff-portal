@@ -14,6 +14,12 @@ const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 // an image and the bucket grows without bound.
 const MAX_PER_USER = 3
 
+// A stored id is a uuid plus one of three extensions. Anything else is either
+// a bug or an attempt at traversal, so it is refused rather than sanitized.
+// Shared with uiPreferences.js, which concatenates a prefs-blob value into a
+// storage path and needs the same guard.
+const ID_RE = /^[0-9a-f-]{36}\.(jpg|png|webp)$/i
+
 function baseMime(m) {
   return typeof m === 'string' ? m.split(';')[0].trim().toLowerCase() : ''
 }
@@ -39,4 +45,4 @@ function toPrune(files, max) {
   return excess > 0 ? sorted.slice(0, excess).map(f => f.name) : []
 }
 
-module.exports = { ALLOWED_MIME, MAX_UPLOAD_BYTES, MAX_PER_USER, isAllowedMime, extForMime, toPrune }
+module.exports = { ALLOWED_MIME, MAX_UPLOAD_BYTES, MAX_PER_USER, ID_RE, isAllowedMime, extForMime, toPrune }
