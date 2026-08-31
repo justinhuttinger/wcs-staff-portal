@@ -45,9 +45,13 @@ function snapshot() {
  * appearance default (falling back to whatever this browser already had for
  * anything the org has not set), and that starting point is pushed up as
  * their first saved row so they can change it after.
+ *
+ * Returns the signed background image URL from the same GET, or null (never
+ * saved to localStorage — it is short-lived and must live in memory only).
  */
 export async function hydrateUiPrefs() {
   let remote
+  let backgroundUrl = null
   let orgDefault = {}
   try {
     const [res, settings] = await Promise.all([
@@ -57,6 +61,7 @@ export async function hydrateUiPrefs() {
       getAppSettings('appearance_default_').catch(() => ({})),
     ])
     remote = res?.prefs
+    backgroundUrl = res?.backgroundUrl || null
     orgDefault = {
       theme: settings?.appearance_default_theme,
       accent: settings?.appearance_default_accent,
@@ -66,7 +71,7 @@ export async function hydrateUiPrefs() {
   } catch {
     // Offline or API down: the mirror already painted, so there is nothing to
     // do and nothing to report.
-    return
+    return null
   }
 
   const { action, prefs } = resolveHydration({ remote, orgDefault, local: snapshot() })
@@ -87,6 +92,8 @@ export async function hydrateUiPrefs() {
   if (action === 'adopt') {
     try { await saveUiPreferences(snapshot()) } catch {}
   }
+
+  return backgroundUrl
 }
 
 /**

@@ -30,7 +30,7 @@ import UserMenu from './components/UserMenu'
 import PinPicker from './components/PinPicker'
 import QuickActions from './components/QuickActions'
 import PointsChip from './components/PointsChip'
-import { getTheme, THEME_EVENT } from './lib/theme'
+import { getTheme, THEME_EVENT, getBackgroundPrefs } from './lib/theme'
 import { getPinned, togglePin, PINNED_EVENT } from './lib/pinnedTabs'
 import { useOpenTicketCount } from './lib/useOpenTicketCount'
 import { hydrateUiPrefs, startUiPrefsSync } from './lib/uiPrefs'
@@ -91,6 +91,11 @@ export default function App() {
   // needs to be live state here, not just an attribute on <html>.
   const [theme, setThemeState] = useState(getTheme)
   const press = theme === 'press'
+  // The signed URL for a gallery/upload background, from the same
+  // GET /ui-preferences hydrateUiPrefs() makes. Kept in memory only — never
+  // written to localStorage, since it expires after an hour.
+  const [backgroundUrl, setBackgroundUrl] = useState(null)
+  const [bgPrefs, setBgPrefs] = useState(getBackgroundPrefs)
   // Which column the board shows when no other view is open. The Press nav's
   // Apps and Tools tabs are both "home", differing only in this.
   const [boardMode, setBoardMode] = useState('apps')
@@ -125,6 +130,15 @@ export default function App() {
     return () => window.removeEventListener(THEME_EVENT, onChange)
   }, [])
 
+  // The profile page changes the background pref through setBackgroundPrefs,
+  // which fires the same event as the theme. Keep bgPrefs live so a change
+  // there repaints here without a reload.
+  useEffect(() => {
+    const onChange = () => setBgPrefs(getBackgroundPrefs())
+    window.addEventListener(THEME_EVENT, onChange)
+    return () => window.removeEventListener(THEME_EVENT, onChange)
+  }, [])
+
   // Pins can also change in another tab of the same browser; the event keeps
   // this one honest without a reload.
   useEffect(() => {
@@ -140,7 +154,7 @@ export default function App() {
   useEffect(() => {
     if (!user?.staff?.id) return
     startUiPrefsSync()
-    hydrateUiPrefs()
+    hydrateUiPrefs().then(url => setBackgroundUrl(url || null))
   }, [user?.staff?.id])
 
   useEffect(() => {
@@ -348,10 +362,22 @@ export default function App() {
     }
   }, [location])
 
-  const bgImage = LOCATION_BACKGROUNDS[location.toLowerCase()]
-  // Press is a white-ground theme; the full-bleed location photo and its
-  // black/60 scrim cannot coexist with it. The login screen keeps the photo
-  // either way — that is the one place it still reads as the site's look.
+  // What the background actually resolves to, in priority order:
+  //   none                     -> nothing
+  //   gallery / upload         -> the signed URL from the prefs read; if that
+  //                               came back null (image deleted, or the URL
+  //                               expired) fall back to the club photo rather
+  //                               than painting a blank shell
+  //   location (the default)   -> the club photo, as it has always been
+  const clubPhoto = LOCATION_BACKGROUNDS[location.toLowerCase()]
+  const bgImage =
+    bgPrefs.background.kind === 'none' ? null
+    : (bgPrefs.background.kind === 'gallery' || bgPrefs.background.kind === 'upload')
+      ? (backgroundUrl || clubPhoto)
+      : clubPhoto
+  // Press is a white-ground theme; the full-bleed photo and its scrim cannot
+  // coexist with it. The login screen keeps the club photo either way — that
+  // is the one place it still reads as the site's look.
   const shellBg = press ? null : bgImage
 
   if (!user) {
@@ -544,7 +570,7 @@ export default function App() {
       {shellBg && (
         <>
           <div className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat" style={{ backgroundImage: `url(${shellBg})` }} />
-          <div className="fixed inset-0 z-0 bg-black/60" />
+          <div className="fixed inset-0 z-0 bg-black" style={{ opacity: bgPrefs.backgroundDim / 100 }} />
         </>
       )}
       {press ? (
