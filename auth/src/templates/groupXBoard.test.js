@@ -119,3 +119,33 @@ test('embed mode drops the title block but keeps the week range', () => {
   assert.ok(embed.includes('id="now"'))
   assert.ok(groupX().includes('<div class="head__titles">'))
 })
+
+test('the board carries print rules that fit it on one page', () => {
+  const html = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem' })
+  assert.match(html, /@media print/, 'no print block at all')
+  assert.match(html, /@page \{ size: landscape; margin: \.4in; \}/)
+  // The whole one-page guarantee is this line: the flex column distributes
+  // into a stated height instead of a viewport it does not have on paper.
+  assert.match(html, /height: 7\.7in;/)
+  // Without exact colour the board prints as a grey skeleton of itself.
+  assert.match(html, /print-color-adjust: exact/)
+})
+
+test('print hides the clock but keeps the week range', () => {
+  const html = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem' })
+  const printBlock = html.slice(html.indexOf('@media print'))
+  assert.match(printBlock, /\.now \{ display: none !important; \}/)
+  // The range is what says which week this is, and is still true tomorrow.
+  assert.doesNotMatch(printBlock, /\.range \{ display: none/)
+})
+
+test('the week range and class times are full ink, not muted', () => {
+  const html = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem' })
+  // Both washed out at distance on a wall TV. The instructor line is still
+  // allowed to be muted -- that one really is secondary.
+  const range = html.match(/\.range \{[^}]*\}/)[0]
+  assert.match(range, /color: var\(--color-text\)/)
+  const time = html.match(/\n  \.time \{[^}]*\}/)[0]
+  assert.match(time, /color: var\(--color-text\)/)
+  assert.doesNotMatch(time, /--color-muted/)
+})

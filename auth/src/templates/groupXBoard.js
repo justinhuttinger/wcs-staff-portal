@@ -178,12 +178,16 @@ ${WCS_DISPLAY_FACE}
        downscale would show, hence no background here. */
   }
   .mark { font-size: var(--step-board); }
+  /* Full ink, not muted. At 58% black on a wall TV the week range washed out
+     from any distance, and it is the one label that says WHICH week the board
+     is showing -- the least useful thing on the board to make people squint at.
+     The clock beside it stays red, so the two still read as different things. */
   .range {
     margin-left: auto;
     font-family: var(--font-display); text-transform: uppercase;
     font-size: clamp(1.3rem, .8rem + 2.2vw, 3rem); line-height: .9;
     font-variant-numeric: tabular-nums;
-    color: var(--color-muted);
+    color: var(--color-text);
   }
   /* The clock. Without it the highlighted card asserts something the reader
      can't check -- "on now" only means anything next to what time the board
@@ -284,7 +288,10 @@ ${WCS_DISPLAY_FACE}
     font-family: var(--font-display); text-transform: uppercase;
     font-variant-numeric: tabular-nums;
     font-size: calc(var(--fs, 1) * clamp(13px, 1.3vw, 27px)); line-height: .95;
-    letter-spacing: .02em; color: var(--color-muted);
+    /* Full ink. The time is what a member walking past is actually looking
+       for, and muted grey on the card was the first thing to disappear at
+       distance. The instructor line below stays muted -- that IS secondary. */
+    letter-spacing: .02em; color: var(--color-text);
   }
   .name {
     font-family: var(--font-display); text-transform: uppercase;
@@ -487,6 +494,59 @@ ${WCS_DISPLAY_FACE}
 
   @media (prefers-reduced-motion: no-preference) {
     .day { transition: box-shadow var(--dur-fast) var(--ease-out); }
+  }
+
+  /* ---- Print ---------------------------------------------------------- */
+  /* The board had no print rules at all, so printing it handed the browser a
+     100dvh flex column with overflow:hidden and got whatever fell out --
+     usually the first column and a half, over two pages.
+     
+     The aim is the board as it looks on the wall, on one sheet. Almost nothing
+     needs restyling to get there: the layout already sizes itself to fill its
+     box exactly and never scroll, which is the same problem a sheet of paper
+     poses. So the box is simply restated in inches and the existing layout
+     solves for it.
+
+     Landscape 11in x 8.5in less .4in margins on each edge = 10.2 x 7.7in.
+     Stating the body height in inches is what guarantees ONE page: the flex
+     column distributes into exactly that height, gaps compress to fit, and
+     nothing is left to spill onto a second sheet. */
+  @media print {
+    @page { size: landscape; margin: .4in; }
+
+    html { height: auto; }
+    body {
+      /* Overscan inset is a TV concern; paper has real margins. */
+      padding: 0;
+      height: 7.7in;
+      overflow: hidden;
+      /* Backgrounds and the red accent are the board. Without this a browser
+         drops them to save ink and prints a grey skeleton of it. */
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    /* The clock: it says what time the board THINKS it is, which is the one
+       thing on here that is guaranteed wrong the moment it comes off the
+       printer. The week range stays -- that is still true tomorrow. */
+    .now { display: none !important; }
+    /* Live-feed status, and the tap-for-description overlay. Neither means
+       anything on paper. */
+    .foot, .scrim { display: none !important; }
+    /* The NEW badge keeps its colour but stops pulsing. */
+    .badge { animation: none !important; }
+
+    /* A phone-width print job must not get the stacked layout: the narrow
+       rules are gated on portrait orientation, and a landscape page is not
+       portrait -- but a print preview can report odd viewport sizes, so the
+       seven columns are restated rather than assumed. */
+    .week {
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+    /* One page is the whole point, so nothing may paginate. */
+    .day, .cls { break-inside: avoid; page-break-inside: avoid; }
   }
 ${isEmbed ? `
   /* ---- Embedded on the website ---------------------------------------- */
