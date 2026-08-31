@@ -497,28 +497,38 @@ ${WCS_DISPLAY_FACE}
   }
 
   /* ---- Print ---------------------------------------------------------- */
-  /* The board had no print rules at all, so printing it handed the browser a
-     100dvh flex column with overflow:hidden and got whatever fell out --
-     usually the first column and a half, over two pages.
-     
-     The aim is the board as it looks on the wall, on one sheet. Almost nothing
-     needs restyling to get there: the layout already sizes itself to fill its
-     box exactly and never scroll, which is the same problem a sheet of paper
-     poses. So the box is simply restated in inches and the existing layout
-     solves for it.
+  /* The board as it looks on the wall, on one sheet, with nothing on the paper
+     that is not the board.
 
-     Landscape 11in x 8.5in less .4in margins on each edge = 10.2 x 7.7in.
-     Stating the body height in inches is what guarantees ONE page: the flex
-     column distributes into exactly that height, gaps compress to fit, and
-     nothing is left to spill onto a second sheet. */
+     Two things both come out of the @page margin, which is why it is zero.
+
+     1. Browser headers and footers. Chrome prints the page title and date
+        along the top and the URL and page number along the bottom, INSIDE the
+        @page margin. There is no CSS property that turns them off -- but with
+        margin:0 there is no margin for them to live in, and Chrome leaves them
+        off by default. The board then draws its own margin as body padding, so
+        the layout is unchanged and nothing lands in a printer's unprintable
+        edge.
+
+     2. The phantom second page. A body sized to exactly the page height loses
+        to rounding: 7.7in is 739.2px at 96dpi, the page box computes to 739,
+        and two tenths of a pixel of overflow buys a whole blank sheet. So the
+        body is a shade UNDER the paper -- 8.42in on an 8.5in sheet -- which
+        cannot overflow no matter which way the rounding falls.
+
+     The size is stated as real inches rather than the "landscape" keyword: the
+     heights below are absolute, and on A4 (8.27in tall in landscape) an 8.42in
+     body would overflow and bring the second page back. */
   @media print {
-    @page { size: landscape; margin: .4in; }
+    @page { size: 11in 8.5in; margin: 0; }
 
-    html { height: auto; }
+    html { height: auto; overflow: hidden; }
     body {
-      /* Overscan inset is a TV concern; paper has real margins. */
-      padding: 0;
-      height: 7.7in;
+      /* The margin the @page rule gave up. Bigger than any printer's
+         unprintable edge, so nothing is clipped. */
+      padding: .35in;
+      width: 11in;
+      height: 8.42in;
       overflow: hidden;
       /* Backgrounds and the red accent are the board. Without this a browser
          drops them to save ink and prints a grey skeleton of it. */

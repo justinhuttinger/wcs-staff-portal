@@ -93,10 +93,14 @@ export default function PrintBoardModal({ club, onClose }) {
             </button>
           </div>
 
+          {/* Landscape and the missing headers/footers are handled by the
+              board's own @page rule. Background graphics is the one setting
+              CSS cannot force, so it is the only one worth mentioning. */}
           <div className="rounded-lg border border-border bg-bg px-3 py-2 text-xs text-text-muted">
             This prints the same board that runs on the club TVs, so the sheet
-            and the wall always match. Print in <strong>landscape</strong>, and
-            turn on <strong>Background graphics</strong> so the colours come out.
+            and the wall always match. Turn on <strong>Background graphics</strong>{' '}
+            in the print dialog so the colours come out; everything else is set
+            for you.
           </div>
         </div>
 
