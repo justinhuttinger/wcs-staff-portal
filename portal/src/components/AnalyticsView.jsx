@@ -25,6 +25,7 @@ import Compliance from './analytics/Compliance'
 import PosSales from './analytics/PosSales'
 import Revenue from './analytics/Revenue'
 import DailySnapshot from './analytics/DailySnapshot'
+import GroupX from './analytics/GroupX'
 import Till from './analytics/Till'
 import Audits from './analytics/Audits'
 import LeadSources from './analytics/LeadSources'
@@ -221,6 +222,12 @@ const ANALYTICS_REPORTS = [
     dates: false,
   },
   {
+    key: 'group-x',
+    label: 'Group X',
+    desc: 'Class Attendance',
+    Component: GroupX,
+  },
+  {
     key: 'kpis',
     label: 'KPIs',
     desc: 'Goals by Club',
@@ -281,6 +288,7 @@ export const REPORT_GROUPS = [
   { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot', 'compliance', 'audits', 'till'] },
   // Club-wide overviews first, then the one-person-at-a-time cards.
   { key: 'snapshots', label: 'Snapshots',     reports: ['daily-snapshot', 'club-snapshot', 'pt-snapshot', 'salesperson-snapshot', 'trainer-snapshot'] },
+  { key: 'misc',      label: 'Misc',          reports: ['group-x'] },
 ]
 
 /**
