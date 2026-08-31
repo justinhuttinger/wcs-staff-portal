@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { tourAdmin, publicTour } from '../lib/api'
 import { buildDayOneUrl } from '../lib/dayOnePrefill'
 import VipReferral from '../tour/VipReferral'
-import MemberBanner from '../tour/MemberBanner'
+import { useActiveMember, MemberOnlyNotice, MemberCheckPending } from '../tour/MemberGate'
 import { OUTCOMES, VIP_PASS, CUSTOM_PASS, PASS_DAYS, grantsAPass, passDaysFor } from '../tour/outcomes'
 
 // Native desktop rebuild of the front-desk Tour Check-In queue (the same flow
@@ -267,6 +267,11 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
   const [error, setError] = useState('')
   const isVip = outcome === VIP_PASS
 
+  // An active member gets the notice INSTEAD of the form, not above it.
+  const member = useActiveMember(token, intake.id)
+  const [recordAnyway, setRecordAnyway] = useState(false)
+  const blocked = member.isMember && !recordAnyway
+
   useEffect(() => {
     publicTour.employees(token).then(r => setEmployees(r.employees || [])).catch(() => {})
   }, [token])
@@ -334,9 +339,17 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
               <button onClick={onClose} className="text-text-muted hover:text-text-primary text-2xl leading-none" aria-label="Close">&times;</button>
             </div>
 
+            {member.checking ? <MemberCheckPending /> : blocked ? (
+              // Same "this is dealt with" path back to the queue as a save.
+              <MemberOnlyNotice
+                token={token} intakeId={intake.id}
+                name={capitalize(intake.contact_name)}
+                onDismissed={onSaved}
+                onOverride={() => setRecordAnyway(true)}
+              />
+            ) : (
+            <>
             <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
-              {/* Same "this is dealt with" path back to the queue as a save. */}
-              <MemberBanner token={token} intakeId={intake.id} onDismissed={onSaved} />
               <div>
                 <label className="block text-sm font-semibold text-text-primary mb-2">Tour member</label>
                 <select value={tourMember} onChange={e => setTourMember(e.target.value)}
@@ -427,6 +440,8 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
                 {saving ? 'Saving…' : 'Save & complete tour'}
               </button>
             </div>
+            </>
+            )}
           </>
         )}
       </div>
