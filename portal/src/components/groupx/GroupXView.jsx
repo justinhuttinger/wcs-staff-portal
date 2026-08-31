@@ -24,6 +24,8 @@ function weekLabel(weekStart) {
 // handed out once when a TV is set up -- and now live only in Admin -> Group X.
 export default function GroupXView({ canEdit = false }) {
   const [clubs, setClubs] = useState([])
+  // Distinguishes "not fetched yet" from "fetched, and there are none".
+  const [loadedClubs, setLoadedClubs] = useState(false)
   const [club, setClub] = useState(null)
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [classes, setClasses] = useState([])
@@ -43,8 +45,12 @@ export default function GroupXView({ canEdit = false }) {
 
   useEffect(() => {
     api('/group-x/clubs')
-      .then(r => { setClubs(r.clubs); setClub(r.clubs[0]) })
-      .catch(e => setError(e.message))
+      .then(r => {
+        setClubs(r.clubs || [])
+        setClub((r.clubs || [])[0] || null)
+        setLoadedClubs(true)
+      })
+      .catch(e => { setError(e.message); setLoadedClubs(true) })
   }, [])
 
   const load = useCallback(async () => {
@@ -130,10 +136,15 @@ export default function GroupXView({ canEdit = false }) {
     }
   }
 
+  // A club list can now legitimately come back EMPTY: Group X is per-club since
+  // migration 178, so a member whose only club does not run it has nothing to
+  // show. That must read as an answer, not as a screen still loading.
   if (!club) {
     return (
       <div className="bg-surface rounded-xl border border-border p-6 text-sm text-text-muted">
-        {error ? `Could not load clubs: ${error}` : 'Loading...'}
+        {error ? `Could not load clubs: ${error}`
+          : loadedClubs && !clubs.length ? 'Group X is not set up at your club. An admin can turn it on in Admin - Group X - Clubs.'
+          : 'Loading...'}
       </div>
     )
   }
