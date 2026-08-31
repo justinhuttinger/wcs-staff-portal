@@ -56,6 +56,34 @@
   --color-border: #e2e4e8;
 }
 
+:root {
+  --portal-accent: #e53e3e;
+  --portal-accent-ink: #ffffff;
+}
+
+/* Classic tiles take their icon color and hover fill from the user's accent.
+   Scoped to :root:not([data-theme]) because Classic is the theme that sets no
+   data-theme attribute, and Press must keep its own fixed look. */
+:root:not([data-theme]) .portal-tile__icon { color: var(--portal-accent); }
+
+:root:not([data-theme]) .portal-tile:hover,
+:root:not([data-theme]) .portal-tile:focus-visible {
+  background: var(--portal-accent);
+  border-color: var(--portal-accent);
+}
+:root:not([data-theme]) .portal-tile:hover .portal-tile__icon,
+:root:not([data-theme]) .portal-tile:hover .portal-tile__label,
+:root:not([data-theme]) .portal-tile:hover .portal-tile__desc,
+:root:not([data-theme]) .portal-tile:focus-visible .portal-tile__icon,
+:root:not([data-theme]) .portal-tile:focus-visible .portal-tile__label,
+:root:not([data-theme]) .portal-tile:focus-visible .portal-tile__desc {
+  color: var(--portal-accent-ink);
+}
+/* The icon sits in a tinted circle; on hover it must not fight the fill. */
+:root:not([data-theme]) .portal-tile:hover .portal-tile__icon {
+  background: rgb(255 255 255 / 0.18);
+}
+
 @font-face {
   font-family: 'Inter';
   font-style: normal;

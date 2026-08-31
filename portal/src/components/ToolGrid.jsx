@@ -64,8 +64,8 @@ function SvgTileButton({ onClick, iconPath, label, desc, badge, star }) {
           {badge}
         </span>
       )}
-      <div className="portal-tile__icon flex items-center justify-center w-12 h-12 rounded-full bg-bg group-hover:bg-wcs-red/10 transition-all duration-200">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 text-wcs-red">
+      <div className="portal-tile__icon flex items-center justify-center w-12 h-12 rounded-full bg-bg transition-all duration-200">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7">
           <path strokeLinecap="round" strokeLinejoin="round" d={iconPath} />
         </svg>
       </div>

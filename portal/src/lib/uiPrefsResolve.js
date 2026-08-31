@@ -15,6 +15,10 @@
  * personal, and half of what is pinnable is role-gated anyway. A background
  * is just as personal, so it is never seeded from the org default either.
  *
+ * The accent is treated like the theme, not like pinned/background: a house
+ * color is a reasonable thing for an admin to set for new staff, so it IS
+ * seeded from the org default when there is no saved row.
+ *
  * Pure and import-free on purpose, so it is unit-testable without a DOM.
  */
 export function resolveHydration({ remote, orgDefault, local }) {
@@ -26,6 +30,7 @@ export function resolveHydration({ remote, orgDefault, local }) {
     action: 'adopt',
     prefs: {
       theme: d.theme || local.theme,
+      accent: d.accent || local.accent,
       background: local.background,
       backgroundDim: local.backgroundDim,
       pinned: local.pinned,

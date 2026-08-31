@@ -1,9 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { resolveHydration } from './uiPrefsResolve.js'
+import { normalizeAccent } from './theme.js'
 
 const LOCAL = {
   theme: 'classic',
+  accent: '#e53e3e',
   background: { kind: 'location', value: '' }, backgroundDim: 60,
   pinned: [],
 }
@@ -57,16 +59,37 @@ test('background is never seeded from the org default', () => {
   assert.equal(r.prefs.backgroundDim, 60)
 })
 
-test('a retired org-default key is ignored', () => {
-  // appearance_default_accent and friends may still sit in app_config from
-  // before these settings were removed. They must not reappear in prefs.
+test('retired density/layout org-default keys are ignored', () => {
+  // appearance_default_density and _layout may still sit in app_config from
+  // before those settings were removed. They must not reappear in prefs.
   const r = resolveHydration({
     remote: {},
-    orgDefault: { theme: 'press', accent: 'lime', density: 'compact', layout: 'rows' },
+    orgDefault: { theme: 'press', accent: '#1d4ed8', density: 'compact', layout: 'rows' },
     local: LOCAL,
   })
   assert.equal(r.prefs.theme, 'press')
-  assert.equal(r.prefs.accent, undefined)
+  assert.equal(r.prefs.accent, '#1d4ed8')
   assert.equal(r.prefs.density, undefined)
   assert.equal(r.prefs.layout, undefined)
+})
+
+test('accent IS seeded from the org default, like theme (not like pinned/background)', () => {
+  const r = resolveHydration({ remote: {}, orgDefault: { theme: 'classic', accent: '#0f766e' }, local: LOCAL })
+  assert.equal(r.action, 'adopt')
+  assert.equal(r.prefs.accent, '#0f766e')
+})
+
+test('no org-default accent: adopt what this browser had', () => {
+  const r = resolveHydration({ remote: {}, orgDefault: { theme: 'classic' }, local: LOCAL })
+  assert.equal(r.prefs.accent, LOCAL.accent)
+})
+
+test('a stale non-hex org-default accent (left over from a retired accent feature) is harmless', () => {
+  // appearance_default_accent may already hold a NAME like 'signal_red' from
+  // before this feature existed. resolveHydration passes it through
+  // unchanged (like it does for a retired theme value); normalizeAccent is
+  // what actually guards against it once setPrefs applies the value.
+  const r = resolveHydration({ remote: {}, orgDefault: { theme: 'classic', accent: 'signal_red' }, local: LOCAL })
+  assert.equal(r.prefs.accent, 'signal_red')
+  assert.equal(normalizeAccent(r.prefs.accent), normalizeAccent(undefined))
 })
