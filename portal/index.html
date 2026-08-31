@@ -20,6 +20,10 @@
         }
         var t = pick('wcs-portal-theme', ['classic', 'press'], 'classic')
         if (t !== 'classic') d.setAttribute('data-theme', t)
+        var a = localStorage.getItem('wcs-portal-accent')
+        if (a && /^#[0-9a-f]{6}$/i.test(a)) {
+          d.style.setProperty('--portal-accent', a.toLowerCase())
+        }
       } catch (e) {}
     </script>
   </head>
