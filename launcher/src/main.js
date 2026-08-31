@@ -353,7 +353,6 @@ app.on('ready', async () => {
   const SERVICE_NAMES = {
     abc: 'ABC Financial',
     ghl: 'Grow (GHL)',
-    wheniwork: 'WhenIWork',
     paychex: 'Paychex',
   }
 
@@ -483,7 +482,6 @@ app.on('ready', async () => {
     'abcfinancial.com': 'ABC Financial',
     'app.westcoaststrength.com': 'Grow',
     'gohighlevel.com': 'Grow',
-    'wheniwork.com': 'WhenIWork',
     'paychex.com': 'Paychex',
     'myapps.paychex.com': 'Paychex',
     'operandio.com': 'Operandio',

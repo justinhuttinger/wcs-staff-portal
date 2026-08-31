@@ -6,7 +6,6 @@ const DOMAIN_SERVICE_MAP = {
   'abcfinancial.com': 'abc',
   'gohighlevel.com': 'ghl',
   'westcoaststrength.com': 'ghl',
-  'wheniwork.com': 'wheniwork',
   'paychex.com': 'paychex',
   'myapps.paychex.com': 'paychex',
   // Vendor ordering tiles — used for shared-credential auto-fill. Pinning
@@ -105,7 +104,6 @@ function captureCredentials() {
 const SERVICE_LABELS = {
   abc: 'ABC Financial',
   ghl: 'Grow CRM',
-  wheniwork: 'WhenIWork',
   paychex: 'Paychex',
   operandio: 'Operandio',
   'my-coke': 'MyCoke',

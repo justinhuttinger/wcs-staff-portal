@@ -44,7 +44,6 @@ module.exports = {
   writeConfig,
   TOOLS: {
     grow: 'https://app.westcoaststrength.com',
-    wheniwork: 'https://app.wheniwork.com',
     paychex: 'https://myapps.paychex.com',
   },
   LOCATIONS: {
