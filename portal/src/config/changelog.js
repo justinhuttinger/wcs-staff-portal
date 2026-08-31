@@ -11,7 +11,8 @@
 // audience fields (all optional; an entry shows only if ALL present conditions
 // pass):
 //   minRole : tier floor — 'lead' | 'manager' | 'corporate' | 'admin'
-//   tool    : must have this tool visible — 'inventory' | 'forms' | 'admin'
+//   tool    : must have this tool visible — 'inventory' | 'forms' | 'admin' |
+//             'trainerAvail' | 'groupX' | 'facility'
 //   report  : must be able to see this report key — e.g. 'till', 'pos-sales'
 
 // Role ladder (mirrors ToolGrid.jsx ROLE_LEVELS). Higher = more access.
@@ -44,6 +45,8 @@ function canSeeTool(tool, { role, visibleTools }) {
     case 'forms': return idx >= ROLE_LEVELS.admin || (visibleTools || []).includes('forms')
     case 'trainerAvail': return (visibleTools || []).includes('trainerAvail')
     case 'till': return (visibleTools || []).includes('till')
+    case 'groupX': return (visibleTools || []).includes('groupX')
+    case 'facility': return (visibleTools || []).includes('facility')
     case 'admin': return role === 'admin'
     default: return true
   }
@@ -66,6 +69,24 @@ export function visibleChangelog(ctx) {
 }
 
 export const CHANGELOG = [
+  {
+    id: 15, date: '2026-08-31',
+    title: 'Group X and Courts & Pool are now set up per club',
+    body: 'Admin now has its own Group X page (Boards & embeds, New class badges, History) and a Courts & Pool page (Boards & embeds, Locations), instead of a second copy of the staff screens. Each has a grid for turning a feature on or off per club. Switching one off hides its tile for that club and makes its public board return a 404 instead of an empty week. Nothing is deleted, and it all comes back if you switch it on again.',
+    audience: { tool: 'admin' },
+  },
+  {
+    id: 14, date: '2026-08-31',
+    title: 'Courts & Pool schedules are on your home screen',
+    body: 'The court and pool schedules have moved out of Admin onto the home board, under Tools. Everyone can see the week and print it. Leads and above can add and cancel bookings. You will only see the clubs you are assigned to, and only the facilities your club actually has.',
+    audience: { tool: 'facility' },
+  },
+  {
+    id: 13, date: '2026-08-31',
+    title: 'Group X is on your home screen, and prints properly',
+    body: 'A new Group X tile under Tools opens the class Scheduler and the class Attendance queue. Everyone can see the schedule and print it, and anyone can log a class headcount. Leads and above can add and cancel classes. Print now prints the real class board, the one on the club TVs, so the sheet and the wall always match: one page, in colour, with no browser date or web address across the top. Turn on Background graphics in the print dialog so the colours come out.',
+    audience: { tool: 'groupX' },
+  },
   {
     id: 12, date: '2026-08-31',
     title: 'Log cash in and out of the till from the portal',
