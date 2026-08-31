@@ -52,7 +52,7 @@ function SvgTileButton({ onClick, iconPath, label, desc, badge, star }) {
   return (
     <button
       onClick={onClick}
-      className="portal-tile group relative flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-6 h-[140px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+      className="portal-tile group relative flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-5 h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
     >
       {star && (
         <svg viewBox="0 0 24 24" fill="currentColor" className="absolute top-2.5 left-2.5 w-3.5 h-3.5 text-amber-400">
@@ -70,7 +70,7 @@ function SvgTileButton({ onClick, iconPath, label, desc, badge, star }) {
         </svg>
       </div>
       <div className="portal-tile__text text-center min-w-0">
-        <span className="portal-tile__label block text-base font-semibold text-text-primary line-clamp-2">{label}</span>
+        <span className="portal-tile__label block text-base font-semibold text-text-primary line-clamp-2 leading-tight">{label}</span>
         <span className="portal-tile__desc block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">{desc}</span>
       </div>
     </button>
