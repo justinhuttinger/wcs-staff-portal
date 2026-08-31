@@ -16,6 +16,16 @@ if (PUBLIC_KEY && PRIVATE_KEY) {
   } catch (err) {
     console.error('[tour-push] VAPID config failed:', err.message)
   }
+} else {
+  // Said once at boot, and named precisely, because half a key pair is the
+  // worst case: the public key alone is enough for an iPad to subscribe and
+  // report alerts as ON, so staff are told notifications work while nothing can
+  // ever send one.
+  console.error(
+    '[tour-push] DISABLED — no notification will ever be sent. Missing: ' +
+    [!PUBLIC_KEY && 'VAPID_PUBLIC_KEY', !PRIVATE_KEY && 'VAPID_PRIVATE_KEY']
+      .filter(Boolean).join(' and ')
+  )
 }
 
 function pushConfigured() {
@@ -25,7 +35,13 @@ function pushConfigured() {
 // Send a notification to all of a location's iPads that a tour just arrived.
 // Fire-and-forget from the caller; prunes subscriptions the browser has dropped.
 async function sendTourArrival(locationId, intake) {
-  if (!configured || !locationId) return
+  // Every exit from this function used to be silent, which is exactly why a
+  // dead push setup survived two months and 19 arrivals without a trace.
+  if (!configured) {
+    console.warn('[tour-push] skipped: VAPID not configured')
+    return
+  }
+  if (!locationId) return
   const { data: subs, error } = await supabaseAdmin
     .from('tour_push_subscriptions')
     .select('id, endpoint, p256dh, auth')
@@ -34,7 +50,10 @@ async function sendTourArrival(locationId, intake) {
     console.error('[tour-push] load subscriptions failed:', error.message)
     return
   }
-  if (!subs || !subs.length) return
+  if (!subs || !subs.length) {
+    console.log(`[tour-push] no devices subscribed for location ${locationId}`)
+    return
+  }
 
   // The service worker needs the location's tour URL to open on notification
   // tap — without it the only URL it knows is '/', the portal login page.
@@ -57,10 +76,12 @@ async function sendTourArrival(locationId, intake) {
   })
 
   const dead = []
+  let sent = 0
   await Promise.all(subs.map(async (s) => {
     const subscription = { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }
     try {
       await webpush.sendNotification(subscription, payload)
+      sent += 1
     } catch (err) {
       // 404/410 = subscription expired/unsubscribed; drop it.
       if (err.statusCode === 404 || err.statusCode === 410) {
@@ -70,6 +91,13 @@ async function sendTourArrival(locationId, intake) {
       }
     }
   }))
+
+  // A success line, not only failures: "nothing in the log" has to mean
+  // "nothing ran", or it tells you nothing at all.
+  console.log(
+    `[tour-push] location ${locationId}: sent ${sent}/${subs.length}` +
+    (dead.length ? `, pruned ${dead.length} expired` : '')
+  )
 
   if (dead.length) {
     await supabaseAdmin.from('tour_push_subscriptions').delete().in('id', dead)

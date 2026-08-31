@@ -183,6 +183,10 @@ export default function TourCheckinApp({ token }) {
   }
 
   const showNotifyPrompt = PUSH_SUPPORTED && data.vapid_public_key && permission !== 'granted'
+  // Granted on THIS device, but the server has no key pair to send with. Worth
+  // its own banner: alerts look switched on and nothing will ever arrive, which
+  // is indistinguishable from a quiet lobby.
+  const pushBroken = permission === 'granted' && data.push_configured === false
   const list = data.ready
   const bg = LOCATION_BACKGROUNDS[(data.location_name || '').trim().toLowerCase()]
 
@@ -208,6 +212,17 @@ export default function TourCheckinApp({ token }) {
       )}
 
       <div className="px-5 py-5 max-w-2xl mx-auto">
+        {pushBroken && (
+          <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-4 text-sm">
+            <p className="font-semibold text-red-900">Alerts are on, but nothing can send them</p>
+            <p className="text-red-800 mt-1">
+              Notifications are allowed on this iPad, but the server has no
+              notification keys set, so no arrival will reach you. Watch the
+              queue on screen until it is fixed.
+            </p>
+          </div>
+        )}
+
         {showNotifyPrompt && (
           <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
             {isStandalone() ? (

@@ -9,6 +9,7 @@ const { resolveGhlContactId } = require('../lib/resolveGhlContact')
 const { searchMembersByName } = require('../lib/memberLookup')
 const { resolveAbcId } = require('../lib/resolveAbcId')
 const { resolveEmployeeId, employeeIdMap, normalize: normalizeName } = require('../lib/resolveEmployeeId')
+const { pushConfigured } = require('../lib/tourPush')
 
 const router = Router()
 
@@ -115,6 +116,10 @@ router.get('/:token', async (req, res) => {
       location_name: ctx.location.name,
       day_one_base_url: ctx.cfg.day_one_base_url || null,
       vapid_public_key: process.env.VAPID_PUBLIC_KEY || null,
+      // Whether the server can actually SEND. The public key alone is enough for
+      // an iPad to subscribe and show alerts as on, so without this the app
+      // reports notifications working while nothing can ever deliver one.
+      push_configured: pushConfigured(),
       ready: (ready || []).map(withAbcId),
     })
   } catch (err) {
