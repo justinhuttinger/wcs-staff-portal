@@ -33,6 +33,7 @@ function snapshot() {
   const b = getBackgroundPrefs()
   return {
     theme: p.theme,
+    accent: p.accent,
     background: b.background, backgroundDim: b.backgroundDim,
     pinned: getPinned(),
   }
@@ -62,12 +63,19 @@ export async function hydrateUiPrefs() {
     ])
     remote = res?.prefs
     backgroundUrl = res?.backgroundUrl || null
-    // appearance_default_accent, _density and _layout may still sit in
-    // app_config from before these settings were removed. Nothing reads them
-    // once org default is built from theme alone; deleting the rows would
-    // need a migration this change does not warrant, so they are left in place.
+    // appearance_default_density and _layout may still sit in app_config from
+    // before those settings were removed. Nothing reads them once org default
+    // is built from theme and accent alone; deleting the rows would need a
+    // migration this change does not warrant, so they are left in place.
+    //
+    // appearance_default_accent may ALSO be a stale row from a retired accent
+    // feature, holding a NAME like 'signal_red' rather than a hex string.
+    // normalizeAccent (called downstream via setPrefs) rejects anything that
+    // is not a hex color and falls back to the default, so a stale value here
+    // is harmless rather than a migration hazard.
     orgDefault = {
       theme: settings?.appearance_default_theme,
+      accent: settings?.appearance_default_accent,
     }
   } catch {
     // Offline or API down: the mirror already painted, so there is nothing to
@@ -81,7 +89,7 @@ export async function hydrateUiPrefs() {
   try {
     // setPrefs and setPinned both normalize: an unknown theme or a retired pin
     // key falls back rather than rendering something broken.
-    setPrefs({ theme: prefs.theme })
+    setPrefs({ theme: prefs.theme, accent: prefs.accent })
     setBackgroundPrefs({ background: prefs.background, backgroundDim: prefs.backgroundDim })
     setPinned(Array.isArray(prefs.pinned) ? prefs.pinned : [])
   } finally {

@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { THEME_OPTIONS } from './themeOptions'
 import ThemePreview from './ThemePreview'
 import ThemePreviewModal from './ThemePreviewModal'
+import AccentPicker from './AccentPicker'
 
 /**
  * The theme picker, with no opinion about where the prefs come from or go.
@@ -76,6 +77,16 @@ export default function AppearanceControls({ prefs, onPatch }) {
           onApply={applyTheme}
           onClose={closePreview}
         />
+      )}
+
+      {prefs.theme === 'classic' ? (
+        <div className="mt-5 pt-5 border-t border-border">
+          <AccentPicker accent={prefs.accent} onChange={(accent) => onPatch({ accent })} />
+        </div>
+      ) : (
+        <p className="mt-5 pt-5 border-t border-border text-xs text-text-muted">
+          Tile accent color applies to the Classic theme. Switch to Classic to change it.
+        </p>
       )}
     </>
   )

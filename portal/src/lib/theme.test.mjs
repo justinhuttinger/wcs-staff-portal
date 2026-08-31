@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { normalizeBackground, normalizeDim, DEFAULT_BACKGROUND, DEFAULT_BACKGROUND_DIM, THEMES, applyPrefs } from './theme.js'
+import { normalizeBackground, normalizeDim, DEFAULT_BACKGROUND, DEFAULT_BACKGROUND_DIM, THEMES, applyPrefs, normalizeAccent, accentInk, DEFAULT_ACCENT, ACCENT_PRESETS } from './theme.js'
 
 test('a well-formed background passes through', () => {
   assert.deepEqual(normalizeBackground({ kind: 'gallery', value: 'shared/abc.jpg' }),
@@ -72,4 +72,56 @@ test('a retired theme falls back to classic', () => {
 
 test('press survives', () => {
   assert.equal(applyPrefs({ theme: 'press' }).theme, 'press')
+})
+
+test('a valid hex passes through, normalized to lowercase 6-digit', () => {
+  assert.equal(normalizeAccent('#1D4ED8'), '#1d4ed8')
+  assert.equal(normalizeAccent('#abc'), '#aabbcc')   // 3-digit shorthand expands
+})
+
+test('junk falls back to the default', () => {
+  for (const bad of ['red', 'rgb(1,2,3)', '#12', '#12345', '#1234567', 'e53e3e', '', null, undefined, 42, {}]) {
+    assert.equal(normalizeAccent(bad), DEFAULT_ACCENT)
+  }
+})
+
+test('a retired accent name (org-default row left behind by an old feature) falls back to the default', () => {
+  // appearance_default_accent may already hold NAMES like 'signal_red' from a
+  // retired accent feature. normalizeAccent must reject those, not special-case them.
+  assert.equal(normalizeAccent('signal_red'), DEFAULT_ACCENT)
+})
+
+test('the default is the red the portal already uses', () => {
+  assert.equal(DEFAULT_ACCENT, '#e53e3e')
+})
+
+test('ink is white on dark accents and near-black on light ones', () => {
+  // This is what stops a pale custom color making white text unreadable.
+  assert.equal(accentInk('#e53e3e'), '#ffffff')   // the default red
+  assert.equal(accentInk('#0b0b0d'), '#ffffff')   // near black
+  assert.equal(accentInk('#1d4ed8'), '#ffffff')   // deep blue
+  assert.equal(accentInk('#fde047'), '#0b0b0d')   // pale yellow
+  assert.equal(accentInk('#ffffff'), '#0b0b0d')   // white
+  assert.equal(accentInk('#a3e635'), '#0b0b0d')   // lime
+})
+
+test('ink is computed from luminance, not from a lookup of known values', () => {
+  // An arbitrary color the palette has never seen must still get sane ink.
+  assert.equal(accentInk('#000080'), '#ffffff')
+  assert.equal(accentInk('#fffacd'), '#0b0b0d')
+})
+
+test('white is preferred even when black would score higher', () => {
+  // #e53e3e scores 4.13:1 with white and 5.09:1 with black. White wins anyway:
+  // the design calls for white, the rest of the portal already pairs white with
+  // this red, and 4.13 is comfortably readable. The fallback exists for colors
+  // where white genuinely disappears, not to chase the optimum.
+  assert.equal(accentInk('#e53e3e'), '#ffffff')
+})
+
+test('every preset is a valid hex and survives normalization', () => {
+  for (const p of ACCENT_PRESETS) {
+    assert.equal(normalizeAccent(p.hex), p.hex, `${p.label} is not already normalized`)
+    assert.ok(p.label, 'every preset needs a label')
+  }
 })

@@ -8,13 +8,21 @@
 // Press additionally swaps the whole shell for a persistent top nav (see
 // PortalNav.jsx) — it is the one theme that changes structure, not just tokens.
 //
-// WP-style and Spotlight themes, and the accent/density/layout settings that
-// went with them, were removed: those three settings only ever did anything
-// under Spotlight, and Spotlight itself is gone, so there was nothing left
-// for them to control. Do not reintroduce ACCENTS, DENSITIES, LAYOUTS or their
-// storage keys without a theme that actually reads them. Anyone who had `wp`
-// or `spotlight` saved falls back to classic via the normalizer in
-// `applyPrefs` below; that fallback is the whole migration story, so keep it.
+// WP-style and Spotlight themes, and the density/layout settings that went
+// with them, were removed: those settings only ever did anything under
+// Spotlight, and Spotlight itself is gone, so there was nothing left for them
+// to control. Do not reintroduce DENSITIES, LAYOUTS or their storage keys
+// without a theme that actually reads them. Anyone who had `wp` or
+// `spotlight` saved falls back to classic via the normalizer in `applyPrefs`
+// below; that fallback is the whole migration story, so keep it.
+//
+// A separate accent color DID survive that cleanup and is reintroduced here:
+// a per-user hex color for Classic tile icons and the tile hover state. It is
+// stored as `--portal-accent` (and its derived `--portal-accent-ink`), a
+// custom property distinct from `--color-wcs-red`. That red drives buttons,
+// spinners, badges and the loading wheel across the whole portal; rebinding
+// it to a user's accent choice would recolor all of those the moment someone
+// picked navy. Only Classic tile styles read `--portal-accent`.
 //
 // Persistence: localStorage is the pre-paint MIRROR, not the source of truth.
 // The server row (user_ui_preferences.prefs) is authoritative and is synced by
@@ -32,6 +40,72 @@ export const DEFAULTS = {
 
 /** Event fired on <window> whenever prefs change, so live views can re-render. */
 export const THEME_EVENT = 'wcs-appearance-change'
+
+export const ACCENT_KEY = 'wcs-portal-accent'
+
+// The red the portal has always used. Anyone who never opens the setting sees
+// exactly what they saw before.
+export const DEFAULT_ACCENT = '#e53e3e'
+
+// Known-good starting points. The custom field accepts anything, so these are
+// a convenience, not a guarantee: readability is enforced by accentInk below,
+// which is what actually protects a bad custom choice.
+export const ACCENT_PRESETS = [
+  { hex: '#e53e3e', label: 'WCS Red' },
+  { hex: '#c8102e', label: 'Deep Red' },
+  { hex: '#ea580c', label: 'Ember' },
+  { hex: '#1d4ed8', label: 'Blue' },
+  { hex: '#0f766e', label: 'Teal' },
+  { hex: '#4d7c0f', label: 'Olive' },
+  { hex: '#6d28d9', label: 'Violet' },
+  { hex: '#1a1a2e', label: 'Navy' },
+]
+
+/** Coerce anything into a #rrggbb string. Never throws. */
+export function normalizeAccent(raw) {
+  if (typeof raw !== 'string') return DEFAULT_ACCENT
+  const s = raw.trim().toLowerCase()
+  if (/^#[0-9a-f]{6}$/.test(s)) return s
+  // Expand #abc to #aabbcc so the rest of the system only ever sees one shape.
+  if (/^#[0-9a-f]{3}$/.test(s)) return '#' + [...s.slice(1)].map(c => c + c).join('')
+  return DEFAULT_ACCENT
+}
+
+/**
+ * The text and icon color that sits ON TOP of the accent when a tile is
+ * hovered. Computed from relative luminance rather than fixed to white,
+ * because the custom field lets someone pick a pale color where white text
+ * would disappear.
+ *
+ * Uses the WCAG relative-luminance formula with sRGB gamma expansion to get
+ * the accent's luminance, then prefers white unless white's contrast ratio
+ * against the accent drops below 3:1 (see the fallback below for why 3:1 and
+ * why white is the default rather than whichever ink scores higher).
+ */
+export function accentInk(hex) {
+  const h = normalizeAccent(hex)
+  const channel = (i) => {
+    const v = parseInt(h.slice(1 + i * 2, 3 + i * 2), 16) / 255
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+  }
+  const L = 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2)
+  // Prefer white, which is what the design calls for and what the rest of the
+  // portal already pairs with the brand red. Fall back to near-black only when
+  // white would genuinely be hard to read, which the free custom hex field
+  // makes possible. 3:1 is the WCAG floor for large text and UI components,
+  // and it is the right floor here: at 16px semibold on a solid fill, white
+  // above that ratio reads cleanly, while below it (pale yellows, near-whites)
+  // it starts to disappear.
+  //
+  // The same ink also paints the 12px uppercase description on hover, where
+  // the default red's white-on-red ratio (4.13:1) clears AA for the label but
+  // misses AA for text that small, and where that description previously sat
+  // as grey-on-white. That is a real, if minor, readability regression on
+  // hover for the default accent, traded for one consistent ink across the
+  // whole tile rather than a second computed color for a secondary line.
+  const contrastWithWhite = 1.05 / (L + 0.05)
+  return contrastWithWhite >= 3 ? '#ffffff' : '#0b0b0d'
+}
 
 export const BACKGROUND_KEY = 'wcs-portal-background'
 export const BACKGROUND_DIM_KEY = 'wcs-portal-background-dim'
@@ -110,8 +184,13 @@ function read(key, allowed, fallback) {
 
 /** Read every saved appearance pref. Never throws. */
 export function getPrefs() {
+  let accent = DEFAULT_ACCENT
+  try {
+    accent = normalizeAccent(localStorage.getItem(ACCENT_KEY))
+  } catch {}
   return {
     theme: read(THEME_KEY, THEMES, DEFAULTS.theme),
+    accent,
   }
 }
 
@@ -122,13 +201,16 @@ export function getTheme() {
 
 /** Reflect prefs onto <html> without persisting them. */
 export function applyPrefs(prefs) {
-  const raw = { ...DEFAULTS, ...(prefs || {}) }
+  const raw = { ...DEFAULTS, accent: DEFAULT_ACCENT, ...(prefs || {}) }
   // Normalize here so an unknown value (a retired theme like wp or spotlight,
-  // a hand-edited localStorage key) falls back to the default rather than
-  // rendering unstyled. This is the whole migration story for anyone who had
-  // a removed theme saved.
+  // a hand-edited localStorage key, or an old appearance_default_accent row
+  // left over from a retired accent feature and still holding a NAME like
+  // 'signal_red' rather than a hex string) falls back to the default rather
+  // than rendering unstyled. This is the whole migration story for anyone who
+  // had a removed theme or a stale accent value saved.
   const p = {
     theme: THEMES.includes(raw.theme) ? raw.theme : DEFAULTS.theme,
+    accent: normalizeAccent(raw.accent),
   }
   // node --test has no `document`; guard so the normalization above stays
   // testable without a DOM.
@@ -136,6 +218,9 @@ export function applyPrefs(prefs) {
   if (el) {
     if (p.theme === 'classic') el.removeAttribute('data-theme')
     else el.setAttribute('data-theme', p.theme)
+    // Separate from --color-wcs-red on purpose: see the header comment.
+    el.style.setProperty('--portal-accent', p.accent)
+    el.style.setProperty('--portal-accent-ink', accentInk(p.accent))
   }
   return p
 }
@@ -155,6 +240,7 @@ export function setPrefs(patch) {
   const resolved = applyPrefs(next)
   try {
     localStorage.setItem(THEME_KEY, resolved.theme)
+    localStorage.setItem(ACCENT_KEY, resolved.accent)
   } catch {}
   try {
     window.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: resolved }))
@@ -166,3 +252,4 @@ export function setPrefs(patch) {
 export function setTheme(theme) {
   return setPrefs({ theme }).theme
 }
+
