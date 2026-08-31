@@ -16,7 +16,10 @@
 
 import { getPrefs, setPrefs, THEME_EVENT } from './theme'
 import { getPinned, setPinned, PINNED_EVENT } from './pinnedTabs'
-import { getUiPreferences, saveUiPreferences } from './api'
+import { getUiPreferences, saveUiPreferences, getAppSettings } from './api'
+import { resolveHydration } from './uiPrefsResolve'
+
+export { resolveHydration }
 
 // While applying the server's copy we must not turn round and push it back:
 // setPrefs/setPinned both fire the events this module listens to.
@@ -33,41 +36,50 @@ function snapshot() {
 /**
  * Pull this user's prefs and apply them locally. Call once after login.
  *
- * An empty server row means this person has never saved — their current local
- * prefs are then pushed up, so an existing user's setup is adopted rather than
- * wiped the first time they load a build with this in it.
+ * A saved server row wins outright. Otherwise this person starts on the org's
+ * appearance default (falling back to whatever this browser already had for
+ * anything the org has not set), and that starting point is pushed up as
+ * their first saved row so they can change it after.
  */
 export async function hydrateUiPrefs() {
   let remote
+  let orgDefault = {}
   try {
-    const res = await getUiPreferences()
+    const [res, settings] = await Promise.all([
+      getUiPreferences(),
+      // A missing or unreadable org default is not an error: it just means
+      // there is no house style and the browser's own prefs are adopted.
+      getAppSettings('appearance_default_').catch(() => ({})),
+    ])
     remote = res?.prefs
+    orgDefault = {
+      theme: settings?.appearance_default_theme,
+      accent: settings?.appearance_default_accent,
+      density: settings?.appearance_default_density,
+      layout: settings?.appearance_default_layout,
+    }
   } catch {
     // Offline or API down: the mirror already painted, so there is nothing to
     // do and nothing to report.
     return
   }
 
-  const hasRemote = remote && Object.keys(remote).length > 0
-  if (!hasRemote) {
-    // First time this person is seen. Adopt whatever is in this browser.
-    try { await saveUiPreferences(snapshot()) } catch {}
-    return
-  }
+  const { action, prefs } = resolveHydration({ remote, orgDefault, local: snapshot() })
 
   applyingFromServer = true
   try {
     // setPrefs and setPinned both normalize: an unknown theme or a retired pin
     // key falls back rather than rendering something broken.
-    setPrefs({
-      theme: remote.theme,
-      accent: remote.accent,
-      density: remote.density,
-      layout: remote.layout,
-    })
-    setPinned(Array.isArray(remote.pinned) ? remote.pinned : [])
+    setPrefs({ theme: prefs.theme, accent: prefs.accent, density: prefs.density, layout: prefs.layout })
+    setPinned(Array.isArray(prefs.pinned) ? prefs.pinned : [])
   } finally {
     applyingFromServer = false
+  }
+
+  // No saved row yet, whether adopting the org default or this browser's own
+  // prefs: write it up as this person's first row.
+  if (action === 'adopt') {
+    try { await saveUiPreferences(snapshot()) } catch {}
   }
 }
 
