@@ -189,7 +189,7 @@ export default function TillCashView({ onBack, user, location }) {
       {/* Header */}
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border px-4 py-2.5 mb-3 flex items-center gap-3 flex-wrap">
         <button onClick={onBack}
-          className="press-hide-back text-sm text-tile-sub hover:text-text-primary shrink-0">&larr; Back</button>
+          className="redundant-back text-sm text-tile-sub hover:text-text-primary shrink-0">&larr; Back</button>
         <span className="text-border" aria-hidden="true">|</span>
         <h2 className="text-sm font-bold text-text-primary">Till &mdash; Cash In / Out</h2>
         {clubs.length > 1 && (
