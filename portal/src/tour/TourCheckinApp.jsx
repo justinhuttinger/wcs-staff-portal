@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { publicTour } from '../lib/api'
 import { buildDayOneUrl } from '../lib/dayOnePrefill'
 import VipReferral from './VipReferral'
-import MemberBanner from './MemberBanner'
+import { useActiveMember, MemberOnlyNotice, MemberCheckPending } from './MemberGate'
 import { OUTCOMES, VIP_PASS, CUSTOM_PASS, PASS_DAYS, grantsAPass, passDaysFor } from './outcomes'
 
 const REFRESH_MS = 2000   // poll fast so a new arrival shows within ~2s (only while the app is open)
@@ -288,6 +288,11 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
+  // An active member gets the notice INSTEAD of the form, not above it.
+  const member = useActiveMember(token, intake.id)
+  const [recordAnyway, setRecordAnyway] = useState(false)
+  const blocked = member.isMember && !recordAnyway
+
   // How long a Custom Pass runs for. Picking a number does NOT write anything:
   // the pass goes to ABC as part of Save & complete tour, so staff make one
   // decision and press one button rather than remembering a second step.
@@ -379,11 +384,19 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
         </button>
       </div>
 
+      {member.checking ? <MemberCheckPending /> : blocked ? (
+        // Closing the card is the same "this is dealt with" outcome as a saved
+        // tour, so it takes the same path back to the queue.
+        <MemberOnlyNotice
+          token={token} intakeId={intake.id}
+          name={capitalize(intake.contact_name)}
+          onDismissed={onSaved}
+          onOverride={() => setRecordAnyway(true)}
+        />
+      ) : (
+      <>
       <div className="flex-1 overflow-y-auto px-5 py-6 space-y-6 max-w-2xl mx-auto w-full">
         <div>
-          {/* Removing the card is the same "this is dealt with" outcome as a
-              saved tour, so it takes the same path back to the queue. */}
-          <MemberBanner token={token} intakeId={intake.id} onDismissed={onSaved} />
           <label className="block text-sm font-semibold text-gray-900 mb-2">Tour member</label>
           <select value={tourMember} onChange={e => setTourMember(e.target.value)}
             className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base text-gray-900 focus:outline-none focus:border-red-500">
@@ -479,6 +492,8 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
           {saving ? 'Saving…' : 'Save & complete tour'}
         </button>
       </div>
+      </>
+      )}
 
       {showDayOne && (
         <div className="fixed inset-0 bg-black/40 z-[70] flex flex-col justify-end">
