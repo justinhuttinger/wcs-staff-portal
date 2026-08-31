@@ -215,3 +215,12 @@ test('toPublicClass leaves an ordinary class name alone', () => {
     'Studio - 60',
   )
 })
+
+test('mondayOf leaves a Monday alone', () => {
+  // The print path snaps the window to Monday even when the portal already
+  // sent one, because the board can be printed straight from its own URL. That
+  // only works if snapping twice is the same as snapping once.
+  assert.strictEqual(mondayOf('2026-08-31'), '2026-08-31') // Monday -> itself
+  assert.strictEqual(mondayOf('2026-09-06'), '2026-08-31') // Sunday -> back to Monday
+  assert.strictEqual(mondayOf(mondayOf('2026-09-02')), mondayOf('2026-09-02'))
+})

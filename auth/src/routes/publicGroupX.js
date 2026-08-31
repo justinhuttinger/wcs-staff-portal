@@ -17,7 +17,7 @@ const cache = require('../services/memoryCache')
 const { clubBySlug } = require('../lib/groupXClubs')
 const { markNewClasses } = require('../lib/groupXNewClasses')
 const { supabaseAdmin } = require('../services/supabase')
-const { currentPacificDate, buildDays, windowEnd, publicCacheKey } = require('../lib/groupXPublic')
+const { currentPacificDate, mondayOf, buildDays, windowEnd, publicCacheKey } = require('../lib/groupXPublic')
 const { renderBoardHtml } = require('../templates/groupXBoard')
 
 const router = Router()
@@ -103,7 +103,14 @@ router.get('/board', (req, res) => {
   // the feed, but handing that back to the page would freeze a wall TV on the
   // day it was switched on instead of letting it roll over at local midnight.
   const asked = req.query.start || req.query.week
-  const startDate = DATE_RE.test(asked || '') ? asked : null
+  let startDate = DATE_RE.test(asked || '') ? asked : null
+  // A printed sheet is a Monday-to-Sunday grid. The board's window normally
+  // rolls from today, which is right on a wall and wrong on paper: a sheet run
+  // off on a Wednesday would start with Wednesday and wrap into next week, so
+  // the columns would not line up with any other sheet in the building.
+  // Snapped here rather than trusted from the caller, because the board can be
+  // printed straight from its own URL with no portal in front of it.
+  if (req.query.print === '1') startDate = mondayOf(startDate || currentPacificDate())
   res.type('html').send(renderBoardHtml({
     clubSlug: r.club.slug,
     clubName: r.club.name,
