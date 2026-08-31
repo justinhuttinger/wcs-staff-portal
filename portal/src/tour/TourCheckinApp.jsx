@@ -98,6 +98,9 @@ export default function TourCheckinApp({ token }) {
   const [error, setError] = useState('')
   const [selected, setSelected] = useState(null)
   const [permission, setPermission] = useState(PUSH_SUPPORTED ? Notification.permission : 'denied')
+  // null = not checked yet. Whether THIS device holds a push endpoint the server
+  // knows about, which is a different question from whether alerts are allowed.
+  const [registered, setRegistered] = useState(null)
   const [notifyError, setNotifyError] = useState('')
   const [flash, setFlash] = useState('') // name shown in the big arrival banner
   const knownIds = useRef(null) // null until first load; then a Set of ready ids
@@ -155,14 +158,42 @@ export default function TourCheckinApp({ token }) {
     return () => clearInterval(id)
   }, [])
 
-  // If alerts are already granted, re-register this device's subscription on open
-  // (keeps it fresh and re-adds it if the server lost it).
+  // Keep this device registered for alerts, every time the app opens.
+  //
+  // This used to re-register an EXISTING subscription and do nothing when there
+  // wasn't one -- `if (sub)`. That is the case that actually happens: deleting
+  // and re-adding the Home Screen app, or iOS dropping the subscription on its
+  // own, leaves permission granted and no subscription, and nothing ever
+  // recreated it. The server kept pushing to an endpoint from a previous
+  // install, Apple kept accepting them, and the iPad showed nothing.
+  //
+  // Salem proves it: one subscription in the table, created 27 June, and not a
+  // single one since across 19 arrivals.
+  //
+  // So when alerts are allowed and there is no subscription, make one.
   useEffect(() => {
     if (!PUSH_SUPPORTED || permission !== 'granted' || !data.vapid_public_key) return
-    navigator.serviceWorker.ready
-      .then(reg => reg.pushManager.getSubscription())
-      .then(sub => { if (sub) publicTour.subscribe(token, sub.toJSON()).catch(() => {}) })
-      .catch(() => {})
+    let live = true
+    ;(async () => {
+      try {
+        const reg = await navigator.serviceWorker.ready
+        let sub = await reg.pushManager.getSubscription()
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlB64ToUint8Array(data.vapid_public_key),
+          })
+        }
+        await publicTour.subscribe(token, sub.toJSON())
+        if (live) setRegistered(true)
+      } catch (e) {
+        // Permission is granted but the browser will not give us an endpoint.
+        // Surfaced rather than swallowed: this is the state where staff believe
+        // alerts are on and none can arrive.
+        if (live) setRegistered(false)
+      }
+    })()
+    return () => { live = false }
   }, [token, data.vapid_public_key, permission])
 
   async function enableNotifications() {
@@ -177,7 +208,9 @@ export default function TourCheckinApp({ token }) {
         applicationServerKey: urlB64ToUint8Array(data.vapid_public_key),
       })
       await publicTour.subscribe(token, sub.toJSON())
+      setRegistered(true)
     } catch (e) {
+      setRegistered(false)
       setNotifyError('Could not enable alerts. Make sure the app was added to the Home Screen and opened from there.')
     }
   }
@@ -187,6 +220,8 @@ export default function TourCheckinApp({ token }) {
   // its own banner: alerts look switched on and nothing will ever arrive, which
   // is indistinguishable from a quiet lobby.
   const pushBroken = permission === 'granted' && data.push_configured === false
+  // Granted here, server can send, but this device never got an endpoint.
+  const pushUnregistered = permission === 'granted' && data.push_configured !== false && registered === false
   const list = data.ready
   const bg = LOCATION_BACKGROUNDS[(data.location_name || '').trim().toLowerCase()]
 
@@ -212,6 +247,17 @@ export default function TourCheckinApp({ token }) {
       )}
 
       <div className="px-5 py-5 max-w-2xl mx-auto">
+        {pushUnregistered && (
+          <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-4 text-sm">
+            <p className="font-semibold text-red-900">This iPad is not registered for alerts</p>
+            <p className="text-red-800 mt-1">
+              Alerts are allowed, but this device could not register to receive
+              them. Close the app fully and reopen it from the Home Screen. If it
+              keeps happening, remove the app and add it again.
+            </p>
+          </div>
+        )}
+
         {pushBroken && (
           <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-4 text-sm">
             <p className="font-semibold text-red-900">Alerts are on, but nothing can send them</p>
