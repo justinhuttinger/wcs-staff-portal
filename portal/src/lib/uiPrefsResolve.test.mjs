@@ -19,6 +19,9 @@ test('a saved server row wins over everything', () => {
 test('no server row and an org default: adopt the org default', () => {
   const r = resolveHydration({ remote: {}, orgDefault: { theme: 'spotlight' }, local: LOCAL })
   assert.equal(r.action, 'adopt')
+  // resolveHydration passes the stored value through unchanged even though
+  // 'spotlight' is a retired theme; setPrefs normalizes it downstream, so
+  // a retired theme can never actually reach the DOM.
   assert.equal(r.prefs.theme, 'spotlight')
 })
 

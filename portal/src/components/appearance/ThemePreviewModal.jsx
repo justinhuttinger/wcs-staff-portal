@@ -30,8 +30,8 @@ import ThemePreview from './ThemePreview'
  * handler on a button inside that panel.
  */
 export default function ThemePreviewModal({ option, active, onApply, onClose }) {
-  const panelRef = useRef(null)
   const closeButtonRef = useRef(null)
+  const mouseDownOnBackdrop = useRef(false)
 
   useEffect(() => {
     function onKey(e) {
@@ -45,15 +45,15 @@ export default function ThemePreviewModal({ option, active, onApply, onClose }) 
     closeButtonRef.current?.focus()
   }, [])
 
-  if (!option) return null
-
   return createPortal(
     <div
       className="fixed inset-0 z-[150] flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
+      onMouseDown={(e) => { mouseDownOnBackdrop.current = e.target === e.currentTarget }}
+      onClick={(e) => {
+        if (mouseDownOnBackdrop.current && e.target === e.currentTarget) onClose()
+      }}
     >
       <div
-        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={`Preview of the ${option.name} theme`}
@@ -80,10 +80,9 @@ export default function ThemePreviewModal({ option, active, onApply, onClose }) 
 
         {/* The modal panel (max-w-lg) is wider than a card in the grid, so
             ThemePreview - which has no fixed width of its own and fills its
-            container - already renders noticeably bigger here. The extra
-            scale makes that "large preview" unmistakable rather than a
-            token bump. */}
-        <div style={{ transform: 'scale(1.15)', transformOrigin: 'top left', marginBottom: '28px' }}>
+            container - already renders noticeably bigger here, making the
+            "large preview" unmistakable without any extra scaling. */}
+        <div className="mb-6">
           <ThemePreview s={option.swatch} />
         </div>
 

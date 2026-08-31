@@ -144,7 +144,7 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
   //
   // No dep array on purpose: tiles arrive asynchronously (custom tiles, badge
   // counts) and every render re-sorts, which is self-correcting and cheap at a
-  // few dozen nodes. Runs after the stagger effect above so both can coexist.
+  // few dozen nodes.
   useEffect(() => {
     if (!press) {
       // Leaving the theme must not strand tiles at a stale order.
