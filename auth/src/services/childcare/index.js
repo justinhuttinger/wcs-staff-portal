@@ -73,6 +73,16 @@ async function loadReport({ start, end, slugs = null }) {
     warnings.push(`${missing} submitted checklist${missing === 1 ? '' : 's'} had no headcount answers `
       + '(questions missing, renamed, or left blank).')
   }
+  // A duplicated question is a live data fault, not a historical curiosity:
+  // it is still on the checklist and will keep producing two answers until
+  // somebody removes the copy in Operandio.
+  const conflicted = entries.filter((e) => e.conflicts > 0).length
+  if (conflicted > 0) {
+    warnings.push(`${conflicted} checklist${conflicted === 1 ? '' : 's'} answered a headcount question `
+      + 'more than once with different numbers. The question is duplicated in Operandio; the higher '
+      + 'count is shown. Delete the copy to fix this at the source.')
+  }
+
   if (entries.length === 0) return { ...EMPTY, warnings }
 
   return {

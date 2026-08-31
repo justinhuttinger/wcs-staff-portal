@@ -33,7 +33,7 @@ test('countsFromSteps reads both metrics regardless of order or suffix', () => {
     { name: 'Total Number of Children Older than 1 Year', response: '10' },
     { name: 'Toys put away', response: 'true' },
   ])
-  assert.deepEqual(counts, { over1: 10, under1: 2 })
+  assert.deepEqual(counts, { over1: 10, under1: 2, conflicts: 0 })
 })
 
 test('countsFromSteps leaves a blank metric unknown', () => {
@@ -41,7 +41,7 @@ test('countsFromSteps leaves a blank metric unknown', () => {
     { name: 'Total Number of Children Older than 1 Year', response: '4' },
     { name: 'Total Number of Children Younger than 1 Year', response: '' },
   ])
-  assert.deepEqual(counts, { over1: 4, under1: null })
+  assert.deepEqual(counts, { over1: 4, under1: null, conflicts: 0 })
 })
 
 const BLOCKS = new Map([['p-morning', 'morning'], ['p-evening', 'evening']])
@@ -115,4 +115,48 @@ test('buildEntries keeps a day where only one metric was answered', () => {
   assert.equal(entries.length, 1)
   assert.equal(entries[0].over1, 4)
   assert.equal(entries[0].under1, null)
+})
+
+// --- one checklist asking the same question twice ---------------------------
+//
+// Duplicating a step in Operandio leaves the original AND the copy live.
+// Milwaukie's evening list did exactly that on 2026-08-24.
+
+test('a question answered twice with different numbers keeps the higher', () => {
+  // Undercounting is the direction that leaves a room short-staffed, so the
+  // ambiguous case resolves upward rather than downward.
+  const counts = countsFromSteps([
+    { name: 'Total Number of Children Older than 1 Year', response: '9' },
+    { name: 'Total Number of Children Older than 1 Year', response: '10' },
+  ])
+  assert.equal(counts.over1, 10)
+  assert.equal(counts.conflicts, 1)
+})
+
+test('the higher wins regardless of which order the rows arrive in', () => {
+  // The old code took whichever came last, so the same day read 9 or 10
+  // depending on the order PostgREST happened to return.
+  const a = countsFromSteps([
+    { name: 'Total Number of Children Older than 1 Year', response: '10' },
+    { name: 'Total Number of Children Older than 1 Year', response: '9' },
+  ])
+  assert.equal(a.over1, 10)
+})
+
+test('a (copy) of a question counts as the same question, not a second metric', () => {
+  const counts = countsFromSteps([
+    { name: 'Total Number of Children Younger than 1 Year', response: '9' },
+    { name: 'Total Number of Children Younger than 1 Year (copy)', response: '2' },
+  ])
+  assert.equal(counts.under1, 9)
+  assert.equal(counts.conflicts, 1)
+})
+
+test('the same answer twice is duplication, not a disagreement', () => {
+  const counts = countsFromSteps([
+    { name: 'Total Number of Children Older than 1 Year', response: '4' },
+    { name: 'Total Number of Children Older than 1 Year (copy)', response: '4' },
+  ])
+  assert.equal(counts.over1, 4)
+  assert.equal(counts.conflicts, 0)
 })
