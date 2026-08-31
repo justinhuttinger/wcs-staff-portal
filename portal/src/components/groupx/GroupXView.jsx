@@ -4,7 +4,7 @@ import { startOfWeek, addDays, toISODate, fmtTime12, parseLocalTimestamp, MONTH_
 import WeekGrid from './WeekGrid'
 import CreateClassModal from './CreateClassModal'
 import SeriesList from './SeriesList'
-import PrintBoardModal from './PrintBoardModal'
+import PrintBoardModal from '../schedule/PrintBoardModal'
 
 function weekLabel(weekStart) {
   const end = addDays(weekStart, 6)
