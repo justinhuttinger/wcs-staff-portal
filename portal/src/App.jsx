@@ -10,6 +10,7 @@ import { marketingAccess } from './config/marketingAccess'
 import InventoryView from './components/InventoryView'
 import DayOneTrackerView from './components/DayOneTrackerView'
 import TrainerAvailabilityView from './components/TrainerAvailabilityView'
+import GroupXHub from './components/groupx/GroupXHub'
 import LeaderboardView from './components/LeaderboardView'
 import CommunicationNotesView from './components/CommunicationNotesView'
 import HRView from './components/HRView'
@@ -70,6 +71,7 @@ export default function App() {
   const [showMarketingTracker, setShowMarketingTracker] = useState(false)
   const [showInventory, setShowInventory] = useState(false)
   const [showTrainerAvail, setShowTrainerAvail] = useState(false)
+  const [showGroupX, setShowGroupX] = useState(false)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [showCommunicationNotes, setShowCommunicationNotes] = useState(false)
   const [showHR, setShowHR] = useState(false)
@@ -161,6 +163,7 @@ export default function App() {
   useEffect(() => { if (showMarketingTracker) logEvent('view.marketing_tracker') }, [showMarketingTracker])
   useEffect(() => { if (showInventory) logEvent('view.inventory') }, [showInventory])
   useEffect(() => { if (showTrainerAvail) logEvent('view.trainer_availability') }, [showTrainerAvail])
+  useEffect(() => { if (showGroupX) logEvent('view.group_x') }, [showGroupX])
   useEffect(() => { if (showLeaderboard) logEvent('view.leaderboard') }, [showLeaderboard])
   useEffect(() => { if (showCommunicationNotes) logEvent('view.communication_notes') }, [showCommunicationNotes])
   useEffect(() => { if (showHR) logEvent('view.hr') }, [showHR])
@@ -209,6 +212,7 @@ export default function App() {
         setShowAdmin(false)
         setShowCalendar(false)
         setShowTrainerAvail(false)
+        setShowGroupX(false)
         setShowReporting(false)
         setShowLeaderboard(false)
         setShowCommunicationNotes(false)
@@ -223,6 +227,7 @@ export default function App() {
         // Reset all views first
         setShowAdmin(false)
         setShowTrainerAvail(false)
+        setShowGroupX(false)
         setShowReporting(false)
         setShowLeaderboard(false)
         setShowCommunicationNotes(false)
@@ -253,6 +258,7 @@ export default function App() {
       setShowAdmin(false)
       setShowCalendar(false)
       setShowTrainerAvail(false)
+      setShowGroupX(false)
         setShowReporting(false)
       setShowLeaderboard(false)
       setShowCommunicationNotes(false)
@@ -296,6 +302,7 @@ export default function App() {
     setShowAdmin(false)
     setShowCalendar(false)
     setShowTrainerAvail(false)
+    setShowGroupX(false)
     setShowReporting(false)
     setShowProfile(false)
     setShowLeaderboard(false)
@@ -318,6 +325,7 @@ export default function App() {
     setShowAdmin(false)
     setShowCalendar(false)
     setShowTrainerAvail(false)
+    setShowGroupX(false)
     setShowReporting(false)
     setShowProfile(false)
     setShowLeaderboard(false)
@@ -376,7 +384,7 @@ export default function App() {
     )
   }
 
-  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms && !showNps && !showTourCheckin && !showAdsManager && !showAnalytics && !showProfile
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showGroupX && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms && !showNps && !showTourCheckin && !showAdsManager && !showAnalytics && !showProfile
 
   function exitImpersonation() {
     setImpersonateId(null)
@@ -387,6 +395,7 @@ export default function App() {
     setShowAdmin(false)
     setShowCalendar(false)
     setShowTrainerAvail(false)
+    setShowGroupX(false)
     setShowReporting(false)
     setShowMarketingTracker(false)
     setShowInventory(false)
@@ -456,6 +465,7 @@ export default function App() {
     { key: 'tool:ticketing', label: 'Tickets', desc: 'Submit & Track', open: () => setShowTicketsBoard(true) },
     { key: 'tool:trainerAvail', label: 'D1 Availability', desc: 'Trainers', open: () => setShowTrainerAvail(true) },
     { key: 'tool:commNotes', label: 'Comm Notes', desc: 'Member notes', open: () => setShowCommunicationNotes(true) },
+    { key: 'tool:groupX', label: 'Group X', desc: 'Classes', show: (user?.visible_tools || []).includes('groupX'), open: () => setShowGroupX(true) },
     { key: 'tool:inventory', label: 'Inventory', desc: 'Stock', open: () => setShowInventory(true) },
     { key: 'tool:forms', label: 'Forms', desc: 'Signups', open: () => setShowForms(true) },
     { key: 'tool:nps', label: 'Feedback', desc: 'Member surveys', open: () => setShowNps(true) },
@@ -490,6 +500,7 @@ export default function App() {
     : showHelpCenter ? 'tool:helpCenter'
     : showTicketsBoard ? 'tool:ticketing'
     : showTrainerAvail ? 'tool:trainerAvail'
+    : showGroupX ? 'tool:groupX'
     : showCommunicationNotes ? 'tool:commNotes'
     : showInventory ? 'tool:inventory'
     : showForms ? 'tool:forms'
@@ -630,6 +641,12 @@ export default function App() {
         <CalendarView user={user} onBack={() => setShowCalendar(false)} location={location} isAdmin={isAdmin} />
       ) : showTrainerAvail ? (
         <TrainerAvailabilityView user={user} onBack={() => setShowTrainerAvail(false)} location={location} isAdmin={seesAllClubs} />
+      ) : showGroupX ? (
+        <GroupXHub
+          onBack={() => setShowGroupX(false)}
+          canEdit={(user?.visible_tools || []).includes('groupX:schedule-edit')}
+          canRecord={(user?.visible_tools || []).includes('groupX:attendance')}
+        />
       ) : showTicketsBoard ? (
         <TicketsBoardView onBack={() => setShowTicketsBoard(false)} user={user} />
       ) : showDriveHub ? (
@@ -669,7 +686,7 @@ export default function App() {
         <TourCheckinQueueView location={location} />
       ) : (
         <main className={`flex-1 flex items-start pt-1 pb-12${press ? ' press-single' : ''}`}>
-          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} cancelInApps={press} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onNps={() => setShowNps(true)} onTourCheckin={() => setShowTourCheckin(true)} onAdsManager={() => setShowAdsManager(true)} onAnalytics={() => { window.location.hash = '#analytics'; setShowAnalytics(true) }} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
+          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} cancelInApps={press} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onNps={() => setShowNps(true)} onGroupX={() => setShowGroupX(true)} onTourCheckin={() => setShowTourCheckin(true)} onAdsManager={() => setShowAdsManager(true)} onAnalytics={() => { window.location.hash = '#analytics'; setShowAnalytics(true) }} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>
