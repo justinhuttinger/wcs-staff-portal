@@ -237,9 +237,9 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
     return () => clearInterval(interval)
   }, [])
 
-  // Apps for this club, URLs already resolved (lib/apps handles the ABC kiosk
-  // shim and Milwaukie's Zoho swap). Still honors the role's
-  // Tool Visibility list, which lib/apps knows nothing about.
+  // Apps for this club, URLs already resolved (lib/apps handles the ABC
+  // kiosk shim and Milwaukie's Zoho swap). Still honors the role's Tool
+  // Visibility list, which lib/apps knows nothing about.
   const clubApps = appsForLocation({ location, abcUrl })
   const visibleApp = (t) => !(visibleTools && visibleTools.length > 0) || visibleTools.includes(t.id)
 
