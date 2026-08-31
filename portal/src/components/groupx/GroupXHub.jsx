@@ -38,8 +38,13 @@ export default function GroupXHub({ onBack, canEdit = false, canRecord = false }
     return (
       <div className="w-full max-w-[1400px] mx-auto px-8 pb-12">
         <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border px-4 py-2.5 mb-3 flex items-center gap-3">
+          {/* NOT .redundant-back: this steps back to the hub's two cards, not
+              out of Group X. The one Back leaves the view entirely, so hiding
+              this would strand you inside the Scheduler with no way up. It was
+              tagged when this screen was written, which is why Press had no way
+              back to the cards either. */}
           <button onClick={() => setSection(null)}
-            className="press-hide-back text-sm text-tile-sub hover:text-text-primary shrink-0">&larr; Group X</button>
+            className="text-sm text-tile-sub hover:text-text-primary shrink-0">&larr; Group X</button>
           <span className="text-border" aria-hidden="true">|</span>
           <h2 className="text-sm font-bold text-text-primary">
             {section === 'schedule' ? 'Class Schedule' : 'Class Attendance'}
@@ -55,7 +60,7 @@ export default function GroupXHub({ onBack, canEdit = false, canRecord = false }
   return (
     <div className="w-full max-w-3xl mx-auto px-8 pb-12">
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
-        <button onClick={onBack} className="press-hide-back text-sm text-tile-sub hover:text-text-primary">&larr; Back</button>
+        <button onClick={onBack} className="redundant-back text-sm text-tile-sub hover:text-text-primary">&larr; Back</button>
         <h2 className="text-lg font-bold text-text-primary mt-3">Group X</h2>
         <p className="text-sm text-tile-sub mt-1">The class schedule, and the headcount for each class that has run.</p>
       </div>

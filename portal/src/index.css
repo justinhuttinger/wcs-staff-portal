@@ -276,13 +276,20 @@ body {
 }
 .press-nav__btn:hover { color: var(--press-red); border-color: var(--press-red); }
 
-/* The nav IS the navigation under Press: its Back chip is the one and only way
-   back, so every view's own back-to-portal button carries .press-hide-back and
-   disappears here. Hidden rather than removed so the other three themes keep
-   theirs. Tag ONLY buttons that leave the view entirely — a back control that
-   steps within a view (HR's sub-views, Drive's breadcrumb) must stay visible,
-   since the nav chip cannot do that job. */
-[data-theme='press'] .press-hide-back { display: none !important; }
+/* There is exactly one Back, and it never moves.
+   Press puts it in the nav; Classic puts it in the header beside the logo, and
+   both are on screen the whole time you are inside a view. A view that also
+   draws its own back-to-portal button gives you two, in two different places,
+   doing the same thing -- and on Tickets, Reporting and Till they did not even
+   look alike. Those buttons carry .redundant-back and are hidden in every
+   theme; they stay in the markup so the views still work anywhere the shared
+   chrome is absent.
+
+   Tag ONLY buttons that leave the view entirely. A back control that steps
+   WITHIN a view (HR's sub-views, Drive's breadcrumb, the Group X hub) has to
+   stay visible: the one Back exits the view completely and cannot do that job,
+   so hiding an inner one strands you a level down. */
+.redundant-back { display: none !important; }
 
 /* Board tiles: square edges, hairline borders, red icon. No lift on hover —
    the site does not float its cards, it inverts them. */

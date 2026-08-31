@@ -450,7 +450,7 @@ function DriveBrowser({ root, onBack }) {
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-4 mb-4 flex items-center gap-3 flex-wrap">
         <button
           onClick={onBack}
-          className="press-hide-back flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-muted hover:text-text-primary hover:border-text-muted transition-colors shrink-0"
+          className="redundant-back flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-muted hover:text-text-primary hover:border-text-muted transition-colors shrink-0"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />

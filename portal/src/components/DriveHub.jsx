@@ -22,7 +22,7 @@ export default function DriveHub({ onBack, onDrive, onMedia, canMedia }) {
   return (
     <div className="w-full max-w-3xl mx-auto px-8 pb-12">
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
-        <button onClick={onBack} className="press-hide-back text-sm text-tile-sub hover:text-text-primary">&larr; Back</button>
+        <button onClick={onBack} className="redundant-back text-sm text-tile-sub hover:text-text-primary">&larr; Back</button>
         <h2 className="text-lg font-bold text-text-primary mt-3">Shared Drive</h2>
         <p className="text-sm text-tile-sub mt-1">Browse the shared files, or search photos and videos by what is in them.</p>
       </div>

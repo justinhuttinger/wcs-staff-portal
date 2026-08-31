@@ -54,7 +54,7 @@ export default function MediaLibraryView({ onBack, userRole }) {
     <div className="w-full max-w-5xl mx-auto px-8 pb-12">
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
         <div className="flex items-center justify-between mb-3">
-          <button onClick={onBack} className="press-hide-back text-sm text-tile-sub hover:text-text-primary">&larr; Back</button>
+          <button onClick={onBack} className="redundant-back text-sm text-tile-sub hover:text-text-primary">&larr; Back</button>
           {userRole === 'admin' && (
             <button onClick={() => reindexMedia().then(() => alert('Reindex started')).catch((e) => alert(e.message))}
               className="text-xs text-tile-sub hover:text-wcs-red">Reindex</button>
