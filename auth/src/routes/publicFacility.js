@@ -12,7 +12,7 @@ const cache = require('../services/memoryCache')
 const { supabaseAdmin } = require('../services/supabase')
 const { clubBySlug } = require('../lib/groupXClubs')
 const { facilityBySlug } = require('../lib/facilities')
-const facilityLocations = require('../lib/facilityLocations')
+const clubFeatures = require('../lib/clubFeatures')
 const { currentPacificDate, mondayOf, buildDays, windowEnd, publicCacheKey } = require('../lib/groupXPublic')
 const { renderBoardHtml } = require('../templates/groupXBoard')
 
@@ -86,7 +86,7 @@ router.get('/schedule', async (req, res) => {
   try {
     // A club without a pool has no pool schedule. 404 rather than an empty
     // week, which reads as "nothing booked" instead of "there is no pool".
-    if (!await facilityLocations.isEnabled(r.club.clubNumber, r.facility.slug)) {
+    if (!await clubFeatures.isEnabled(r.club.clubNumber, r.facility.slug)) {
       return res.status(404).json({ error: 'unknown club or facility' })
     }
     res.set('Cache-Control', 'public, max-age=300')
@@ -99,7 +99,7 @@ router.get('/schedule', async (req, res) => {
 
 router.get('/board', async (req, res) => {
   const r = resolve(req)
-  if (r && !await facilityLocations.isEnabled(r.club.clubNumber, r.facility.slug).catch(() => true)) {
+  if (r && !await clubFeatures.isEnabled(r.club.clubNumber, r.facility.slug).catch(() => true)) {
     return res.status(404).type('html').send('<!doctype html><meta charset="utf-8"><title>Not found</title><body style="font-family:system-ui;padding:2rem">This club does not have that facility.</body>')
   }
   if (!r) {

@@ -146,6 +146,7 @@ function ClassRow({ c, onClick }) {
 // now lives in Admin -> Group X, with the boards and the badges.
 export default function GroupXAttendanceView({ canRecord = false }) {
   const [clubs, setClubs] = useState([])
+  const [loadedClubs, setLoadedClubs] = useState(false)
   const [club, setClub] = useState(null)
   const [classes, setClasses] = useState([])
   const [loading, setLoading] = useState(false)
@@ -154,8 +155,12 @@ export default function GroupXAttendanceView({ canRecord = false }) {
 
   useEffect(() => {
     api('/group-x/clubs')
-      .then(r => { setClubs(r.clubs); setClub(r.clubs[0]) })
-      .catch(e => setError(e.message))
+      .then(r => {
+        setClubs(r.clubs || [])
+        setClub((r.clubs || [])[0] || null)
+        setLoadedClubs(true)
+      })
+      .catch(e => { setError(e.message); setLoadedClubs(true) })
   }, [])
 
   const load = useCallback(async () => {
@@ -190,7 +195,9 @@ export default function GroupXAttendanceView({ canRecord = false }) {
   if (!club) {
     return (
       <div className="bg-surface rounded-xl border border-border p-6 text-sm text-text-muted">
-        {error ? `Could not load clubs: ${error}` : 'Loading...'}
+        {error ? `Could not load clubs: ${error}`
+          : loadedClubs && !clubs.length ? 'Group X is not set up at your club. An admin can turn it on in Admin - Group X - Clubs.'
+          : 'Loading...'}
       </div>
     )
   }

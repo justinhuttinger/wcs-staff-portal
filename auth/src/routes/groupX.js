@@ -37,6 +37,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole, roleLevel } = require('../middleware/role')
 const { requireTile } = require('../middleware/tile')
 const { allowedClubsFor } = require('../lib/groupXScope')
+const clubFeatures = require('../lib/clubFeatures')
 
 const router = Router()
 router.use(authenticate)
@@ -58,7 +59,13 @@ router.use(requirePerm('groupX'))
 // req.gxClubs rather than the full CLUBS list.
 router.use(async (req, res, next) => {
   try {
-    req.gxClubs = await allowedClubsFor(req.staff)
+    // Two narrowings, and both matter. allowedClubsFor answers "may this person
+    // see it"; clubsWith answers "does this club run it at all". A club with
+    // Group X switched off should not appear even for an admin who can see
+    // every club.
+    const mine = await allowedClubsFor(req.staff)
+    const map = await clubFeatures.loadMap()
+    req.gxClubs = clubFeatures.clubsWith(map, mine, clubFeatures.GROUP_X)
     next()
   } catch (err) {
     console.error('[groupX] club scope failed:', err.message)

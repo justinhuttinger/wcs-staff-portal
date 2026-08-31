@@ -56,7 +56,12 @@ export default function FacilityView({ canEdit = false, showBoardLinks = false }
   useEffect(() => {
     api('/facility-schedule/facilities')
       .then(r => {
-        setClubs(r.clubs); setClub(r.clubs[0])
+        const list = r.clubs || []
+        setClubs(list)
+        // Prefer a club that has a facility. Falling back to list[0] keeps the
+        // "none of my clubs have one" case on a real club, so the message
+        // above can name it.
+        setClub(list.find(c => !Array.isArray(c.facilities) || c.facilities.length) || list[0] || null)
         setAllFacilities(r.facilities)
       })
       .catch(e => setError(e.message))
@@ -130,10 +135,37 @@ export default function FacilityView({ canEdit = false, showBoardLinks = false }
     } catch (e) { setError(e.message) } finally { setBusy(false) }
   }
 
+  // Three different states used to render as "Loading..." forever. A manager
+  // covering one club with a pool and one without lands on whichever club sorts
+  // first; if that is the one with neither facility, there is nothing to select
+  // and the screen used to hang. Say which it is.
   if (!club || !facility) {
+    const message = error ? `Could not load: ${error}`
+      : !clubs.length ? 'No clubs are assigned to you yet. Ask an admin to add one.'
+      : !club ? 'Loading...'
+      : !facilities.length ? `${club.name} does not have courts or a pool set up. Pick another club above, or turn one on in Admin - Courts & Pool.`
+      : 'Loading...'
     return (
-      <div className="bg-surface rounded-xl border border-border p-6 text-sm text-text-muted">
-        {error ? `Could not load: ${error}` : 'Loading...'}
+      <div className="space-y-4">
+        {/* The club pills stay reachable, or a manager with a second club that
+            DOES have a pool has no way to get to it. */}
+        {clubs.length > 1 && (
+          <div className="bg-surface rounded-xl border border-border px-3 py-2.5 flex flex-wrap items-center gap-1.5">
+            {clubs.map(c => (
+              <button key={c.slug} type="button" onClick={() => setClub(c)}
+                className={`px-3 py-1.5 text-sm rounded-lg border transition ${
+                  club && c.slug === club.slug
+                    ? 'bg-wcs-red text-white border-wcs-red font-medium'
+                    : 'border-border text-text-primary hover:bg-bg'
+                }`}>
+                {c.name}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="bg-surface rounded-xl border border-border p-6 text-sm text-text-muted">
+          {message}
+        </div>
       </div>
     )
   }

@@ -16,9 +16,9 @@
  */
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
-const { CLUBS, isKnownClubNumber } = require('../lib/groupXClubs')
+const { isKnownClubNumber } = require('../lib/groupXClubs')
 const { FACILITIES, isKnownFacility } = require('../lib/facilities')
-const facilityLocations = require('../lib/facilityLocations')
+const clubFeatures = require('../lib/clubFeatures')
 const { DATE_RE, buildLocalTimestamp } = require('../lib/abcTime')
 const { expandSeries, MAX_OCCURRENCES } = require('../lib/groupXSeries')
 const { durationBetween, OPEN_ENDED_HORIZON_DAYS } = require('../lib/scheduleTimes')
@@ -26,7 +26,7 @@ const { padDate, toIsoDate } = require('../lib/abcTime')
 const { publicCacheKeysForDates } = require('../lib/groupXPublic')
 const memoryCache = require('../services/memoryCache')
 const authenticate = require('../middleware/auth')
-const { roleLevel, requireRole } = require('../middleware/role')
+const { roleLevel } = require('../middleware/role')
 const { requireTile } = require('../middleware/tile')
 const { allowedClubsFor } = require('../lib/groupXScope')
 
@@ -108,67 +108,15 @@ function cleanTitle(v) {
 // scoping here scopes the whole screen.
 router.get('/facilities', async (req, res) => {
   try {
-    const map = await facilityLocations.loadMap()
+    const map = await clubFeatures.loadMap()
     res.json({
       facilities: FACILITIES,
       clubs: (req.fxClubs || []).map(c => ({
         ...c,
-        facilities: facilityLocations.facilitiesFor(map, c.clubNumber, FACILITIES).map(f => f.slug),
+        facilities: clubFeatures.facilitiesFor(map, c.clubNumber, FACILITIES).map(f => f.slug),
       })),
     })
   } catch (err) { fail(res, err, '/facilities') }
-})
-
-// ---------------------------------------------------------------------------
-// Which clubs have which facility. Admin only: switching one off takes a board
-// off a wall.
-// ---------------------------------------------------------------------------
-
-router.get('/locations', requireRole('admin'), async (req, res) => {
-  try {
-    const map = await facilityLocations.loadMap()
-    res.json({
-      facilities: FACILITIES,
-      clubs: CLUBS,
-      // A flat list of every pair, so the UI never has to guess a default.
-      rows: CLUBS.flatMap(c => FACILITIES.map(f => ({
-        club_number: c.clubNumber,
-        club_name: c.name,
-        facility: f.slug,
-        facility_label: f.label,
-        enabled: facilityLocations.enabledIn(map, c.clubNumber, f.slug),
-      }))),
-    })
-  } catch (err) { fail(res, err, 'GET /locations') }
-})
-
-router.put('/locations', requireRole('admin'), async (req, res) => {
-  const b = req.body || {}
-  if (!isKnownClubNumber(b.club_number)) {
-    return res.status(400).json({ error: 'valid club_number is required' })
-  }
-  if (!isKnownFacility(b.facility)) {
-    return res.status(400).json({ error: 'unknown facility' })
-  }
-  if (typeof b.enabled !== 'boolean') {
-    return res.status(400).json({ error: 'enabled must be true or false' })
-  }
-  try {
-    // Whole row: a partial upsert fails NOT NULL columns even on an existing
-    // row, which has broken writes in this codebase before.
-    const { error } = await supabaseAdmin
-      .from('facility_locations')
-      .upsert({
-        club_number: String(b.club_number),
-        facility: String(b.facility),
-        enabled: b.enabled,
-        updated_by: req.user?.email || 'unknown',
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'club_number,facility' })
-    if (error) throw new Error(error.message)
-    facilityLocations.invalidate()
-    res.json({ ok: true })
-  } catch (err) { fail(res, err, 'PUT /locations') }
 })
 
 // GET /facility-schedule/events?club_number=&facility=&start=&end=

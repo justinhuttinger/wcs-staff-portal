@@ -3,6 +3,7 @@ import { api } from '../../lib/api'
 import BoardLinks from './BoardLinks'
 import NewClassBadges from './NewClassBadges'
 import GroupXReport from './GroupXReport'
+import ClubFeatureGrid from '../admin/ClubFeatureGrid'
 
 // Group X, from the admin side.
 //
@@ -44,6 +45,7 @@ export default function GroupXAdminView() {
     ['boards', 'Boards & embeds', 'The TV links and the website iframe, per club'],
     ['badges', 'New class badges', 'What wears a NEW pill, and until when'],
     ['history', 'History', 'Headcounts by class and instructor, across clubs'],
+    ['clubs', 'Clubs', 'Which clubs run Group X at all'],
   ]
 
   if (!club) {
@@ -96,6 +98,13 @@ export default function GroupXAdminView() {
       {tab === 'boards' && <BoardLinks clubs={clubs} />}
       {tab === 'badges' && <NewClassBadges club={club} classTypes={classTypes} />}
       {tab === 'history' && <GroupXReport clubs={clubs} />}
+      {tab === 'clubs' && (
+        <ClubFeatureGrid
+          features={['groupx']}
+          title="Which clubs run Group X"
+          blurb="Every club runs it today. Switching one off hides the Group X tile for its staff and makes its board 404 instead of showing an empty week. Nothing is deleted - classes already on the ABC calendar stay, and come back if you switch it on again."
+        />
+      )}
     </div>
   )
 }

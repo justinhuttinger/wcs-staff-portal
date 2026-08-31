@@ -15,6 +15,7 @@ const { Router } = require('express')
 const abc = require('../services/abcGroupX')
 const cache = require('../services/memoryCache')
 const { clubBySlug } = require('../lib/groupXClubs')
+const clubFeatures = require('../lib/clubFeatures')
 const { markNewClasses } = require('../lib/groupXNewClasses')
 const { supabaseAdmin } = require('../services/supabase')
 const { currentPacificDate, mondayOf, buildDays, windowEnd, publicCacheKey } = require('../lib/groupXPublic')
@@ -82,6 +83,11 @@ router.get('/schedule', async (req, res) => {
   const r = resolve(req)
   if (!r) return res.status(404).json({ error: 'unknown club' })
   try {
+    // A club that does not run Group X has no Group X schedule. 404 rather
+    // than an empty week, which reads as "nothing on" instead of "not here".
+    if (!await clubFeatures.isEnabled(r.club.clubNumber, clubFeatures.GROUP_X)) {
+      return res.status(404).json({ error: 'unknown club' })
+    }
     res.set('Cache-Control', 'public, max-age=300')
     res.json(await loadWeek(r.club, r.start))
   } catch (err) {
@@ -90,8 +96,11 @@ router.get('/schedule', async (req, res) => {
   }
 })
 
-router.get('/board', (req, res) => {
+router.get('/board', async (req, res) => {
   const r = resolve(req)
+  if (r && !await clubFeatures.isEnabled(r.club.clubNumber, clubFeatures.GROUP_X).catch(() => true)) {
+    return res.status(404).type('html').send('<!doctype html><meta charset="utf-8"><title>Unknown club</title><body style="font-family:system-ui;padding:2rem">This club does not run Group X.</body>')
+  }
   if (!r) {
     return res.status(404).type('html').send('<!doctype html><meta charset="utf-8"><title>Unknown club</title><body style="font-family:system-ui;padding:2rem">Unknown club.</body>')
   }
