@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react'
-import { LOCATION_OPTIONS as LOCATIONS } from '../config/locations'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { LOCATION_OPTIONS as LOCATIONS, LOCATION_NAMES } from '../config/locations'
+import { getAppSettings } from '../lib/api'
+import { isReportVisible } from './analyticsReportCatalogue'
 import LocationMultiSelect from './LocationMultiSelect'
 import SalespersonPerformance from './analytics/SalespersonPerformance'
 import Topline from './analytics/Topline'
@@ -271,7 +273,7 @@ const ANALYTICS_REPORTS = [
 //
 // Keys that do not (yet) exist in ANALYTICS_REPORTS are ignored rather than
 // rendering a dead link, so a group can name a report that ships later.
-const REPORT_GROUPS = [
+export const REPORT_GROUPS = [
   { key: 'marketing', label: 'Marketing',     reports: ['lead-sources'] },
   { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-trends', 'member-journey', 'checkins'] },
   { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due', 'pos-sales', 'revenue'] },
@@ -280,6 +282,14 @@ const REPORT_GROUPS = [
   // Club-wide overviews first, then the one-person-at-a-time cards.
   { key: 'snapshots', label: 'Snapshots',     reports: ['daily-snapshot', 'club-snapshot', 'pt-snapshot', 'salesperson-snapshot', 'trainer-snapshot'] },
 ]
+
+/**
+ * The registry without its components, for the Admin visibility grid.
+ *
+ * Derived here rather than retyped there, so a report added above appears in
+ * the grid automatically and can never be toggled into a key nothing reads.
+ */
+export const REPORT_META = ANALYTICS_REPORTS.map(r => ({ key: r.key, label: r.label }))
 
 // Pinned above the groups, in this order, outside any category.
 const PINNED_REPORTS = ['kpis', 'problem-areas', 'topline', 'club-activity']
@@ -358,6 +368,33 @@ export default function AnalyticsView({ user, onBack, location, isAdmin }) {
   const [endDate, setEndDate] = useState(initialRange.end)
   const [activeQuick, setActiveQuick] = useState('this_month')
   const [locationSlug, setLocationSlug] = useState('all')
+
+  // Per-club report visibility, set in Admin. Loaded once: it changes about
+  // never, and a report list that flickers as settings arrive is worse than one
+  // that starts complete and narrows.
+  const [visibility, setVisibility] = useState(null)
+  useEffect(() => {
+    let alive = true
+    getAppSettings('report_off_')
+      .then(map => { if (alive) setVisibility(map || {}) })
+      // A failed load leaves visibility null, which shows everything. Hiding
+      // reports because a settings call failed would be the worse error.
+      .catch(() => { if (alive) setVisibility({}) })
+    return () => { alive = false }
+  }, [])
+
+  // The clubs the visibility rule is evaluated against. 'all' means every club,
+  // not "no filter" — otherwise selecting All would bypass the toggles entirely.
+  const scopedSlugs = useMemo(() => (
+    locationSlug === 'all'
+      ? LOCATION_NAMES.map(n => n.toLowerCase())
+      : String(locationSlug).split(',').map(x => x.trim()).filter(Boolean)
+  ), [locationSlug])
+
+  const canSee = useCallback(
+    (key) => isReportVisible(visibility, key, scopedSlugs),
+    [visibility, scopedSlugs]
+  )
   // Every group starts collapsed, as asked. Opening one is a per-visit choice,
   // not something worth persisting.
   const [openGroups, setOpenGroups] = useState(() => new Set())
@@ -403,6 +440,15 @@ export default function AnalyticsView({ user, onBack, location, isAdmin }) {
     else setEndDate(value)
   }
 
+  // A report hidden by a club change must not leave a blank pane behind: fall
+  // back to the default rather than rendering nothing and looking broken.
+  useEffect(() => {
+    if (!visibility || !activeReport) return
+    if (canSee(activeReport)) return
+    const fallback = [...PINNED_REPORTS, ...ANALYTICS_REPORTS.map(r => r.key)].find(canSee)
+    if (fallback) setActiveReport(fallback)
+  }, [visibility, activeReport, canSee])
+
   const active = ANALYTICS_REPORTS.find(r => r.key === activeReport) || null
   const showDateControls = active ? active.dates !== false : true
   const ActiveComponent = active?.Component || null
@@ -432,7 +478,7 @@ export default function AnalyticsView({ user, onBack, location, isAdmin }) {
           </div>
           {/* Topline first, then anything not filed under a group. */}
           <ul className="space-y-0.5">
-            {[...PINNED_REPORTS, ...ungroupedReports()]
+            {[...PINNED_REPORTS, ...ungroupedReports()].filter(canSee)
               .map(key => reportByKey[key])
               .filter(Boolean)
               .map(r => (
@@ -446,7 +492,12 @@ export default function AnalyticsView({ user, onBack, location, isAdmin }) {
             const reports = group.reports.map(k => reportByKey[k]).filter(Boolean)
             if (reports.length === 0) return null
             const open = openGroups.has(group.key)
-            const holdsActive = reports.some(r => r.key === activeReport)
+            const visible = reports.filter(r => canSee(r.key))
+            // A section whose every report is hidden for these clubs is not an
+            // empty section, it is not a section — rendering the header would
+            // promise something behind it.
+            if (visible.length === 0) return null
+            const holdsActive = visible.some(r => r.key === activeReport)
             return (
               <div key={group.key} className="mt-2">
                 <button
@@ -468,7 +519,7 @@ export default function AnalyticsView({ user, onBack, location, isAdmin }) {
                 </button>
                 {open && (
                   <ul className="space-y-0.5 mt-0.5">
-                    {reports.map(r => (
+                    {visible.map(r => (
                       <li key={r.key}>
                         <ReportLink report={r} active={activeReport === r.key} onSelect={navigateToReport} indented />
                       </li>
