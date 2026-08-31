@@ -23,6 +23,7 @@ import NpsView from './components/nps/NpsView'
 import TourCheckinQueueView from './components/TourCheckinQueueView'
 import AdsManagerView from './components/AdsManagerView'
 import AnalyticsView from './components/AnalyticsView'
+import ProfileView from './components/ProfileView'
 import GlobalProgressBar from './components/GlobalProgressBar'
 import PortalNav from './components/PortalNav'
 import PinPicker from './components/PinPicker'
@@ -81,6 +82,7 @@ export default function App() {
   const [showTourCheckin, setShowTourCheckin] = useState(false)
   const [showAdsManager, setShowAdsManager] = useState(false)
   const [showAnalytics, setShowAnalytics] = useState(false)
+  const [showProfile, setShowProfile] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
   const [locationOverride, setLocationOverride] = useState(() => localStorage.getItem('wcs_location_override') || '')
   // Press theme swaps the classic header for a persistent top nav (PortalNav).
@@ -272,6 +274,7 @@ export default function App() {
     function onHashChange() {
       setShowReporting(window.location.hash.startsWith('#reporting'))
       setShowAnalytics(window.location.hash.startsWith('#analytics'))
+      setShowProfile(window.location.hash.startsWith('#profile'))
     }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
@@ -370,7 +373,7 @@ export default function App() {
     )
   }
 
-  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms && !showNps && !showTourCheckin && !showAdsManager && !showAnalytics
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms && !showNps && !showTourCheckin && !showAdsManager && !showAnalytics && !showProfile
 
   function exitImpersonation() {
     setImpersonateId(null)
@@ -400,6 +403,7 @@ export default function App() {
     setShowNps(false)
     setShowTourCheckin(false)
     setShowAnalytics(false)
+    setShowProfile(false)
     if (window.location.hash) window.location.hash = ''
   }
 
@@ -619,6 +623,8 @@ export default function App() {
       <div className="relative z-10 flex-1 flex flex-col">
       {showAdmin ? (
         <AdminPanel onBack={() => setShowAdmin(false)} isElectron={isElectron} onLocationChange={(loc) => { setLocationOverride(loc); localStorage.setItem('wcs_location_override', loc) }} userRole={user?.staff?.role} />
+      ) : showProfile ? (
+        <ProfileView user={user} />
       ) : showCalendar ? (
         <CalendarView user={user} onBack={() => setShowCalendar(false)} location={location} isAdmin={isAdmin} />
       ) : showTrainerAvail ? (
