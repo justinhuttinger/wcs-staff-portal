@@ -1316,11 +1316,11 @@ export const forms = {
 }
 
 // NPS report — scores, metrics, response rates and the comment feed
-export async function npsReport({ startDate, endDate, locationSlug, combine }) {
+export async function npsReport({ startDate, endDate, locationSlug, combine }, options = {}) {
   const params = new URLSearchParams({ start: startDate, end: endDate })
   if (locationSlug && locationSlug !== 'all') params.set('location_slug', locationSlug)
   if (combine) params.set('combine', 'true')
-  return api('/reports/nps?' + params.toString())
+  return api('/reports/nps?' + params.toString(), options)
 }
 
 // NPS / member feedback — admin survey management + manual test fire
