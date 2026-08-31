@@ -75,14 +75,7 @@ async function reconcileLocation(loc) {
     if (!live.ghl_contact_id || !live.scheduled_date) continue
     const stored = byGhlId[evt.id]
 
-    if (stored) {
-      for (const e of diffAppointment(stored, live)) {
-        historyRows.push({ ...e, appointment_id: stored.id, detected_by: 'reconciler' })
-      }
-      updated++
-    } else {
-      inserted++
-    }
+    if (stored) updated++; else inserted++
 
     // Whole rows only. A partial upsert always fails the NOT NULL columns on an
     // insert, which is the trap that produced #473.
@@ -133,6 +126,23 @@ async function reconcileLocation(loc) {
     if (!row.booked_by_name) {
       const booker = bookerFromEvent(evt, usersById)
       if (booker) Object.assign(row, booker)
+    }
+    // History is diffed against the row we are about to WRITE, never against
+    // raw GHL state.
+    //
+    // Diffing against live looked equivalent and was not. Once an outcome is
+    // recorded the status becomes sticky, so a row saying Completed while GHL
+    // says cancelled differs from live on every single pass. The write was
+    // correctly suppressed and the EVENT was not, so three rows logged a state
+    // change every fifteen minutes for three days: 1,043 events describing
+    // changes that never happened.
+    //
+    // Diffing against `row` makes the history mean what it says: an event
+    // exists only when something actually changed.
+    if (stored) {
+      for (const e of diffAppointment(stored, row)) {
+        historyRows.push({ ...e, appointment_id: stored.id, detected_by: 'reconciler' })
+      }
     }
     rows.push(row)
   }

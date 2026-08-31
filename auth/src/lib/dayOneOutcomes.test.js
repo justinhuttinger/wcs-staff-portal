@@ -580,3 +580,26 @@ test('such a row is still offered to the trainer', () => {
   assert.deepEqual(pickOpenAppointments(rows, NOW).map(r => r.id), ['ghost'],
     'the substance says nobody has said what happened yet')
 })
+
+// --- the diff must describe what was WRITTEN, not what GHL said -------------
+
+test('a sticky status produces no event, because nothing changed', () => {
+  // Once an outcome is recorded the reconciler keeps the stored status. If the
+  // diff is taken against the row it is about to write, there is no difference
+  // and so no event. Diffing against raw GHL state instead logged a change
+  // every fifteen minutes for three days on three rows.
+  const stored = { status: 'completed', outcome_recorded_at: '2026-08-28T18:00:00Z',
+                   scheduled_start: '2026-08-28T17:00:00Z', trainer_ghl_user_id: 'u1' }
+  const written = { ...stored }   // status preserved by the sticky rule
+  assert.deepEqual(diffAppointment(stored, written), [])
+})
+
+test('a real cancellation still produces exactly one event', () => {
+  const stored = { status: 'scheduled', scheduled_start: '2026-08-28T17:00:00Z' }
+  const written = { status: 'cancelled', scheduled_start: '2026-08-28T17:00:00Z' }
+  const events = diffAppointment(stored, written)
+  assert.equal(events.length, 1)
+  assert.equal(events[0].event_type, 'cancelled')
+  // And re-running against the now-cancelled row produces nothing further.
+  assert.deepEqual(diffAppointment(written, written), [])
+})
