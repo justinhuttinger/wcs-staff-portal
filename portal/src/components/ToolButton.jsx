@@ -56,9 +56,6 @@ export default function ToolButton({ label, description, icon, emoji, url, star 
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      // Search haystack for the Spotlight theme's board search (PortalSearch
-      // filters on this attribute rather than re-rendering the board).
-      data-tile-search={`${label || ''} ${description || ''} app external`.toLowerCase()}
       className="portal-tile group relative flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)] no-underline"
     >
       {star && (

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import ToolButton from './ToolButton'
 import { PORTAL_TILE_CATALOG } from '../config/portalTiles'
-import PortalSearch from './PortalSearch'
 import ActionPopup from './ActionPopup'
 import { getTheme, THEME_EVENT } from '../lib/theme'
 import { appsForLocation } from '../lib/apps'
@@ -53,8 +52,6 @@ function SvgTileButton({ onClick, iconPath, label, desc, badge, star }) {
   return (
     <button
       onClick={onClick}
-      // Search haystack for the Spotlight theme's board search — see PortalSearch.
-      data-tile-search={`${label || ''} ${desc || ''} tool internal`.toLowerCase()}
       className="portal-tile group relative flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-8 min-h-[160px] cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
     >
       {star && (
@@ -123,10 +120,7 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
   const [dayoneUrl, setDayoneUrl] = useState(null)
   const [vipUrl, setVipUrl] = useState(null)
   const [actionPopup, setActionPopup] = useState(null) // { title, url } or null
-  // Spotlight theme adds board search + a staggered reveal. Everything else
-  // about the board is identical across themes.
   const [theme, setThemeState] = useState(getTheme)
-  const spotlight = theme === 'spotlight'
   const press = theme === 'press'
   // `only` lets the Press theme give each column its own tab — 'apps' or
   // 'tools' — without duplicating any of the role, location and custom-tile
@@ -143,20 +137,10 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
     return () => window.removeEventListener(THEME_EVENT, onChange)
   }, [])
 
-  // Stamp each tile's position so the reveal can stagger without every call
-  // site having to thread an index through. Cheap: a few dozen nodes.
-  useEffect(() => {
-    if (!spotlight) return
-    document.querySelectorAll('.portal-tile').forEach((el, i) => {
-      el.style.setProperty('--tile-i', String(i))
-    })
-  })
-
   // Press sorts both boards alphabetically. The tiles are a long sequence of
   // JSX conditionals rather than a list, so sorting the source would mean
   // restructuring the whole render; instead each grid is sorted after paint by
-  // setting CSS `order`, which grid honors. Same trick PortalSearch already
-  // uses to filter the board without threading a query through every branch.
+  // setting CSS `order`, which grid honors.
   //
   // No dep array on purpose: tiles arrive asynchronously (custom tiles, badge
   // counts) and every render re-sorts, which is self-correcting and cheap at a
@@ -371,7 +355,6 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
     if (showMarketingTracker && only !== 'apps' && !omitted.has('marketingTracker')) cells.push(tile('marketingTracker'))
     return (
       <div className="w-full max-w-4xl mx-auto px-8 pt-4">
-        {spotlight && <PortalSearch />}
         <p className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-3 shadow-sm">
           {userName ? `${userName}'s Portal` : 'Portal'}
         </p>
@@ -427,9 +410,6 @@ export default function ToolGrid({ only, exclude, cancelInApps, driveInTools, ab
 
   return (
     <div className="w-full px-4 mx-auto">
-      {/* Search sits above the board in every Spotlight variant, and is never
-          optional. Classic and WP keep the board exactly as it was. */}
-      {spotlight && <PortalSearch />}
       {/* Top banner row — Action buttons (Apps side) + Score Card (Tools side) */}
       {leaderboardData && !hideScoreCard && !only && (() => {
         const totalAtLocation = leaderboardData.total_staff || totalStaff
