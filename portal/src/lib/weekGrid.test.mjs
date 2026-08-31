@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   startOfWeek, addDays, toISODate, fmtHour, fmtTime12, parseLocalTimestamp, layoutLanes,
-  DAY_START_HOUR, DAY_END_HOUR, GRID_HEIGHT_PX, displayClassName, durationLabel,
+  DAY_START_HOUR, DAY_END_HOUR, GRID_HEIGHT_PX, displayClassName, durationLabel, dayWindow,
 } from './weekGrid.js'
 
 test('startOfWeek anchors to Sunday', () => {
@@ -112,4 +112,46 @@ test('durationLabel speaks up only for non-standard lengths', () => {
   assert.equal(durationLabel(null), null)
   assert.equal(durationLabel(0), null)
   assert.equal(durationLabel('30'), '30 min')
+})
+
+// --- dayWindow -------------------------------------------------------------
+// The defaults are a floor, not a cap: a class outside 6am-10pm used to be
+// positioned at a negative offset and clipped away entirely.
+
+test('dayWindow keeps the default window for an ordinary week', () => {
+  const w = dayWindow([{ event_timestamp_local: '2026-09-01 09:00', duration_minutes: 60 }])
+  assert.equal(w.startHour, 6)
+  assert.equal(w.endHour, 22)
+})
+
+test('dayWindow grows down for a 5am class', () => {
+  const w = dayWindow([{ event_timestamp_local: '2026-09-01 05:00', duration_minutes: 60 }])
+  assert.equal(w.startHour, 5)
+  assert.equal(w.endHour, 22)
+})
+
+test('dayWindow floors a part-hour start', () => {
+  const w = dayWindow([{ event_timestamp_local: '2026-09-01 05:30', duration_minutes: 60 }])
+  assert.equal(w.startHour, 5)
+})
+
+test('dayWindow grows up for a class running past the end', () => {
+  const w = dayWindow([{ event_timestamp_local: '2026-09-01 21:30', duration_minutes: 90 }])
+  assert.equal(w.endHour, 23)
+})
+
+test('dayWindow treats a missing duration as an hour', () => {
+  const w = dayWindow([{ event_timestamp_local: '2026-09-01 22:30' }])
+  assert.equal(w.endHour, 24)
+})
+
+test('dayWindow never runs past midnight', () => {
+  const w = dayWindow([{ event_timestamp_local: '2026-09-01 23:30', duration_minutes: 120 }])
+  assert.equal(w.endHour, 24)
+})
+
+test('dayWindow ignores unparseable rows and empty input', () => {
+  assert.deepEqual(dayWindow([{ event_timestamp_local: 'nonsense' }]), { startHour: 6, endHour: 22 })
+  assert.deepEqual(dayWindow([]), { startHour: 6, endHour: 22 })
+  assert.deepEqual(dayWindow(undefined), { startHour: 6, endHour: 22 })
 })
