@@ -67,9 +67,19 @@ function EventBlock({ ev }) {
 //
 // Sized in inches against the printable area rather than in pixels, because
 // this lands on paper and every other measurement in this sheet is already an
-// inch. GRID_HEIGHT_IN is what is left of a landscape page after the header.
+// inch.
+//
+// The budget, which has to hold or the sheet runs onto a second page:
+//   landscape page 8.5in - .8in margins = 7.7in
+//   - .85in header and its margin
+//   - .24in day-name row
+//   = 6.61in, of which 6.4 is used and .21in stays as slack.
+// The .24in day-name row is stated in PrintScheduleStyles rather than
+// inherited, because the hour rail's spacer has to match it exactly -- a
+// difference of a hundredth of an inch there offsets every hour label on the
+// page. Change one and change the other.
 // ---------------------------------------------------------------------------
-const GRID_HEIGHT_IN = 6.55
+const GRID_HEIGHT_IN = 6.4
 
 // A block shorter than this cannot fit three lines of 8.5pt text, so the
 // instructor is dropped rather than clipped mid-word.
