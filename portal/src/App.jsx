@@ -31,7 +31,7 @@ import UserMenu from './components/UserMenu'
 import PinPicker from './components/PinPicker'
 import QuickActions from './components/QuickActions'
 import PointsChip from './components/PointsChip'
-import { getTheme, THEME_EVENT, getBackgroundPrefs } from './lib/theme'
+import { getTheme, THEME_EVENT, getBackgroundPrefs, DEFAULT_BACKGROUND, DEFAULT_BACKGROUND_DIM } from './lib/theme'
 import { getPinned, togglePin, PINNED_EVENT } from './lib/pinnedTabs'
 import { useOpenTicketCount } from './lib/useOpenTicketCount'
 import { hydrateUiPrefs, startUiPrefsSync } from './lib/uiPrefs'
@@ -346,6 +346,11 @@ export default function App() {
     setShowCommunicationNotes(false)
     setShowHR(false)
     setShowForms(false)
+    // Clear personal background state so it cannot bleed into the next
+    // person's session on a shared kiosk. hydrateUiPrefs() re-applies the
+    // next signed-in user's real prefs once it resolves.
+    setBackgroundUrl(null)
+    setBgPrefs({ background: DEFAULT_BACKGROUND, backgroundDim: DEFAULT_BACKGROUND_DIM })
     // Notify Electron main process about logout
     if (window.wcsElectron) {
       window.wcsElectron.onLogout()
@@ -390,15 +395,16 @@ export default function App() {
       ? (backgroundUrl || clubPhoto)
       : clubPhoto
   // Press is a white-ground theme; the full-bleed photo and its scrim cannot
-  // coexist with it. The login screen keeps the club photo either way — that
-  // is the one place it still reads as the site's look.
+  // coexist with it. The login screen keeps the club photo either way — it
+  // never consults personal prefs, so it is the one place that always reads
+  // as the kiosk's own look, not whoever signed in last.
   const shellBg = press ? null : bgImage
 
   if (!user) {
     if (kioskMode === 'dayone') {
       return <div className="min-h-screen bg-bg flex items-center justify-center"><p className="text-text-muted text-sm">Loading Day One Tracker...</p></div>
     }
-    return <LoginScreen onLogin={handleLogin} bgImage={bgImage} />
+    return <LoginScreen onLogin={handleLogin} bgImage={clubPhoto} />
   }
 
   // Kiosk mode: show only Day One Tracker, no header/navigation
