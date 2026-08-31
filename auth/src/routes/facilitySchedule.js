@@ -26,7 +26,7 @@ const { padDate, toIsoDate } = require('../lib/abcTime')
 const { publicCacheKeysForDates } = require('../lib/groupXPublic')
 const memoryCache = require('../services/memoryCache')
 const authenticate = require('../middleware/auth')
-const { roleLevel } = require('../middleware/role')
+const { roleLevel, requireRole } = require('../middleware/role')
 const { requireTile } = require('../middleware/tile')
 const { allowedClubsFor } = require('../lib/groupXScope')
 
