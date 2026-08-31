@@ -110,6 +110,61 @@ export default function PrintScheduleStyles({ orientation }) {
       }
       .ps--colored .ps-ev__who { font-size: 7.5pt; color: rgba(255, 255, 255, .92); }
 
+      /* ---- Time-positioned landscape grid (Group X) ------------------- */
+      /* The wall sheet as a calendar: an hour rail down the left, a column per
+         day, blocks placed against the clock. A gap between classes prints as
+         a gap, which is the point -- stacked blocks made a 6am and a 10am
+         class look like they ran back to back.
+
+         The rail's spacer must match the day-header height exactly or every
+         hour label sits off by that much for the whole page, so the header
+         gets a stated height rather than an inherited one. */
+      .ps-week--grid {
+        display: grid;
+        grid-template-columns: .42in repeat(7, 1fr);
+        gap: 0 .07in;
+      }
+      .ps--colored .ps-week--grid .ps-day__name,
+      .ps-week--grid .ps-rail__spacer { height: .24in; }
+
+      .ps-rail__body { position: relative; }
+      .ps-rail__hour {
+        position: absolute; right: .04in;
+        transform: translateY(-50%);
+        font-size: 6.5pt; font-weight: 700; color: #333;
+        font-variant-numeric: tabular-nums; white-space: nowrap;
+      }
+
+      .ps-week--grid .ps-day {
+        border: 1px solid #d4d4d4; border-radius: 5px; overflow: hidden;
+        break-inside: avoid; page-break-inside: avoid;
+        display: flex; flex-direction: column;
+      }
+      .ps-week--grid .ps-day__name {
+        background: #f1f1ef; border-bottom: 1px solid #d4d4d4;
+        padding: .04in .06in; font-size: 9pt;
+        display: flex; align-items: center;
+      }
+      .ps-week--grid .ps-day__body { position: relative; padding: 0; }
+      .ps-hourline {
+        position: absolute; left: 0; right: 0;
+        border-top: 1px solid #ededed;
+      }
+
+      .ps-block {
+        position: absolute; overflow: hidden;
+        color: #fff; border: 1px solid; border-radius: 3px;
+        padding: .015in .04in;
+        line-height: 1.15;
+      }
+      .ps-block > span { display: block; }
+      .ps-block .ps-ev__time { font-size: 7pt; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .ps-block .ps-ev__name { font-size: 8pt; font-weight: 700; }
+      .ps-block .ps-ev__who { font-size: 6.8pt; color: rgba(255, 255, 255, .92); }
+      /* Too short for three lines. Losing the instructor beats clipping a name
+         through the middle of a word. */
+      .ps-block--tight .ps-ev__who { display: none; }
+
       /* ---- Landscape: seven columns ---------------------------------- */
       /* A wall grid. Columns are equal width and never break across pages --
          a class schedule split down the middle of Wednesday is unusable. */

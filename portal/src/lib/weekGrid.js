@@ -59,6 +59,39 @@ export function parseLocalTimestamp(ts) {
   return { date: m[1], hour: parseInt(m[2], 10), min: parseInt(m[3], 10) }
 }
 
+// The visible window for a week of events.
+//
+// DAY_START_HOUR/DAY_END_HOUR are a FLOOR, not a cap. A class outside them used
+// to be positioned at a negative offset and clipped away by the grid's
+// overflow, so a 5am class simply did not exist on screen -- no scroll, no
+// marker, nothing to tell you the day started earlier than the grid did.
+// Silently hiding a scheduled class is the worst possible failure for a
+// calendar, so the window grows to contain whatever is actually there.
+//
+// Growing rather than replacing keeps the grid steady: a week with nothing
+// unusual in it looks exactly as it always has, and the rows do not shift
+// under someone week to week.
+export function dayWindow(events, floorStart = DAY_START_HOUR, floorEnd = DAY_END_HOUR) {
+  let startHour = floorStart
+  let endHour = floorEnd
+  for (const e of events || []) {
+    const p = parseLocalTimestamp(e.event_timestamp_local)
+    if (!p) continue
+    const start = p.hour + p.min / 60
+    const dur = Number(e.duration_minutes)
+    const end = start + (Number.isFinite(dur) && dur > 0 ? dur : 60) / 60
+    if (start < startHour) startHour = Math.floor(start)
+    if (end > endHour) endHour = Math.ceil(end)
+  }
+  return {
+    startHour: Math.max(0, startHour),
+    // A class finishing after midnight would push this past 24 and produce
+    // hour labels that do not exist. Clamped, so the tail is cropped rather
+    // than the grid becoming nonsense.
+    endHour: Math.min(24, Math.max(endHour, startHour + 1)),
+  }
+}
+
 // Assigns each event a horizontal lane so overlapping events sit side by side.
 // Mutates the events: reads `_startMin`/`_endMin`, sets `_laneIndex`/`_laneCount`.
 export function layoutLanes(events) {

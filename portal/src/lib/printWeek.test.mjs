@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  startOfPrintWeek, buildPrintWeek, isPrintable, printWeekLabel, PRINT_DAY_LABELS,
+  startOfPrintWeek, buildPrintWeek, isPrintable, printWeekLabel, printWeekWindow,
+  PRINT_DAY_LABELS,
 } from './printWeek.js'
 
 const ev = (over) => ({
@@ -179,4 +180,46 @@ test('Group X still shows a start only -- a class runs as long as it runs', () =
 test('the picker label spans a month boundary', () => {
   assert.equal(printWeekLabel(new Date(2026, 6, 27)), 'Jul 27 - Aug 2, 2026')
   assert.equal(printWeekLabel(new Date(2026, 7, 3)), 'Aug 3 - 9, 2026')
+})
+
+// --- printWeekWindow -------------------------------------------------------
+// Unlike the screen grid, the sheet has no default floor: a page of paper
+// should span exactly the hours the club actually runs classes in.
+
+const day = (events) => ({ label: 'Monday', date: '2026-09-07', events })
+
+test('printWeekWindow spans the week rounded out to whole hours', () => {
+  const w = printWeekWindow([
+    day([{ _startMin: 5 * 60 + 30, _endMin: 6 * 60 + 30 }]),
+    day([{ _startMin: 17 * 60, _endMin: 18 * 60 + 15 }]),
+  ])
+  assert.equal(w.startMin, 5 * 60)
+  assert.equal(w.endMin, 19 * 60)
+})
+
+test('printWeekWindow returns null for an empty week', () => {
+  assert.equal(printWeekWindow([day([]), day([])]), null)
+  assert.equal(printWeekWindow([]), null)
+  assert.equal(printWeekWindow(undefined), null)
+})
+
+test('printWeekWindow gives a single short class a two hour span', () => {
+  const w = printWeekWindow([day([{ _startMin: 9 * 60, _endMin: 9 * 60 + 30 }])])
+  assert.equal(w.startMin, 9 * 60)
+  assert.equal(w.endMin, 11 * 60)
+})
+
+test('printWeekWindow never runs past midnight', () => {
+  const w = printWeekWindow([day([{ _startMin: 23 * 60, _endMin: 24 * 60 + 30 }])])
+  assert.equal(w.endMin, 24 * 60)
+})
+
+test('buildPrintWeek carries an end time, defaulting a missing duration to an hour', () => {
+  const monday = startOfPrintWeek(new Date('2026-09-07T12:00:00'))
+  const [mon] = buildPrintWeek(monday, [
+    ev({ event_timestamp_local: '2026-09-07 06:00', duration_minutes: 45 }),
+    ev({ event_id: 'e2', event_timestamp_local: '2026-09-07 08:00', duration_minutes: null }),
+  ])
+  assert.equal(mon.events[0]._endMin, 6 * 60 + 45)
+  assert.equal(mon.events[1]._endMin, 9 * 60)
 })

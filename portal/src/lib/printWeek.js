@@ -123,9 +123,14 @@ export function buildPrintWeek(monday, events, opts) {
     // happens routinely: the Group X fetch pads its range for the ABC
     // timezone edge, so it returns a little more than the week asked for.
     if (!bucket) continue
+    const startMin = p.hour * 60 + p.min
+    const dur = Number(ev.duration_minutes)
     bucket.push({
       ...ev,
-      _startMin: p.hour * 60 + p.min,
+      _startMin: startMin,
+      // Carried so a time-positioned sheet can size a block. 60 is the same
+      // fallback the on-screen grid uses for an event with no stated length.
+      _endMin: startMin + (Number.isFinite(dur) && dur > 0 ? dur : 60),
       time_label: options.showEndTime
         ? timeRangeLabel(p.hour, p.min, ev.duration_minutes)
         : time12(p.hour, p.min),
@@ -144,6 +149,35 @@ export function buildPrintWeek(monday, events, opts) {
       return String(a.class_name || '').localeCompare(String(b.class_name || ''))
     }),
   }))
+}
+
+// The time window a printed week has to span, in minutes since midnight.
+//
+// Unlike the screen grid -- which floors at 6am-10pm so the layout stays steady
+// week to week -- a sheet of paper should use the whole page. A club whose
+// classes run 5:30am to 7pm gets a grid of exactly that, rather than four
+// inches of empty evening. Rounded out to whole hours so the hour rail reads
+// in round numbers.
+//
+// Returns null when the week is empty, which is the caller's signal to fall
+// back to a plain list rather than draw an hour grid over nothing.
+export function printWeekWindow(week) {
+  let lo = Infinity
+  let hi = -Infinity
+  for (const day of week || []) {
+    for (const ev of day.events || []) {
+      if (ev._startMin < lo) lo = ev._startMin
+      if (ev._endMin > hi) hi = ev._endMin
+    }
+  }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null
+  const startMin = Math.floor(lo / 60) * 60
+  // A week where everything is inside one hour would divide by a tiny span and
+  // blow the blocks up to the full page, so give it two hours to breathe --
+  // but the midnight clamp goes LAST, or a late class widened by the floor
+  // produces an hour rail running to 25:00.
+  const wanted = Math.max(Math.ceil(hi / 60) * 60, startMin + 120)
+  return { startMin, endMin: Math.min(24 * 60, wanted) }
 }
 
 // Label for the week PICKER, not for the sheet. The picker is the one place
