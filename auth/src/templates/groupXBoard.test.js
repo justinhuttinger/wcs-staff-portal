@@ -123,10 +123,14 @@ test('embed mode drops the title block but keeps the week range', () => {
 test('the board carries print rules that fit it on one page', () => {
   const html = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem' })
   assert.match(html, /@media print/, 'no print block at all')
-  assert.match(html, /@page \{ size: landscape; margin: \.4in; \}/)
-  // The whole one-page guarantee is this line: the flex column distributes
-  // into a stated height instead of a viewport it does not have on paper.
-  assert.match(html, /height: 7\.7in;/)
+  // margin:0 does double duty -- see the comment on the print block. Chrome
+  // has no margin left to draw its header and footer into, and the body can
+  // carry its own.
+  assert.match(html, /@page \{ size: 11in 8\.5in; margin: 0; \}/)
+  // A shade UNDER the sheet. Exactly 8.5in loses to sub-pixel rounding and
+  // buys a blank second page.
+  assert.match(html, /height: 8\.42in;/)
+  assert.match(html, /padding: \.35in;/)
   // Without exact colour the board prints as a grey skeleton of itself.
   assert.match(html, /print-color-adjust: exact/)
 })
@@ -172,4 +176,26 @@ test('autoPrint makes the board print itself and stop polling', () => {
   assert.match(printing, /document\.fonts\.ready\.then\(go, go\)/)
   // A poll mid-print would re-render the page out from under the print job.
   assert.match(printing, /if \(!AUTO_PRINT\) \{\s*\n\s*setInterval/)
+})
+
+test('print gives up the page margin so no header, footer or URL is drawn', () => {
+  const html = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem' })
+  const printBlock = html.slice(html.indexOf('@media print'))
+  // There is no CSS switch for the browser's own headers and footers. Leaving
+  // it no margin to draw them in is the only lever, so a non-zero @page margin
+  // here silently puts the date, the URL and "1/2" back on the sheet.
+  assert.match(printBlock, /@page \{[^}]*margin: 0;/)
+  assert.doesNotMatch(printBlock, /@page \{[^}]*margin: \.\d+in/)
+})
+
+test('the printed body is smaller than the sheet it prints on', () => {
+  const html = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem' })
+  const printBlock = html.slice(html.indexOf('@media print'))
+  const page = printBlock.match(/@page \{ size: 11in ([\d.]+)in;/)
+  const body = printBlock.match(/height: ([\d.]+)in;/)
+  assert.ok(page && body, 'could not read the page and body heights')
+  assert.ok(
+    Number(body[1]) < Number(page[1]),
+    `body ${body[1]}in must stay under the ${page[1]}in sheet or rounding adds a blank page`,
+  )
 })
