@@ -24,8 +24,7 @@ export function resolveAppUrl(tool, { abcUrl, location } = {}) {
 
 /**
  * The app list for one club, URLs already resolved.
- * Milwaukie is the exception on both counts: it schedules elsewhere, so
- * WhenIWork is dropped, and it runs Zoho rather than Gmail.
+ * Milwaukie is the exception: it runs Zoho rather than Gmail.
  */
 export function appsForLocation({ location, abcUrl } = {}) {
   const isMilwaukie = (location || '').toLowerCase() === 'milwaukie'
