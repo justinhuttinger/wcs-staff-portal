@@ -413,6 +413,30 @@ export async function saveUiPreferences(prefs) {
   return api('/ui-preferences', { method: 'PUT', body: JSON.stringify({ prefs }) })
 }
 
+// Home-screen backgrounds. The bucket is private, so every url here is a
+// short-lived signed URL: fetch, use, discard. Never persist one.
+export async function listBackgrounds() {
+  return api('/backgrounds')
+}
+
+export async function uploadBackground(file) {
+  const fd = new FormData(); fd.append('file', file)
+  return api('/backgrounds', { method: 'POST', body: fd })
+}
+
+export async function deleteBackground(id) {
+  return api('/backgrounds/' + encodeURIComponent(id), { method: 'DELETE' })
+}
+
+export async function uploadSharedBackground(file) {
+  const fd = new FormData(); fd.append('file', file)
+  return api('/backgrounds/shared', { method: 'POST', body: fd })
+}
+
+export async function deleteSharedBackground(id) {
+  return api('/backgrounds/shared/' + encodeURIComponent(id), { method: 'DELETE' })
+}
+
 // Per-user "What's New" read state (highest changelog entry id seen).
 export async function getChangelogSeen() {
   return api('/changelog/seen')

@@ -14,7 +14,7 @@
 // Classic and switches once hydrate() returns. Only the first load, and only
 // on a machine that person has never used.
 
-import { getPrefs, setPrefs, THEME_EVENT } from './theme'
+import { getPrefs, setPrefs, THEME_EVENT, getBackgroundPrefs, setBackgroundPrefs } from './theme'
 import { getPinned, setPinned, PINNED_EVENT } from './pinnedTabs'
 import { getUiPreferences, saveUiPreferences, getAppSettings } from './api'
 import { resolveHydration } from './uiPrefsResolve'
@@ -30,7 +30,12 @@ let started = false
 /** The full local snapshot, in the shape the server stores. */
 function snapshot() {
   const p = getPrefs()
-  return { theme: p.theme, accent: p.accent, density: p.density, layout: p.layout, pinned: getPinned() }
+  const b = getBackgroundPrefs()
+  return {
+    theme: p.theme, accent: p.accent, density: p.density, layout: p.layout,
+    background: b.background, backgroundDim: b.backgroundDim,
+    pinned: getPinned(),
+  }
 }
 
 /**
@@ -40,9 +45,13 @@ function snapshot() {
  * appearance default (falling back to whatever this browser already had for
  * anything the org has not set), and that starting point is pushed up as
  * their first saved row so they can change it after.
+ *
+ * Returns the signed background image URL from the same GET, or null (never
+ * saved to localStorage — it is short-lived and must live in memory only).
  */
 export async function hydrateUiPrefs() {
   let remote
+  let backgroundUrl = null
   let orgDefault = {}
   try {
     const [res, settings] = await Promise.all([
@@ -52,6 +61,7 @@ export async function hydrateUiPrefs() {
       getAppSettings('appearance_default_').catch(() => ({})),
     ])
     remote = res?.prefs
+    backgroundUrl = res?.backgroundUrl || null
     orgDefault = {
       theme: settings?.appearance_default_theme,
       accent: settings?.appearance_default_accent,
@@ -61,7 +71,7 @@ export async function hydrateUiPrefs() {
   } catch {
     // Offline or API down: the mirror already painted, so there is nothing to
     // do and nothing to report.
-    return
+    return null
   }
 
   const { action, prefs } = resolveHydration({ remote, orgDefault, local: snapshot() })
@@ -71,6 +81,7 @@ export async function hydrateUiPrefs() {
     // setPrefs and setPinned both normalize: an unknown theme or a retired pin
     // key falls back rather than rendering something broken.
     setPrefs({ theme: prefs.theme, accent: prefs.accent, density: prefs.density, layout: prefs.layout })
+    setBackgroundPrefs({ background: prefs.background, backgroundDim: prefs.backgroundDim })
     setPinned(Array.isArray(prefs.pinned) ? prefs.pinned : [])
   } finally {
     applyingFromServer = false
@@ -81,6 +92,8 @@ export async function hydrateUiPrefs() {
   if (action === 'adopt') {
     try { await saveUiPreferences(snapshot()) } catch {}
   }
+
+  return backgroundUrl
 }
 
 /**
