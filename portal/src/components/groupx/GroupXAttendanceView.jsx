@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '../../lib/api'
 import { fmtTime12, parseLocalTimestamp, displayClassName } from '../../lib/weekGrid'
 import AttendanceModal from './AttendanceModal'
-import GroupXReport from './GroupXReport'
 
 // Group X Attendance: log how many people actually came, and look back at what
 // was logged.
@@ -140,16 +139,17 @@ function ClassRow({ c, onClick }) {
 }
 
 // `canRecord` gates writing a headcount; everyone with the tile can read the
-// queue. `showHistory` is admin-only -- the cross-club "which classes are worth
-// keeping" report belongs with the rest of the reporting, not on a front-desk
-// screen whose whole job is clearing today's queue.
-export default function GroupXAttendanceView({ canRecord = true, showHistory = true }) {
+// queue. It defaults to FALSE so a caller that forgets to pass it gets the
+// read-only queue rather than an editable one.
+//
+// The cross-club history report used to be a tab here. It is admin-only and
+// now lives in Admin -> Group X, with the boards and the badges.
+export default function GroupXAttendanceView({ canRecord = false }) {
   const [clubs, setClubs] = useState([])
   const [club, setClub] = useState(null)
   const [classes, setClasses] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [tab, setTab] = useState('log')
   const [attendanceFor, setAttendanceFor] = useState(null)
 
   useEffect(() => {
@@ -197,22 +197,7 @@ export default function GroupXAttendanceView({ canRecord = true, showHistory = t
 
   return (
     <div className="space-y-4">
-      {showHistory && (
-        <div className="bg-surface rounded-xl border border-border p-1.5 flex gap-1.5">
-          {[['log', 'Log'], ['history', 'History']].map(([key, label]) => (
-            <button key={key} type="button" onClick={() => setTab(key)}
-              className={`px-4 py-2 text-sm rounded-lg transition ${
-                tab === key ? 'bg-wcs-red text-white font-medium' : 'text-text-primary hover:bg-bg'
-              }`}>
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {showHistory && tab === 'history' && <GroupXReport clubs={clubs} />}
-
-      {(!showHistory || tab === 'log') && (<>
+      {(<>
         {/* Club picker and the count of outstanding work, on one line. The
             number is the reason to be on this screen, so it is stated up front
             rather than left to be counted off the list. */}
