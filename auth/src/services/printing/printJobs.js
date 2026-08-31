@@ -14,11 +14,16 @@ function buildTillReceiptPayload(recon) {
     cashSales: recon.cash_sales,
     cashRefunds: recon.cash_refunds,
     dropsTotal: recon.cash_drops,
+    // Cash logged in and out through the portal's Till tile, separate from the
+    // register-rung drops above so the receipt shows where each pull came from.
+    manualOut: recon.manual_out || 0,
+    manualIn: recon.manual_in || 0,
     expected: recon.expected_close,
     counted: recon.counted_close,
     overShort: recon.over_short,
     bagDrop: recon.bag_drop,
     drops: Array.isArray(recon.drops) ? recon.drops : [],
+    movements: Array.isArray(recon.movements) ? recon.movements : [],
   }
 }
 

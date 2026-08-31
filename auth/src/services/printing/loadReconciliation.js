@@ -4,12 +4,13 @@
 
 const { reconcileDay, resolveFloatForDate } = require('../../lib/tillReconcile')
 const { aggregateCashByDay } = require('../../lib/tillCashMovements')
+const { netMovementsByDay, reasonLabel } = require('../../lib/tillMovements')
 const { SLUG_CLUB_MAP } = require('../../utils/locationSlug')
 
 // Pure: map the till reconcileDay output (camelCase) + day cash totals + drop
 // line items into the snake_case row buildTillReceiptPayload expects.
 // Returns null when there's no close count yet (nothing to print).
-function toReconRow({ slug, businessDate, rec, closeBy, cashSales, cashRefunds, cashDrops, dropItems }) {
+function toReconRow({ slug, businessDate, rec, closeBy, cashSales, cashRefunds, cashDrops, dropItems, manualOut = 0, manualIn = 0, movementItems }) {
   if (!rec || rec.countedClose == null) return null
   return {
     location_slug: slug,
@@ -19,11 +20,14 @@ function toReconRow({ slug, businessDate, rec, closeBy, cashSales, cashRefunds, 
     cash_sales: cashSales,
     cash_refunds: cashRefunds,
     cash_drops: cashDrops,
+    manual_out: manualOut,
+    manual_in: manualIn,
     expected_close: rec.expectedClose,
     counted_close: rec.countedClose,
     over_short: rec.overShort,
     bag_drop: rec.bagDrop,
     drops: Array.isArray(dropItems) ? dropItems : [],
+    movements: Array.isArray(movementItems) ? movementItems : [],
   }
 }
 
@@ -99,21 +103,40 @@ async function loadReconciliation(supabase, locationSlug, businessDate) {
   const byDay = await aggregateCashByDay(supabase, { clubNumber: club, fromUtc, toUtc, dropUpc })
   const cash = byDay.get(businessDate) || { cashSales: 0, cashRefunds: 0, cashDrops: 0 }
 
+  // Cash the staff logged in the portal's Till tile for this day. Defensive:
+  // a failure here degrades to zero rather than blocking the receipt, matching
+  // how loadCashDrops behaves.
+  let moveRows = []
+  try {
+    const { data } = await supabase
+      .from('till_cash_movements')
+      .select('business_date, direction, reason, amount, note, created_by_name, voided_at')
+      .eq('club_number', club).eq('business_date', businessDate)
+    moveRows = (data || []).filter(m => !m.voided_at)
+  } catch { moveRows = [] }
+  const move = netMovementsByDay(moveRows).get(businessDate) || { manualOut: 0, manualIn: 0 }
+
   const rec = reconcileDay({
     standardFloat,
     openingCount: open ? Number(open.counted_amount) : null,
     closingCount: Number(close.counted_amount),
     cashSales: cash.cashSales, cashRefunds: cash.cashRefunds, cashDrops: cash.cashDrops,
+    manualOut: move.manualOut, manualIn: move.manualIn,
   })
 
   const dropItems = await loadCashDrops(supabase, club, fromUtc, toUtc, dropUpc)
+  const movementItems = moveRows.map(m => ({
+    direction: m.direction,
+    name: reasonLabel(m.direction, m.reason) + (m.created_by_name ? ` - ${m.created_by_name}` : ''),
+    amount: Number(m.amount) || 0,
+  }))
 
   return toReconRow({
     slug, businessDate, rec, closeBy: close.employee_name,
     cashSales: Math.round(cash.cashSales * 100) / 100,
     cashRefunds: Math.round(cash.cashRefunds * 100) / 100,
     cashDrops: Math.round(cash.cashDrops * 100) / 100,
-    dropItems,
+    dropItems, manualOut: move.manualOut, manualIn: move.manualIn, movementItems,
   })
 }
 

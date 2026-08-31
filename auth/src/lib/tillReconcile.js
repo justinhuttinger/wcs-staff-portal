@@ -2,19 +2,26 @@
 // be null when the Operandio submission is missing.
 //
 //   expectedClose = openingFloat + cashSales - cashRefunds - cashDrops
+//                   - manualOut + manualIn
 //   overShort     = countedClose - expectedClose
 //   bagDrop       = countedClose - standardFloat   (cash pulled to deposit)
 //   floatVariance = openingCount - standardFloat   (overnight drift; null if no AM count)
 //
 // When the AM count is missing we assume the drawer was left at par.
+//
+// cashDrops are drawer pulls rung on the ABC register (the drop-UPC sentinel);
+// manualOut / manualIn are the same movements recorded in the portal's Till
+// tile (see lib/tillMovements.js). Both count: a club that has not switched off
+// the POS ring still reconciles, and so does every day before the tile existed.
 const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100
 
-function reconcileDay({ standardFloat, openingCount, closingCount, cashSales = 0, cashRefunds = 0, cashDrops = 0 }) {
+function reconcileDay({ standardFloat, openingCount, closingCount, cashSales = 0, cashRefunds = 0, cashDrops = 0, manualOut = 0, manualIn = 0 }) {
   const par = Number(standardFloat) || 0
   const hasOpen = openingCount != null
   const hasClose = closingCount != null
   const openingFloat = hasOpen ? Number(openingCount) : par
-  const expectedClose = r2(openingFloat + Number(cashSales) - Number(cashRefunds) - Number(cashDrops))
+  const expectedClose = r2(openingFloat + Number(cashSales) - Number(cashRefunds) - Number(cashDrops)
+    - Number(manualOut) + Number(manualIn))
   const countedClose = hasClose ? Number(closingCount) : null
   const overShort = hasClose ? r2(countedClose - expectedClose) : null
   const bagDrop = hasClose ? r2(countedClose - par) : null

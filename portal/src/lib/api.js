@@ -1048,6 +1048,24 @@ export async function getTillReconciliation(params = {}) {
   return api('/till/reconciliation' + (qs ? '?' + qs : ''))
 }
 
+// Till cash movements (lead+): money taken out of or put into a drawer, logged
+// in the portal instead of rung on the register.
+// params: { location_slug, from?, to? } — dates default to today (Pacific).
+export async function getTillMovements(params = {}) {
+  const qs = new URLSearchParams(params).toString()
+  return api('/till/movements' + (qs ? '?' + qs : ''))
+}
+
+// body: { location_slug, direction: 'out'|'in', reason, amount, note?, business_date? }
+export async function createTillMovement(body) {
+  return api('/till/movements', { method: 'POST', body: JSON.stringify(body) })
+}
+
+// Voids never delete — the entry stays on the record with who voided it and why.
+export async function voidTillMovement(id, voidReason) {
+  return api(`/till/movements/${id}/void`, { method: 'POST', body: JSON.stringify({ void_reason: voidReason }) })
+}
+
 // Per-club till settings (standard float). Read/write manager+; editor is admin-only.
 export async function getTillSettings() {
   return api('/till/settings')

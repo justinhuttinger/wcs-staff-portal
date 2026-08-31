@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Fragment } from 'react'
 import { getTillReconciliation } from '../../lib/api'
 import { exportCSV } from '../../lib/export'
 
@@ -7,6 +7,12 @@ import { exportCSV } from '../../lib/export'
 // vs expected, over/short, bag drop), By Employee (cumulative over/short by the
 // person who closed), and Compliance (which days got an open + close count).
 // Date range + location come from the Reporting shell as props.
+//
+// Cash pulled from a drawer reaches the math two ways, shown in separate
+// columns because a day carrying BOTH is usually somebody double-recording one
+// pull: "Drops" is the ABC register ring (the legacy path), "Out"/"In" are
+// entries staff made in the portal's Till tile. Clicking a day expands the
+// portal entries — who pulled what, and why.
 
 function fmtMoney(v) {
   if (v === null || v === undefined) return '—'
@@ -18,6 +24,12 @@ function fmtSignedMoney(v) {
   if (v === null || v === undefined || !Number.isFinite(Number(v))) return '—'
   const n = Number(v)
   return (n > 0 ? '+' : '') + fmtMoney(n)
+}
+
+// Mirrors REASONS in auth/src/lib/tillMovements.js (labels only).
+const REASON_LABELS = {
+  bank_drop: 'Bank drop', to_safe: 'To the safe', payout: 'Payout / expense',
+  from_safe: 'Change from the safe', float_topup: 'Float top-up', other: 'Other',
 }
 
 const SUB_TABS = [
@@ -46,6 +58,8 @@ function StatusChip({ status }) {
 
 export default function TillReport({ startDate, endDate, locationSlug }) {
   const [subTab, setSubTab] = useState('daily')
+  // Which day's portal entries are expanded, keyed like the table rows.
+  const [openDay, setOpenDay] = useState(null)
   const [rows, setRows] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -107,8 +121,9 @@ export default function TillReport({ startDate, endDate, locationSlug }) {
   const rangeLabel = `${startDate}_to_${endDate}`
   function exportDaily() {
     exportCSV(
-      [['Date', 'Club', 'Float', 'Cash Sales', 'Refunds', 'Drops', 'Expected', 'Counted', 'Over/Short', 'Bag Drop', 'Status', 'Opened By', 'Closed By'],
+      [['Date', 'Club', 'Float', 'Cash Sales', 'Refunds', 'Drops (POS)', 'Cash Out (portal)', 'Cash In (portal)', 'Expected', 'Counted', 'Over/Short', 'Bag Drop', 'Status', 'Opened By', 'Closed By'],
         ...(rows || []).map(r => [r.business_date, r.location_slug, r.openingFloat, r.cashSales, r.cashRefunds, r.cashDrops,
+          r.manualOut ?? 0, r.manualIn ?? 0,
           r.expectedClose, r.countedClose ?? '', r.overShort ?? '', r.bagDrop ?? '', r.status, r.openBy || '', r.closeBy || ''])],
       `till-${rangeLabel}`
     )
@@ -171,7 +186,9 @@ export default function TillReport({ startDate, endDate, locationSlug }) {
                   <th className="py-2.5 px-2 text-right">Float</th>
                   <th className="py-2.5 px-2 text-right">Cash&nbsp;Sales</th>
                   <th className="py-2.5 px-2 text-right">Refunds</th>
-                  <th className="py-2.5 px-2 text-right">Drops</th>
+                  <th className="py-2.5 px-2 text-right" title="Cash Drop rung on the ABC register">Drops</th>
+                  <th className="py-2.5 px-2 text-right" title="Cash logged out of the drawer in the portal's Till tile">Out</th>
+                  <th className="py-2.5 px-2 text-right" title="Cash logged into the drawer in the portal's Till tile">In</th>
                   <th className="py-2.5 px-2 text-right">Expected</th>
                   <th className="py-2.5 px-2 text-right">Counted</th>
                   <th className="py-2.5 px-2 text-right">Over/Short</th>
@@ -181,14 +198,32 @@ export default function TillReport({ startDate, endDate, locationSlug }) {
                 </tr>
               </thead>
               <tbody>
-                {sortedRows.map((r) => (
-                  <tr key={`${r.business_date}|${r.club_number}`} className="border-b border-border/50 hover:bg-bg/40">
-                    <td className="py-2 px-4 text-text-primary whitespace-nowrap">{r.business_date}</td>
+                {sortedRows.map((r) => {
+                  const key = `${r.business_date}|${r.club_number}`
+                  const entries = r.movements || []
+                  // A day with both a register ring and a portal entry is worth
+                  // a second look: it is usually one pull recorded twice, which
+                  // makes the drawer read over by that amount.
+                  const bothSources = Number(r.cashDrops) > 0 && Number(r.manualOut) > 0
+                  return (
+                  <Fragment key={key}>
+                  <tr
+                    className={`border-b border-border/50 hover:bg-bg/40 ${entries.length ? 'cursor-pointer' : ''}`}
+                    onClick={entries.length ? () => setOpenDay(openDay === key ? null : key) : undefined}>
+                    <td className="py-2 px-4 text-text-primary whitespace-nowrap">
+                      {entries.length > 0 && <span className="text-text-muted mr-1">{openDay === key ? '\u25be' : '\u25b8'}</span>}
+                      {r.business_date}
+                    </td>
                     {allLoc && <td className="py-2 px-2 capitalize text-text-muted">{r.location_slug || '—'}</td>}
                     <td className={`py-2 px-2 text-right ${r.floatVariance ? 'text-amber-600' : 'text-text-muted'}`} title={r.floatVariance ? 'Opening count differs from the standard float' : ''}>{fmtMoney(r.openingFloat)}</td>
                     <td className="py-2 px-2 text-right">{fmtMoney(r.cashSales)}</td>
                     <td className="py-2 px-2 text-right text-text-muted">{fmtMoney(r.cashRefunds)}</td>
-                    <td className="py-2 px-2 text-right text-text-muted">{fmtMoney(r.cashDrops)}</td>
+                    <td className={`py-2 px-2 text-right ${bothSources ? 'text-amber-600 font-semibold' : 'text-text-muted'}`}
+                      title={bothSources ? 'This day has a register Cash Drop AND a portal entry — check they are not the same pull recorded twice.' : ''}>
+                      {fmtMoney(r.cashDrops)}
+                    </td>
+                    <td className={`py-2 px-2 text-right ${bothSources ? 'text-amber-600 font-semibold' : 'text-text-muted'}`}>{fmtMoney(r.manualOut)}</td>
+                    <td className="py-2 px-2 text-right text-text-muted">{fmtMoney(r.manualIn)}</td>
                     <td className="py-2 px-2 text-right">{fmtMoney(r.expectedClose)}</td>
                     <td className="py-2 px-2 text-right text-text-primary">{r.countedClose == null ? '—' : fmtMoney(r.countedClose)}</td>
                     <td className={`py-2 px-2 text-right ${shortClass(r.overShort)}`}>{r.overShort == null ? '—' : fmtSignedMoney(r.overShort)}</td>
@@ -196,7 +231,28 @@ export default function TillReport({ startDate, endDate, locationSlug }) {
                     <td className="py-2 px-2"><StatusChip status={r.status} /></td>
                     <td className="py-2 px-4 text-text-muted">{r.closeBy || '—'}</td>
                   </tr>
-                ))}
+                  {openDay === key && entries.length > 0 && (
+                    <tr className="border-b border-border/50 bg-bg/30">
+                      <td colSpan={allLoc ? 14 : 13} className="px-4 py-2">
+                        <p className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">Portal cash entries</p>
+                        <ul className="space-y-1">
+                          {entries.map((m, i) => (
+                            <li key={i} className="text-xs text-text-muted flex flex-wrap gap-x-2">
+                              <span className={`font-semibold ${m.direction === 'out' ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                {m.direction === 'out' ? '\u2212' : '+'}{fmtMoney(m.amount)}
+                              </span>
+                              <span className="text-text-primary">{REASON_LABELS[m.reason] || m.reason}</span>
+                              {m.by && <span>&middot; {m.by}</span>}
+                              {m.note && <span className="italic">&middot; {m.note}</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </div>
