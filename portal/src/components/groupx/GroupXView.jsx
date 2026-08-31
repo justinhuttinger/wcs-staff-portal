@@ -3,8 +3,6 @@ import { api } from '../../lib/api'
 import { startOfWeek, addDays, toISODate, fmtTime12, parseLocalTimestamp, MONTH_LABELS } from '../../lib/weekGrid'
 import WeekGrid from './WeekGrid'
 import CreateClassModal from './CreateClassModal'
-import BoardLinks from './BoardLinks'
-import NewClassBadges from './NewClassBadges'
 import SeriesList from './SeriesList'
 import PrintBoardModal from './PrintBoardModal'
 
@@ -17,12 +15,14 @@ function weekLabel(weekStart) {
   return `${a} - ${b}, ${end.getFullYear()}`
 }
 
-// `canEdit` splits the two audiences this screen now serves. Front desk gets a
+// `canEdit` splits the two audiences this screen serves. Front desk gets a
 // read-and-print view of the calendar; lead and above get the write controls.
-// `showBoardLinks` is separate because the TV/website embed URLs are an admin
-// concern, not an editing one -- they are handed out once when a board is set
-// up, and nobody working the schedule needs them on screen.
-export default function GroupXView({ canEdit = true, showBoardLinks = true }) {
+// It defaults to FALSE: a caller that forgets to pass it should hand out the
+// read-only screen, not the one with a Cancel class button on it.
+//
+// Board links used to live here behind a flag. They are an admin concern --
+// handed out once when a TV is set up -- and now live only in Admin -> Group X.
+export default function GroupXView({ canEdit = false }) {
   const [clubs, setClubs] = useState([])
   const [club, setClub] = useState(null)
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
@@ -36,9 +36,7 @@ export default function GroupXView({ canEdit = true, showBoardLinks = true }) {
   // or from the toolbar button.
   const [createOpen, setCreateOpen] = useState(null)
   const [cancelBusy, setCancelBusy] = useState(false)
-  const [linksOpen, setLinksOpen] = useState(false)
   const [printOpen, setPrintOpen] = useState(false)
-  const [badgesOpen, setBadgesOpen] = useState(false)
   const [badgeBusy, setBadgeBusy] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [seriesListOpen, setSeriesListOpen] = useState(false)
@@ -180,18 +178,6 @@ export default function GroupXView({ canEdit = true, showBoardLinks = true }) {
               {refreshing ? 'Refreshing...' : 'Refresh staff'}
             </button>
           )}
-          {canEdit && (
-            <button type="button" onClick={() => setBadgesOpen(v => !v)}
-              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
-              {badgesOpen ? 'Hide new badges' : 'New badges'}
-            </button>
-          )}
-          {showBoardLinks && (
-            <button type="button" onClick={() => setLinksOpen(v => !v)}
-              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
-              {linksOpen ? 'Hide board links' : 'Board links'}
-            </button>
-          )}
           <button type="button" onClick={() => setPrintOpen(true)}
             title="Print a Monday-Sunday sheet for a chosen week"
             className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
@@ -214,9 +200,7 @@ export default function GroupXView({ canEdit = true, showBoardLinks = true }) {
 
       {canEdit && seriesListOpen && <SeriesList club={club} onChanged={load} />}
 
-      {canEdit && badgesOpen && <NewClassBadges club={club} classTypes={classTypes} />}
 
-      {showBoardLinks && linksOpen && <BoardLinks clubs={clubs} />}
 
       <WeekGrid
         weekStart={weekStart}
