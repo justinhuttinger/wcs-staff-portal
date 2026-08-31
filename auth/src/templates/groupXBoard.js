@@ -577,6 +577,41 @@ ${WCS_DISPLAY_FACE}
     .day--empty, .day--empty:not(.day--today) { display: flex !important; }
     .list, .list--time { overflow: hidden; }
 
+    /* ---- Nothing on paper may point at a moment ---------------------
+       A wall TV is a live instrument: it knows what day it is, which class
+       is running, and which ones are done. A printed sheet is the opposite
+       -- it goes up and stays up while the pattern holds, so every one of
+       those signals is a lie the day after it comes off the printer. A red
+       Wednesday and a faded 6am class do not read as "stale", they read as
+       "this is what Wednesday looks like".
+
+       So the sheet says weekday and class, and nothing about when it was
+       made. That is also why it starts on Monday: see the route, which
+       snaps the window for ?print=1. */
+
+    /* The week range, and the date in each day header. */
+    .range, .dnum { display: none !important; }
+
+    /* Today is just a column. */
+    .day--today { background: var(--color-bg) !important; box-shadow: none !important; }
+    .day--today .dhead {
+      background: transparent !important;
+      border-bottom-color: var(--color-line) !important;
+      color: var(--color-text) !important;
+    }
+    .day--today .cls { background: var(--color-bg) !important; }
+    .day--today .none { color: var(--color-muted) !important; }
+
+    /* "Currently" is a claim about the clock. */
+    .cls--now { background: var(--color-bg) !important; color: var(--color-text) !important; }
+    .cls--now::before { background: var(--collar, var(--color-text)) !important; }
+    .cls--now .time { color: var(--color-text) !important; }
+    .cls--now .who { color: var(--color-muted) !important; }
+    .badge--now, .cls--now .badge--now { display: none !important; }
+
+    /* A class that already ran this morning runs again next Monday. */
+    .cls--past { opacity: 1 !important; }
+
     /* One page is the whole point, so nothing may paginate. */
     .day, .cls { break-inside: avoid; page-break-inside: avoid; }
   }

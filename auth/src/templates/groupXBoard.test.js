@@ -139,12 +139,17 @@ test('the board carries print rules that fit it on one page', () => {
   assert.match(html, /print-color-adjust: exact/)
 })
 
-test('print hides the clock but keeps the week range', () => {
+test('the printed sheet carries nothing that points at a moment', () => {
   const html = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem' })
   const printBlock = html.slice(html.indexOf('@media print'))
-  assert.match(printBlock, /\.now \{ display: none !important; \}/)
-  // The range is what says which week this is, and is still true tomorrow.
-  assert.doesNotMatch(printBlock, /\.range \{ display: none/)
+  // A sheet goes on a wall and stays there. Every live signal the TV shows is
+  // a lie the day after it prints, and a red Wednesday does not read as stale,
+  // it reads as "this is what Wednesday looks like".
+  assert.match(printBlock, /\.now \{ display: none !important; \}/)      // the clock
+  assert.match(printBlock, /\.range, \.dnum \{ display: none !important; \}/) // week range + dates
+  assert.match(printBlock, /\.day--today \{[^}]*box-shadow: none !important;/) // no red column
+  assert.match(printBlock, /\.cls--past \{ opacity: 1 !important; \}/)   // nothing faded
+  assert.match(printBlock, /\.badge--now, \.cls--now \.badge--now \{ display: none !important; \}/)
 })
 
 test('the week range and class times are full ink, not muted', () => {
@@ -227,4 +232,17 @@ test('the eyebrow sits tight to the title it labels', () => {
   assert.match(html, /\.head__titles \{ display: flex; flex-direction: column; gap: 0; \}/)
   const eyebrow = html.match(/\.eyebrow \{[^}]*\}/)[0]
   assert.match(eyebrow, /line-height: 1;/)
+})
+
+test('the today column prints exactly like every other column', () => {
+  const html = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem' })
+  const printBlock = html.slice(html.indexOf('@media print'))
+  // Each of these is a place the live board tints today red. Miss one and the
+  // sheet still says which day it was printed on.
+  for (const rule of [
+    /\.day--today \{[^}]*background: var\(--color-bg\) !important/,
+    /\.day--today \.dhead \{[^}]*background: transparent !important/,
+    /\.day--today \.cls \{ background: var\(--color-bg\) !important; \}/,
+    /\.cls--now \{ background: var\(--color-bg\) !important/,
+  ]) assert.match(printBlock, rule)
 })
