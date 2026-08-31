@@ -3,13 +3,13 @@ import assert from 'node:assert/strict'
 import { resolveHydration } from './uiPrefsResolve.js'
 
 const LOCAL = {
-  theme: 'classic', accent: 'signal_red', density: 'comfortable', layout: 'spotlight',
+  theme: 'classic',
   background: { kind: 'location', value: '' }, backgroundDim: 60,
   pinned: [],
 }
 
 test('a saved server row wins over everything', () => {
-  const remote = { theme: 'press', accent: 'lime', density: 'compact', layout: 'rows', pinned: ['tool:drive'] }
+  const remote = { theme: 'press', pinned: ['tool:drive'] }
   const r = resolveHydration({ remote, orgDefault: { theme: 'spotlight' }, local: LOCAL })
   assert.equal(r.action, 'apply')
   assert.equal(r.prefs.theme, 'press')
@@ -17,12 +17,9 @@ test('a saved server row wins over everything', () => {
 })
 
 test('no server row and an org default: adopt the org default', () => {
-  const r = resolveHydration({ remote: {}, orgDefault: { theme: 'spotlight', accent: 'ember' }, local: LOCAL })
+  const r = resolveHydration({ remote: {}, orgDefault: { theme: 'spotlight' }, local: LOCAL })
   assert.equal(r.action, 'adopt')
   assert.equal(r.prefs.theme, 'spotlight')
-  assert.equal(r.prefs.accent, 'ember')
-  // Unset org keys fall through to what this browser already had.
-  assert.equal(r.prefs.density, 'comfortable')
 })
 
 test('no server row and no org default: adopt what this browser had', () => {
@@ -55,4 +52,18 @@ test('background is never seeded from the org default', () => {
   const r = resolveHydration({ remote: {}, orgDefault, local })
   assert.deepEqual(r.prefs.background, { kind: 'location', value: '' })
   assert.equal(r.prefs.backgroundDim, 60)
+})
+
+test('a retired org-default key is ignored', () => {
+  // appearance_default_accent and friends may still sit in app_config from
+  // before these settings were removed. They must not reappear in prefs.
+  const r = resolveHydration({
+    remote: {},
+    orgDefault: { theme: 'press', accent: 'lime', density: 'compact', layout: 'rows' },
+    local: LOCAL,
+  })
+  assert.equal(r.prefs.theme, 'press')
+  assert.equal(r.prefs.accent, undefined)
+  assert.equal(r.prefs.density, undefined)
+  assert.equal(r.prefs.layout, undefined)
 })

@@ -32,7 +32,7 @@ function snapshot() {
   const p = getPrefs()
   const b = getBackgroundPrefs()
   return {
-    theme: p.theme, accent: p.accent, density: p.density, layout: p.layout,
+    theme: p.theme,
     background: b.background, backgroundDim: b.backgroundDim,
     pinned: getPinned(),
   }
@@ -62,11 +62,12 @@ export async function hydrateUiPrefs() {
     ])
     remote = res?.prefs
     backgroundUrl = res?.backgroundUrl || null
+    // appearance_default_accent, _density and _layout may still sit in
+    // app_config from before these settings were removed. Nothing reads them
+    // once org default is built from theme alone; deleting the rows would
+    // need a migration this change does not warrant, so they are left in place.
     orgDefault = {
       theme: settings?.appearance_default_theme,
-      accent: settings?.appearance_default_accent,
-      density: settings?.appearance_default_density,
-      layout: settings?.appearance_default_layout,
     }
   } catch {
     // Offline or API down: the mirror already painted, so there is nothing to
@@ -80,7 +81,7 @@ export async function hydrateUiPrefs() {
   try {
     // setPrefs and setPinned both normalize: an unknown theme or a retired pin
     // key falls back rather than rendering something broken.
-    setPrefs({ theme: prefs.theme, accent: prefs.accent, density: prefs.density, layout: prefs.layout })
+    setPrefs({ theme: prefs.theme })
     setBackgroundPrefs({ background: prefs.background, backgroundDim: prefs.backgroundDim })
     setPinned(Array.isArray(prefs.pinned) ? prefs.pinned : [])
   } finally {
