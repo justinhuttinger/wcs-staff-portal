@@ -5,7 +5,10 @@
 // single-line input, which quietly flattens multi-line SMS copy; this editor is
 // a textarea and saves through the API, so real newlines survive.
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { getCustomValueLocations, getCustomValues, updateCustomValue } from '../lib/api'
+import {
+  getCustomValueLocations, getCustomValues, updateCustomValue,
+  getDripTestConfig, saveDripTestConfig, previewDripMessage, sendDripTest,
+} from '../lib/api'
 import { MERGE_FIELD_GROUPS } from '../lib/ghlMergeFields'
 
 // The WCS drip sequence, in the order the messages actually go out. GHL returns
@@ -78,6 +81,233 @@ function byDripOrder(a, b) {
   const ra = dripRank(a), rb = dripRank(b)
   if (ra !== rb) return ra - rb
   return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
+}
+
+// Merge-field values used to render a test. The tester is staff, not a
+// prospect, so real contact data would show THEIR name and an empty referrer -
+// which is exactly the failure this preview exists to catch. Editable, because
+// seeing the message at a realistic name length is half the point.
+const DEFAULT_SAMPLE = {
+  first_name: 'Alex',
+  last_name: 'Morgan',
+  name: 'Alex Morgan',
+  referred_by_full_name: 'Jamie Smith',
+}
+
+const SAMPLE_FIELDS = [
+  { key: 'first_name', label: 'First name' },
+  { key: 'last_name', label: 'Last name' },
+  { key: 'referred_by_full_name', label: 'Referred by' },
+]
+
+function TestSendPanel({ locationSlug, locationName, label, text, onClose }) {
+  const [cfg, setCfg] = useState(null)
+  const [phone, setPhone] = useState('')
+  const [mediaUrl, setMediaUrl] = useState('')
+  const [sample, setSample] = useState(DEFAULT_SAMPLE)
+  const [preview, setPreview] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const [sent, setSent] = useState(null)
+  const [webhookDraft, setWebhookDraft] = useState('')
+  const [showSetup, setShowSetup] = useState(false)
+  const [savingCfg, setSavingCfg] = useState(false)
+
+  useEffect(() => {
+    getDripTestConfig()
+      .then(c => {
+        setCfg(c)
+        setPhone(c.defaultPhone || '')
+        setWebhookDraft(c.webhookUrl || '')
+        if (!c.configured) setShowSetup(true)
+      })
+      .catch(e => setError(e.message))
+  }, [])
+
+  // Re-render the preview whenever the sample values change.
+  useEffect(() => {
+    let cancelled = false
+    previewDripMessage({ location: locationSlug, text, contact: sample })
+      .then(r => { if (!cancelled) setPreview(r) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [locationSlug, text, sample])
+
+  async function handleSend() {
+    setBusy(true)
+    setError(null)
+    setSent(null)
+    try {
+      const r = await sendDripTest({ location: locationSlug, text, phone, contact: sample, mediaUrl, label })
+      setSent(r)
+    } catch (e) {
+      setError(e.message)
+    }
+    setBusy(false)
+  }
+
+  async function handleSaveCfg() {
+    setSavingCfg(true)
+    setError(null)
+    try {
+      await saveDripTestConfig({ drip_test_webhook_url: webhookDraft.trim(), drip_test_default_phone: phone.trim() })
+      const c = await getDripTestConfig()
+      setCfg(c)
+      setShowSetup(false)
+    } catch (e) {
+      setError(e.message)
+    }
+    setSavingCfg(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onMouseDown={onClose}>
+      <div
+        className="bg-surface border border-border rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden"
+        onMouseDown={e => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-border">
+          <h3 className="text-base font-bold text-text-primary">Send a test</h3>
+          <p className="text-xs text-text-muted mt-0.5">{label} · {locationName}</p>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
+          {cfg && !cfg.configured && !cfg.canEdit && (
+            <p className="text-sm text-red-500">
+              No test webhook is configured yet. An admin needs to set one before tests can send.
+            </p>
+          )}
+
+          {cfg && cfg.canEdit && (showSetup || !cfg.configured) && (
+            <div className="rounded-xl border border-border bg-bg p-3 space-y-2">
+              <h4 className="text-xs font-bold text-text-primary">Webhook setup (admin)</h4>
+              <p className="text-[11px] text-text-muted">
+                Paste the Inbound Webhook URL from the one GHL workflow that sends these tests. The portal
+                POSTs <span className="font-mono">phone</span>, <span className="font-mono">message</span> and{' '}
+                <span className="font-mono">media_url</span>; the workflow should send an SMS to{' '}
+                <span className="font-mono">phone</span> with the body set to{' '}
+                <span className="font-mono">{'{{inboundWebhookRequest.message}}'}</span>.
+              </p>
+              <input
+                type="text"
+                value={webhookDraft}
+                onChange={e => setWebhookDraft(e.target.value)}
+                placeholder="https://services.leadconnectorhq.com/hooks/..."
+                className="w-full text-xs font-mono bg-surface border border-border rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red/30"
+              />
+              <button
+                type="button"
+                onClick={handleSaveCfg}
+                disabled={savingCfg}
+                className="text-xs bg-wcs-red text-white rounded-lg px-3 py-1.5 font-medium hover:bg-wcs-red/90 disabled:opacity-50"
+              >
+                {savingCfg ? 'Saving…' : 'Save webhook'}
+              </button>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-semibold text-text-primary mb-1">Send to</label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder="(503) 555-1234"
+              className="w-full text-sm bg-bg border border-border rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red/30"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-text-primary mb-1">Media URL (optional)</label>
+            <input
+              type="url"
+              value={mediaUrl}
+              onChange={e => setMediaUrl(e.target.value)}
+              placeholder="https://… .jpg / .png / .gif"
+              className="w-full text-xs font-mono bg-bg border border-border rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red/30"
+            />
+            <p className="text-[11px] text-text-muted mt-1">
+              Must be publicly reachable — carriers fetch it with no login. JPEG, PNG or GIF, and keep it under
+              500 KB or it silently fails for AT&amp;T and Verizon.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-text-primary mb-1">Merge field values</label>
+            <div className="grid grid-cols-3 gap-2">
+              {SAMPLE_FIELDS.map(f => (
+                <div key={f.key}>
+                  <span className="block text-[10px] text-text-muted mb-0.5">{f.label}</span>
+                  <input
+                    type="text"
+                    value={sample[f.key] || ''}
+                    onChange={e => setSample(s2 => ({ ...s2, [f.key]: e.target.value }))}
+                    className="w-full text-xs bg-bg border border-border rounded-lg px-2 py-1.5 text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red/30"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-text-primary mb-1">What will arrive</label>
+            <div className="rounded-lg bg-bg border border-border px-3 py-2">
+              <span className="text-xs text-text-primary whitespace-pre-wrap break-words">
+                {preview ? preview.text : 'Rendering…'}
+              </span>
+            </div>
+            {preview && (
+              <p className="text-[11px] text-text-muted mt-1">
+                {preview.chars} chars · {preview.segments} segment{preview.segments === 1 ? '' : 's'} · {preview.encoding}
+              </p>
+            )}
+            {preview?.unresolved?.length > 0 && (
+              <p className="text-[11px] text-amber-600 mt-1">
+                Did not resolve: {preview.unresolved.map(u => `{{${u}}}`).join(', ')} — these will send as literal text.
+              </p>
+            )}
+            {preview?.hidden?.length > 0 && (
+              <p className="text-[11px] text-amber-600 mt-1">
+                {preview.hidden.length} invisible character{preview.hidden.length === 1 ? '' : 's'} ({preview.hidden.map(h => h.codePoint).join(', ')}) — these force UCS-2 and raise the segment count.
+              </p>
+            )}
+          </div>
+
+          {error && <p className="text-sm text-red-500">{error}</p>}
+          {sent && (
+            <p className="text-sm text-green-600">
+              Sent to {sent.phone} · {sent.segments} segment{sent.segments === 1 ? '' : 's'}. Check the handset, not the workflow preview.
+            </p>
+          )}
+        </div>
+
+        <div className="px-5 py-4 border-t border-border flex items-center justify-between gap-2">
+          {cfg?.canEdit && cfg?.configured && !showSetup ? (
+            <button type="button" onClick={() => setShowSetup(true)} className="text-[11px] text-text-muted hover:text-text-primary underline underline-offset-2">
+              Webhook settings
+            </button>
+          ) : <span />}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-xs bg-surface border border-border rounded-lg px-4 py-2 font-medium text-text-muted hover:text-text-primary transition-colors"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={busy || !cfg?.configured || !phone.trim()}
+              className="text-xs bg-wcs-red text-white rounded-lg px-4 py-2 font-medium hover:bg-wcs-red/90 disabled:opacity-50"
+            >
+              {busy ? 'Sending…' : 'Send test'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function CopyButton({ text, className = '' }) {
@@ -312,6 +542,7 @@ export default function DripCampaigns() {
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
   const [flow, setFlow] = useState('all')
+  const [testing, setTesting] = useState(null)
   const [editing, setEditing] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
@@ -488,12 +719,20 @@ export default function DripCampaigns() {
                     </div>
                   )}
                 </div>
-                <button
-                  onClick={() => { setSaveError(null); setEditing(cv) }}
-                  className="text-xs bg-surface border border-border rounded-lg px-3 py-1.5 font-medium text-text-muted hover:text-text-primary transition-colors whitespace-nowrap"
-                >
-                  Edit
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setTesting(cv)}
+                    className="text-xs bg-surface border border-border rounded-lg px-3 py-1.5 font-medium text-text-muted hover:text-text-primary transition-colors whitespace-nowrap"
+                  >
+                    Test
+                  </button>
+                  <button
+                    onClick={() => { setSaveError(null); setEditing(cv) }}
+                    className="text-xs bg-surface border border-border rounded-lg px-3 py-1.5 font-medium text-text-muted hover:text-text-primary transition-colors whitespace-nowrap"
+                  >
+                    Edit
+                  </button>
+                </div>
               </div>
               <div className="mt-2 rounded-lg bg-bg border border-border px-3 py-2">
                 <ValuePreview value={cv.value} />
@@ -502,6 +741,16 @@ export default function DripCampaigns() {
           ))}
         </div>
       </div>
+
+      {testing && (
+        <TestSendPanel
+          locationSlug={location}
+          locationName={activeLocation?.name || ''}
+          label={testing.name}
+          text={testing.value || ''}
+          onClose={() => setTesting(null)}
+        />
+      )}
 
       {editing && (
         <EditorModal
