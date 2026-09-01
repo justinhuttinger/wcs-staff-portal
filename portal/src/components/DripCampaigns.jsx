@@ -457,7 +457,23 @@ function MediaControl({ locationSlug, cv, onChanged }) {
 
       {on && media.url && (
         <>
-          <img src={media.url} alt="" className="h-8 w-8 rounded object-cover border border-border" />
+          {/* The thumbnail is the obvious thing to click, so it opens the full
+              image too - the same target as View beside it. */}
+          <a href={media.url} target="_blank" rel="noreferrer" title="Open the full image">
+            <img
+              src={media.url}
+              alt=""
+              className="h-8 w-8 rounded object-cover border border-border hover:border-wcs-red/50 transition-colors"
+            />
+          </a>
+          <a
+            href={media.url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[11px] rounded-md border border-border px-2 py-0.5 font-medium text-text-muted hover:text-text-primary transition-colors"
+          >
+            View
+          </a>
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
@@ -466,8 +482,11 @@ function MediaControl({ locationSlug, cv, onChanged }) {
           >
             Replace
           </button>
-          <CopyButton text={`{{ ${media.key} }}`} />
-          <span className="text-[10px] font-mono text-text-muted truncate max-w-[220px]" title={media.key}>
+          {/* Two different things worth copying: the token that goes into the
+              GHL workflow, and the raw URL for anywhere else. */}
+          <CopyButton text={`{{ ${media.key} }}`} label="Copy token" />
+          <CopyButton text={media.url} label="Copy link" />
+          <span className="text-[10px] font-mono text-text-muted truncate max-w-[200px]" title={media.key}>
             {'{{ ' + media.key + ' }}'}
           </span>
         </>
@@ -480,7 +499,7 @@ function MediaControl({ locationSlug, cv, onChanged }) {
   )
 }
 
-function CopyButton({ text, className = '' }) {
+function CopyButton({ text, className = '', label = 'Copy' }) {
   const [copied, setCopied] = useState(false)
   return (
     <button
@@ -492,7 +511,7 @@ function CopyButton({ text, className = '' }) {
       }}
       className={'text-[11px] rounded-md border border-border px-2 py-0.5 font-medium text-text-muted hover:text-text-primary transition-colors ' + className}
     >
-      {copied ? 'Copied!' : 'Copy'}
+      {copied ? 'Copied!' : label}
     </button>
   )
 }
