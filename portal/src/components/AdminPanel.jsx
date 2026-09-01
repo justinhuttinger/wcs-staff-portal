@@ -16,7 +16,6 @@ import GoogleConnections from './admin/GoogleConnections'
 import LayoutExplorer from './admin/LayoutExplorer'
 import ABCSyncAdmin from './admin/ABCSyncAdmin'
 import CustomFieldsAdmin from './admin/CustomFieldsAdmin'
-import MarketingSmsAdmin from './admin/MarketingSmsAdmin'
 import ActionLinksAdmin from './admin/ActionLinksAdmin'
 import MembershipSkipListAdmin from './admin/MembershipSkipListAdmin'
 import SharedCredentialsAdmin from './admin/SharedCredentialsAdmin'
@@ -95,7 +94,6 @@ const TECHNICAL_TILES = [
   { key: 'sms', label: 'SMS History', desc: 'Twilio Messages', icon: 'M8.625 9.75a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 0 1 .778-.332 48.294 48.294 0 0 0 5.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z' },
   { key: 'webhooks', label: 'Webhooks', desc: 'Webhook History', icon: 'M7.5 7.5h-.75A2.25 2.25 0 0 0 4.5 9.75v7.5a2.25 2.25 0 0 0 2.25 2.25h7.5a2.25 2.25 0 0 0 2.25-2.25v-7.5a2.25 2.25 0 0 0-2.25-2.25h-.75m-6 3.75 3 3m0 0 3-3m-3 3V1.5m6 9h.75a2.25 2.25 0 0 1 2.25 2.25v7.5a2.25 2.25 0 0 1-2.25 2.25h-7.5a2.25 2.25 0 0 1-2.25-2.25v-7.5a2.25 2.25 0 0 1 2.25-2.25H9' },
   { key: 'custom-fields', label: 'Custom Fields', desc: 'GHL Field Lookup', icon: 'M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z' },
-  { key: 'marketing-sms', label: 'Marketing SMS', desc: 'GHL Custom Values', icon: 'M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 1 1 0-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38c-.551.318-1.26.117-1.527-.461a20.845 20.845 0 0 1-1.44-4.282m3.102.069a18.03 18.03 0 0 1-.59-4.59c0-1.586.205-3.124.59-4.59m0 9.18a23.848 23.848 0 0 1 8.835 2.535M10.34 6.66a23.847 23.847 0 0 0 8.835-2.535m0 0A23.74 23.74 0 0 0 18.795 3m.38 1.125a23.91 23.91 0 0 1 1.014 5.395m-1.014 8.855c-.118.38-.245.754-.38 1.125m.38-1.125a23.91 23.91 0 0 0 1.014-5.395m0-3.46c.495.413.811 1.035.811 1.73 0 .695-.316 1.317-.811 1.73m0-3.46a24.347 24.347 0 0 1 0 3.46' },
   { key: 'google-connections', label: 'Google Connections', desc: 'OAuth Scopes & Reconnect', icon: 'M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244' },
   { key: 'club-integrations', label: 'Club Integrations', desc: 'Per-Club Webhook URLs', icon: 'M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244' },
   { key: 'shared-credentials', label: 'Shared Logins', desc: 'Master Account Credentials', icon: 'M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z' },
@@ -138,7 +136,7 @@ const CATEGORIES = [
   { title: 'Reports & KPIs', keys: ['problem-thresholds', 'kpi-goals', 'report-visibility', 'trends-12mo', 'daily-snapshot', 'spotlight', 'membership-audit', 'speed-to-lead-audit', 'business-hours-stl', 'revenue-backfill', 'payroll-commissions'] },
   { title: 'Members & Sales', keys: ['online-join', 'vip-referrals', 'tour-checkin', 'membership-skip', 'referral-rewards', 'audit-toggles', 'vendor-price-list', 'till-settings', 'lapsed-checkins'] },
   { title: 'Integrations & Sync', keys: ['sync', 'abc-sync', 'club-integrations', 'custom-fields', 'google-connections', 'shared-credentials'] },
-  { title: 'Logs & Messaging', keys: ['marketing-sms', 'webhooks', 'sms', 'audit-log'] },
+  { title: 'Logs & Messaging', keys: ['webhooks', 'sms', 'audit-log'] },
   { title: 'Kiosk & Devices', keys: ['kiosk-installs', 'launcher-version', 'print-devices', 'print-automations'] },
   { title: 'Automation & AI', keys: ['blog', 'day-one-programs', 'university-enroll', 'pt-scheduler', 'group-x-admin', 'facility-admin', 'class-seeding'] },
 ]
@@ -205,7 +203,6 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'abc-sync' && <ABCSyncAdmin />}
         {activeSection === 'referral-rewards' && <ReferralRewardsAdmin />}
         {activeSection === 'custom-fields' && <CustomFieldsAdmin />}
-        {activeSection === 'marketing-sms' && <MarketingSmsAdmin />}
         {activeSection === 'action-links' && <ActionLinksAdmin />}
         {activeSection === 'day-one-programs' && <DayOneProgramsAdmin />}
         {activeSection === 'membership-skip' && <MembershipSkipListAdmin />}

@@ -384,7 +384,7 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
         case 'nps':
           return onNps && <SvgTileButton key={key} onClick={onNps} iconPath={TILE_ICONS.nps} label="Feedback" desc="Member surveys" />
         case 'marketingTracker':
-          return onMarketingTracker && <SvgTileButton key={key} onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />
+          return onMarketingTracker && <SvgTileButton key={key} onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing" desc="Campaigns" />
         default:
           return null
       }
@@ -688,7 +688,7 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
               separately by facility:schedule-edit, exactly as Group X. */}
           {onFacility && (visibleTools || []).includes('facility') && <SvgTileButton onClick={onFacility} iconPath={TILE_ICONS.facility} label="Courts & Pool" desc="Schedules" />}
           {/* 6.5. Marketing Tracker — corporate/admin, or anyone with the marketing add-on */}
-          {onMarketingTracker && (canMarketingTracker ?? (roleIdx >= ROLE_LEVELS.corporate || marketingAddon)) && <SvgTileButton onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing Tracker" desc="Campaigns" />}
+          {onMarketingTracker && (canMarketingTracker ?? (roleIdx >= ROLE_LEVELS.corporate || marketingAddon)) && <SvgTileButton onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing" desc="Campaigns" />}
           {/* 6.6. Inventory (experimental) — lead+ (leads get restock/adjust, no Sales/margin) */}
           {onInventory && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onInventory} iconPath={TILE_ICONS.inventory} label="Inventory" desc="Stock & Costs" />}
           {/* Ads Manager — creates and edits live Meta ads, so admin-only and
