@@ -8,7 +8,9 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   getCustomValueLocations, getCustomValues, updateCustomValue,
   getDripTestConfig, saveDripTestConfig, previewDripMessage, sendDripTest,
+  uploadDripMedia, clearDripMedia,
 } from '../lib/api'
+import { shrinkImage, formatBytes } from '../lib/imageShrink'
 import { MERGE_FIELD_GROUPS } from '../lib/ghlMergeFields'
 
 // The WCS drip sequence, in the order the messages actually go out. GHL returns
@@ -338,6 +340,109 @@ function TestSendPanel({ locationSlug, locationName, label, text, onClose }) {
   )
 }
 
+// Media for one message. GHL attaches an MMS by reading a URL out of a custom
+// value, so "on" is simply whether that companion value holds a URL - there is
+// no separate flag that could drift out of step with what actually sends.
+// Turning it off empties the value; the workflow is never touched.
+function MediaControl({ locationSlug, cv, onChanged }) {
+  const media = cv.media || {}
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const [note, setNote] = useState(null)
+  const fileRef = useRef(null)
+
+  async function handleToggle(next) {
+    setError(null)
+    setNote(null)
+    if (next === 'on') {
+      // Nothing stored yet, so ask for the file straight away.
+      if (!media.url) fileRef.current?.click()
+      return
+    }
+    setBusy(true)
+    try {
+      await clearDripMedia({ location: locationSlug, messageKey: cv.fieldKey })
+      onChanged()
+    } catch (e) {
+      setError(e.message)
+    }
+    setBusy(false)
+  }
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setBusy(true)
+    setError(null)
+    setNote(null)
+    try {
+      const shrunk = await shrinkImage(file)
+      const res = await uploadDripMedia({
+        location: locationSlug,
+        messageKey: cv.fieldKey,
+        messageName: cv.name,
+        file: shrunk.file,
+      })
+      if (shrunk.resized) {
+        setNote(`Resized from ${formatBytes(shrunk.originalBytes)} to ${formatBytes(shrunk.bytes)} to stay under the carrier limit.`)
+      }
+      if (res.mediaValue?.keyWarning) setError(res.mediaValue.keyWarning)
+      onChanged()
+    } catch (err) {
+      setError(err.message)
+    }
+    setBusy(false)
+  }
+
+  const on = !!media.on
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <span className="text-[11px] font-medium text-text-muted">Media</span>
+      <select
+        value={on ? 'on' : 'off'}
+        onChange={e => handleToggle(e.target.value)}
+        disabled={busy}
+        className="text-[11px] bg-surface border border-border rounded-lg px-2 py-1 font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red/30 disabled:opacity-50"
+      >
+        <option value="off">No</option>
+        <option value="on">Yes</option>
+      </select>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/gif"
+        onChange={handleFile}
+        className="hidden"
+      />
+
+      {on && media.url && (
+        <>
+          <img src={media.url} alt="" className="h-8 w-8 rounded object-cover border border-border" />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+            className="text-[11px] rounded-md border border-border px-2 py-0.5 font-medium text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
+          >
+            Replace
+          </button>
+          <CopyButton text={`{{ ${media.key} }}`} />
+          <span className="text-[10px] font-mono text-text-muted truncate max-w-[220px]" title={media.key}>
+            {'{{ ' + media.key + ' }}'}
+          </span>
+        </>
+      )}
+
+      {busy && <span className="text-[11px] text-text-muted">Working…</span>}
+      {note && <span className="text-[11px] text-text-muted">{note}</span>}
+      {error && <span className="text-[11px] text-red-500">{error}</span>}
+    </div>
+  )
+}
+
 function CopyButton({ text, className = '' }) {
   const [copied, setCopied] = useState(false)
   return (
@@ -585,6 +690,11 @@ export default function DripCampaigns() {
       .catch(err => setError(err.message))
   }, [])
 
+  // Bumped after a media change so the row re-reads what GHL now holds, rather
+  // than trusting an optimistic local edit.
+  const [reloadTick, setReloadTick] = useState(0)
+  const reload = () => setReloadTick(t => t + 1)
+
   useEffect(() => {
     if (!location) return
     let cancelled = false
@@ -595,7 +705,7 @@ export default function DripCampaigns() {
       .catch(err => { if (!cancelled) { setError(err.message); setData(null) } })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [location])
+  }, [location, reloadTick])
 
   // Standard GHL tokens plus this club's own custom values and contact custom
   // fields, so the picker covers everything that actually resolves here.
@@ -765,6 +875,13 @@ export default function DripCampaigns() {
               <div className="mt-2 rounded-lg bg-bg border border-border px-3 py-2">
                 <ValuePreview value={cv.value} />
               </div>
+              {cv.fieldKey && (
+                <MediaControl
+                  locationSlug={location}
+                  cv={cv}
+                  onChanged={() => reload()}
+                />
+              )}
             </div>
           ))}
         </div>

@@ -12,6 +12,7 @@
 //   GET  /locations/:locationId/customValues
 //   PUT  /locations/:locationId/customValues/:id   { name, value }
 const { Router } = require('express')
+const multer = require('multer')
 const authenticate = require('../middleware/auth')
 const { requireMarketing } = require('../middleware/role')
 const { LOCATIONS } = require('../config/ghlLocations')
@@ -21,6 +22,10 @@ const {
   resolveTokens, smsSegments, findHiddenCharacters, normalizePhone,
   extractMergeFields, labelForField,
 } = require('../lib/smsPreview')
+const {
+  mediaKeyFor, mediaNameFor, isMediaKey, validateMedia, formatBytes,
+  mediaStoragePath, MAX_MEDIA_BYTES,
+} = require('../lib/dripMedia')
 const audit = require('../services/auditLog')
 
 // app_config keys backing the test send.
@@ -123,6 +128,67 @@ function sortByName(a, b) {
   return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
 }
 
+// Media lives in a PUBLIC bucket on purpose: carriers fetch an MMS attachment
+// with no credentials, so a signed URL would 403 on the way to the handset.
+// Everything in here is marketing artwork already being texted to the public.
+const MEDIA_BUCKET = 'drip-media'
+
+let bucketReady = false
+async function ensureMediaBucket() {
+  if (bucketReady) return
+  const { error } = await supabaseAdmin.storage.createBucket(MEDIA_BUCKET, {
+    public: true,
+    fileSizeLimit: '1MB',
+    allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif'],
+  })
+  if (error && !/exist/i.test(error.message || '')) throw error
+  bucketReady = true
+}
+
+const upload = multer({ limits: { fileSize: 2 * 1024 * 1024, files: 1 } })
+
+function uploadSingle(req, res, next) {
+  upload.single('file')(req, res, err => {
+    if (err) {
+      const tooBig = err.code === 'LIMIT_FILE_SIZE'
+      return res.status(tooBig ? 413 : 400).json({
+        error: tooBig ? `That image is over 2 MB. Carriers cap MMS near 0.6 MB, so it needs to be under ${formatBytes(MAX_MEDIA_BYTES)}.` : 'Upload failed',
+      })
+    }
+    next()
+  })
+}
+
+// Find a club's custom value by fieldKey, or create it. GHL derives fieldKey
+// from the name at CREATE time and never changes it on rename, so the name has
+// to be right the first time or the workflow token points at nothing.
+async function findOrCreateValue(loc, { key, name, value }) {
+  const data = await ghlFetch(`/locations/${loc.id}/customValues`, loc.apiKey)
+  const existing = (data.customValues || []).find(cv => normalizeKeyLocal(cv.fieldKey || cv.key) === key)
+  if (existing) {
+    const updated = await ghlFetch(`/locations/${loc.id}/customValues/${existing.id}`, loc.apiKey, {
+      method: 'PUT',
+      body: { name: existing.name || name, value },
+    })
+    return shapeValue(updated.customValue || { ...existing, value })
+  }
+  const created = await ghlFetch(`/locations/${loc.id}/customValues`, loc.apiKey, {
+    method: 'POST',
+    body: { name, value },
+  })
+  const made = shapeValue(created.customValue || created.customValues || { name, value })
+  if (made.fieldKey && normalizeKeyLocal(made.fieldKey) !== key) {
+    // Surfaced rather than swallowed: a mismatch means the token an admin
+    // pastes into the workflow will never resolve.
+    made.keyWarning = `GHL created this as ${made.fieldKey}, not ${key}.`
+  }
+  return made
+}
+
+function normalizeKeyLocal(k) {
+  return String(k || '').replace(/[{}\s]/g, '')
+}
+
 // GET /custom-values/locations — clubs this tool can target.
 router.get('/locations', (req, res) => {
   res.json({ locations: LOCATIONS.map(l => ({ slug: l.slug, name: l.name, locationId: l.id })) })
@@ -138,7 +204,35 @@ router.get('/', async (req, res) => {
 
   try {
     const data = await ghlFetch(`/locations/${loc.id}/customValues`, loc.apiKey)
-    const customValues = (data.customValues || data.customValue || []).map(shapeValue).sort(sortByName)
+    const all = (data.customValues || data.customValue || []).map(shapeValue)
+
+    // A media companion is not a message. Pair each one onto the message it
+    // belongs to and keep it out of the list, so adding media does not double
+    // the number of rows staff scroll through.
+    const mediaByKey = {}
+    for (const cv of all) {
+      if (cv.fieldKey && isMediaKey(cv.fieldKey)) mediaByKey[normalizeKeyLocal(cv.fieldKey)] = cv
+    }
+    const customValues = all
+      .filter(cv => !(cv.fieldKey && isMediaKey(cv.fieldKey)))
+      .map(cv => {
+        const key = cv.fieldKey ? mediaKeyFor(cv.fieldKey) : null
+        const companion = key ? mediaByKey[key] : null
+        return {
+          ...cv,
+          media: {
+            key,
+            // "on" is simply whether the companion holds a URL. Clearing the
+            // value is what turns media off, so there is no separate flag to
+            // drift out of step with what actually sends.
+            on: !!(companion && companion.value),
+            url: companion ? companion.value : '',
+            id: companion ? companion.id : null,
+            exists: !!companion,
+          },
+        }
+      })
+      .sort(sortByName)
 
     // Contact custom fields are a best-effort extra for the picker — a failure
     // here must not block editing the custom values themselves.
@@ -365,6 +459,82 @@ router.post('/test-sms', async (req, res) => {
   } catch (err) {
     console.error('[custom-values] test-sms failed:', err.message)
     res.status(502).json({ error: 'Test send failed: ' + err.message })
+  }
+})
+
+// POST /custom-values/media  (multipart: file, location, messageKey, messageName)
+// Stores the image and writes its URL into the message's companion media value.
+router.post('/media', uploadSingle, async (req, res) => {
+  const loc = findLocation(req.body.location)
+  if (!loc) return res.status(400).json({ error: 'Unknown or missing location' })
+  if (!req.file) return res.status(400).json({ error: 'No file was uploaded' })
+
+  const mediaKey = mediaKeyFor(req.body.messageKey)
+  const mediaName = mediaNameFor(req.body.messageName)
+  if (!mediaKey || !mediaName) return res.status(400).json({ error: 'messageKey and messageName are required' })
+
+  const check = validateMedia({ mimetype: req.file.mimetype, size: req.file.size })
+  if (!check.ok) return res.status(400).json({ error: check.error })
+
+  try {
+    await ensureMediaBucket()
+    const path = mediaStoragePath({ clubSlug: loc.slug, mediaKey, ext: check.ext })
+    const { error: upErr } = await supabaseAdmin.storage
+      .from(MEDIA_BUCKET)
+      .upload(path, req.file.buffer, { contentType: req.file.mimetype, upsert: false })
+    if (upErr) throw upErr
+
+    const { data: urlData } = supabaseAdmin.storage.from(MEDIA_BUCKET).getPublicUrl(path)
+    const publicUrl = urlData?.publicUrl
+    if (!publicUrl) throw new Error('Storage did not return a public URL')
+
+    const mediaValue = await findOrCreateValue(loc, { key: mediaKey, name: mediaName, value: publicUrl })
+
+    audit.record(req.staff?.id, 'ghl.drip_media.upload', {
+      target: `${loc.slug}:${mediaKey}`,
+      metadata: { location: loc.slug, path, bytes: req.file.size, type: req.file.mimetype },
+      ip: req.ip,
+    }).catch(() => {})
+
+    res.json({ url: publicUrl, path, bytes: req.file.size, mediaValue })
+  } catch (err) {
+    console.error('[custom-values] media upload failed:', err.message)
+    res.status(502).json({ error: 'Upload failed: ' + err.message })
+  }
+})
+
+// POST /custom-values/media/clear  { location, messageKey }
+// Turning media off empties the companion value, so the workflow's attachment
+// field resolves to nothing and the message sends as a plain SMS. The workflow
+// itself is never touched. The stored file is left in place - cheap to keep,
+// and it means toggling back on does not need a re-upload.
+router.post('/media/clear', async (req, res) => {
+  const loc = findLocation(req.body.location)
+  if (!loc) return res.status(400).json({ error: 'Unknown or missing location' })
+
+  const mediaKey = mediaKeyFor(req.body.messageKey)
+  if (!mediaKey) return res.status(400).json({ error: 'messageKey is required' })
+
+  try {
+    const data = await ghlFetch(`/locations/${loc.id}/customValues`, loc.apiKey)
+    const existing = (data.customValues || []).find(cv => normalizeKeyLocal(cv.fieldKey || cv.key) === mediaKey)
+    if (!existing) return res.json({ cleared: true, mediaValue: null })
+
+    await ghlFetch(`/locations/${loc.id}/customValues/${existing.id}`, loc.apiKey, {
+      method: 'PUT',
+      body: { name: existing.name, value: '' },
+    })
+
+    audit.record(req.staff?.id, 'ghl.drip_media.clear', {
+      target: `${loc.slug}:${mediaKey}`,
+      metadata: { location: loc.slug },
+      ip: req.ip,
+    }).catch(() => {})
+
+    res.json({ cleared: true, mediaValue: shapeValue({ ...existing, value: '' }) })
+  } catch (err) {
+    console.error('[custom-values] media clear failed:', err.message)
+    res.status(502).json({ error: 'Could not turn media off: ' + err.message })
   }
 })
 

@@ -2131,6 +2131,25 @@ export async function sendDripTest({ location, text, phone, contact, mediaUrl, l
   })
 }
 
+// Drip media. The image is stored in the portal's public bucket and its URL is
+// written into the message's companion custom value; clearing that value is
+// what turns the attachment off.
+export async function uploadDripMedia({ location, messageKey, messageName, file }) {
+  const fd = new FormData()
+  fd.append('file', file)
+  fd.append('location', location)
+  fd.append('messageKey', messageKey)
+  fd.append('messageName', messageName)
+  return api('/custom-values/media', { method: 'POST', body: fd })
+}
+
+export async function clearDripMedia({ location, messageKey }) {
+  return api('/custom-values/media/clear', {
+    method: 'POST',
+    body: JSON.stringify({ location, messageKey }),
+  })
+}
+
 // Blog Automation
 export const blogAutomation = {
   posts: (location) => api(`/blog-automation/posts${location ? `?location=${encodeURIComponent(location)}` : ''}`),
