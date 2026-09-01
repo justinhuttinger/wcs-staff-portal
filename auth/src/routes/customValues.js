@@ -128,6 +128,48 @@ function sortByName(a, b) {
   return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
 }
 
+// GHL's customValues LIST endpoint lags writes by many minutes - a value read
+// back straight after a successful write still shows the old contents, while a
+// direct GET by id is correct. The portal renders from the list, so media would
+// vanish from the screen while sitting correctly in GHL.
+//
+// So the portal keeps its own record of what each message carries, written at
+// the same moment as the GHL write. GHL stays canonical for SENDING; this is
+// canonical for DISPLAY. It lives in app_config rather than a new table so no
+// migration is needed, one row per club per message.
+//
+// Consequence worth knowing: editing a media value directly in GHL will not be
+// reflected here until the next upload or clear through the portal.
+const MEDIA_RECORD_PREFIX = 'drip_media.'
+
+function mediaRecordKey(clubSlug, mediaKey) {
+  return `${MEDIA_RECORD_PREFIX}${clubSlug}.${normalizeKeyLocal(mediaKey)}`
+}
+
+async function rememberMedia(clubSlug, mediaKey, url) {
+  const { error } = await supabaseAdmin.from('app_config').upsert(
+    { key: mediaRecordKey(clubSlug, mediaKey), value: url || '', updated_at: new Date().toISOString() },
+    { onConflict: 'key' }
+  )
+  if (error) console.error('[custom-values] could not record media url:', error.message)
+}
+
+// mediaKey -> url for one club. Absent means "no record", which is different
+// from a recorded empty string (media deliberately turned off).
+async function readMediaRecords(clubSlug) {
+  const { data, error } = await supabaseAdmin
+    .from('app_config').select('key, value')
+    .like('key', `${MEDIA_RECORD_PREFIX}${clubSlug}.%`)
+  if (error) {
+    console.error('[custom-values] could not read media records:', error.message)
+    return {}
+  }
+  const out = {}
+  const prefix = `${MEDIA_RECORD_PREFIX}${clubSlug}.`
+  for (const row of (data || [])) out[String(row.key).slice(prefix.length)] = row.value || ''
+  return out
+}
+
 // Media lives in a PUBLIC bucket on purpose: carriers fetch an MMS attachment
 // with no credentials, so a signed URL would 403 on the way to the handset.
 // Everything in here is marketing artwork already being texted to the public.
@@ -223,11 +265,18 @@ router.get('/', async (req, res) => {
     for (const cv of all) {
       if (cv.fieldKey && isMediaKey(cv.fieldKey)) mediaByKey[normalizeKeyLocal(cv.fieldKey)] = cv
     }
+    // Our own record wins over the list, which can be minutes behind.
+    const recorded = await readMediaRecords(loc.slug)
     const customValues = all
       .filter(cv => !(cv.fieldKey && isMediaKey(cv.fieldKey)))
       .map(cv => {
         const key = cv.fieldKey ? mediaKeyFor(cv.fieldKey) : null
         const companion = key ? mediaByKey[key] : null
+        // Prefer what we recorded at write time; fall back to the list for
+        // anything the portal has never touched.
+        const url = key && Object.prototype.hasOwnProperty.call(recorded, key)
+          ? recorded[key]
+          : (companion ? companion.value : '')
         return {
           ...cv,
           media: {
@@ -235,8 +284,8 @@ router.get('/', async (req, res) => {
             // "on" is simply whether the companion holds a URL. Clearing the
             // value is what turns media off, so there is no separate flag to
             // drift out of step with what actually sends.
-            on: !!(companion && companion.value),
-            url: companion ? companion.value : '',
+            on: !!url,
+            url,
             id: companion ? companion.id : null,
             exists: !!companion,
           },
@@ -505,6 +554,8 @@ router.post('/media', uploadSingle, async (req, res) => {
       id: String(req.body.mediaValueId || '').trim() || undefined,
     })
 
+    await rememberMedia(loc.slug, mediaKey, publicUrl)
+
     audit.record(req.staff?.id, 'ghl.drip_media.upload', {
       target: `${loc.slug}:${mediaKey}`,
       metadata: { location: loc.slug, path, bytes: req.file.size, type: req.file.mimetype },
@@ -549,6 +600,8 @@ router.post('/media/clear', async (req, res) => {
       method: 'PUT',
       body: { name, value: '' },
     })
+
+    await rememberMedia(loc.slug, mediaKey, '')
 
     audit.record(req.staff?.id, 'ghl.drip_media.clear', {
       target: `${loc.slug}:${mediaKey}`,
