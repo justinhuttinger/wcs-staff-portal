@@ -2099,6 +2099,22 @@ export async function getCustomFields(location) {
   return api('/custom-fields' + qs)
 }
 
+// Custom Values (Marketing SMS admin) — GHL sub-account variables.
+export async function getCustomValueLocations() {
+  return api('/custom-values/locations')
+}
+
+export async function getCustomValues(location) {
+  return api('/custom-values?location=' + encodeURIComponent(location))
+}
+
+export async function updateCustomValue(location, id, { name, value }) {
+  return api('/custom-values/' + encodeURIComponent(id) + '?location=' + encodeURIComponent(location), {
+    method: 'PUT',
+    body: JSON.stringify({ name, value }),
+  })
+}
+
 // Blog Automation
 export const blogAutomation = {
   posts: (location) => api(`/blog-automation/posts${location ? `?location=${encodeURIComponent(location)}` : ''}`),
