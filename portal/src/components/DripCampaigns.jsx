@@ -362,7 +362,7 @@ function TestSendPanel({ locationSlug, locationName, label, text, mediaUrl, onCl
 // value, so "on" is simply whether that companion value holds a URL - there is
 // no separate flag that could drift out of step with what actually sends.
 // Turning it off empties the value; the workflow is never touched.
-function MediaControl({ locationSlug, cv, onChanged }) {
+function MediaControl({ locationSlug, cv, onMediaChange }) {
   const media = cv.media || {}
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -384,10 +384,20 @@ function MediaControl({ locationSlug, cv, onChanged }) {
     if (!media.url) return
     setBusy(true)
     try {
-      await clearDripMedia({ location: locationSlug, messageKey: cv.fieldKey })
-      onChanged()
+      await clearDripMedia({
+        location: locationSlug,
+        messageKey: cv.fieldKey,
+        messageName: cv.name,
+        mediaValueId: media.id || undefined,
+      })
+      // Do NOT refetch to confirm: GHL's list endpoint lags writes by minutes,
+      // so a re-read returns the old URL and the toggle appears to do nothing.
+      // The write succeeded, so that is the truth to render.
+      onMediaChange(cv.fieldKey, { on: false, url: '', id: media.id, key: media.key, exists: true })
     } catch (e) {
       setError(e.message)
+      // The write failed, so put the control back where it was.
+      setWantMedia(!!media.url)
     }
     setBusy(false)
   }
@@ -405,13 +415,21 @@ function MediaControl({ locationSlug, cv, onChanged }) {
         location: locationSlug,
         messageKey: cv.fieldKey,
         messageName: cv.name,
+        mediaValueId: media.id || undefined,
         file: shrunk.file,
       })
       if (shrunk.resized) {
         setNote(`Resized from ${formatBytes(shrunk.originalBytes)} to ${formatBytes(shrunk.bytes)} to stay under the carrier limit.`)
       }
       if (res.mediaValue?.keyWarning) setError(res.mediaValue.keyWarning)
-      onChanged()
+      // Same reason as clearing: trust the write, not a re-read of a stale list.
+      onMediaChange(cv.fieldKey, {
+        on: true,
+        url: res.url,
+        id: res.mediaValue?.id || media.id,
+        key: media.key,
+        exists: true,
+      })
     } catch (err) {
       setError(err.message)
     }
@@ -732,6 +750,10 @@ export default function DripCampaigns() {
   const [search, setSearch] = useState('')
   const [flow, setFlow] = useState('all')
   const [testing, setTesting] = useState(null)
+  // What we know about media from our own writes. GHL's list endpoint lags by
+  // minutes, so the server copy can be behind; our own successful write is the
+  // better truth until the location is switched.
+  const [mediaEdits, setMediaEdits] = useState({})
   const [editing, setEditing] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
@@ -746,11 +768,6 @@ export default function DripCampaigns() {
       .catch(err => setError(err.message))
   }, [])
 
-  // Bumped after a media change so the row re-reads what GHL now holds, rather
-  // than trusting an optimistic local edit.
-  const [reloadTick, setReloadTick] = useState(0)
-  const reload = () => setReloadTick(t => t + 1)
-
   useEffect(() => {
     if (!location) return
     let cancelled = false
@@ -761,7 +778,20 @@ export default function DripCampaigns() {
       .catch(err => { if (!cancelled) { setError(err.message); setData(null) } })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [location, reloadTick])
+  }, [location])
+
+  // A fresh club means fresh server data, so local overrides no longer apply.
+  useEffect(() => { setMediaEdits({}) }, [location])
+
+  const applyMediaEdit = (cv) => {
+    const edit = cv.fieldKey ? mediaEdits[normalizeKey(cv)] : null
+    return edit ? { ...cv, media: { ...(cv.media || {}), ...edit } } : cv
+  }
+
+  function handleMediaChange(fieldKey, next) {
+    const key = String(fieldKey || '').replace(/[{}\s]/g, '')
+    setMediaEdits(m => ({ ...m, [key]: next }))
+  }
 
   // Standard GHL tokens plus this club's own custom values and contact custom
   // fields, so the picker covers everything that actually resolves here.
@@ -789,7 +819,7 @@ export default function DripCampaigns() {
   }, [data])
 
   const q = search.trim().toLowerCase()
-  const rows = (data?.customValues || []).slice().sort(byDripOrder)
+  const rows = (data?.customValues || []).map(applyMediaEdit).slice().sort(byDripOrder)
     .filter(cv => inFlow(cv, flow))
     .filter(cv =>
       !q ||
@@ -935,7 +965,7 @@ export default function DripCampaigns() {
                 <MediaControl
                   locationSlug={location}
                   cv={cv}
-                  onChanged={() => reload()}
+                  onMediaChange={handleMediaChange}
                 />
               )}
             </div>
@@ -949,7 +979,10 @@ export default function DripCampaigns() {
           locationName={activeLocation?.name || ''}
           label={testing.name}
           text={testing.value || ''}
-          mediaUrl={testing.media?.on ? testing.media.url : ''}
+          mediaUrl={(() => {
+            const m = applyMediaEdit(testing).media
+            return m?.on ? m.url : ''
+          })()}
           onClose={() => setTesting(null)}
         />
       )}
