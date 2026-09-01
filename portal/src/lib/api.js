@@ -2110,6 +2110,27 @@ export async function updateCustomValue(location, id, { name, value }) {
   })
 }
 
+// Drip test send. previewDripMessage renders without sending; sendDripTest
+// hands the rendered text to the configured GHL inbound webhook.
+export async function getDripTestConfig() {
+  return api('/custom-values/test-config')
+}
+
+export async function saveDripTestConfig(settings) {
+  return api('/config/app-settings', { method: 'PUT', body: JSON.stringify({ settings }) })
+}
+
+export async function previewDripMessage({ location, text, contact }) {
+  return api('/custom-values/preview', { method: 'POST', body: JSON.stringify({ location, text, contact }) })
+}
+
+export async function sendDripTest({ location, text, phone, contact, mediaUrl, label }) {
+  return api('/custom-values/test-sms', {
+    method: 'POST',
+    body: JSON.stringify({ location, text, phone, contact, mediaUrl, label }),
+  })
+}
+
 // Blog Automation
 export const blogAutomation = {
   posts: (location) => api(`/blog-automation/posts${location ? `?location=${encodeURIComponent(location)}` : ''}`),
