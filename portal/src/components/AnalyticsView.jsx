@@ -306,13 +306,16 @@ const ANALYTICS_REPORTS = [
 //
 // Keys that do not (yet) exist in ANALYTICS_REPORTS are ignored rather than
 // rendering a dead link, so a group can name a report that ships later.
+//
+// Order WITHIN a group is not read from here — the sidebar sorts each group
+// alphabetically by label — so a new report can be appended to whichever list
+// it belongs in. The order of the groups themselves is still this order.
 export const REPORT_GROUPS = [
   { key: 'marketing', label: 'Marketing',     reports: ['lead-sources'] },
   { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-trends', 'member-journey', 'checkins', 'nps'] },
   { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due', 'pos-sales', 'revenue'] },
   { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase', 'pt-snapshot', 'trainer-snapshot'] },
   { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot', 'compliance', 'audits', 'till', 'payroll'] },
-  // Club-wide overviews first, then the one-person-at-a-time cards.
   { key: 'snapshots', label: 'Snapshots',     reports: ['daily-snapshot', 'club-snapshot', 'pt-snapshot', 'salesperson-snapshot', 'trainer-snapshot'] },
   { key: 'misc',      label: 'Misc',          reports: ['childcare', 'group-x'] },
 ]
@@ -523,7 +526,13 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
           </ul>
 
           {REPORT_GROUPS.map(group => {
-            const reports = group.reports.map(k => reportByKey[k]).filter(Boolean)
+            // Alphabetical by label WITHIN a group, sorted here rather than by
+            // hand in REPORT_GROUPS above, so a report added to a group lands in
+            // the right place without anyone having to re-sort the list. The
+            // pinned/ungrouped block above keeps its deliberate order.
+            const reports = group.reports
+              .map(k => reportByKey[k]).filter(Boolean)
+              .sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }))
             if (reports.length === 0) return null
             const open = openGroups.has(group.key)
             const visible = reports.filter(r => canSee(r.key))
