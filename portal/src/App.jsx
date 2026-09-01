@@ -119,6 +119,8 @@ export default function App() {
   const openTickets = useOpenTicketCount(press && !!user, showTicketsBoard)
   // corporate sees all clubs portal-wide (same as Drive/report gating)
   const seesAllClubs = ['admin', 'corporate'].includes(user?.staff?.role)
+  // Analytics is corporate+ (corporate, director, marketing tier, admin).
+  const canAnalytics = roleAtLeast(user?.staff?.role, 'corporate')
   // Effective Marketing Tracker capabilities (tile + tabs + type scope).
   const mAccess = marketingAccess(user)
 
@@ -521,7 +523,7 @@ export default function App() {
     { key: 'tool:nps', label: 'Feedback', desc: 'Member surveys', open: () => setShowNps(true) },
     { key: 'tool:marketingTracker', label: 'Marketing', desc: 'Campaigns', icon: 'reporting', show: mAccess.tracker, open: () => setShowMarketingTracker(true) },
     { key: 'tool:adsManager', label: 'Ads Manager', desc: 'Meta', show: isAdmin, open: () => setShowAdsManager(true) },
-    { key: 'tool:analytics', label: 'Analytics', desc: 'Admin Reports', icon: 'reporting', show: isAdmin, open: () => { window.location.hash = '#analytics'; setShowAnalytics(true) } },
+    { key: 'tool:analytics', label: 'Analytics', desc: 'Company Reports', icon: 'reporting', show: canAnalytics, open: () => { window.location.hash = '#analytics'; setShowAnalytics(true) } },
   ]
     .map(item => (item.kind ? item : { ...item, kind: 'tool' }))
     .filter(item => item.show !== false)
@@ -740,8 +742,8 @@ export default function App() {
         <FormsView onBack={handleBackToPortal} me={user.staff} />
       ) : showNps ? (
         <NpsView onBack={handleBackToPortal} />
-      ) : showAnalytics && isAdmin ? (
-        <AnalyticsView user={user} onBack={() => { window.location.hash = ''; setShowAnalytics(false) }} location={location} isAdmin={isAdmin} />
+      ) : showAnalytics && canAnalytics ? (
+        <AnalyticsView user={user} onBack={() => { window.location.hash = ''; setShowAnalytics(false) }} location={location} isAdmin={isAdmin} canAnalytics={canAnalytics} />
       ) : showAdsManager && isAdmin ? (
         <AdsManagerView onBack={() => setShowAdsManager(false)} />
       ) : (

@@ -8,7 +8,7 @@ const { buildMemberJourney } = require('../lib/memberJourney')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Member Journey — Analytics (admin only)
+// Member Journey — Analytics (corporate+)
 //
 // What a member is worth, and how often they come, by MONTH OF MEMBERSHIP
 // rather than by calendar month. Everybody's first month is 0, so a member who
@@ -23,7 +23,7 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 15 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000

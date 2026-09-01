@@ -7,7 +7,7 @@ const { buildPtPenetration, METRICS } = require('../lib/ptPenetration')
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// PT Penetration — Analytics (admin only)
+// PT Penetration — Analytics (corporate+)
 //
 // What share of members are personal training clients, per club, over time.
 //
@@ -31,7 +31,7 @@ const DEFAULT_PIF_MONTHS = 3
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000

@@ -9,7 +9,7 @@ const { REVENUE_SEGMENTS, MEMBER_ATTRIBUTED, isValidSegment } = require('../lib/
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Revenue Trends — Analytics (admin only)
+// Revenue Trends — Analytics (corporate+)
 //
 // The same revenue at two grains — monthly and daily — split by one segment.
 // Monthly is month-to-date comparable; see migration 143.
@@ -25,7 +25,7 @@ const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000

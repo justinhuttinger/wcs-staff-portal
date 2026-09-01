@@ -40,19 +40,20 @@ import PtSnapshot from './analytics/PtSnapshot'
 import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 
 // ---------------------------------------------------------------------------
-// Analytics — an admin-only reporting surface, separate from ReportingView.
+// Analytics — a corporate+ reporting surface, separate from ReportingView.
 //
 // This is a staging ground for reports that are being rebuilt/reshaped before
 // they graduate into the main Reporting view. Nothing here is visible to any
-// role below `admin`: the tile is hidden in ToolGrid, App.jsx refuses to mount
-// this view, and every server route these reports call must apply its own
-// admin gate (client gating alone is not a gate).
+// role below `corporate`: the tile is hidden in ToolGrid, App.jsx refuses to
+// mount this view, and every server route these reports call must apply its own
+// corporate gate (client gating alone is not a gate).
 //
 // To add a report: drop a component in ./analytics/ and register it below.
 // ---------------------------------------------------------------------------
 
 // Ordered registry. `Component` receives
-// { user, isAdmin, location, locationSlug, startDate, endDate }.
+// { user, isAdmin, location, locationSlug, startDate, endDate }. `isAdmin` is
+// still the true admin flag, not the Analytics access gate.
 // `dates: false` hides the date-range controls for reports that manage their own.
 const ANALYTICS_REPORTS = [
   {
@@ -382,7 +383,7 @@ function parseHash() {
   return ANALYTICS_REPORTS.some(r => r.key === slug) ? slug : null
 }
 
-export default function AnalyticsView({ user, onBack, location, isAdmin }) {
+export default function AnalyticsView({ user, onBack, location, isAdmin, canAnalytics }) {
   // KPIs is the landing report. Topline only held the spot because it happened
   // to be first in the registry, which meant the default silently moved
   // whenever the list was reordered. Named explicitly, with a fallback so
@@ -452,8 +453,8 @@ export default function AnalyticsView({ user, onBack, location, isAdmin }) {
     return () => window.removeEventListener('hashchange', onHashChange)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Belt-and-braces: App.jsx already refuses to mount this for non-admins.
-  if (!isAdmin) return null
+  // Belt-and-braces: App.jsx already refuses to mount this below corporate.
+  if (!canAnalytics) return null
 
   function navigateToReport(reportKey) {
     window.location.hash = '#analytics/' + reportKey

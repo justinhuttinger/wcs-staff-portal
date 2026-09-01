@@ -9,7 +9,7 @@ const { MEMBER_SEGMENTS } = require('../lib/analyticsSegments')
 const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Attrition Trends — Analytics (admin only)
+// Attrition Trends — Analytics (corporate+)
 //
 // Month by month: how many members left, what share of the base that was, and
 // what their dues and total spend were worth. Overall on top, split by a
@@ -22,7 +22,7 @@ const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerfo
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000

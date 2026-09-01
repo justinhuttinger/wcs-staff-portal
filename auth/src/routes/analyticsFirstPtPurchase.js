@@ -9,7 +9,7 @@ const { isValidSegment } = require('../lib/analyticsSegments')
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// First Purchases by Join Month — Analytics (admin only)
+// First Purchases by Join Month — Analytics (corporate+)
 //
 // Of the members we signed, how many go on to buy PT, and how long after
 // joining.
@@ -36,7 +36,7 @@ const SEGMENTS = [
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 15 * 60 * 1000
 const STALE_MS = 2 * 60 * 60 * 1000

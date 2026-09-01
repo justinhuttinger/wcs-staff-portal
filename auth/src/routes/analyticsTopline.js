@@ -7,7 +7,7 @@ const { buildTopline } = require('../lib/toplineMetrics')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Topline — Analytics (admin only)
+// Topline — Analytics (corporate+)
 //
 // Eight headline cards, each against the periods that make it mean something.
 // Windows come from analytics_topline() (migration 125); the shaping is in
@@ -22,7 +22,7 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000

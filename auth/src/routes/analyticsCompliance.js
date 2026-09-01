@@ -9,7 +9,7 @@ const { monthToDate, priorMonthWindow, priorLabel, windowLabel } = require('../l
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Compliance — Analytics (admin only)
+// Compliance — Analytics (corporate+)
 //
 // Operational compliance from operandio_api_jobs, with the old report's
 // definitions kept exactly: a job is judged once it is done or past due, and
@@ -26,7 +26,7 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000

@@ -12,7 +12,7 @@ const { monthToDate, priorMonthWindow, priorLabel, windowLabel } = require('../l
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Membership Snapshot — Analytics (admin only)
+// Membership Snapshot — Analytics (corporate+)
 //
 // One salesperson at a time, month to date by default, with the SAME window a
 // month earlier beside it and a month-by-month trend underneath.
@@ -26,7 +26,7 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 5 * 60 * 1000
 const STALE_MS = 30 * 60 * 1000

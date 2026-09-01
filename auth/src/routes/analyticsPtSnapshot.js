@@ -9,7 +9,7 @@ const { monthToDate, priorMonthWindow, priorLabel, windowLabel } = require('../l
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// PT Snapshot — Analytics (admin only)
+// PT Snapshot — Analytics (corporate+)
 //
 // The whole club's training in one card: the Day One funnel including why the
 // ones that did not close did not close, what the ones that did close bought,
@@ -24,7 +24,7 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 5 * 60 * 1000
 const STALE_MS = 30 * 60 * 1000

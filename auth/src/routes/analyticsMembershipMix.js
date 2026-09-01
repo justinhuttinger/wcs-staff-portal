@@ -9,7 +9,7 @@ const { buildMembershipMix, BREAKDOWNS, VIEW_BY } = require('../lib/membershipMi
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Membership Mix — Analytics (admin only)
+// Membership Mix — Analytics (corporate+)
 //
 // Who our members are, split by whichever dimension you pick.
 //
@@ -39,7 +39,7 @@ const CHECKIN_WINDOW_MONTHS = 6
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000

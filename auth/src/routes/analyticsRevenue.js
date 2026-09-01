@@ -13,7 +13,7 @@ const { shiftedWindow, spanDays } = require('../lib/comparisonWindow')
 const { latestRevenueDay, clampToRevenueEdge, edgeNote } = require('../lib/revenueDataEdge')
 
 // ---------------------------------------------------------------------------
-// Revenue — Analytics (admin only)
+// Revenue — Analytics (corporate+)
 //
 // Every profit center, against the same span a month ago and a year ago.
 // abc_revenue_transactions runs from January 2024 — 32 months, $17.9M, every
@@ -32,7 +32,7 @@ const { latestRevenueDay, clampToRevenueEdge, edgeNote } = require('../lib/reven
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000

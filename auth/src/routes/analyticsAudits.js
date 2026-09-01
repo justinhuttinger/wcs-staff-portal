@@ -9,7 +9,7 @@ const { monthToDate, priorLabel, windowLabel } = require('../lib/snapshotWindow'
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Audits — Analytics (admin only)
+// Audits — Analytics (corporate+)
 //
 // QA submissions from operandio_qa_reports. 173 rows all time, so the whole
 // table is fetched and filtered in the builder rather than queried per window:
@@ -29,7 +29,7 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000

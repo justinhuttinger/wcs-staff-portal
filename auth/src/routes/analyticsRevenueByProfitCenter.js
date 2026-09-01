@@ -9,7 +9,7 @@ const { buildRevenueByProfitCenter, SORTS } = require('../lib/revenueByProfitCen
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Revenue by Profit Center — Analytics (admin only)
+// Revenue by Profit Center — Analytics (corporate+)
 //
 // One stacked bar per row, segmented by profit centre group.
 //
@@ -40,7 +40,7 @@ const EXACT_VIEWS = new Set(['club', 'payment_type'])
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000

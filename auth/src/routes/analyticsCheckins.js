@@ -9,7 +9,7 @@ const { monthToDate, priorMonthWindow, priorLabel, windowLabel } = require('../l
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Check-ins — Analytics (admin only)
+// Check-ins — Analytics (corporate+)
 //
 // VOLUME AND SHAPE COME FROM DIFFERENT TABLES. abc_member_checkin_months is
 // complete and carries every total on this report; checkins_hourly has been
@@ -28,7 +28,7 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000

@@ -7,7 +7,7 @@ const { buildTrends } = require('../lib/clubActivityTrends')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Club Activity Trends — Analytics (admin only)
+// Club Activity Trends — Analytics (corporate+)
 //
 // Ten small multiples, each a metric against the same month a year earlier.
 // The aggregation is a SQL function (migration 124) rather than row-fetching:
@@ -28,7 +28,7 @@ const COMPARISON_MONTHS = 12
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000

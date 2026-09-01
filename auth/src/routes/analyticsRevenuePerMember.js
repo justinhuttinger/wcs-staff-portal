@@ -8,7 +8,7 @@ const { BREAKDOWNS } = require('../lib/membershipMix')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Revenue Per Member — Analytics (admin only)
+// Revenue Per Member — Analytics (corporate+)
 //
 // Members and revenue over time, and average revenue per member split by any
 // of the Membership Mix dimensions.
@@ -30,7 +30,7 @@ const SUPPORTED = new Set(BREAKDOWNS.map(b => b.key).filter(k => k !== 'checkin_
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000

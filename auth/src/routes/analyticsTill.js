@@ -9,7 +9,7 @@ const { monthToDate, priorLabel, windowLabel } = require('../lib/snapshotWindow'
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Till — Analytics (admin only)
+// Till — Analytics (corporate+)
 //
 // THE OVER/SHORT ARITHMETIC IS NOT REDEFINED. reconcileDay() in
 // tillReconcile.js remains the one definition of expected close and over/short;
@@ -30,7 +30,7 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000

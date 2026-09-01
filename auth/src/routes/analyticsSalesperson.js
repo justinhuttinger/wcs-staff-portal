@@ -11,7 +11,7 @@ const { getSkipList } = require('../utils/membershipSkipList')
 const { loadVipCredits, loadTourCompletions } = require('../lib/salespersonData')
 
 // ---------------------------------------------------------------------------
-// Salesperson Performance — Analytics (admin only)
+// Salesperson Performance — Analytics (corporate+)
 //
 // Rebuild of the external tool's "Salesperson Performance: New Member Units"
 // board, with one deliberate substitution: where the source tool counts ABC
@@ -93,7 +93,7 @@ async function loadGhlContacts(contactIds) {
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 5 * 60 * 1000
 const STALE_MS = 30 * 60 * 1000

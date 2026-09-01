@@ -9,7 +9,7 @@ const { monthToDate, priorMonthWindow, priorLabel, windowLabel } = require('../l
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// POS Sales — Analytics (admin only)
+// POS Sales — Analytics (corporate+)
 //
 // GOODS ONLY. Retail is the four stocked categories — Drinks, Snacks,
 // Supplements, Merchandise (migration 168). Dues, personal training, guest
@@ -25,7 +25,7 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000
