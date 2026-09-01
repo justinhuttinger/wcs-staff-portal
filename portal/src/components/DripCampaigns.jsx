@@ -85,15 +85,16 @@ function byDripOrder(a, b) {
   return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
 }
 
-function TestSendPanel({ locationSlug, locationName, label, text, onClose }) {
+function TestSendPanel({ locationSlug, locationName, label, text, mediaUrl, onClose }) {
   const [cfg, setCfg] = useState(null)
   const [phone, setPhone] = useState('')
-  const [mediaUrl, setMediaUrl] = useState('')
   // Planted merge-field values, keyed by full token path. Seeded from the saved
   // defaults and then edited per send.
   const [values, setValues] = useState({})
   const [savingDefaults, setSavingDefaults] = useState(false)
   const [defaultsSaved, setDefaultsSaved] = useState(false)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
   const [preview, setPreview] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -131,6 +132,9 @@ function TestSendPanel({ locationSlug, locationName, label, text, onClose }) {
     try {
       const r = await sendDripTest({ location: locationSlug, text, phone, values, mediaUrl, label })
       setSent(r)
+      // The handset is the real confirmation, so the panel gets out of the way
+      // rather than making you dismiss it.
+      setTimeout(() => onCloseRef.current?.(), 2000)
     } catch (e) {
       setError(e.message)
     }
@@ -179,6 +183,21 @@ function TestSendPanel({ locationSlug, locationName, label, text, onClose }) {
           <p className="text-xs text-text-muted mt-0.5">{label} · {locationName}</p>
         </div>
 
+        {sent ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-14">
+            <div className="animate-tour-pop w-20 h-20 rounded-full bg-green-500 flex items-center justify-center shadow-lg">
+              <svg viewBox="0 0 52 52" className="w-12 h-12" fill="none" stroke="white" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round">
+                <path className="tour-check-path" d="M14 27 l8 8 l16 -18" />
+              </svg>
+            </div>
+            <p className="animate-tour-pop text-lg font-bold text-text-primary">Sent</p>
+            <p className="text-xs text-text-muted text-center">
+              {sent.phone} · {sent.segments} segment{sent.segments === 1 ? '' : 's'}
+              <br />
+              Check the handset, not the workflow preview.
+            </p>
+          </div>
+        ) : (
         <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
           {cfg && !cfg.configured && !cfg.canEdit && (
             <p className="text-sm text-red-500">
@@ -226,18 +245,19 @@ function TestSendPanel({ locationSlug, locationName, label, text, onClose }) {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-text-primary mb-1">Media URL (optional)</label>
-            <input
-              type="url"
-              value={mediaUrl}
-              onChange={e => setMediaUrl(e.target.value)}
-              placeholder="https://… .jpg / .png / .gif"
-              className="w-full text-xs font-mono bg-bg border border-border rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red/30"
-            />
-            <p className="text-[11px] text-text-muted mt-1">
-              Must be publicly reachable — carriers fetch it with no login. JPEG, PNG or GIF, and keep it under
-              500 KB or it silently fails for AT&amp;T and Verizon.
-            </p>
+            <span className="block text-xs font-semibold text-text-primary mb-1">Attachment</span>
+            {mediaUrl ? (
+              <div className="flex items-center gap-2">
+                <img src={mediaUrl} alt="" className="h-10 w-10 rounded object-cover border border-border" />
+                <span className="text-[11px] text-text-muted">
+                  Sends as an MMS with this message's attachment.
+                </span>
+              </div>
+            ) : (
+              <p className="text-[11px] text-text-muted">
+                No attachment on this message, so it sends as a plain SMS. Turn media on in the list to include one.
+              </p>
+            )}
           </div>
 
           <div>
@@ -304,13 +324,10 @@ function TestSendPanel({ locationSlug, locationName, label, text, onClose }) {
           </div>
 
           {error && <p className="text-sm text-red-500">{error}</p>}
-          {sent && (
-            <p className="text-sm text-green-600">
-              Sent to {sent.phone} · {sent.segments} segment{sent.segments === 1 ? '' : 's'}. Check the handset, not the workflow preview.
-            </p>
-          )}
         </div>
+        )}
 
+        {!sent && (
         <div className="px-5 py-4 border-t border-border flex items-center justify-between gap-2">
           {cfg?.canEdit && cfg?.configured && !showSetup ? (
             <button type="button" onClick={() => setShowSetup(true)} className="text-[11px] text-text-muted hover:text-text-primary underline underline-offset-2">
@@ -335,6 +352,7 @@ function TestSendPanel({ locationSlug, locationName, label, text, onClose }) {
             </button>
           </div>
         </div>
+        )}
       </div>
     </div>
   )
@@ -349,16 +367,21 @@ function MediaControl({ locationSlug, cv, onChanged }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [note, setNote] = useState(null)
+  // Yes can be chosen before a file exists, so the dropdown and "is there a
+  // URL stored" are not the same thing until an upload lands.
+  const [wantMedia, setWantMedia] = useState(false)
   const fileRef = useRef(null)
 
   async function handleToggle(next) {
     setError(null)
     setNote(null)
     if (next === 'on') {
-      // Nothing stored yet, so ask for the file straight away.
-      if (!media.url) fileRef.current?.click()
+      setWantMedia(true)
       return
     }
+    setWantMedia(false)
+    // Nothing was ever stored, so there is nothing to clear.
+    if (!media.url) return
     setBusy(true)
     try {
       await clearDripMedia({ location: locationSlug, messageKey: cv.fieldKey })
@@ -395,7 +418,7 @@ function MediaControl({ locationSlug, cv, onChanged }) {
     setBusy(false)
   }
 
-  const on = !!media.on
+  const on = !!media.on || wantMedia
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -417,6 +440,20 @@ function MediaControl({ locationSlug, cv, onChanged }) {
         onChange={handleFile}
         className="hidden"
       />
+
+      {on && !media.url && (
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+          className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1 text-[11px] font-medium text-text-muted hover:text-text-primary hover:border-wcs-red/40 transition-colors disabled:opacity-50"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
+          Add attachment
+        </button>
+      )}
 
       {on && media.url && (
         <>
@@ -893,6 +930,7 @@ export default function DripCampaigns() {
           locationName={activeLocation?.name || ''}
           label={testing.name}
           text={testing.value || ''}
+          mediaUrl={testing.media?.on ? testing.media.url : ''}
           onClose={() => setTesting(null)}
         />
       )}
