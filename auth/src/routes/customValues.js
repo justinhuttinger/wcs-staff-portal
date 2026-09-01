@@ -26,6 +26,10 @@ const {
   mediaKeyFor, mediaNameFor, isMediaKey, validateMedia, formatBytes,
   mediaStoragePath, MAX_MEDIA_BYTES,
 } = require('../lib/dripMedia')
+const {
+  PLAYGROUND_SLUG, PLAYGROUND_NAME, PLAYGROUND_PREFIX,
+  isPlayground, playgroundStorageKey, messageById, buildMessages, customValuesMap,
+} = require('../lib/dripPlayground')
 const audit = require('../services/auditLog')
 
 // app_config keys backing the test send.
@@ -170,6 +174,58 @@ async function readMediaRecords(clubSlug) {
   return out
 }
 
+// The playground's messages live here rather than in any sub-account, so
+// experimenting cannot touch a club's real drips.
+async function readPlaygroundSaved() {
+  const { data, error } = await supabaseAdmin
+    .from('app_config').select('key, value').like('key', `${PLAYGROUND_PREFIX}%`)
+  if (error) {
+    console.error('[custom-values] could not read playground:', error.message)
+    return {}
+  }
+  const out = {}
+  for (const row of (data || [])) out[row.key] = row.value || ''
+  return out
+}
+
+async function writePlayground(fieldKey, value) {
+  const { error } = await supabaseAdmin.from('app_config').upsert(
+    { key: playgroundStorageKey(fieldKey), value: value || '', updated_at: new Date().toISOString() },
+    { onConflict: 'key' }
+  )
+  if (error) throw new Error(error.message)
+}
+
+// The playground's rows, shaped exactly like a club's so the UI cannot tell the
+// difference - same media pairing, same tokens, same everything but the origin.
+async function playgroundPayload() {
+  const [saved, recorded] = await Promise.all([
+    readPlaygroundSaved(),
+    readMediaRecords(PLAYGROUND_SLUG),
+  ])
+  const customValues = buildMessages(saved).map(m => {
+    const mediaKey = mediaKeyFor(m.fieldKey)
+    const url = recorded[mediaKey] || ''
+    return {
+      id: m.id,
+      name: m.name,
+      value: m.value,
+      fieldKey: m.fieldKey,
+      token: `{{ ${m.fieldKey} }}`,
+      dateAdded: null,
+      dateUpdated: null,
+      media: { key: mediaKey, on: !!url, url, id: null, exists: true },
+    }
+  })
+  return {
+    location: { slug: PLAYGROUND_SLUG, name: PLAYGROUND_NAME, locationId: null, playground: true },
+    customValues,
+    customFields: [],
+    customFieldsError: null,
+    playground: true,
+  }
+}
+
 // Media lives in a PUBLIC bucket on purpose: carriers fetch an MMS attachment
 // with no credentials, so a signed URL would 403 on the way to the handset.
 // Everything in here is marketing artwork already being texted to the public.
@@ -243,7 +299,13 @@ function normalizeKeyLocal(k) {
 
 // GET /custom-values/locations — clubs this tool can target.
 router.get('/locations', (req, res) => {
-  res.json({ locations: LOCATIONS.map(l => ({ slug: l.slug, name: l.name, locationId: l.id })) })
+  res.json({
+    locations: [
+      // A sandbox that writes nothing to GHL, offered alongside the clubs.
+      { slug: PLAYGROUND_SLUG, name: PLAYGROUND_NAME, locationId: null, playground: true },
+      ...LOCATIONS.map(l => ({ slug: l.slug, name: l.name, locationId: l.id })),
+    ],
+  })
 })
 
 // GET /custom-values?location=<slug>
@@ -251,6 +313,14 @@ router.get('/locations', (req, res) => {
 // editor's merge-field picker can offer the account-specific tokens alongside
 // the standard GHL ones.
 router.get('/', async (req, res) => {
+  if (isPlayground(req.query.location)) {
+    try {
+      return res.json(await playgroundPayload())
+    } catch (err) {
+      console.error('[custom-values] playground load failed:', err.message)
+      return res.status(500).json({ error: err.message })
+    }
+  }
   const loc = findLocation(req.query.location)
   if (!loc) return res.status(400).json({ error: 'Unknown or missing location' })
 
@@ -329,6 +399,23 @@ router.get('/', async (req, res) => {
 // GHL's update endpoint replaces both fields, so both are always sent — the UI
 // passes the current name back when only the value changed.
 router.put('/:id', async (req, res) => {
+  if (isPlayground(req.query.location || req.body.location)) {
+    const msg = messageById(req.params.id)
+    if (!msg) return res.status(404).json({ error: 'Unknown playground message' })
+    if (typeof req.body.value !== 'string') return res.status(400).json({ error: 'Value must be a string' })
+    try {
+      await writePlayground(msg.fieldKey, req.body.value)
+      return res.json({
+        customValue: {
+          id: msg.id, name: msg.name, value: req.body.value,
+          fieldKey: msg.fieldKey, token: `{{ ${msg.fieldKey} }}`,
+        },
+      })
+    } catch (err) {
+      console.error('[custom-values] playground save failed:', err.message)
+      return res.status(500).json({ error: err.message })
+    }
+  }
   const loc = findLocation(req.query.location || req.body.location)
   if (!loc) return res.status(400).json({ error: 'Unknown or missing location' })
 
@@ -385,15 +472,20 @@ router.get('/test-config', async (req, res) => {
 // Renders a message without sending anything, so the panel can show exactly
 // what will go out (and what failed to resolve) before a real SMS is spent.
 router.post('/preview', async (req, res) => {
-  const loc = findLocation(req.body.location)
+  const playground = isPlayground(req.body.location)
+  const loc = playground ? { name: PLAYGROUND_NAME } : findLocation(req.body.location)
   if (!loc) return res.status(400).json({ error: 'Unknown or missing location' })
   if (typeof req.body.text !== 'string') return res.status(400).json({ error: 'text is required' })
 
   try {
-    const data = await ghlFetch(`/locations/${loc.id}/customValues`, loc.apiKey)
-    const customValues = {}
-    for (const cv of (data.customValues || [])) {
-      if (cv.fieldKey || cv.key) customValues[cv.fieldKey || cv.key] = cv.value
+    let customValues = {}
+    if (playground) {
+      customValues = customValuesMap(buildMessages(await readPlaygroundSaved()))
+    } else {
+      const data = await ghlFetch(`/locations/${loc.id}/customValues`, loc.apiKey)
+      for (const cv of (data.customValues || [])) {
+        if (cv.fieldKey || cv.key) customValues[cv.fieldKey || cv.key] = cv.value
+      }
     }
     const settings = await readSettings()
     const planted = {
@@ -432,7 +524,10 @@ router.post('/preview', async (req, res) => {
 // Renders the message, then POSTs it to the configured GHL inbound webhook.
 // GHL does the sending, from one workflow, to the phone in the payload.
 router.post('/test-sms', async (req, res) => {
-  const loc = findLocation(req.body.location)
+  const playground = isPlayground(req.body.location)
+  const loc = playground
+    ? { name: PLAYGROUND_NAME, slug: PLAYGROUND_SLUG }
+    : findLocation(req.body.location)
   if (!loc) return res.status(400).json({ error: 'Unknown or missing location' })
   if (typeof req.body.text !== 'string' || !req.body.text.trim()) {
     return res.status(400).json({ error: 'text is required' })
@@ -464,10 +559,14 @@ router.post('/test-sms', async (req, res) => {
     // Resolve here rather than letting GHL do it: the workflow acts on the
     // tester's own contact, so GHL would substitute the STAFF member's name and
     // an empty referrer - a preview that hides the very gap worth catching.
-    const data = await ghlFetch(`/locations/${loc.id}/customValues`, loc.apiKey)
-    const customValues = {}
-    for (const cv of (data.customValues || [])) {
-      if (cv.fieldKey || cv.key) customValues[cv.fieldKey || cv.key] = cv.value
+    let customValues = {}
+    if (playground) {
+      customValues = customValuesMap(buildMessages(await readPlaygroundSaved()))
+    } else {
+      const data = await ghlFetch(`/locations/${loc.id}/customValues`, loc.apiKey)
+      for (const cv of (data.customValues || [])) {
+        if (cv.fieldKey || cv.key) customValues[cv.fieldKey || cv.key] = cv.value
+      }
     }
     const rendered = resolveTokens(req.body.text, {
       customValues,
@@ -534,7 +633,8 @@ router.post('/test-sms', async (req, res) => {
 // POST /custom-values/media  (multipart: file, location, messageKey, messageName)
 // Stores the image and writes its URL into the message's companion media value.
 router.post('/media', uploadSingle, async (req, res) => {
-  const loc = findLocation(req.body.location)
+  const playground = isPlayground(req.body.location)
+  const loc = playground ? { slug: PLAYGROUND_SLUG, name: PLAYGROUND_NAME } : findLocation(req.body.location)
   if (!loc) return res.status(400).json({ error: 'Unknown or missing location' })
   if (!req.file) return res.status(400).json({ error: 'No file was uploaded' })
 
@@ -557,10 +657,14 @@ router.post('/media', uploadSingle, async (req, res) => {
     const publicUrl = urlData?.publicUrl
     if (!publicUrl) throw new Error('Storage did not return a public URL')
 
-    const mediaValue = await findOrCreateValue(loc, {
-      key: mediaKey, name: mediaName, value: publicUrl,
-      id: String(req.body.mediaValueId || '').trim() || undefined,
-    })
+    // The playground never writes to GHL - the recorded URL below is all it
+    // needs, and the test send carries that URL in the webhook payload.
+    const mediaValue = playground
+      ? { id: null, name: mediaName, value: publicUrl, fieldKey: mediaKey, token: `{{ ${mediaKey} }}` }
+      : await findOrCreateValue(loc, {
+          key: mediaKey, name: mediaName, value: publicUrl,
+          id: String(req.body.mediaValueId || '').trim() || undefined,
+        })
 
     await rememberMedia(loc.slug, mediaKey, publicUrl)
 
@@ -583,12 +687,18 @@ router.post('/media', uploadSingle, async (req, res) => {
 // itself is never touched. The stored file is left in place - cheap to keep,
 // and it means toggling back on does not need a re-upload.
 router.post('/media/clear', async (req, res) => {
-  const loc = findLocation(req.body.location)
+  const playground = isPlayground(req.body.location)
+  const loc = playground ? { slug: PLAYGROUND_SLUG, name: PLAYGROUND_NAME } : findLocation(req.body.location)
   if (!loc) return res.status(400).json({ error: 'Unknown or missing location' })
 
   const mediaKey = mediaKeyFor(req.body.messageKey)
   const mediaName = mediaNameFor(req.body.messageName)
   if (!mediaKey) return res.status(400).json({ error: 'messageKey is required' })
+
+  if (playground) {
+    await rememberMedia(PLAYGROUND_SLUG, mediaKey, '')
+    return res.json({ cleared: true, mediaValue: { id: null, name: mediaName, value: '', fieldKey: mediaKey } })
+  }
 
   try {
     // Prefer the id the portal already holds: the list lags writes, so looking

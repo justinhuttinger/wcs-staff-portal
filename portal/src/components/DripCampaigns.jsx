@@ -17,6 +17,11 @@ import { MERGE_FIELD_GROUPS } from '../lib/ghlMergeFields'
 // custom values in an arbitrary order, so the list is sorted by this instead of
 // alphabetically. Anything not listed here sorts after, by name.
 const DRIP_ORDER = [
+  'custom_values.test_sms_1',
+  'custom_values.test_sms_2',
+  'custom_values.test_sms_3',
+  'custom_values.test_sms_4',
+  'custom_values.test_sms_5',
   'custom_values.new_lead_sms_1',
   'custom_values.new_lead_sms_2',
   'custom_values.new_lead_sms_3',
@@ -850,33 +855,55 @@ export default function DripCampaigns() {
   }
 
   const activeLocation = locations.find(l => l.slug === location)
+  const isPlayground = !!activeLocation?.playground
 
   return (
     <div className="space-y-4">
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5">
-        <h3 className="text-sm font-bold text-text-primary">GHL Custom Values</h3>
+        <h3 className="text-sm font-bold text-text-primary">
+          {isPlayground ? 'Playground' : 'GHL Custom Values'}
+        </h3>
         <p className="text-xs text-text-muted mt-1">
-          The sub-account variables marketing SMS and email templates reference as{' '}
-          <span className="font-mono">{'{{ custom_values.your_key }}'}</span>. Edits save straight back to GHL.
+          {isPlayground ? (
+            <>
+              Five throwaway messages for trying things out. Nothing here is written to GHL, so no club&rsquo;s
+              drips can be affected. Media uploads and test sends work exactly as they do for a real club &mdash;
+              the test webhook is the only thing that leaves the portal.
+            </>
+          ) : (
+            <>
+              The sub-account variables marketing SMS and email templates reference as{' '}
+              <span className="font-mono">{'{{ custom_values.your_key }}'}</span>. Edits save straight back to GHL.
+            </>
+          )}
         </p>
 
         <div className="flex flex-wrap items-center gap-1.5 mt-4">
           {locations.map(l => (
             <button
               key={l.slug}
-              onClick={() => { setSearch(''); setLocation(l.slug) }}
+              onClick={() => { setSearch(''); setFlow('all'); setLocation(l.slug) }}
+              title={l.playground ? 'A sandbox. Nothing here is written to GHL.' : undefined}
               className={
                 'text-xs rounded-lg px-3 py-1.5 font-medium border transition-colors ' +
                 (l.slug === location
-                  ? 'bg-wcs-red text-white border-wcs-red'
-                  : 'bg-surface text-text-muted border-border hover:text-text-primary')
+                  ? (l.playground
+                    ? 'bg-text-primary text-surface border-text-primary'
+                    : 'bg-wcs-red text-white border-wcs-red')
+                  : (l.playground
+                    ? 'bg-surface text-text-muted border-dashed border-border hover:text-text-primary'
+                    : 'bg-surface text-text-muted border-border hover:text-text-primary'))
               }
             >
               {l.name}
             </button>
           ))}
+          {/* A divider so the sandbox never gets mistaken for a club. */}
+          {locations.some(l => l.playground) && (
+            <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
+          )}
 
-          <label className="ml-2 flex items-center gap-1.5">
+          <label className={'ml-2 flex items-center gap-1.5' + (isPlayground ? ' hidden' : '')}>
             <span className="sr-only">Filter by flow</span>
             <select
               value={flow}
