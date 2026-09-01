@@ -83,28 +83,15 @@ function byDripOrder(a, b) {
   return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
 }
 
-// Merge-field values used to render a test. The tester is staff, not a
-// prospect, so real contact data would show THEIR name and an empty referrer -
-// which is exactly the failure this preview exists to catch. Editable, because
-// seeing the message at a realistic name length is half the point.
-const DEFAULT_SAMPLE = {
-  first_name: 'Alex',
-  last_name: 'Morgan',
-  name: 'Alex Morgan',
-  referred_by_full_name: 'Jamie Smith',
-}
-
-const SAMPLE_FIELDS = [
-  { key: 'first_name', label: 'First name' },
-  { key: 'last_name', label: 'Last name' },
-  { key: 'referred_by_full_name', label: 'Referred by' },
-]
-
 function TestSendPanel({ locationSlug, locationName, label, text, onClose }) {
   const [cfg, setCfg] = useState(null)
   const [phone, setPhone] = useState('')
   const [mediaUrl, setMediaUrl] = useState('')
-  const [sample, setSample] = useState(DEFAULT_SAMPLE)
+  // Planted merge-field values, keyed by full token path. Seeded from the saved
+  // defaults and then edited per send.
+  const [values, setValues] = useState({})
+  const [savingDefaults, setSavingDefaults] = useState(false)
+  const [defaultsSaved, setDefaultsSaved] = useState(false)
   const [preview, setPreview] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -119,31 +106,50 @@ function TestSendPanel({ locationSlug, locationName, label, text, onClose }) {
         setCfg(c)
         setPhone(c.defaultPhone || '')
         setWebhookDraft(c.webhookUrl || '')
+        setValues(c.sampleValues || {})
         if (!c.configured) setShowSetup(true)
       })
       .catch(e => setError(e.message))
   }, [])
 
-  // Re-render the preview whenever the sample values change.
+  // Re-render whenever a planted value changes. The response also names the
+  // merge fields this copy uses, which is what drives the inputs below.
   useEffect(() => {
     let cancelled = false
-    previewDripMessage({ location: locationSlug, text, contact: sample })
+    previewDripMessage({ location: locationSlug, text, values })
       .then(r => { if (!cancelled) setPreview(r) })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [locationSlug, text, sample])
+  }, [locationSlug, text, values])
 
   async function handleSend() {
     setBusy(true)
     setError(null)
     setSent(null)
     try {
-      const r = await sendDripTest({ location: locationSlug, text, phone, contact: sample, mediaUrl, label })
+      const r = await sendDripTest({ location: locationSlug, text, phone, values, mediaUrl, label })
       setSent(r)
     } catch (e) {
       setError(e.message)
     }
     setBusy(false)
+  }
+
+  // Persist the planted values so they are not retyped on every test. Admin
+  // only, enforced by the app-settings PUT.
+  async function handleSaveDefaults() {
+    setSavingDefaults(true)
+    setError(null)
+    try {
+      const toSave = {}
+      for (const f of (preview?.fields || [])) toSave[f.path] = values[f.path] ?? ''
+      await saveDripTestConfig({ drip_test_sample_values: JSON.stringify({ ...(cfg?.sampleValues || {}), ...toSave }) })
+      setDefaultsSaved(true)
+      setTimeout(() => setDefaultsSaved(false), 2500)
+    } catch (e) {
+      setError(e.message)
+    }
+    setSavingDefaults(false)
   }
 
   async function handleSaveCfg() {
@@ -233,20 +239,42 @@ function TestSendPanel({ locationSlug, locationName, label, text, onClose }) {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-text-primary mb-1">Merge field values</label>
-            <div className="grid grid-cols-3 gap-2">
-              {SAMPLE_FIELDS.map(f => (
-                <div key={f.key}>
-                  <span className="block text-[10px] text-text-muted mb-0.5">{f.label}</span>
-                  <input
-                    type="text"
-                    value={sample[f.key] || ''}
-                    onChange={e => setSample(s2 => ({ ...s2, [f.key]: e.target.value }))}
-                    className="w-full text-xs bg-bg border border-border rounded-lg px-2 py-1.5 text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red/30"
-                  />
-                </div>
-              ))}
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-semibold text-text-primary">Merge field values</label>
+              {cfg?.canEdit && preview?.fields?.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSaveDefaults}
+                  disabled={savingDefaults}
+                  className="text-[11px] text-text-muted hover:text-text-primary underline underline-offset-2 disabled:opacity-50"
+                >
+                  {savingDefaults ? 'Saving…' : defaultsSaved ? 'Saved as defaults' : 'Save as defaults'}
+                </button>
+              )}
             </div>
+            {preview?.fields?.length ? (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  {preview.fields.map(f => (
+                    <div key={f.path}>
+                      <span className="block text-[10px] text-text-muted mb-0.5" title={`{{${f.path}}}`}>{f.label}</span>
+                      <input
+                        type="text"
+                        value={values[f.path] ?? f.value ?? ''}
+                        onChange={e => setValues(v => ({ ...v, [f.path]: e.target.value }))}
+                        className="w-full text-xs bg-bg border border-border rounded-lg px-2 py-1.5 text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red/30"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] text-text-muted mt-1">
+                  A test number is not attached to a contact, so these stand in for the real thing. Clear one to see
+                  what a member missing that field receives.
+                </p>
+              </>
+            ) : (
+              <p className="text-[11px] text-text-muted">This message uses no merge fields.</p>
+            )}
           </div>
 
           <div>
@@ -263,7 +291,7 @@ function TestSendPanel({ locationSlug, locationName, label, text, onClose }) {
             )}
             {preview?.unresolved?.length > 0 && (
               <p className="text-[11px] text-amber-600 mt-1">
-                Did not resolve: {preview.unresolved.map(u => `{{${u}}}`).join(', ')} — these will send as literal text.
+                Empty or unresolved: {preview.unresolved.map(u => `{{${u}}}`).join(', ')} — a member missing these gets a gap where the value should be.
               </p>
             )}
             {preview?.hidden?.length > 0 && (

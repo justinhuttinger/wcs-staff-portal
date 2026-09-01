@@ -30,6 +30,7 @@ function normalizeKey(key) {
  * @param {string} text
  * @param {object} ctx
  * @param {object} ctx.customValues  fieldKey ("custom_values.x") -> value
+ * @param {object} ctx.values        full token path ("contact.first_name") -> value
  * @param {object} ctx.contact       bare field name ("first_name") -> value
  * @param {object} ctx.location      bare field name ("name") -> value
  * @returns {{text: string, unresolved: string[]}} unresolved is de-duped, in
@@ -37,6 +38,7 @@ function normalizeKey(key) {
  */
 function resolveTokens(text, ctx = {}) {
   const customValues = ctx.customValues || {}
+  const values = ctx.values || {}
   const contact = ctx.contact || {}
   const location = ctx.location || {}
 
@@ -47,8 +49,24 @@ function resolveTokens(text, ctx = {}) {
 
   const unresolved = []
   const seen = new Set()
+  // Fields the caller deliberately planted as empty. GHL renders an empty
+  // contact field as blank, not as a literal token, so clearing a field in the
+  // test panel has to blank it here too - otherwise "what does this look like
+  // when the member has no referrer" is untestable. They are still reported,
+  // because a blank in the middle of a sentence is usually a bug.
+  const blanked = []
 
   function lookup(path) {
+    // A planted value wins over the structured objects, so the test panel can
+    // fill any token the copy happens to use without this file knowing it.
+    if (Object.prototype.hasOwnProperty.call(values, path)) {
+      const v = values[path]
+      if (v == null || v === '') {
+        if (!blanked.includes(path)) blanked.push(path)
+        return ''
+      }
+      return String(v)
+    }
     if (path.startsWith('custom_values.')) {
       return Object.prototype.hasOwnProperty.call(cvs, path) ? cvs[path] : undefined
     }
@@ -82,6 +100,13 @@ function resolveTokens(text, ctx = {}) {
     if (!seen.has(m[1])) {
       seen.add(m[1])
       unresolved.push(m[1])
+    }
+  }
+  // A deliberately blanked field has no token left to find, so add it here.
+  for (const path of blanked) {
+    if (!seen.has(path)) {
+      seen.add(path)
+      unresolved.push(path)
     }
   }
 
@@ -141,4 +166,26 @@ function normalizePhone(input) {
   return null
 }
 
-module.exports = { resolveTokens, smsSegments, findHiddenCharacters, normalizePhone }
+/**
+ * Every contact./location. token the copy actually uses, including tokens that
+ * only appear inside a referenced custom value. This is what lets the test
+ * panel offer an input per merge field instead of a fixed list.
+ *
+ * @returns {string[]} full token paths, de-duped, first-seen order.
+ */
+function extractMergeFields(text, customValues = {}) {
+  // Resolving with no planted values leaves exactly the fields that need one.
+  return resolveTokens(text, { customValues }).unresolved
+    .filter(p => p.startsWith('contact.') || p.startsWith('location.'))
+}
+
+// A readable label for a token path, for the panel's field list.
+function labelForField(path) {
+  const bare = path.replace(/^(contact|location)\./, '')
+  return bare.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+module.exports = {
+  resolveTokens, smsSegments, findHiddenCharacters, normalizePhone,
+  extractMergeFields, labelForField,
+}
