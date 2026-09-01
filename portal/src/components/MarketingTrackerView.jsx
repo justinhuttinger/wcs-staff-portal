@@ -8,6 +8,7 @@ import { LOCATION_NAMES, LOCATION_OPTIONS } from '../config/locations'
 import LocationMultiSelect from './LocationMultiSelect'
 import MarketingNeeds from './MarketingNeeds'
 import MarketingResearch from './MarketingResearch'
+import DripCampaigns from './DripCampaigns'
 import {
   MARKETING_TYPES, TYPE_BY_SLUG, typeLabel, typeStyle, STATUSES, STATUS_BY_KEY,
 } from '../config/marketingTypes'
@@ -260,6 +261,9 @@ export default function MarketingTrackerView({ onBack, access }) {
     { key: 'tracker', label: 'Tracker', show: caps.tracker !== false },
     { key: 'needs', label: 'Needs List', show: !!caps.needs },
     { key: 'research', label: 'Research', show: !!caps.research },
+    // Drip Campaigns edits the club's GHL custom values - the SMS templates the
+    // drip workflows reference. Anyone who can open this tile can see it.
+    { key: 'drip', label: 'Drip Campaigns', show: true },
   ].filter(t => t.show), [caps.tracker, caps.needs, caps.research])
 
   const [efforts, setEfforts] = useState([])
@@ -382,8 +386,7 @@ export default function MarketingTrackerView({ onBack, access }) {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <h2 className="text-xl font-bold text-text-primary">Marketing Tracker</h2>
-              <span className="px-2 py-0.5 rounded-full bg-wcs-red/10 text-wcs-red text-[10px] font-bold uppercase tracking-wider border border-wcs-red/20">Experimental</span>
+              <h2 className="text-xl font-bold text-text-primary">Marketing</h2>
             </div>
             {/* Tab nav — inline with the title */}
             <div className="flex gap-1 bg-bg rounded-lg p-1">
@@ -446,6 +449,7 @@ export default function MarketingTrackerView({ onBack, access }) {
       {/* Needs List + Research tabs */}
       {tab === 'needs' && <MarketingNeeds />}
       {tab === 'research' && <MarketingResearch />}
+      {tab === 'drip' && <DripCampaigns />}
 
       {tab === 'tracker' && error && <p className="text-sm text-wcs-red mb-4">{error}</p>}
       {tab === 'tracker' && loading && <p className="loading-card mx-auto block my-6">Loading marketing tracker...</p>}

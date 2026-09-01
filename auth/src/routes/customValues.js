@@ -1,23 +1,26 @@
-// Marketing SMS — GHL Custom Values admin.
+// Drip Campaigns — GHL Custom Values.
 //
-// Custom values are the sub-account-level variables that marketing SMS/email
-// templates reference as {{custom_values.some_key}}. GHL only exposes them in
+// Custom values are the sub-account-level variables that the drip SMS/email
+// workflows reference as {{custom_values.some_key}}. GHL only exposes them in
 // its own settings UI, one sub-account at a time, so this route gives the
-// portal a single admin-only place to read and update them per club.
+// portal a single place to read and update them per club.
+//
+// Gated on marketing access (the same gate as the Marketing tile) rather than
+// admin: anyone who can open the tile can edit the drip copy.
 //
 // GHL API (version 2021-07-28):
 //   GET  /locations/:locationId/customValues
 //   PUT  /locations/:locationId/customValues/:id   { name, value }
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { requireMarketing } = require('../middleware/role')
 const { LOCATIONS } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
 const audit = require('../services/auditLog')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireMarketing)
 
 function findLocation(slug) {
   const norm = String(slug || '').trim().toLowerCase()

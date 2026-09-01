@@ -1,12 +1,45 @@
-// portal/src/components/admin/MarketingSmsAdmin.jsx
+// portal/src/components/DripCampaigns.jsx
 //
-// Marketing SMS — read and edit a club's GHL custom values without leaving the
+// Drip Campaigns — read and edit a club's GHL custom values without leaving the
 // portal. GHL's own settings screen edits these one sub-account at a time in a
 // single-line input, which quietly flattens multi-line SMS copy; this editor is
 // a textarea and saves through the API, so real newlines survive.
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { getCustomValueLocations, getCustomValues, updateCustomValue } from '../../lib/api'
-import { MERGE_FIELD_GROUPS } from '../../lib/ghlMergeFields'
+import { getCustomValueLocations, getCustomValues, updateCustomValue } from '../lib/api'
+import { MERGE_FIELD_GROUPS } from '../lib/ghlMergeFields'
+
+// The WCS drip sequence, in the order the messages actually go out. GHL returns
+// custom values in an arbitrary order, so the list is sorted by this instead of
+// alphabetically. Anything not listed here sorts after, by name.
+const DRIP_ORDER = [
+  'custom_values.new_lead_sms_1',
+  'custom_values.new_lead_sms_2',
+  'custom_values.new_lead_sms_3',
+  'custom_values.new_lead_sms_4',
+  'custom_values.new_lead_sms_5',
+  'custom_values.trial_begin_sms',
+  'custom_values.trial_check_in_sms',
+  'custom_values.trial_end_sms_1',
+  'custom_values.trial_end_sms_2',
+  'custom_values.trial_end_sms_3',
+  'custom_values.new_member_sms_1',
+  'custom_values.new_member_sms_2',
+  'custom_values.missed_tour_sms',
+]
+
+// fieldKey comes back as "custom_values.new_lead_sms_1"; tolerate a stray
+// "{{ }}" wrapper or missing prefix so ordering never silently degrades.
+function dripRank(cv) {
+  const key = String(cv.fieldKey || '').replace(/[{}\s]/g, '')
+  const i = DRIP_ORDER.indexOf(key)
+  return i === -1 ? DRIP_ORDER.length : i
+}
+
+function byDripOrder(a, b) {
+  const ra = dripRank(a), rb = dripRank(b)
+  if (ra !== rb) return ra - rb
+  return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
+}
 
 function CopyButton({ text, className = '' }) {
   const [copied, setCopied] = useState(false)
@@ -232,7 +265,7 @@ function EditorModal({ locationName, item, groups, onCancel, onSave, saving, err
   )
 }
 
-export default function MarketingSmsAdmin() {
+export default function DripCampaigns() {
   const [locations, setLocations] = useState([])
   const [location, setLocation] = useState(null)
   const [data, setData] = useState(null)
@@ -269,7 +302,7 @@ export default function MarketingSmsAdmin() {
   // fields, so the picker covers everything that actually resolves here.
   const pickerGroups = useMemo(() => {
     const groups = []
-    const cvs = (data?.customValues || []).filter(cv => cv.token)
+    const cvs = (data?.customValues || []).filter(cv => cv.token).sort(byDripOrder)
     if (cvs.length) {
       groups.push({
         key: 'this_custom_values',
@@ -291,7 +324,7 @@ export default function MarketingSmsAdmin() {
   }, [data])
 
   const q = search.trim().toLowerCase()
-  const rows = (data?.customValues || []).filter(cv =>
+  const rows = (data?.customValues || []).slice().sort(byDripOrder).filter(cv =>
     !q ||
     (cv.name || '').toLowerCase().includes(q) ||
     (cv.fieldKey || '').toLowerCase().includes(q) ||
