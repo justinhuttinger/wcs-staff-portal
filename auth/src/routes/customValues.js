@@ -432,18 +432,26 @@ router.post('/test-sms', async (req, res) => {
       location: { name: loc.name },
     })
 
+    // GHL's Send SMS action rejects an empty attachment ("Not a valid URL
+    // parameter"), so a message without media cannot go through an action that
+    // references one. The workflow branches instead, which means:
+    //
+    //  - media_url is ALWAYS present, even when empty. GHL builds a webhook's
+    //    field list from a received sample, so omitting the key means the
+    //    workflow builder never offers it as something to branch on.
+    //  - has_media is sent alongside it because an If/Else comparing "yes"/"no"
+    //    is far more dependable than asking GHL whether a URL string is empty.
     const payload = {
       phone,
       message: rendered.text,
+      media_url: mediaUrl || '',
+      has_media: mediaUrl ? 'yes' : 'no',
       club: loc.name,
       club_slug: loc.slug,
       label: String(req.body.label || '').slice(0, 120),
       source: 'wcs-portal-drip-test',
       sent_by: req.staff?.email || '',
     }
-    // GHL's Send SMS action rejects an empty attachment ("Not a valid URL
-    // parameter"), so the key is omitted entirely rather than sent blank.
-    if (mediaUrl) payload.media_url = mediaUrl
 
     const hookRes = await fetch(webhookUrl, {
       method: 'POST',
