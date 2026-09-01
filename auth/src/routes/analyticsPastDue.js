@@ -9,7 +9,7 @@ const { buildPastDue, isChaseable, EXCLUDED_STATUSES, VIEW_BY } = require('../li
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Past Due — Analytics (admin only)
+// Past Due — Analytics (corporate+)
 //
 // Who owes money and is still worth calling. Collections, cancelled, expired
 // and pending-cancel accounts are excluded outright, not offered as a filter:
@@ -22,7 +22,7 @@ const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 5 * 60 * 1000
 const STALE_MS = 30 * 60 * 1000

@@ -13,7 +13,7 @@ const { fetchShiftsOverlapping } = require('../lib/operandioApi')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Problem Areas — Analytics (admin only)
+// Problem Areas — Analytics (corporate+)
 //
 // States what is wrong and WHOSE it is, against thresholds set in Admin >
 // Problem Thresholds. Every other report answers a question you have to think
@@ -30,7 +30,7 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 5 * 60 * 1000
 const STALE_MS = 30 * 60 * 1000

@@ -9,7 +9,7 @@ const { MEMBER_SEGMENTS, isValidSegment } = require('../lib/analyticsSegments')
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Membership Trends — Analytics (admin only)
+// Membership Trends — Analytics (corporate+)
 //
 // Total members and new members per month, split by one segment.
 //
@@ -21,7 +21,7 @@ const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000

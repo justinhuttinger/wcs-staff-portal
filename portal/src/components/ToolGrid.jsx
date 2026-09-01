@@ -698,10 +698,10 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
           {onForms && (roleIdx >= ROLE_LEVELS.admin || (visibleTools || []).includes('forms')) && <SvgTileButton onClick={onForms} iconPath={TILE_ICONS.forms} label="Forms" desc="Signups" />}
           {/* 6.8. Feedback (NPS surveys) — admin+ or granted the 'nps' tile */}
           {onNps && (roleIdx >= ROLE_LEVELS.admin || (visibleTools || []).includes('nps')) && <SvgTileButton onClick={onNps} iconPath={TILE_ICONS.nps} label="Feedback" desc="Member surveys" />}
-          {/* 6.9. Analytics — admin-only staging ground for reports being
-              rebuilt. Deliberately outside the roles grid so it can never be
-              granted to a non-admin. */}
-          {onAnalytics && roleIdx >= ROLE_LEVELS.admin && <SvgTileButton onClick={onAnalytics} iconPath={TILE_ICONS.analytics} label="Analytics" desc="Admin Reports" />}
+          {/* 6.9. Analytics — corporate+ (corporate, director, marketing tier,
+              admin). Deliberately outside the roles grid so it can never be
+              granted below that tier. */}
+          {onAnalytics && roleIdx >= ROLE_LEVELS.corporate && <SvgTileButton onClick={onAnalytics} iconPath={TILE_ICONS.analytics} label="Analytics" desc="Company Reports" />}
           {/* 7-9. Reporting, Tickets + remaining custom tiles
               (Marketing now lives inside Reporting — no standalone tile) */}
           {toolCustomTiles.filter((tile) => {

@@ -9,7 +9,7 @@ const { monthToDate, windowLabel } = require('../lib/snapshotWindow')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Group X — Analytics (admin only)
+// Group X — Analytics (corporate+)
 //
 // Attendance per class, hour, weekday, month, instructor and club, against the
 // schedule those classes were meant to run to.
@@ -25,7 +25,7 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 5 * 60 * 1000
 const STALE_MS = 30 * 60 * 1000

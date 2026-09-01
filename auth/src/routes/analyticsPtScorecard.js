@@ -7,7 +7,7 @@ const { buildScorecard, GOAL_KEYS, DEFAULT_GOAL_PCT } = require('../lib/ptScorec
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// PT Scorecard — Analytics (admin only)
+// PT Scorecard — Analytics (corporate+)
 //
 // The Day One funnel and PT money, per club, for a date window.
 //
@@ -24,7 +24,7 @@ const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 // Short: the goals move on every slider drag, and each combination is its own
 // cache key, so a long TTL would pile up entries for settings nobody keeps.

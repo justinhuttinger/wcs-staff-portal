@@ -21,7 +21,7 @@ function clubNameFor(n) {
 }
 
 // ---------------------------------------------------------------------------
-// Trainer Performance — Analytics (admin only)
+// Trainer Performance — Analytics (corporate+)
 //
 // What each trainer delivered, and what they closed. See migration 144 for how
 // the three sources are stitched together and why the join is on a name.
@@ -34,7 +34,7 @@ function clubNameFor(n) {
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 5 * 60 * 1000
 const STALE_MS = 30 * 60 * 1000

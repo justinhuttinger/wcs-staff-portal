@@ -11,7 +11,7 @@ const { buildDailySnapshot } = require('../lib/dailySnapshot')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Daily Snapshot — Analytics (admin only)
+// Daily Snapshot — Analytics (corporate+)
 //
 // ONE DAY, AND ONLY EVER ONE DAY. The same card as Club Snapshot read as a
 // morning agenda, compared against the day before rather than the month before.
@@ -31,7 +31,7 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 5 * 60 * 1000
 const STALE_MS = 30 * 60 * 1000

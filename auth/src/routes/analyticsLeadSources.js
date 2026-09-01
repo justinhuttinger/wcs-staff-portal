@@ -9,7 +9,7 @@ const { monthToDate, priorMonthWindow, priorLabel, windowLabel } = require('../l
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Lead Sources — Analytics (admin only)
+// Lead Sources — Analytics (corporate+)
 //
 // Where leads come from and what became of them, on FIRST touch: GHL's
 // attribution_source rather than last_attribution_source. 15% of contacts
@@ -30,7 +30,7 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('admin'))
+router.use(requireRole('corporate'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000
