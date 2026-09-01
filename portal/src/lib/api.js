@@ -702,11 +702,6 @@ export async function getSpeedToLeadBusinessAudit(params = {}, options = {}) {
   return api('/reports/speed-to-lead/business-audit' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getMembershipAudit(params = {}, options = {}) {
-  const qs = new URLSearchParams(params).toString()
-  return api('/reports/membership-audit' + (qs ? '?' + qs : ''), options)
-}
-
 // How many active members pay each price, grouped by club × type × frequency ×
 // price. One fetch backs every view — the client pivots and filters it.
 export async function getMembershipPriceBreakdown(params = {}, options = {}) {
