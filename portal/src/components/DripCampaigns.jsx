@@ -32,12 +32,46 @@ const DRIP_ORDER = [
   'custom_values.vip_sms_5',
 ]
 
+// The drip sequences, for the flow filter. Each flow owns a set of keys; a
+// custom value outside every flow (something added later) still shows under
+// "All" rather than disappearing from the tool.
+const FLOWS = [
+  { key: 'all', label: 'All flows', keys: null },
+  { key: 'new-lead', label: 'New Lead', keys: [
+    'custom_values.new_lead_sms_1', 'custom_values.new_lead_sms_2', 'custom_values.new_lead_sms_3',
+    'custom_values.new_lead_sms_4', 'custom_values.new_lead_sms_5',
+  ] },
+  { key: 'vip', label: 'VIP', keys: [
+    'custom_values.vip_sms_1', 'custom_values.vip_sms_2', 'custom_values.vip_sms_3',
+    'custom_values.vip_sms_4', 'custom_values.vip_sms_5',
+  ] },
+  { key: 'missed-tour', label: 'Missed Tour', keys: ['custom_values.missed_tour_sms'] },
+  { key: 'trial', label: 'Trial', keys: [
+    'custom_values.trial_begin_sms', 'custom_values.trial_check_in_sms',
+    'custom_values.trial_end_sms_1', 'custom_values.trial_end_sms_2', 'custom_values.trial_end_sms_3',
+  ] },
+  { key: 'sale', label: 'Sale', keys: [
+    'custom_values.new_member_sms_1', 'custom_values.new_member_sms_2',
+  ] },
+]
+
+const FLOW_BY_KEY = Object.fromEntries(FLOWS.map(f => [f.key, f]))
+
 // fieldKey comes back as "custom_values.new_lead_sms_1"; tolerate a stray
 // "{{ }}" wrapper or missing prefix so ordering never silently degrades.
+function normalizeKey(cv) {
+  return String(cv.fieldKey || '').replace(/[{}\s]/g, '')
+}
+
 function dripRank(cv) {
-  const key = String(cv.fieldKey || '').replace(/[{}\s]/g, '')
-  const i = DRIP_ORDER.indexOf(key)
+  const i = DRIP_ORDER.indexOf(normalizeKey(cv))
   return i === -1 ? DRIP_ORDER.length : i
+}
+
+function inFlow(cv, flowKey) {
+  const flow = FLOW_BY_KEY[flowKey]
+  if (!flow || !flow.keys) return true
+  return flow.keys.includes(normalizeKey(cv))
 }
 
 function byDripOrder(a, b) {
@@ -277,6 +311,7 @@ export default function DripCampaigns() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
+  const [flow, setFlow] = useState('all')
   const [editing, setEditing] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
@@ -329,12 +364,14 @@ export default function DripCampaigns() {
   }, [data])
 
   const q = search.trim().toLowerCase()
-  const rows = (data?.customValues || []).slice().sort(byDripOrder).filter(cv =>
-    !q ||
-    (cv.name || '').toLowerCase().includes(q) ||
-    (cv.fieldKey || '').toLowerCase().includes(q) ||
-    (cv.value || '').toLowerCase().includes(q)
-  )
+  const rows = (data?.customValues || []).slice().sort(byDripOrder)
+    .filter(cv => inFlow(cv, flow))
+    .filter(cv =>
+      !q ||
+      (cv.name || '').toLowerCase().includes(q) ||
+      (cv.fieldKey || '').toLowerCase().includes(q) ||
+      (cv.value || '').toLowerCase().includes(q)
+    )
 
   async function handleSave({ name, value }) {
     setSaving(true)
@@ -368,7 +405,7 @@ export default function DripCampaigns() {
           <span className="font-mono">{'{{ custom_values.your_key }}'}</span>. Edits save straight back to GHL.
         </p>
 
-        <div className="flex flex-wrap gap-1.5 mt-4">
+        <div className="flex flex-wrap items-center gap-1.5 mt-4">
           {locations.map(l => (
             <button
               key={l.slug}
@@ -383,6 +420,19 @@ export default function DripCampaigns() {
               {l.name}
             </button>
           ))}
+
+          <label className="ml-2 flex items-center gap-1.5">
+            <span className="sr-only">Filter by flow</span>
+            <select
+              value={flow}
+              onChange={e => setFlow(e.target.value)}
+              className="text-xs bg-surface border border-border rounded-lg px-2.5 py-1.5 font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red/30"
+            >
+              {FLOWS.map(f => (
+                <option key={f.key} value={f.key}>{f.label}</option>
+              ))}
+            </select>
+          </label>
         </div>
       </div>
 
@@ -414,7 +464,11 @@ export default function DripCampaigns() {
 
         {!loading && data && rows.length === 0 && (
           <p className="text-sm text-text-muted py-4">
-            {data.customValues?.length ? 'No custom values match that search.' : `No custom values in ${activeLocation?.name || 'this account'}.`}
+            {!data.customValues?.length
+              ? `No custom values in ${activeLocation?.name || 'this account'}.`
+              : flow === 'all'
+                ? 'No custom values match that search.'
+                : `No ${FLOW_BY_KEY[flow]?.label} custom values${q ? ' match that search' : ''} in ${activeLocation?.name || 'this account'}.`}
           </p>
         )}
 
