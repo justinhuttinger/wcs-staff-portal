@@ -25,6 +25,10 @@ const DRIP_ORDER = [
   'custom_values.new_member_sms_1',
   'custom_values.new_member_sms_2',
   'custom_values.missed_tour_sms',
+  'custom_values.vip_sms_1',
+  'custom_values.vip_sms_2',
+  'custom_values.vip_sms_3',
+  'custom_values.vip_sms_4',
 ]
 
 // fieldKey comes back as "custom_values.new_lead_sms_1"; tolerate a stray
