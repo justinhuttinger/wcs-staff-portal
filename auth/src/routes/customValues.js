@@ -162,7 +162,17 @@ function uploadSingle(req, res, next) {
 // Find a club's custom value by fieldKey, or create it. GHL derives fieldKey
 // from the name at CREATE time and never changes it on rename, so the name has
 // to be right the first time or the workflow token points at nothing.
-async function findOrCreateValue(loc, { key, name, value }) {
+async function findOrCreateValue(loc, { key, name, value, id }) {
+  // The list endpoint lags writes by minutes, so a lookup can miss a value that
+  // exists and we would create a duplicate. When the caller already knows the
+  // id (the portal does - it was paired into the row), write straight to it.
+  if (id) {
+    const updated = await ghlFetch(`/locations/${loc.id}/customValues/${id}`, loc.apiKey, {
+      method: 'PUT',
+      body: { name, value },
+    })
+    return shapeValue(updated.customValue || { id, name, value })
+  }
   const data = await ghlFetch(`/locations/${loc.id}/customValues`, loc.apiKey)
   const existing = (data.customValues || []).find(cv => normalizeKeyLocal(cv.fieldKey || cv.key) === key)
   if (existing) {
@@ -425,13 +435,15 @@ router.post('/test-sms', async (req, res) => {
     const payload = {
       phone,
       message: rendered.text,
-      media_url: mediaUrl || '',
       club: loc.name,
       club_slug: loc.slug,
       label: String(req.body.label || '').slice(0, 120),
       source: 'wcs-portal-drip-test',
       sent_by: req.staff?.email || '',
     }
+    // GHL's Send SMS action rejects an empty attachment ("Not a valid URL
+    // parameter"), so the key is omitted entirely rather than sent blank.
+    if (mediaUrl) payload.media_url = mediaUrl
 
     const hookRes = await fetch(webhookUrl, {
       method: 'POST',
@@ -488,7 +500,10 @@ router.post('/media', uploadSingle, async (req, res) => {
     const publicUrl = urlData?.publicUrl
     if (!publicUrl) throw new Error('Storage did not return a public URL')
 
-    const mediaValue = await findOrCreateValue(loc, { key: mediaKey, name: mediaName, value: publicUrl })
+    const mediaValue = await findOrCreateValue(loc, {
+      key: mediaKey, name: mediaName, value: publicUrl,
+      id: String(req.body.mediaValueId || '').trim() || undefined,
+    })
 
     audit.record(req.staff?.id, 'ghl.drip_media.upload', {
       target: `${loc.slug}:${mediaKey}`,
@@ -513,16 +528,26 @@ router.post('/media/clear', async (req, res) => {
   if (!loc) return res.status(400).json({ error: 'Unknown or missing location' })
 
   const mediaKey = mediaKeyFor(req.body.messageKey)
+  const mediaName = mediaNameFor(req.body.messageName)
   if (!mediaKey) return res.status(400).json({ error: 'messageKey is required' })
 
   try {
-    const data = await ghlFetch(`/locations/${loc.id}/customValues`, loc.apiKey)
-    const existing = (data.customValues || []).find(cv => normalizeKeyLocal(cv.fieldKey || cv.key) === mediaKey)
-    if (!existing) return res.json({ cleared: true, mediaValue: null })
+    // Prefer the id the portal already holds: the list lags writes, so looking
+    // the companion up again can miss it and silently do nothing.
+    let id = String(req.body.mediaValueId || '').trim()
+    let name = String(req.body.mediaValueName || '').trim()
+    if (!id) {
+      const data = await ghlFetch(`/locations/${loc.id}/customValues`, loc.apiKey)
+      const existing = (data.customValues || []).find(cv => normalizeKeyLocal(cv.fieldKey || cv.key) === mediaKey)
+      if (!existing) return res.json({ cleared: true, mediaValue: null })
+      id = existing.id
+      name = existing.name
+    }
+    if (!name) name = mediaName ? mediaName : 'Media'
 
-    await ghlFetch(`/locations/${loc.id}/customValues/${existing.id}`, loc.apiKey, {
+    await ghlFetch(`/locations/${loc.id}/customValues/${id}`, loc.apiKey, {
       method: 'PUT',
-      body: { name: existing.name, value: '' },
+      body: { name, value: '' },
     })
 
     audit.record(req.staff?.id, 'ghl.drip_media.clear', {
@@ -531,7 +556,7 @@ router.post('/media/clear', async (req, res) => {
       ip: req.ip,
     }).catch(() => {})
 
-    res.json({ cleared: true, mediaValue: shapeValue({ ...existing, value: '' }) })
+    res.json({ cleared: true, mediaValue: shapeValue({ id, name, value: '', fieldKey: mediaKey }) })
   } catch (err) {
     console.error('[custom-values] media clear failed:', err.message)
     res.status(502).json({ error: 'Could not turn media off: ' + err.message })

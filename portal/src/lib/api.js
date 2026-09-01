@@ -2134,19 +2134,22 @@ export async function sendDripTest({ location, text, phone, contact, mediaUrl, l
 // Drip media. The image is stored in the portal's public bucket and its URL is
 // written into the message's companion custom value; clearing that value is
 // what turns the attachment off.
-export async function uploadDripMedia({ location, messageKey, messageName, file }) {
+export async function uploadDripMedia({ location, messageKey, messageName, mediaValueId, file }) {
   const fd = new FormData()
   fd.append('file', file)
   fd.append('location', location)
   fd.append('messageKey', messageKey)
   fd.append('messageName', messageName)
+  // GHL's list endpoint lags writes, so send the id we already hold rather than
+  // making the server look the companion up again.
+  if (mediaValueId) fd.append('mediaValueId', mediaValueId)
   return api('/custom-values/media', { method: 'POST', body: fd })
 }
 
-export async function clearDripMedia({ location, messageKey }) {
+export async function clearDripMedia({ location, messageKey, messageName, mediaValueId }) {
   return api('/custom-values/media/clear', {
     method: 'POST',
-    body: JSON.stringify({ location, messageKey }),
+    body: JSON.stringify({ location, messageKey, messageName, mediaValueId }),
   })
 }
 
