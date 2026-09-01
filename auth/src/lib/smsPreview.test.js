@@ -108,3 +108,62 @@ test('normalizePhone rejects anything that is not a number', () => {
   assert.equal(normalizePhone('555-1234'), null)
   assert.equal(normalizePhone(undefined), null)
 })
+
+// --- planted values + field discovery -------------------------------------
+
+const { extractMergeFields, labelForField } = require('./smsPreview')
+
+test('a planted value fills a token by its full path', () => {
+  const r = resolveTokens('Hi {{contact.first_name}} at {{location.name}}', {
+    values: { 'contact.first_name': 'Alex', 'location.name': 'Salem' },
+  })
+  assert.equal(r.text, 'Hi Alex at Salem')
+  assert.deepEqual(r.unresolved, [])
+})
+
+test('a planted value beats the structured contact object', () => {
+  const r = resolveTokens('{{contact.first_name}}', {
+    values: { 'contact.first_name': 'Planted' },
+    contact: { first_name: 'Structured' },
+  })
+  assert.equal(r.text, 'Planted')
+})
+
+test('a deliberately cleared field renders blank, the way GHL renders an empty field', () => {
+  // Clearing "Referred by" in the panel is how you test what a member with no
+  // referrer receives, so it must blank rather than fall back or show braces.
+  const r = resolveTokens('Ref: {{contact.referred_by_full_name}}!', {
+    values: { 'contact.referred_by_full_name': '' },
+    contact: { referred_by_full_name: 'Fallback' },
+  })
+  assert.equal(r.text, 'Ref: !')
+  // Still reported, because a blank mid-sentence is usually a bug.
+  assert.deepEqual(r.unresolved, ['contact.referred_by_full_name'])
+})
+
+test('extractMergeFields lists every field the copy needs', () => {
+  const fields = extractMergeFields('Hi {{contact.first_name}} {{contact.last_name}} at {{location.name}}')
+  assert.deepEqual(fields, ['contact.first_name', 'contact.last_name', 'location.name'])
+})
+
+test('extractMergeFields sees fields hidden inside a referenced custom value', () => {
+  // The message names no contact field; the custom value it points at does.
+  const fields = extractMergeFields('{{custom_values.vip_sms_1}}', {
+    'custom_values.vip_sms_1': 'Hi {{contact.first_name}}, {{contact.referred_by_full_name}} sent you a pass',
+  })
+  assert.deepEqual(fields, ['contact.first_name', 'contact.referred_by_full_name'])
+})
+
+test('extractMergeFields ignores custom_values themselves', () => {
+  assert.deepEqual(extractMergeFields('{{custom_values.missing}}'), [])
+})
+
+test('extractMergeFields de-dupes a repeated field', () => {
+  assert.deepEqual(extractMergeFields('{{contact.first_name}} x {{contact.first_name}}'), ['contact.first_name'])
+})
+
+test('labelForField reads as a form label', () => {
+  assert.equal(labelForField('contact.referred_by_full_name'), 'Referred By Full Name')
+  assert.equal(labelForField('contact.first_name'), 'First Name')
+  assert.equal(labelForField('location.name'), 'Name')
+})

@@ -17,12 +17,47 @@ const { requireMarketing } = require('../middleware/role')
 const { LOCATIONS } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
 const { supabaseAdmin } = require('../services/supabase')
-const { resolveTokens, smsSegments, findHiddenCharacters, normalizePhone } = require('../lib/smsPreview')
+const {
+  resolveTokens, smsSegments, findHiddenCharacters, normalizePhone,
+  extractMergeFields, labelForField,
+} = require('../lib/smsPreview')
 const audit = require('../services/auditLog')
 
 // app_config keys backing the test send.
 const WEBHOOK_KEY = 'drip_test_webhook_url'
 const DEFAULT_PHONE_KEY = 'drip_test_default_phone'
+const SAMPLE_KEY = 'drip_test_sample_values'
+
+// Planted merge-field values for a test send. A test number is not attached to
+// a real contact, so without these every token would render empty and the
+// preview would show a message no member will ever receive. Saved values from
+// app_config layer on top; anything still missing falls back to these.
+const DEFAULT_SAMPLE_VALUES = {
+  'contact.first_name': 'Alex',
+  'contact.last_name': 'Morgan',
+  'contact.name': 'Alex Morgan',
+  'contact.full_name': 'Alex Morgan',
+  'contact.email': 'alex.morgan@example.com',
+  'contact.phone': '(503) 555-0142',
+  'contact.company_name': 'West Coast Strength',
+  'contact.referred_by_full_name': 'Jamie Smith',
+  'contact.referral_friend_name': 'Jamie Smith',
+  'contact.vip_team_member': 'Taylor Reed',
+  'contact.day_one_trainer': 'Taylor Reed',
+  'contact.sale_team_member': 'Taylor Reed',
+  'contact.tour_team_member': 'Taylor Reed',
+}
+
+function parseSaved(raw) {
+  if (!raw) return {}
+  if (typeof raw === 'object') return raw
+  try {
+    const v = JSON.parse(raw)
+    return v && typeof v === 'object' ? v : {}
+  } catch {
+    return {}
+  }
+}
 
 // A test send costs money and texts a real handset, so it is rate limited per
 // staff member. In-memory is enough: the cap exists to stop a stuck finger or a
@@ -49,7 +84,7 @@ function tooManySends(staffId) {
 
 async function readSettings() {
   const { data, error } = await supabaseAdmin
-    .from('app_config').select('key, value').in('key', [WEBHOOK_KEY, DEFAULT_PHONE_KEY])
+    .from('app_config').select('key, value').in('key', [WEBHOOK_KEY, DEFAULT_PHONE_KEY, SAMPLE_KEY])
   if (error) throw error
   const out = {}
   for (const row of (data || [])) out[row.key] = row.value
@@ -183,6 +218,8 @@ router.get('/test-config', async (req, res) => {
       configured: !!url,
       webhookUrl: isAdmin ? url : undefined,
       defaultPhone: settings[DEFAULT_PHONE_KEY] || '',
+      sampleValues: { ...DEFAULT_SAMPLE_VALUES, ...parseSaved(settings[SAMPLE_KEY]) },
+      builtInSampleValues: DEFAULT_SAMPLE_VALUES,
       canEdit: isAdmin,
     })
   } catch (err) {
@@ -205,14 +242,30 @@ router.post('/preview', async (req, res) => {
     for (const cv of (data.customValues || [])) {
       if (cv.fieldKey || cv.key) customValues[cv.fieldKey || cv.key] = cv.value
     }
+    const settings = await readSettings()
+    const planted = {
+      ...DEFAULT_SAMPLE_VALUES,
+      ...parseSaved(settings[SAMPLE_KEY]),
+      'location.name': loc.name,
+      ...(req.body.values || {}),
+    }
     const rendered = resolveTokens(req.body.text, {
       customValues,
+      values: planted,
       contact: req.body.contact || {},
       location: { name: loc.name },
     })
+    // Every merge field this copy uses, so the panel can offer an input per
+    // field rather than a hardcoded three.
+    const fields = extractMergeFields(req.body.text, customValues).map(path => ({
+      path,
+      label: labelForField(path),
+      value: planted[path] == null ? '' : String(planted[path]),
+    }))
     res.json({
       text: rendered.text,
       unresolved: rendered.unresolved,
+      fields,
       ...smsSegments(rendered.text),
       hidden: findHiddenCharacters(rendered.text),
     })
@@ -265,6 +318,12 @@ router.post('/test-sms', async (req, res) => {
     }
     const rendered = resolveTokens(req.body.text, {
       customValues,
+      values: {
+        ...DEFAULT_SAMPLE_VALUES,
+        ...parseSaved(settings[SAMPLE_KEY]),
+        'location.name': loc.name,
+        ...(req.body.values || {}),
+      },
       contact: req.body.contact || {},
       location: { name: loc.name },
     })
