@@ -7,6 +7,7 @@ import { MARKETING_TYPES, typeLabel, typeStyle, STATUS_BY_KEY } from '../../conf
 import { ViewModal, EffortModal } from '../../components/MarketingTrackerView'
 import MobileHeader from './MobileHeader'
 import WcsLoadingMark from '../../components/WcsLoadingMark'
+import MobileEmptyState from './MobileEmptyState'
 
 // --- date helpers (local) ---
 function toLocalDateStr(d) {
@@ -125,7 +126,7 @@ export default function MobileMarketingTracker({ access }) {
       )}
 
       {!loading && total === 0 && (
-        <p className="text-sm text-white/80 text-center py-10 drop-shadow">No marketing efforts yet. Tap + to add one.</p>
+        <MobileEmptyState>No marketing efforts yet. Tap + to add one.</MobileEmptyState>
       )}
 
       {upcoming.length > 0 && (

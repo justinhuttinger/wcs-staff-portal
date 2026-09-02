@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { getLeaderboard } from '../../lib/api'
 import MobileLoading from './MobileLoading'
+import MobileEmptyState from './MobileEmptyState'
 
 const ROLES = ['team_member', 'lead', 'manager', 'corporate', 'admin']
 
@@ -204,21 +205,15 @@ export default function MobileLeaderboard({ user }) {
         {loading && <MobileLoading variant="ranking" count={6} className="px-0 py-0" />}
 
         {error && !loading && (
-          <div className="text-center py-16">
-            <p className="text-text-muted text-sm">{error}</p>
-          </div>
+          <MobileEmptyState tone="error">{error}</MobileEmptyState>
         )}
 
         {!loading && !error && view === 'club' && rankings.length === 0 && (
-          <div className="text-center py-16">
-            <p className="text-text-muted text-sm">No activity yet this month</p>
-          </div>
+          <MobileEmptyState>No activity yet this month</MobileEmptyState>
         )}
 
         {!loading && !error && view === 'all' && locations.length === 0 && rankings.length === 0 && (
-          <div className="text-center py-16">
-            <p className="text-text-muted text-sm">No activity yet this month</p>
-          </div>
+          <MobileEmptyState>No activity yet this month</MobileEmptyState>
         )}
 
         {/* Club view */}

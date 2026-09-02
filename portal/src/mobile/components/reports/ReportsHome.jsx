@@ -1,4 +1,5 @@
 import React from 'react'
+import MobileEmptyState from '../MobileEmptyState'
 
 const REPORT_TILES = [
   {
@@ -277,7 +278,7 @@ export default function ReportsHome({ onNavigate, user, activeGroup, onSelectGro
   if (visibleGroups.length === 0) {
     return (
       <div className="p-4">
-        <p className="text-sm text-text-muted text-center py-8">No reports available for your role.</p>
+        <MobileEmptyState>No reports available for your role.</MobileEmptyState>
       </div>
     )
   }
