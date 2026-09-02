@@ -34,6 +34,10 @@ import KpiReport from '../components/reports/KpiReport'
 import AuditsReport from '../components/reports/AuditsReport'
 import { getReportInfo } from '../lib/reportInfo'
 import { marketingAccess } from '../config/marketingAccess'
+// Analytics reuses the desktop report registry wholesale — see MobileAnalytics.
+import {
+  MobileAnalyticsHome, MobileAnalyticsReport, reportHidesDates, reportLabel,
+} from './components/analytics/MobileAnalytics'
 
 // Icons for bottom tab bar (Heroicons outline)
 function HomeIcon({ active }) {
@@ -88,6 +92,9 @@ const LOCATION_BACKGROUNDS = {
 
 function getActiveTab(route) {
   if (route === 'home' || route === '') return 'home'
+  // Analytics is its own surface, not a Reports category, so it does not light
+  // up the Reports tab — the two have different gates and different content.
+  if (route.startsWith('analytics')) return 'home'
   if (route.startsWith('reports')) return 'reports'
   if (route === 'calendar' || route === 'tours' || route === 'dayone') return 'calendar'
   return 'home'
@@ -212,6 +219,63 @@ export default function MobileApp() {
             user={user}
             activeGroup={groupKey}
           />
+        </div>
+      )
+    }
+
+    // Analytics — corporate+, the same tier as desktop. The tile is hidden below
+    // it and this refuses to render, but the gate that matters is the one on
+    // every /analytics/* route on the server.
+    if (route === 'analytics' || route.startsWith('analytics/')) {
+      if (roleIdx < ROLE_LEVELS.corporate) {
+        return (
+          <div className="pt-4 px-4">
+            <MobileHeader title="Analytics" onBack={() => navigate('home')} />
+            <div className="mt-16 text-center text-text-muted">
+              Analytics is available to corporate roles.
+            </div>
+          </div>
+        )
+      }
+      const reportKey = route === 'analytics' ? null : route.slice('analytics/'.length)
+      if (!reportKey) {
+        return (
+          <div className="pt-4 px-4">
+            <MobileHeader title="Analytics" subtitle="Select a report" onBack={() => navigate('home')} />
+            <MobileReportShell title="Analytics" user={user} hideDateRange>
+              {({ locationSlug }) => (
+                <MobileAnalyticsHome
+                  locationSlug={locationSlug}
+                  onOpen={(key) => navigate('analytics/' + key)}
+                />
+              )}
+            </MobileReportShell>
+          </div>
+        )
+      }
+      return (
+        <div className="pt-2">
+          <div className="px-4">
+            <MobileHeader title={reportLabel(reportKey)} onBack={() => navigate('analytics')} />
+          </div>
+          {/* hideDateRange follows the report's own `dates: false`, so the ones
+              anchored on their own windows (Topline, Club Activity Trends) do
+              not offer a range that would do nothing but mislead. */}
+          <MobileReportShell
+            title={reportLabel(reportKey)}
+            user={user}
+            hideDateRange={reportHidesDates(reportKey)}
+          >
+            {({ startDate, endDate, locationSlug }) => (
+              <MobileAnalyticsReport
+                reportKey={reportKey}
+                user={user}
+                startDate={startDate}
+                endDate={endDate}
+                locationSlug={locationSlug}
+              />
+            )}
+          </MobileReportShell>
         </div>
       )
     }
