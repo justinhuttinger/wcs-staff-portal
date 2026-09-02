@@ -176,9 +176,10 @@ export const ANALYTICS_REPORTS = [
     label: 'PT Roster',
     desc: 'Who Is On Training',
     Component: PtRoster,
-    // A stock, not a window: the roster is the book as it stands today, so a
-    // date range would only be a second answer to a question it is not asking.
-    dates: false,
+    // The date controls stay ON, even though the roster is a stock rather than
+    // a window: abc_pt_services keeps every service as a dated term, so the
+    // roster rewinds, and the window's END is the as-of date. Hiding the
+    // controls left that reachable only through a hand-typed URL.
   },
   {
     key: 'session-frequency',

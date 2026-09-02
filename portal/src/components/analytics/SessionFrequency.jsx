@@ -5,6 +5,7 @@ import DesktopLoading from '../DesktopLoading'
 import { StatCard, BreakdownPanel } from './snapshotParts'
 import Drillable from './Drillable'
 import { fmtInt, GOOD_COLOR, BAD_COLOR } from './chartPalette'
+import { ZEBRA_TINT } from './tableTints'
 
 // ---------------------------------------------------------------------------
 // Session Frequency — how often clients actually train.
@@ -164,9 +165,15 @@ export default function SessionFrequency({ startDate, endDate, locationSlug }) {
                   // the shading already says better.
                   const startsBlock = i === 0 || rows[i - 1].trainer !== r.trainer
                   return (
+                  // ZEBRA_TINT, not bg-bg. tableTints says why in its own
+                  // header: bg-bg and bg-surface are the SAME white under Press,
+                  // so that stripe renders as no stripe at all — and in Classic
+                  // the two differ by about 1.5% luminance, which is why this
+                  // band was invisible. The shared tint mixes from the ink
+                  // token instead, so it shows on both themes.
                   <tr key={i}
                     className={'border-b border-border/60 last:border-0 '
-                      + (r.band === 1 ? 'bg-bg' : '')}>
+                      + (r.band === 1 ? ZEBRA_TINT : 'bg-surface')}>
                     <td className="px-4 py-2 text-text-primary">{r.member}</td>
                     <td className={'px-3 py-2 ' + (startsBlock ? 'text-text-primary font-semibold' : 'text-text-muted/40')}>
                       {startsBlock ? r.trainer : ''}

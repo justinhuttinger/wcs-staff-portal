@@ -279,3 +279,41 @@ test('session frequency rows come out grouped by trainer', () => {
   // Two trainers, so two bands.
   assert.equal(new Set(out.rows.map(r => r.band)).size, 2)
 })
+
+// ---------------------------------------------------------------------------
+// The roster's month-ago comparison.
+// ---------------------------------------------------------------------------
+
+test('each card carries where it was and how far it moved', () => {
+  const prior = buildPtRoster([svc()], [])
+  const out = buildPtRoster([svc(), svc({ member_id: 'M2' })], [], { prior })
+  const clients = out.stats.find(s => s.key === 'clients')
+  assert.equal(clients.value, 2)
+  assert.equal(clients.prior, 1)
+  assert.equal(clients.change, 100)
+})
+
+// Nothing to compare against is unknown, not "no change" — a dash and a 0%
+// are different claims.
+test('no prior roster leaves the comparison unknown, not zero', () => {
+  const out = buildPtRoster([svc()], [])
+  const clients = out.stats.find(s => s.key === 'clients')
+  assert.equal(clients.prior, null)
+  assert.equal(clients.change, null)
+})
+
+// Growth from nothing is not a percentage. The pair of numbers still shows.
+test('growing from zero shows the numbers but no percentage', () => {
+  const prior = buildPtRoster([], [])
+  const out = buildPtRoster([svc()], [], { prior })
+  const clients = out.stats.find(s => s.key === 'clients')
+  assert.equal(clients.value, 1)
+  assert.equal(clients.prior, 0)
+  assert.equal(clients.change, null)
+})
+
+test('a shrinking figure reports a negative move', () => {
+  const prior = buildPtRoster([svc(), svc({ member_id: 'M2' })], [])
+  const out = buildPtRoster([svc()], [], { prior })
+  assert.equal(out.stats.find(s => s.key === 'clients').change, -50)
+})

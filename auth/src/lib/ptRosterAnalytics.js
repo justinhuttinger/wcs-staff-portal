@@ -113,25 +113,49 @@ function buildPtRoster(recurring, pif, opts = {}) {
     byFrequency.set(label, cur)
   }
 
-  return {
-    hasActivity: clients.length > 0,
-    stats: [
+  // The same roster a month earlier, already built. Passing a built report
+  // rather than raw rows means the comparison is computed by exactly the same
+  // code as the figure it sits under — no second definition to drift.
+  const was = opts.prior || null
+  const priorOf = key => {
+    if (!was) return null
+    const s = was.stats.find(x => x.key === key)
+    return s ? s.value : null
+  }
+
+  const stats = [
       { key: 'clients', label: 'PT Clients', format: 'int', value: clients.length, betterWhen: 'up' },
       { key: 'recurring', label: 'On Recurring', format: 'int', value: recurringClients.length, betterWhen: 'up' },
       { key: 'pif', label: 'Paid in Full', format: 'int', value: pifClients.length, betterWhen: 'up' },
       { key: 'frozen', label: 'Frozen', format: 'int', value: frozen, betterWhen: 'down' },
       { key: 'monthlyRevenue', label: 'Monthly Draft', format: 'money', value: monthlyRevenue, betterWhen: 'up' },
-      {
-        key: 'avgDraft',
-        label: 'Avg Draft per Client',
-        format: 'money',
-        // Averaged over the recurring clients only: a paid-in-full client has
-        // no monthly draft, and including them would drag the average toward
-        // zero for a reason that has nothing to do with pricing.
-        value: recurringClients.length ? round2(monthlyRevenue / recurringClients.length) : null,
-        betterWhen: 'up',
-      },
-    ],
+    {
+      key: 'avgDraft',
+      label: 'Avg Draft per Client',
+      format: 'money',
+      // Averaged over the recurring clients only: a paid-in-full client has
+      // no monthly draft, and including them would drag the average toward
+      // zero for a reason that has nothing to do with pricing.
+      value: recurringClients.length ? round2(monthlyRevenue / recurringClients.length) : null,
+      betterWhen: 'up',
+    },
+  ]
+
+  return {
+    hasActivity: clients.length > 0,
+    // Each card carries where it was a month ago and the move since. Computed
+    // here rather than on the client so a card and its comparison can never be
+    // built from two different populations.
+    stats: stats.map(s => {
+      const prior = priorOf(s.key)
+      return {
+        ...s,
+        prior,
+        change: (prior === null || prior === 0 || s.value === null)
+          ? null
+          : Math.round(((s.value - prior) / Math.abs(prior)) * 1000) / 10,
+      }
+    }),
     breakdowns: {
       byTrainer: rankRows([...byTrainer.values()]),
       byFrequency: rankRows([...byFrequency.values()]),
