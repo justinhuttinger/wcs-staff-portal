@@ -675,3 +675,63 @@ body {
 [data-theme='press'] .analytics-subpanel {
   background: var(--press-band);
 }
+
+/* --- Analytics on a phone ---------------------------------------------------
+   The 35 analytics reports are the desktop components, rendered as-is on
+   mobile. That is deliberate — one registry, one set of definitions — but they
+   were laid out for a 1400px window, so on a phone they overflowed and the
+   reader dragged the whole page sideways to finish a sentence.
+
+   These rules make them stack instead. Scoped to .analytics-mobile, which only
+   the mobile report shell sets, so the desktop layouts are untouched.
+
+   The alternative was a second narrow build of every report, which is 35 more
+   files to keep in step with the first 35. */
+
+/* ONE COLUMN, ALWAYS. The reports declare 2, 3, 5 and 6-column grids with
+   Tailwind's responsive prefixes, but even grid-cols-2 puts two stat cards in
+   390px and neither is readable. A phone gets one card per row and the reader
+   scrolls down, which is the one direction a phone is good at. */
+.analytics-mobile [class*="grid-cols-"] {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+/* NOTHING MAY DEMAND MORE WIDTH THAN THE SCREEN HAS. The reports carry fixed
+   minimums — min-w-[200px] on a bar, min-w-[130px] on a table cell — which were
+   sensible next to a wide sibling and are what actually forces the overflow
+   here. Released so every box shrinks to what it is given. */
+.analytics-mobile [class*="min-w-["] { min-width: 0 !important; }
+
+/* Flex rows built for a wide header wrap onto a second line rather than
+   pushing their last item off the edge. */
+.analytics-mobile .flex.items-center.gap-3,
+.analytics-mobile .flex.items-baseline.justify-between { flex-wrap: wrap; }
+
+/* Charts already measure their container (useChartWidth) and redraw at 1:1, so
+   they need nothing but a container that is not wider than the screen. This is
+   the belt to that braces: an SVG with an explicit width attribute still must
+   not paint past the card. */
+.analytics-mobile svg { max-width: 100%; }
+
+/* WIDE TABLES KEEP THEIR OWN SCROLLER, and are the only thing that still moves
+   sideways. Twenty-odd columns cannot be stacked without losing the header each
+   number belongs to, and dropping columns on a small screen hides data without
+   saying so. The scroll is confined to the table's own box, so the PAGE never
+   moves. */
+.analytics-mobile .overflow-x-auto { max-width: 100%; }
+.analytics-mobile table { min-width: max-content; }
+
+/* A long name in a one-column card has the whole width to itself now, so the
+   truncation that protected a narrow desktop column just hides the answer. */
+.analytics-mobile .truncate {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* …except inside a table, where the columns are still side by side. */
+.analytics-mobile table .truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
