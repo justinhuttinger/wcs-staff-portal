@@ -227,3 +227,29 @@ test('contactIdsWithDayOne matches on contact id', async () => {
     assert.deepEqual(inCall[2], ['c1', 'c2', 'c3'])
   })
 })
+
+// An empty slug list must scope to NOTHING, not to everything. A filter that
+// resolves to no clubs failing open is how a single-club manager would be shown
+// the whole company's numbers.
+test('an empty slug list matches nothing rather than everything', async () => {
+  await withRows([], async (mod, calls) => {
+    await mod.funnel({ locationSlugs: [] })
+    const inCall = calls.find(c => c[0] === 'in' && c[1] === 'location_slug')
+    assert.ok(inCall, 'an empty list must still filter')
+    assert.deepEqual(inCall[2], [])
+  })
+})
+
+// The scoping regression this guards: reports.js passed `locationFilter.value`
+// for an object carrying `values`, so the filter silently vanished and a club
+// report answered for every club.
+test('a slug list scopes bookedInRange and scheduledInRange too', async () => {
+  for (const fn of ['bookedInRange', 'scheduledInRange']) {
+    await withRows([], async (mod, calls) => {
+      await mod[fn]({ startISO: 'a', endISO: 'b', locationSlugs: ['clackamas'] })
+      const inCall = calls.find(c => c[0] === 'in' && c[1] === 'location_slug')
+      assert.ok(inCall, `${fn} dropped the slug filter`)
+      assert.deepEqual(inCall[2], ['clackamas'])
+    })
+  }
+})
