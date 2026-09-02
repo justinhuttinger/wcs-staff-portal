@@ -12,6 +12,7 @@ const { getSkipList } = require('../utils/membershipSkipList')
 const { countVipsByTeamMember: _countVipsByTeamMember } = require('../utils/vipsByTeamMember')
 const { parseLocationSlugParam } = require('../utils/locationSlug')
 const { resolveScopedSlugs } = require('../services/locationScope')
+const { getLocationById } = require('../config/ghlLocations')
 
 const router = Router()
 router.use(authenticate)
@@ -46,6 +47,31 @@ async function resolveLocationFilter(req) {
   }
 
   return null // no filter = all locations
+}
+
+// ---------------------------------------------------------------------------
+// Helper: the location filter as a list of slugs, for day_one_appointments.
+//
+// That table keys on location_slug, while resolveLocationFilter may hand back
+// either { column: 'location_slug', values } for a scoped role or
+// { column: 'location_id', values: [ghlLocationId] } when an all-location role
+// picks one club. Passing the wrong shape through silently drops the filter and
+// the report answers for every club — which is exactly what happened when this
+// read `locationFilter.value` (singular) for an object carrying `values`.
+//
+// Returns undefined ONLY for a genuinely unfiltered request. A filter that
+// resolves to no clubs returns [] so the query matches nothing, never
+// everything: failing open here would show one club's manager the whole company.
+// ---------------------------------------------------------------------------
+function dayOneSlugsFor(locationFilter) {
+  if (!locationFilter) return undefined
+  if (locationFilter.column === 'location_slug') return locationFilter.values || []
+  if (locationFilter.column === 'location_id') {
+    return (locationFilter.values || [])
+      .map(id => getLocationById(id)?.slug)
+      .filter(Boolean)
+  }
+  return []
 }
 
 // ---------------------------------------------------------------------------
@@ -223,7 +249,7 @@ router.get('/membership', async (req, res) => {
     // the field, and a contact holds one set of them, so a member with two Day
     // Ones counted once. See lib/dayOneReporting.
     const dayOnes = await bookedInRange({
-      startISO, endISO, locationSlug: locationFilter?.value,
+      startISO, endISO, locationSlugs: dayOneSlugsFor(locationFilter),
     })
     const totalDayOneBooked = dayOnes.length
 
@@ -421,7 +447,7 @@ router.get('/pt', async (req, res) => {
     let rows
     try {
       rows = await scheduledInRange({
-        locationSlugs: locationFilter?.column === 'location_slug' ? locationFilter.values : undefined,
+        locationSlugs: dayOneSlugsFor(locationFilter),
         startDate: start_date,
         endDate: end_date,
       })
@@ -589,7 +615,7 @@ router.get('/club-health', async (req, res) => {
     try {
       dayOnes = await bookedInRange({
         startISO, endISO,
-        locationSlugs: locationFilter?.column === 'location_slug' ? locationFilter.values : undefined,
+        locationSlugs: dayOneSlugsFor(locationFilter),
       })
     } catch (e) {
       return res.status(500).json({ error: 'Failed to fetch day one data', detail: e.message })
@@ -599,7 +625,7 @@ router.get('/club-health', async (req, res) => {
     // Status and sale live on the appointment, so the breakdown needs the rows
     // scheduled in the window rather than the ones booked in it.
     const dayOnesScheduled = await scheduledInRange({
-      locationSlugs: locationFilter?.column === 'location_slug' ? locationFilter.values : undefined,
+      locationSlugs: dayOneSlugsFor(locationFilter),
       startDate: start_date, endDate: end_date,
     })
     const dayOneContactIds = await contactIdsWithDayOne(
