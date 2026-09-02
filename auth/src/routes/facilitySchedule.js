@@ -21,6 +21,7 @@ const { FACILITIES, isKnownFacility } = require('../lib/facilities')
 const clubFeatures = require('../lib/clubFeatures')
 const { DATE_RE, buildLocalTimestamp } = require('../lib/abcTime')
 const { expandSeries, MAX_OCCURRENCES } = require('../lib/groupXSeries')
+const { affectedDates } = require('../lib/facilitySeriesDates')
 const { durationBetween, OPEN_ENDED_HORIZON_DAYS } = require('../lib/scheduleTimes')
 const { padDate, toIsoDate } = require('../lib/abcTime')
 const { publicCacheKeysForDates } = require('../lib/groupXPublic')
@@ -417,6 +418,9 @@ async function facilitySeriesEdit(req, res, { apply }) {
   if (!isKnownClubNumber(b.club_number) || !canUseClub(req, b.club_number)) {
     return res.status(400).json({ error: 'valid club_number is required in body' })
   }
+  if (!isKnownFacility(b.facility)) {
+    return res.status(400).json({ error: 'valid facility is required in body' })
+  }
   const title = cleanTitle(b.title)
   if (!title) return res.status(400).json({ error: 'give the event a name' })
 
@@ -444,22 +448,18 @@ async function facilitySeriesEdit(req, res, { apply }) {
   } catch (err) { return res.status(400).json({ error: err.message }) }
   if (!occurrences.length) return res.status(400).json({ error: 'those days produce no events. Check the weekday selection.' })
 
-  const { count: replaced } = await supabaseAdmin
+  // Same filter the delete uses below (canceled_at IS NULL), so the preview's
+  // count and the apply's actual removal always agree -- an already-cancelled
+  // row is neither previewed nor deleted here.
+  const { data: oldRows } = await supabaseAdmin
     .from('facility_events')
-    .select('id', { count: 'exact', head: true })
+    .select('id, starts_at_local')
     .eq('series_id', series.id).is('canceled_at', null).gte('starts_at_local', from)
+  const replaced = (oldRows || []).length
 
-  if (!apply) return res.json({ count: occurrences.length, occurrences, replaced: replaced || 0 })
+  if (!apply) return res.json({ count: occurrences.length, occurrences, replaced })
 
   try {
-    // Hard delete, not the soft cancel a user-initiated removal uses: these
-    // rows are being superseded, not cancelled, and leaving them would show
-    // both the old and new times on the board.
-    const { error: delErr } = await supabaseAdmin
-      .from('facility_events').delete()
-      .eq('series_id', series.id).gte('starts_at_local', from)
-    if (delErr) throw new Error(delErr.message)
-
     const rows = occurrences.map(o => ({
       club_number: String(b.club_number),
       facility: String(b.facility),
@@ -470,8 +470,22 @@ async function facilitySeriesEdit(req, res, { apply }) {
       series_id: series.id,
       created_by: req.user?.email || 'unknown',
     }))
+
+    // Insert the replacement rows BEFORE deleting the old ones, and delete by
+    // the explicit id list captured above rather than by date range. Same
+    // rule as the Group X side: if the insert fails, we're left with
+    // duplicate events (visible, fixable) instead of a hole in the schedule
+    // that nobody notices until members turn up. Deleting by id list also
+    // means a post-insert delete can never catch the rows we just wrote.
     const { error: insErr } = await supabaseAdmin.from('facility_events').insert(rows)
     if (insErr) throw new Error(insErr.message)
+
+    const oldIds = (oldRows || []).map(r => r.id)
+    if (oldIds.length) {
+      const { error: delErr } = await supabaseAdmin
+        .from('facility_events').delete().in('id', oldIds)
+      if (delErr) throw new Error(delErr.message)
+    }
 
     await supabaseAdmin.from('facility_series').update({
       title,
@@ -481,8 +495,13 @@ async function facilitySeriesEdit(req, res, { apply }) {
       duration_minutes: duration,
     }).eq('id', series.id)
 
-    invalidateBoard(b.club_number, b.facility, occurrences.map(o => o.date))
-    res.json({ created: rows.length, removed: replaced || 0 })
+    // A weekday change moves which dates have an event at all -- the old
+    // Tuesday and the new Wednesday both need the board's cache cleared, or
+    // the deleted Tuesday slot keeps showing for up to 5 minutes.
+    const oldDates = (oldRows || []).map(r => String(r.starts_at_local).slice(0, 10))
+    const newDates = occurrences.map(o => o.date)
+    invalidateBoard(b.club_number, b.facility, affectedDates(oldDates, newDates))
+    res.json({ created: rows.length, removed: replaced })
   } catch (err) { fail(res, err, 'PUT /series/from') }
 }
 
