@@ -405,4 +405,88 @@ router.delete('/series/:id', requireEdit, async (req, res) => {
   } catch (err) { fail(res, err, 'DELETE /series') }
 })
 
+// Editing a repeating facility slot from one occurrence onward.
+//
+// Future rows are REPLACED rather than updated, because changing the weekday
+// set changes which dates exist -- a Tuesday series moved to Wednesday has no
+// Tuesday row to update. Rows before `date` are never touched.
+async function facilitySeriesEdit(req, res, { apply }) {
+  const b = req.body || {}
+  const from = req.params.date
+  if (!DATE_RE.test(from || '')) return res.status(400).json({ error: 'date must be YYYY-MM-DD' })
+  if (!isKnownClubNumber(b.club_number) || !canUseClub(req, b.club_number)) {
+    return res.status(400).json({ error: 'valid club_number is required in body' })
+  }
+  const title = cleanTitle(b.title)
+  if (!title) return res.status(400).json({ error: 'give the event a name' })
+
+  const { data: series, error: selErr } = await supabaseAdmin
+    .from('facility_series').select('*').eq('id', req.params.id).single()
+  if (selErr || !series) return res.status(404).json({ error: 'series not found' })
+
+  let duration
+  try {
+    duration = durationBetween(b.start_time, b.end_time)
+    if (!duration || duration <= 0) return res.status(400).json({ error: 'give the event an end time after its start time' })
+  } catch (err) { return res.status(400).json({ error: err.message }) }
+
+  // Rewrite exactly as far as this series has already been written, no further.
+  // The nightly top-up extends an open-ended series from materialized_through
+  // using the new definition.
+  const through = series.ends_on || series.materialized_through
+  if (!through || through < from) return res.status(400).json({ error: 'this series has nothing scheduled from that date onwards' })
+
+  let occurrences
+  try {
+    occurrences = expandSeries({
+      weekdays: b.weekdays, start_time: b.start_time, starts_on: from, ends_on: through,
+    })
+  } catch (err) { return res.status(400).json({ error: err.message }) }
+  if (!occurrences.length) return res.status(400).json({ error: 'those days produce no events. Check the weekday selection.' })
+
+  const { count: replaced } = await supabaseAdmin
+    .from('facility_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('series_id', series.id).is('canceled_at', null).gte('starts_at_local', from)
+
+  if (!apply) return res.json({ count: occurrences.length, occurrences, replaced: replaced || 0 })
+
+  try {
+    // Hard delete, not the soft cancel a user-initiated removal uses: these
+    // rows are being superseded, not cancelled, and leaving them would show
+    // both the old and new times on the board.
+    const { error: delErr } = await supabaseAdmin
+      .from('facility_events').delete()
+      .eq('series_id', series.id).gte('starts_at_local', from)
+    if (delErr) throw new Error(delErr.message)
+
+    const rows = occurrences.map(o => ({
+      club_number: String(b.club_number),
+      facility: String(b.facility),
+      title,
+      staff_name: b.staff_name ? String(b.staff_name).trim() : null,
+      starts_at_local: o.timestamp_local,
+      duration_minutes: duration,
+      series_id: series.id,
+      created_by: req.user?.email || 'unknown',
+    }))
+    const { error: insErr } = await supabaseAdmin.from('facility_events').insert(rows)
+    if (insErr) throw new Error(insErr.message)
+
+    await supabaseAdmin.from('facility_series').update({
+      title,
+      staff_name: b.staff_name ? String(b.staff_name).trim() : null,
+      weekdays: b.weekdays,
+      start_time: b.start_time,
+      duration_minutes: duration,
+    }).eq('id', series.id)
+
+    invalidateBoard(b.club_number, b.facility, occurrences.map(o => o.date))
+    res.json({ created: rows.length, removed: replaced || 0 })
+  } catch (err) { fail(res, err, 'PUT /series/from') }
+}
+
+router.post('/series/:id/edit-preview', requireEdit, (req, res) => facilitySeriesEdit(req, res, { apply: false }))
+router.put('/series/:id/from/:date', requireEdit, (req, res) => facilitySeriesEdit(req, res, { apply: true }))
+
 module.exports = router
