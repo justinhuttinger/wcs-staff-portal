@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { api } from '../../lib/api'
-import { startOfWeek, addDays, toISODate, fmtTime12, parseLocalTimestamp, MONTH_LABELS } from '../../lib/weekGrid'
+import { startOfWeekMonday, addDays, toISODate, fmtTime12, parseLocalTimestamp, MONTH_LABELS } from '../../lib/weekGrid'
 import WeekGrid from '../groupx/WeekGrid'
 import BoardLinks from './FacilityBoardLinks'
 import PrintBoardModal from '../schedule/PrintBoardModal'
@@ -42,7 +42,7 @@ export default function FacilityView({ canEdit = false, showBoardLinks = false }
   const [allFacilities, setAllFacilities] = useState([])
   const [club, setClub] = useState(null)
   const [facility, setFacility] = useState(null)
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
+  const [weekStart, setWeekStart] = useState(() => startOfWeekMonday(new Date()))
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -202,7 +202,7 @@ export default function FacilityView({ canEdit = false, showBoardLinks = false }
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => setWeekStart(addDays(weekStart, -7))}
             className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">Prev</button>
-          <button type="button" onClick={() => setWeekStart(startOfWeek(new Date()))}
+          <button type="button" onClick={() => setWeekStart(startOfWeekMonday(new Date()))}
             className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">This week</button>
           <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))}
             className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">Next</button>

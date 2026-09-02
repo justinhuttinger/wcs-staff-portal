@@ -119,7 +119,7 @@ export default function WeekGrid({
       {/* Day headers */}
       <div className="grid grid-cols-[56px_repeat(7,1fr)] border-b border-border">
         <div />
-        {days.map((d, i) => {
+        {days.map(d => {
           const iso = toISODate(d)
           const isToday = iso === todayISO
           return (
@@ -128,7 +128,10 @@ export default function WeekGrid({
               className={`px-2 py-2 text-center border-l border-border ${isToday ? 'bg-wcs-red/10' : ''}`}
             >
               <div className={`text-xs uppercase tracking-wide font-semibold ${isToday ? 'text-wcs-red' : 'text-text-primary'}`}>
-                {WEEKDAY_LABELS[i]}
+                {/* Read from the column's own date, not its index -- indexing by
+                    position hard-wires the grid to a Sunday start, which lies
+                    once the caller anchors the week on Monday instead. */}
+                {WEEKDAY_LABELS[d.getDay()]}
               </div>
               <div className={`text-sm ${isToday ? 'text-wcs-red font-bold' : 'text-text-primary'}`}>
                 {d.getDate()}
