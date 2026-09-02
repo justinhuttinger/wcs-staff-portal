@@ -54,6 +54,10 @@ const COLUMNS = [
   { key: 'memberMonths', label: 'Months w/ Trainer', format: 'num', bar: true, barTone: 'teal' },
   { key: 'ptHours', label: 'PT Hours', format: 'num', bar: true, barTone: 'teal' },
   { key: 'classHours', label: 'Class Hours', format: 'num', bar: true, barTone: 'teal' },
+  // Separated from Sessions on purpose: a consult is a sales appointment and
+  // admin is desk time. Both were counted as training until migration 184.
+  { key: 'consultSessions', label: 'Consults', format: 'int', group: true, bar: true, barTone: 'amber' },
+  { key: 'adminHours', label: 'Admin Hours', format: 'num', bar: true, barTone: 'slate' },
   { key: 'dayOnesBooked', label: 'Day Ones Booked', format: 'int', group: true, bar: true, barTone: 'amber' },
   { key: 'dayOnesCompleted', label: 'Completed', format: 'int', bar: true, barTone: 'amber' },
   { key: 'dayOnesSold', label: 'Sold', format: 'int', bar: true, barTone: 'amber' },

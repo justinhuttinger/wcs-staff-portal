@@ -97,6 +97,12 @@ function buildRow(r, clubNameFor) {
       : round1(r.member_months),
     ptHours: round1(num(r.pt_minutes) / 60),
     classHours: round1(num(r.class_minutes) / 60),
+    // Beside the sessions, never inside them. ABC files a member's training, an
+    // hour of desk work and a sales consult under one category; counting them
+    // together made 10.6% of August's "sessions" admin time (migration 184).
+    consultSessions: num(r.consult_sessions),
+    adminSessions: num(r.admin_sessions),
+    adminHours: round1(num(r.admin_minutes) / 60),
     dayOnesBooked: num(r.day_ones_booked),
     dayOnesCompleted,
     dayOnesSold: num(r.day_ones_sold),
@@ -189,6 +195,8 @@ function buildTrainerPerformance(rows, totals, opts = {}) {
         value: totalCompleted ? Math.round(num(t.session_minutes) / totalCompleted) : null },
       { key: 'ptHours', label: 'PT Hours', format: 'hours', value: round1(num(t.pt_minutes) / 60) },
       { key: 'classHours', label: 'Class Hours', format: 'hours', value: round1(num(t.class_minutes) / 60) },
+      { key: 'consultSessions', label: 'Consults', format: 'int', value: num(t.consult_sessions) },
+      { key: 'adminHours', label: 'Admin Hours', format: 'hours', value: round1(num(t.admin_minutes) / 60) },
       { key: 'dayOnesBooked', label: 'Day Ones Booked', format: 'int', value: num(t.day_ones_booked) },
       { key: 'dayOnesCompleted', label: 'Day Ones Completed', format: 'int', value: totalDayOnesCompleted },
       // Null, not 0, when the caller supplied nothing: a false zero here would
