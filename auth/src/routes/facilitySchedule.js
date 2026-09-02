@@ -22,6 +22,7 @@ const clubFeatures = require('../lib/clubFeatures')
 const { DATE_RE, buildLocalTimestamp } = require('../lib/abcTime')
 const { expandSeries, MAX_OCCURRENCES } = require('../lib/groupXSeries')
 const { affectedDates } = require('../lib/facilitySeriesDates')
+const { seriesEditRefused } = require('../lib/facilitySeriesOwnership')
 const { durationBetween, OPEN_ENDED_HORIZON_DAYS } = require('../lib/scheduleTimes')
 const { padDate, toIsoDate } = require('../lib/abcTime')
 const { publicCacheKeysForDates } = require('../lib/groupXPublic')
@@ -250,6 +251,20 @@ router.put('/events/:id', requireEdit, async (req, res) => {
   }
 
   try {
+    // Read the row's date BEFORE the update -- the update's own .select()
+    // returns the row as it looks AFTER the write, so it can only ever hand
+    // back the new date. Without this, moving an event across days leaves the
+    // old day's board cache serving the deleted event for up to 5 minutes.
+    const { data: existing, error: findErr } = await supabaseAdmin
+      .from('facility_events')
+      .select('starts_at_local')
+      .eq('id', req.params.id)
+      .eq('club_number', String(b.club_number))
+      .is('canceled_at', null)
+      .maybeSingle()
+    if (findErr) throw new Error(findErr.message)
+    if (!existing) return res.status(404).json({ error: 'event not found' })
+
     const { data, error } = await supabaseAdmin
       .from('facility_events')
       .update({
@@ -262,12 +277,18 @@ router.put('/events/:id', requireEdit, async (req, res) => {
       .eq('club_number', String(b.club_number))
       .is('canceled_at', null)
       .select('starts_at_local')
-      .single()
+      .maybeSingle()
     if (error) throw new Error(error.message)
+    // A concurrent cancel/delete between the read above and this update is
+    // the only way this comes back empty -- treat it the same as "not found"
+    // rather than a 500.
+    if (!data) return res.status(404).json({ error: 'event not found' })
 
-    // Both weeks, or a move across a week boundary leaves the old day cached
-    // on the board with the event still on it.
-    invalidateBoard(b.club_number, b.facility, [b.date, String(data?.starts_at_local || '').slice(0, 10)])
+    // Old date and new date -- a move across days needs both cleared, or the
+    // old day keeps showing the deleted event until the cache expires.
+    const oldDate = String(existing.starts_at_local || '').slice(0, 10)
+    const newDate = String(data.starts_at_local || '').slice(0, 10)
+    invalidateBoard(b.club_number, b.facility, affectedDates([oldDate], [newDate]))
     res.json({ ok: true })
   } catch (err) { fail(res, err, 'PUT /events') }
 })
@@ -452,13 +473,24 @@ async function facilitySeriesEdit(req, res, { apply }) {
   if (!title) return res.status(400).json({ error: 'give the event a name' })
 
   const { data: series, error: selErr } = await supabaseAdmin
-    .from('facility_series').select('*').eq('id', req.params.id).single()
-  if (selErr || !series) return res.status(404).json({ error: 'series not found' })
+    .from('facility_series').select('*').eq('id', req.params.id).maybeSingle()
+  if (selErr) return fail(res, new Error(selErr.message), 'series lookup')
+  // 404, never 403 -- a caller holding another club's series id must not be
+  // able to tell from the response that it exists. See seriesEditRefused for
+  // why this check exists at all.
+  if (seriesEditRefused(series, b.club_number, b.facility)) {
+    return res.status(404).json({ error: 'series not found' })
+  }
 
   let duration
   try {
     duration = durationBetween(b.start_time, b.end_time)
-    if (!duration || duration <= 0) return res.status(400).json({ error: 'give the event an end time after its start time' })
+    // Same cap as the single-event path -- nothing here derives it from a
+    // shorter-bounded source, so a bad end time can produce the same
+    // multi-day "duration" bug.
+    if (!duration || duration <= 0 || duration > 24 * 60) {
+      return res.status(400).json({ error: 'give the event an end time after its start time' })
+    }
   } catch (err) { return res.status(400).json({ error: err.message }) }
 
   // Rewrite exactly as far as this series has already been written, no further.
@@ -481,15 +513,24 @@ async function facilitySeriesEdit(req, res, { apply }) {
   const { data: oldRows } = await supabaseAdmin
     .from('facility_events')
     .select('id, starts_at_local')
-    .eq('series_id', series.id).is('canceled_at', null).gte('starts_at_local', from)
+    .eq('series_id', series.id)
+    // Belt and suspenders alongside the ownership check above: even if that
+    // check were ever loosened, this scopes the delete/preview to rows that
+    // actually belong to the claimed club.
+    .eq('club_number', series.club_number)
+    .is('canceled_at', null).gte('starts_at_local', from)
   const replaced = (oldRows || []).length
 
   if (!apply) return res.json({ count: occurrences.length, occurrences, replaced })
 
   try {
+    // Built from the SERIES' own club/facility, not the request body -- the
+    // ownership check above already requires them to match, but deriving the
+    // insert from the verified row (not the claim) means a mismatch can never
+    // migrate rows even if that check is loosened later.
     const rows = occurrences.map(o => ({
-      club_number: String(b.club_number),
-      facility: String(b.facility),
+      club_number: series.club_number,
+      facility: series.facility,
       title,
       staff_name: b.staff_name ? String(b.staff_name).trim() : null,
       starts_at_local: o.timestamp_local,
@@ -527,12 +568,12 @@ async function facilitySeriesEdit(req, res, { apply }) {
     // the deleted Tuesday slot keeps showing for up to 5 minutes.
     const oldDates = (oldRows || []).map(r => String(r.starts_at_local).slice(0, 10))
     const newDates = occurrences.map(o => o.date)
-    invalidateBoard(b.club_number, b.facility, affectedDates(oldDates, newDates))
+    invalidateBoard(series.club_number, series.facility, affectedDates(oldDates, newDates))
     res.json({ created: rows.length, removed: replaced })
   } catch (err) { fail(res, err, 'PUT /series/from') }
 }
 
-router.post('/series/:id/edit-preview', requireEdit, (req, res) => facilitySeriesEdit(req, res, { apply: false }))
+router.post('/series/:id/edit-preview/:date', requireEdit, (req, res) => facilitySeriesEdit(req, res, { apply: false }))
 router.put('/series/:id/from/:date', requireEdit, (req, res) => facilitySeriesEdit(req, res, { apply: true }))
 
 module.exports = router

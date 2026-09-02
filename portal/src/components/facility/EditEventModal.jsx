@@ -116,7 +116,7 @@ export default function EditEventModal({ club, facility, event, onClose, onSaved
       // "All from here on" is a rewrite of every future row in the series, so
       // show what that touches before writing anything -- same shape as
       // CreateEventModal's recurring preview.
-      const r = await api(`/facility-schedule/series/${encodeURIComponent(event.series_id)}/edit-preview`, {
+      const r = await api(`/facility-schedule/series/${encodeURIComponent(event.series_id)}/edit-preview/${occurrenceDate}`, {
         method: 'POST',
         body: JSON.stringify({
           club_number: club.clubNumber,
