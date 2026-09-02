@@ -33,6 +33,7 @@ const { publicCacheKeysForDates } = require('../lib/groupXPublic')
 const { aggregate } = require('../lib/groupXReport')
 const { markNewClasses } = require('../lib/groupXNewClasses')
 const { recordSeriesEvents, resolveLinkedSeriesId } = require('../lib/groupXSeriesLink')
+const { moveClassRefs } = require('../lib/groupXClassRefs')
 const memoryCache = require('../services/memoryCache')
 const authenticate = require('../middleware/auth')
 const { requireRole, roleLevel } = require('../middleware/role')
@@ -372,6 +373,71 @@ router.post('/classes', requireEdit, async (req, res) => {
     invalidatePublicBoard(b.club_number, [b.date])
     res.status(201).json({ event_id: result.event_id, badge_error })
   } catch (err) { fail(res, err, 'POST /classes') }
+})
+
+// PUT /group-x/classes/:eventId — change one class.
+//
+// ABC has no event-update endpoint (PUT /events/{id} is a 405 for every body
+// shape), so this is a create followed by a cancel, and the event id changes.
+//
+// CREATE RUNS FIRST, deliberately. If the create fails we still have the
+// original class; if the cancel fails we have a duplicate, which is visible and
+// fixable. The reverse order risks deleting a class and failing to recreate it,
+// leaving a hole nobody notices until members turn up.
+router.put('/classes/:eventId', requireEdit, async (req, res) => {
+  const b = req.body || {}
+  if (!requireBodyClub(req, res, b.club_number)) return
+  if (!b.event_type_id || !b.employee_id) {
+    return res.status(400).json({ error: 'event_type_id and employee_id are required' })
+  }
+
+  // Past classes are not editable. A past class is never deleted, so a logged
+  // headcount can never be lost to a rebuild.
+  if (b.date < toIsoDate(new Date())) {
+    return res.status(400).json({ error: 'that class has already happened and cannot be changed' })
+  }
+
+  let stamp
+  try {
+    stamp = buildLocalTimestamp(b.date, b.time)
+  } catch (err) {
+    return res.status(400).json({ error: err.message })
+  }
+
+  const oldId = req.params.eventId
+  try {
+    const created = await abc.createClass(String(b.club_number), {
+      event_type_id: b.event_type_id,
+      employee_id: b.employee_id,
+      event_timestamp_local: stamp,
+      training_level_id: b.training_level_id || null,
+    })
+    // ABC rejected it. Surface ABC's own message rather than a generic 500 —
+    // its validation codes (API-CAL-EVT-*) are the useful part. Nothing has
+    // changed yet: the original class is untouched.
+    if (!created.ok) return res.status(502).json({ error: created.error, abc_status: created.http })
+
+    const canceled = await abc.cancelClass(String(b.club_number), oldId)
+    if (!canceled.ok) {
+      // The new class exists. Say so plainly rather than reporting a failure
+      // that would have staff create it a second time.
+      return res.status(502).json({
+        error: `The new class was created, but the old one could not be removed: ${canceled.error}. Cancel it by hand on the calendar.`,
+        event_id: created.event_id,
+        abc_status: canceled.http,
+      })
+    }
+
+    // Carry what was keyed to the old id across to the new one. Best-effort,
+    // like badging on create: the class exists either way.
+    const moved = await moveClassRefs(b.club_number, oldId, created.event_id, b.date, b.class_name)
+
+    // Both weeks: the new date, and — when the edit moved the class across a
+    // week boundary — the old date, so that board does not keep serving the
+    // class at its stale time for up to the full cache window.
+    invalidatePublicBoard(b.club_number, [b.date, b.old_date || b.date])
+    res.json({ event_id: created.event_id, ...moved })
+  } catch (err) { fail(res, err, 'PUT /classes') }
 })
 
 // DELETE /group-x/classes/:eventId?club_number= — cancel one class in ABC.
