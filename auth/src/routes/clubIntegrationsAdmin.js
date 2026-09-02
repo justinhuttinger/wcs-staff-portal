@@ -34,6 +34,40 @@ const WEBHOOK_FIELDS = [
   'pt_intake_webhook_url',
 ]
 
+// Per-club values the waiver pipeline substitutes when a prospect's own answer
+// is unusable. Edited on their own screen (Admin -> Club Info) rather than
+// alongside the webhooks: they are club facts, not integration wiring, and
+// keeping the two field sets disjoint means neither screen can clobber the
+// other's values even though both write this table.
+const FALLBACK_FIELDS = [
+  'fallback_address1',
+  'fallback_city',
+  'fallback_state',
+  'fallback_postal_code',
+  'fallback_phone',
+]
+
+const EDITABLE_FIELDS = [...WEBHOOK_FIELDS, ...FALLBACK_FIELDS]
+
+// ABC wants exactly two letters. Rejecting a bad one here is the whole point of
+// the screen - a fallback that ABC also refuses is worse than none, because it
+// looks like the problem is handled.
+function invalidState(value) {
+  if (!value) return null
+  return /^[A-Za-z]{2}$/.test(String(value).trim())
+    ? null
+    : 'must be a two-letter state code, e.g. OR'
+}
+
+// ABC takes 10 digits. Anything else is stored as-is by the file path but would
+// be dropped by formatPhoneNumber, so catch it while somebody is looking.
+function invalidPhone(value) {
+  if (!value) return null
+  const digits = String(value).replace(/\D/g, '')
+  const national = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits
+  return national.length === 10 ? null : 'must be a 10-digit US phone number'
+}
+
 // Fallback club list, so the screen still renders every club before the seed
 // has run. Mirrors clubMap.js, which is the canonical name -> club number map.
 const FALLBACK_CLUBS = Object.entries(NAME_TO_CLUB).map(([slug, clubNumber]) => ({
@@ -44,7 +78,7 @@ const FALLBACK_CLUBS = Object.entries(NAME_TO_CLUB).map(([slug, clubNumber]) => 
 
 function emptyRow(club) {
   const row = { ...club, active: true, updated_at: null }
-  for (const f of WEBHOOK_FIELDS) row[f] = ''
+  for (const f of EDITABLE_FIELDS) row[f] = ''
   return row
 }
 
@@ -93,7 +127,7 @@ router.get('/', async (req, res) => {
         active: row.active,
         updated_at: row.updated_at,
       }
-      for (const f of WEBHOOK_FIELDS) out[f] = row[f] || ''
+      for (const f of EDITABLE_FIELDS) out[f] = row[f] || ''
       return out
     })
 
@@ -118,8 +152,16 @@ router.put('/:clubNumber', async (req, res) => {
     const problem = invalidUrl(String(body[f] || '').trim())
     if (problem) errors[f] = problem
   }
+  if ('fallback_state' in body) {
+    const problem = invalidState(String(body.fallback_state || '').trim())
+    if (problem) errors.fallback_state = problem
+  }
+  if ('fallback_phone' in body) {
+    const problem = invalidPhone(String(body.fallback_phone || '').trim())
+    if (problem) errors.fallback_phone = problem
+  }
   if (Object.keys(errors).length) {
-    return res.status(400).json({ error: 'Check the highlighted URLs', fields: errors })
+    return res.status(400).json({ error: 'Check the highlighted fields', fields: errors })
   }
 
   // display_name and location_slug are NOT NULL with no default, and Postgres
@@ -133,8 +175,14 @@ router.put('/:clubNumber', async (req, res) => {
     updated_at: new Date().toISOString(),
     updated_by: req.staff?.id || null,
   }
-  for (const f of WEBHOOK_FIELDS) {
-    if (f in body) patch[f] = String(body[f] || '').trim() || null
+  // Only the fields the caller actually sent. Club Info and Club Integrations
+  // edit disjoint halves of this row, so a save from one must leave the other
+  // untouched rather than blanking it.
+  for (const f of EDITABLE_FIELDS) {
+    if (f in body) {
+      const value = String(body[f] || '').trim()
+      patch[f] = f === 'fallback_state' ? (value.toUpperCase() || null) : (value || null)
+    }
   }
 
   try {
@@ -154,3 +202,6 @@ router.put('/:clubNumber', async (req, res) => {
 
 module.exports = router
 module.exports.WEBHOOK_FIELDS = WEBHOOK_FIELDS
+module.exports.FALLBACK_FIELDS = FALLBACK_FIELDS
+module.exports.invalidState = invalidState
+module.exports.invalidPhone = invalidPhone
