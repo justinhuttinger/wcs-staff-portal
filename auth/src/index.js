@@ -357,6 +357,15 @@ app.listen(PORT, () => {
     console.error('[kpiSnapshot] failed to start:', err.message)
   }
 
+  // Nightly membership snapshot — records what the membership actually was
+  // that day, because abc_members is current-state only and a re-join rewrites
+  // the past. See migration 182. Opt out via MEMBERSHIP_SNAPSHOT_DISABLED=1.
+  try {
+    require('./services/membershipSnapshot').start()
+  } catch (err) {
+    console.error('[membershipSnapshot] failed to start:', err.message)
+  }
+
   // Forms module: Google Sheets retry sweep. Opt out via FORMS_SHEETS_DISABLED=1.
   try {
     require('./services/formsSheets').start()
