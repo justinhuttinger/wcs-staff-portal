@@ -254,12 +254,36 @@ function FunnelBar({ label, stageKey, channels, total, leadTotal, colors, hovere
   const conversion = leadTotal ? (total / leadTotal) * 100 : null
 
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-xs text-text-primary w-28 text-right flex-shrink-0 truncate" title={label}>
-        {label}
-      </span>
+    // NARROW: the name and its two figures share a line, and the bar gets the
+    // full width underneath. WIDE: all four sit on one line as before.
+    //
+    // The old single row was 112px of name + a 200px minimum bar + 64px of
+    // count + 96px of percentage — 472px before any gaps, against a 390px
+    // phone. It fitted by squeezing the bar to nothing, which is the one part
+    // of the row that has to be wide to mean anything.
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+      <div className="flex items-baseline justify-between gap-2 sm:contents">
+        <span
+          className="text-xs text-text-primary truncate sm:w-28 sm:text-right sm:flex-shrink-0 sm:order-1"
+          title={label}
+        >
+          {label}
+        </span>
+        {/* Both figures ride with the name on a narrow screen and jump to the
+            end of the row on a wide one. sm:contents dissolves this wrapper at
+            that width so the four children lay out as one flex row, and the
+            order utilities put them back in reading order. */}
+        <span className="flex items-baseline gap-2 flex-shrink-0 sm:contents">
+          <span className="text-xs text-text-primary tabular-nums font-semibold sm:w-16 sm:text-right sm:flex-shrink-0 sm:order-3">
+            {fmtInt(total)}
+          </span>
+          <span className="text-[11px] text-text-muted tabular-nums sm:w-24 sm:text-right sm:flex-shrink-0 sm:order-4">
+            {conversion === null ? '' : `${conversion.toFixed(1)}% of leads`}
+          </span>
+        </span>
+      </div>
 
-      <div className="flex-1 min-w-[200px]">
+      <div className="flex-1 min-w-0 sm:min-w-[200px] sm:order-2">
         <div className="h-7 rounded-sm bg-bg overflow-hidden">
           <div className="h-full flex rounded-sm overflow-hidden" style={{ width: `${width}%` }}>
             {channels.map(s => {
@@ -297,12 +321,6 @@ function FunnelBar({ label, stageKey, channels, total, leadTotal, colors, hovere
         </div>
       </div>
 
-      <span className="text-xs text-text-primary tabular-nums w-16 text-right flex-shrink-0 font-semibold">
-        {fmtInt(total)}
-      </span>
-      <span className="text-[11px] text-text-muted tabular-nums w-24 text-right flex-shrink-0">
-        {conversion === null ? '' : `${conversion.toFixed(1)}% of leads`}
-      </span>
     </div>
   )
 }

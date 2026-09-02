@@ -225,29 +225,34 @@ export function MobileAnalyticsReport({ reportKey, user, startDate, endDate, loc
         className="flex flex-col items-stretch gap-3 empty:hidden mb-3 bg-surface rounded-2xl border border-border px-3 py-2.5"
       />
 
-      <div className="overflow-x-auto">
-        {/* w-max, NOT a fixed floor width.
-            A block child of a scroll container sizes to the CONTAINER, not to
-            the scrollable content, so every bg-surface card inside stopped at
-            the phone's width while the rows kept going. Scroll right on Lead
-            Sources and the count and percentage on the end of each bar were
-            hanging off the white card onto the club photo behind it — dark text
-            on a dark photograph. Every wide analytics report had it.
+      {/* NO SIDEWAYS SCROLL ON THE PAGE. This used to be an overflow-x-auto
+          scroller around a w-max box, which let a report be as wide as it liked
+          and made the reader drag the whole page around to read one number.
 
-            w-max makes this box as wide as its widest row, so the cards stretch
-            with it and the backing runs the whole way. min-w-full keeps a
-            narrow report filling the screen rather than shrinking to its
-            content. */}
-        <div className="w-max min-w-full">
-          <Component
-            user={user}
-            isAdmin={user?.staff?.role === 'admin'}
-            location={locationSlug}
-            locationSlug={locationSlug}
-            startDate={startDate}
-            endDate={endDate}
-          />
-        </div>
+          Now the report is held to the screen and the .analytics-mobile rules
+          in index.css do the work: every grid collapses to one column, every
+          fixed min-width is released, and charts measure their container so
+          they redraw at the phone's width on their own.
+
+          overflow-x: clip rather than hidden or auto — those two force the
+          other axis to auto as well, which would nest a second vertical
+          scroller inside the page's own. clip is the one value that stops
+          horizontal overflow without doing that, and it leaves the inner
+          scrollers on wide data tables working.
+
+          Wide TABLES keep a scroller of their own. Twenty-odd columns cannot be
+          stacked without losing the header each number belongs to, and the
+          honest alternative — dropping columns on small screens — hides data
+          without saying so. The page never moves sideways; the table does. */}
+      <div className="analytics-mobile" style={{ overflowX: 'clip' }}>
+        <Component
+          user={user}
+          isAdmin={user?.staff?.role === 'admin'}
+          location={locationSlug}
+          locationSlug={locationSlug}
+          startDate={startDate}
+          endDate={endDate}
+        />
       </div>
     </div>
   )
