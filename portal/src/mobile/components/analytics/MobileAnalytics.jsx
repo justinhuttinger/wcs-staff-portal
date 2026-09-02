@@ -3,6 +3,7 @@ import {
   ANALYTICS_REPORTS, REPORT_GROUPS, PINNED_REPORTS, ungroupedReports, reportByKey,
 } from '../../../components/AnalyticsView'
 import { isReportVisible } from '../../../components/analyticsReportCatalogue'
+import { TOOLBAR_SLOT_ID } from '../../../components/analytics/toolbarSlot'
 import { getAppSettings } from '../../../lib/api'
 import { LOCATION_NAMES } from '../../../config/locations'
 
@@ -131,6 +132,20 @@ function ReportRow({ report, onOpen, flush = false }) {
  * reports, the report gets a horizontal scroller of its own and the page itself
  * never scrolls sideways, which is the rule the rest of the portal follows for
  * wide content.
+ *
+ * THE TOOLBAR SLOT IS WHY THE CONTROLS APPEAR AT ALL. Twenty-five of the report
+ * components own controls that belong beside the shared date range rather than
+ * buried in the report body — the person picker on Salesperson Snapshot and
+ * Trainer Snapshot, the day picker on Daily Snapshot, the member-count toggle on
+ * PT Scorecard — and every one of them portals into an element with this id and
+ * renders NOTHING when it is absent. The desktop shell provides it; without one
+ * here, those reports came up on mobile with no way to drive them. Providing the
+ * element is the whole fix, and it fixes all twenty-five at once rather than the
+ * two that got noticed.
+ *
+ * It is safe to reuse the id: only one report is mounted at a time on mobile and
+ * the desktop shell is not mounted at all, so there is never a second element
+ * competing for the same portal target.
  */
 export function MobileAnalyticsReport({ reportKey, user, startDate, endDate, locationSlug }) {
   const report = reportByKey[reportKey]
@@ -143,18 +158,34 @@ export function MobileAnalyticsReport({ reportKey, user, startDate, endDate, loc
   }
   const Component = report.Component
   return (
-    <div className="px-3 pb-6 overflow-x-auto">
-      {/* A floor width keeps a wide table readable inside the scroller rather
-          than crushed into the phone's width one character per column. */}
-      <div className="min-w-[340px]">
-        <Component
-          user={user}
-          isAdmin={user?.staff?.role === 'admin'}
-          location={locationSlug}
-          locationSlug={locationSlug}
-          startDate={startDate}
-          endDate={endDate}
-        />
+    <div className="px-3 pb-6">
+      {/* Rendered in the same commit as the report below it, so the child's
+          getElementById in its mount effect already finds it: React commits the
+          whole tree to the DOM before running any effect.
+
+          Stacked, not laid out in a row: these controls were built for a wide
+          desktop header, and a person search alone is a label plus a 190px
+          input, which does not sit beside anything else on a phone. Collapses
+          to nothing when the report has no toolbar (empty:hidden), so the
+          reports without one gain no empty box. */}
+      <div
+        id={TOOLBAR_SLOT_ID}
+        className="flex flex-col items-stretch gap-3 empty:hidden mb-3 bg-surface rounded-2xl border border-border px-3 py-2.5"
+      />
+
+      <div className="overflow-x-auto">
+        {/* A floor width keeps a wide table readable inside the scroller rather
+            than crushed into the phone's width one character per column. */}
+        <div className="min-w-[340px]">
+          <Component
+            user={user}
+            isAdmin={user?.staff?.role === 'admin'}
+            location={locationSlug}
+            locationSlug={locationSlug}
+            startDate={startDate}
+            endDate={endDate}
+          />
+        </div>
       </div>
     </div>
   )
