@@ -80,7 +80,15 @@ const CHECKS = [
     scopes: ['staff'],
     unit: 'count',
     direction: 'above',
-    defaultThreshold: 10,
+    // ANY OUTSTANDING FORM IS THE PROBLEM, so the bar is "more than none" —
+    // the same reasoning as ops_jobs_below.
+    //
+    // This was 10, which meant the check fired for NOBODY and the row had never
+    // once appeared. Measured over a trailing 30 days: 62 forms outstanding
+    // across the seven clubs, the worst single trainer on 9, and zero trainers
+    // above 10. A threshold nothing can reach is not a lenient check, it is a
+    // check that is switched off while looking switched on.
+    defaultThreshold: 0,
     minSample: 0,
     sampleLabel: 'Day Ones past their date',
     why: 'Day Ones whose date has passed with no outcome recorded. Until the form is completed the appointment counts as neither held nor missed, so every close rate is measured on an incomplete picture.',

@@ -107,7 +107,10 @@ router.get('/', async (req, res) => {
         // makes the number something a manager can actually move.
         fetchAll(
           supabaseAdmin.from('day_one_appointments')
-            .select('location_slug, trainer_name, status, outcome, scheduled_date')
+            // contact_name so the drill-down can name WHOSE form is missing.
+            // "Four outstanding" is a number; "Jane Doe from 16 August" is a
+            // conversation the trainer can actually close out.
+            .select('location_slug, trainer_name, status, outcome, scheduled_date, contact_name')
             .gte('scheduled_date', startISO)
             .lt('scheduled_date', endISO)
             .in('location_slug', slugs)
@@ -197,6 +200,21 @@ router.get('/', async (req, res) => {
       if (d.outcome === 'Sale') bump(staffTally, staffKey, 'close', 'sold')
     }
 
+    // Today in Pacific, for how overdue each outstanding form is. The club's
+    // day, not the server's.
+    const todayPacific = new Date(
+      new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })
+    )
+    const daysOverdue = (iso) => {
+      const d = new Date(`${String(iso).slice(0, 10)}T00:00:00`)
+      if (Number.isNaN(d.getTime())) return null
+      return Math.max(0, Math.round((todayPacific - d) / 86400000))
+    }
+
+    // The forms behind each trainer's count, so a row opens to show WHOSE
+    // outcome is missing rather than only how many are.
+    const staffForms = new Map()
+
     for (const d of gathered.openForms) {
       // Past its date and never closed out: still 'scheduled', or marked
       // completed with nobody recording what happened.
@@ -206,8 +224,19 @@ router.get('/', async (req, res) => {
       // A form with no trainer on it cannot be laid at anybody's door. Counted
       // so the report can say how many went unattributed rather than dropping
       // them without a word.
-      if (trainer) bump(staffTally, `${d.location_slug}|${trainer}`, 'open', 'n')
-      else formsUnowned++
+      if (trainer) {
+        const key = `${d.location_slug}|${trainer}`
+        bump(staffTally, key, 'open', 'n')
+        const list = staffForms.get(key) || []
+        list.push({
+          // contact_name is null on a good number of these, so the row still
+          // has to read as something rather than as a blank.
+          name: d.contact_name || 'Unnamed member',
+          date: d.scheduled_date,
+          overdue: daysOverdue(d.scheduled_date),
+        })
+        staffForms.set(key, list)
+      } else formsUnowned++
     }
 
     // --- operational jobs, per job and per person -------------------------
@@ -353,6 +382,13 @@ router.get('/', async (req, res) => {
               numerator: close.sold || 0,
             },
             dayone_open_forms: { value: (t.open || {}).n || 0, sample: (t.open || {}).n || 0 },
+          },
+          details: {
+            // Oldest first: the one that has been sitting five weeks is the one
+            // to ask about, not yesterday's.
+            dayone_open_forms: (staffForms.get(key) || [])
+              .slice()
+              .sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))),
           },
         })
       }

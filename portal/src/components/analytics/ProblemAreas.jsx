@@ -125,17 +125,31 @@ function ProblemRow({ p, checks }) {
             <li key={`${d.name}-${d.date}-${i}`} className="flex items-center gap-2 text-[11px]">
               <span className="text-text-muted tabular-nums w-10 flex-shrink-0">{fmtDate(d.date)}</span>
               <span className="text-text-primary truncate">{d.name}</span>
-              <span className="ml-auto flex items-center gap-2 flex-shrink-0 tabular-nums">
-                {/* How it was pinned on them. 'Rostered' is weaker evidence than
-                    having actually worked the job, and saying which is the
-                    difference between a fair conversation and an unfair one. */}
-                <span className="text-text-muted">
-                  {d.via === 'rostered'
-                    ? `rostered${d.coverPct ? ` ${d.coverPct}%` : ''}`
-                    : 'worked on it'}
+              {/* Two different kinds of row live behind this list. An
+                  operational job carries how it was pinned on somebody and how
+                  far it got; an outstanding Day One form carries neither, and
+                  showing it a job's "worked on it / 0%" would be inventing
+                  facts about it. */}
+              {p.key === 'dayone_open_forms' ? (
+                <span className="ml-auto flex-shrink-0 tabular-nums text-wcs-red font-semibold">
+                  {d.overdue === null || d.overdue === undefined
+                    ? 'outstanding'
+                    : `${d.overdue}d overdue`}
                 </span>
-                <span className="text-wcs-red font-semibold w-10 text-right">{d.pct}%</span>
-              </span>
+              ) : (
+                <span className="ml-auto flex items-center gap-2 flex-shrink-0 tabular-nums">
+                  {/* How it was pinned on them. 'Rostered' is weaker evidence
+                      than having actually worked the job, and saying which is
+                      the difference between a fair conversation and an unfair
+                      one. */}
+                  <span className="text-text-muted">
+                    {d.via === 'rostered'
+                      ? `rostered${d.coverPct ? ` ${d.coverPct}%` : ''}`
+                      : 'worked on it'}
+                  </span>
+                  <span className="text-wcs-red font-semibold w-10 text-right">{d.pct}%</span>
+                </span>
+              )}
             </li>
           ))}
         </ul>

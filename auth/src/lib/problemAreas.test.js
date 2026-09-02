@@ -18,7 +18,9 @@ const seller = (metrics, name = 'Sam Seller') => person(name, 'Membership', {
 })
 const trainer = (metrics, name = 'Trainer Tam') => person(name, 'PT', {
   dayone_close_pct: { value: 45, sample: 50, numerator: 22 },
-  dayone_open_forms: { value: 2, sample: 2 },
+  // Nothing outstanding. Any open form at all is a problem now, so a trainer
+  // with "nothing wrong" has to be on zero.
+  dayone_open_forms: { value: 0, sample: 0 },
   ...metrics,
 })
 const opsPerson = (metrics, name = 'Kyra Scoggin') => person(name, 'Operations', {
@@ -47,7 +49,7 @@ test('club-level subjects are ignored entirely', () => {
 test('below-threshold and above-threshold checks both fire the right way', () => {
   const out = build([
     seller({ dayone_book_pct: { value: 12, sample: 100, numerator: 12 } }),  // below 40
-    trainer({ dayone_open_forms: { value: 120, sample: 120 } }),             // above 10
+    trainer({ dayone_open_forms: { value: 120, sample: 120 } }),             // above 0
   ])
   const keys = out.problems.map(p => p.key).sort()
   assert.deepEqual(keys, ['dayone_book_pct', 'dayone_open_forms'])
@@ -303,4 +305,27 @@ test('jobDay returns null rather than an invalid date', () => {
   assert.equal(jobDay({}), null)
   assert.equal(jobDay(null), null)
   assert.equal(jobDay({ available_from: 'not a date' }), null)
+})
+
+// The check existed and had never once fired: its threshold was 10 open forms
+// while the worst trainer in a 30-day window was on 9. One outstanding form is
+// the thing being asked about, so one has to be enough to show up.
+test('a single outstanding Day One form is a problem', () => {
+  const out = build([trainer({ dayone_open_forms: { value: 1, sample: 1 } })])
+  const p = out.problems.find(x => x.key === 'dayone_open_forms')
+  assert.ok(p, 'expected one open form to fire the check')
+  assert.equal(p.department, 'PT')
+  assert.equal(p.person, 'Trainer Tam')
+  assert.equal(p.value, 1)
+  assert.equal(p.threshold, 0)
+})
+
+// It stays configurable: a club that wants to tolerate a couple can still say
+// so in Admin, and the default is only what applies until they do.
+test('an Admin threshold still overrides the new default', () => {
+  const out = build(
+    [trainer({ dayone_open_forms: { value: 2, sample: 2 } })],
+    { [settingKey('dayone_open_forms')]: 5 }
+  )
+  assert.equal(out.problems.find(x => x.key === 'dayone_open_forms'), undefined)
 })
