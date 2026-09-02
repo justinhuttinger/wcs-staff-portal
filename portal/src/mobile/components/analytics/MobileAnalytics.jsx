@@ -69,7 +69,10 @@ export function MobileAnalyticsHome({ locationSlug, onOpen }) {
     // wrapper, and could not — MobileReportShell hands its children an
     // overflow-y-auto box, and an element with overflow on one axis gets it on
     // the other too, so the bleed was clipped and left a sideways scroll.
-    <div className="pb-6 bg-surface border-y border-border">
+    // No background or border of its own: the route wraps this whole screen in
+    // one surface, so a second one here would draw a seam across the middle of
+    // it and double the hairline under the club selector.
+    <div className="pb-6">
       <p className="px-4 pt-4 pb-2 text-sm font-bold text-text-primary">
         Browse Reports
       </p>
