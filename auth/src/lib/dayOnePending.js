@@ -39,50 +39,9 @@ async function loadPendingDayOnes(clubNumbers, start, end) {
     })
   )
 
-  // MOST DAY ONES HAVE NO contact_name. The booking widget writes the
-  // appointment before anybody types a name onto it: 270 of August's 303 are
-  // null. Every one of those carries a ghl_contact_id though, so the name is
-  // one lookup away — and a chase list that says "Unnamed member" 270 times
-  // cannot do the only job it has.
-  //
-  // The function does not return the contact id, so it is read back off the
-  // table for the rows that need it and nothing else.
-  const missing = rows.filter(r => !String(r.contact_name || '').trim())
-  if (missing.length === 0) return rows
-
-  const byAppt = new Map()
-  const CHUNK = 200
-  const ids = [...new Set(missing.map(r => r.id).filter(Boolean))]
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const { data, error } = await supabaseAdmin
-      .from('day_one_appointments')
-      .select('id, ghl_contact_id')
-      .in('id', ids.slice(i, i + CHUNK))
-    if (error) throw new Error(error.message)
-    for (const r of data || []) byAppt.set(r.id, r.ghl_contact_id)
-  }
-
-  const contactIds = [...new Set([...byAppt.values()].filter(Boolean))]
-  const names = new Map()
-  for (let i = 0; i < contactIds.length; i += CHUNK) {
-    const { data, error } = await supabaseAdmin
-      .from('ghl_contacts_v2')
-      .select('id, first_name, last_name')
-      .in('id', contactIds.slice(i, i + CHUNK))
-    if (error) throw new Error(error.message)
-    for (const c of data || []) {
-      const full = `${c.first_name || ''} ${c.last_name || ''}`.trim()
-      if (full) names.set(c.id, full)
-    }
-  }
-
-  return rows.map(r => (
-    String(r.contact_name || '').trim()
-      ? r
-      // Left null where neither the appointment nor the contact has a name —
-      // a real gap, which the panel still shows as "Unnamed member".
-      : { ...r, contact_name: names.get(byAppt.get(r.id)) || r.contact_name }
-  ))
+  // Most Day Ones carry no contact_name of their own — see
+  // lib/dayOneContactNames for why, and for the one place that fills it in.
+  return require('./dayOneContactNames').attachContactNames(rows)
 }
 
 /** Bucket a list of {name, count} into descending order, ties broken by name. */

@@ -8,6 +8,7 @@ const { getSkipList } = require('../utils/membershipSkipList')
 const { buildReport } = require('../lib/salespersonPerformance')
 const { loadSalespersonWindow } = require('../lib/salespersonData')
 const { buildProblemAreas, opsJobPct, isJudgeableJob, jobDay } = require('../lib/problemAreas')
+const { attachContactNames } = require('../lib/dayOneContactNames')
 const { resolveUntouchedJobs } = require('../lib/shiftCoverage')
 const { fetchShiftsOverlapping } = require('../lib/operandioApi')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
@@ -110,7 +111,12 @@ router.get('/', async (req, res) => {
             // contact_name so the drill-down can name WHOSE form is missing.
             // "Four outstanding" is a number; "Jane Doe from 16 August" is a
             // conversation the trainer can actually close out.
-            .select('location_slug, trainer_name, status, outcome, scheduled_date, contact_name')
+            //
+            // ghl_contact_id because most Day Ones have no contact_name: the
+            // booking widget writes the appointment before anybody types one.
+            // 46 of the 66 rows here were showing as "Unnamed member" until
+            // this was resolved — see lib/dayOneContactNames.
+            .select('location_slug, trainer_name, status, outcome, scheduled_date, contact_name, ghl_contact_id')
             .gte('scheduled_date', startISO)
             .lt('scheduled_date', endISO)
             .in('location_slug', slugs)
@@ -165,7 +171,10 @@ router.get('/', async (req, res) => {
         ))
       }
 
-      return { window, dayOnes, openForms, ops, steps, skipList }
+      return {
+        window, dayOnes, ops, steps, skipList,
+        openForms: await attachContactNames(openForms),
+      }
     })
 
     // Loaded before the folds below, which need the per-job completion bar.
