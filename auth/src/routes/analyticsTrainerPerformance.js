@@ -5,6 +5,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { buildTrainerPerformance, SORTS } = require('../lib/trainerPerformance')
+const { loadPendingDayOnes, summarisePending, pendingList } = require('../lib/dayOnePending')
 const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerformance')
 
 /**
@@ -69,8 +70,8 @@ router.get('/', async (req, res) => {
     // cached rows instead of re-querying.
     const cacheKey = ['analytics:trainer-performance', start, end, slugs.slice().sort().join('+')].join('|')
 
-    const { rows, totals } = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
-      const [rows, totalsRows] = await Promise.all([
+    const { rows, totals, pending } = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
+      const [rows, totalsRows, pendingRows] = await Promise.all([
         // Paged: ~56 trainers today, but a wide range across seven clubs is one
         // segment change away from the 1000-row cap, and it truncates silently.
         fetchAll(supabaseAdmin.rpc('analytics_trainer_performance', {
@@ -79,12 +80,19 @@ router.get('/', async (req, res) => {
         supabaseAdmin.rpc('analytics_trainer_performance_totals', {
           p_start: start, p_end: end, p_clubs: clubNumbers,
         }),
+        // Keyed on the appointment date, unlike the Day One columns beside it —
+        // see migration 180 for why the two keys cannot be pooled.
+        loadPendingDayOnes(clubNumbers, start, end),
       ])
       if (totalsRows.error) throw new Error(totalsRows.error.message)
-      return { rows, totals: (totalsRows.data || [])[0] || null }
+      return {
+        rows,
+        totals: (totalsRows.data || [])[0] || null,
+        pending: { ...summarisePending(pendingRows), list: pendingList(pendingRows) },
+      }
     })
 
-    const built = buildTrainerPerformance(rows, totals, { sort, clubNameFor })
+    const built = buildTrainerPerformance(rows, totals, { sort, clubNameFor, pending })
 
     res.json({
       ...built,

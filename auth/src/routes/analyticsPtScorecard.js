@@ -4,6 +4,7 @@ const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { wrapSWR } = require('../services/memoryCache')
 const { buildScorecard, GOAL_KEYS, DEFAULT_GOAL_PCT } = require('../lib/ptScorecard')
+const { loadPendingDayOnes, summarisePending, pendingList } = require('../lib/dayOnePending')
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
@@ -62,24 +63,41 @@ router.get('/', async (req, res) => {
     // moving a slider re-derives from cached counts instead of re-querying.
     const cacheKey = ['analytics:pt-scorecard', start, end, slugs.slice().sort().join('+'), exclude].join('|')
 
-    const rows = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
-      const { data, error } = await supabaseAdmin.rpc('analytics_pt_scorecard', {
-        p_start: start,
-        p_end: end,
-        p_clubs: allClubs ? null : slugs.map(s => CLUB_BY_SLUG[s].clubNumber),
-        p_exclude: exclude,
-      })
-      if (error) throw new Error(error.message)
-      return data || []
+    const rpcClubs = allClubs ? null : slugs.map(s => CLUB_BY_SLUG[s].clubNumber)
+
+    const cached = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
+      const [scorecard, pendingRows] = await Promise.all([
+        supabaseAdmin.rpc('analytics_pt_scorecard', {
+          p_start: start,
+          p_end: end,
+          p_clubs: rpcClubs,
+          p_exclude: exclude,
+        }),
+        // Its own key: the scorecard's Book column counts Day Ones BOOKED in the
+        // window, while pending has to be the ones DUE in it. Merged per club
+        // rather than added to the SQL function for exactly that reason — see
+        // migration 180.
+        loadPendingDayOnes(rpcClubs, start, end),
+      ])
+      if (scorecard.error) throw new Error(scorecard.error.message)
+      const pending = summarisePending(pendingRows)
+      return {
+        rows: (scorecard.data || []).map(r => ({
+          ...r,
+          pending_count: pending.byClub[r.club_number] || 0,
+        })),
+        pending: { ...pending, list: pendingList(pendingRows) },
+      }
     })
 
-    const built = buildScorecard(rows, {
+    const built = buildScorecard(cached.rows, {
       goals,
       clubNameFor: (n) => clubName(n),
     })
 
     res.json({
       ...built,
+      pending: cached.pending,
       meta: {
         start,
         end,
@@ -90,6 +108,7 @@ router.get('/', async (req, res) => {
           set: 'Appointments scheduled from the window start. To-date stops at today; including future adds the ones still ahead, so it is always the larger of the two.',
           show: 'A set appointment marked completed.',
           close: 'A completed appointment whose outcome was a Sale.',
+          pending: 'A set appointment whose date has passed with no outcome recorded. Counted against sets to date, and deliberately kept out of Show and Close — a pending Day One is unknown, not a no-show.',
           goals: 'Each goal applies to the same denominator as its rate: Book against new members, Show against sets to date, Close against shows.',
           money: 'EFT draft figures are the monthly draft (ABC invoiceTotal on a recurring service). PT revenue is net of refunds and excludes PT CONSULT and INBODY SCAN, which are not training.',
         },

@@ -46,6 +46,11 @@ const STATS = [
   { key: 'dayOnesCompleted', label: 'Day Ones Completed', format: 'int', betterWhen: 'up' },
   { key: 'dayOnesSold', label: 'Day Ones Sold', format: 'int', betterWhen: 'up' },
   { key: 'closeRate', label: 'Close Rate', format: 'pct', betterWhen: 'up' },
+  // The intros this trainer was given that passed with no outcome recorded.
+  // Counted on the appointment date, unlike the three Day One cards above it,
+  // which count what was booked in the window. Down is better — this is the
+  // trainer's own paperwork, not a result.
+  { key: 'dayOnesPending', label: 'Pending Outcome', format: 'int', betterWhen: 'down' },
   { key: 'closeAmount', label: 'PT Close Amount', format: 'money', betterWhen: 'up' },
   // The same money, split by what was actually sold. These two sum to
   // closeAmount above; the split is credited to the same commission employee,
@@ -85,6 +90,9 @@ function seriesRow(r) {
     dayOnesSold: num(r.day_ones_sold),
     dayOnesCancelled: num(r.day_ones_cancelled),
     dayOnesNoShow: num(r.day_ones_no_show),
+    // Merged onto the month in the route from analytics_day_one_pending; keyed
+    // on the appointment month, not the booking month the rest of this row uses.
+    dayOnesPending: num(r.day_ones_pending),
     closeRate: rate(num(r.day_ones_sold), dayOnesCompleted),
     closeAmount: Math.round(num(r.close_amount) * 100) / 100,
     closeAmountRs: Math.round(num(r.close_amount_rs) * 100) / 100,
@@ -125,6 +133,8 @@ function buildTrainerSnapshot(current, comparison, series, opts = {}) {
     comparisonLabel: (comparison && comparison.label) || null,
     comparingTo: (comparison && comparison.person) || null,
     lossBasis: LOSS_BASIS,
+    // The trainer's own chase list: which intros of theirs are outstanding.
+    pending: opts.pending || null,
     stats,
     series: (series || []).map(seriesRow),
   }

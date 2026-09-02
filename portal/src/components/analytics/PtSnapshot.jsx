@@ -3,6 +3,7 @@ import { api } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { StatCard, TrendPanel, BreakdownPanel } from './snapshotParts'
+import PendingOutcomePanel from './PendingOutcomePanel'
 
 // ---------------------------------------------------------------------------
 // PT Snapshot — Analytics (admin only)
@@ -80,6 +81,9 @@ export default function PtSnapshot({ startDate, endDate, locationSlug }) {
         line('Completed', 'dayOnesCompleted'),
         line('Sold', 'dayOnesSold'),
       ]} />
+
+      {/* The chase list behind the Pending Outcome card above. */}
+      <PendingOutcomePanel pending={data?.pending} />
 
       <TrendPanel title="Close Rate" kind="rate" months={months} series={[
         line('Close Rate', 'closeRate'),

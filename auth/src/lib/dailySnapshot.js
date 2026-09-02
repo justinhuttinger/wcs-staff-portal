@@ -52,11 +52,18 @@ function r2(v) {
  * @param current  { window, summary, pt } for the chosen day
  * @param prior    the same for the day before, or null
  * @param series   analytics_daily_series rows
- * @param opts     { day, latestRevenueDay }
+ * @param opts     { day, latestRevenueDay, pending, pendingByDay }
  */
 function buildDailySnapshot(current, prior, series, opts = {}) {
   const today = shapeTotals(current.window, current.summary, current.pt)
   const yesterday = prior ? shapeTotals(prior.window, prior.summary, prior.pt) : null
+
+  // shapeTotals cannot produce this one — it comes from analytics_day_one_pending,
+  // not from any of the three rows it shapes — so it is injected here for the
+  // same reason it is on Club Snapshot, whose STATS list this reuses.
+  const pend = opts.pending || null
+  today.dayOnesPending = pend ? pend.total : null
+  if (yesterday) yesterday.dayOnesPending = pend && pend.priorTotal != null ? pend.priorTotal : null
 
   // Declared before the stats so a revenue-backed measure can be marked as
   // having no data rather than a confident zero.
@@ -97,6 +104,11 @@ function buildDailySnapshot(current, prior, series, opts = {}) {
     dayOnes: num(r.day_ones),
     dayOnesCompleted: num(r.day_ones_completed),
     dayOnesSold: num(r.day_ones_sold),
+    // Bucketed in the route from the same rows the card counts, rather than
+    // added to analytics_daily_series: the series function is a lateral over two
+    // expensive window functions and widening its return type to carry a number
+    // we already have would cost a third pass per day for nothing.
+    dayOnesPending: num((opts.pendingByDay || {})[String(r.day).slice(0, 10)]),
     ptNewSales: num(r.pt_new_sales),
     ptNewValue: r2(num(r.pt_new_value)),
     ptLostValue: r2(num(r.pt_lost_value)),
@@ -108,6 +120,13 @@ function buildDailySnapshot(current, prior, series, opts = {}) {
     today,
     yesterday,
     days,
+    pending: pend && {
+      total: pend.total,
+      oldestDays: pend.oldestDays,
+      byTrainer: pend.byTrainer,
+      byBooker: pend.byBooker,
+      list: pend.list,
+    },
     latestRevenueDay: latest,
     revenueStale,
     notes: {
@@ -116,6 +135,9 @@ function buildDailySnapshot(current, prior, series, opts = {}) {
           'Revenue Collected show no data for this day rather than a zero. Everything else ' +
           'on this card is live.'
         : null,
+      pending:
+        'Pending Outcome counts Day Ones whose date has passed with no outcome recorded. ' +
+        'Today is never counted, so the freshest a pending Day One can be is yesterday.',
       comparison:
         'Compared with the day before. A single day is small enough that one sale moves ' +
         'every rate, so read the fourteen-day chart for direction and the day for detail.',

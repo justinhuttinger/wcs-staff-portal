@@ -5,6 +5,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { buildPtSnapshot } = require('../lib/ptSnapshot')
+const { loadPendingDayOnes, summarisePending, pendingList } = require('../lib/dayOnePending')
 const { monthToDate, priorMonthWindow, priorLabel, windowLabel } = require('../lib/snapshotWindow')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
@@ -58,19 +59,29 @@ router.get('/', async (req, res) => {
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       const args = { p_clubs: clubNumbers }
-      const [current, priorRow, breakdown, series] = await Promise.all([
+      const [current, priorRow, breakdown, series, pendingRows, priorPending] = await Promise.all([
         supabaseAdmin.rpc('analytics_pt_snapshot', { p_start: start, p_end: end, ...args }),
         supabaseAdmin.rpc('analytics_pt_snapshot', { p_start: prior.start, p_end: prior.end, ...args }),
         // fetchAll rather than a bare rpc: PostgREST truncates at 1000 rows in
         // ORDER BY order without saying so, and a breakdown is many rows.
         fetchAll(supabaseAdmin.rpc('analytics_pt_snapshot_breakdown', { p_start: start, p_end: end, ...args })),
         fetchAll(supabaseAdmin.rpc('analytics_pt_monthly', { p_end: end, p_months: SERIES_MONTHS, ...args })),
+        // Keyed on the appointment date, so this is the subset of the Day Ones
+        // already counted above that passed with nobody closing them out.
+        loadPendingDayOnes(clubNumbers, start, end),
+        loadPendingDayOnes(clubNumbers, prior.start, prior.end),
       ])
+      const pending = summarisePending(pendingRows)
       return {
         current: firstRow(current),
         prior: firstRow(priorRow),
         breakdown,
         series,
+        pending: {
+          ...pending,
+          priorTotal: (priorPending || []).length,
+          list: pendingList(pendingRows),
+        },
       }
     })
 
@@ -79,7 +90,7 @@ router.get('/', async (req, res) => {
       payload.prior,
       payload.breakdown,
       payload.series,
-      { comparisonLabel: priorLabel(start, end) },
+      { comparisonLabel: priorLabel(start, end), pending: payload.pending },
     )
 
     res.json({

@@ -101,6 +101,16 @@ function buildRow(r, goals, clubNameFor) {
     setToDate,
     setInclFuture: num(r.set_incl_future),
 
+    // Of the appointments that were meant to happen, the ones that passed with
+    // nobody recording an outcome. Set-to-date is the right denominator: it is
+    // the same population — scheduled from the window start, up to today — and
+    // pending is the slice of it still waiting on a form.
+    //
+    // NOT part of Show or Close. A pending Day One is unknown, not a no-show, so
+    // folding it into either rate would invent an outcome nobody recorded.
+    pendingCount: num(r.pending_count),
+    pendingPct: pct(num(r.pending_count), setToDate),
+
     showCount: show,
     showPct: pct(show, setToDate),
     showGoal,
@@ -142,6 +152,7 @@ function buildScorecard(rows, opts = {}) {
     a.set_incl_future += num(r.set_incl_future)
     a.show_count += num(r.show_count)
     a.close_count += num(r.close_count)
+    a.pending_count += num(r.pending_count)
     a.pt_revenue += num(r.pt_revenue)
     a.new_eft_draft += num(r.new_eft_draft)
     a.cancelled_eft_draft += num(r.cancelled_eft_draft)
@@ -150,7 +161,7 @@ function buildScorecard(rows, opts = {}) {
   }, {
     club_number: null, new_members: 0, pt_on_join: 0, pif_on_join: 0,
     book_count: 0, book_on_join: 0, set_to_date: 0, set_incl_future: 0,
-    show_count: 0, close_count: 0, pt_revenue: 0,
+    show_count: 0, close_count: 0, pending_count: 0, pt_revenue: 0,
     new_eft_draft: 0, cancelled_eft_draft: 0, new_pif_revenue: 0,
   })
 

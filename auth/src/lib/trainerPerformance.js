@@ -27,12 +27,22 @@ function round1(v) {
   return v === null || v === undefined ? null : Math.round(Number(v) * 10) / 10
 }
 
+/**
+ * The same normalisation SQL groups trainers on: lower-cased, inner whitespace
+ * collapsed. Written out here rather than imported so this file stays pure
+ * shaping with no dependencies, as its header promises.
+ */
+function personKey(name) {
+  return (name || '').trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
 const SORTS = [
   { key: 'sessions_desc', label: 'Most Sessions' },
   { key: 'members_desc', label: 'Most Members' },
   { key: 'close_amount_desc', label: 'Most Closed' },
   { key: 'close_rate_desc', label: 'Best Close Rate' },
   { key: 'day_ones_desc', label: 'Most Day Ones' },
+  { key: 'pending_desc', label: 'Most Pending Outcomes' },
   { key: 'name', label: 'Name' },
 ]
 
@@ -61,6 +71,7 @@ function sortRows(rows, key) {
     case 'close_amount_desc': return out.sort(byDesc(r => r.closeAmount))
     case 'close_rate_desc': return out.sort(byDesc(r => r.closeRate))
     case 'day_ones_desc': return out.sort(byDesc(r => r.dayOnesBooked))
+    case 'pending_desc': return out.sort(byDesc(r => r.dayOnesPending))
     case 'name': return out.sort((a, b) => String(a.trainer).localeCompare(String(b.trainer)))
     default: return out.sort(byDesc(r => r.completedSessions))
   }
@@ -90,6 +101,12 @@ function buildRow(r, clubNameFor) {
     dayOnesCompleted,
     dayOnesSold: num(r.day_ones_sold),
     closeRate: rate(num(r.day_ones_sold), dayOnesCompleted),
+    // Merged in from analytics_day_one_pending, not off this row. The other Day
+    // One columns count intros BOOKED in the window; pending counts the ones DUE
+    // in it, so it cannot come from the same key. Defaults to 0, so a trainer
+    // with nothing outstanding reads as clean rather than as unknown.
+    dayOnesPending: num(r.day_ones_pending),
+    dayOnesPendingOldest: num(r.day_ones_pending_oldest),
     // Credited to whoever the commission is paid to, not the trainer who
     // delivers the sessions — those differ on 48 of 116 July sales.
     closeAmount: Math.round(num(r.close_amount) * 100) / 100,
@@ -103,17 +120,49 @@ function buildRow(r, clubNameFor) {
 /**
  * @param rows    from analytics_trainer_performance()
  * @param totals  the single row from analytics_trainer_performance_totals()
- * @param opts    { clubNameFor, sort }
+ * @param opts    { clubNameFor, sort, pending }
  */
 function buildTrainerPerformance(rows, totals, opts = {}) {
   const clubNameFor = opts.clubNameFor || (n => n)
-  const built = (rows || []).map(r => buildRow(r, clubNameFor))
+  const pending = opts.pending || null
+
+  const pendingByKey = new Map(
+    ((pending && pending.byTrainer) || []).map(p => [p.key, p])
+  )
+
+  const withPending = (rows || []).map(r => {
+    const hit = pendingByKey.get(personKey(r.trainer))
+    if (hit) pendingByKey.delete(hit.key)
+    return {
+      ...r,
+      day_ones_pending: hit ? hit.count : 0,
+      day_ones_pending_oldest: hit ? hit.oldestDays : 0,
+    }
+  })
+
+  // A trainer whose ONLY mark on the window is an un-closed Day One still has to
+  // appear: they are exactly the person this metric exists to surface, and
+  // analytics_trainer_performance would not return them, because it keys its Day
+  // Ones on the booking date. 'unassigned' is skipped — it is the absence of a
+  // trainer, not a trainer.
+  for (const p of pendingByKey.values()) {
+    if (p.key === 'unassigned') continue
+    withPending.push({
+      trainer: p.name,
+      club_number: null,
+      day_ones_pending: p.count,
+      day_ones_pending_oldest: p.oldestDays,
+    })
+  }
+
+  const built = withPending.map(r => buildRow(r, clubNameFor))
 
   // Trainers who did nothing at all in the window are dropped rather than shown
   // as a row of zeros. They are almost always staff who happen to share the
   // name space, and a screen of empty rows buries the people who worked.
   const active = built.filter(r =>
-    r.completedSessions > 0 || r.dayOnesBooked > 0 || r.closeAmount !== 0
+    r.completedSessions > 0 || r.dayOnesBooked > 0 || r.closeAmount !== 0 ||
+    r.dayOnesPending > 0
   )
 
   const t = totals || {}
@@ -124,6 +173,12 @@ function buildTrainerPerformance(rows, totals, opts = {}) {
   return {
     rows: sortRows(active, opts.sort),
     sorts: SORTS,
+    pending: pending && {
+      total: pending.total,
+      oldestDays: pending.oldestDays,
+      byTrainer: pending.byTrainer,
+      list: pending.list,
+    },
     tiles: [
       { key: 'uniqueClients', label: 'Unique Clients Trained', format: 'int', value: num(t.unique_members) },
       { key: 'trainers', label: 'Trainers', format: 'int', value: num(t.trainers) },
@@ -136,6 +191,10 @@ function buildTrainerPerformance(rows, totals, opts = {}) {
       { key: 'classHours', label: 'Class Hours', format: 'hours', value: round1(num(t.class_minutes) / 60) },
       { key: 'dayOnesBooked', label: 'Day Ones Booked', format: 'int', value: num(t.day_ones_booked) },
       { key: 'dayOnesCompleted', label: 'Day Ones Completed', format: 'int', value: totalDayOnesCompleted },
+      // Null, not 0, when the caller supplied nothing: a false zero here would
+      // read as "every intro has been closed out".
+      { key: 'dayOnesPending', label: 'Pending Outcome', format: 'int',
+        value: pending ? pending.total : null },
       { key: 'closeRate', label: 'Close Rate', format: 'pct',
         value: rate(num(t.day_ones_sold), totalDayOnesCompleted) },
       { key: 'closeAmount', label: 'Close Amount', format: 'money', value: num(t.close_amount) },
@@ -143,4 +202,4 @@ function buildTrainerPerformance(rows, totals, opts = {}) {
   }
 }
 
-module.exports = { buildTrainerPerformance, buildRow, sortRows, rate, SORTS }
+module.exports = { buildTrainerPerformance, buildRow, sortRows, rate, personKey, SORTS }

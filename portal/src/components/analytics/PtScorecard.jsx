@@ -5,6 +5,7 @@ import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
 import { zebra, diffTint, DIFF_TINTS, DIFF_STRONG_RATIO } from './tableTints'
+import PendingOutcomePanel from './PendingOutcomePanel'
 
 // ---------------------------------------------------------------------------
 // PT Scorecard — Analytics (admin only)
@@ -47,6 +48,11 @@ const COLUMNS = [
   { key: 'closePct', label: 'Close %', format: 'pct' },
   { key: 'closeGoal', label: 'Close Goal', format: 'int', goal: true },
   { key: 'closeDiff', label: 'Close Diff', format: 'signed', diff: 'closeGoal' },
+  // Sits after Close because it is what is MISSING from these columns: a set
+  // appointment that passed with no outcome is neither a show nor a no-show, so
+  // it is counted here and kept out of both rates above.
+  { key: 'pendingCount', label: 'Pending Outcome', format: 'int', group: true },
+  { key: 'pendingPct', label: 'Pending %', format: 'pct' },
   { key: 'newEftDraft', label: 'New PT EFT Draft', format: 'money', group: true },
   { key: 'cancelledEftDraft', label: 'Cancelled PT EFT Draft', format: 'money' },
   { key: 'netEftDraft', label: 'Net PT EFT Draft', format: 'signedMoney' },
@@ -210,6 +216,9 @@ export default function PtScorecard({ startDate, endDate, locationSlug }) {
           </p>
         </aside>
       </div>
+
+      {/* The chase list behind the Pending Outcome column. */}
+      <PendingOutcomePanel pending={data?.pending} />
     </div>
   )
 }

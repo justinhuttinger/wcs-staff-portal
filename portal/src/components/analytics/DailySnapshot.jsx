@@ -5,6 +5,7 @@ import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { fmtInt, fmtMoney, GOOD_COLOR, BAD_COLOR, colorFor } from './chartPalette'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
+import PendingOutcomePanel from './PendingOutcomePanel'
 
 // ---------------------------------------------------------------------------
 // Daily Snapshot — Analytics (admin only)
@@ -211,8 +212,12 @@ export default function DailySnapshot({ locationSlug }) {
             <DayBars title="Net Members" days={days} valueKey="netMembers" format="int" selected={data.day} />
             <DayBars title="Day Ones" days={days} valueKey="dayOnes" format="int" selected={data.day} />
             <DayBars title="Day Ones Sold" days={days} valueKey="dayOnesSold" format="int" selected={data.day} />
+            <DayBars title="Day Ones Pending Outcome" days={days} valueKey="dayOnesPending" format="int" selected={data.day} />
             <DayBars title="PT Sold" days={days} valueKey="ptNewValue" format="money" selected={data.day} />
           </div>
+
+          {/* Only this day's outstanding intros — the bars above carry the run. */}
+          <PendingOutcomePanel pending={data?.pending} title="Pending Outcome on This Day" />
 
           <div className="bg-surface rounded-xl border border-border p-3 overflow-x-auto">
             <p className="text-xs font-bold text-text-primary mb-2">
@@ -227,6 +232,7 @@ export default function DailySnapshot({ locationSlug }) {
                   <th className="text-right font-semibold py-1.5">Net</th>
                   <th className="text-right font-semibold py-1.5">Day Ones</th>
                   <th className="text-right font-semibold py-1.5">Sold</th>
+                  <th className="text-right font-semibold py-1.5">Pending</th>
                   <th className="text-right font-semibold py-1.5">PT Sold</th>
                   <th className="text-right font-semibold py-1.5">Revenue</th>
                 </tr>
@@ -246,6 +252,10 @@ export default function DailySnapshot({ locationSlug }) {
                     </td>
                     <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(d.dayOnes)}</td>
                     <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(d.dayOnesSold)}</td>
+                    <td className="py-1.5 text-right tabular-nums"
+                      style={{ color: d.dayOnesPending > 0 ? BAD_COLOR : undefined }}>
+                      {fmtInt(d.dayOnesPending)}
+                    </td>
                     <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtMoney(d.ptNewValue)}</td>
                     <td className="py-1.5 text-right tabular-nums text-text-primary">{fmtMoney(d.revenue)}</td>
                   </tr>

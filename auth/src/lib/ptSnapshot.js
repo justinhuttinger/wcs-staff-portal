@@ -50,6 +50,11 @@ const STATS = [
   { key: 'dayOnesCompleted', label: 'Completed', format: 'int', betterWhen: 'up' },
   { key: 'dayOnesNoShow', label: 'No Show', format: 'int', betterWhen: 'down' },
   { key: 'dayOnesCancelled', label: 'Cancelled', format: 'int', betterWhen: 'down' },
+  // Passed with nobody closing it out. Counted on the appointment date like the
+  // rest of this block, so it is a subset of Day Ones on Calendar, not a
+  // separate population. Down is better: this one is a chase list, not an
+  // outcome.
+  { key: 'dayOnesPending', label: 'Pending Outcome', format: 'int', betterWhen: 'down' },
   { key: 'dayOnesSold', label: 'Sold', format: 'int', betterWhen: 'up' },
   { key: 'dayOnesNoSale', label: 'No Sale', format: 'int', betterWhen: 'down' },
   { key: 'showRate', label: 'Show Rate', format: 'pct', betterWhen: 'up' },
@@ -166,10 +171,22 @@ function seriesRow(r) {
  * @param prior      the same window a month earlier, or null
  * @param breakdown  rows from analytics_pt_snapshot_breakdown
  * @param series     rows from analytics_pt_monthly
+ * @param opts.pending summarised pending-outcome Day Ones for this window and
+ *                     the comparison one — see lib/dayOnePending. Supplied
+ *                     separately because it is keyed on the appointment date
+ *                     while analytics_pt_snapshot keys its own counts the same
+ *                     way but computes them from status alone.
  */
 function buildPtSnapshot(current, prior, breakdown, series, opts = {}) {
   const cur = shapeTotals(current)
   const was = prior ? shapeTotals(prior) : {}
+
+  // Injected rather than derived: it comes from analytics_day_one_pending, not
+  // from the snapshot row. Left null when the caller supplies nothing, so a
+  // report that has not been wired up shows a blank rather than a false zero.
+  const pending = opts.pending || null
+  cur.dayOnesPending = pending ? pending.total : null
+  if (prior) was.dayOnesPending = pending && pending.priorTotal != null ? pending.priorTotal : null
 
   const stats = STATS.map(s => {
     const now = cur[s.key] ?? null
@@ -180,6 +197,14 @@ function buildPtSnapshot(current, prior, breakdown, series, opts = {}) {
   return {
     hasActivity: Boolean(current) && (cur.dayOnes > 0 || cur.newSales > 0 || cur.lostClients > 0),
     comparisonLabel: opts.comparisonLabel || null,
+    // The chase list behind the Pending Outcome stat: who is outstanding and
+    // for how long. A count says 62 are open; this says which trainer.
+    pending: pending && {
+      total: pending.total,
+      oldestDays: pending.oldestDays,
+      byTrainer: pending.byTrainer,
+      list: pending.list,
+    },
     stats,
     totals: cur,
     breakdown: shapeBreakdowns(breakdown),

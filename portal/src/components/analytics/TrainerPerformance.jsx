@@ -4,6 +4,7 @@ import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { fmtInt, fmtPct, fmtMoney } from './chartPalette'
 import { zebra, HOVER_TINT } from './tableTints'
+import PendingOutcomePanel from './PendingOutcomePanel'
 
 // ---------------------------------------------------------------------------
 // Trainer Performance — Analytics (admin only)
@@ -57,6 +58,10 @@ const COLUMNS = [
   { key: 'dayOnesCompleted', label: 'Completed', format: 'int', bar: true, barTone: 'amber' },
   { key: 'dayOnesSold', label: 'Sold', format: 'int', bar: true, barTone: 'amber' },
   { key: 'closeRate', label: 'Close Rate', format: 'pct', bar: true, barTone: 'amber' },
+  // Red, not amber: the rest of that block is what happened to the intros, and
+  // this one is what has NOT happened to them. Counted on the appointment date
+  // rather than the booking date the three columns before it use.
+  { key: 'dayOnesPending', label: 'Pending Outcome', format: 'int', bar: true, barTone: 'red' },
   { key: 'closeAmount', label: 'PT Close Amount', format: 'money', group: true, bar: true, barTone: 'orange' },
 ]
 
@@ -296,6 +301,9 @@ export default function TrainerPerformance({ startDate, endDate, locationSlug })
           those sales, so the trainer who delivered it stood in. Commission data starts April 2026.
         </p>
       )}
+
+      {/* Which intros are outstanding, behind the Pending Outcome column. */}
+      <PendingOutcomePanel pending={data?.pending} />
     </div>
   )
 }
