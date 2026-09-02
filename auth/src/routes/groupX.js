@@ -25,7 +25,7 @@ const { Router } = require('express')
 const abc = require('../services/abcGroupX')
 const { isKnownClubNumber } = require('../lib/groupXClubs')
 const { buildLocalTimestamp, DATE_RE } = require('../lib/abcTime')
-const { expandSeries, MAX_OCCURRENCES } = require('../lib/groupXSeries')
+const { expandSeries, MAX_OCCURRENCES, matchesSeries, seriesWindow } = require('../lib/groupXSeries')
 const { OPEN_ENDED_HORIZON_DAYS } = require('../lib/scheduleTimes')
 const { padDate, toIsoDate } = require('../lib/abcTime')
 const { supabaseAdmin } = require('../services/supabase')
@@ -518,7 +518,6 @@ router.delete('/series/:id', requireEdit, async (req, res) => {
   if (selErr || !series) return res.status(404).json({ error: 'series not found' })
 
   try {
-    const windowStart = from > series.starts_on ? from : series.starts_on
     // An open-ended series has ends_on NULL (migration 099); how far it has
     // actually been written to ABC is materialized_through. Using ends_on
     // directly made this whole block a no-op for open-ended series — the
@@ -526,8 +525,9 @@ router.delete('/series/:id', requireEdit, async (req, res) => {
     // without calling ABC, so the series was marked cancelled while every class
     // it had created stayed on the calendar forever. Real occurrence: 4 orphaned
     // Power Hour classes at Medford, 2026-08-28.
-    const windowEnd = series.ends_on || series.materialized_through
-    if (!windowEnd || windowStart > windowEnd) {
+    const { end: seriesEnd } = seriesWindow(series)
+    const windowStart = from > series.starts_on ? from : series.starts_on
+    if (!seriesEnd || windowStart > seriesEnd) {
       await supabaseAdmin
         .from('group_x_series')
         .update({ canceled_at: new Date().toISOString(), canceled_by: req.user?.email || 'unknown' })
@@ -535,13 +535,8 @@ router.delete('/series/:id', requireEdit, async (req, res) => {
       return res.json({ canceled: 0, failed: 0, results: [] })
     }
 
-    const existing = await abc.listClasses(series.club_number, windowStart, windowEnd)
-    const wall = String(series.start_time).slice(0, 5)
-    const targets = existing.filter(e =>
-      e.event_type_id === series.event_type_id &&
-      e.employee_id === series.employee_id &&
-      String(e.event_timestamp_local || '').slice(11, 16) === wall
-    )
+    const existing = await abc.listClasses(series.club_number, windowStart, seriesEnd)
+    const targets = existing.filter(e => matchesSeries(e, series))
 
     const results = []
     for (const t of targets) {

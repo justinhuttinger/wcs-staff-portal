@@ -83,3 +83,97 @@ test('expandSeries handles a month-crossing range', () => {
 test('MAX_OCCURRENCES is 200', () => {
   assert.strictEqual(MAX_OCCURRENCES, 200)
 })
+
+const { matchesSeries, seriesWindow, findSeriesForEvent } = require('./groupXSeries')
+
+// Aug 4 2026 is a Tuesday.
+const series = {
+  id: 's1',
+  club_number: '7655',
+  event_type_id: 'yoga',
+  employee_id: 'emp1',
+  weekdays: [2],
+  start_time: '06:00:00',
+  starts_on: '2026-08-01',
+  ends_on: '2026-12-31',
+  materialized_through: '2026-12-31',
+  canceled_at: null,
+}
+const event = {
+  event_id: 'e1',
+  event_type_id: 'yoga',
+  employee_id: 'emp1',
+  event_timestamp_local: '2026-08-04 06:00:00',
+}
+
+test('matchesSeries accepts an occurrence on the right weekday, time and range', () => {
+  assert.strictEqual(matchesSeries(event, series), true)
+})
+
+test('matchesSeries rejects a different class type', () => {
+  assert.strictEqual(matchesSeries({ ...event, event_type_id: 'spin' }, series), false)
+})
+
+test('matchesSeries rejects a different instructor', () => {
+  assert.strictEqual(matchesSeries({ ...event, employee_id: 'emp2' }, series), false)
+})
+
+test('matchesSeries rejects a different start time', () => {
+  assert.strictEqual(matchesSeries({ ...event, event_timestamp_local: '2026-08-04 07:00:00' }, series), false)
+})
+
+test('matchesSeries rejects a date on a weekday the series does not run', () => {
+  // Aug 5 2026 is a Wednesday; the series is Tuesdays.
+  assert.strictEqual(matchesSeries({ ...event, event_timestamp_local: '2026-08-05 06:00:00' }, series), false)
+})
+
+test('matchesSeries rejects a date before the series starts', () => {
+  assert.strictEqual(matchesSeries({ ...event, event_timestamp_local: '2026-07-28 06:00:00' }, series), false)
+})
+
+test('matchesSeries rejects a date after the series ends', () => {
+  assert.strictEqual(matchesSeries({ ...event, event_timestamp_local: '2027-01-05 06:00:00' }, series), false)
+})
+
+test('matchesSeries rejects a cancelled series', () => {
+  assert.strictEqual(matchesSeries(event, { ...series, canceled_at: '2026-08-02T00:00:00Z' }), false)
+})
+
+test('matchesSeries rejects an unparseable timestamp rather than guessing', () => {
+  assert.strictEqual(matchesSeries({ ...event, event_timestamp_local: 'nonsense' }, series), false)
+})
+
+test('seriesWindow uses materialized_through for an open-ended series', () => {
+  // ends_on NULL is the open-ended shape from migration 099. Using ends_on
+  // directly here is the bug that orphaned 4 Medford classes on 2026-08-28.
+  const open = { ...series, ends_on: null, materialized_through: '2026-11-30' }
+  assert.deepStrictEqual(seriesWindow(open), { start: '2026-08-01', end: '2026-11-30' })
+})
+
+test('seriesWindow returns a null end when an open series has never been materialised', () => {
+  const open = { ...series, ends_on: null, materialized_through: null }
+  assert.strictEqual(seriesWindow(open).end, null)
+})
+
+test('matchesSeries accepts an occurrence inside an open-ended horizon', () => {
+  const open = { ...series, ends_on: null, materialized_through: '2026-11-30' }
+  assert.strictEqual(matchesSeries(event, open), true)
+})
+
+test('findSeriesForEvent returns the one matching series', () => {
+  const r = findSeriesForEvent(event, [series, { ...series, id: 's2', event_type_id: 'spin' }])
+  assert.strictEqual(r.series.id, 's1')
+  assert.strictEqual(r.ambiguous, false)
+})
+
+test('findSeriesForEvent flags an ambiguous match instead of picking one', () => {
+  // Two live series of identical shape. Guessing here would rewrite the wrong
+  // 40 classes, so the caller must be told it cannot tell them apart.
+  const r = findSeriesForEvent(event, [series, { ...series, id: 's2' }])
+  assert.strictEqual(r.ambiguous, true)
+  assert.strictEqual(r.series, null)
+})
+
+test('findSeriesForEvent returns null when nothing matches', () => {
+  assert.strictEqual(findSeriesForEvent(event, [{ ...series, event_type_id: 'spin' }]), null)
+})
