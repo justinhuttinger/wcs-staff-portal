@@ -112,6 +112,15 @@ function getMotivationalMessage() {
 }
 
 export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onNps, onAdsManager, onAnalytics, onGroupX, onFacility, onTill, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
+  // DECLARED HERE, ABOVE EVERY READER. It used to sit ~200 lines further down,
+  // next to the leaderboard score card that first needed it, which was fine
+  // until marketingCells started reading it from further up: a `const` is in
+  // the temporal dead zone before its declaration, so the read threw
+  // "Cannot access 'roleIdx' before initialization" on every render and the
+  // portal home came up blank. Nothing below cares where it is declared, and
+  // the top of the component is the only place that cannot break again.
+  const roleIdx = ROLE_LEVELS[userRole] ?? 0
+
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [showOrdering, setShowOrdering] = useState(false)
@@ -499,7 +508,6 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
   const userPoints = leaderboardData?.user_points || 0
   const myEntry = userRank ? rankings.find(r => r.rank === userRank) : null
   const totalStaff = rankings.length
-  const roleIdx = ROLE_LEVELS[userRole] ?? 0
   const hideScoreCard = roleIdx >= ROLE_LEVELS.corporate
 
   return (
