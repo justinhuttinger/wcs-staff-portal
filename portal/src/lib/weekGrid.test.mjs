@@ -41,6 +41,12 @@ test('startOfWeekMonday on a Monday is that same Monday', () => {
   assert.equal(toISODate(startOfWeekMonday(new Date(2026, 7, 31, 12))), '2026-08-31')
 })
 
+test('startOfWeekMonday crosses a year boundary with Sunday as the anchor day', () => {
+  // Jan 3 2027 is a Sunday. Its week began on Dec 28 2026 (a Monday).
+  // This combines two edge cases: year rollover and Sunday-as-anchor.
+  assert.equal(toISODate(startOfWeekMonday(new Date(2027, 0, 3, 12))), '2026-12-28')
+})
+
 test('startOfWeek is unchanged and still anchors to Sunday', () => {
   // Guard against a future edit re-pointing the shared helper: PT Scheduler is
   // in production on the Sunday-anchored version and must not move as a

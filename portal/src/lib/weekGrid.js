@@ -26,6 +26,10 @@ export function startOfWeek(d) {
 //
 // Separate from startOfWeek rather than a flag on it: PT Scheduler is in
 // production on the Sunday-anchored version and must not move as a side effect.
+//
+// NOTE: startOfPrintWeek in printWeek.js implements the same Monday anchor with
+// a different formula. Both should be collapsed into one; this branch leaves them
+// separate to keep changes focused.
 export function startOfWeekMonday(d) {
   const out = new Date(d)
   out.setHours(0, 0, 0, 0)

@@ -12,6 +12,10 @@
 // forward one. Getting this wrong puts Sunday's classes on a sheet a week
 // early, which is exactly the sort of thing nobody notices until it is on a
 // wall.
+//
+// NOTE: startOfWeekMonday in weekGrid.js computes the same thing with different
+// arithmetic. Both should eventually be collapsed; kept separate here to scope
+// this change.
 export function startOfPrintWeek(d) {
   const out = new Date(d)
   out.setHours(0, 0, 0, 0)
