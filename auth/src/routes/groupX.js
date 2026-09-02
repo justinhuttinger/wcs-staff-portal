@@ -32,6 +32,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { publicCacheKeysForDates } = require('../lib/groupXPublic')
 const { aggregate } = require('../lib/groupXReport')
 const { markNewClasses } = require('../lib/groupXNewClasses')
+const { recordSeriesEvents } = require('../lib/groupXSeriesLink')
 const memoryCache = require('../services/memoryCache')
 const authenticate = require('../middleware/auth')
 const { requireRole, roleLevel } = require('../middleware/role')
@@ -445,6 +446,11 @@ router.post('/series', requireEdit, async (req, res) => {
 
   const created = results.filter(r => r.ok).length
 
+  // Record which ABC classes this series produced. POST /series has had these
+  // ids in hand since it was written and dropped them; "change every class
+  // from here on" is what needs them.
+  const link_error = await recordSeriesEvents(b.club_number, series.id, results)
+
   // A new day of an existing class is normally added as a series, so the badge
   // has to apply to every occurrence it created, not just the first.
   let badge_error = null
@@ -472,6 +478,7 @@ router.post('/series', requireEdit, async (req, res) => {
     failed: results.length - created,
     occurrences: results,
     badge_error,
+    link_error,
     open_ended: openEnded,
   })
 })

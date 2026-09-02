@@ -13,6 +13,7 @@ const abc = require('./abcGroupX')
 const { expandSeries } = require('../lib/groupXSeries')
 const { OPEN_ENDED_HORIZON_DAYS } = require('../lib/scheduleTimes')
 const { padDate, toIsoDate } = require('../lib/abcTime')
+const { recordSeriesEvents } = require('../lib/groupXSeriesLink')
 
 // A single night should never fire hundreds of ABC writes. The horizon is
 // topped up incrementally, so a backlog clears over a few nights rather than
@@ -36,6 +37,7 @@ async function topUpOne(series, todayIso, budget) {
   let created = 0
   let failed = 0
   let lastDate = series.materialized_through
+  const results = []
 
   for (const occ of occurrences) {
     const r = await abc.createClass(series.club_number, {
@@ -44,6 +46,7 @@ async function topUpOne(series, todayIso, budget) {
       event_timestamp_local: occ.timestamp_local,
       training_level_id: series.training_level_id || null,
     })
+    results.push({ date: occ.date, ok: r.ok, event_id: r.event_id, error: r.error })
     if (r.ok) {
       created++
       lastDate = occ.date
@@ -55,6 +58,9 @@ async function topUpOne(series, todayIso, budget) {
       break
     }
   }
+
+  // Top-ups create real occurrences of the series, so they link like any other.
+  await recordSeriesEvents(series.club_number, series.id, results)
 
   if (lastDate && lastDate !== series.materialized_through) {
     await supabaseAdmin
