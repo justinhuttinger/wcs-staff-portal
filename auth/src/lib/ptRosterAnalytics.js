@@ -247,7 +247,20 @@ function buildSessionFrequency(current, prior, opts = {}) {
     breakdowns: {
       byFrequency: buckets.map(b => ({ label: b.label, count: rows.filter(b.test).length })),
     },
-    rows: rows.sort((a, b) => b.sessions - a.sessions || a.member.localeCompare(b.member)),
+    // GROUPED BY TRAINER, busiest client first within each. The report is read
+    // one trainer at a time — "is my book training" — and a list sorted by
+    // sessions across everybody interleaves five trainers on every screen.
+    //
+    // `band` alternates 0/1 as the trainer changes, so the table can shade a
+    // whole trainer's rows as one block. Computed here rather than in the
+    // component because it depends on the sort, and the two would drift the
+    // moment either changed.
+    rows: withTrainerBands(
+      rows.sort((a, b) =>
+        a.trainer.localeCompare(b.trainer)
+        || b.sessions - a.sessions
+        || a.member.localeCompare(b.member))
+    ),
     lapsed: lapsed.sort((a, b) => b.priorSessions - a.priorSessions).slice(0, 50),
     note:
       'Counted from completed calendar appointments, so this is what happened rather than ' +
@@ -291,6 +304,26 @@ function groupByTrainer(clients) {
     })
 }
 
+/**
+ * Stamp each row with the band its trainer sits in.
+ *
+ * Zebra striping per ROW tells the reader nothing — rows already alternate by
+ * being rows. Striping per TRAINER turns the shading into information: one
+ * block is one book, and where the colour changes is where the trainer does.
+ *
+ * Expects rows already sorted by trainer; a band is a run of equal names, so an
+ * unsorted list would stripe almost every row and mean nothing again.
+ */
+function withTrainerBands(rows) {
+  let band = 0
+  let previous = null
+  return (rows || []).map(r => {
+    if (previous !== null && r.trainer !== previous) band = band === 0 ? 1 : 0
+    previous = r.trainer
+    return { ...r, band }
+  })
+}
+
 module.exports = {
-  buildPtRoster, buildSessionFrequency, isPaidInFull, groupByTrainer,
+  buildPtRoster, buildSessionFrequency, isPaidInFull, groupByTrainer, withTrainerBands,
 }

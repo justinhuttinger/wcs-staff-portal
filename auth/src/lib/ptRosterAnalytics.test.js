@@ -221,3 +221,61 @@ test('no clients groups to nothing rather than throwing', () => {
   assert.deepEqual(groupByTrainer([]), [])
   assert.deepEqual(groupByTrainer(null), [])
 })
+
+// ---------------------------------------------------------------------------
+// Trainer bands on Session Frequency.
+// ---------------------------------------------------------------------------
+
+const { withTrainerBands } = require('./ptRosterAnalytics')
+
+const row = (trainer, member) => ({ trainer, member })
+
+// One block per trainer, not one per row. Striping every row says nothing the
+// rows do not already say by being rows.
+test('every row of a trainer shares a band, and the next trainer flips it', () => {
+  const out = withTrainerBands([
+    row('Amy', 'a'), row('Amy', 'b'), row('Amy', 'c'),
+    row('Bob', 'd'), row('Bob', 'e'),
+    row('Cat', 'f'),
+  ])
+  assert.deepEqual(out.map(r => r.band), [0, 0, 0, 1, 1, 0])
+})
+
+test('one trainer is one band', () => {
+  const out = withTrainerBands([row('Amy', 'a'), row('Amy', 'b')])
+  assert.deepEqual(out.map(r => r.band), [0, 0])
+})
+
+test('a trainer per row alternates every row, which is the degenerate case', () => {
+  const out = withTrainerBands([row('A', 'a'), row('B', 'b'), row('C', 'c')])
+  assert.deepEqual(out.map(r => r.band), [0, 1, 0])
+})
+
+test('banding leaves the rows themselves untouched', () => {
+  const out = withTrainerBands([row('Amy', 'a')])
+  assert.equal(out[0].trainer, 'Amy')
+  assert.equal(out[0].member, 'a')
+})
+
+test('no rows band to nothing rather than throwing', () => {
+  assert.deepEqual(withTrainerBands([]), [])
+  assert.deepEqual(withTrainerBands(null), [])
+})
+
+// The rows the report actually produces must already be trainer-ordered, or a
+// band is a run of one and the shading is noise again.
+test('session frequency rows come out grouped by trainer', () => {
+  const e = (t, m, d) => ({
+    member_id: m, member_first_name: m, member_last_name: 'X', club_number: '30935',
+    employee_first_name: t, employee_last_name: 'T', event_timestamp_local: d,
+  })
+  const out = buildSessionFrequency([
+    e('Zoe', 'm1', '2026-08-01T09:00:00'),
+    e('Amy', 'm2', '2026-08-02T09:00:00'),
+    e('Zoe', 'm3', '2026-08-03T09:00:00'),
+  ], [], { currentWeeks: 4, priorWeeks: 4 })
+  const trainers = out.rows.map(r => r.trainer)
+  assert.deepEqual(trainers, [...trainers].sort())
+  // Two trainers, so two bands.
+  assert.equal(new Set(out.rows.map(r => r.band)).size, 2)
+})

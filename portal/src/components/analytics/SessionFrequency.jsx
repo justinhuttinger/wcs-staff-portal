@@ -158,10 +158,19 @@ export default function SessionFrequency({ startDate, endDate, locationSlug }) {
                 </tr>
               </thead>
               <tbody>
-                {rows.slice(0, 200).map((r, i) => (
-                  <tr key={i} className="border-b border-border/60 last:border-0">
+                {rows.slice(0, 200).map((r, i) => {
+                  // The first row of a trainer's block carries the name; the
+                  // rest leave it blank. Repeating it down twelve rows is noise
+                  // the shading already says better.
+                  const startsBlock = i === 0 || rows[i - 1].trainer !== r.trainer
+                  return (
+                  <tr key={i}
+                    className={'border-b border-border/60 last:border-0 '
+                      + (r.band === 1 ? 'bg-bg' : '')}>
                     <td className="px-4 py-2 text-text-primary">{r.member}</td>
-                    <td className="px-3 py-2 text-text-muted">{r.trainer}</td>
+                    <td className={'px-3 py-2 ' + (startsBlock ? 'text-text-primary font-semibold' : 'text-text-muted/40')}>
+                      {startsBlock ? r.trainer : ''}
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums text-text-primary">{r.sessions}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-text-primary">{r.perWeek}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-text-muted">{r.priorPerWeek}</td>
@@ -170,7 +179,8 @@ export default function SessionFrequency({ startDate, endDate, locationSlug }) {
                       {r.change > 0 ? '+' : ''}{r.change}
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
             {rows.length > 200 && (
