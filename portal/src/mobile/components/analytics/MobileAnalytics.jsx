@@ -4,6 +4,7 @@ import {
 } from '../../../components/AnalyticsView'
 import { isReportVisible } from '../../../components/analyticsReportCatalogue'
 import { TOOLBAR_SLOT_ID } from '../../../components/analytics/toolbarSlot'
+import ReportRecords from '../../../components/analytics/ReportRecords'
 import { getAppSettings } from '../../../lib/api'
 import { LOCATION_NAMES } from '../../../config/locations'
 
@@ -256,6 +257,15 @@ export function MobileAnalyticsReport({ reportKey, user, startDate, endDate, loc
           startDate={startDate}
           endDate={endDate}
         />
+
+        {/* The same Data section desktop gets, from the same declaration on the
+            report's registry entry. */}
+        <div className="mt-3">
+          <ReportRecords
+            sets={report.records}
+            params={{ start: startDate, end: endDate, clubs: locationSlug || 'all' }}
+          />
+        </div>
       </div>
     </div>
   )

@@ -4,6 +4,39 @@ import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { StatCard, TrendPanel } from './snapshotParts'
 import PendingOutcomePanel from './PendingOutcomePanel'
+import Drillable from './Drillable'
+
+// Club-wide, so no person filter anywhere here.
+//
+// Day Ones Booked counts on the BOOKING date (it comes from buildReport) while
+// Day Ones on Calendar counts on the appointment date (it comes from
+// analytics_pt_snapshot). Two cards on one screen, two different cohorts —
+// which is why each names its own window rather than sharing one.
+//
+// Members, Net Members, Net PT Revenue and the tour/VIP rates that have no
+// list of their own are deliberately absent: a stock or a difference of two
+// populations has no single set of rows behind it.
+const DRILL = {
+  newMembers:         { set: 'new-members', title: 'Members joined' },
+  lostMembers:        { set: 'lost-members', title: 'Members lost' },
+  newDues:            { set: 'new-members', title: 'Members joined' },
+  pctOnAch:           { set: 'new-members', filter: 'ach', title: 'Joined on ACH' },
+  avgNewDuesDraft:    { set: 'new-members', title: 'Members joined' },
+  revenue:            { set: 'revenue', title: 'Revenue collected' },
+  ptRevenue:          { set: 'revenue', filter: 'pt', title: 'PT revenue collected' },
+  dayOneBookCount:    { set: 'day-ones', window: 'booked', title: 'Day Ones booked' },
+  dayOneBookPct:      { set: 'day-ones', window: 'booked', title: 'Day Ones booked' },
+  vipCount:           { set: 'vips', title: 'VIP referrals' },
+  vipPct:             { set: 'vips', title: 'VIP referrals' },
+  toursGiven:         { set: 'tours', title: 'Tours given' },
+  tourConversionRate: { set: 'tours', title: 'Tours given' },
+  dayOnes:            { set: 'day-ones', title: 'Day Ones' },
+  dayOneShowRate:     { set: 'day-ones', filter: 'completed', title: 'Completed Day Ones' },
+  dayOneCloseRate:    { set: 'day-ones', filter: 'sold', title: 'Day Ones sold' },
+  dayOnesPending:     { set: 'day-ones-pending', title: 'Pending outcomes' },
+  newPtRevenue:       { set: 'pt-sales', title: 'PT sold' },
+  lostPtRevenue:      { set: 'pt-losses', title: 'Deactivations' },
+}
 
 // ---------------------------------------------------------------------------
 // Club Snapshot — Analytics (admin only)
@@ -17,6 +50,30 @@ import PendingOutcomePanel from './PendingOutcomePanel'
 // auth/src/lib/clubSnapshot.js — briefly, the two sources count new
 // members slightly differently, so only one of them is allowed to say so.
 // ---------------------------------------------------------------------------
+
+/**
+ * A stat card, clickable where there are rows behind it.
+ *
+ * Pulled out because this card list is long enough that inlining the branch
+ * would bury the grid it sits in. A stat with no entry in DRILL, or with no
+ * value recorded, renders exactly as it did before.
+ */
+function StatCardOrDrill({ stat, drill, comparisonLabel, startDate, endDate, locationSlug }) {
+  const card = <StatCard stat={stat} comparisonLabel={comparisonLabel} />
+  if (!drill || !stat.value) return card
+  return (
+    <Drillable
+      set={drill.set}
+      title={drill.title}
+      params={{
+        start: startDate, end: endDate, clubs: locationSlug || 'all',
+        filter: drill.filter, window: drill.window,
+      }}
+    >
+      {card}
+    </Drillable>
+  )
+}
 
 export default function ClubSnapshot({ startDate, endDate, locationSlug }) {
   const query = useMemo(() => {
@@ -68,7 +125,9 @@ export default function ClubSnapshot({ startDate, endDate, locationSlug }) {
 
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
         {(data?.stats || []).map(s => (
-          <StatCard key={s.key} stat={s} comparisonLabel={data?.meta?.comparisonLabel} />
+          <StatCardOrDrill key={s.key} stat={s} drill={DRILL[s.key]}
+            comparisonLabel={data?.meta?.comparisonLabel}
+            startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
         ))}
       </div>
 
