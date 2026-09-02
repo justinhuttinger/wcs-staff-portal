@@ -3,7 +3,7 @@ import { api } from '../../lib/api'
 import { startOfWeekMonday, addDays, toISODate, fmtTime12, parseLocalTimestamp, MONTH_LABELS } from '../../lib/weekGrid'
 import WeekGrid from './WeekGrid'
 import CreateClassModal from './CreateClassModal'
-import SeriesList from './SeriesList'
+import EditClassModal from './EditClassModal'
 import PrintBoardModal from '../schedule/PrintBoardModal'
 
 function weekLabel(weekStart) {
@@ -41,7 +41,6 @@ export default function GroupXView({ canEdit = false }) {
   const [printOpen, setPrintOpen] = useState(false)
   const [badgeBusy, setBadgeBusy] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
-  const [seriesListOpen, setSeriesListOpen] = useState(false)
 
   useEffect(() => {
     api('/group-x/clubs')
@@ -149,6 +148,13 @@ export default function GroupXView({ canEdit = false }) {
     )
   }
 
+  // Editing is offered on today-and-later classes only -- the server rejects
+  // a PUT on a past one, and a past headcount must never be at risk of being
+  // rebuilt away. A past class (or a front-desk viewer with no canEdit at
+  // all) keeps the plain read-only popover further down.
+  const selectedIsEditable = !!(selected && canEdit
+    && String(selected.event_timestamp_local).slice(0, 10) >= toISODate(new Date()))
+
   return (
     <div className="space-y-3">
       <div className="bg-surface rounded-xl border border-border px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -177,12 +183,6 @@ export default function GroupXView({ canEdit = false }) {
 
         <div className="ml-auto flex flex-wrap gap-2">
           {canEdit && (
-            <button type="button" onClick={() => setSeriesListOpen(v => !v)}
-              className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">
-              {seriesListOpen ? 'Hide repeating' : 'Repeating'}
-            </button>
-          )}
-          {canEdit && (
             <button type="button" onClick={refreshStaff} disabled={refreshing}
               title="Reload instructors and class types from ABC"
               className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-primary hover:bg-bg disabled:opacity-50">
@@ -209,10 +209,6 @@ export default function GroupXView({ canEdit = false }) {
         </div>
       )}
 
-      {canEdit && seriesListOpen && <SeriesList club={club} onChanged={load} />}
-
-
-
       <WeekGrid
         weekStart={weekStart}
         classes={classes}
@@ -225,7 +221,7 @@ export default function GroupXView({ canEdit = false }) {
         onSlotClick={canEdit ? (slot => setCreateOpen(slot)) : undefined}
       />
 
-      {selected && (
+      {selected && !selectedIsEditable && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelected(null)}>
           <div className="bg-surface rounded-xl border border-border shadow-2xl max-w-sm w-full" onClick={e => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-border flex items-center justify-between">
@@ -286,6 +282,16 @@ export default function GroupXView({ canEdit = false }) {
         </div>
       )}
 
+      {selected && selectedIsEditable && (
+        <EditClassModal
+          club={club}
+          classTypes={classTypes}
+          instructors={instructors}
+          event={selected}
+          onClose={() => setSelected(null)}
+          onSaved={async () => { setSelected(null); await load() }}
+        />
+      )}
 
       {createOpen && (
         <CreateClassModal
