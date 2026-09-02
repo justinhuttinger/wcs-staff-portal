@@ -38,6 +38,7 @@ import ClubSnapshot from './analytics/ClubSnapshot'
 import KpiReport from './analytics/KpiReport'
 import PtSnapshot from './analytics/PtSnapshot'
 import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
+import ReportRecords from './analytics/ReportRecords'
 
 // ---------------------------------------------------------------------------
 // Analytics — a corporate+ reporting surface, separate from ReportingView.
@@ -55,6 +56,10 @@ import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 // { user, isAdmin, location, locationSlug, startDate, endDate }. `isAdmin` is
 // still the true admin flag, not the Analytics access gate.
 // `dates: false` hides the date-range controls for reports that manage their own.
+// `records: [...]` names the record sets the report is built from, which fills
+// The Data section at the bottom of it. Declared here rather than inside each
+// component so a report gains one by writing a line, and so the list of what a
+// report actually draws on is readable in one place.
 // Exported so the mobile app renders THE SAME registry rather than a second
 // list that has to be kept in step. A report added here appears on both
 // surfaces; a mobile-only copy would silently fall behind on the first one
@@ -62,6 +67,7 @@ import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 export const ANALYTICS_REPORTS = [
   {
     key: 'topline',
+    records: ['new-members', 'lost-members', 'revenue', 'day-ones'],
     label: 'Topline',
     desc: 'Headline Numbers',
     Component: Topline,
@@ -71,12 +77,14 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'salesperson-performance',
+    records: ['new-members', 'day-ones', 'vips', 'tours'],
     label: 'Salesperson Performance',
     desc: 'New Member Units',
     Component: SalespersonPerformance,
   },
   {
     key: 'club-activity',
+    records: ['new-members', 'lost-members', 'revenue', 'day-ones'],
     label: 'Club Activity Trends',
     desc: 'Year over Year',
     Component: ClubActivityTrends,
@@ -86,6 +94,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'revenue-per-member',
+    records: ['revenue', 'new-members'],
     label: 'Revenue Per Member',
     desc: 'Members vs Revenue',
     Component: RevenuePerMember,
@@ -94,12 +103,14 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'pt-scorecard',
+    records: ['day-ones', 'pt-sales', 'new-members'],
     label: 'PT Scorecard',
     desc: 'Day One Funnel',
     Component: PtScorecard,
   },
   {
     key: 'pt-penetration',
+    records: ['new-members', 'pt-sales'],
     label: 'PT Penetration',
     desc: 'PT Clients by Club',
     Component: PtPenetration,
@@ -108,6 +119,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'membership-mix',
+    records: ['new-members'],
     label: 'Membership Mix',
     desc: 'Who Our Members Are',
     Component: MembershipMix,
@@ -117,6 +129,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'past-due',
+    records: ['past-due'],
     label: 'Past Due',
     desc: 'Who Owes What',
     Component: PastDue,
@@ -126,6 +139,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'membership-trends',
+    records: ['new-members', 'lost-members'],
     label: 'Membership Trends',
     desc: 'Members & Joins by Segment',
     Component: MembershipTrends,
@@ -134,24 +148,28 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'net-membership',
+    records: ['new-members', 'lost-members'],
     label: 'Net Membership',
     desc: 'In, Out and Net',
     Component: NetMembership,
   },
   {
     key: 'revenue-by-profit-center',
+    records: ['revenue'],
     label: 'Revenue by Profit Center',
     desc: 'Where the Money Comes From',
     Component: RevenueByProfitCenter,
   },
   {
     key: 'revenue-trends',
+    records: ['revenue'],
     label: 'Revenue Trends',
     desc: 'Annual, Monthly, Daily',
     Component: RevenueTrends,
   },
   {
     key: 'attrition-trends',
+    records: ['lost-members'],
     label: 'Attrition Trends',
     desc: 'Losses, Dues and Revenue',
     Component: AttritionTrends,
@@ -161,6 +179,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'problem-areas',
+    records: ['day-ones-pending'],
     label: 'Problem Areas',
     desc: 'What Needs Attention',
     Component: ProblemAreas,
@@ -170,6 +189,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'member-journey',
+    records: ['new-members', 'lost-members'],
     label: 'Member Journey',
     desc: 'Visits and Spend by Tenure',
     Component: MemberJourney,
@@ -179,6 +199,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'lead-sources',
+    records: ['new-members'],
     label: 'Lead Sources',
     desc: 'Where Leads Come From',
     Component: LeadSources,
@@ -203,6 +224,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'pos-sales',
+    records: ['revenue'],
     label: 'Retail Analysis',
     desc: 'Goods, Margin and Items',
     Component: PosSales,
@@ -215,12 +237,14 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'revenue',
+    records: ['revenue'],
     label: 'Revenue Analysis',
     desc: 'Profit Centers vs Last Month and Last Year',
     Component: Revenue,
   },
   {
     key: 'daily-snapshot',
+    records: ['new-members', 'lost-members', 'day-ones', 'pt-sales', 'revenue'],
     label: 'Daily Snapshot',
     desc: 'A Single Day, End to End',
     Component: DailySnapshot,
@@ -243,12 +267,14 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'group-x',
+    records: ['pt-sessions'],
     label: 'Group X',
     desc: 'Class Attendance',
     Component: GroupX,
   },
   {
     key: 'payroll',
+    records: ['pt-sales', 'pt-sessions'],
     label: 'Payroll',
     desc: 'POS, PT and Sessions',
     Component: Payroll,
@@ -259,42 +285,49 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'kpis',
+    records: ['new-members', 'lost-members', 'day-ones', 'revenue'],
     label: 'KPIs',
     desc: 'Goals by Club',
     Component: KpiReport,
   },
   {
     key: 'club-snapshot',
+    records: ['new-members', 'lost-members', 'day-ones', 'pt-sales', 'pt-losses', 'revenue', 'past-due'],
     label: 'Club Snapshot',
     desc: 'Membership, Day Ones and PT',
     Component: ClubSnapshot,
   },
   {
     key: 'pt-snapshot',
+    records: ['day-ones', 'day-ones-pending', 'pt-sales', 'pt-losses'],
     label: 'PT Snapshot',
     desc: 'Whole Club Training',
     Component: PtSnapshot,
   },
   {
     key: 'salesperson-snapshot',
+    records: ['new-members', 'day-ones', 'vips', 'tours'],
     label: 'Salesperson Snapshot',
     desc: 'One Salesperson at a Time',
     Component: SalespersonSnapshot,
   },
   {
     key: 'trainer-snapshot',
+    records: ['pt-sessions', 'pt-clients', 'day-ones', 'day-ones-pending', 'pt-sales', 'pt-losses'],
     label: 'Trainer Snapshot',
     desc: 'One Trainer at a Time',
     Component: TrainerSnapshot,
   },
   {
     key: 'trainer-performance',
+    records: ['pt-sessions', 'pt-clients', 'day-ones', 'pt-sales'],
     label: 'Trainer Performance',
     desc: 'Sessions, Day Ones and Closes',
     Component: TrainerPerformance,
   },
   {
     key: 'first-pt-purchase',
+    records: ['new-members', 'pt-sales'],
     label: 'First Purchases by Join Month',
     desc: 'How Soon Members Buy PT',
     Component: FirstPtPurchase,
@@ -653,14 +686,24 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
 
         {/* Report body */}
         {ActiveComponent ? (
-          <ActiveComponent
-            user={user}
-            isAdmin={isAdmin}
-            location={location}
-            locationSlug={locationSlug}
-            startDate={startDate}
-            endDate={endDate}
-          />
+          <>
+            <ActiveComponent
+              user={user}
+              isAdmin={isAdmin}
+              location={location}
+              locationSlug={locationSlug}
+              startDate={startDate}
+              endDate={endDate}
+            />
+            {/* Collapsed until asked for, so a report carrying a large set does
+                not get slower for having one. */}
+            <div className="mt-3">
+              <ReportRecords
+                sets={reportByKey[activeReport]?.records}
+                params={{ start: startDate, end: endDate, clubs: locationSlug || 'all' }}
+              />
+            </div>
+          </>
         ) : (
           <div className="bg-surface rounded-xl border border-border p-10 text-center">
             <p className="text-base font-semibold text-text-primary mb-1">No analytics reports yet</p>
