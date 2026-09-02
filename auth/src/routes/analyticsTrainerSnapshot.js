@@ -6,6 +6,9 @@ const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { buildTrainerPerformance } = require('../lib/trainerPerformance')
 const { buildTrainerSnapshot } = require('../lib/trainerSnapshot')
+const {
+  loadPendingDayOnes, summarisePending, pendingForTrainer, pendingList,
+} = require('../lib/dayOnePending')
 const { monthToDate, priorMonthWindow, priorLabel, windowLabel } = require('../lib/snapshotWindow')
 const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerformance')
 
@@ -42,17 +45,27 @@ const norm = (v) => String(v || '').trim().replace(/\s+/g, ' ').toLowerCase()
 
 async function windowRows(start, end, clubNumbers) {
   const args = { p_start: start, p_end: end, p_clubs: clubNumbers }
-  const [rows, totals, breakdown] = await Promise.all([
+  const [rows, totals, breakdown, pendingRows] = await Promise.all([
     fetchAll(supabaseAdmin.rpc('analytics_trainer_performance', args)),
     supabaseAdmin.rpc('analytics_trainer_performance_totals', args),
     // The recurring/paid-in-full split and the loss side, from migration 150.
     // A companion function rather than four more columns on the one above, so
     // migration 144 stays the single definition of who is credited for what.
     fetchAll(supabaseAdmin.rpc('analytics_trainer_pt_breakdown', args)),
+    // Keyed on the appointment date. buildTrainerPerformance merges it per
+    // trainer and adds a row for anyone whose only mark on the window is an
+    // un-closed intro, which is the person this metric exists to find.
+    loadPendingDayOnes(clubNumbers, start, end),
   ])
   if (totals.error) throw new Error(totals.error.message)
 
-  const report = buildTrainerPerformance(rows, (totals.data || [])[0] || null, { clubNameFor })
+  const report = buildTrainerPerformance(rows, (totals.data || [])[0] || null, {
+    clubNameFor,
+    pending: summarisePending(pendingRows),
+  })
+  // Carried through so the chosen trainer's own chase list can be cut from it
+  // without a second fetch.
+  report.pendingRows = pendingRows
   const byKey = new Map((breakdown || []).map(b => [b.trainer_key, b]))
 
   // Merged onto the row rather than carried alongside it, so the snapshot reads
@@ -130,7 +143,28 @@ router.get('/', async (req, res) => {
         fetchAll(supabaseAdmin.rpc('analytics_trainer_pt_breakdown_monthly', seriesArgs)),
       ])
       const byMonth = new Map((extra || []).map(e => [String(e.month_start).slice(0, 10), e]))
-      return (months || []).map(m => ({ ...m, ...(byMonth.get(String(m.month_start).slice(0, 10)) || {}) }))
+      // Pending per month, over the same 13 months the series covers. One call
+      // for the whole span rather than one per month: the rows carry their own
+      // scheduled_date, so the buckets fall out of a single list.
+      const seriesStart = String(((months || [])[0] || {}).month_start || '').slice(0, 10)
+      const pendingByMonth = new Map()
+      if (seriesStart) {
+        const rows = pendingForTrainer(
+          await loadPendingDayOnes(clubNumbers, seriesStart, end), who
+        )
+        for (const r of rows) {
+          const m = String(r.scheduled_date).slice(0, 7) + '-01'
+          pendingByMonth.set(m, (pendingByMonth.get(m) || 0) + 1)
+        }
+      }
+      return (months || []).map(m => {
+        const key = String(m.month_start).slice(0, 10)
+        return {
+          ...m,
+          ...(byMonth.get(key) || {}),
+          day_ones_pending: pendingByMonth.get(key) || 0,
+        }
+      })
     }
 
     const [series, compareSeries] = await Promise.all([
@@ -138,7 +172,16 @@ router.get('/', async (req, res) => {
       seriesFor(compare),
     ])
 
-    const built = buildTrainerSnapshot(rowIn(base.current, chosen), comparison, series, { person: chosen })
+    const chosenPending = chosen
+      ? pendingForTrainer(base.current.pendingRows, chosen)
+      : []
+
+    const built = buildTrainerSnapshot(rowIn(base.current, chosen), comparison, series, {
+      person: chosen,
+      pending: chosen
+        ? { ...summarisePending(chosenPending), list: pendingList(chosenPending) }
+        : null,
+    })
 
     res.json({
       ...built,

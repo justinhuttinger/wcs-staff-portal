@@ -93,6 +93,11 @@ const STATS = [
   { key: 'dayOnes', label: 'Day Ones on Calendar', format: 'int', betterWhen: 'up' },
   { key: 'dayOneShowRate', label: 'Day One Show Rate', format: 'pct', betterWhen: 'up' },
   { key: 'dayOneCloseRate', label: 'Day One Close Rate', format: 'pct', betterWhen: 'up' },
+  // Of the Day Ones on Calendar above, the ones whose date has passed with
+  // nobody recording an outcome. Same cohort, same key (appointment date), so
+  // it reads as a subset of the line above it rather than a new population.
+  // Down is better: it is a chase list, not a result.
+  { key: 'dayOnesPending', label: 'Day Ones Pending Outcome', format: 'int', betterWhen: 'down' },
   // The VALUE OF PT SOLD, not money collected — see PT Revenue Collected above.
   // Lost is recurring-service deactivations only: no paid-in-full package has
   // ever carried an inactive_date, so a spent package cannot be seen from here.
@@ -200,6 +205,13 @@ function buildClubSnapshot(current, prior, series, opts = {}) {
   const cur = shapeTotals(current.window, current.summary, current.pt)
   const was = prior ? shapeTotals(prior.window, prior.summary, prior.pt) : {}
 
+  // Comes from analytics_day_one_pending, not from any of the three rows above,
+  // so it is injected rather than shaped. Null when the caller supplies nothing:
+  // a false zero here would read as "all closed out".
+  const pend = opts.pending || null
+  cur.dayOnesPending = pend ? pend.total : null
+  if (prior) was.dayOnesPending = pend && pend.priorTotal != null ? pend.priorTotal : null
+
   const stats = STATS.map(s => {
     const now = cur[s.key] ?? null
     const before = was[s.key] ?? null
@@ -219,6 +231,13 @@ function buildClubSnapshot(current, prior, series, opts = {}) {
     comparisonLabel: opts.comparisonLabel || null,
     stats,
     totals: cur,
+    pending: pend && {
+      total: pend.total,
+      oldestDays: pend.oldestDays,
+      byTrainer: pend.byTrainer,
+      byBooker: pend.byBooker,
+      list: pend.list,
+    },
     series: (series || []).map(seriesRow),
   }
 }

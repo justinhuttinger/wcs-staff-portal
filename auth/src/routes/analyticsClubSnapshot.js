@@ -8,6 +8,7 @@ const { getSkipList } = require('../utils/membershipSkipList')
 const { buildReport } = require('../lib/salespersonPerformance')
 const { loadSalespersonWindow } = require('../lib/salespersonData')
 const { buildClubSnapshot } = require('../lib/clubSnapshot')
+const { loadPendingDayOnes, summarisePending, pendingList } = require('../lib/dayOnePending')
 const { monthToDate, priorMonthWindow, priorLabel, windowLabel } = require('../lib/snapshotWindow')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
@@ -92,7 +93,7 @@ router.get('/', async (req, res) => {
         }
       }
 
-      const [current, priorWindow, membersNow, membersPrior, series, ptSeries] = await Promise.all([
+      const [current, priorWindow, membersNow, membersPrior, series, ptSeries, pendingRows, priorPending] = await Promise.all([
         windowFor(start, end),
         windowFor(prior.start, prior.end),
         supabaseAdmin.rpc('analytics_topline_members_as_of', {
@@ -107,6 +108,11 @@ router.get('/', async (req, res) => {
         fetchAll(supabaseAdmin.rpc('analytics_pt_monthly', {
           p_end: end, p_months: SERIES_MONTHS, p_clubs: rpcClubs,
         })),
+        // Day Ones that passed in this window with no outcome recorded. Keyed
+        // on the appointment date, the same key as Day Ones on Calendar above,
+        // so the card reads as a subset of it.
+        loadPendingDayOnes(rpcClubs, start, end),
+        loadPendingDayOnes(rpcClubs, prior.start, prior.end),
       ])
 
       if (membersNow.error) throw new Error(membersNow.error.message)
@@ -127,14 +133,23 @@ router.get('/', async (req, res) => {
         month_start: r.month_start,
       }))
 
-      return { current, prior: priorWindow, series: merged }
+      return {
+        current,
+        prior: priorWindow,
+        series: merged,
+        pending: {
+          ...summarisePending(pendingRows),
+          priorTotal: (priorPending || []).length,
+          list: pendingList(pendingRows),
+        },
+      }
     })
 
     const built = buildClubSnapshot(
       payload.current,
       payload.prior,
       payload.series,
-      { comparisonLabel: priorLabel(start, end) },
+      { comparisonLabel: priorLabel(start, end), pending: payload.pending },
     )
 
     res.json({

@@ -5,6 +5,7 @@ import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
 import { StatCard, TrendPanel, PersonSearch, ChooseSomeone } from './snapshotParts'
+import PendingOutcomePanel from './PendingOutcomePanel'
 
 // ---------------------------------------------------------------------------
 // Trainer Snapshot — Analytics (admin only)
@@ -138,7 +139,11 @@ export default function TrainerSnapshot({ startDate, endDate, locationSlug }) {
                 line('Sold', 'dayOnesSold', series),
                 line('Cancelled', 'dayOnesCancelled', series),
                 line('No Showed', 'dayOnesNoShow', series),
+                line('Pending Outcome', 'dayOnesPending', series),
               ]} />
+
+              {/* This trainer's own outstanding intros, oldest first. */}
+              <PendingOutcomePanel pending={data?.pending} title="Their Pending Outcomes" />
 
               <TrendPanel title="Close Rate and Cancellation Rate" kind="rate" months={months} series={[
                 line('Close Rate', 'closeRate', series),

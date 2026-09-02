@@ -3,6 +3,7 @@ import { api } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { StatCard, TrendPanel } from './snapshotParts'
+import PendingOutcomePanel from './PendingOutcomePanel'
 
 // ---------------------------------------------------------------------------
 // Club Snapshot — Analytics (admin only)
@@ -89,6 +90,9 @@ export default function ClubSnapshot({ startDate, endDate, locationSlug }) {
 
       {/* A rate never shares a panel with a count: on one axis a percentage
           and a headcount flatten whichever is smaller. */}
+      {/* Who is sitting on the un-closed intros behind the card above. */}
+      <PendingOutcomePanel pending={data?.pending} title="Day Ones Pending Outcome" />
+
       <TrendPanel title="Day One Close Rate" kind="rate" months={months} series={[
         line('Close Rate', 'dayOneCloseRate'),
       ]} />

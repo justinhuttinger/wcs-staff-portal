@@ -8,6 +8,7 @@ const { getSkipList } = require('../utils/membershipSkipList')
 const { buildReport } = require('../lib/salespersonPerformance')
 const { loadSalespersonWindow } = require('../lib/salespersonData')
 const { buildDailySnapshot } = require('../lib/dailySnapshot')
+const { loadPendingDayOnes, summarisePending, pendingList } = require('../lib/dayOnePending')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
@@ -53,10 +54,10 @@ function firstRow(res) {
   return (res.data || [])[0] || null
 }
 
-/** The day before, on the calendar. */
-function previousDay(iso) {
+/** `back` days earlier on the calendar; one day by default. */
+function previousDay(iso, back = 1) {
   const d = new Date(`${iso}T00:00:00Z`)
-  d.setUTCDate(d.getUTCDate() - 1)
+  d.setUTCDate(d.getUTCDate() - back)
   return d.toISOString().slice(0, 10)
 }
 
@@ -107,7 +108,11 @@ router.get('/', async (req, res) => {
         }
       }
 
-      const [current, prior, membersAtClose, series, revenueEdge] = await Promise.all([
+      // The chart's own window, so the fourteen-day pending line is built from
+      // the same rows as the card rather than from fourteen separate calls.
+      const seriesStart = previousDay(day, SERIES_DAYS - 1)
+
+      const [current, prior, membersAtClose, series, revenueEdge, pendingRows] = await Promise.all([
         dayFor(day),
         dayFor(yesterday),
         supabaseAdmin.rpc('analytics_topline_members_as_of', {
@@ -124,15 +129,27 @@ router.get('/', async (req, res) => {
           .order('payment_date', { ascending: false })
           .limit(1)
           .maybeSingle(),
+        loadPendingDayOnes(rpcClubs, seriesStart, day),
       ])
 
       if (membersAtClose.error) throw new Error(membersAtClose.error.message)
       current.window.total_members = membersAtClose.data
 
+      // One fetch covers card, comparison and chart: the rows carry their own
+      // scheduled_date, so the day slices come out of the same list.
+      const forDay = d => (pendingRows || []).filter(r => String(r.scheduled_date).slice(0, 10) === d)
+      const dayRows = forDay(day)
+
       return {
         current,
         prior,
         series,
+        pending: {
+          ...summarisePending(dayRows),
+          priorTotal: forDay(yesterday).length,
+          list: pendingList(dayRows),
+        },
+        pendingByDay: summarisePending(pendingRows).byDay,
         latestRevenueDay: revenueEdge?.data?.payment_date
           ? String(revenueEdge.data.payment_date).slice(0, 10)
           : null,
@@ -142,6 +159,8 @@ router.get('/', async (req, res) => {
     const built = buildDailySnapshot(payload.current, payload.prior, payload.series, {
       day,
       latestRevenueDay: payload.latestRevenueDay,
+      pending: payload.pending,
+      pendingByDay: payload.pendingByDay,
     })
 
     res.json({
