@@ -19,6 +19,35 @@ import { useId } from 'react'
 // background.
 // ---------------------------------------------------------------------------
 
+// The animated ellipsis the loading labels use, injected here rather than in
+// either loader: both DesktopLoading and MobileLoading import this file, so the
+// rule is present wherever the mark is, and mobile is no longer relying on a
+// desktop-only module having been loaded first.
+//
+// The reduced-motion block also reaches the SMIL <animate> below, which CSS
+// cannot otherwise stop.
+if (typeof document !== 'undefined' && !document.getElementById('wcs-loading-keyframes')) {
+  const style = document.createElement('style')
+  style.id = 'wcs-loading-keyframes'
+  style.textContent = `
+    @keyframes wcs-dots {
+      0%, 20%  { content: ''; }
+      40%      { content: '.'; }
+      60%      { content: '..'; }
+      80%, 100%{ content: '...'; }
+    }
+    .wcs-dots::after {
+      content: '';
+      animation: wcs-dots 1.6s steps(1, end) infinite;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .wcs-dots::after { animation: none; content: '...'; }
+      svg animate { animation-play-state: paused; }
+    }
+  `
+  document.head.appendChild(style)
+}
+
 export default function WcsLoadingMark({ size = 64, className = '', title = 'Loading' }) {
   const maskId = useId().replace(/:/g, '')
 

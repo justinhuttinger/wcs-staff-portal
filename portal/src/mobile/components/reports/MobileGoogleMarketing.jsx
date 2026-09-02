@@ -12,6 +12,7 @@ import {
 import { LOCATION_OPTIONS as LOCATIONS } from '../../../config/locations'
 import MobileLoading from '../MobileLoading'
 import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
+import WcsLoadingMark from '../../../components/WcsLoadingMark'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
@@ -276,7 +277,9 @@ function GaSection({ startDate, endDate, locationSlug, compare, ga4Status }) {
         {errors.sources ? (
           <p className="text-sm text-wcs-red">{errors.sources}</p>
         ) : !sources ? (
-          <p className="text-sm text-text-muted">Loading...</p>
+          <div className="flex justify-center py-4">
+            <WcsLoadingMark size={28} className="text-wcs-red" />
+          </div>
         ) : sources.channels?.length ? (
           <div className="space-y-1">
             {sources.channels.map(c => (
@@ -295,7 +298,9 @@ function GaSection({ startDate, endDate, locationSlug, compare, ga4Status }) {
         {errors.sources ? (
           <p className="text-sm text-wcs-red">{errors.sources}</p>
         ) : !sources ? (
-          <p className="text-sm text-text-muted">Loading...</p>
+          <div className="flex justify-center py-4">
+            <WcsLoadingMark size={28} className="text-wcs-red" />
+          </div>
         ) : sources.sources?.length ? (
           <div className="space-y-1">
             {sources.sources.map(s => (
@@ -314,7 +319,9 @@ function GaSection({ startDate, endDate, locationSlug, compare, ga4Status }) {
         {errors.pages ? (
           <p className="text-sm text-wcs-red">{errors.pages}</p>
         ) : !pages ? (
-          <p className="text-sm text-text-muted">Loading...</p>
+          <div className="flex justify-center py-4">
+            <WcsLoadingMark size={28} className="text-wcs-red" />
+          </div>
         ) : pages.pages?.length ? (
           <div className="space-y-2">
             {pages.pages.map((p, i) => (
@@ -337,7 +344,9 @@ function GaSection({ startDate, endDate, locationSlug, compare, ga4Status }) {
         {errors.devicesGeo ? (
           <p className="text-sm text-wcs-red">{errors.devicesGeo}</p>
         ) : !devicesGeo ? (
-          <p className="text-sm text-text-muted">Loading...</p>
+          <div className="flex justify-center py-4">
+            <WcsLoadingMark size={28} className="text-wcs-red" />
+          </div>
         ) : devicesGeo.devices?.length ? (
           <PieChartSmall
             data={Object.fromEntries(devicesGeo.devices.map(d => [d.category, d.sessions]))}
@@ -352,7 +361,9 @@ function GaSection({ startDate, endDate, locationSlug, compare, ga4Status }) {
         {errors.devicesGeo ? (
           <p className="text-sm text-wcs-red">{errors.devicesGeo}</p>
         ) : !devicesGeo ? (
-          <p className="text-sm text-text-muted">Loading...</p>
+          <div className="flex justify-center py-4">
+            <WcsLoadingMark size={28} className="text-wcs-red" />
+          </div>
         ) : devicesGeo.cities?.length ? (
           <div className="space-y-1">
             {devicesGeo.cities.map(c => (
@@ -371,7 +382,9 @@ function GaSection({ startDate, endDate, locationSlug, compare, ga4Status }) {
         {errors.keyEvents ? (
           <p className="text-sm text-wcs-red">{errors.keyEvents}</p>
         ) : !keyEvents ? (
-          <p className="text-sm text-text-muted">Loading...</p>
+          <div className="flex justify-center py-4">
+            <WcsLoadingMark size={28} className="text-wcs-red" />
+          </div>
         ) : keyEvents.events?.length ? (
           <div className="space-y-2">
             {keyEvents.events.map(e => (

@@ -7,6 +7,7 @@ import {
   receiveInventoryInvoice, addInventoryInvoiceItem, deleteInventoryInvoiceItem,
 } from '../../lib/api'
 import { LOCATION_OPTIONS } from '../../config/locations'
+import WcsLoadingMark from '../../components/WcsLoadingMark'
 
 function fmtMoney(v) {
   if (v === null || v === undefined) return '—'
@@ -166,7 +167,7 @@ const SHEET_PAD = { paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px)
 function FullScreenLoader({ title, subtitle }) {
   return createPortal(
     <div className="fixed inset-0 z-[70] bg-surface flex flex-col items-center justify-center px-8 text-center">
-      <div className="w-12 h-12 border-4 border-border border-t-wcs-red rounded-full animate-spin mb-4" />
+      <WcsLoadingMark size={56} className="text-wcs-red mb-4" />
       <p className="text-sm font-semibold text-text-primary">{title}</p>
       {subtitle && <p className="text-xs text-text-muted mt-1">{subtitle}</p>}
     </div>,

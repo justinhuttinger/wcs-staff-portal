@@ -7,6 +7,7 @@ import {
 } from '../../../lib/api'
 import MobileLoading from '../MobileLoading'
 import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
+import WcsLoadingMark from '../../../components/WcsLoadingMark'
 
 /* ── helpers ────────────────────────────────────────── */
 
@@ -165,7 +166,7 @@ function AdsetCard({ adset, dateRange }) {
         <div className="ml-3 border-l-2 border-wcs-red/20">
           {loading ? (
             <div className="py-3 flex justify-center">
-              <div className="w-4 h-4 border-2 border-wcs-red/20 border-t-wcs-red rounded-full animate-spin" />
+              <WcsLoadingMark size={24} className="text-wcs-red" />
             </div>
           ) : ads.length === 0 ? (
             <p className="text-xs text-text-muted py-2 px-3">No ads found</p>
@@ -262,7 +263,7 @@ function CampaignCard({ campaign, dateRange }) {
         <div className="border-t border-border">
           {loading ? (
             <div className="py-4 flex justify-center">
-              <div className="w-5 h-5 border-2 border-wcs-red/20 border-t-wcs-red rounded-full animate-spin" />
+              <WcsLoadingMark size={28} className="text-wcs-red" />
             </div>
           ) : adsets.length === 0 ? (
             <p className="text-xs text-text-muted py-3 px-3">No ad sets found</p>
