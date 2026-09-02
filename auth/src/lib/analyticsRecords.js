@@ -2,6 +2,7 @@ const {
   CLUBS, CLUB_BY_SLUG, personKey, displayName, ACH_PAYMENT_METHOD, isExcludedType,
 } = require('./salespersonPerformance')
 const { isChaseable } = require('./pastDueReport')
+const { isInsuranceType, tenureMonths } = require('./attritionAnalysis')
 
 // ---------------------------------------------------------------------------
 // The rows behind the numbers.
@@ -397,6 +398,80 @@ const SETS = {
     },
   },
 
+  'cancels': {
+    label: 'Members Lost',
+    columns: [
+      { key: 'member', label: 'Member', format: T.text },
+      { key: 'type', label: 'Membership', format: T.text },
+      { key: 'ended', label: 'Ended', format: T.date },
+      { key: 'status', label: 'How', format: T.text },
+      { key: 'months', label: 'Months', format: T.int },
+      { key: 'salesperson', label: 'Sold By', format: T.text },
+    ],
+    // Attrition Analysis' own population, which is deliberately NOT
+    // lost-members: that set applies the conditional-membership rule and would
+    // drop most insurance cancellations, which are the thing this report is
+    // for. See lib/attritionAnalysis for why the two totals differ on purpose.
+    async load({ start, end, clubNumbers, filter, exclude }) {
+      const q = lazySupabase()
+        .from('abc_members')
+        .select('first_name, last_name, membership_type, member_status, member_status_date, since_date, sales_person_name, club_number')
+        .in('member_status', LOST_STATUSES)
+        .gte('member_status_date', start)
+        .lte('member_status_date', end)
+      if (clubNumbers) q.in('club_number', clubNumbers)
+      const [rows, skip] = await Promise.all([fetchAllRows(q), skipList(exclude)])
+      return rows
+        .filter(r => !isExcludedType(r.membership_type, skip))
+        .filter(r => {
+          if (filter === 'insurance') return isInsuranceType(r.membership_type)
+          if (filter === 'membership') return !isInsuranceType(r.membership_type)
+          return true
+        })
+        .map(r => ({
+          member: name(r.first_name, r.last_name),
+          type: r.membership_type || '-',
+          ended: String(r.member_status_date).slice(0, 10),
+          status: r.member_status,
+          months: tenureMonths(r.since_date, r.member_status_date),
+          salesperson: r.sales_person_name ? displayName(r.sales_person_name) : '-',
+        }))
+        .sort((a, b) => b.ended.localeCompare(a.ended))
+    },
+  },
+
+  'pending-cancels': {
+    label: 'Scheduled to Cancel',
+    columns: [
+      { key: 'member', label: 'Member', format: T.text },
+      { key: 'type', label: 'Membership', format: T.text },
+      { key: 'ends', label: 'Ends', format: T.date },
+      { key: 'salesperson', label: 'Sold By', format: T.text },
+    ],
+    // A QUEUE, not a window: these have not cancelled yet, so the date range
+    // does not apply. Filtering them by it would hide the ones scheduled
+    // furthest out, which are precisely the ones something can still be done
+    // about. Soonest first for the same reason.
+    async load({ clubNumbers, exclude }) {
+      const q = lazySupabase()
+        .from('abc_members')
+        .select('first_name, last_name, membership_type, member_status_date, sales_person_name, club_number')
+        .eq('member_status', 'Pending Cancel')
+        .eq('is_active', true)
+      if (clubNumbers) q.in('club_number', clubNumbers)
+      const [rows, skip] = await Promise.all([fetchAllRows(q), skipList(exclude)])
+      return rows
+        .filter(r => !isExcludedType(r.membership_type, skip))
+        .map(r => ({
+          member: name(r.first_name, r.last_name),
+          type: r.membership_type || '-',
+          ends: r.member_status_date ? String(r.member_status_date).slice(0, 10) : null,
+          salesperson: r.sales_person_name ? displayName(r.sales_person_name) : '-',
+        }))
+        .sort((a, b) => String(a.ends || '9999').localeCompare(String(b.ends || '9999')))
+    },
+  },
+
   'past-due': {
     label: 'Past Due',
     columns: [
@@ -600,14 +675,9 @@ async function excludedAsOf(asOf, exclude) {
   return new Set((data || []).map(r => `${r.club_number}|${r.member_id}`))
 }
 
-/** Whole months between joining and leaving. Null if either date is absent. */
-function tenureMonths(since, until) {
-  if (!since || !until) return null
-  const a = new Date(`${String(since).slice(0, 10)}T00:00:00Z`)
-  const b = new Date(`${String(until).slice(0, 10)}T00:00:00Z`)
-  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null
-  return Math.max(0, Math.floor((b - a) / (30.44 * 86400000)))
-}
+// tenureMonths comes from attritionAnalysis rather than being defined twice:
+// the local copy divided by an average 30.44-day month and floored a full year
+// to eleven, so a member's tenure differed depending on which report you asked.
 
 const DISPLAY_STATUS = {
   scheduled: 'Scheduled',

@@ -20,6 +20,7 @@ import TrainerPerformance from './analytics/TrainerPerformance'
 import TrainerSnapshot from './analytics/TrainerSnapshot'
 import SalespersonSnapshot from './analytics/SalespersonSnapshot'
 import AttritionTrends from './analytics/AttritionTrends'
+import AttritionAnalysis from './analytics/AttritionAnalysis'
 import Checkins from './analytics/Checkins'
 import Compliance from './analytics/Compliance'
 import PosSales from './analytics/PosSales'
@@ -166,6 +167,13 @@ export const ANALYTICS_REPORTS = [
     label: 'Revenue Trends',
     desc: 'Annual, Monthly, Daily',
     Component: RevenueTrends,
+  },
+  {
+    key: 'attrition-analysis',
+    records: ['cancels', 'pending-cancels'],
+    label: 'Attrition Analysis',
+    desc: 'Who Left and Why',
+    Component: AttritionAnalysis,
   },
   {
     key: 'attrition-trends',
@@ -349,7 +357,7 @@ export const ANALYTICS_REPORTS = [
 // it belongs in. The order of the groups themselves is still this order.
 export const REPORT_GROUPS = [
   { key: 'marketing', label: 'Marketing',     reports: ['lead-sources'] },
-  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-trends', 'member-journey', 'checkins', 'nps'] },
+  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-analysis', 'attrition-trends', 'member-journey', 'checkins', 'nps'] },
   { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due', 'pos-sales', 'revenue'] },
   { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase', 'pt-snapshot', 'trainer-snapshot'] },
   { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot', 'compliance', 'audits', 'till', 'payroll'] },

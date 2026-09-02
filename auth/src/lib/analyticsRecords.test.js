@@ -151,7 +151,7 @@ test('a lost member is one of the report three statuses', () => {
 })
 
 test('tenure is whole months between joining and leaving', () => {
-  assert.equal(tenureMonths('2026-01-01', '2026-08-01'), 6)
+  assert.equal(tenureMonths('2026-01-01', '2026-08-01'), 7)
   assert.equal(tenureMonths('2026-08-01', '2026-08-15'), 0)
 })
 
