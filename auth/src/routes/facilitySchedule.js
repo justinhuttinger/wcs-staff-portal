@@ -21,6 +21,8 @@ const { FACILITIES, isKnownFacility } = require('../lib/facilities')
 const clubFeatures = require('../lib/clubFeatures')
 const { DATE_RE, buildLocalTimestamp } = require('../lib/abcTime')
 const { expandSeries, MAX_OCCURRENCES } = require('../lib/groupXSeries')
+const { affectedDates } = require('../lib/facilitySeriesDates')
+const { seriesEditRefused } = require('../lib/facilitySeriesOwnership')
 const { durationBetween, OPEN_ENDED_HORIZON_DAYS } = require('../lib/scheduleTimes')
 const { padDate, toIsoDate } = require('../lib/abcTime')
 const { publicCacheKeysForDates } = require('../lib/groupXPublic')
@@ -142,7 +144,34 @@ router.get('/events', async (req, res) => {
       .order('starts_at_local', { ascending: true })
       .limit(2000)
     if (error) throw new Error(error.message)
-    res.json({ events: data || [] })
+    const events = data || []
+
+    // The client needs the series' CURRENT weekday set to seed "all from here
+    // on" edits -- one occurrence only knows the day it happens to fall on,
+    // not the whole pattern. One extra query for the whole week rather than
+    // one per event. A failure here must not take down the calendar: the week
+    // still renders, editing a series from scratch just falls back to the
+    // clicked day.
+    const seriesIds = [...new Set(events.map(e => e.series_id).filter(Boolean))]
+    let weekdaysById = new Map()
+    if (seriesIds.length) {
+      const { data: seriesRows, error: sErr } = await supabaseAdmin
+        .from('facility_series')
+        .select('id, weekdays')
+        .in('id', seriesIds)
+      if (sErr) {
+        console.error('GET /facility-schedule/events: series weekdays lookup failed', sErr.message)
+      } else {
+        weekdaysById = new Map((seriesRows || []).map(r => [r.id, r.weekdays]))
+      }
+    }
+
+    res.json({
+      events: events.map(e => ({
+        ...e,
+        series_weekdays: e.series_id ? (weekdaysById.get(e.series_id) ?? null) : null,
+      })),
+    })
   } catch (err) { fail(res, err, 'GET /events') }
 })
 
@@ -192,6 +221,76 @@ router.post('/events', requireEdit, async (req, res) => {
     invalidateBoard(b.club_number, b.facility, [b.date])
     res.status(201).json({ id: data.id })
   } catch (err) { fail(res, err, 'POST /events') }
+})
+
+// PUT /facility-schedule/events/:id — change one event.
+//
+// Our own table, so this is an UPDATE. Contrast the Group X side, where ABC has
+// no update endpoint and an edit is a create followed by a cancel.
+router.put('/events/:id', requireEdit, async (req, res) => {
+  const b = req.body || {}
+  if (!isKnownClubNumber(b.club_number) || !canUseClub(req, b.club_number)) {
+    return res.status(400).json({ error: 'valid club_number is required in body' })
+  }
+  if (!isKnownFacility(b.facility)) {
+    return res.status(400).json({ error: 'valid facility is required in body' })
+  }
+  const title = cleanTitle(b.title)
+  if (!title) return res.status(400).json({ error: 'give the event a name' })
+
+  let duration
+  let stamp
+  try {
+    duration = durationBetween(b.time, b.end_time)
+    if (!duration || duration <= 0 || duration > 24 * 60) {
+      return res.status(400).json({ error: 'give the event an end time after its start time' })
+    }
+    stamp = buildLocalTimestamp(b.date, b.time)
+  } catch (err) {
+    return res.status(400).json({ error: err.message })
+  }
+
+  try {
+    // Read the row's date BEFORE the update -- the update's own .select()
+    // returns the row as it looks AFTER the write, so it can only ever hand
+    // back the new date. Without this, moving an event across days leaves the
+    // old day's board cache serving the deleted event for up to 5 minutes.
+    const { data: existing, error: findErr } = await supabaseAdmin
+      .from('facility_events')
+      .select('starts_at_local')
+      .eq('id', req.params.id)
+      .eq('club_number', String(b.club_number))
+      .is('canceled_at', null)
+      .maybeSingle()
+    if (findErr) throw new Error(findErr.message)
+    if (!existing) return res.status(404).json({ error: 'event not found' })
+
+    const { data, error } = await supabaseAdmin
+      .from('facility_events')
+      .update({
+        title,
+        staff_name: b.staff_name ? String(b.staff_name).trim() : null,
+        starts_at_local: stamp,
+        duration_minutes: duration,
+      })
+      .eq('id', req.params.id)
+      .eq('club_number', String(b.club_number))
+      .is('canceled_at', null)
+      .select('starts_at_local')
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    // A concurrent cancel/delete between the read above and this update is
+    // the only way this comes back empty -- treat it the same as "not found"
+    // rather than a 500.
+    if (!data) return res.status(404).json({ error: 'event not found' })
+
+    // Old date and new date -- a move across days needs both cleared, or the
+    // old day keeps showing the deleted event until the cache expires.
+    const oldDate = String(existing.starts_at_local || '').slice(0, 10)
+    const newDate = String(data.starts_at_local || '').slice(0, 10)
+    invalidateBoard(b.club_number, b.facility, affectedDates([oldDate], [newDate]))
+    res.json({ ok: true })
+  } catch (err) { fail(res, err, 'PUT /events') }
 })
 
 // DELETE /facility-schedule/events/:id?club_number=&facility=
@@ -354,5 +453,127 @@ router.delete('/series/:id', requireEdit, async (req, res) => {
     res.json({ canceled: (data || []).length, ends_on: through })
   } catch (err) { fail(res, err, 'DELETE /series') }
 })
+
+// Editing a repeating facility slot from one occurrence onward.
+//
+// Future rows are REPLACED rather than updated, because changing the weekday
+// set changes which dates exist -- a Tuesday series moved to Wednesday has no
+// Tuesday row to update. Rows before `date` are never touched.
+async function facilitySeriesEdit(req, res, { apply }) {
+  const b = req.body || {}
+  const from = req.params.date
+  if (!DATE_RE.test(from || '')) return res.status(400).json({ error: 'date must be YYYY-MM-DD' })
+  if (!isKnownClubNumber(b.club_number) || !canUseClub(req, b.club_number)) {
+    return res.status(400).json({ error: 'valid club_number is required in body' })
+  }
+  if (!isKnownFacility(b.facility)) {
+    return res.status(400).json({ error: 'valid facility is required in body' })
+  }
+  const title = cleanTitle(b.title)
+  if (!title) return res.status(400).json({ error: 'give the event a name' })
+
+  const { data: series, error: selErr } = await supabaseAdmin
+    .from('facility_series').select('*').eq('id', req.params.id).maybeSingle()
+  if (selErr) return fail(res, new Error(selErr.message), 'series lookup')
+  // 404, never 403 -- a caller holding another club's series id must not be
+  // able to tell from the response that it exists. See seriesEditRefused for
+  // why this check exists at all.
+  if (seriesEditRefused(series, b.club_number, b.facility)) {
+    return res.status(404).json({ error: 'series not found' })
+  }
+
+  let duration
+  try {
+    duration = durationBetween(b.start_time, b.end_time)
+    // Same cap as the single-event path -- nothing here derives it from a
+    // shorter-bounded source, so a bad end time can produce the same
+    // multi-day "duration" bug.
+    if (!duration || duration <= 0 || duration > 24 * 60) {
+      return res.status(400).json({ error: 'give the event an end time after its start time' })
+    }
+  } catch (err) { return res.status(400).json({ error: err.message }) }
+
+  // Rewrite exactly as far as this series has already been written, no further.
+  // The nightly top-up extends an open-ended series from materialized_through
+  // using the new definition.
+  const through = series.ends_on || series.materialized_through
+  if (!through || through < from) return res.status(400).json({ error: 'this series has nothing scheduled from that date onwards' })
+
+  let occurrences
+  try {
+    occurrences = expandSeries({
+      weekdays: b.weekdays, start_time: b.start_time, starts_on: from, ends_on: through,
+    })
+  } catch (err) { return res.status(400).json({ error: err.message }) }
+  if (!occurrences.length) return res.status(400).json({ error: 'those days produce no events. Check the weekday selection.' })
+
+  // Same filter the delete uses below (canceled_at IS NULL), so the preview's
+  // count and the apply's actual removal always agree -- an already-cancelled
+  // row is neither previewed nor deleted here.
+  const { data: oldRows } = await supabaseAdmin
+    .from('facility_events')
+    .select('id, starts_at_local')
+    .eq('series_id', series.id)
+    // Belt and suspenders alongside the ownership check above: even if that
+    // check were ever loosened, this scopes the delete/preview to rows that
+    // actually belong to the claimed club.
+    .eq('club_number', series.club_number)
+    .is('canceled_at', null).gte('starts_at_local', from)
+  const replaced = (oldRows || []).length
+
+  if (!apply) return res.json({ count: occurrences.length, occurrences, replaced })
+
+  try {
+    // Built from the SERIES' own club/facility, not the request body -- the
+    // ownership check above already requires them to match, but deriving the
+    // insert from the verified row (not the claim) means a mismatch can never
+    // migrate rows even if that check is loosened later.
+    const rows = occurrences.map(o => ({
+      club_number: series.club_number,
+      facility: series.facility,
+      title,
+      staff_name: b.staff_name ? String(b.staff_name).trim() : null,
+      starts_at_local: o.timestamp_local,
+      duration_minutes: duration,
+      series_id: series.id,
+      created_by: req.user?.email || 'unknown',
+    }))
+
+    // Insert the replacement rows BEFORE deleting the old ones, and delete by
+    // the explicit id list captured above rather than by date range. Same
+    // rule as the Group X side: if the insert fails, we're left with
+    // duplicate events (visible, fixable) instead of a hole in the schedule
+    // that nobody notices until members turn up. Deleting by id list also
+    // means a post-insert delete can never catch the rows we just wrote.
+    const { error: insErr } = await supabaseAdmin.from('facility_events').insert(rows)
+    if (insErr) throw new Error(insErr.message)
+
+    const oldIds = (oldRows || []).map(r => r.id)
+    if (oldIds.length) {
+      const { error: delErr } = await supabaseAdmin
+        .from('facility_events').delete().in('id', oldIds)
+      if (delErr) throw new Error(delErr.message)
+    }
+
+    await supabaseAdmin.from('facility_series').update({
+      title,
+      staff_name: b.staff_name ? String(b.staff_name).trim() : null,
+      weekdays: b.weekdays,
+      start_time: b.start_time,
+      duration_minutes: duration,
+    }).eq('id', series.id)
+
+    // A weekday change moves which dates have an event at all -- the old
+    // Tuesday and the new Wednesday both need the board's cache cleared, or
+    // the deleted Tuesday slot keeps showing for up to 5 minutes.
+    const oldDates = (oldRows || []).map(r => String(r.starts_at_local).slice(0, 10))
+    const newDates = occurrences.map(o => o.date)
+    invalidateBoard(series.club_number, series.facility, affectedDates(oldDates, newDates))
+    res.json({ created: rows.length, removed: replaced })
+  } catch (err) { fail(res, err, 'PUT /series/from') }
+}
+
+router.post('/series/:id/edit-preview/:date', requireEdit, (req, res) => facilitySeriesEdit(req, res, { apply: false }))
+router.put('/series/:id/from/:date', requireEdit, (req, res) => facilitySeriesEdit(req, res, { apply: true }))
 
 module.exports = router

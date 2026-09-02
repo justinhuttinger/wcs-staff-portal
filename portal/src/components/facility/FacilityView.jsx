@@ -5,6 +5,7 @@ import WeekGrid from '../groupx/WeekGrid'
 import BoardLinks from './FacilityBoardLinks'
 import PrintBoardModal from '../schedule/PrintBoardModal'
 import CreateEventModal from './CreateEventModal'
+import EditEventModal from './EditEventModal'
 
 function weekLabel(weekStart) {
   const end = addDays(weekStart, 6)
@@ -27,6 +28,7 @@ function toGridShape(e) {
     duration_minutes: e.duration_minutes,
     status: 'Pending',
     series_id: e.series_id,
+    series_weekdays: e.series_weekdays,
   }
 }
 
@@ -51,7 +53,6 @@ export default function FacilityView({ canEdit = false, showBoardLinks = false }
   const [linksOpen, setLinksOpen] = useState(false)
   const [printOpen, setPrintOpen] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [endThrough, setEndThrough] = useState('')
 
   useEffect(() => {
     api('/facility-schedule/facilities')
@@ -111,26 +112,6 @@ export default function FacilityView({ canEdit = false, showBoardLinks = false }
     try {
       await api(`/facility-schedule/events/${encodeURIComponent(selected.event_id)}?club_number=${club.clubNumber}&facility=${facility.slug}`, { method: 'DELETE' })
       setSelected(null)
-      await load()
-    } catch (e) { setError(e.message) } finally { setBusy(false) }
-  }
-
-  // Ending a series keeps everything up to and including the chosen day and
-  // drops what comes after. Removing everything from today would throw away
-  // sessions people are already turning up to.
-  async function endSeries() {
-    if (!selected?.series_id) return
-    const through = endThrough
-    const msg = through
-      ? `Keep this repeating event through ${through} and remove everything after it?`
-      : 'Remove every remaining event in this series from today onwards?'
-    if (!window.confirm(msg)) return
-    setBusy(true)
-    try {
-      const qs = `club_number=${club.clubNumber}&facility=${facility.slug}` + (through ? `&through=${through}` : '')
-      await api(`/facility-schedule/series/${encodeURIComponent(selected.series_id)}?${qs}`, { method: 'DELETE' })
-      setSelected(null)
-      setEndThrough('')
       await load()
     } catch (e) { setError(e.message) } finally { setBusy(false) }
   }
@@ -250,7 +231,17 @@ export default function FacilityView({ canEdit = false, showBoardLinks = false }
         onSlotClick={canEdit ? (slot => setCreateOpen(slot)) : undefined}
       />
 
-      {selected && (
+      {selected && canEdit && String(selected.event_timestamp_local).slice(0, 10) >= toISODate(new Date()) && (
+        <EditEventModal
+          club={club}
+          facility={facility}
+          event={selected}
+          onClose={() => setSelected(null)}
+          onSaved={async () => { setSelected(null); await load() }}
+        />
+      )}
+
+      {selected && (!canEdit || String(selected.event_timestamp_local).slice(0, 10) < toISODate(new Date())) && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelected(null)}>
           <div className="bg-surface rounded-xl border border-border shadow-2xl max-w-sm w-full" onClick={e => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-border flex items-center justify-between">
@@ -265,36 +256,16 @@ export default function FacilityView({ canEdit = false, showBoardLinks = false }
               })()}
               <div><span className="text-text-muted">Length: </span>{selected.duration_minutes} min</div>
               <div><span className="text-text-muted">Staff: </span>{selected.instructor_name || 'Nobody assigned'}</div>
-              {selected.series_id && (
-                <div className="rounded-lg border border-border p-3 space-y-2">
-                  <div className="text-xs text-text-muted">Part of a repeating event.</div>
-                  <label className="block text-xs font-medium text-text-muted">
-                    End the series after
-                  </label>
-                  <input type="date" value={endThrough} onChange={e => setEndThrough(e.target.value)}
-                    className="w-full border border-border rounded-lg px-2 py-1.5 text-sm bg-surface text-text-primary" />
-                  <p className="text-xs text-text-muted">
-                    Everything up to and including this day is kept. Leave blank to remove the
-                    whole series from today.
-                  </p>
-                </div>
-              )}
             </div>
             <div className="px-5 py-4 border-t border-border flex flex-wrap justify-end gap-2">
               <button type="button" onClick={() => setSelected(null)}
                 className="px-4 py-2 text-sm rounded-lg border border-border text-text-primary hover:bg-bg">Close</button>
-              {canEdit && (<>
-              {selected.series_id && (
-                <button type="button" onClick={endSeries} disabled={busy}
+              {canEdit && (
+                <button type="button" onClick={cancelEvent} disabled={busy}
                   className="px-4 py-2 text-sm rounded-lg border border-red-300 bg-red-50 text-red-900 font-medium hover:bg-red-100 disabled:opacity-50">
-                  {endThrough ? 'End series' : 'Remove series'}
+                  {busy ? 'Removing...' : 'Remove'}
                 </button>
               )}
-              <button type="button" onClick={cancelEvent} disabled={busy}
-                className="px-4 py-2 text-sm rounded-lg border border-red-300 bg-red-50 text-red-900 font-medium hover:bg-red-100 disabled:opacity-50">
-                {busy ? 'Removing...' : 'Remove'}
-              </button>
-              </>)}
             </div>
           </div>
         </div>
