@@ -1,5 +1,6 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
+const { tourDayStart } = require('../lib/tourDay')
 const { clubNumberForLocationName } = require('../config/clubMap')
 const { buildTourWebhookPayload } = require('../lib/tourWebhook')
 const { getLocationBySlug } = require('../config/ghlLocations')
@@ -96,19 +97,60 @@ async function resolveToken(token) {
   return { cfg, location: loc }
 }
 
+// A card means "this person is at the desk now", so it dies when the day does.
+// Sweeping on read rather than on a schedule keeps this to one file and one
+// deploy: the iPad polls every two seconds, so a stale row is retired within
+// moments of the day rolling without a cron job to own and monitor.
+//
+// Throttled per location because the poll is every 2s and the sweep matches
+// nothing all day. Once a minute is far more often than a day boundary moves.
+const SWEEP_EVERY_MS = 60_000
+const lastSweep = new Map()
+
+async function retireYesterday(locationId) {
+  const now = Date.now()
+  if (now - (lastSweep.get(locationId) || 0) < SWEEP_EVERY_MS) return
+  lastSweep.set(locationId, now)
+
+  const cutoff = tourDayStart().toISOString()
+  const { error } = await supabaseAdmin
+    .from('tour_intakes')
+    .update({
+      // Kept, not deleted: a check-in nobody toured is a real number - it is
+      // the gap between people walking in and people being seen - and deleting
+      // it would report the day as if they never arrived.
+      status: 'abandoned',
+      // The photo exists so the desk can recognise somebody standing in front
+      // of them. Once the card is dead it is a stranger's face held for no
+      // reason, so it goes.
+      photo_base64: null,
+    })
+    .eq('location_id', locationId)
+    .eq('status', 'ready')
+    .lt('received_at', cutoff)
+
+  if (error) console.error('[public-tour] sweep failed:', error.message)
+}
+
 // GET /public/tour/:token -> location name, day one link, ready + completed queues
 router.get('/:token', async (req, res) => {
   try {
     const ctx = await resolveToken(req.params.token)
     if (!ctx) return res.status(404).json({ error: 'not found' })
 
-    // Only the live queue. Completed tours are deleted on outcome-save (the
-    // outbound webhook is the record on the way out), so there is no completed list.
+    // Only today's queue. Completed tours are marked completed rather than
+    // shown here, and anything from a previous day has been retired above.
+    await retireYesterday(ctx.location.id)
+
+    // Filtered as well as swept. The sweep is throttled, so without this a card
+    // would linger on screen for up to a minute after the day rolled - and the
+    // filter alone would leave the row unmarked for reporting.
     const { data: ready } = await supabaseAdmin
       .from('tour_intakes')
       .select(SELECT_COLS)
       .eq('location_id', ctx.location.id)
       .eq('status', 'ready')
+      .gte('received_at', tourDayStart().toISOString())
       .order('received_at', { ascending: false })
       .limit(200)
 
