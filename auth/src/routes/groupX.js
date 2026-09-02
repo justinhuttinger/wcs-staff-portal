@@ -25,7 +25,7 @@ const { Router } = require('express')
 const abc = require('../services/abcGroupX')
 const { isKnownClubNumber } = require('../lib/groupXClubs')
 const { buildLocalTimestamp, DATE_RE } = require('../lib/abcTime')
-const { expandSeries, MAX_OCCURRENCES, matchesSeries, seriesWindow } = require('../lib/groupXSeries')
+const { expandSeries, MAX_OCCURRENCES, matchesSeries, seriesWindow, findSeriesForEvent } = require('../lib/groupXSeries')
 const { OPEN_ENDED_HORIZON_DAYS } = require('../lib/scheduleTimes')
 const { padDate, toIsoDate } = require('../lib/abcTime')
 const { supabaseAdmin } = require('../services/supabase')
@@ -228,10 +228,30 @@ router.get('/classes', async (req, res) => {
     ])
     const flagged = markNewClasses(classes, typeFlags.data || [], eventFlags.data || [])
 
+    // Which classes belong to a repeating series. Two sources, in order of
+    // trust: the link table for classes created since migration 182, and a
+    // shape match for everything older.
+    const [linkRes, seriesRes] = await Promise.all([
+      ids.length
+        ? supabaseAdmin.from('group_x_series_events')
+            .select('abc_event_id, series_id').eq('club_number', club).in('abc_event_id', ids)
+        : Promise.resolve({ data: [] }),
+      supabaseAdmin.from('group_x_series')
+        .select('*').eq('club_number', club).is('canceled_at', null),
+    ])
+    const linkById = new Map((linkRes.data || []).map(r => [r.abc_event_id, r.series_id]))
+    const liveSeries = seriesRes.data || []
+
     const nowIso = new Date().toISOString()
     res.json({
       classes: flagged.map(c => {
         const a = byId.get(c.event_id) || null
+        const linked = linkById.get(c.event_id) || null
+        // Only infer when there is no recorded link. An ambiguous shape --
+        // two live series the class could equally belong to -- returns
+        // nothing, so the UI degrades to a single-occurrence edit rather than
+        // rewriting the wrong series.
+        const guess = linked ? null : findSeriesForEvent(c, liveSeries)
         return {
           ...c,
           headcount: a ? a.headcount : null,
@@ -242,6 +262,8 @@ router.get('/classes', async (req, res) => {
           // needs-attendance strip. An unbooked placeholder slot is not a real
           // class, so it is never chased for a headcount.
           needs_attendance: !a && !c.unbooked && !!c.event_timestamp && c.event_timestamp < nowIso,
+          series_id: linked || guess?.series?.id || null,
+          series_source: linked ? 'linked' : (guess?.series ? 'inferred' : null),
         }
       }),
     })
