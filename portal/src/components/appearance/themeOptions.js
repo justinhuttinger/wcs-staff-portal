@@ -14,7 +14,9 @@ export const THEME_OPTIONS = [
     desc: "Today's portal look.",
     swatch: {
       bg: '#f4f5f7', surface: '#ffffff', ink: '#1a1a2e', red: '#e53e3e',
-      radius: '10px', font: "'Inter', sans-serif", upper: false,
+      // Square, matching the theme itself. A preview still drawing 10px corners
+      // would be advertising a look the theme no longer has.
+      radius: '0px', font: "'Inter', sans-serif", upper: false,
     },
   },
   {
