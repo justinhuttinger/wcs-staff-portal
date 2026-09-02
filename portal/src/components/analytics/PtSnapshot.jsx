@@ -4,6 +4,29 @@ import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { StatCard, TrendPanel, BreakdownPanel } from './snapshotParts'
 import PendingOutcomePanel from './PendingOutcomePanel'
+import Drillable from './Drillable'
+
+// The club-wide versions of the Trainer Snapshot sets: the same rows with no
+// person filter. The Day One window is the APPOINTMENT date here, because
+// analytics_pt_snapshot counts on scheduled_date — the opposite of the
+// per-trainer card, which counts on the booking date. That difference is
+// exactly why the set takes the date field rather than choosing one.
+const DRILL = {
+  dayOnes:            { set: 'day-ones', title: 'Day Ones' },
+  dayOnesCompleted:   { set: 'day-ones', filter: 'completed', title: 'Completed Day Ones' },
+  dayOnesNoShow:      { set: 'day-ones', filter: 'no-show', title: 'No-showed Day Ones' },
+  dayOnesCancelled:   { set: 'day-ones', filter: 'cancelled', title: 'Cancelled Day Ones' },
+  dayOnesPending:     { set: 'day-ones-pending', title: 'Pending outcomes' },
+  dayOnesSold:        { set: 'day-ones', filter: 'sold', title: 'Day Ones sold' },
+  dayOnesNoSale:      { set: 'day-ones', filter: 'no-sale', title: 'Day Ones not sold' },
+  showRate:           { set: 'day-ones', filter: 'completed', title: 'Completed Day Ones' },
+  closeRate:          { set: 'day-ones', filter: 'sold', title: 'Day Ones sold' },
+  newClients:         { set: 'pt-sales', title: 'PT sales' },
+  resigns:            { set: 'pt-sales', title: 'PT sales' },
+  newValue:           { set: 'pt-sales', title: 'PT sold' },
+  lostClients:        { set: 'pt-losses', title: 'Deactivations' },
+  lostValue:          { set: 'pt-losses', title: 'Deactivations' },
+}
 
 // ---------------------------------------------------------------------------
 // PT Snapshot — Analytics (admin only)
@@ -70,9 +93,21 @@ export default function PtSnapshot({ startDate, endDate, locationSlug }) {
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
-        {(data?.stats || []).map(s => (
-          <StatCard key={s.key} stat={s} comparisonLabel={data?.meta?.comparisonLabel} />
-        ))}
+        {(data?.stats || []).map(s => {
+          const d = DRILL[s.key]
+          const card = <StatCard stat={s} comparisonLabel={data?.meta?.comparisonLabel} />
+          if (!d || !s.value) return <div key={s.key}>{card}</div>
+          return (
+            <Drillable
+              key={s.key}
+              set={d.set}
+              title={d.title}
+              params={{ start: startDate, end: endDate, clubs: locationSlug || 'all', filter: d.filter }}
+            >
+              {card}
+            </Drillable>
+          )
+        })}
       </div>
 
       {/* What became of the intros. All counts of one population, one scale. */}

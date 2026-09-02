@@ -2,6 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert')
 const {
   SETS, setKeys, clubNumbersFor, matchesPerson, groupSessionsIntoClients,
+  tenureMonths, LOST_STATUSES,
 } = require('./analyticsRecords')
 const { CLUBS, ACH_PAYMENT_METHOD } = require('./salespersonPerformance')
 
@@ -131,4 +132,38 @@ test('no sessions folds to no clients rather than throwing', () => {
 // number it was clicked from.
 test('ACH is the report own constant, not a pattern', () => {
   assert.equal(ACH_PAYMENT_METHOD, 'EFT')
+})
+
+// ---------------------------------------------------------------------------
+// The sets added for the club-wide snapshots.
+// ---------------------------------------------------------------------------
+
+test('the club-wide sets exist and are renderable', () => {
+  for (const key of ['lost-members', 'past-due', 'revenue']) {
+    assert.ok(SETS[key], `missing set: ${key}`)
+  }
+})
+
+// analytics_topline_window counts exactly these three as gone. A looser list
+// would open more rows than the card it was clicked from.
+test('a lost member is one of the report three statuses', () => {
+  assert.deepEqual(LOST_STATUSES, ['Cancelled', 'Expired', 'Return For Collection'])
+})
+
+test('tenure is whole months between joining and leaving', () => {
+  assert.equal(tenureMonths('2026-01-01', '2026-08-01'), 6)
+  assert.equal(tenureMonths('2026-08-01', '2026-08-15'), 0)
+})
+
+// A member with no join date on file has unknown tenure, not zero: zero would
+// read as "joined and left the same day", which is a different claim.
+test('an unknown date gives unknown tenure, not zero', () => {
+  assert.equal(tenureMonths(null, '2026-08-01'), null)
+  assert.equal(tenureMonths('2026-01-01', null), null)
+  assert.equal(tenureMonths('not a date', '2026-08-01'), null)
+})
+
+// Leaving before joining is bad data, not negative tenure.
+test('tenure never goes negative', () => {
+  assert.equal(tenureMonths('2026-08-01', '2026-01-01'), 0)
 })
