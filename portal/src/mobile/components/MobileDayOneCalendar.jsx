@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getDayOneTrackerAppointments } from '../../lib/api'
 import MobileLoading from './MobileLoading'
+import MobileEmptyState from './MobileEmptyState'
 
 function formatDate(dateStr) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
@@ -227,7 +228,7 @@ export default function MobileDayOneCalendar({ user }) {
         {!loading && view === 'day' && (
           <div className="space-y-2">
             {dayAppointments.length === 0 && (
-              <p className="text-text-muted text-sm py-12 text-center">No Day One appointments for this day</p>
+              <MobileEmptyState>No Day One appointments for this day</MobileEmptyState>
             )}
             {dayAppointments.map(apt => {
               const status = getStatus(apt)

@@ -201,8 +201,10 @@ export function MobileAnalyticsReport({ reportKey, user, startDate, endDate, loc
   const report = reportByKey[reportKey]
   if (!report) {
     return (
-      <div className="px-4 py-10 text-center text-sm text-text-muted">
-        That report is no longer available.
+      <div className="px-4 py-6">
+        <div className="bg-surface rounded-2xl border border-border shadow-sm px-4 py-8 text-center text-sm text-text-muted">
+          That report is no longer available.
+        </div>
       </div>
     )
   }
@@ -224,9 +226,19 @@ export function MobileAnalyticsReport({ reportKey, user, startDate, endDate, loc
       />
 
       <div className="overflow-x-auto">
-        {/* A floor width keeps a wide table readable inside the scroller rather
-            than crushed into the phone's width one character per column. */}
-        <div className="min-w-[340px]">
+        {/* w-max, NOT a fixed floor width.
+            A block child of a scroll container sizes to the CONTAINER, not to
+            the scrollable content, so every bg-surface card inside stopped at
+            the phone's width while the rows kept going. Scroll right on Lead
+            Sources and the count and percentage on the end of each bar were
+            hanging off the white card onto the club photo behind it — dark text
+            on a dark photograph. Every wide analytics report had it.
+
+            w-max makes this box as wide as its widest row, so the cards stretch
+            with it and the backing runs the whole way. min-w-full keeps a
+            narrow report filling the screen rather than shrinking to its
+            content. */}
+        <div className="w-max min-w-full">
           <Component
             user={user}
             isAdmin={user?.staff?.role === 'admin'}

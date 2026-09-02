@@ -93,6 +93,23 @@ const LOCATION_BACKGROUNDS = {
   medford: '/bg-medford.jpg',
 }
 
+/**
+ * A message with nothing else on the screen.
+ *
+ * ON A CARD, because Classic paints a club photo behind every view and these
+ * were bare dark text laid straight on it. The three of them are the only
+ * places in the app that render a sentence with no surface under it, and each
+ * is a dead end — the empty analytics gate, a desktop-only report, a bad route
+ * — so the one time somebody sees one is the one time it has to be readable.
+ */
+function StandaloneMessage({ children }) {
+  return (
+    <div className="mt-6 bg-surface rounded-2xl border border-border shadow-sm px-4 py-8 text-center text-sm text-text-muted">
+      {children}
+    </div>
+  )
+}
+
 function getActiveTab(route) {
   if (route === 'home' || route === '') return 'home'
   // Analytics is its own surface, not a Reports category, so it does not light
@@ -266,9 +283,7 @@ export default function MobileApp() {
         return (
           <div className="pt-4 px-4">
             <MobileHeader title="Analytics" onBack={() => navigate('home')} />
-            <div className="mt-16 text-center text-text-muted">
-              Analytics is available to corporate roles.
-            </div>
+            <StandaloneMessage>Analytics is available to corporate roles.</StandaloneMessage>
           </div>
         )
       }
@@ -613,14 +628,14 @@ export default function MobileApp() {
         return (
           <div className="pt-4 px-4">
             <MobileHeader title="PT Projections" onBack={() => navigate(parentRouteForReport(route.replace('reports/', '')))} />
-            <div className="mt-16 text-center text-text-muted">This report is best viewed on desktop.</div>
+            <StandaloneMessage>This report is best viewed on desktop.</StandaloneMessage>
           </div>
         )
       default:
         return (
           <div className="pt-4 px-4">
             <MobileHeader title="Not Found" />
-            <div className="mt-16 text-center text-text-muted">Page not found</div>
+            <StandaloneMessage>Page not found</StandaloneMessage>
           </div>
         )
     }

@@ -8,6 +8,7 @@ import {
 } from '../../lib/api'
 import SignaturePad from '../../components/SignaturePad'
 import MobileLoading from './MobileLoading'
+import MobileEmptyState from './MobileEmptyState'
 
 const ROLES = ['team_member', 'lead', 'manager', 'corporate', 'admin']
 
@@ -272,7 +273,7 @@ function WorkerList({ user, onSelectWorker, onLocationChange, actionLabel }) {
               <button onClick={fetchWorkers} className="px-4 py-2 text-xs font-semibold rounded-lg bg-wcs-red text-white">Retry</button>
             </div>
           ) : filtered.length === 0 ? (
-            <p className="text-center text-text-muted text-sm py-8">No employees found</p>
+            <MobileEmptyState>No employees found</MobileEmptyState>
           ) : (
             <div className="space-y-2">
               {filtered.map(w => (
@@ -491,7 +492,7 @@ function WorkerDetail({ worker, user, onBack }) {
           </div>
 
           {paychexDocs.length === 0 && localDocs.length === 0 && (
-            <p className="text-center text-text-muted text-sm py-8">No documents found for this employee</p>
+            <MobileEmptyState>No documents found for this employee</MobileEmptyState>
           )}
         </>
       )}
