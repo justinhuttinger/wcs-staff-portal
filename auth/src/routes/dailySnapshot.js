@@ -15,6 +15,7 @@ const { requireReportAccess, resolveRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { LOCATIONS, getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
+const { resolveDayOneCalendars } = require('../config/dayOneCalendars')
 const { parseLocationSlugParam, intersectWithAllowed } = require('../utils/locationSlug')
 const { getSkipList } = require('../utils/membershipSkipList')
 
@@ -31,24 +32,19 @@ const cache = {}
 const CAL_TTL = 60 * 60 * 1000
 const USERS_TTL = 10 * 60 * 1000
 
+// Day One calendars come from the shared allowlist in config/dayOneCalendars,
+// which is the same set the reconciler scans. This used to match any calendar
+// whose name CONTAINED "day one"/"dayone"/"day 1", which both missed the clubs
+// that run Day Ones under another name (Clackamas "Stretch", Milwaukie
+// "Kirstyn Pagano-Jackson's Calendar") and stood ready to absorb anything a club
+// happened to name that way. Two definitions of "which calendar is a Day One"
+// is one too many.
 async function getDayOneCalendars(loc) {
-  const cached = cache[`d1:${loc.id}`]
-  if (cached && Date.now() - cached.ts < CAL_TTL) return cached.value
-  const data = await ghlFetch('/calendars/', loc.apiKey, {
-    params: { locationId: loc.id },
-    version: CAL_VERSION,
-  })
-  const calendars = data.calendars || []
-  const dayOnes = calendars.filter(c => {
-    const name = (c.name || '').toLowerCase()
-    return name.includes('day one') || name.includes('dayone') || name.includes('day 1')
-  })
-  const value = {
+  const dayOnes = await resolveDayOneCalendars(loc)
+  return {
     calendarIds: dayOnes.map(c => c.id),
     groupId: dayOnes[0]?.groupId || null,
   }
-  cache[`d1:${loc.id}`] = { value, ts: Date.now() }
-  return value
 }
 
 async function getTourCalendars(loc) {
