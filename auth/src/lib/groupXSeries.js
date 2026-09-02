@@ -58,4 +58,58 @@ function expandSeries({ weekdays, start_time, starts_on, ends_on }) {
   return out
 }
 
-module.exports = { expandSeries, MAX_OCCURRENCES }
+// Which ABC classes belong to a series.
+//
+// ABC returns no series link on a class, so membership is inferred from shape:
+// same class type, same instructor, same wall-clock start, on one of the
+// series' weekdays, inside its live date range.
+//
+// This is the ONLY definition of that judgement. DELETE /series/:id used to
+// carry its own copy inline; a second copy is how the two drift apart.
+
+// The end of a series' live range.
+//
+// An open-ended series has ends_on NULL (migration 099) and records how far it
+// has actually been written in materialized_through. Reading ends_on directly
+// yields null, and every date comparison against null is false — which is
+// exactly how a cancel silently orphaned 4 Medford classes on 2026-08-28.
+function seriesWindow(series) {
+  return {
+    start: series.starts_on,
+    end: series.ends_on || series.materialized_through || null,
+  }
+}
+
+function matchesSeries(event, series) {
+  if (!event || !series || series.canceled_at) return false
+
+  const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})/.exec(String(event.event_timestamp_local || ''))
+  // An unparseable timestamp is unknown, not a match. Never guess membership.
+  if (!m) return false
+  const date = m[1]
+  const wall = `${m[2]}:${m[3]}`
+
+  if (event.event_type_id !== series.event_type_id) return false
+  if (event.employee_id !== series.employee_id) return false
+  if (wall !== String(series.start_time).slice(0, 5)) return false
+
+  const weekday = new Date(date + 'T00:00:00Z').getUTCDay()
+  if (!(series.weekdays || []).includes(weekday)) return false
+
+  const { start, end } = seriesWindow(series)
+  if (start && date < start) return false
+  if (end && date > end) return false
+  return true
+}
+
+// A shape can legitimately hit two live series. Returning either one would
+// rewrite the wrong classes, so say it is ambiguous and let the caller degrade
+// to a single-occurrence edit.
+function findSeriesForEvent(event, seriesList) {
+  const hits = (seriesList || []).filter(s => matchesSeries(event, s))
+  if (hits.length === 0) return null
+  if (hits.length > 1) return { series: null, ambiguous: true }
+  return { series: hits[0], ambiguous: false }
+}
+
+module.exports = { expandSeries, MAX_OCCURRENCES, matchesSeries, seriesWindow, findSeriesForEvent }

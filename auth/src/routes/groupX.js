@@ -25,13 +25,14 @@ const { Router } = require('express')
 const abc = require('../services/abcGroupX')
 const { isKnownClubNumber } = require('../lib/groupXClubs')
 const { buildLocalTimestamp, DATE_RE } = require('../lib/abcTime')
-const { expandSeries, MAX_OCCURRENCES } = require('../lib/groupXSeries')
+const { expandSeries, MAX_OCCURRENCES, matchesSeries, seriesWindow, findSeriesForEvent } = require('../lib/groupXSeries')
 const { OPEN_ENDED_HORIZON_DAYS } = require('../lib/scheduleTimes')
 const { padDate, toIsoDate } = require('../lib/abcTime')
 const { supabaseAdmin } = require('../services/supabase')
 const { publicCacheKeysForDates } = require('../lib/groupXPublic')
 const { aggregate } = require('../lib/groupXReport')
 const { markNewClasses } = require('../lib/groupXNewClasses')
+const { recordSeriesEvents, resolveLinkedSeriesId } = require('../lib/groupXSeriesLink')
 const memoryCache = require('../services/memoryCache')
 const authenticate = require('../middleware/auth')
 const { requireRole, roleLevel } = require('../middleware/role')
@@ -227,10 +228,42 @@ router.get('/classes', async (req, res) => {
     ])
     const flagged = markNewClasses(classes, typeFlags.data || [], eventFlags.data || [])
 
+    // Which classes belong to a repeating series. Two sources, in order of
+    // trust: the link table for classes created since migration 182, and a
+    // shape match for everything older.
+    const [linkRes, seriesRes] = await Promise.all([
+      ids.length
+        ? supabaseAdmin.from('group_x_series_events')
+            .select('abc_event_id, series_id').eq('club_number', club).in('abc_event_id', ids)
+        : Promise.resolve({ data: [] }),
+      supabaseAdmin.from('group_x_series')
+        .select('*').eq('club_number', club).is('canceled_at', null),
+    ])
+    // Both queries degrade to "no link data" instead of throwing: migration
+    // 182 is applied by hand AFTER this merges, so during the deploy-to-apply
+    // window the tables do not exist yet, and a 500 for the whole calendar
+    // would be a worse outcome than briefly running with linking disabled.
+    // Logging keeps that silent degradation visible in the server logs.
+    if (linkRes.error) console.error('[groupX] could not read group_x_series_events, links disabled:', linkRes.error.message)
+    if (seriesRes.error) console.error('[groupX] could not read group_x_series, series inference disabled:', seriesRes.error.message)
+    const linkById = new Map((linkRes.data || []).map(r => [r.abc_event_id, r.series_id]))
+    const liveSeries = seriesRes.data || []
+    const liveSeriesIds = new Set(liveSeries.map(s => s.id))
+
     const nowIso = new Date().toISOString()
     res.json({
       classes: flagged.map(c => {
         const a = byId.get(c.event_id) || null
+        // Only a link to a still-live series is trustworthy -- a cancelled
+        // series' link row is never cleaned up, so a stale one falls through
+        // to inference (already restricted to live series) instead of being
+        // returned as-is.
+        const linked = resolveLinkedSeriesId(linkById.get(c.event_id) || null, liveSeriesIds)
+        // Only infer when there is no recorded link. An ambiguous shape --
+        // two live series the class could equally belong to -- returns
+        // nothing, so the UI degrades to a single-occurrence edit rather than
+        // rewriting the wrong series.
+        const guess = linked ? null : findSeriesForEvent(c, liveSeries)
         return {
           ...c,
           headcount: a ? a.headcount : null,
@@ -241,6 +274,8 @@ router.get('/classes', async (req, res) => {
           // needs-attendance strip. An unbooked placeholder slot is not a real
           // class, so it is never chased for a headcount.
           needs_attendance: !a && !c.unbooked && !!c.event_timestamp && c.event_timestamp < nowIso,
+          series_id: linked || guess?.series?.id || null,
+          series_source: linked ? 'linked' : (guess?.series ? 'inferred' : null),
         }
       }),
     })
@@ -445,6 +480,11 @@ router.post('/series', requireEdit, async (req, res) => {
 
   const created = results.filter(r => r.ok).length
 
+  // Record which ABC classes this series produced. POST /series has had these
+  // ids in hand since it was written and dropped them; "change every class
+  // from here on" is what needs them.
+  const link_error = await recordSeriesEvents(b.club_number, series.id, results)
+
   // A new day of an existing class is normally added as a series, so the badge
   // has to apply to every occurrence it created, not just the first.
   let badge_error = null
@@ -472,6 +512,7 @@ router.post('/series', requireEdit, async (req, res) => {
     failed: results.length - created,
     occurrences: results,
     badge_error,
+    link_error,
     open_ended: openEnded,
   })
 })
@@ -518,7 +559,6 @@ router.delete('/series/:id', requireEdit, async (req, res) => {
   if (selErr || !series) return res.status(404).json({ error: 'series not found' })
 
   try {
-    const windowStart = from > series.starts_on ? from : series.starts_on
     // An open-ended series has ends_on NULL (migration 099); how far it has
     // actually been written to ABC is materialized_through. Using ends_on
     // directly made this whole block a no-op for open-ended series — the
@@ -526,8 +566,9 @@ router.delete('/series/:id', requireEdit, async (req, res) => {
     // without calling ABC, so the series was marked cancelled while every class
     // it had created stayed on the calendar forever. Real occurrence: 4 orphaned
     // Power Hour classes at Medford, 2026-08-28.
-    const windowEnd = series.ends_on || series.materialized_through
-    if (!windowEnd || windowStart > windowEnd) {
+    const { end: seriesEnd } = seriesWindow(series)
+    const windowStart = from > series.starts_on ? from : series.starts_on
+    if (!seriesEnd || windowStart > seriesEnd) {
       await supabaseAdmin
         .from('group_x_series')
         .update({ canceled_at: new Date().toISOString(), canceled_by: req.user?.email || 'unknown' })
@@ -535,13 +576,8 @@ router.delete('/series/:id', requireEdit, async (req, res) => {
       return res.json({ canceled: 0, failed: 0, results: [] })
     }
 
-    const existing = await abc.listClasses(series.club_number, windowStart, windowEnd)
-    const wall = String(series.start_time).slice(0, 5)
-    const targets = existing.filter(e =>
-      e.event_type_id === series.event_type_id &&
-      e.employee_id === series.employee_id &&
-      String(e.event_timestamp_local || '').slice(11, 16) === wall
-    )
+    const existing = await abc.listClasses(series.club_number, windowStart, seriesEnd)
+    const targets = existing.filter(e => matchesSeries(e, series))
 
     const results = []
     for (const t of targets) {
