@@ -81,4 +81,23 @@ function pairOccurrences(targets, occurrences) {
   return { paired, createOnly, cancelOnly }
 }
 
-module.exports = { seriesBelongsToClub, selectSeriesTargets, pairOccurrences }
+// Whether it is safe to run the disjoint cancels (occurrences on a date only
+// the OLD schedule has -- a weekday removed) after the disjoint creates
+// (occurrences on a date only the NEW schedule has -- a weekday added) have
+// already run.
+//
+// Those two sets are related only by being part of the same edit; nothing
+// pairs a given cancel with a given create the way applyClassEdit does for a
+// matched date. Without this check, a Mon->Tue edit where every Tuesday
+// create fails (ABC down, rejected slot) still cancels every Monday class --
+// the create-before-cancel rule was honoured *within* each set, but the sets
+// themselves were run back to back regardless of outcome, and the club is
+// left with an empty week. Skipping the cancels here is what actually
+// prevents that: a partial creation success still proceeds, since the
+// schedule is being changed, not emptied.
+function shouldCancelDisjoint({ createAttempted, createSucceeded }) {
+  if (!createAttempted) return true // nothing was meant to replace these -- a pure removal.
+  return createSucceeded > 0
+}
+
+module.exports = { seriesBelongsToClub, selectSeriesTargets, pairOccurrences, shouldCancelDisjoint }

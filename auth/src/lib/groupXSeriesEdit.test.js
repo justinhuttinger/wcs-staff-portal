@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { seriesBelongsToClub, selectSeriesTargets, pairOccurrences } = require('./groupXSeriesEdit')
+const { seriesBelongsToClub, selectSeriesTargets, pairOccurrences, shouldCancelDisjoint } = require('./groupXSeriesEdit')
 
 const baseSeries = {
   id: 'series-1',
@@ -181,4 +181,24 @@ test('pairOccurrences: nothing on either side is a no-op', () => {
   assert.deepStrictEqual(paired, [])
   assert.deepStrictEqual(createOnly, [])
   assert.deepStrictEqual(cancelOnly, [])
+})
+
+// ---------------------------------------------------------------------------
+// shouldCancelDisjoint -- the guard against emptying a week of the calendar
+// ---------------------------------------------------------------------------
+
+test('shouldCancelDisjoint: no creates were attempted -- a pure removal, cancels proceed', () => {
+  assert.strictEqual(shouldCancelDisjoint({ createAttempted: 0, createSucceeded: 0 }), true)
+})
+
+test('shouldCancelDisjoint: creates were attempted and every one failed -- cancels are skipped', () => {
+  assert.strictEqual(shouldCancelDisjoint({ createAttempted: 3, createSucceeded: 0 }), false)
+})
+
+test('shouldCancelDisjoint: creates were attempted and at least one succeeded -- cancels proceed', () => {
+  assert.strictEqual(shouldCancelDisjoint({ createAttempted: 3, createSucceeded: 1 }), true)
+})
+
+test('shouldCancelDisjoint: every create succeeded -- cancels proceed', () => {
+  assert.strictEqual(shouldCancelDisjoint({ createAttempted: 3, createSucceeded: 3 }), true)
 })

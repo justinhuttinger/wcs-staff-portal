@@ -35,7 +35,7 @@ const { markNewClasses } = require('../lib/groupXNewClasses')
 const { recordSeriesEvents, resolveLinkedSeriesId } = require('../lib/groupXSeriesLink')
 const { moveClassRefs } = require('../lib/groupXClassRefs')
 const { applyClassEdit } = require('../lib/applyClassEdit')
-const { seriesBelongsToClub, selectSeriesTargets, pairOccurrences } = require('../lib/groupXSeriesEdit')
+const { seriesBelongsToClub, selectSeriesTargets, pairOccurrences, shouldCancelDisjoint } = require('../lib/groupXSeriesEdit')
 const memoryCache = require('../services/memoryCache')
 const authenticate = require('../middleware/auth')
 const { requireRole, roleLevel } = require('../middleware/role')
@@ -762,6 +762,13 @@ router.put('/series/:id/from/:date', requireEdit, async (req, res) => {
 
     const results = []        // POST /series-shaped per-occurrence outcomes
     const createdLinkRows = [] // feeds recordSeriesEvents for the new occurrences
+    // created/canceled are tallied by which ABC operation actually happened,
+    // not by occurrence-level ok/fail: a paired edit's "ok" bundles one
+    // create AND one cancel, and a bare weekday-removal's "ok" is a cancel
+    // with no create at all. Conflating the two used to make a pure removal
+    // report `created: 3` for a batch that created nothing.
+    let createdCount = 0
+    let canceledCount = 0
 
     // Matched by date: the only case with an obvious old class to inherit
     // badges/links/attendance from, so it is the only path that runs
@@ -790,14 +797,20 @@ router.put('/series/:id/from/:date', requireEdit, async (req, res) => {
         // failure -- same tradeoff PUT /classes/:eventId makes.
         results.push({ date: occ.date, ok: false, event_id: r.eventId, error: `created but the old class could not be removed: ${r.error}` })
         createdLinkRows.push({ date: occ.date, ok: true, event_id: r.eventId })
+        createdCount++
       } else {
         results.push({ date: occ.date, ok: true, event_id: r.eventId, error: null })
         createdLinkRows.push({ date: occ.date, ok: true, event_id: r.eventId })
+        createdCount++
+        canceledCount++
       }
     }
 
     // A weekday added to the series: a plain create, same call POST /series
-    // makes per occurrence.
+    // makes per occurrence. Tracked separately from paired creates so the
+    // cancel-below guard can tell whether THIS batch's replacements landed.
+    let createOnlyAttempted = 0
+    let createOnlySucceeded = 0
     for (const occ of createOnly) {
       const r = await abc.createClass(club, {
         event_type_id: b.event_type_id,
@@ -806,16 +819,36 @@ router.put('/series/:id/from/:date', requireEdit, async (req, res) => {
         training_level_id: b.training_level_id || null,
       })
       results.push({ date: occ.date, ok: r.ok, event_id: r.event_id, error: r.error })
-      if (r.ok) createdLinkRows.push({ date: occ.date, ok: true, event_id: r.event_id })
+      createOnlyAttempted++
+      if (r.ok) {
+        createOnlySucceeded++
+        createdCount++
+        createdLinkRows.push({ date: occ.date, ok: true, event_id: r.event_id })
+      }
     }
 
     // A weekday removed from the series: a plain cancel, same call DELETE
-    // /series makes per occurrence.
+    // /series makes per occurrence -- UNLESS this same edit also tried to add
+    // a weekday and every one of those creates failed. createOnly and
+    // cancelOnly are related only by both belonging to this edit, not by
+    // date, so nothing else enforces create-before-cancel between them. A
+    // Mon->Tue edit where every Tuesday create fails must not still cancel
+    // every Monday class -- that is the exact empty-week outcome this whole
+    // feature exists to prevent. A partial creation success still proceeds:
+    // the schedule is being changed, not emptied.
+    const cancelDisjoint = shouldCancelDisjoint({ createAttempted: createOnlyAttempted, createSucceeded: createOnlySucceeded })
     const canceledEventIds = []
     for (const t of cancelOnly) {
+      if (!cancelDisjoint) {
+        results.push({ date: t.date, ok: false, event_id: null, error: 'kept: none of the new classes for this edit could be created' })
+        continue
+      }
       const r = await abc.cancelClass(club, t.event_id)
       results.push({ date: t.date, ok: r.ok, event_id: null, error: r.error })
-      if (r.ok) canceledEventIds.push(t.event_id)
+      if (r.ok) {
+        canceledCount++
+        canceledEventIds.push(t.event_id)
+      }
     }
 
     // Link the newly created occurrences to this series so a later edit
@@ -834,27 +867,59 @@ router.put('/series/:id/from/:date', requireEdit, async (req, res) => {
       if (delErr) console.error('[groupX] could not drop stale series links:', delErr.message)
     }
 
-    // Update the series row to the new shape so the nightly top-up (open-
-    // ended series only) keeps extending it on the new schedule. instructor_
-    // name falls back to the current value -- the column is NOT NULL and the
-    // edit form does not always resend a display name for a bare
-    // employee_id change.
-    const { error: updErr } = await supabaseAdmin
-      .from('group_x_series')
-      .update({
-        event_type_id: b.event_type_id,
-        employee_id: b.employee_id,
-        instructor_name: b.instructor_name || series.instructor_name,
-        weekdays: b.weekdays,
-        start_time: b.start_time,
-        training_level_id: b.training_level_id || null,
-        class_name: b.class_name,
-        materialized_through: through,
-      })
-      .eq('id', series.id)
-    if (updErr) console.error('[groupX] could not update series row:', updErr.message)
+    const failed = results.length - results.filter(r => r.ok).length
 
-    const created = results.filter(r => r.ok).length
+    // Update the series row to the new shape ONLY when every occurrence in
+    // this edit actually succeeded. After a partial rebuild the row would
+    // otherwise describe the NEW shape while a leftover occurrence still
+    // sits on the OLD one -- matchesSeries stops recognising it, and unless
+    // it happens to be linked (migration 182), it becomes unrecoverable. A
+    // half-applied edit must not silently redefine the series; the operator
+    // retries instead, against the still-accurate old definition.
+    let series_updated = false
+    let series_update_error = null
+    if (failed === 0) {
+      // Duration is read from the ABC event type, not stored input, so
+      // changing the type makes the stored duration_minutes describe a class
+      // that no longer exists here. Nothing reads this column today, but a
+      // confidently wrong number is worse than a resolved one -- and the
+      // column is NOT NULL, so this looks the new value up rather than
+      // clearing it.
+      const durationUpdate = {}
+      if (b.event_type_id !== series.event_type_id) {
+        try {
+          const types = await abc.listClassTypes(club)
+          const type = types.find(t => t.event_type_id === b.event_type_id)
+          if (Number.isInteger(type?.duration_minutes)) durationUpdate.duration_minutes = type.duration_minutes
+          else console.warn('[groupX] new event type has no resolvable duration; leaving duration_minutes as-is:', b.event_type_id)
+        } catch (err) {
+          console.warn('[groupX] could not resolve new duration for series update; leaving duration_minutes as-is:', err.message)
+        }
+      }
+
+      const { error: updErr } = await supabaseAdmin
+        .from('group_x_series')
+        .update({
+          event_type_id: b.event_type_id,
+          employee_id: b.employee_id,
+          instructor_name: b.instructor_name || series.instructor_name,
+          weekdays: b.weekdays,
+          start_time: b.start_time,
+          training_level_id: b.training_level_id || null,
+          class_name: b.class_name,
+          materialized_through: through,
+          ...durationUpdate,
+        })
+        .eq('id', series.id)
+      if (updErr) {
+        console.error('[groupX] could not update series row:', updErr.message)
+        series_update_error = updErr.message
+      } else {
+        series_updated = true
+      }
+    } else {
+      series_update_error = `${failed} occurrence(s) failed, so the series definition was left unchanged. Fix and retry once every occurrence succeeds.`
+    }
 
     // Union of OLD and NEW dates: a weekday change that only invalidated the
     // new dates would leave deleted classes on the in-gym TVs for up to the
@@ -863,7 +928,15 @@ router.put('/series/:id/from/:date', requireEdit, async (req, res) => {
     invalidatePublicBoard(club, [...allDates])
 
     // Partial failure is reported as partial failure. Never as success.
-    res.json({ created, failed: results.length - created, occurrences: results, link_error })
+    res.json({
+      created: createdCount,
+      canceled: canceledCount,
+      failed,
+      occurrences: results,
+      link_error,
+      series_updated,
+      series_update_error,
+    })
   } catch (err) { fail(res, err, 'PUT /series/from') }
 })
 
