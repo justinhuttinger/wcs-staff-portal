@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useChartWidth } from './useChartWidth'
 import { colorFor, fmtInt, fmtPct, fmtMoney, fmtMonth } from './chartPalette'
 
@@ -195,48 +196,231 @@ export function TrendPanel({ title, months, series, kind = 'count' }) {
   )
 }
 
+// Person picker geometry. Same approach as LocationMultiSelect, for the reasons
+// written up there: fixed coordinates taken from the input's viewport rect,
+// portalled to body so no ancestor transform can re-anchor it, clamped to the
+// viewport, and flipped above the input when there is no room below.
+const LIST_MIN_WIDTH = 240
+const LIST_MARGIN = 8
+const LIST_GAP = 4
+const LIST_MIN_HEIGHT = 160
+
+const normName = (v) => String(v || '').trim().replace(/\s+/g, ' ').toLowerCase()
+
 /**
- * A searchable person box.
+ * Type-ahead picker for one person.
  *
- * A plain <select> is unusable once the roster passes a couple of dozen — the
- * trainer list is 54 — so this is a text input backed by a <datalist>: type a
- * few letters and the browser filters. Native, so it keeps keyboard and screen
- * reader behaviour for free, and needs no click-outside handling.
+ * OUR OWN LIST, NOT <datalist>. This was a bare input with a datalist, so the
+ * dropdown was whatever Chrome or Safari felt like drawing: a different shape
+ * and type size in each, no styling hook of any kind, and on a phone a cramped
+ * native sheet that ignored the app entirely. It looked like the browser's
+ * control sitting in our page, because it was.
  *
- * The value is only committed when it MATCHES a real name, so half-typed text
- * never fires a request for a person who does not exist. Matching is
+ * The list is ours now — our surface, border, hover and selected states, sized
+ * and spaced like the rest of the portal — and it inherits the theme, Press and
+ * the square Classic corners included, because it is built from the same tokens
+ * as everything else.
+ *
+ * A combobox rather than a select: a plain <select> is unusable once the roster
+ * passes a couple of dozen and the trainer list is 54, so typing filters and the
+ * arrow keys walk what is left.
+ *
+ * The value is still only committed when it MATCHES a real name, so half-typed
+ * text never fires a request for a person who does not exist. Matching stays
  * case-insensitive and whitespace-tolerant, because nobody types two spaces the
  * way the source data sometimes stores them.
  */
 export function PersonSearch({ label, people, value, onChange, placeholder, listId }) {
   const [text, setText] = useState(value || '')
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+  const [coords, setCoords] = useState(null)
+  const inputRef = useRef(null)
+  const listRef = useRef(null)
 
   // Follow the committed value when it changes from outside (cleared, swapped).
   useEffect(() => { setText(value || '') }, [value])
 
-  const norm = (v) => String(v || '').trim().replace(/\s+/g, ' ').toLowerCase()
+  // Typing filters. A committed value does not, or picking someone would
+  // immediately narrow the list to just them and hide everyone else.
+  const matches = useMemo(() => {
+    const q = normName(text)
+    if (!q || q === normName(value)) return people
+    return people.filter(p => normName(p).includes(q))
+  }, [people, text, value])
 
-  function commit(next) {
-    setText(next)
-    const hit = people.find(p => norm(p) === norm(next))
-    if (hit) onChange(hit)
-    else if (next === '') onChange('')
+  // Keep the highlight on the list rather than pointing past the end of it.
+  useEffect(() => { setActive(0) }, [text, open])
+
+  useEffect(() => {
+    if (!open) return
+    function place() {
+      const el = inputRef.current
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      // At least as wide as the input, wider when the input is narrow, never
+      // wider than the screen — which is what makes this work on a phone.
+      const width = Math.min(Math.max(r.width, LIST_MIN_WIDTH), vw - LIST_MARGIN * 2)
+      const left = Math.max(LIST_MARGIN, Math.min(r.left, vw - width - LIST_MARGIN))
+      const below = vh - r.bottom - LIST_MARGIN
+      const above = r.top - LIST_MARGIN
+      const openUp = below < LIST_MIN_HEIGHT && above > below
+      setCoords({
+        left,
+        width,
+        top: openUp ? undefined : r.bottom + LIST_GAP,
+        bottom: openUp ? vh - r.top + LIST_GAP : undefined,
+        maxHeight: Math.max(LIST_MIN_HEIGHT, (openUp ? above : below) - LIST_GAP),
+      })
+    }
+    place()
+    // Capture phase, so a scroll inside any ancestor repositions it too.
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => {
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    function onDown(e) {
+      if (listRef.current && listRef.current.contains(e.target)) return
+      if (inputRef.current && inputRef.current.contains(e.target)) return
+      closeList()
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Closing always puts the committed name back. Half a typed name left sitting
+  // in a box that is no longer filtering reads as a selection that was made,
+  // and it was not.
+  function closeList() {
+    setOpen(false)
+    setText(value || '')
   }
+
+  function pick(name) {
+    onChange(name)
+    setText(name)
+    setOpen(false)
+  }
+
+  function onKeyDown(e) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (!open) { setOpen(true); return }
+      if (matches.length === 0) return
+      const step = e.key === 'ArrowDown' ? 1 : -1
+      setActive(i => (i + step + matches.length) % matches.length)
+      return
+    }
+    if (e.key === 'Enter') {
+      if (open && matches[active]) {
+        e.preventDefault()
+        pick(matches[active])
+      }
+      return
+    }
+    if (e.key === 'Escape') {
+      if (open) { e.preventDefault(); closeList() }
+      return
+    }
+    // Tab is a move, not a choice: it commits nothing and gets out of the way.
+    if (e.key === 'Tab' && open) closeList()
+  }
+
+  const listboxId = (listId || 'person') + '-listbox'
 
   return (
     <label className="flex items-center gap-2 text-[11px] font-semibold text-text-muted uppercase tracking-wide">
       {label}
-      <input
-        type="text"
-        list={listId}
-        value={text}
-        placeholder={placeholder || 'Search a name'}
-        onChange={e => commit(e.target.value)}
-        className="px-2.5 py-1.5 rounded-lg text-xs bg-bg border border-border text-text-primary normal-case tracking-normal font-medium min-w-[190px]"
-      />
-      <datalist id={listId}>
-        {people.map(p => <option key={p} value={p} />)}
-      </datalist>
+      <span className="relative inline-flex items-center">
+        <input
+          ref={inputRef}
+          type="text"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listboxId}
+          aria-autocomplete="list"
+          aria-activedescendant={open && matches[active] ? listboxId + '-' + active : undefined}
+          autoComplete="off"
+          value={text}
+          placeholder={placeholder || 'Search a name'}
+          onChange={e => { setText(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+          className="px-2.5 py-1.5 pr-7 rounded-lg text-xs bg-bg border border-border text-text-primary normal-case tracking-normal font-medium min-w-[190px] w-full"
+        />
+        {/* Clearing is a real action here: the snapshot shows nothing until
+            somebody is chosen, so getting back to "nobody" has to be one tap
+            rather than selecting the text and deleting it. */}
+        {value ? (
+          <button
+            type="button"
+            onClick={() => { onChange(''); setText(''); setOpen(false) }}
+            aria-label={'Clear ' + (label || 'selection')}
+            className="absolute right-1.5 w-4 h-4 flex items-center justify-center text-text-muted hover:text-wcs-red transition-colors"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3" aria-hidden="true">
+              <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        ) : (
+          <span className="absolute right-2 text-text-muted pointer-events-none" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </span>
+        )}
+      </span>
+
+      {open && coords && createPortal(
+        <div
+          ref={listRef}
+          id={listboxId}
+          role="listbox"
+          className="fixed z-[100] bg-surface border border-border rounded-lg shadow-lg overflow-y-auto py-1"
+          style={{
+            left: coords.left,
+            width: coords.width,
+            top: coords.top,
+            bottom: coords.bottom,
+            maxHeight: coords.maxHeight,
+          }}
+        >
+          {matches.length === 0 ? (
+            <p className="px-3 py-2.5 text-xs text-text-muted normal-case tracking-normal font-medium">
+              Nobody matches that name.
+            </p>
+          ) : matches.map((p, i) => {
+            const selected = normName(p) === normName(value)
+            return (
+              <button
+                key={p}
+                id={listboxId + '-' + i}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                // mousedown rather than click: the input's blur would otherwise
+                // close the list before the click ever landed.
+                onMouseDown={e => { e.preventDefault(); pick(p) }}
+                onMouseEnter={() => setActive(i)}
+                className={'w-full text-left px-3 py-2.5 text-xs normal-case tracking-normal font-medium transition-colors '
+                  + (i === active ? 'bg-bg ' : '')
+                  + (selected ? 'text-wcs-red font-bold' : 'text-text-primary')}
+              >
+                {p}
+              </button>
+            )
+          })}
+        </div>,
+        document.body
+      )}
     </label>
   )
 }
