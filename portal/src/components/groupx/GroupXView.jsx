@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../../lib/api'
-import { startOfWeek, addDays, toISODate, fmtTime12, parseLocalTimestamp, MONTH_LABELS } from '../../lib/weekGrid'
+import { startOfWeekMonday, addDays, toISODate, fmtTime12, parseLocalTimestamp, MONTH_LABELS } from '../../lib/weekGrid'
 import WeekGrid from './WeekGrid'
 import CreateClassModal from './CreateClassModal'
 import SeriesList from './SeriesList'
@@ -27,7 +27,7 @@ export default function GroupXView({ canEdit = false }) {
   // Distinguishes "not fetched yet" from "fetched, and there are none".
   const [loadedClubs, setLoadedClubs] = useState(false)
   const [club, setClub] = useState(null)
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
+  const [weekStart, setWeekStart] = useState(() => startOfWeekMonday(new Date()))
   const [classes, setClasses] = useState([])
   const [classTypes, setClassTypes] = useState([])
   const [instructors, setInstructors] = useState([])
@@ -220,7 +220,7 @@ export default function GroupXView({ canEdit = false }) {
         loading={loading}
         onPrevWeek={() => setWeekStart(addDays(weekStart, -7))}
         onNextWeek={() => setWeekStart(addDays(weekStart, 7))}
-        onThisWeek={() => setWeekStart(startOfWeek(new Date()))}
+        onThisWeek={() => setWeekStart(startOfWeekMonday(new Date()))}
         onClassClick={setSelected}
         onSlotClick={canEdit ? (slot => setCreateOpen(slot)) : undefined}
       />

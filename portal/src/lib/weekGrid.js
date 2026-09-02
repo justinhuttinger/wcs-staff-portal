@@ -21,6 +21,25 @@ export function startOfWeek(d) {
   return out
 }
 
+// Monday-anchored week, for the Group X and Courts & Pool calendars. They match
+// the printed sheet and the public TV board, both of which are Monday-first.
+//
+// Separate from startOfWeek rather than a flag on it: PT Scheduler is in
+// production on the Sunday-anchored version and must not move as a side effect.
+//
+// NOTE: startOfPrintWeek in printWeek.js implements the same Monday anchor with
+// a different formula. Both should be collapsed into one; this branch leaves them
+// separate to keep changes focused.
+export function startOfWeekMonday(d) {
+  const out = new Date(d)
+  out.setHours(0, 0, 0, 0)
+  // getDay() is 0 for Sunday, which belongs to the week that began six days
+  // earlier, not the one starting tomorrow.
+  const back = (out.getDay() + 6) % 7
+  out.setDate(out.getDate() - back)
+  return out
+}
+
 export function addDays(d, n) {
   const out = new Date(d)
   out.setDate(out.getDate() + n)

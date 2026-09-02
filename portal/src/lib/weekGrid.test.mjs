@@ -1,7 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 import {
-  startOfWeek, addDays, toISODate, fmtHour, fmtTime12, parseLocalTimestamp, layoutLanes,
+  startOfWeek, startOfWeekMonday, addDays, toISODate, fmtHour, fmtTime12, parseLocalTimestamp, layoutLanes,
   DAY_START_HOUR, DAY_END_HOUR, GRID_HEIGHT_PX, displayClassName, durationLabel, dayWindow,
 } from './weekGrid.js'
 
@@ -16,6 +19,51 @@ test('startOfWeek zeroes the time so week comparisons are stable', () => {
   const s = startOfWeek(new Date(2026, 6, 30, 23, 59, 59))
   assert.equal(s.getHours(), 0)
   assert.equal(s.getMinutes(), 0)
+})
+
+// --- startOfWeekMonday ------------------------------------------------------
+// Group X and Courts & Pool anchor here so the on-screen grid matches the
+// printed sheet and the public TV board, both Monday-first. startOfWeek stays
+// Sunday-anchored underneath -- PT Scheduler depends on it and must not move.
+
+test('startOfWeekMonday anchors to Monday from a midweek day', () => {
+  // Sep 2 2026 is a Wednesday; Aug 31 is that week's Monday.
+  assert.equal(toISODate(startOfWeekMonday(new Date(2026, 8, 2, 12))), '2026-08-31')
+})
+
+test('startOfWeekMonday on a Sunday goes back six days, not forward one', () => {
+  // Sep 6 2026 is a Sunday. A naive `getDay() - 1` would jump forward to the
+  // following Monday instead of landing on the week that is already underway.
+  assert.equal(toISODate(startOfWeekMonday(new Date(2026, 8, 6, 12))), '2026-08-31')
+})
+
+test('startOfWeekMonday on a Monday is that same Monday', () => {
+  assert.equal(toISODate(startOfWeekMonday(new Date(2026, 7, 31, 12))), '2026-08-31')
+})
+
+test('startOfWeekMonday crosses a year boundary with Sunday as the anchor day', () => {
+  // Jan 3 2027 is a Sunday. Its week began on Dec 28 2026 (a Monday).
+  // This combines two edge cases: year rollover and Sunday-as-anchor.
+  assert.equal(toISODate(startOfWeekMonday(new Date(2027, 0, 3, 12))), '2026-12-28')
+})
+
+test('startOfWeek is unchanged and still anchors to Sunday', () => {
+  // Guard against a future edit re-pointing the shared helper: PT Scheduler is
+  // in production on the Sunday-anchored version and must not move as a
+  // side effect of this task.
+  assert.equal(toISODate(startOfWeek(new Date(2026, 8, 2, 12))), '2026-08-30')
+})
+
+// --- WeekGrid day-header labelling -------------------------------------------
+// Source-text assertion, in the style of backButton.test.mjs: labelling the
+// header by column INDEX hard-wires the grid to a Sunday start, which lies
+// about the dates as soon as a caller anchors the week on Monday instead.
+
+test('WeekGrid labels day headers from the column date, not its index', () => {
+  const here = dirname(fileURLToPath(import.meta.url))
+  const src = readFileSync(join(here, '..', 'components', 'groupx', 'WeekGrid.jsx'), 'utf8')
+  assert.match(src, /WEEKDAY_LABELS\[d\.getDay\(\)\]/)
+  assert.doesNotMatch(src, /WEEKDAY_LABELS\[i\]/)
 })
 
 test('addDays crosses month and year boundaries', () => {
