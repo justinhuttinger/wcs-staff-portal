@@ -64,10 +64,12 @@ export function MobileAnalyticsHome({ locationSlug, onOpen }) {
   }
 
   return (
-    // -mx-4 cancels the route's own padding so the list is genuinely full width.
-    // A stacked menu that stops short of the screen edge reads as a card with
-    // its corners filed off.
-    <div className="-mx-4 pb-6 bg-surface border-y border-border">
+    // No negative margin: the route gives this component the full width and
+    // pads only its own header. The earlier -mx-4 was trying to escape a px-4
+    // wrapper, and could not — MobileReportShell hands its children an
+    // overflow-y-auto box, and an element with overflow on one axis gets it on
+    // the other too, so the bleed was clipped and left a sideways scroll.
+    <div className="pb-6 bg-surface border-y border-border">
       <p className="px-4 pt-4 pb-2 text-sm font-bold text-text-primary">
         Browse Reports
       </p>

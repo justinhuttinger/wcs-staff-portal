@@ -275,8 +275,17 @@ export default function MobileApp() {
       const reportKey = route === 'analytics' ? null : route.slice('analytics/'.length)
       if (!reportKey) {
         return (
-          <div className="pt-4 px-4">
-            <MobileHeader title="Analytics" subtitle="Select a report" onBack={() => navigate('home')} />
+          // Padding on the HEADER, not on the whole route, so the picker below
+          // can run edge to edge. Same structure the report route below uses.
+          // Wrapping everything in px-4 and letting the list pull back out with
+          // a negative margin does not work: MobileReportShell hands its
+          // children an overflow-y-auto box, and an element with overflow on one
+          // axis gets overflow on the other too, so the bleed was clipped and
+          // left a sideways scroll instead.
+          <div className="pt-4">
+            <div className="px-4">
+              <MobileHeader title="Analytics" subtitle="Select a report" onBack={() => navigate('home')} />
+            </div>
             <MobileReportShell title="Analytics" user={user} hideDateRange>
               {({ locationSlug }) => (
                 <MobileAnalyticsHome
