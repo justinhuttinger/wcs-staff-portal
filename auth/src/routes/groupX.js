@@ -35,6 +35,7 @@ const { markNewClasses } = require('../lib/groupXNewClasses')
 const { recordSeriesEvents, resolveLinkedSeriesId } = require('../lib/groupXSeriesLink')
 const { moveClassRefs } = require('../lib/groupXClassRefs')
 const { applyClassEdit } = require('../lib/applyClassEdit')
+const { seriesBelongsToClub, selectSeriesTargets, pairOccurrences } = require('../lib/groupXSeriesEdit')
 const memoryCache = require('../services/memoryCache')
 const authenticate = require('../middleware/auth')
 const { requireRole, roleLevel } = require('../middleware/role')
@@ -613,6 +614,257 @@ router.get('/series', async (req, res) => {
     if (error) throw new Error(error.message)
     res.json({ series: data || [] })
   } catch (err) { fail(res, err, 'GET /series') }
+})
+
+// ---------------------------------------------------------------------------
+// Series-forward edit: rewrite every occurrence of a series from one date
+// onward. ABC has no event-update endpoint, so exactly like PUT
+// /classes/:eventId this is create-then-cancel per occurrence, just fanned
+// out. Same two-step shape as /series/preview + /series: a dry run that
+// returns the exact plan, and a confirmed write that reports partial failure
+// as partial failure, never as success.
+// ---------------------------------------------------------------------------
+
+// Loads the series and refuses anything that is not, right now, this
+// caller's own live series at the club they claim. Supabase here is
+// service-role with no RLS, so this check IS the access control -- loading a
+// series by id alone and building rows from the request body is a
+// cross-tenant write (the mistake already shipped once on the Courts & Pool
+// side: someone holding another club's series UUID could move that club's
+// schedule into their own).
+//
+// A club mismatch and a caller who is not assigned to that club both come
+// back as the same 404 "series not found". Answering 403 for the mismatch
+// case would confirm the series id is real, just not theirs -- exactly the
+// confirmation a cross-tenant probe is looking for.
+async function loadOwnedSeries(req, res, seriesId, claimedClub) {
+  const { data: series, error } = await supabaseAdmin
+    .from('group_x_series')
+    .select('*')
+    .eq('id', seriesId)
+    .single()
+  if (error || !series || !seriesBelongsToClub(series, claimedClub) || !canUseClub(req, series.club_number)) {
+    res.status(404).json({ error: 'series not found' })
+    return null
+  }
+  return series
+}
+
+function requireSeriesEditBody(b) {
+  if (!Array.isArray(b.weekdays) || b.weekdays.length === 0) return 'pick at least one day of the week'
+  if (!b.event_type_id || !b.employee_id || !b.class_name || !b.start_time) {
+    return 'event_type_id, employee_id, class_name and start_time are required'
+  }
+  return null
+}
+
+// How far the new schedule is expanded. Closed-ended series keep their own
+// end date; an open-ended one (ends_on NULL) gets the same rolling horizon
+// POST /series gives a brand-new open-ended series.
+function seriesEditThrough(series, fromDate) {
+  return series.ends_on || padDate(fromDate, OPEN_ENDED_HORIZON_DAYS)
+}
+
+// Never edit a past occurrence, even if the caller passes a past date in the
+// URL -- the same guard applyClassEdit enforces per single class, applied
+// here before anything is looked up.
+function clampToToday(date) {
+  const today = toIsoDate(new Date())
+  return date < today ? today : date
+}
+
+// The classes this edit replaces, from `fromDate` onward -- shared by
+// preview and apply so they can never compute a different answer. That
+// exact split (preview reading a param apply didn't require) is what shipped
+// a preview route stuck at 400 on the Courts & Pool side.
+async function findSeriesTargets(series, fromDate) {
+  const { data: linkedRows, error: linkErr } = await supabaseAdmin
+    .from('group_x_series_events')
+    .select('abc_event_id, event_date')
+    .eq('series_id', series.id)
+    .gte('event_date', fromDate)
+  if (linkErr) throw new Error(linkErr.message)
+
+  const { end: seriesEnd } = seriesWindow(series)
+  let abcEvents = []
+  if (seriesEnd && fromDate <= seriesEnd) {
+    abcEvents = await abc.listClasses(series.club_number, fromDate, seriesEnd)
+  }
+  return selectSeriesTargets({ series, fromDate, linkedRows: linkedRows || [], abcEvents })
+}
+
+// POST /group-x/series/:id/edit-preview/:date — dry run, no writes anywhere.
+router.post('/series/:id/edit-preview/:date', requireEdit, async (req, res) => {
+  const b = req.body || {}
+  if (!DATE_RE.test(req.params.date || '')) {
+    return res.status(400).json({ error: 'date must be YYYY-MM-DD' })
+  }
+  const badBody = requireSeriesEditBody(b)
+  if (badBody) return res.status(400).json({ error: badBody })
+
+  const series = await loadOwnedSeries(req, res, req.params.id, b.club_number)
+  if (!series) return
+
+  const fromDate = clampToToday(req.params.date)
+  const through = seriesEditThrough(series, fromDate)
+
+  let occurrences = []
+  try {
+    if (!(through < fromDate)) {
+      occurrences = expandSeries({ weekdays: b.weekdays, start_time: b.start_time, starts_on: fromDate, ends_on: through })
+    }
+  } catch (err) {
+    return res.status(400).json({ error: err.message })
+  }
+
+  try {
+    const targets = await findSeriesTargets(series, fromDate)
+    res.json({ count: occurrences.length, occurrences, replacing: targets.length })
+  } catch (err) { fail(res, err, 'POST /series/edit-preview') }
+})
+
+// PUT /group-x/series/:id/from/:date — apply the new shape from that date on.
+//
+// Targets and new occurrences are reconciled by date (pairOccurrences): a
+// date on both sides is one occurrence's edit -- create the replacement,
+// cancel the original, reusing applyClassEdit's ordering and its bookkeeping
+// move exactly as PUT /classes/:eventId does. A date only among the new
+// occurrences is a plain create (a weekday added); a date only among the old
+// targets is a plain cancel (a weekday removed). Sequential throughout: ABC
+// is a rate-limited production API, same as POST /series.
+router.put('/series/:id/from/:date', requireEdit, async (req, res) => {
+  const b = req.body || {}
+  if (!DATE_RE.test(req.params.date || '')) {
+    return res.status(400).json({ error: 'date must be YYYY-MM-DD' })
+  }
+  const badBody = requireSeriesEditBody(b)
+  if (badBody) return res.status(400).json({ error: badBody })
+
+  const series = await loadOwnedSeries(req, res, req.params.id, b.club_number)
+  if (!series) return
+
+  const fromDate = clampToToday(req.params.date)
+  const through = seriesEditThrough(series, fromDate)
+  const club = String(series.club_number)
+
+  let occurrences = []
+  try {
+    if (!(through < fromDate)) {
+      occurrences = expandSeries({ weekdays: b.weekdays, start_time: b.start_time, starts_on: fromDate, ends_on: through })
+    }
+  } catch (err) {
+    return res.status(400).json({ error: err.message })
+  }
+
+  try {
+    const targets = await findSeriesTargets(series, fromDate)
+    const { paired, createOnly, cancelOnly } = pairOccurrences(targets, occurrences)
+
+    const results = []        // POST /series-shaped per-occurrence outcomes
+    const createdLinkRows = [] // feeds recordSeriesEvents for the new occurrences
+
+    // Matched by date: the only case with an obvious old class to inherit
+    // badges/links/attendance from, so it is the only path that runs
+    // moveRefs. Everything else is a bare create or a bare cancel.
+    for (const { old: oldTarget, occ } of paired) {
+      const r = await applyClassEdit(
+        { createClass: abc.createClass, cancelClass: abc.cancelClass, moveRefs: moveClassRefs },
+        {
+          clubNumber: club,
+          oldEventId: oldTarget.event_id,
+          eventTypeId: b.event_type_id,
+          employeeId: b.employee_id,
+          eventTimestampLocal: occ.timestamp_local,
+          trainingLevelId: b.training_level_id,
+          date: occ.date,
+          className: b.class_name,
+          // Every occurrence here is >= fromDate, which was already clamped
+          // to today, so nothing reaching applyClassEdit is ever past.
+          isPast: false,
+        },
+      )
+      if (r.kind === 'create_failed') {
+        results.push({ date: occ.date, ok: false, event_id: null, error: r.error })
+      } else if (r.kind === 'cancel_failed') {
+        // The new class is live in ABC even though this occurrence reports
+        // failure -- same tradeoff PUT /classes/:eventId makes.
+        results.push({ date: occ.date, ok: false, event_id: r.eventId, error: `created but the old class could not be removed: ${r.error}` })
+        createdLinkRows.push({ date: occ.date, ok: true, event_id: r.eventId })
+      } else {
+        results.push({ date: occ.date, ok: true, event_id: r.eventId, error: null })
+        createdLinkRows.push({ date: occ.date, ok: true, event_id: r.eventId })
+      }
+    }
+
+    // A weekday added to the series: a plain create, same call POST /series
+    // makes per occurrence.
+    for (const occ of createOnly) {
+      const r = await abc.createClass(club, {
+        event_type_id: b.event_type_id,
+        employee_id: b.employee_id,
+        event_timestamp_local: occ.timestamp_local,
+        training_level_id: b.training_level_id || null,
+      })
+      results.push({ date: occ.date, ok: r.ok, event_id: r.event_id, error: r.error })
+      if (r.ok) createdLinkRows.push({ date: occ.date, ok: true, event_id: r.event_id })
+    }
+
+    // A weekday removed from the series: a plain cancel, same call DELETE
+    // /series makes per occurrence.
+    const canceledEventIds = []
+    for (const t of cancelOnly) {
+      const r = await abc.cancelClass(club, t.event_id)
+      results.push({ date: t.date, ok: r.ok, event_id: null, error: r.error })
+      if (r.ok) canceledEventIds.push(t.event_id)
+    }
+
+    // Link the newly created occurrences to this series so a later edit
+    // finds them the trusted way rather than falling back to inference.
+    const link_error = await recordSeriesEvents(club, series.id, createdLinkRows)
+
+    // Drop the stale link rows for cancel-only targets. The paired ones were
+    // already re-pointed by moveRefs above -- deleting them here would strip
+    // the badge/link/attendance rows that were just carried onto the new id.
+    if (canceledEventIds.length) {
+      const { error: delErr } = await supabaseAdmin
+        .from('group_x_series_events')
+        .delete()
+        .eq('club_number', club)
+        .in('abc_event_id', canceledEventIds)
+      if (delErr) console.error('[groupX] could not drop stale series links:', delErr.message)
+    }
+
+    // Update the series row to the new shape so the nightly top-up (open-
+    // ended series only) keeps extending it on the new schedule. instructor_
+    // name falls back to the current value -- the column is NOT NULL and the
+    // edit form does not always resend a display name for a bare
+    // employee_id change.
+    const { error: updErr } = await supabaseAdmin
+      .from('group_x_series')
+      .update({
+        event_type_id: b.event_type_id,
+        employee_id: b.employee_id,
+        instructor_name: b.instructor_name || series.instructor_name,
+        weekdays: b.weekdays,
+        start_time: b.start_time,
+        training_level_id: b.training_level_id || null,
+        class_name: b.class_name,
+        materialized_through: through,
+      })
+      .eq('id', series.id)
+    if (updErr) console.error('[groupX] could not update series row:', updErr.message)
+
+    const created = results.filter(r => r.ok).length
+
+    // Union of OLD and NEW dates: a weekday change that only invalidated the
+    // new dates would leave deleted classes on the in-gym TVs for up to the
+    // full cache window.
+    const allDates = new Set([...targets.map(t => t.date), ...occurrences.map(o => o.date)])
+    invalidatePublicBoard(club, [...allDates])
+
+    // Partial failure is reported as partial failure. Never as success.
+    res.json({ created, failed: results.length - created, occurrences: results, link_error })
+  } catch (err) { fail(res, err, 'PUT /series/from') }
 })
 
 // DELETE /group-x/series/:id?club_number=&from=YYYY-MM-DD
