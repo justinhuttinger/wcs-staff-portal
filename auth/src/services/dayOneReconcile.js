@@ -16,7 +16,8 @@ const cron = require('node-cron')
 const { supabaseAdmin } = require('./supabase')
 const { LOCATIONS } = require('../config/ghlLocations')
 const { ghlFetch } = require('./ghlClient')
-const { getDayOneCalendar, getUsersById, CAL_VERSION } = require('../lib/ghlBooking')
+const { getUsersById, CAL_VERSION } = require('../lib/ghlBooking')
+const { resolveDayOneCalendars } = require('../config/dayOneCalendars')
 const {
   rowFromEvent, bookerFromEvent, diffAppointment, linkReschedules,
   DEFAULT_RESCHEDULE_WINDOW_HOURS,
@@ -47,10 +48,35 @@ async function fetchEvents(loc, calendar) {
   return (data.events || []).filter(e => e && e.id && !e.deleted)
 }
 
+// One club can run Day Ones on more than one calendar (see config/dayOneCalendars).
+// A calendar that fails is warned about and skipped rather than failing the whole
+// location: losing one club's stretch bookings for a pass is bad, losing that
+// club's entire Day One sync because a secondary calendar 500'd is worse.
+async function fetchAllEvents(loc, calendars) {
+  const perCalendar = await Promise.all(calendars.map(async cal => {
+    try {
+      return await fetchEvents(loc, cal)
+    } catch (err) {
+      console.warn(`[dayOneReconcile] ${loc.slug}: calendar "${cal.name}" failed: ${err.message}`)
+      return []
+    }
+  }))
+  // GHL returns an appointment once per calendar it is on. De-duplicate by id so
+  // a shared appointment is not upserted twice in one pass.
+  const seen = new Set()
+  const events = []
+  for (const evt of perCalendar.flat()) {
+    if (seen.has(evt.id)) continue
+    seen.add(evt.id)
+    events.push(evt)
+  }
+  return events
+}
+
 async function reconcileLocation(loc) {
-  const calendar = await getDayOneCalendar(loc)
+  const calendars = await resolveDayOneCalendars(loc)
   const [events, usersById] = await Promise.all([
-    fetchEvents(loc, calendar),
+    fetchAllEvents(loc, calendars),
     getUsersById(loc),
   ])
   if (!events.length) return { location: loc.slug, seen: 0, inserted: 0, updated: 0, events: 0, linked: 0 }
@@ -380,4 +406,4 @@ function start() {
   console.log('[dayOneReconcile] scheduled every 15 minutes')
 }
 
-module.exports = { start, runOnce, reconcileLocation, stitchReschedules, adoptOrphans }
+module.exports = { start, runOnce, reconcileLocation, stitchReschedules, adoptOrphans, fetchAllEvents }
