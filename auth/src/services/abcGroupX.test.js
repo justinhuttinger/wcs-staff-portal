@@ -3,7 +3,7 @@ const assert = require('node:assert')
 const {
   _shapeClassType, _shapeInstructor, _shapeClassEvent,
   _chunkDateRange, _assertAbcOk, _abcBodyError, _createdEventId,
-  GX_DEPARTMENTS, EXCLUDED_NAMES, MAX_RANGE_DAYS,
+  GX_DEPARTMENTS, EXCLUDED_NAMES, MAX_RANGE_DAYS, abcMutate,
 } = require('./abcGroupX')
 
 const RAW_TYPE = {
@@ -219,4 +219,43 @@ test('listClasses rejects a missing end date rather than returning []', async ()
     /endDate must be YYYY-MM-DD/,
     'a non-ISO date must not reach ABC',
   )
+})
+
+// Regression: abcMutate used to let a thrown fetch (a network blip, or the
+// AbortSignal.timeout firing) escape as an uncaught throw. Every caller --
+// including the sequential series fan-out in PUT /series/:id/from/:date --
+// is written assuming a returned { ok: false } value, never a throw. An
+// escaped throw mid-loop skips the partial-failure bookkeeping downstream
+// (series links, stale-link cleanup, the series row update, per-date
+// results, invalidatePublicBoard) and turns into a bare 500 after some of
+// the ABC writes already landed.
+test('abcMutate turns a thrown fetch into an ok:false result, not a throw', async (t) => {
+  process.env.ABC_APP_ID = 'test-app-id'
+  process.env.ABC_APP_KEY = 'test-app-key'
+  const realFetch = global.fetch
+  global.fetch = async () => { throw new Error('getaddrinfo ENOTFOUND api.abcfinancial.com') }
+  t.after(() => { global.fetch = realFetch })
+
+  const result = await abcMutate('POST', '/30935/calendars/events', { some: 'body' })
+  assert.strictEqual(result.ok, false)
+  assert.strictEqual(result.http, 0)
+  assert.strictEqual(result.data, null)
+  assert.match(result.error, /ENOTFOUND/)
+})
+
+test('abcMutate reports a timeout distinctly from a connection failure', async (t) => {
+  process.env.ABC_APP_ID = 'test-app-id'
+  process.env.ABC_APP_KEY = 'test-app-key'
+  const realFetch = global.fetch
+  global.fetch = async () => {
+    const err = new Error('The operation was aborted due to timeout')
+    err.name = 'TimeoutError'
+    throw err
+  }
+  t.after(() => { global.fetch = realFetch })
+
+  const result = await abcMutate('DELETE', '/30935/calendars/events/abc123')
+  assert.strictEqual(result.ok, false)
+  assert.strictEqual(result.http, 0)
+  assert.match(result.error, /timed out/)
 })

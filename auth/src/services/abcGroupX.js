@@ -62,15 +62,40 @@ async function abcGet(path, params, timeoutMs = 30000) {
 
 // Mutating call that reports failure as a value rather than throwing, so a
 // series fan-out can record per-occurrence outcomes and keep going.
+//
+// The fetch itself MUST be caught here, not left to the caller. A network
+// blip or the AbortSignal.timeout firing throws instead of resolving, and
+// every caller of this function (create/cancel, called in a loop by
+// PUT /series/:id/from/:date for up to dozens of occurrences) is written
+// assuming a returned value, never a throw. An uncaught throw mid-loop
+// escapes past the series row update, the link bookkeeping, the per-date
+// results list and invalidatePublicBoard, and lands on the route's generic
+// fail() handler as a bare 500 -- after some of the ABC writes already
+// landed, with nothing recorded about where it stopped and an obvious retry
+// that duplicates every occurrence that already succeeded.
 async function abcMutate(method, path, body, timeoutMs = 30000) {
-  const res = await fetch(`${ABC_BASE_URL}${path}`, {
-    method,
-    headers: body
-      ? { ...abcHeaders(), 'Content-Type': 'application/json' }
-      : abcHeaders(),
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(timeoutMs),
-  })
+  let res
+  try {
+    res = await fetch(`${ABC_BASE_URL}${path}`, {
+      method,
+      headers: body
+        ? { ...abcHeaders(), 'Content-Type': 'application/json' }
+        : abcHeaders(),
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+  } catch (err) {
+    // AbortSignal.timeout rejects with a DOMException named TimeoutError;
+    // everything else here (DNS, ECONNRESET, TLS, ...) is a real connection
+    // failure. Worth telling apart -- "ABC did not answer in time" and "ABC
+    // was unreachable" point staff at different next steps.
+    const timedOut = err?.name === 'TimeoutError' || err?.name === 'AbortError'
+    const message = timedOut
+      ? `ABC API timed out after ${timeoutMs}ms for ${method} ${path}`
+      : `ABC API request failed for ${method} ${path}: ${err.message}`
+    console.error(`[abcGroupX] ${method} ${path} threw:`, message)
+    return { ok: false, http: 0, data: null, error: message }
+  }
   let data = null
   try { data = await res.json() } catch { /* empty or non-JSON body is fine */ }
   if (!res.ok) {
@@ -352,4 +377,5 @@ module.exports = {
   listClassTypes, listInstructors, listClasses, createClass, cancelClass,
   _shapeClassType, _shapeInstructor, _shapeClassEvent,
   _chunkDateRange, _assertAbcOk, _abcBodyError, _createdEventId, MAX_RANGE_DAYS, ABC_OK_CODE,
+  abcMutate,
 }

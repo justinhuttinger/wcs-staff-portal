@@ -719,7 +719,17 @@ router.post('/series/:id/edit-preview/:date', requireEdit, async (req, res) => {
 
   try {
     const targets = await findSeriesTargets(series, fromDate)
-    res.json({ count: occurrences.length, occurrences, replacing: targets.length })
+    res.json({
+      count: occurrences.length,
+      occurrences,
+      replacing: targets.length,
+      // The series' actual stored weekday pattern, not a guess reconstructed
+      // from whichever occurrences happen to be loaded for the visible week
+      // -- a single occurrence moved off-pattern used to make that guess
+      // wrong, and saving "all from here on" against it would silently
+      // redefine the series to the moved shape.
+      weekdays: series.weekdays || [],
+    })
   } catch (err) { fail(res, err, 'POST /series/edit-preview') }
 })
 
@@ -958,12 +968,13 @@ router.delete('/series/:id', requireEdit, async (req, res) => {
     ? padDate(through, 1)
     : (DATE_RE.test(req.query.from || '') ? req.query.from : toIsoDate(new Date()))
 
-  const { data: series, error: selErr } = await supabaseAdmin
-    .from('group_x_series')
-    .select('*')
-    .eq('id', req.params.id)
-    .single()
-  if (selErr || !series) return res.status(404).json({ error: 'series not found' })
+  // Same access control as the series-forward edit routes: Supabase here is
+  // service-role with no RLS, so loading the series by id alone and trusting
+  // it would let anyone holding another club's series UUID cancel that
+  // club's entire schedule. loadOwnedSeries also refuses an already-cancelled
+  // series, which matters below for the retry case.
+  const series = await loadOwnedSeries(req, res, req.params.id, req.query.club_number)
+  if (!series) return
 
   try {
     // An open-ended series has ends_on NULL (migration 099); how far it has
@@ -992,16 +1003,37 @@ router.delete('/series/:id', requireEdit, async (req, res) => {
       results.push({ event_id: t.event_id, date: String(t.event_timestamp_local).slice(0, 10), ok: r.ok, error: r.error })
     }
 
-    // Ending on a date closes the series there so the nightly top-up stops
-    // extending it; with no date the series is cancelled outright.
-    const patch = through
-      ? { ends_on: through, materialized_through: through }
-      : { canceled_at: new Date().toISOString(), canceled_by: req.user?.email || 'unknown' }
-    await supabaseAdmin.from('group_x_series').update(patch).eq('id', series.id)
-
     const canceled = results.filter(r => r.ok).length
+    const failed = results.length - canceled
+
+    // Only stamp the series row once every ABC cancel actually succeeded.
+    // Stamping it on a partial failure used to make a retry find a series
+    // that already looks cancelled (canceled_at set, or ends_on already
+    // moved), match nothing, and report a clean { canceled: 0, failed: 0 }
+    // over the classes that are still live on the calendar -- a silent
+    // success over a real mess. Leaving the row live lets the same retry
+    // find the same remaining targets and finish the job.
+    let series_updated = false
+    let series_update_error = null
+    if (failed === 0) {
+      // Ending on a date closes the series there so the nightly top-up stops
+      // extending it; with no date the series is cancelled outright.
+      const patch = through
+        ? { ends_on: through, materialized_through: through }
+        : { canceled_at: new Date().toISOString(), canceled_by: req.user?.email || 'unknown' }
+      const { error: updErr } = await supabaseAdmin.from('group_x_series').update(patch).eq('id', series.id)
+      if (updErr) {
+        console.error('[groupX] could not update series row after cancel:', updErr.message)
+        series_update_error = updErr.message
+      } else {
+        series_updated = true
+      }
+    } else {
+      series_update_error = `${failed} class(es) could not be cancelled in ABC, so the series was left live. Retry to finish cancelling the rest.`
+    }
+
     invalidatePublicBoard(series.club_number, results.filter(r => r.ok).map(r => r.date))
-    res.json({ canceled, failed: results.length - canceled, results, ends_on: through })
+    res.json({ canceled, failed, results, ends_on: through, series_updated, series_update_error })
   } catch (err) { fail(res, err, 'DELETE /series') }
 })
 

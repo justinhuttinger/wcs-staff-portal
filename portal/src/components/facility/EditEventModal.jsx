@@ -71,6 +71,15 @@ export default function EditEventModal({ club, facility, event, onClose, onSaved
   const [preview, setPreview] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  // Set only on a "created but could not remove the old one" outcome (the
+  // response carries the new event_id). Facility events are a plain
+  // Supabase UPDATE today, so this route can't actually produce that
+  // outcome yet -- kept here so this modal fails the same safe way
+  // EditClassModal.jsx does if a future edit path here ever becomes a
+  // create-then-cancel against an external calendar. Once set, a retry
+  // is never offered: it would create a THIRD event on top of the two
+  // that already exist.
+  const [duplicate, setDuplicate] = useState(null)
 
   // Switching to "all from here on" pre-selects the series' ACTUAL current
   // weekday set, not just the day of the occurrence that was clicked -- a
@@ -135,7 +144,11 @@ export default function EditEventModal({ club, facility, event, onClose, onSaved
       setPreview(r)
       setStep('confirm')
     } catch (err) {
-      setError(err.message || 'Could not save the event')
+      if (err.event_id) {
+        setDuplicate({ eventId: err.event_id, message: err.message })
+      } else {
+        setError(err.message || 'Could not save the event')
+      }
     } finally {
       setBusy(false)
     }
@@ -159,7 +172,11 @@ export default function EditEventModal({ club, facility, event, onClose, onSaved
       })
       onSaved()
     } catch (err) {
-      setError(err.message || 'Could not save the series')
+      if (err.event_id) {
+        setDuplicate({ eventId: err.event_id, message: err.message })
+      } else {
+        setError(err.message || 'Could not save the series')
+      }
     } finally {
       setBusy(false)
     }
@@ -203,14 +220,32 @@ export default function EditEventModal({ club, facility, event, onClose, onSaved
       <div className="bg-surface rounded-xl border border-border shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-border flex items-center justify-between shrink-0">
           <h3 className="font-semibold text-text-primary">
-            {step === 'confirm'
+            {duplicate ? 'Event created, old one still live'
+              : step === 'confirm'
               ? `Confirm ${preview?.count} events`
               : `Edit ${facility.label} event at ${club.name}`}
           </h3>
           <button type="button" onClick={onClose} className="text-text-muted hover:text-text-primary text-xl leading-none">&times;</button>
         </div>
 
-        {step === 'form' && (
+        {duplicate && (
+          <div className="p-5 space-y-4 overflow-y-auto">
+            <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900 break-words">
+              {duplicate.message}
+            </div>
+            <p className="text-sm text-text-primary">
+              The new event (id {duplicate.eventId}) is already live on the calendar. Saving again from
+              here would create a third event, so this form is closed -- remove the old one by hand,
+              then close this and refresh to see the current schedule.
+            </p>
+            <div className="flex justify-end">
+              <button type="button" onClick={onSaved}
+                className="px-4 py-2 text-sm rounded-lg bg-wcs-red text-white font-medium hover:bg-wcs-red-hover">Close</button>
+            </div>
+          </div>
+        )}
+
+        {!duplicate && step === 'form' && (
           <form onSubmit={submit} className="p-5 space-y-4 overflow-y-auto">
             <EditScopeToggle scope={scope} onChange={setScope} hasSeries={hasSeries} />
 
@@ -310,7 +345,7 @@ export default function EditEventModal({ club, facility, event, onClose, onSaved
           </form>
         )}
 
-        {step === 'confirm' && preview && (
+        {!duplicate && step === 'confirm' && preview && (
           <div className="p-5 space-y-4 overflow-y-auto">
             <div className="rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-primary">
               This changes <strong>{preview.count}</strong> {facility.label.toLowerCase()} events at {club.name}

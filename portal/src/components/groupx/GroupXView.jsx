@@ -288,7 +288,6 @@ export default function GroupXView({ canEdit = false }) {
           classTypes={classTypes}
           instructors={instructors}
           event={selected}
-          weekClasses={classes}
           onClose={() => setSelected(null)}
           onSaved={async () => { setSelected(null); await load() }}
         />
