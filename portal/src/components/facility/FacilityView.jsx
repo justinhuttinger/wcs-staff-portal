@@ -28,6 +28,7 @@ function toGridShape(e) {
     duration_minutes: e.duration_minutes,
     status: 'Pending',
     series_id: e.series_id,
+    series_weekdays: e.series_weekdays,
   }
 }
 

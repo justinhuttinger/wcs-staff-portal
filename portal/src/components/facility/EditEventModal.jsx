@@ -32,6 +32,13 @@ function weekdayOf(iso) {
   return new Date(iso + 'T00:00:00Z').getUTCDay()
 }
 
+// [1, 3, 5] -> "Mon, Wed, Fri", in week order rather than sorted-number order,
+// so the helper text under the pills reads the way a person would say it.
+function weekdayLabels(values) {
+  const set = new Set(values)
+  return DAYS.filter(d => set.has(d.value)).map(d => d.label).join(', ')
+}
+
 // "HH:mm" from event.duration_minutes added to a start time, for seeding the
 // end field from an event that only carries a duration.
 function endFromDuration(hhmm, minutes) {
@@ -65,10 +72,18 @@ export default function EditEventModal({ club, facility, event, onClose, onSaved
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
-  // Switching to "all from here on" pre-selects the day this occurrence
-  // already falls on, same as CreateEventModal does for a fresh recurring slot.
+  // Switching to "all from here on" pre-selects the series' ACTUAL current
+  // weekday set, not just the day of the occurrence that was clicked -- a
+  // Mon/Wed/Fri series clicked on its Monday would otherwise seed only
+  // Monday, and applying without noticing would silently drop Wed and Fri
+  // from the schedule. A one-off event has no series pattern to inherit, so
+  // it still falls back to its own day.
   useEffect(() => {
     if (scope !== 'forward' || weekdays.length > 0) return
+    if (Array.isArray(event.series_weekdays) && event.series_weekdays.length > 0) {
+      setWeekdays([...event.series_weekdays].sort())
+      return
+    }
     const d = weekdayOf(occurrenceDate)
     if (d !== null) setWeekdays([d])
   }, [scope]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -228,6 +243,12 @@ export default function EditEventModal({ club, facility, event, onClose, onSaved
                       </button>
                     ))}
                   </div>
+                  <p className="text-xs text-text-muted mt-1.5">
+                    {Array.isArray(event.series_weekdays) && event.series_weekdays.length > 0
+                      ? `This series currently runs ${weekdayLabels(event.series_weekdays)}. `
+                      : ''}
+                    Changing the days above changes which days the series runs from here on.
+                  </p>
                 </div>
               )}
             </div>

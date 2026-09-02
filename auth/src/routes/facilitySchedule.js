@@ -143,7 +143,34 @@ router.get('/events', async (req, res) => {
       .order('starts_at_local', { ascending: true })
       .limit(2000)
     if (error) throw new Error(error.message)
-    res.json({ events: data || [] })
+    const events = data || []
+
+    // The client needs the series' CURRENT weekday set to seed "all from here
+    // on" edits -- one occurrence only knows the day it happens to fall on,
+    // not the whole pattern. One extra query for the whole week rather than
+    // one per event. A failure here must not take down the calendar: the week
+    // still renders, editing a series from scratch just falls back to the
+    // clicked day.
+    const seriesIds = [...new Set(events.map(e => e.series_id).filter(Boolean))]
+    let weekdaysById = new Map()
+    if (seriesIds.length) {
+      const { data: seriesRows, error: sErr } = await supabaseAdmin
+        .from('facility_series')
+        .select('id, weekdays')
+        .in('id', seriesIds)
+      if (sErr) {
+        console.error('GET /facility-schedule/events: series weekdays lookup failed', sErr.message)
+      } else {
+        weekdaysById = new Map((seriesRows || []).map(r => [r.id, r.weekdays]))
+      }
+    }
+
+    res.json({
+      events: events.map(e => ({
+        ...e,
+        series_weekdays: e.series_id ? (weekdaysById.get(e.series_id) ?? null) : null,
+      })),
+    })
   } catch (err) { fail(res, err, 'GET /events') }
 })
 
