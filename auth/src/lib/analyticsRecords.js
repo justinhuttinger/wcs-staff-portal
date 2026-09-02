@@ -1,6 +1,7 @@
 const {
   CLUBS, CLUB_BY_SLUG, personKey, displayName, ACH_PAYMENT_METHOD, isExcludedType,
 } = require('./salespersonPerformance')
+const { isChaseable } = require('./pastDueReport')
 
 // ---------------------------------------------------------------------------
 // The rows behind the numbers.
@@ -215,7 +216,9 @@ const SETS = {
     async load({ start, end, slugs, person, personField, filter, window }) {
       const q = lazySupabase()
         .from('day_one_appointments')
-        .select('contact_name, scheduled_date, status, outcome, trainer_name, booked_by_name, booked_at, location_slug')
+        // ghl_contact_id so a missing contact_name can be recovered — see
+        // withContactNames. It is missing on most rows.
+        .select('contact_name, ghl_contact_id, scheduled_date, status, outcome, trainer_name, booked_by_name, booked_at, location_slug')
         .in('location_slug', slugs)
       // WHICH DATE THE WINDOW APPLIES TO IS THE CALLER'S TO SAY, because the
       // reports disagree on purpose. Day Ones Booked counts when it went in the
@@ -229,7 +232,7 @@ const SETS = {
       }
       const rows = await fetchAllRows(q)
       const field = personField === 'bookedBy' ? 'booked_by_name' : 'trainer_name'
-      return rows
+      const kept = rows
         .filter(r => matchesPerson(r[field], person))
         .filter(r => {
           switch (filter) {
@@ -241,8 +244,10 @@ const SETS = {
             default: return true
           }
         })
+      const named = await withContactNames(kept)
+      return named
         .map(r => ({
-          member: r.contact_name || 'Unnamed member',
+          member: r.resolvedName,
           date: String(r.scheduled_date).slice(0, 10),
           status: DISPLAY_STATUS[r.status] || r.status,
           outcome: r.outcome || '—',
@@ -271,10 +276,20 @@ const SETS = {
       })
       if (error) throw new Error(error.message)
       const field = personField === 'bookedBy' ? 'booked_by_name' : 'trainer_name'
-      return (data || [])
-        .filter(r => matchesPerson(r[field], person))
+      const kept = (data || []).filter(r => matchesPerson(r[field], person))
+
+      // The function returns the appointment id but not its contact id, so the
+      // ids come back off the table before the same name lookup the other Day
+      // One set uses. Same gap, same fix: most of these have no contact_name.
+      const missing = kept.filter(r => !String(r.contact_name || '').trim())
+      const contactByAppt = missing.length ? await contactIdsForAppointments(missing.map(r => r.id)) : new Map()
+      const named = await withContactNames(
+        kept.map(r => ({ ...r, ghl_contact_id: contactByAppt.get(r.id) }))
+      )
+
+      return named
         .map(r => ({
-          member: r.contact_name || 'Unnamed member',
+          member: r.resolvedName,
           date: String(r.scheduled_date).slice(0, 10),
           overdue: Number(r.days_overdue) || 0,
           trainer: r.trainer_name || 'Unassigned',
@@ -394,14 +409,29 @@ const SETS = {
     // A STOCK, not a flow: who is past due right now. The window does not apply
     // and is deliberately ignored rather than quietly filtering on a date that
     // means nothing for this question.
+    //
+    // FOUR PREDICATES, ALL FROM THE REPORT, none of them optional:
+    //
+    //   1. abc_members_counted, not abc_members — the view carries
+    //      counts_as_member, the conditional-membership rule (migration 126)
+    //   2. past_due_balance > 0, not is_past_due: the flag is set on accounts
+    //      carrying no balance
+    //   3. isChaseable — Active, and not one of five dead statuses. A cancelled
+    //      member's debt is not a front desk's to chase, and the report says so
+    //   4. the membership skip list
+    //
+    // isChaseable and EXCLUDED_STATUSES are imported from the report's own
+    // module rather than restated, for the same reason ACH is.
     async load({ clubNumbers, exclude }) {
       const q = lazySupabase()
-        .from('abc_members')
-        .select('first_name, last_name, membership_type, past_due_balance, total_past_due_balance, since_date, club_number, is_past_due')
-        .eq('is_past_due', true)
+        .from('abc_members_counted')
+        .select('first_name, last_name, membership_type, member_status, is_active, counts_as_member, past_due_balance, total_past_due_balance, since_date, club_number')
+        .gt('past_due_balance', 0)
       if (clubNumbers) q.in('club_number', clubNumbers)
       const [rows, skip] = await Promise.all([fetchAllRows(q), skipList(exclude)])
       return rows
+        .filter(r => isChaseable(r))
+        .filter(r => r.counts_as_member !== false)
         .filter(r => !isExcludedType(r.membership_type, skip))
         .map(r => ({
           member: name(r.first_name, r.last_name),
@@ -584,6 +614,48 @@ const DISPLAY_STATUS = {
   completed: 'Completed',
   no_show: 'No Show',
   cancelled: 'Cancelled',
+}
+
+/**
+ * Fill in the member name on Day One rows that do not carry one.
+ *
+ * MOST OF THEM DO NOT. 270 of August's 303 Day Ones have a null contact_name,
+ * because the booking widget writes the appointment before anyone types a name
+ * onto it — but all 270 carry a ghl_contact_id, so the name is one lookup away.
+ * Without this the drill-down is a column of "Unnamed member" and useless for
+ * the thing it exists to do, which is tell you who to chase.
+ *
+ * Only the rows actually missing a name are looked up, so a set that already
+ * has them costs nothing.
+ */
+async function withContactNames(rows) {
+  const needing = (rows || []).filter(r => !String(r.contact_name || '').trim())
+  if (needing.length === 0) {
+    return (rows || []).map(r => ({ ...r, resolvedName: r.contact_name }))
+  }
+  const names = await contactNames(needing.map(r => r.ghl_contact_id))
+  return rows.map(r => {
+    const own = String(r.contact_name || '').trim()
+    // 'Unnamed member' only where neither the appointment nor the contact has
+    // one — that is a real gap, not a lookup we skipped.
+    return { ...r, resolvedName: own || names.get(r.ghl_contact_id) || 'Unnamed member' }
+  })
+}
+
+/** GHL contact ids for a set of Day One appointment ids, chunked. */
+async function contactIdsForAppointments(ids) {
+  const unique = [...new Set((ids || []).filter(Boolean))]
+  const out = new Map()
+  const CHUNK = 200
+  for (let i = 0; i < unique.length; i += CHUNK) {
+    const { data, error } = await lazySupabase()
+      .from('day_one_appointments')
+      .select('id, ghl_contact_id')
+      .in('id', unique.slice(i, i + CHUNK))
+    if (error) throw new Error(error.message)
+    for (const r of data || []) out.set(r.id, r.ghl_contact_id)
+  }
+  return out
 }
 
 /** Names for a set of GHL contact ids, chunked under the `in` list cap. */
