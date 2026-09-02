@@ -668,3 +668,10 @@ body {
   height: 3px;
   background: var(--press-red);
 }
+
+/* Analytics group panel on mobile. Press maps --color-bg and --color-surface to
+   the same white, so the open group's `bg-bg` gives it nothing to sit against.
+   The site's own band colour is what that contrast is for. */
+[data-theme='press'] .analytics-subpanel {
+  background: var(--press-band);
+}

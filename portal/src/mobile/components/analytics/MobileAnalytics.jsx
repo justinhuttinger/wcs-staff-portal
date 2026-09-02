@@ -24,7 +24,25 @@ import { LOCATION_NAMES } from '../../../config/locations'
 // reappear because the reader picked up their phone.
 // ---------------------------------------------------------------------------
 
-/** The picker: pinned reports first, then each group as an accordion. */
+/**
+ * The picker: one full-bleed stacked list, the way a phone navigation menu
+ * behaves rather than the way a desktop sidebar does.
+ *
+ * Rows run edge to edge and sit flush against each other, separated by a single
+ * hairline, with a +/- on the right of each group. Opening one drops its reports
+ * in as a contrasting inset panel between the row that was tapped and the next
+ * one, so the list reads as a single column that grows rather than a set of
+ * floating cards that shuffle.
+ *
+ * Cards were the wrong shape here. This screen is navigation, not content: the
+ * gaps and rounded corners implied each group was a thing in its own right, when
+ * the only job is to get to a report in as few taps and as little scanning as
+ * possible.
+ *
+ * The panel takes bg while the rows take surface, so the open group is set apart
+ * by tone rather than by an outline, and it inverts correctly under Press
+ * (white ground) without a second set of colours.
+ */
 export function MobileAnalyticsHome({ locationSlug, onOpen }) {
   const [openGroups, setOpenGroups] = useState(() => new Set())
   const visibility = useReportVisibility()
@@ -45,12 +63,20 @@ export function MobileAnalyticsHome({ locationSlug, onOpen }) {
   }
 
   return (
-    <div className="space-y-3 pb-4">
-      {top.length > 0 && (
-        <div className="space-y-2">
-          {top.map(r => <ReportRow key={r.key} report={r} onOpen={onOpen} />)}
-        </div>
-      )}
+    // -mx-4 cancels the route's own padding so the list is genuinely full width.
+    // A stacked menu that stops short of the screen edge reads as a card with
+    // its corners filed off.
+    <div className="-mx-4 pb-6 bg-surface border-y border-border">
+      <p className="px-4 pt-4 pb-2 text-sm font-bold text-text-primary">
+        Browse Reports
+      </p>
+      <div className="h-px bg-border mx-4" />
+
+      {/* Pinned and unfiled reports open directly, so they carry no +/-. They
+          lead because they are the ones opened most. */}
+      {top.map(r => (
+        <ReportRow key={r.key} report={r} onOpen={onOpen} />
+      ))}
 
       {REPORT_GROUPS.map(group => {
         // Alphabetical within a group, matching desktop, and sorted here for the
@@ -68,27 +94,50 @@ export function MobileAnalyticsHome({ locationSlug, onOpen }) {
         const open = openGroups.has(group.key)
 
         return (
-          <div key={group.key} className="bg-surface rounded-2xl border border-border overflow-hidden">
+          <div key={group.key}>
             <button
               type="button"
               onClick={() => toggle(group.key)}
               aria-expanded={open}
-              className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left"
+              className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left border-b border-border active:bg-bg transition-colors"
             >
-              <span className="text-sm font-bold text-text-primary">{group.label}</span>
-              <span className="flex items-center gap-2">
-                <span className="text-[11px] text-text-muted tabular-nums">{reports.length}</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                  aria-hidden="true"
-                  className={`w-4 h-4 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                </svg>
+              <span className={`text-sm text-text-primary ${open ? 'font-bold' : 'font-semibold'}`}>
+                {group.label}
+              </span>
+              {/* Drawn rather than typed: a glyph "+" and a glyph "-" are
+                  different weights and widths, so the mark jumps as it toggles.
+                  Two spans of the same bar, one rotated away, do not. */}
+              <span className="relative w-3.5 h-3.5 flex-shrink-0" aria-hidden="true">
+                <span className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-text-primary rounded-full" />
+                <span
+                  className={`absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-text-primary rounded-full transition-transform duration-200 ${
+                    open ? 'rotate-0 opacity-0' : 'rotate-90'
+                  }`}
+                />
               </span>
             </button>
+
             {open && (
-              <div className="border-t border-border divide-y divide-border">
+              // The contrasting panel. Inset text, no per-row rules: this is a
+              // short list inside an open section, and hairlines between seven
+              // items would compete with the ones separating the groups.
+              //
+              // The class carries the Press case: that theme sets bg and surface
+              // to the SAME white, so bg-bg alone would leave an open group with
+              // no contrast at all. index.css gives it the press band instead.
+              <div className="analytics-subpanel bg-bg border-b border-border py-1">
                 {reports.map(r => (
-                  <ReportRow key={r.key} report={r} onOpen={onOpen} flush />
+                  <button
+                    key={r.key}
+                    type="button"
+                    onClick={() => onOpen(r.key)}
+                    className="w-full text-left px-7 py-2.5 active:bg-surface transition-colors"
+                  >
+                    <span className="block text-sm text-text-primary">{r.label}</span>
+                    {r.desc && (
+                      <span className="block text-[11px] text-text-muted truncate">{r.desc}</span>
+                    )}
+                  </button>
                 ))}
               </div>
             )}
@@ -99,14 +148,13 @@ export function MobileAnalyticsHome({ locationSlug, onOpen }) {
   )
 }
 
-function ReportRow({ report, onOpen, flush = false }) {
+/** A report that opens straight from the top of the list. */
+function ReportRow({ report, onOpen }) {
   return (
     <button
       type="button"
       onClick={() => onOpen(report.key)}
-      className={`w-full flex items-center justify-between gap-3 text-left px-4 py-3 ${
-        flush ? '' : 'bg-surface rounded-2xl border border-border'
-      }`}
+      className="w-full flex items-center justify-between gap-3 text-left px-4 py-3.5 border-b border-border active:bg-bg transition-colors"
     >
       <span className="min-w-0">
         <span className="block text-sm font-semibold text-text-primary truncate">{report.label}</span>
