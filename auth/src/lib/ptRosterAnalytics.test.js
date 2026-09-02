@@ -1,0 +1,164 @@
+const test = require('node:test')
+const assert = require('node:assert')
+const { buildPtRoster, buildSessionFrequency, isPaidInFull } = require('./ptRosterAnalytics')
+
+const svc = (over = {}) => ({
+  member_id: 'M1', member_name: 'Jane Doe', club_number: '30935',
+  trainer_name: 'Katie Castlio', recurring_type_desc: 'Recurring Service',
+  status: 'active', sub_status: 'Approved', frequency: 'Monthly',
+  invoice_total: 200, sale_date: '2026-08-01',
+  ...over,
+})
+
+const stat = (out, key) => out.stats.find(s => s.key === key)
+
+// ---------------------------------------------------------------------------
+// PT Roster
+// ---------------------------------------------------------------------------
+
+test('paid in full is recognised however it is written', () => {
+  assert.equal(isPaidInFull({ recurring_type_desc: 'PT Paid in Full' }), true)
+  assert.equal(isPaidInFull({ recurring_type_desc: 'paid IN full 12' }), true)
+  assert.equal(isPaidInFull({ recurring_type_desc: 'Recurring Service' }), false)
+  assert.equal(isPaidInFull(null), false)
+})
+
+// One member on two services is ONE client. Counting services would inflate the
+// roster against every other client count in Analytics.
+test('a member on two services is one client with both drafts', () => {
+  const out = buildPtRoster([svc(), svc({ invoice_total: 100 })], [])
+  assert.equal(stat(out, 'clients').value, 1)
+  assert.equal(out.clients[0].services, 2)
+  assert.equal(out.clients[0].monthly, 300)
+})
+
+test('different members are different clients', () => {
+  const out = buildPtRoster([svc(), svc({ member_id: 'M2', member_name: 'John Roe' })], [])
+  assert.equal(stat(out, 'clients').value, 2)
+})
+
+// Same member id at two clubs is two memberships, not one client — ABC member
+// ids are only unique within a club.
+test('the same member id at two clubs is two clients', () => {
+  const out = buildPtRoster([svc(), svc({ club_number: '31599' })], [])
+  assert.equal(stat(out, 'clients').value, 2)
+})
+
+test('a client on both recurring and paid in full counts as recurring', () => {
+  const out = buildPtRoster(
+    [svc()],
+    [svc({ recurring_type_desc: 'Paid in Full', invoice_total: 1200 })]
+  )
+  assert.equal(stat(out, 'clients').value, 1)
+  assert.equal(stat(out, 'recurring').value, 1)
+  assert.equal(stat(out, 'pif').value, 0)
+  assert.equal(out.clients[0].paidUpFront, 1200)
+})
+
+test('frozen clients stay on the roster and are flagged', () => {
+  const out = buildPtRoster([svc({ sub_status: 'Frozen' })], [])
+  assert.equal(stat(out, 'clients').value, 1)
+  assert.equal(stat(out, 'frozen').value, 1)
+  assert.equal(out.clients[0].frozen, true)
+})
+
+// A paid-in-full client has no monthly draft, so including them would drag the
+// average toward zero for a reason that has nothing to do with pricing.
+test('average draft is over recurring clients only', () => {
+  const out = buildPtRoster(
+    [svc({ invoice_total: 200 })],
+    [svc({ member_id: 'M2', recurring_type_desc: 'Paid in Full', invoice_total: 1200 })]
+  )
+  assert.equal(stat(out, 'monthlyRevenue').value, 200)
+  assert.equal(stat(out, 'avgDraft').value, 200)
+})
+
+test('no recurring clients leaves the average unknown, not zero', () => {
+  const out = buildPtRoster([], [svc({ recurring_type_desc: 'Paid in Full' })])
+  assert.equal(stat(out, 'avgDraft').value, null)
+})
+
+test('an empty roster is inactive rather than an error', () => {
+  const out = buildPtRoster([], [])
+  assert.equal(out.hasActivity, false)
+  assert.deepEqual(out.clients, [])
+})
+
+// ---------------------------------------------------------------------------
+// Session Frequency
+// ---------------------------------------------------------------------------
+
+const ev = (over = {}) => ({
+  member_id: 'M1', member_first_name: 'Jane', member_last_name: 'Doe',
+  club_number: '30935', employee_first_name: 'Katie', employee_last_name: 'Castlio',
+  event_timestamp_local: '2026-08-10T09:00:00',
+  ...over,
+})
+
+test('sessions per week divides by the window, not the count of days', () => {
+  const out = buildSessionFrequency([ev(), ev(), ev(), ev()], [], {
+    currentWeeks: 2, priorWeeks: 4,
+  })
+  assert.equal(stat(out, 'sessions').value, 4)
+  assert.equal(stat(out, 'perWeek').value, 2)
+})
+
+// The two windows are rarely the same length. Comparing raw counts across a
+// three-day month-to-date and a full prior month says everybody stopped.
+test('the prior window is rated over its own length', () => {
+  const out = buildSessionFrequency([ev()], [ev(), ev(), ev(), ev()], {
+    currentWeeks: 1, priorWeeks: 4,
+  })
+  assert.equal(stat(out, 'perWeek').value, 1)
+  assert.equal(stat(out, 'perWeek').prior, 1)
+})
+
+// The single most useful row in the report, and keying on the current window
+// alone would drop it entirely.
+test('somebody who trained last window and not this one still appears', () => {
+  const out = buildSessionFrequency([], [ev(), ev()], { currentWeeks: 4, priorWeeks: 4 })
+  assert.equal(out.rows.length, 1)
+  assert.equal(out.rows[0].sessions, 0)
+  assert.equal(out.rows[0].priorSessions, 2)
+  assert.equal(stat(out, 'lapsed').value, 1)
+  assert.equal(out.lapsed[0].member, 'Jane Doe')
+})
+
+test('somebody training in both windows is not counted as lapsed', () => {
+  const out = buildSessionFrequency([ev()], [ev()], { currentWeeks: 4, priorWeeks: 4 })
+  assert.equal(stat(out, 'lapsed').value, 0)
+  assert.equal(out.rows[0].change, 0)
+})
+
+// A client who switched trainers should read against the one they see now.
+test('the trainer shown is the most recent one', () => {
+  const out = buildSessionFrequency([
+    ev({ event_timestamp_local: '2026-08-01T09:00:00', employee_first_name: 'Old', employee_last_name: 'Trainer' }),
+    ev({ event_timestamp_local: '2026-08-20T09:00:00', employee_first_name: 'New', employee_last_name: 'Trainer' }),
+  ], [], { currentWeeks: 4, priorWeeks: 4 })
+  assert.equal(out.rows[0].trainer, 'New Trainer')
+})
+
+test('sessions with no member id are ignored rather than pooled into one client', () => {
+  const out = buildSessionFrequency([ev({ member_id: null }), ev()], [], {
+    currentWeeks: 4, priorWeeks: 4,
+  })
+  assert.equal(out.rows.length, 1)
+  assert.equal(out.rows[0].sessions, 1)
+})
+
+test('the frequency buckets cover every client exactly once', () => {
+  const out = buildSessionFrequency(
+    [ev(), ev(), ev(), ev(), ev({ member_id: 'M2' })],
+    [ev({ member_id: 'M3' })],
+    { currentWeeks: 1, priorWeeks: 1 }
+  )
+  const total = out.breakdowns.byFrequency.reduce((n, b) => n + b.count, 0)
+  assert.equal(total, out.rows.length)
+})
+
+test('no sessions either window is inactive rather than an error', () => {
+  const out = buildSessionFrequency([], [], { currentWeeks: 4, priorWeeks: 4 })
+  assert.equal(out.hasActivity, false)
+  assert.equal(stat(out, 'clients').value, 0)
+})
