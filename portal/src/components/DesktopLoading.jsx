@@ -73,8 +73,17 @@ export default function DesktopLoading({
   const extra = Number.isFinite(count) ? Math.max(0, count - BASELINE_ROWS) * ROW_HEIGHT : 0
 
   return (
+    // ON A SURFACE PANEL, NOT ON THE PAGE ITSELF. Classic paints a full-bleed
+    // club photo behind every view, and the mark and its label sat straight on
+    // top of it: dark text over a busy photograph, unreadable exactly when
+    // somebody is waiting and looking for it. The skeletons this replaced never
+    // hit that, because their cards happened to supply a white ground.
+    //
+    // Deliberately the same panel every report's ERROR state already uses, so
+    // loading and failing look like the same surface rather than two different
+    // treatments of the same box.
     <div
-      className={`flex items-center justify-center ${className}`}
+      className={`bg-surface rounded-xl border border-border flex items-center justify-center ${className}`}
       // minHeight, not height: a caller inside an already-short container must
       // not be forced taller than its own box allows.
       style={{ minHeight: base + extra }}

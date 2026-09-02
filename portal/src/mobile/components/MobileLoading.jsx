@@ -50,18 +50,25 @@ export default function MobileLoading({
   const extra = Number.isFinite(count) ? Math.max(0, count - BASELINE_ROWS) * ROW_HEIGHT : 0
 
   return (
-    <div
-      className={`flex flex-col items-center justify-center p-4 ${className}`}
-      style={{ minHeight: base + extra }}
-      role="status"
-      aria-live="polite"
-    >
-      {/* 56 rather than the desktop 64: the same optical weight against a
-          narrower column. currentColor follows the theme. */}
-      <WcsLoadingMark size={56} className="text-wcs-red mb-3" />
-      <p className="text-sm font-semibold text-text-primary">
-        <span className="wcs-dots">{label}</span>
-      </p>
+    // The margin is on the OUTSIDE and the panel inside it, because mobile
+    // views hand their children the full width and every card on this app sets
+    // its own inset. Same reason as desktop: Classic paints the club photo
+    // behind every screen, and the mark and its label were sitting straight on
+    // top of it, unreadable exactly when somebody is waiting on them.
+    <div className={`p-4 ${className}`}>
+      <div
+        className="bg-surface rounded-2xl border border-border shadow-sm flex flex-col items-center justify-center p-4"
+        style={{ minHeight: base + extra }}
+        role="status"
+        aria-live="polite"
+      >
+        {/* 56 rather than the desktop 64: the same optical weight against a
+            narrower column. currentColor follows the theme. */}
+        <WcsLoadingMark size={56} className="text-wcs-red mb-3" />
+        <p className="text-sm font-semibold text-text-primary">
+          <span className="wcs-dots">{label}</span>
+        </p>
+      </div>
     </div>
   )
 }
