@@ -1,220 +1,67 @@
-import React from 'react'
+import WcsLoadingMark from '../../components/WcsLoadingMark'
 
-// Page-shaped skeleton loaders. Pick the variant that matches the page's
-// actual content so the placeholder mirrors the real layout.
+// The mobile loading state: EMPTY SPACE WHERE THE DATA WILL BE, with the WCS
+// mark filling and draining in the middle of it.
 //
-//   <MobileLoading variant="list" />          // generic stacked cards (default)
-//   <MobileLoading variant="stats" />         // 2-col grid of stat cards
-//   <MobileLoading variant="appointments" />  // list rows with title + meta + badge
-//   <MobileLoading variant="report" />        // stat grid + chart card + chart card
-//   <MobileLoading variant="ranking" />       // ranked list rows (rank pill + name + score)
-//   <MobileLoading variant="comm-notes" />    // note cards with category dot + body excerpt + footer
+// This file used to be eight hand-drawn skeletons — fake stat cards, a fake pie,
+// fake list rows. They are gone on purpose. A skeleton is a drawing of content
+// that does not exist yet, and mobile is where it went most wrong: a phone shows
+// three cards where the skeleton drew four, so the page jumped on every load.
+// Reserved blank space and one honest mark does not lie about what is coming and
+// does not move when it arrives.
+//
+// It also brings mobile in line with desktop, which shows the same mark. The two
+// surfaces looked like different products while one shimmered and the other did
+// not.
+//
+// THE VARIANT API IS KEPT — 26 call sites pass it — but a variant now sets how
+// much room to hold open rather than what to draw:
+//
+//   <MobileLoading variant="report" />          // tall: stats + charts
+//   <MobileLoading variant="list" count={6} />  // grows with the row count
+//   <MobileLoading variant="stats" />
+//   <MobileLoading variant="appointments" />
+//   <MobileLoading variant="ranking" />
+//   <MobileLoading variant="comm-notes" />
+//   <MobileLoading variant="hr-workers" />
+//   <MobileLoading variant="hr-docs" />
 
-const PulseCard = ({ children, className = '' }) => (
-  <div className={`bg-surface rounded-2xl border border-border shadow-sm p-4 animate-pulse ${className}`}>
-    {children}
-  </div>
-)
-
-const Block = ({ className = '' }) => <div className={`bg-bg rounded ${className}`} />
-
-function ListSkeleton({ count = 3 }) {
-  return (
-    <div className="space-y-3">
-      {Array.from({ length: count }).map((_, i) => (
-        <PulseCard key={i}>
-          <Block className="h-4 w-1/3 mb-3" />
-          <Block className="h-8 w-1/2 mb-2" />
-          <Block className="h-3 w-2/3" />
-        </PulseCard>
-      ))}
-    </div>
-  )
+// Shorter than the desktop equivalents: a phone viewport is ~700px tall, and
+// holding 520px open for a report would push the mark off screen behind the
+// header. These are sized to sit in view without scrolling.
+const VARIANT_HEIGHTS = {
+  stats: 200,
+  'hr-docs': 240,
+  ranking: 280,
+  list: 280,
+  'hr-workers': 300,
+  appointments: 300,
+  'comm-notes': 300,
+  report: 380,
 }
 
-function StatsSkeleton({ count = 4 }) {
+const ROW_HEIGHT = 48
+const BASELINE_ROWS = 4
+
+export default function MobileLoading({
+  variant = 'list', count, className = '', label = 'Loading',
+}) {
+  const base = VARIANT_HEIGHTS[variant] ?? VARIANT_HEIGHTS.list
+  const extra = Number.isFinite(count) ? Math.max(0, count - BASELINE_ROWS) * ROW_HEIGHT : 0
+
   return (
-    <div className="grid grid-cols-2 gap-3">
-      {Array.from({ length: count }).map((_, i) => (
-        <PulseCard key={i} className="text-center">
-          <Block className="h-7 w-1/2 mb-2 mx-auto" />
-          <Block className="h-3 w-2/3 mx-auto" />
-        </PulseCard>
-      ))}
-    </div>
-  )
-}
-
-function AppointmentsSkeleton({ count = 5 }) {
-  return (
-    <div className="space-y-3">
-      {Array.from({ length: count }).map((_, i) => (
-        <PulseCard key={i}>
-          <div className="flex items-start gap-3">
-            <div className="flex-1 min-w-0">
-              <Block className="h-4 w-2/3 mb-2" />
-              <Block className="h-3 w-1/3 mb-1.5" />
-              <Block className="h-3 w-1/4" />
-            </div>
-            <div className="bg-bg rounded-full h-6 w-20 shrink-0" />
-          </div>
-        </PulseCard>
-      ))}
-    </div>
-  )
-}
-
-function RankingSkeleton({ count = 6 }) {
-  return (
-    <div className="space-y-2">
-      {Array.from({ length: count }).map((_, i) => (
-        <PulseCard key={i} className="p-3">
-          <div className="flex items-center gap-3">
-            <div className="bg-bg rounded-full h-8 w-8 shrink-0" />
-            <div className="flex-1 min-w-0 space-y-1.5">
-              <Block className="h-3 w-2/3" />
-              <Block className="h-2.5 w-1/3" />
-            </div>
-            <Block className="h-5 w-12 shrink-0" />
-          </div>
-        </PulseCard>
-      ))}
-    </div>
-  )
-}
-
-function HrWorkersSkeleton({ count = 6 }) {
-  // Matches the worker list cards: avatar circle + name + meta row + chevron.
-  return (
-    <div className="space-y-2">
-      {Array.from({ length: count }).map((_, i) => (
-        <PulseCard key={i} className="px-4 py-3">
-          <div className="flex items-center gap-3">
-            <div className="bg-bg rounded-full h-10 w-10 shrink-0" />
-            <div className="flex-1 min-w-0 space-y-1.5">
-              <Block className="h-3.5 w-2/3" />
-              <div className="flex gap-2">
-                <Block className="h-2.5 w-12" />
-                <Block className="h-2.5 w-20" />
-              </div>
-            </div>
-            <Block className="h-4 w-4 shrink-0" />
-          </div>
-        </PulseCard>
-      ))}
-    </div>
-  )
-}
-
-function HrDocsSkeleton({ count = 4 }) {
-  // Matches doc list cards: icon + title + date + small badge.
-  return (
-    <div className="space-y-2">
-      {Array.from({ length: count }).map((_, i) => (
-        <PulseCard key={i} className="px-4 py-3">
-          <div className="flex items-center gap-3">
-            <Block className="h-5 w-5 shrink-0" />
-            <div className="flex-1 min-w-0 space-y-1.5">
-              <Block className="h-3.5 w-3/4" />
-              <Block className="h-2.5 w-1/3" />
-            </div>
-            <div className="bg-bg rounded-full h-4 w-14 shrink-0" />
-          </div>
-        </PulseCard>
-      ))}
-    </div>
-  )
-}
-
-function CommNotesSkeleton({ count = 4 }) {
-  return (
-    <div className="space-y-3">
-      {Array.from({ length: count }).map((_, i) => (
-        <PulseCard key={i}>
-          <div className="flex items-start gap-2 mb-2">
-            <div className="bg-bg rounded-full h-2 w-2 mt-1.5 shrink-0" />
-            <Block className="h-4 flex-1" />
-            <Block className="h-3 w-12 shrink-0" />
-          </div>
-          <Block className="h-3 w-full mb-1.5 ml-4" />
-          <Block className="h-3 w-2/3 mb-3 ml-4" />
-          <div className="flex items-center justify-between ml-4">
-            <Block className="h-2.5 w-1/2" />
-            <Block className="h-2.5 w-8" />
-          </div>
-        </PulseCard>
-      ))}
-    </div>
-  )
-}
-
-function ReportSkeleton() {
-  return (
-    <div className="space-y-3">
-      {/* Stat grid (4 cards) */}
-      <div className="grid grid-cols-2 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <PulseCard key={i} className="text-center">
-            <Block className="h-7 w-1/2 mb-2 mx-auto" />
-            <Block className="h-3 w-2/3 mx-auto" />
-          </PulseCard>
-        ))}
-      </div>
-
-      {/* Top performers card */}
-      <PulseCard>
-        <Block className="h-4 w-1/3 mb-3" />
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 p-2 rounded-xl bg-bg">
-              <div className="bg-surface rounded-full h-8 w-8 shrink-0" />
-              <div className="flex-1 space-y-1.5">
-                <div className="bg-surface rounded h-3 w-2/3" />
-                <div className="bg-surface rounded h-2.5 w-1/3" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </PulseCard>
-
-      {/* Pie + legend card */}
-      <PulseCard>
-        <Block className="h-3 w-1/3 mb-3" />
-        <div className="flex items-center gap-4">
-          <div className="w-24 h-24 rounded-full bg-bg shrink-0" />
-          <div className="flex-1 space-y-2">
-            <Block className="h-3 w-3/4" />
-            <Block className="h-3 w-2/3" />
-            <Block className="h-3 w-1/2" />
-          </div>
-        </div>
-      </PulseCard>
-
-      {/* Bar chart card */}
-      <PulseCard>
-        <Block className="h-3 w-1/3 mb-3" />
-        <Block className="h-32 w-full" />
-      </PulseCard>
-    </div>
-  )
-}
-
-const VARIANTS = {
-  list: ListSkeleton,
-  stats: StatsSkeleton,
-  appointments: AppointmentsSkeleton,
-  ranking: RankingSkeleton,
-  'comm-notes': CommNotesSkeleton,
-  'hr-workers': HrWorkersSkeleton,
-  'hr-docs': HrDocsSkeleton,
-  report: ReportSkeleton,
-}
-
-export default function MobileLoading({ variant = 'list', count, className = '' }) {
-  const Component = VARIANTS[variant] || VARIANTS.list
-  return (
-    <div className={`p-4 ${className}`}>
-      <Component count={count} />
+    <div
+      className={`flex flex-col items-center justify-center p-4 ${className}`}
+      style={{ minHeight: base + extra }}
+      role="status"
+      aria-live="polite"
+    >
+      {/* 56 rather than the desktop 64: the same optical weight against a
+          narrower column. currentColor follows the theme. */}
+      <WcsLoadingMark size={56} className="text-wcs-red mb-3" />
+      <p className="text-sm font-semibold text-text-primary">
+        <span className="wcs-dots">{label}</span>
+      </p>
     </div>
   )
 }

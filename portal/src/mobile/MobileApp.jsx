@@ -5,6 +5,7 @@ import LoginScreen from './components/LoginScreen'
 import MobileHeader from './components/MobileHeader'
 import HomeScreen from './components/HomeScreen'
 import ReportsHome, { REPORT_GROUPS } from './components/reports/ReportsHome'
+import WcsLoadingMark from '../components/WcsLoadingMark'
 import MobileReportShell from './components/reports/MobileReportShell'
 import MobileClubHealth from './components/reports/MobileClubHealth'
 import MobileMembership from './components/reports/MobileMembership'
@@ -151,7 +152,7 @@ export default function MobileApp() {
   if (loading) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-wcs-red" />
+        <WcsLoadingMark size={72} className="text-wcs-red" />
       </div>
     )
   }

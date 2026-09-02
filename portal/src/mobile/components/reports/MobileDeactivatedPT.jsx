@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { getDeactivatedPT, getDeactivatedPTMember } from '../../../lib/api'
 import MobileLoading from '../MobileLoading'
 import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
+import WcsLoadingMark from '../../../components/WcsLoadingMark'
 
 function fmtMoney(n) {
   const v = Number(n || 0)
@@ -301,7 +302,7 @@ function MemberDetailModal({ detail, onClose }) {
           {/* Contact info */}
           {loading && (
             <div className="flex items-center gap-2 py-3 text-sm text-text-muted">
-              <div className="w-4 h-4 border-2 border-wcs-red/30 border-t-wcs-red rounded-full animate-spin" />
+              <WcsLoadingMark size={24} className="text-wcs-red" />
               Loading from ABC…
             </div>
           )}

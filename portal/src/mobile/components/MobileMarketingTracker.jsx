@@ -6,6 +6,7 @@ import LocationMultiSelect from '../../components/LocationMultiSelect'
 import { MARKETING_TYPES, typeLabel, typeStyle, STATUS_BY_KEY } from '../../config/marketingTypes'
 import { ViewModal, EffortModal } from '../../components/MarketingTrackerView'
 import MobileHeader from './MobileHeader'
+import WcsLoadingMark from '../../components/WcsLoadingMark'
 
 // --- date helpers (local) ---
 function toLocalDateStr(d) {
@@ -119,7 +120,7 @@ export default function MobileMarketingTracker({ access }) {
       {error && <p className="text-sm text-wcs-red mb-3">{error}</p>}
       {loading && efforts.length === 0 && (
         <div className="flex justify-center py-10">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-wcs-red" />
+          <WcsLoadingMark size={48} className="text-wcs-red" />
         </div>
       )}
 
