@@ -39,6 +39,8 @@ import { marketingAccess } from '../config/marketingAccess'
 import {
   MobileAnalyticsHome, MobileAnalyticsReport, reportHidesDates, reportLabel,
 } from './components/analytics/MobileAnalytics'
+import { getTheme, THEME_EVENT } from '../lib/theme'
+import { hydrateUiPrefs } from '../lib/uiPrefs'
 
 // Icons for bottom tab bar (Heroicons outline)
 function HomeIcon({ active }) {
@@ -105,6 +107,38 @@ export default function MobileApp() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [route, setRoute] = useState(window.location.hash.slice(1) || 'home')
+
+  // Appearance is DESKTOP'S TO SET AND MOBILE'S TO FOLLOW. The theme lives per
+  // user on the server (user_ui_preferences.prefs), so hydrating it here is the
+  // whole of "follow whatever they picked on the desktop" — there is no mobile
+  // picker and deliberately no push back up, which is why startUiPrefsSync is
+  // not called. Mobile is a reader of this setting, not a second author of it.
+  const [theme, setTheme] = useState(getTheme)
+  const press = theme === 'press'
+
+  useEffect(() => {
+    // hydrateUiPrefs applies the server row through setPrefs, which fires this
+    // event; listening rather than reading the promise means a change made in
+    // another tab lands here too.
+    const onChange = () => setTheme(getTheme())
+    window.addEventListener(THEME_EVENT, onChange)
+    return () => window.removeEventListener(THEME_EVENT, onChange)
+  }, [])
+
+  // The OS paints the status bar from this tag, somewhere no CSS can reach, so
+  // it has to be set imperatively. mobile.html handles the pre-paint case; this
+  // handles the theme arriving from the server a moment later.
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]')
+    if (meta) meta.setAttribute('content', press ? '#ffffff' : '#1a1a2e')
+  }, [press])
+
+  // Keyed on staff id so signing in as somebody else re-pulls rather than
+  // inheriting the previous person's look on a shared phone.
+  useEffect(() => {
+    if (!user?.staff?.id) return
+    hydrateUiPrefs().catch(() => {})
+  }, [user?.staff?.id])
 
   useEffect(() => {
     function onHashChange() {
@@ -590,7 +624,10 @@ export default function MobileApp() {
     { key: 'calendar', label: 'Calendar', Icon: CalendarIcon },
   ]
 
-  const bgImage = LOCATION_BACKGROUNDS[userLocation.toLowerCase()]
+  // Press is a white-ground theme taken from the website, and a full-bleed club
+  // photo under it fights the paper look the same way it does on desktop, where
+  // App.jsx drops the background for exactly this reason.
+  const bgImage = press ? null : LOCATION_BACKGROUNDS[userLocation.toLowerCase()]
 
   return (
     <div className="h-screen bg-bg text-text-primary relative flex flex-col overflow-hidden">
@@ -608,14 +645,18 @@ export default function MobileApp() {
       </div>
 
       {/* Bottom tab bar */}
-      <nav className="fixed bottom-0 left-0 right-0 h-16 bg-surface border-t border-border flex items-center justify-around px-2 z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      {/* The tab bar is the mobile equivalent of Press's persistent top nav, so
+          it carries the same marks: Prohibition uppercase labels and a solid red
+          rule on the active tab instead of Classic's red icon. The classes are
+          inert under Classic — index.css only styles them under Press. */}
+      <nav className="mobile-tabbar fixed bottom-0 left-0 right-0 h-16 bg-surface border-t border-border flex items-center justify-around px-2 z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         {tabs.map(({ key, label, Icon }) => {
           const isActive = activeTab === key
           return (
             <button
               key={key}
               onClick={() => navigate(key === 'home' ? 'home' : key)}
-              className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors ${isActive ? 'text-wcs-red' : 'text-text-muted'}`}
+              className={`mobile-tab${isActive ? ' is-active' : ''} flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors ${isActive ? 'text-wcs-red' : 'text-text-muted'}`}
             >
               <Icon active={isActive} />
               <span className={`text-xs font-medium ${isActive ? 'text-wcs-red' : 'text-text-muted'}`}>{label}</span>
