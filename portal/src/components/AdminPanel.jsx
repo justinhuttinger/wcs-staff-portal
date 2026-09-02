@@ -52,6 +52,7 @@ import FormsAdmin from './admin/FormsAdmin'
 import TillSettingsAdmin from './admin/TillSettingsAdmin'
 import LapsedCheckins from './admin/LapsedCheckins'
 import AppearanceAdmin from './admin/AppearanceAdmin'
+import NpsView from './nps/NpsView'
 
 const SETUP_TILES = [
   { key: 'staff', label: 'Staff', desc: 'Accounts & Roles', icon: 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z' },
@@ -75,6 +76,7 @@ const SETUP_TILES = [
   { key: 'problem-thresholds', label: 'Problem Thresholds', desc: 'What Counts as a Problem', icon: 'M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z' },
   { key: 'report-visibility', label: 'Report Visibility', desc: 'Reports per Club', icon: 'M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z' },
   { key: 'kpi-goals', label: 'KPI Goals', desc: 'Report Targets', icon: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z' },
+  { key: 'nps', label: 'Feedback', desc: 'Member Surveys', icon: 'M8 10.5h8m-8 3h5m-5 6.5 -3 2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8z' },
   { key: 'audit-toggles', label: 'Audits', desc: 'Per-Club Audit Toggles', icon: 'M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V19.5a2.25 2.25 0 0 0 2.25 2.25h7.5a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08M15.75 18.75h-7.5m7.5-3h-7.5m-4.5-9v12.75c0 .621.504 1.125 1.125 1.125h.375' },
   { key: 'vendor-price-list', label: 'Vendor Price List', desc: 'SKU↔UPC & Cost Import', icon: 'M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3' },
   { key: 'till-settings', label: 'Till Float', desc: 'Standard Float per Club', icon: 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z' },
@@ -231,6 +233,10 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'lapsed-checkins' && <LapsedCheckins />}
         {activeSection === 'trends-12mo' && <Trends12moExportTab />}
         {activeSection === 'blog' && <BlogAutomationView onBack={() => setActiveSection(null)} userRole={userRole} />}
+        {/* Survey setup, which is configuration — the same reason Audits and
+            Report Visibility live here. onBack returns to the Admin tile board,
+            not out of Admin entirely, so it behaves like every other section. */}
+        {activeSection === 'nps' && <NpsView onBack={() => setActiveSection(null)} />}
       </div>
     )
   }

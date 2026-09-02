@@ -519,8 +519,12 @@ export default function App() {
     { key: 'tool:facility', label: 'Courts & Pool', desc: 'Schedules', show: (user?.visible_tools || []).includes('facility'), open: () => setShowFacility(true) },
     { key: 'tool:till', label: 'Till', desc: 'Cash in / out', show: (user?.visible_tools || []).includes('till'), open: () => setShowTill(true) },
     { key: 'tool:inventory', label: 'Inventory', desc: 'Stock', open: () => setShowInventory(true) },
-    { key: 'tool:forms', label: 'Forms', desc: 'Signups', open: () => setShowForms(true) },
-    { key: 'tool:nps', label: 'Feedback', desc: 'Member surveys', open: () => setShowNps(true) },
+    // Both were ungated here while their board tiles were gated, so the picker
+    // offered a shortcut the board would have withheld. Now that Forms lives
+    // inside the Marketing folder and Feedback inside Admin, the pins carry the
+    // same gate their new homes do.
+    { key: 'tool:forms', label: 'Forms', desc: 'Signups', show: isAdmin || (user?.visible_tools || []).includes('forms'), open: () => setShowForms(true) },
+    { key: 'tool:nps', label: 'Feedback', desc: 'Member surveys', show: isAdmin, open: () => setShowNps(true) },
     { key: 'tool:marketingTracker', label: 'Marketing', desc: 'Campaigns', icon: 'reporting', show: mAccess.tracker, open: () => setShowMarketingTracker(true) },
     { key: 'tool:adsManager', label: 'Ads Manager', desc: 'Meta', show: isAdmin, open: () => setShowAdsManager(true) },
     { key: 'tool:analytics', label: 'Analytics', desc: 'Company Reports', icon: 'reporting', show: canAnalytics, open: () => { window.location.hash = '#analytics'; setShowAnalytics(true) } },

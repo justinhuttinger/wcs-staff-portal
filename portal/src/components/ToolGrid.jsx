@@ -115,6 +115,7 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
   const [customTiles, setCustomTiles] = useState([])
   const [activeGroup, setActiveGroup] = useState(null)
   const [showOrdering, setShowOrdering] = useState(false)
+  const [showMarketing, setShowMarketing] = useState(false)
   const [showMore, setShowMore] = useState(false)
   const [tilesLoaded, setTilesLoaded] = useState(false)
   const [calendarBadge, setCalendarBadge] = useState(0)
@@ -294,6 +295,45 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
           {ORDERING_LINKS.map((link) => (
             <ToolButton key={link.label} label={link.label} description={link.description} url={link.url} />
           ))}
+        </div>
+      </div>
+    )
+  }
+
+  // What sits inside the Marketing folder. Each keeps EXACTLY the gate it had
+  // as a top-level tile, so moving them changed where they live and nothing
+  // about who can reach them. Built before the early returns below because the
+  // board's own Marketing tile is shown only when this is non-empty.
+  const marketingCells = [
+    onMarketingTracker && (canMarketingTracker ?? (roleIdx >= ROLE_LEVELS.corporate || marketingAddon)) && (
+      <SvgTileButton key="tracker" onClick={() => { setShowMarketing(false); onMarketingTracker() }}
+        iconPath={TILE_ICONS.marketing} label="Campaigns" desc="Marketing tracker" />
+    ),
+    onAdsManager && roleIdx >= ROLE_LEVELS.admin && (
+      <SvgTileButton key="ads" onClick={() => { setShowMarketing(false); onAdsManager() }}
+        iconPath={TILE_ICONS.adsManager} label="Ads Manager" desc="Build Meta ads" />
+    ),
+    onForms && (roleIdx >= ROLE_LEVELS.admin || (visibleTools || []).includes('forms')) && (
+      <SvgTileButton key="forms" onClick={() => { setShowMarketing(false); onForms() }}
+        iconPath={TILE_ICONS.forms} label="Forms" desc="Signups" />
+    ),
+  ].filter(Boolean)
+
+  if (showMarketing) {
+    return (
+      <div className="w-full max-w-4xl mx-auto px-8">
+        <button
+          onClick={() => setShowMarketing(false)}
+          className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-text-muted hover:text-text-primary hover:border-text-muted transition-colors mb-4 mt-2"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to Portal
+        </button>
+        <h2 className="inline-block bg-surface/95 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs font-semibold text-text-primary uppercase tracking-widest mb-4 shadow-sm">Marketing</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
+          {marketingCells}
         </div>
       </div>
     )
@@ -687,17 +727,21 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
               for every built-in role in migration 176). Editing is gated
               separately by facility:schedule-edit, exactly as Group X. */}
           {onFacility && (visibleTools || []).includes('facility') && <SvgTileButton onClick={onFacility} iconPath={TILE_ICONS.facility} label="Courts & Pool" desc="Schedules" />}
-          {/* 6.5. Marketing Tracker — corporate/admin, or anyone with the marketing add-on */}
-          {onMarketingTracker && (canMarketingTracker ?? (roleIdx >= ROLE_LEVELS.corporate || marketingAddon)) && <SvgTileButton onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing" desc="Campaigns" />}
+          {/* 6.5. Marketing — a folder now, not a single tool. Campaigns, Ads
+              Manager and Forms all sit behind it, the same way Ordering holds
+              the vendor links.
+
+              THE TILE FOLLOWS ITS CONTENTS, not the tracker alone: somebody
+              granted the 'forms' tile without any marketing capability still
+              has to be able to reach Forms, and hiding the folder on them would
+              have quietly removed access they already had. */}
+          {marketingCells.length > 0 && <SvgTileButton onClick={() => setShowMarketing(true)} iconPath={TILE_ICONS.marketing} label="Marketing" desc="Campaigns, ads & forms" />}
           {/* 6.6. Inventory (experimental) — lead+ (leads get restock/adjust, no Sales/margin) */}
           {onInventory && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onInventory} iconPath={TILE_ICONS.inventory} label="Inventory" desc="Stock & Costs" />}
-          {/* Ads Manager — creates and edits live Meta ads, so admin-only and
-              deliberately outside the roles grid. */}
-          {onAdsManager && roleIdx >= ROLE_LEVELS.admin && <SvgTileButton onClick={onAdsManager} iconPath={TILE_ICONS.adsManager} label="Ads Manager" desc="Build Meta ads" />}
-          {/* 6.7. Forms — admin+ or granted the 'forms' tile */}
-          {onForms && (roleIdx >= ROLE_LEVELS.admin || (visibleTools || []).includes('forms')) && <SvgTileButton onClick={onForms} iconPath={TILE_ICONS.forms} label="Forms" desc="Signups" />}
-          {/* 6.8. Feedback (NPS surveys) — admin+ or granted the 'nps' tile */}
-          {onNps && (roleIdx >= ROLE_LEVELS.admin || (visibleTools || []).includes('nps')) && <SvgTileButton onClick={onNps} iconPath={TILE_ICONS.nps} label="Feedback" desc="Member surveys" />}
+          {/* Ads Manager and Forms moved INSIDE the Marketing folder above.
+              Feedback moved into the Admin panel — it is survey setup, which is
+              configuration, and it was the only admin-shaped thing left sitting
+              on the staff board. */}
           {/* 6.9. Analytics — corporate+ (corporate, director, marketing tier,
               admin). Deliberately outside the roles grid so it can never be
               granted below that tier. */}
