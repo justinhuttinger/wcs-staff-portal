@@ -21,6 +21,8 @@ import TrainerSnapshot from './analytics/TrainerSnapshot'
 import SalespersonSnapshot from './analytics/SalespersonSnapshot'
 import AttritionTrends from './analytics/AttritionTrends'
 import AttritionAnalysis from './analytics/AttritionAnalysis'
+import PtRoster from './analytics/PtRoster'
+import SessionFrequency from './analytics/SessionFrequency'
 import Checkins from './analytics/Checkins'
 import Compliance from './analytics/Compliance'
 import PosSales from './analytics/PosSales'
@@ -167,6 +169,23 @@ export const ANALYTICS_REPORTS = [
     label: 'Revenue Trends',
     desc: 'Annual, Monthly, Daily',
     Component: RevenueTrends,
+  },
+  {
+    key: 'pt-roster',
+    records: ['pt-sales', 'pt-sessions'],
+    label: 'PT Roster',
+    desc: 'Who Is On Training',
+    Component: PtRoster,
+    // A stock, not a window: the roster is the book as it stands today, so a
+    // date range would only be a second answer to a question it is not asking.
+    dates: false,
+  },
+  {
+    key: 'session-frequency',
+    records: ['pt-sessions', 'pt-clients'],
+    label: 'Session Frequency',
+    desc: 'How Often They Train',
+    Component: SessionFrequency,
   },
   {
     key: 'attrition-analysis',
@@ -359,7 +378,7 @@ export const REPORT_GROUPS = [
   { key: 'marketing', label: 'Marketing',     reports: ['lead-sources'] },
   { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-analysis', 'attrition-trends', 'member-journey', 'checkins', 'nps'] },
   { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due', 'pos-sales', 'revenue'] },
-  { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase', 'pt-snapshot', 'trainer-snapshot'] },
+  { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase', 'pt-snapshot', 'trainer-snapshot', 'pt-roster', 'session-frequency'] },
   { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot', 'compliance', 'audits', 'till', 'payroll'] },
   { key: 'snapshots', label: 'Snapshots',     reports: ['daily-snapshot', 'club-snapshot', 'pt-snapshot', 'salesperson-snapshot', 'trainer-snapshot'] },
   { key: 'misc',      label: 'Misc',          reports: ['childcare', 'group-x'] },
