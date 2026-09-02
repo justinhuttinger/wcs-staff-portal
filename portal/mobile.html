@@ -13,6 +13,32 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <!-- Apply the saved portal theme before first paint so nobody sees a flash
+         of Classic. Byte-for-byte the same step index.html runs, because the
+         theme is one attribute on <html> and both shells read the same key.
+         Mirrors src/lib/theme.js - keep the keys and allowed values in sync. -->
+    <script>
+      try {
+        var d = document.documentElement
+        var pick = function (key, allowed, fallback) {
+          var v = localStorage.getItem(key)
+          return allowed.indexOf(v) >= 0 ? v : fallback
+        }
+        var t = pick('wcs-portal-theme', ['classic', 'press'], 'classic')
+        if (t !== 'classic') d.setAttribute('data-theme', t)
+        // The status bar is painted by the OS from this tag, outside anything
+        // CSS can reach. Press is a white-ground theme, so leaving the navy
+        // here would put a dark bar above a white app on iOS.
+        if (t === 'press') {
+          var m = document.querySelector('meta[name="theme-color"]')
+          if (m) m.setAttribute('content', '#ffffff')
+        }
+        var a = localStorage.getItem('wcs-portal-accent')
+        if (a && /^#[0-9a-f]{6}$/i.test(a)) {
+          d.style.setProperty('--portal-accent', a.toLowerCase())
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body class="bg-bg min-h-screen">
     <div id="root"></div>

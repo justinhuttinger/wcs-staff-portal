@@ -610,3 +610,61 @@ body {
   /* Keep the number, drop the unit — the trophy already says what it is. */
   .press-points__unit { display: none; }
 }
+
+/* --- Press on mobile -------------------------------------------------------
+   The token block above already re-skins the whole mobile app: every
+   bg-surface, text-primary, border-border and rounded-2xl in /mobile
+   re-resolves from [data-theme='press'] without a single component change, and
+   h1/h2/h3 pick up Prohibition, so MobileHeader and the Home greeting come
+   across for free.
+
+   What does NOT come for free is the one piece of STRUCTURE mobile owns: the
+   bottom tab bar. On desktop, Press replaces the classic header with a
+   persistent top nav whose active tab is marked by a solid red rule. The tab
+   bar is the phone's equivalent of that nav, so it takes the same marks here
+   rather than staying a Classic-style red-icon bar under a Press palette,
+   which would read as two themes at once.
+
+   These classes are inert under Classic — nothing below is defined outside the
+   [data-theme='press'] scope. */
+
+[data-theme='press'] .mobile-tabbar {
+  /* The site's chrome is white with a hairline, not a raised surface. */
+  background: #ffffff;
+  border-top: 1px solid var(--press-line);
+  box-shadow: none;
+}
+
+[data-theme='press'] .mobile-tab span {
+  font-family: 'WCSDisplay', 'Arial Narrow', 'Inter', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+/* Ink, not red. Red is reserved for the rule below, the way the site marks its
+   own current section — the colour and the rule saying the same thing twice
+   just makes the bar noisy. */
+[data-theme='press'] .mobile-tab.is-active,
+[data-theme='press'] .mobile-tab.is-active span,
+[data-theme='press'] .mobile-tab.is-active svg {
+  color: var(--press-ink);
+}
+
+[data-theme='press'] .mobile-tab {
+  position: relative;
+}
+
+/* Along the TOP edge: this bar sits at the bottom of the screen, so the rule
+   goes on the side facing the content, mirroring where the desktop nav puts it
+   relative to its own. */
+[data-theme='press'] .mobile-tab.is-active::after {
+  content: '';
+  position: absolute;
+  left: 0.35rem;
+  right: 0.35rem;
+  top: -1px;
+  height: 3px;
+  background: var(--press-red);
+}
