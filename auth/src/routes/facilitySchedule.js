@@ -194,6 +194,56 @@ router.post('/events', requireEdit, async (req, res) => {
   } catch (err) { fail(res, err, 'POST /events') }
 })
 
+// PUT /facility-schedule/events/:id — change one event.
+//
+// Our own table, so this is an UPDATE. Contrast the Group X side, where ABC has
+// no update endpoint and an edit is a create followed by a cancel.
+router.put('/events/:id', requireEdit, async (req, res) => {
+  const b = req.body || {}
+  if (!isKnownClubNumber(b.club_number) || !canUseClub(req, b.club_number)) {
+    return res.status(400).json({ error: 'valid club_number is required in body' })
+  }
+  if (!isKnownFacility(b.facility)) {
+    return res.status(400).json({ error: 'valid facility is required in body' })
+  }
+  const title = cleanTitle(b.title)
+  if (!title) return res.status(400).json({ error: 'give the event a name' })
+
+  let duration
+  let stamp
+  try {
+    duration = durationBetween(b.time, b.end_time)
+    if (!duration || duration <= 0 || duration > 24 * 60) {
+      return res.status(400).json({ error: 'give the event an end time after its start time' })
+    }
+    stamp = buildLocalTimestamp(b.date, b.time)
+  } catch (err) {
+    return res.status(400).json({ error: err.message })
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('facility_events')
+      .update({
+        title,
+        staff_name: b.staff_name ? String(b.staff_name).trim() : null,
+        starts_at_local: stamp,
+        duration_minutes: duration,
+      })
+      .eq('id', req.params.id)
+      .eq('club_number', String(b.club_number))
+      .is('canceled_at', null)
+      .select('starts_at_local')
+      .single()
+    if (error) throw new Error(error.message)
+
+    // Both weeks, or a move across a week boundary leaves the old day cached
+    // on the board with the event still on it.
+    invalidateBoard(b.club_number, b.facility, [b.date, String(data?.starts_at_local || '').slice(0, 10)])
+    res.json({ ok: true })
+  } catch (err) { fail(res, err, 'PUT /events') }
+})
+
 // DELETE /facility-schedule/events/:id?club_number=&facility=
 // Soft delete: keeps the row so a cancelled slot can be audited later.
 router.delete('/events/:id', requireEdit, async (req, res) => {
