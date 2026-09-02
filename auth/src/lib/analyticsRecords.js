@@ -3,6 +3,7 @@ const {
 } = require('./salespersonPerformance')
 const { isChaseable } = require('./pastDueReport')
 const { isInsuranceType, tenureMonths } = require('./attritionAnalysis')
+const { classifyCalendarEvent, KIND, KIND_LABEL } = require('./calendarEventKind')
 
 // ---------------------------------------------------------------------------
 // The rows behind the numbers.
@@ -76,14 +77,20 @@ const SETS = {
     columns: [
       { key: 'member', label: 'Member', format: T.text },
       { key: 'date', label: 'Date', format: T.date },
+      { key: 'kind', label: 'Kind', format: T.text },
+      { key: 'what', label: 'What', format: T.text },
       { key: 'status', label: 'Status', format: T.text },
       { key: 'minutes', label: 'Minutes', format: T.int },
       { key: 'trainer', label: 'Trainer', format: T.text },
     ],
+    // DEFAULTS TO TRAINING ONLY. ABC files a member's session, an hour of desk
+    // work and a sales consult under one category; this set used to return all
+    // three, which is why it listed 215 August rows as "Unnamed member" — they
+    // were Admin blocks and Floor Hours, not people. See lib/calendarEventKind.
     async load({ start, end, clubNumbers, person, filter }) {
       const q = lazySupabase()
         .from('abc_calendar_events')
-        .select('member_first_name, member_last_name, event_timestamp_local, status, duration_minutes, employee_first_name, employee_last_name, category, club_number')
+        .select('member_first_name, member_last_name, event_timestamp_local, status, duration_minutes, employee_first_name, employee_last_name, category, event_name, club_number')
         .gte('event_timestamp_local', `${start}T00:00:00`)
         .lte('event_timestamp_local', `${end}T23:59:59.999`)
         .not('employee_first_name', 'is', null)
@@ -93,14 +100,25 @@ const SETS = {
         .filter(r => matchesPerson(`${r.employee_first_name} ${r.employee_last_name}`, person))
         // 'Canceled' is the only cancelled state ABC records on these events,
         // and it is spelled with one L.
+        // The kind filter is separate from the status one, because they answer
+        // different questions: 'admin' wants every admin block whatever became
+        // of it, 'cancelled' wants cancelled TRAINING.
+        .filter(r => {
+          const kind = classifyCalendarEvent(r)
+          if (filter === 'admin') return kind === KIND.ADMIN
+          if (filter === 'consult') return kind === KIND.CONSULT
+          if (filter === 'class') return kind === KIND.CLASS
+          if (filter === 'any-kind') return true
+          return kind === KIND.SESSION
+        })
         .filter(r => filter === 'cancelled'
           ? String(r.status || '').startsWith('Canceled')
-          : filter === 'pt'
-            ? r.status === 'Completed' && r.category === 'Appointment'
-            : filter === 'all' ? true : r.status === 'Completed')
+          : filter === 'all' || filter === 'any-kind' ? true : r.status === 'Completed')
         .map(r => ({
           member: name(r.member_first_name, r.member_last_name),
           date: String(r.event_timestamp_local).slice(0, 10),
+          kind: KIND_LABEL[classifyCalendarEvent(r)],
+          what: r.event_name || '-',
           status: r.status,
           minutes: Number(r.duration_minutes) || 0,
           trainer: name(r.employee_first_name, r.employee_last_name),

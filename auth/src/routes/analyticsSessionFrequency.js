@@ -7,6 +7,7 @@ const { wrapSWR } = require('../services/memoryCache')
 const { monthToDate, priorMonthWindow, priorLabel, windowLabel } = require('../lib/snapshotWindow')
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 const { buildSessionFrequency } = require('../lib/ptRosterAnalytics')
+const { isSession } = require('../lib/calendarEventKind')
 
 // ---------------------------------------------------------------------------
 // Session Frequency — Analytics (corporate+)
@@ -29,7 +30,7 @@ const STALE_MS = 30 * 60 * 1000
 
 const FIELDS =
   'member_id, member_first_name, member_last_name, club_number, ' +
-  'employee_first_name, employee_last_name, event_timestamp_local, status, category'
+  'employee_first_name, employee_last_name, event_timestamp_local, status, category, event_name'
 
 /** Whole and part weeks in a window, inclusive of both ends. */
 function weeksIn(start, end) {
@@ -63,16 +64,18 @@ router.get('/', async (req, res) => {
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       const scoped = q => (clubNumbers ? q.in('club_number', clubNumbers) : q)
+      // Completed only — a cancelled session did not happen. The KIND filter
+      // then drops admin blocks, floor hours and sales consults, which ABC
+      // files under the same category as training: without it a trainer's
+      // "sessions per week" counts their desk time.
       const window = (s, e) => fetchAll(scoped(supabaseAdmin
         .from('abc_calendar_events')
         .select(FIELDS)
-        // Completed appointments only. A class is not a PT session, and a
-        // cancelled one did not happen — counting either would make the
-        // per-week figure something nobody trained.
         .eq('status', 'Completed')
         .eq('category', 'Appointment')
         .gte('event_timestamp_local', `${s}T00:00:00`)
         .lte('event_timestamp_local', `${e}T23:59:59.999`)))
+        .then(rows => rows.filter(isSession))
 
       const [current, priorRows] = await Promise.all([
         window(start, end),
