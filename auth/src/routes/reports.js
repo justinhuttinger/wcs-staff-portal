@@ -4,6 +4,10 @@ const authenticate = require('../middleware/auth')
 const { requireReportAccess, requireRole } = require('../middleware/role')
 const { recombineTotals } = require('../lib/membershipAuditTotals')
 const { fetchAll } = require('../lib/supabaseFetchAll')
+const {
+  bookedInRange, contactIdsWithDayOne, scheduledInRange, contactsById, toLegacyShape,
+  statusLabel,
+} = require('../lib/dayOneReporting')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { countVipsByTeamMember: _countVipsByTeamMember } = require('../utils/vipsByTeamMember')
 const { parseLocationSlugParam } = require('../utils/locationSlug')
@@ -194,7 +198,9 @@ router.get('/membership', async (req, res) => {
       && m.since_date && m.sign_date && m.since_date >= m.sign_date
     )
 
-    // --- 2. GHL enrichment: look up day_one_booked + same_day_sale by email ---
+    // --- 2. GHL enrichment: contact id + same_day_sale by email ---
+    // day_one_booked no longer comes from here: whether a member had a Day
+    // One is answered by day_one_appointments, keyed on the contact id.
     const emails = [...new Set(filteredMembers.map(m => m.email).filter(Boolean))]
     const ghlByEmail = {}
 
@@ -203,7 +209,7 @@ router.get('/membership', async (req, res) => {
       const chunk = emails.slice(i, i + 50)
       const { data: ghlRows } = await supabaseAdmin
         .from('ghl_contacts_report')
-        .select('email, day_one_booked, same_day_sale')
+        .select('id, email, same_day_sale')
         .in('email', chunk)
 
       for (const g of (ghlRows || [])) {
@@ -211,21 +217,24 @@ router.get('/membership', async (req, res) => {
       }
     }
 
-    // --- 3. Day Ones booked in range (from GHL, by booking_team_member) ---
-    let dayOneQ = supabaseAdmin
-      .from('ghl_contacts_report')
-      .select('day_one_booking_team_member, day_one_booked, day_one_booking_date, location_slug')
-      .eq('day_one_booked', 'Yes')
-      .not('day_one_booking_date', 'is', null)
-    dayOneQ = applyLocationFilter(dayOneQ, locationFilter)
-    dayOneQ = applyDateRange(dayOneQ, 'day_one_booking_date', startMs, endMs)
-
-    const dayOnes = await fetchAll(dayOneQ)
+    // --- 3. Day Ones booked in range (day_one_appointments) ---
+    // Was ghl_contacts_report.day_one_booking_team_member, a snapshot of a GHL
+    // contact CUSTOM FIELD: a booking only counted if a workflow had written
+    // the field, and a contact holds one set of them, so a member with two Day
+    // Ones counted once. See lib/dayOneReporting.
+    const dayOnes = await bookedInRange({
+      startISO, endISO, locationSlug: locationFilter?.value,
+    })
     const totalDayOneBooked = dayOnes.length
+
+    // Contacts with a Day One at all, for the per-member flag below. Matched on
+    // contact id rather than email, which is set on only 70% of the rows.
+    const dayOneContactIds = await contactIdsWithDayOne(
+      filteredMembers.map(m => ghlByEmail[(m.email || '').toLowerCase()]?.id))
 
     const dayOneByPerson = {}
     for (const d of dayOnes) {
-      const person = d.day_one_booking_team_member || 'Unassigned'
+      const person = d.booked_by_name || 'Unassigned'
       dayOneByPerson[person] = (dayOneByPerson[person] || 0) + 1
     }
 
@@ -285,7 +294,7 @@ router.get('/membership', async (req, res) => {
 
       // GHL enrichment for this member
       const ghl = m.email ? ghlByEmail[m.email.toLowerCase()] : null
-      const isDayOneBooked = ghl?.day_one_booked === 'Yes'
+      const isDayOneBooked = ghl?.id ? dayOneContactIds.has(ghl.id) : false
       const isSameDaySale = ghl?.same_day_sale === 'Sale'
 
       // by_salesperson
@@ -335,9 +344,8 @@ router.get('/membership', async (req, res) => {
 
     // Add day one booking dates to the chart
     for (const d of dayOnes) {
-      if (d.day_one_booking_date) {
-        const dt = new Date(parseInt(d.day_one_booking_date, 10))
-        const dateKey = dt.toISOString().slice(0, 10)
+      if (d.booked_at) {
+        const dateKey = String(d.booked_at).slice(0, 10)
         if (!byDate[dateKey]) byDate[dateKey] = { memberships: 0, vips: 0, day_ones: 0 }
         byDate[dateKey].day_ones++
       }
@@ -365,7 +373,7 @@ router.get('/membership', async (req, res) => {
         membership_type: m.membership_type,
         member_sign_date: m.sign_date || m.since_date,
         sale_team_member: m.sales_person_name,
-        day_one_booked: ghl?.day_one_booked || null,
+        day_one_booked: (ghl?.id && dayOneContactIds.has(ghl.id)) ? 'Yes' : null,
         same_day_sale: ghl?.same_day_sale || null,
         location_slug: CLUB_SLUG_MAP[m.club_number] || null,
       }
@@ -401,30 +409,31 @@ router.get('/pt', async (req, res) => {
   try {
     const locationFilter = await resolveLocationFilter(req)
 
-    const startMs = dateToMs(start_date, false)
-    const endMs   = dateToMs(end_date, true)
-
-    let q = supabaseAdmin
-      .from('ghl_contacts_report')
-      .select(
-        'id, first_name, last_name, full_name, email, phone, tags,' +
-        'day_one_booked, day_one_booking_date, day_one_booking_team_member,' +
-        'day_one_date, day_one_status, day_one_sale, day_one_trainer,' +
-        'show_or_no_show, pt_sale_type, pt_value, pt_sign_date, why_no_sale,' +
-        'location_name, location_slug'
-      )
-      .not('day_one_booked', 'is', null)
-      .neq('day_one_booked', '')
-
-    q = applyLocationFilter(q, locationFilter)
-    q = applyDateRange(q, 'day_one_date', startMs, endMs)
-
-    let contacts
+    // Day Ones come from day_one_appointments (see lib/dayOneReporting), not
+    // from ghl_contacts_report's day_one_* columns. Those are a snapshot of GHL
+    // contact CUSTOM FIELDS: a Day One only appeared if a workflow had written
+    // the field, and a contact carries ONE set of them, so a member with two
+    // Day Ones was counted once and the second one vanished. Measured over
+    // August, that undercounted the set by 23%.
+    //
+    // The rows are emitted in the legacy day_one_* shape, because the calendar
+    // and tracker views read those field names. Only the source has changed.
+    let rows
     try {
-      contacts = await fetchAll(q.order('day_one_date', { ascending: false }))
+      rows = await scheduledInRange({
+        locationSlugs: locationFilter?.column === 'location_slug' ? locationFilter.values : undefined,
+        startDate: start_date,
+        endDate: end_date,
+      })
     } catch (e) {
       return res.status(500).json({ error: 'Failed to fetch PT data', detail: e.message })
     }
+
+    // pt_value, pt_sign_date and tags live on the contact, not the appointment.
+    const contactRows = await contactsById(
+      rows.map(r => r.ghl_contact_id),
+      'id, first_name, last_name, full_name, email, phone, tags, pt_value, pt_sign_date, location_name')
+    const contacts = rows.map(r => toLegacyShape(r, contactRows[r.ghl_contact_id]))
 
     // Aggregate by status
     const byStatus = {}
@@ -556,7 +565,7 @@ router.get('/club-health', async (req, res) => {
       const chunk = emails.slice(i, i + 50)
       const { data: ghlRows } = await supabaseAdmin
         .from('ghl_contacts_report')
-        .select('email, same_day_sale, day_one_booked')
+        .select('id, email, same_day_sale')
         .in('email', chunk)
       for (const g of (ghlRows || [])) {
         if (g.email) ghlByEmail[g.email.toLowerCase()] = g
@@ -572,39 +581,46 @@ router.get('/club-health', async (req, res) => {
     // --- VIPs in range, counted by `contact.vip_team_member` custom field ---
     const { total: totalVips, byPerson: vipsByPerson } = await countVipsByTeamMember({ startISO, endISO, locationFilter })
 
-    // --- Day Ones from GHL ---
-    let dayOneQ = supabaseAdmin
-      .from('ghl_contacts_report')
-      .select('day_one_booked, day_one_status, day_one_sale, day_one_booking_date, day_one_booking_team_member, day_one_trainer, location_slug')
-      .eq('day_one_booked', 'Yes')
-      .not('day_one_booking_date', 'is', null)
-    dayOneQ = applyLocationFilter(dayOneQ, locationFilter)
-    dayOneQ = applyDateRange(dayOneQ, 'day_one_booking_date', startMs, endMs)
-
+    // --- Day Ones, from day_one_appointments (see lib/dayOneReporting) ---
+    // Was ghl_contacts_report's day_one_* custom-field snapshot, which missed
+    // every booking no workflow wrote a field for and collapsed a member's
+    // second Day One into their first.
     let dayOnes
     try {
-      dayOnes = await fetchAll(dayOneQ)
+      dayOnes = await bookedInRange({
+        startISO, endISO,
+        locationSlugs: locationFilter?.column === 'location_slug' ? locationFilter.values : undefined,
+      })
     } catch (e) {
       return res.status(500).json({ error: 'Failed to fetch day one data', detail: e.message })
     }
     const totalDayOnesBooked = dayOnes.length
 
+    // Status and sale live on the appointment, so the breakdown needs the rows
+    // scheduled in the window rather than the ones booked in it.
+    const dayOnesScheduled = await scheduledInRange({
+      locationSlugs: locationFilter?.column === 'location_slug' ? locationFilter.values : undefined,
+      startDate: start_date, endDate: end_date,
+    })
+    const dayOneContactIds = await contactIdsWithDayOne(
+      filteredMembers.map(m => ghlByEmail[(m.email || '').toLowerCase()]?.id))
+
     const dayOneBookedCounts = { 'Yes': totalDayOnesBooked }
     // Count "No" from ABC members who don't have day one booked in GHL
     const memberNoBooking = filteredMembers.filter(m => {
       const ghl = m.email ? ghlByEmail[m.email.toLowerCase()] : null
-      return ghl?.day_one_booked !== 'Yes'
+      return !(ghl?.id && dayOneContactIds.has(ghl.id))
     }).length
     if (memberNoBooking > 0) dayOneBookedCounts['No'] = memberNoBooking
 
     const dayOneStatusCounts = {}
     const dayOneSaleCounts = {}
-    for (const c of dayOnes) {
-      const statusVal = c.day_one_status || 'Unknown'
+    for (const c of dayOnesScheduled) {
+      const statusVal = statusLabel(c.status)
       dayOneStatusCounts[statusVal] = (dayOneStatusCounts[statusVal] || 0) + 1
 
-      if ((c.day_one_status || '').toLowerCase() === 'completed') {
-        const saleVal = c.day_one_sale || 'No Sale'
+      if (c.status === 'completed') {
+        const saleVal = c.outcome || 'No Sale'
         dayOneSaleCounts[saleVal] = (dayOneSaleCounts[saleVal] || 0) + 1
       }
     }
@@ -633,7 +649,7 @@ router.get('/club-health', async (req, res) => {
     }
 
     for (const c of dayOnes) {
-      const name = normalizeName(c.day_one_booking_team_member)
+      const name = normalizeName(c.booked_by_name)
       if (!name || name === 'Unassigned') continue
       ensurePerson(name)
       personStats[name].day_ones++
@@ -688,12 +704,14 @@ router.get('/club-health', async (req, res) => {
       }))
       .sort((a, b) => b.agreements - a.agreements || b.members - a.members)
 
-    // Top 3 trainers by Day One closes (Sale on completed day ones)
+    // Top 3 trainers by Day One closes (Sale on completed day ones).
+    // Measured over the appointments that HAPPENED in the window, not the ones
+    // booked in it — a close belongs to the day the member sat down.
     const closesByTrainer = {}
-    for (const c of dayOnes) {
-      if ((c.day_one_status || '').toLowerCase() !== 'completed') continue
-      if (c.day_one_sale !== 'Sale') continue
-      const t = c.day_one_trainer
+    for (const c of dayOnesScheduled) {
+      if (c.status !== 'completed') continue
+      if (c.outcome !== 'Sale') continue
+      const t = c.trainer_name
       if (!t) continue
       closesByTrainer[t] = (closesByTrainer[t] || 0) + 1
     }

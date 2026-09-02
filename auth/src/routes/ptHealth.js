@@ -2,6 +2,7 @@ const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireReportAccess } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
+const { funnel, scheduledInRange, statusLabel } = require('../lib/dayOneReporting')
 const { wrap, wrapSWR } = require('../services/memoryCache')
 const { parseLocationSlugParam, locationCacheKey } = require('../utils/locationSlug')
 
@@ -262,66 +263,25 @@ async function computeDeactivatedPT(club, startDate, endDate) {
   }
 }
 
-// Day Ones — mirror /reports/pt exactly so PT Health funnel reconciles
-// cell-for-cell with the Day One dashboard. Two non-obvious details:
-//   • Filter on `day_one_date` (when the appointment is), NOT
-//     `day_one_booking_date` (when it was booked). These are different
-//     fields and produce different cohorts.
-//   • `day_one_booked` must be non-null + non-empty (any value) — not
-//     strictly equal to 'Yes'.
+// Day Ones, from day_one_appointments (see lib/dayOneReporting).
 //
-//   Set   = total contacts in the filter
-//   Show  = day_one_status = 'Completed'
-//   Close = Show ∩ day_one_sale = 'Sale'
-// Mirror /reports/pt's date-to-ms helper. day_one_date is a GHL DATE-PICKER
-// field: the chosen calendar date is stored as midnight UTC and GHL displays
-// that same calendar date, so the correct window is plain UTC day boundaries.
-// The Pacific offset this used to add shifted every day boundary by 7-8h,
-// pushing bookings dated the 1st of a month into the prior month (see
-// dateToMs in reports.js for the full story — keep these in sync).
-function dateOnlyToMs(dateStr, endOfDay = false) {
-  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null
-  const d = endOfDay
-    ? new Date(dateStr + 'T23:59:59.999Z')
-    : new Date(dateStr + 'T00:00:00.000Z')
-  if (isNaN(d.getTime())) return null
-  return d.getTime().toString()
-}
-
+// This used to read ghl_contacts_report's day_one_* columns, which are a
+// snapshot of GHL contact CUSTOM FIELDS: a Day One only counted if a workflow
+// had written the field, and a contact carries one set of them, so a member
+// with two Day Ones counted once. Measured over August that undercounted the
+// set by 23%.
+//
+//   Set   = every Day One SCHEDULED in the window, cancellations included
+//   Show  = status  = 'completed'
+//   Close = Show and outcome = 'Sale'
+//
+// Windowed on scheduled_date (when the appointment IS), never booked_at (when
+// it was booked) — different cohorts, and mixing them was the original sin of
+// the legacy version. scheduled_date is a real date column, which also retires
+// the epoch-millisecond bounds and the Pacific-offset bug that kept pushing
+// bookings dated the 1st of a month into the month before.
 async function computeDayOnes(slug, startDate, endDate) {
-  const startMs = dateOnlyToMs(startDate, false)
-  const endMs = dateOnlyToMs(endDate, true)
-
-  // Mirror /reports/pt exactly: same select shape, same filter chain, single
-  // .order() query (no manual pagination) so the result set matches even at
-  // the Supabase-default row-limit boundary.
-  let q = supabaseAdmin
-    .from('ghl_contacts_report')
-    .select(
-      'id, day_one_booked, day_one_booking_date, day_one_date, day_one_status, day_one_sale, day_one_trainer, location_slug'
-    )
-    .not('day_one_booked', 'is', null)
-    .neq('day_one_booked', '')
-  if (slug && slug !== 'all') q = q.eq('location_slug', slug)
-  if (startMs) q = q.gte('day_one_date', startMs)
-  if (endMs) q = q.lte('day_one_date', endMs)
-
-  const { data, error } = await q.order('day_one_date', { ascending: false })
-  if (error) throw new Error(error.message)
-  const rows = data || []
-
-  // Set = total contacts in result. Show = byStatus['Completed'] (strict,
-  // case-sensitive — matches PT report which keys a dictionary on the raw
-  // status string). Close = subset of Show with day_one_sale = 'Sale'.
-  let show = 0
-  let close = 0
-  for (const r of rows) {
-    if (r.day_one_status !== 'Completed') continue
-    show++
-    if (r.day_one_sale === 'Sale') close++
-  }
-
-  return { set: rows.length, show, close }
+  return funnel({ locationSlug: slug, startDate, endDate })
 }
 
 // Extracted so the cache warmer can invoke the same code path the route does.
@@ -432,35 +392,27 @@ router.get('/debug-day-one', async (req, res) => {
       return res.status(403).json({ error: 'Admin only' })
     }
     const { start_date, end_date, location_slug } = req.query
-    const startMs = dateOnlyToMs(start_date, false)
-    const endMs = dateOnlyToMs(end_date, true)
-    let q = supabaseAdmin
-      .from('ghl_contacts_report')
-      .select('id, full_name, day_one_booked, day_one_booking_date, day_one_date, day_one_status, day_one_sale, location_slug')
-      .not('day_one_booked', 'is', null)
-      .neq('day_one_booked', '')
-    if (location_slug && location_slug !== 'all') q = q.eq('location_slug', location_slug)
-    if (startMs) q = q.gte('day_one_date', startMs)
-    if (endMs) q = q.lte('day_one_date', endMs)
-    const { data, error } = await q.order('day_one_date', { ascending: false })
-    if (error) return res.status(500).json({ error: error.message })
-    const rows = data || []
+    const rows = await scheduledInRange({
+      locationSlug: location_slug, startDate: start_date, endDate: end_date,
+    })
     const byStatus = {}
     const bySale = {}
     let showCount = 0
     let closeCount = 0
     for (const r of rows) {
-      const st = r.day_one_status || 'Unknown'
+      // Reported under the legacy labels so this still reads against the older
+      // dashboards it exists to be compared with.
+      const st = statusLabel(r.status)
       byStatus[st] = (byStatus[st] || 0) + 1
-      if (r.day_one_status === 'Completed') {
+      if (r.status === 'completed') {
         showCount++
-        const sale = r.day_one_sale || 'No Sale'
+        const sale = r.outcome || 'No Sale'
         bySale[sale] = (bySale[sale] || 0) + 1
-        if (r.day_one_sale === 'Sale') closeCount++
+        if (r.outcome === 'Sale') closeCount++
       }
     }
     res.json({
-      query: { startMs, endMs, location_slug },
+      query: { start_date, end_date, location_slug, source: 'day_one_appointments' },
       set: rows.length,
       show: showCount,
       close: closeCount,
