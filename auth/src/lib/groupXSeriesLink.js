@@ -33,4 +33,13 @@ async function recordSeriesEvents(clubNumber, seriesId, results) {
   return null
 }
 
-module.exports = { linkRows, recordSeriesEvents }
+// A stored link can point at a series that has since been cancelled --
+// DELETE /series/:id never deletes the link rows it leaves behind. Trusting a
+// dead link would let the edit PR act on a cancelled series, so only honour a
+// link whose target is still live; anything else falls through to inference.
+function resolveLinkedSeriesId(linkedSeriesId, liveSeriesIds) {
+  if (!linkedSeriesId) return null
+  return liveSeriesIds.has(linkedSeriesId) ? linkedSeriesId : null
+}
+
+module.exports = { linkRows, recordSeriesEvents, resolveLinkedSeriesId }

@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { linkRows } = require('./groupXSeriesLink')
+const { linkRows, resolveLinkedSeriesId } = require('./groupXSeriesLink')
 
 test('linkRows maps successful creates to link rows', () => {
   assert.deepStrictEqual(
@@ -30,4 +30,18 @@ test('linkRows coerces the club number to text to match the column', () => {
 
 test('linkRows tolerates an empty result list', () => {
   assert.deepStrictEqual(linkRows('7655', 's1', []), [])
+})
+
+test('resolveLinkedSeriesId returns the id when its series is live', () => {
+  assert.strictEqual(resolveLinkedSeriesId('s1', new Set(['s1', 's2'])), 's1')
+})
+
+test('resolveLinkedSeriesId drops a link to a series that is no longer live', () => {
+  // DELETE /series/:id cancels the series but never deletes the link row it
+  // left behind, so a stale link must not be trusted as-is.
+  assert.strictEqual(resolveLinkedSeriesId('s1', new Set(['s2'])), null)
+})
+
+test('resolveLinkedSeriesId tolerates no link', () => {
+  assert.strictEqual(resolveLinkedSeriesId(null, new Set(['s1'])), null)
 })

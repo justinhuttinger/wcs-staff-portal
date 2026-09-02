@@ -32,7 +32,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { publicCacheKeysForDates } = require('../lib/groupXPublic')
 const { aggregate } = require('../lib/groupXReport')
 const { markNewClasses } = require('../lib/groupXNewClasses')
-const { recordSeriesEvents } = require('../lib/groupXSeriesLink')
+const { recordSeriesEvents, resolveLinkedSeriesId } = require('../lib/groupXSeriesLink')
 const memoryCache = require('../services/memoryCache')
 const authenticate = require('../middleware/auth')
 const { requireRole, roleLevel } = require('../middleware/role')
@@ -239,14 +239,26 @@ router.get('/classes', async (req, res) => {
       supabaseAdmin.from('group_x_series')
         .select('*').eq('club_number', club).is('canceled_at', null),
     ])
+    // Both queries degrade to "no link data" instead of throwing: migration
+    // 182 is applied by hand AFTER this merges, so during the deploy-to-apply
+    // window the tables do not exist yet, and a 500 for the whole calendar
+    // would be a worse outcome than briefly running with linking disabled.
+    // Logging keeps that silent degradation visible in the server logs.
+    if (linkRes.error) console.error('[groupX] could not read group_x_series_events, links disabled:', linkRes.error.message)
+    if (seriesRes.error) console.error('[groupX] could not read group_x_series, series inference disabled:', seriesRes.error.message)
     const linkById = new Map((linkRes.data || []).map(r => [r.abc_event_id, r.series_id]))
     const liveSeries = seriesRes.data || []
+    const liveSeriesIds = new Set(liveSeries.map(s => s.id))
 
     const nowIso = new Date().toISOString()
     res.json({
       classes: flagged.map(c => {
         const a = byId.get(c.event_id) || null
-        const linked = linkById.get(c.event_id) || null
+        // Only a link to a still-live series is trustworthy -- a cancelled
+        // series' link row is never cleaned up, so a stale one falls through
+        // to inference (already restricted to live series) instead of being
+        // returned as-is.
+        const linked = resolveLinkedSeriesId(linkById.get(c.event_id) || null, liveSeriesIds)
         // Only infer when there is no recorded link. An ambiguous shape --
         // two live series the class could equally belong to -- returns
         // nothing, so the UI degrades to a single-occurrence edit rather than
