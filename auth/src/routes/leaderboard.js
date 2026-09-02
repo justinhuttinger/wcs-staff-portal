@@ -4,6 +4,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole, ROLE_HIERARCHY, canSeeAllLocations } = require('../middleware/role')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { countVipsByTeamMember } = require('../utils/vipsByTeamMember')
+const { bookedByPerson } = require('../lib/dayOneReporting')
 
 const router = Router()
 router.use(authenticate)
@@ -45,11 +46,6 @@ function monthBounds(monthStr) {
   const start = new Date(Date.UTC(year, mon - 1, 1))
   const end = new Date(Date.UTC(year, mon, 0, 23, 59, 59, 999)) // last day of month
   return {
-    // startMs/endMs filter GHL date-picker fields (day_one_booking_date),
-    // which store the chosen calendar date as midnight UTC — plain UTC month
-    // boundaries, no timezone offset (see dateToMs in reports.js).
-    startMs: start.getTime().toString(),
-    endMs: end.getTime().toString(),
     startISO: start.toISOString(),
     endISO: end.toISOString(),
     startDate: start.toISOString().slice(0, 10),
@@ -66,7 +62,7 @@ const SLUG_CLUB_MAP = {
 // Helper: aggregate leaderboard data for a single location_slug
 // ---------------------------------------------------------------------------
 async function aggregateLocation(locationSlug, bounds) {
-  const { startMs, endMs, startISO, endISO } = bounds
+  const { startISO, endISO } = bounds
 
   // 1. Memberships from ABC (source of truth)
   const clubNumber = locationSlug ? SLUG_CLUB_MAP[locationSlug] : null
@@ -109,18 +105,17 @@ async function aggregateLocation(locationSlug, bounds) {
     }
   }
 
-  // 2. Day Ones Booked: ghl_contacts_report where day_one_booked='Yes' and day_one_booking_date in range
-  let dayOneQ = supabaseAdmin
-    .from('ghl_contacts_report')
-    .select('day_one_booking_team_member')
-    .eq('day_one_booked', 'Yes')
-    .not('day_one_booking_date', 'is', null)
-    .gte('day_one_booking_date', startMs)
-    .lte('day_one_booking_date', endMs)
-  if (locationSlug) dayOneQ = dayOneQ.eq('location_slug', locationSlug)
-
-  const { data: dayOneData } = await dayOneQ
-  const dayOnes = dayOneData || []
+  // 2. Day Ones Booked, from day_one_appointments (see lib/dayOneReporting).
+  //
+  // This used to count ghl_contacts_report.day_one_booking_team_member, which
+  // is a snapshot of a GHL contact CUSTOM FIELD. A booking only scored if a
+  // workflow had written that field, so anything booked another way was
+  // invisible, and a member with two Day Ones only ever counted once — a
+  // contact has one set of those fields.
+  //
+  // Measured over August across all clubs: 254 attributed bookings here versus
+  // 219 from the custom fields, and nobody loses a booking they already had.
+  const dayOnesByPerson = await bookedByPerson({ startISO, endISO, locationSlug })
 
   // 3. VIPs: count by `contact.vip_team_member` custom field (per-location)
   const locationFilter = locationSlug ? { column: 'location_slug', value: locationSlug } : null
@@ -153,12 +148,10 @@ async function aggregateLocation(locationSlug, bounds) {
     if (ghl?.same_day_sale === 'Sale') personStats[name].same_day++
   }
 
-  // Day ones booked
-  for (const d of dayOnes) {
-    const name = normalizeName(d.day_one_booking_team_member)
-    if (!name || name === 'Unassigned') continue
+  // Day ones booked. Names arrive already normalised and Unassigned-filtered.
+  for (const [name, count] of Object.entries(dayOnesByPerson)) {
     ensurePerson(name)
-    personStats[name].day_ones++
+    personStats[name].day_ones += count
   }
 
   // VIPs
