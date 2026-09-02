@@ -11,6 +11,17 @@ function BarChartIcon() {
   )
 }
 
+// Mirrors the desktop Analytics tile's pie-segment mark, so the two surfaces
+// are recognisably the same tool rather than two things that both do reports.
+function AnalyticsIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7 text-wcs-red">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" />
+    </svg>
+  )
+}
+
 function CalendarIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7 text-wcs-red">
@@ -142,6 +153,7 @@ export default function HomeScreen({ user, navigate, onLogout }) {
 
   const allTiles = [
     { label: 'Reports', icon: <BarChartIcon />, route: 'reports', desc: 'Performance dashboards' },
+    { label: 'Analytics', icon: <AnalyticsIcon />, route: 'analytics', desc: 'Company reports' },
     { label: 'Calendar', icon: <CalendarIcon />, route: 'calendar', desc: 'Tours & Day Ones' },
     { label: 'Leaderboard', icon: <PodiumIcon />, route: 'leaderboard', desc: 'Top performers' },
     { label: 'Marketing', icon: <MegaphoneIcon />, route: 'marketing-tracker', desc: 'Campaign tracker' },
@@ -162,6 +174,9 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     if (tile.label === 'Tickets' && !(visibleTools || []).includes('ticketing')) return false
     // HR tile only for manager+
     if (tile.label === 'HR' && roleIdx < ROLE_LEVELS.manager) return false
+    // Analytics is corporate+, matching the desktop tile. Deliberately outside
+    // the Roles grid, so it can never be granted below that tier.
+    if (tile.label === 'Analytics' && roleIdx < ROLE_LEVELS.corporate) return false
     // Marketing Tracker: effective tracker capability (corporate/admin, add-on,
     // or a role grant of marketing:tracker).
     if (tile.label === 'Marketing' && !canMarketing) return false

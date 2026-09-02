@@ -55,7 +55,11 @@ import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 // { user, isAdmin, location, locationSlug, startDate, endDate }. `isAdmin` is
 // still the true admin flag, not the Analytics access gate.
 // `dates: false` hides the date-range controls for reports that manage their own.
-const ANALYTICS_REPORTS = [
+// Exported so the mobile app renders THE SAME registry rather than a second
+// list that has to be kept in step. A report added here appears on both
+// surfaces; a mobile-only copy would silently fall behind on the first one
+// somebody forgot to add twice.
+export const ANALYTICS_REPORTS = [
   {
     key: 'topline',
     label: 'Topline',
@@ -329,7 +333,7 @@ export const REPORT_GROUPS = [
 export const REPORT_META = ANALYTICS_REPORTS.map(r => ({ key: r.key, label: r.label }))
 
 // Pinned above the groups, in this order, outside any category.
-const PINNED_REPORTS = ['kpis', 'problem-areas', 'topline', 'club-activity']
+export const PINNED_REPORTS = ['kpis', 'problem-areas', 'topline', 'club-activity']
 
 /**
  * Reports that belong in no group and are not pinned still need a way in.
@@ -337,7 +341,7 @@ const PINNED_REPORTS = ['kpis', 'problem-areas', 'topline', 'club-activity']
  * unclaimed is listed alongside Topline — adding a report can therefore never
  * make it unreachable, only mis-filed.
  */
-function ungroupedReports() {
+export function ungroupedReports() {
   const claimed = new Set([...PINNED_REPORTS, ...REPORT_GROUPS.flatMap(g => g.reports)])
   return ANALYTICS_REPORTS.filter(r => !claimed.has(r.key)).map(r => r.key)
 }
@@ -668,7 +672,7 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
   )
 }
 
-const reportByKey = Object.fromEntries(ANALYTICS_REPORTS.map(r => [r.key, r]))
+export const reportByKey = Object.fromEntries(ANALYTICS_REPORTS.map(r => [r.key, r]))
 
 function ReportLink({ report, active, onSelect, indented = false }) {
   return (
