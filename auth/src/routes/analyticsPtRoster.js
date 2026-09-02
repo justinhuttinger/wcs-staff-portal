@@ -41,6 +41,13 @@ const STALE_MS = 60 * 60 * 1000
 // window the old report's users were reading it over.
 const PIF_LOOKBACK_MONTHS = 12
 
+/** `months` calendar months before an ISO date. */
+function monthsBefore(iso, months) {
+  const d = new Date(`${iso}T00:00:00Z`)
+  d.setUTCMonth(d.getUTCMonth() - months)
+  return d.toISOString().slice(0, 10)
+}
+
 const FIELDS =
   'member_id, member_name, club_number, trainer_name, service_item, recurring_type_desc, ' +
   'status, sub_status, frequency, invoice_total, sale_date'
@@ -66,22 +73,20 @@ router.get('/', async (req, res) => {
 
     // Counted back from the AS-OF date, not from today: a roster for last March
     // must not include a package bought in July.
-    const lookback = (from) => {
-      const d = new Date(`${from}T00:00:00Z`)
-      d.setUTCMonth(d.getUTCMonth() - PIF_LOOKBACK_MONTHS)
-      return d.toISOString().slice(0, 10)
-    }
-    const pifSince = lookback(asOf)
-    const priorPifSince = lookback(priorAsOf)
-
     // The same roster a month earlier, so every card can say which way it
     // moved. A stock with no comparison answers "how many" and never "is that
     // better", which is the question somebody opening it actually has.
-    const priorAsOf = (() => {
-      const d = new Date(`${asOf}T00:00:00Z`)
-      d.setUTCMonth(d.getUTCMonth() - 1)
-      return d.toISOString().slice(0, 10)
-    })()
+    //
+    // DECLARED BEFORE ANYTHING READS IT. It used to sit below the lookback
+    // lines that use it, and a `const` is in the temporal dead zone until its
+    // declaration, so every request threw "Cannot access 'priorAsOf' before
+    // initialization" and the route answered "Failed to build PT roster".
+    const priorAsOf = monthsBefore(asOf, 1)
+
+    // Counted back from each roster's own as-of date, not from today: a roster
+    // for last March must not include a package bought in July.
+    const pifSince = monthsBefore(asOf, PIF_LOOKBACK_MONTHS)
+    const priorPifSince = monthsBefore(priorAsOf, PIF_LOOKBACK_MONTHS)
 
     const cacheKey = ['analytics:pt-roster', asOf, slugs.slice().sort().join('+')].join('|')
 
