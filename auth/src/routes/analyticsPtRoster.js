@@ -66,16 +66,32 @@ router.get('/', async (req, res) => {
 
     // Counted back from the AS-OF date, not from today: a roster for last March
     // must not include a package bought in July.
-    const since = new Date(`${asOf}T00:00:00Z`)
-    since.setUTCMonth(since.getUTCMonth() - PIF_LOOKBACK_MONTHS)
-    const pifSince = since.toISOString().slice(0, 10)
+    const lookback = (from) => {
+      const d = new Date(`${from}T00:00:00Z`)
+      d.setUTCMonth(d.getUTCMonth() - PIF_LOOKBACK_MONTHS)
+      return d.toISOString().slice(0, 10)
+    }
+    const pifSince = lookback(asOf)
+    const priorPifSince = lookback(priorAsOf)
+
+    // The same roster a month earlier, so every card can say which way it
+    // moved. A stock with no comparison answers "how many" and never "is that
+    // better", which is the question somebody opening it actually has.
+    const priorAsOf = (() => {
+      const d = new Date(`${asOf}T00:00:00Z`)
+      d.setUTCMonth(d.getUTCMonth() - 1)
+      return d.toISOString().slice(0, 10)
+    })()
 
     const cacheKey = ['analytics:pt-roster', asOf, slugs.slice().sort().join('+')].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       const scoped = q => (clubNumbers ? q.in('club_number', clubNumbers) : q)
 
-      const [recurringRaw, pif] = await Promise.all([
+      // One fetch covers both dates: every service carries its own sale and
+      // end date, so the earlier roster is a second filter over the same rows
+      // rather than a second round trip.
+      const [recurringRaw, pif, priorRecurringRaw, priorPif] = await Promise.all([
         // Sold by the as-of date and not ended by it. Selected on DATES rather
         // than on status, so the same query answers "today" and "last March" —
         // status only ever describes now.
@@ -91,20 +107,37 @@ router.get('/', async (req, res) => {
           .ilike('recurring_type_desc', '%paid in full%')
           .lte('sale_date', asOf)
           .gte('sale_date', pifSince))),
+        fetchAll(scoped(supabaseAdmin.from('abc_pt_services')
+          .select(FIELDS)
+          .not('recurring_type_desc', 'ilike', '%paid in full%')
+          .lte('sale_date', priorAsOf))),
+        fetchAll(scoped(supabaseAdmin.from('abc_pt_services')
+          .select(FIELDS)
+          .ilike('recurring_type_desc', '%paid in full%')
+          .lte('sale_date', priorAsOf)
+          .gte('sale_date', priorPifSince))),
       ])
 
       // Still running on the as-of date: no end date yet, or one that had not
       // arrived. A service that ends ON the day is counted as gone that day,
       // matching how every loss figure in Analytics dates a deactivation.
-      const recurring = recurringRaw.filter(
-        s => !s.inactive_date || String(s.inactive_date).slice(0, 10) > asOf
+      const stillRunning = (rows, on) => rows.filter(
+        s => !s.inactive_date || String(s.inactive_date).slice(0, 10) > on
       )
 
-      return { recurring, pif }
+      return {
+        recurring: stillRunning(recurringRaw, asOf),
+        pif,
+        priorRecurring: stillRunning(priorRecurringRaw, priorAsOf),
+        priorPif,
+      }
     })
 
     const built = buildPtRoster(payload.recurring, payload.pif, {
       pifLookbackMonths: PIF_LOOKBACK_MONTHS,
+      prior: buildPtRoster(payload.priorRecurring, payload.priorPif, {
+        pifLookbackMonths: PIF_LOOKBACK_MONTHS,
+      }),
     })
 
     res.json({
@@ -119,6 +152,7 @@ router.get('/', async (req, res) => {
         pifSince,
         pifLookbackMonths: PIF_LOOKBACK_MONTHS,
         asOf,
+        priorAsOf,
         isHistorical: asOf < today,
       },
     })
