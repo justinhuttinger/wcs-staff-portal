@@ -162,3 +162,62 @@ test('no sessions either window is inactive rather than an error', () => {
   assert.equal(out.hasActivity, false)
   assert.equal(stat(out, 'clients').value, 0)
 })
+
+// ---------------------------------------------------------------------------
+// Grouping the roster by trainer.
+// ---------------------------------------------------------------------------
+
+const { groupByTrainer } = require('./ptRosterAnalytics')
+
+const client = (over = {}) => ({
+  member: 'Jane Doe', trainer: 'Katie Castlio', type: 'recurring',
+  monthly: 200, paidUpFront: 0, frozen: false, ...over,
+})
+
+test('clients group under the trainer who has them', () => {
+  const out = groupByTrainer([
+    client(),
+    client({ member: 'John Roe' }),
+    client({ member: 'Sam Ray', trainer: 'Tom Anderson' }),
+  ])
+  assert.equal(out.length, 2)
+  assert.equal(out[0].trainer, 'Katie Castlio')
+  assert.equal(out[0].count, 2)
+  assert.equal(out[0].monthly, 400)
+})
+
+test('the busiest trainer leads, ties broken by name', () => {
+  const out = groupByTrainer([
+    client({ trainer: 'Zoe Last' }),
+    client({ trainer: 'Amy First' }),
+    client({ trainer: 'Busy One' }),
+    client({ trainer: 'Busy One', member: 'Second' }),
+  ])
+  assert.deepEqual(out.map(t => t.trainer), ['Busy One', 'Amy First', 'Zoe Last'])
+})
+
+// A client with no trainer is a gap somebody should close. Dropping them would
+// make the roster add up to less than it is; leading with them would put a
+// non-trainer at the top of a list of trainers.
+test('Unassigned is kept and sorted last however big it is', () => {
+  const out = groupByTrainer([
+    client({ trainer: 'Unassigned' }),
+    client({ trainer: 'Unassigned', member: 'B' }),
+    client({ trainer: 'Unassigned', member: 'C' }),
+    client({ trainer: 'Katie Castlio' }),
+  ])
+  assert.equal(out[out.length - 1].trainer, 'Unassigned')
+  assert.equal(out[out.length - 1].count, 3)
+  assert.equal(out.reduce((n, t) => n + t.count, 0), 4)
+})
+
+test('frozen clients are counted on the trainer line', () => {
+  const out = groupByTrainer([client({ frozen: true }), client({ member: 'B' })])
+  assert.equal(out[0].frozen, 1)
+  assert.equal(out[0].count, 2)
+})
+
+test('no clients groups to nothing rather than throwing', () => {
+  assert.deepEqual(groupByTrainer([]), [])
+  assert.deepEqual(groupByTrainer(null), [])
+})

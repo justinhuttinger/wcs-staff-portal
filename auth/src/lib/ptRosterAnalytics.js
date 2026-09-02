@@ -137,6 +137,10 @@ function buildPtRoster(recurring, pif, opts = {}) {
       byFrequency: rankRows([...byFrequency.values()]),
     },
     clients: clients.sort((a, b) => b.monthly - a.monthly || a.member.localeCompare(b.member)),
+    // The roster read the way it is actually used: by trainer, each with their
+    // own book. A flat list of 400 names sorted by draft answers "who pays the
+    // most" — a question nobody opens this report to ask.
+    trainers: groupByTrainer(clients),
     note:
       'Recurring clients are active services on the books today. Paid-in-full clients are ' +
       `those who bought in the last ${opts.pifLookbackMonths || 12} months — ABC does not put ` +
@@ -252,6 +256,41 @@ function buildSessionFrequency(current, prior, opts = {}) {
   }
 }
 
+/**
+ * Clients grouped under the trainer who has them.
+ *
+ * Unassigned is kept and sorted last rather than dropped: a client with no
+ * trainer on the service is a gap somebody should close, and hiding them makes
+ * the roster add up to less than it is.
+ */
+function groupByTrainer(clients) {
+  const map = new Map()
+  for (const c of clients || []) {
+    const key = c.trainer || 'Unassigned'
+    const cur = map.get(key) || {
+      trainer: key, clients: [], count: 0, monthly: 0, paidUpFront: 0, frozen: 0,
+    }
+    cur.clients.push(c)
+    cur.count += 1
+    cur.monthly = round2(cur.monthly + c.monthly)
+    cur.paidUpFront = round2(cur.paidUpFront + c.paidUpFront)
+    if (c.frozen) cur.frozen += 1
+    map.set(key, cur)
+  }
+  return [...map.values()]
+    .map(t => ({
+      ...t,
+      clients: t.clients.sort((a, b) => b.monthly - a.monthly || a.member.localeCompare(b.member)),
+    }))
+    .sort((a, b) => {
+      // Unassigned last whatever its size, because it is not a trainer and
+      // should not lead a list of them.
+      if (a.trainer === 'Unassigned') return 1
+      if (b.trainer === 'Unassigned') return -1
+      return b.count - a.count || a.trainer.localeCompare(b.trainer)
+    })
+}
+
 module.exports = {
-  buildPtRoster, buildSessionFrequency, isPaidInFull,
+  buildPtRoster, buildSessionFrequency, isPaidInFull, groupByTrainer,
 }
