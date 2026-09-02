@@ -5,6 +5,34 @@ import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
 import { StatCard, TrendPanel, PersonSearch, ChooseSomeone } from './snapshotParts'
+import Drillable from './Drillable'
+
+// Which rows sit behind each stat on this card.
+//
+// personField is 'bookedBy' on the Day One entries because a salesperson BOOKS
+// intros, they do not run them — keyed on trainer_name this would open somebody
+// else's list. The window is the booking date for the same reason: that is what
+// the card counted.
+//
+// Booked on Join Date is deliberately absent. It counts intros booked the same
+// day the member joined, which is a correlation between two tables rather than
+// a filter on one, and a list that quietly showed all booked intros under that
+// number would be wrong in a way nobody could see.
+const DRILL = {
+  newMemberUnits:     { set: 'new-members', title: 'Memberships sold' },
+  achUnits:           { set: 'new-members', filter: 'ach', title: 'Memberships on ACH' },
+  pctOnAch:           { set: 'new-members', filter: 'ach', title: 'Memberships on ACH' },
+  avgNewDuesDraft:    { set: 'new-members', title: 'Memberships sold' },
+  totalNewDuesDraft:  { set: 'new-members', title: 'Memberships sold' },
+  totalDownPayment:   { set: 'new-members', title: 'Memberships sold' },
+  dayOneBookCount:    { set: 'day-ones', window: 'booked', personField: 'bookedBy', title: 'Day Ones booked' },
+  dayOneBookPct:      { set: 'day-ones', window: 'booked', personField: 'bookedBy', title: 'Day Ones booked' },
+  vipCount:           { set: 'vips', title: 'VIP referrals' },
+  vipPct:             { set: 'vips', title: 'VIP referrals' },
+  toursGiven:         { set: 'tours', title: 'Tours given' },
+  tourConversionRate: { set: 'tours', title: 'Tours given' },
+  avgDaysToConversion:{ set: 'tours', title: 'Tours given' },
+}
 
 // ---------------------------------------------------------------------------
 // Salesperson Snapshot — Analytics (admin only)
@@ -96,9 +124,24 @@ export default function SalespersonSnapshot({ startDate, endDate, locationSlug }
           )}
 
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
-            {(data?.stats || []).map(s => (
-              <StatCard key={s.key} stat={s} comparisonLabel={data?.meta?.comparisonLabel} />
-            ))}
+            {(data?.stats || []).map(s => {
+              const d = DRILL[s.key]
+              const card = <StatCard stat={s} comparisonLabel={data?.meta?.comparisonLabel} />
+              if (!d || !person || !s.value) return <div key={s.key}>{card}</div>
+              return (
+                <Drillable
+                  key={s.key}
+                  set={d.set}
+                  title={`${d.title} — ${person}`}
+                  params={{
+                    start: startDate, end: endDate, clubs: locationSlug || 'all',
+                    person, filter: d.filter, window: d.window, personField: d.personField,
+                  }}
+                >
+                  {card}
+                </Drillable>
+              )
+            })}
           </div>
 
           {/* Counts and rates never share a panel. In compare mode each panel

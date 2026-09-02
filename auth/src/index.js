@@ -156,6 +156,9 @@ app.use('/analytics/member-journey', require('./routes/analyticsMemberJourney'))
 app.use('/analytics/club-snapshot', require('./routes/analyticsClubSnapshot'))
 app.use('/analytics/pt-snapshot', require('./routes/analyticsPtSnapshot'))
 app.use('/analytics/trainer-snapshot', require('./routes/analyticsTrainerSnapshot'))
+// The rows behind any number on any report. One route, a registry of record
+// sets — see lib/analyticsRecords.
+app.use('/analytics/records', require('./routes/analyticsRecords'))
 // Second router on /tours, deliberately: routes/tours.js owns GET / (the
 // tour list) and this owns /outcomes and /complete. No path collides, so
 // Express falls through from the first to the second.

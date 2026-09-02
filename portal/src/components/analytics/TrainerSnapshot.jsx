@@ -6,6 +6,37 @@ import DesktopLoading from '../DesktopLoading'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
 import { StatCard, TrendPanel, PersonSearch, ChooseSomeone } from './snapshotParts'
 import PendingOutcomePanel from './PendingOutcomePanel'
+import Drillable from './Drillable'
+
+// Which rows sit behind each stat on this card.
+//
+// Written out per stat rather than guessed from the key, because the WINDOW
+// differs between them and nothing in the key says so: the Day One counts here
+// come from analytics_trainer_performance, which keys on the BOOKING date, so
+// their drill-downs have to use the same key or the list will not match the
+// number above it. `person` is always the trainer who RAN the session or intro.
+//
+// A stat missing from this map simply is not clickable — a rate with no list of
+// its own (Net Revenue is two populations) is better left alone than pointed at
+// half its answer.
+const DRILL = {
+  completedSessions:  { set: 'pt-sessions', filter: 'completed', title: 'Completed sessions' },
+  uniqueClients:      { set: 'pt-clients', title: 'Clients trained' },
+  ptHours:            { set: 'pt-sessions', filter: 'pt', title: 'PT appointments' },
+  avgSessionMinutes:  { set: 'pt-sessions', filter: 'completed', title: 'Completed sessions' },
+  cancellationRate:   { set: 'pt-sessions', filter: 'cancelled', title: 'Cancelled sessions' },
+  memberMonths:       { set: 'pt-clients', title: 'Clients trained' },
+  dayOnesBooked:      { set: 'day-ones', window: 'booked', title: 'Day Ones' },
+  dayOnesCompleted:   { set: 'day-ones', window: 'booked', filter: 'completed', title: 'Completed Day Ones' },
+  dayOnesSold:        { set: 'day-ones', window: 'booked', filter: 'sold', title: 'Day Ones sold' },
+  closeRate:          { set: 'day-ones', window: 'booked', filter: 'completed', title: 'Completed Day Ones' },
+  dayOnesPending:     { set: 'day-ones-pending', title: 'Pending outcomes' },
+  closeAmount:        { set: 'pt-sales', title: 'PT sold' },
+  closeAmountRs:      { set: 'pt-sales', filter: 'rs', title: 'Recurring PT sold' },
+  closeAmountPif:     { set: 'pt-sales', filter: 'pif', title: 'Paid-in-full PT sold' },
+  lostClients:        { set: 'pt-losses', title: 'Deactivations' },
+  lostValue:          { set: 'pt-losses', title: 'Deactivations' },
+}
 
 // ---------------------------------------------------------------------------
 // Trainer Snapshot — Analytics (admin only)
@@ -104,9 +135,26 @@ export default function TrainerSnapshot({ startDate, endDate, locationSlug }) {
           )}
 
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
-            {(data?.stats || []).map(s => (
-              <StatCard key={s.key} stat={s} comparisonLabel={data?.meta?.comparisonLabel} />
-            ))}
+            {(data?.stats || []).map(s => {
+              const d = DRILL[s.key]
+              const card = <StatCard stat={s} comparisonLabel={data?.meta?.comparisonLabel} />
+              // Nothing recorded means nothing to open, so the card stays inert
+              // rather than offering a click that lands on an empty list.
+              if (!d || !person || !s.value) return <div key={s.key}>{card}</div>
+              return (
+                <Drillable
+                  key={s.key}
+                  set={d.set}
+                  title={`${d.title} — ${person}`}
+                  params={{
+                    start: startDate, end: endDate, clubs: locationSlug || 'all',
+                    person, filter: d.filter, window: d.window,
+                  }}
+                >
+                  {card}
+                </Drillable>
+              )
+            })}
           </div>
 
           {cmpName ? (
