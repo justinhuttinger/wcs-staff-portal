@@ -290,18 +290,25 @@ export default function MobileApp() {
       const reportKey = route === 'analytics' ? null : route.slice('analytics/'.length)
       if (!reportKey) {
         return (
-          // Padding on the HEADER, not on the whole route, so the picker below
-          // can run edge to edge. Same structure the report route below uses.
-          // Wrapping everything in px-4 and letting the list pull back out with
-          // a negative margin does not work: MobileReportShell hands its
-          // children an overflow-y-auto box, and an element with overflow on one
-          // axis gets overflow on the other too, so the bleed was clipped and
-          // left a sideways scroll instead.
-          <div className="pt-4">
-            <div className="px-4">
-              <MobileHeader title="Analytics" subtitle="Select a report" onBack={() => navigate('home')} />
-            </div>
-            <MobileReportShell title="Analytics" user={user} hideDateRange>
+          // ONE WHITE SHEET, top to bottom. The header, the club selector and
+          // the report list all sit on the same surface and run edge to edge.
+          //
+          // It was a rounded header card and a rounded controls card floating
+          // over the club photo, with a full-bleed list underneath: the top half
+          // inset with gaps and the bottom half not, which read as two screens
+          // stacked rather than one menu. This IS a menu, so it gets one ground.
+          //
+          // No px-4 on the route, so nothing has padding to escape — the lesson
+          // from the negative-margin version, which could not bleed out of
+          // MobileReportShell's overflow box anyway.
+          <div className="bg-surface min-h-full">
+            <MobileHeader
+              title="Analytics"
+              subtitle="Select a report"
+              onBack={() => navigate('home')}
+              flush
+            />
+            <MobileReportShell title="Analytics" user={user} hideDateRange flush>
               {({ locationSlug }) => (
                 <MobileAnalyticsHome
                   locationSlug={locationSlug}

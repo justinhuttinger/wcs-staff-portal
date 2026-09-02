@@ -38,7 +38,13 @@ function getQuickRange(key) {
   }
 }
 
-export default function MobileReportShell({ title, children, user, hideDateRange }) {
+/**
+ * `flush` makes the controls part of one continuous sheet instead of a card:
+ * no side margin, no rounding, a single hairline underneath, and no repeated
+ * title — the screen already has one in its header. For screens whose body is
+ * edge to edge, where a floating card on top of it reads as two designs.
+ */
+export default function MobileReportShell({ title, children, user, hideDateRange, flush = false }) {
   const defaultLocSlug = ['corporate', 'admin', 'director'].includes(user?.staff?.role)
     ? 'all'
     : (user?.staff?.locations?.find(l => l.is_primary)?.name || user?.staff?.locations?.[0]?.name || 'salem').toLowerCase()
@@ -80,8 +86,10 @@ export default function MobileReportShell({ title, children, user, hideDateRange
 
   return (
     <div className="flex flex-col min-h-0">
-      <div className="mx-4 mt-3 mb-2 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4 space-y-2">
-        <h2 className="text-lg font-bold text-text-primary">{title}</h2>
+      <div className={flush
+        ? 'bg-surface border-b border-border px-4 py-3 space-y-2'
+        : 'mx-4 mt-3 mb-2 bg-surface/95 backdrop-blur-sm rounded-2xl border border-border p-4 space-y-2'}>
+        {!flush && <h2 className="text-lg font-bold text-text-primary">{title}</h2>}
 
       {/* Location selector */}
       <div>

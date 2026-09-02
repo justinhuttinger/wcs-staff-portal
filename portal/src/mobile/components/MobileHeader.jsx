@@ -1,9 +1,16 @@
 import React from 'react'
 import ReportInfoButton from '../../components/ReportInfoButton'
 
-export default function MobileHeader({ title, subtitle, onBack, rightAction, info }) {
+/**
+ * `flush` drops the card chrome — no rounding, no side border, no shadow — so
+ * the header can be the top of one continuous white sheet rather than a card
+ * floating above it. Used where the whole screen is a single surface.
+ */
+export default function MobileHeader({ title, subtitle, onBack, rightAction, info, flush = false }) {
   return (
-    <div className="bg-surface border border-border shadow-sm px-4 py-3 flex items-center gap-3 rounded-2xl">
+    <div className={`bg-surface px-4 py-3 flex items-center gap-3 ${
+      flush ? 'border-b border-border' : 'border border-border shadow-sm rounded-2xl'
+    }`}>
       {/* Back button */}
       {onBack && (
         <button
