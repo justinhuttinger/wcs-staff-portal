@@ -118,7 +118,7 @@ router.get('/programs', async (req, res) => {
 
   const { data, error } = await supabaseAdmin
     .from('memberapp_programs')
-    .select('id, name, notes, is_active, starts_on, template_id, created_at, updated_at')
+    .select('id, name, notes, is_active, starts_on, ends_on, template_id, created_at, updated_at')
     .eq('member_id', memberId)
     .eq('club_number', clubNumber)
     .order('created_at', { ascending: false })
@@ -176,6 +176,7 @@ router.post('/programs', async (req, res) => {
       notes: trim(notes),
       coach_staff_id: coach || null,
       starts_on: req.body?.starts_on || null,
+      ends_on: req.body?.ends_on || null,
       created_by: actor(req),
     })
     .select()
@@ -198,6 +199,7 @@ router.put('/programs/:id', async (req, res) => {
   if (isActive !== undefined) patch.is_active = Boolean(isActive)
   if (coach !== undefined) patch.coach_staff_id = coach || null
   if (req.body?.starts_on !== undefined) patch.starts_on = req.body.starts_on || null
+  if (req.body?.ends_on !== undefined) patch.ends_on = req.body.ends_on || null
 
   const { error } = await supabaseAdmin
     .from('memberapp_programs').update(patch).eq('id', req.params.id)
@@ -376,6 +378,19 @@ router.post('/templates/:id/assign', async (req, res) => {
 
   const written = await writeDays(program.id, built)
   if (written.error) return fail(res, 502, written.error)
+
+  // Optionally retire whatever is running, the day before this starts, so a
+  // handover does not leave two programs live at once.
+  if (req.body?.end_current && startsOn) {
+    const dayBefore = new Date(`${startsOn}T12:00:00Z`)
+    dayBefore.setUTCDate(dayBefore.getUTCDate() - 1)
+    await supabaseAdmin
+      .from('memberapp_programs')
+      .update({ ends_on: dayBefore.toISOString().slice(0, 10) })
+      .eq('member_id', memberId).eq('club_number', String(clubNumber))
+      .neq('id', program.id)
+      .is('ends_on', null)
+  }
 
   res.status(201).json({ program })
 })

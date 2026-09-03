@@ -12,8 +12,13 @@ const todayKey = () => new Intl.DateTimeFormat('en-CA', {
 // A future start date means the member cannot see it yet, which is worth
 // saying plainly rather than showing it as just another program.
 function scheduleLabel(p) {
+  const today = todayKey()
   if (!p.is_active) return 'Inactive'
-  if (p.starts_on && p.starts_on > todayKey()) return `Scheduled for ${p.starts_on}`
+  // Ended is checked first: a finished program is finished whatever its
+  // start date says.
+  if (p.ends_on && p.ends_on < today) return `Ended ${p.ends_on}`
+  if (p.starts_on && p.starts_on > today) return `Scheduled for ${p.starts_on}`
+  if (p.ends_on) return `Active until ${p.ends_on}`
   if (p.starts_on) return `Started ${p.starts_on}`
   return 'Active'
 }
@@ -50,6 +55,7 @@ export default function MemberAppPrograms({ member }) {
         name: r.program.name,
         notes: r.program.notes || '',
         starts_on: r.program.starts_on || '',
+        ends_on: r.program.ends_on || '',
         days: (r.days || []).map(d => ({
           name: d.name,
           exercises: d.exercises.length ? d.exercises.map(e => ({
@@ -74,6 +80,7 @@ export default function MemberAppPrograms({ member }) {
       name: editing.name,
       notes: editing.notes,
       starts_on: editing.starts_on || null,
+      ends_on: editing.ends_on || null,
       days: editing.days,
     }
     try {
@@ -89,6 +96,21 @@ export default function MemberAppPrograms({ member }) {
       setError(err.message)
     } finally {
       setBusy(false)
+    }
+  }
+
+  // Ending keeps the program and every workout logged against it; only the
+  // member stops seeing it.
+  async function endToday(program) {
+    setError(null); setNotice(null)
+    try {
+      await api(`/member-app/programs/${program.id}`, {
+        method: 'PUT', body: JSON.stringify({ ends_on: todayKey() }),
+      })
+      setNotice(`"${program.name}" ends today. Nothing was deleted.`)
+      load()
+    } catch (err) {
+      setError(err.message)
     }
   }
 
@@ -141,7 +163,7 @@ export default function MemberAppPrograms({ member }) {
               Start from a template
             </button>
             <button
-              onClick={() => setEditing({ name: '', notes: '', starts_on: '', days: [blankDay()] })}
+              onClick={() => setEditing({ name: '', notes: '', starts_on: '', ends_on: '', days: [blankDay()] })}
               className="px-4 py-2 rounded-lg border border-border bg-surface font-semibold"
             >
               Write from scratch
@@ -161,6 +183,11 @@ export default function MemberAppPrograms({ member }) {
                     </div>
                   </div>
                   <button onClick={() => open(p.id)} className="text-wcs-red font-semibold hover:underline">Edit</button>
+                  {!p.ends_on || p.ends_on >= todayKey() ? (
+                    <button onClick={() => endToday(p)} className="text-text-muted hover:text-text-primary">
+                      End today
+                    </button>
+                  ) : null}
                   <button onClick={() => remove(p.id)} className="text-text-muted hover:text-wcs-red">Delete</button>
                 </li>
               ))}
@@ -194,6 +221,17 @@ export default function MemberAppPrograms({ member }) {
               />
               <span className="block text-xs text-text-muted mt-1">
                 Empty means it is live now. A future date keeps their current program until then.
+              </span>
+            </label>
+            <label className="text-sm">
+              <span className="block text-text-muted mb-1">Ends on</span>
+              <input
+                type="date" className={field} value={editing.ends_on || ''}
+                onChange={e => setEditing(p => ({ ...p, ends_on: e.target.value }))}
+              />
+              <span className="block text-xs text-text-muted mt-1">
+                Last day it runs. Empty means it continues until something replaces it.
+                Ending keeps the program and its logged workouts; deleting does not.
               </span>
             </label>
           </div>
