@@ -4,7 +4,7 @@ import { api } from '../../../lib/api'
 const blankExercise = () => ({ name: '', sets: '', reps: '', weight: '', rest_seconds: '', notes: '' })
 const blankDay = () => ({ name: '', exercises: [blankExercise()] })
 
-export default function MemberAppPrograms({ member, onNeedMember }) {
+export default function MemberAppPrograms({ member }) {
   const [programs, setPrograms] = useState([])
   const [editing, setEditing] = useState(null) // { id?, name, notes, days[] }
   const [busy, setBusy] = useState(false)
@@ -25,17 +25,6 @@ export default function MemberAppPrograms({ member, onNeedMember }) {
   }, [member])
 
   useEffect(() => { load() }, [load])
-
-  if (!member) {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-text-muted">Pick a member first, then write their program.</p>
-        <button onClick={onNeedMember} className="px-4 py-2 rounded-lg bg-wcs-red text-white font-semibold">
-          Choose a member
-        </button>
-      </div>
-    )
-  }
 
   async function open(id) {
     setError(null)
