@@ -63,7 +63,8 @@ export default function MemberAppMessages({ member, onSelect }) {
 
   return (
     <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-      <div className="space-y-2">
+      {/* On a phone the list stacks above the thread; on desktop it is a column. */}
+      <div className="space-y-2 lg:max-h-[70vh] lg:overflow-y-auto">
         <h3 className="text-sm font-semibold text-text-muted">Conversations</h3>
         {threads.length === 0 ? (
           <p className="text-sm text-text-muted">No messages yet.</p>
@@ -106,7 +107,7 @@ export default function MemberAppMessages({ member, onSelect }) {
           </p>
         ) : (
           <>
-            <div className="border border-border rounded-lg bg-surface p-4 max-h-[420px] overflow-y-auto space-y-3">
+            <div className="border border-border rounded-lg bg-surface p-4 max-h-[52vh] lg:max-h-[420px] overflow-y-auto space-y-3">
               {messages.length === 0 ? (
                 <p className="text-sm text-text-muted">
                   No messages yet. Say hello — it arrives on their phone.
@@ -132,7 +133,7 @@ export default function MemberAppMessages({ member, onSelect }) {
                 value={draft}
                 onChange={e => setDraft(e.target.value)}
                 placeholder="Write a message"
-                className="flex-1 px-3 py-2 rounded-lg border border-border bg-surface"
+                className="flex-1 px-3 py-3 rounded-lg border border-border bg-surface text-base"
               />
               <button
                 type="submit" disabled={busy || !draft.trim()}
