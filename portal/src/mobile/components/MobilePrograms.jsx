@@ -16,8 +16,11 @@ const todayKey = () => new Intl.DateTimeFormat('en-CA', {
 // A future start date means the member cannot see it yet, which is worth
 // saying plainly rather than showing it as just another program.
 function scheduleLabel(p) {
+  const today = todayKey()
   if (!p.is_active) return 'Inactive'
-  if (p.starts_on && p.starts_on > todayKey()) return `Scheduled for ${p.starts_on}`
+  if (p.ends_on && p.ends_on < today) return `Ended ${p.ends_on}`
+  if (p.starts_on && p.starts_on > today) return `Scheduled for ${p.starts_on}`
+  if (p.ends_on) return `Active until ${p.ends_on}`
   if (p.starts_on) return `Started ${p.starts_on}`
   return 'Active'
 }
@@ -28,6 +31,7 @@ function Editor({ member, existing, onDone, onCancel }) {
   const [name, setName] = useState(existing?.name || '')
   const [notes, setNotes] = useState(existing?.notes || '')
   const [startsOn, setStartsOn] = useState(existing?.starts_on || '')
+  const [endsOn, setEndsOn] = useState(existing?.ends_on || '')
   const [days, setDays] = useState(existing?.days || [blankDay()])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -42,7 +46,7 @@ function Editor({ member, existing, onDone, onCancel }) {
     setBusy(true); setError(null)
     const payload = {
       member_id: member.member_id, club_number: member.club_number,
-      name, notes, days, starts_on: startsOn || null,
+      name, notes, days, starts_on: startsOn || null, ends_on: endsOn || null,
     }
     try {
       if (existing?.id) {
@@ -70,11 +74,18 @@ function Editor({ member, existing, onDone, onCancel }) {
         <span className="block text-text-muted mb-1">Notes for the member</span>
         <input className={field} value={notes} onChange={e => setNotes(e.target.value)} />
       </label>
-      <label className="block text-sm mb-4">
+      <label className="block text-sm mb-3">
         <span className="block text-text-muted mb-1">Starts on</span>
         <input type="date" className={field} value={startsOn} onChange={e => setStartsOn(e.target.value)} />
         <span className="block text-xs text-text-muted mt-1">
           Empty means live now. A future date keeps their current program until then.
+        </span>
+      </label>
+      <label className="block text-sm mb-4">
+        <span className="block text-text-muted mb-1">Ends on</span>
+        <input type="date" className={field} value={endsOn} onChange={e => setEndsOn(e.target.value)} />
+        <span className="block text-xs text-text-muted mt-1">
+          Last day it runs. Ending keeps the program and its logged workouts.
         </span>
       </label>
 
@@ -232,6 +243,7 @@ export default function MobilePrograms({ member, onBack }) {
             name: detail.program.name,
             notes: detail.program.notes || '',
             starts_on: detail.program.starts_on || '',
+            ends_on: detail.program.ends_on || '',
             days: detail.days.map(d => ({
               name: d.name,
               exercises: d.exercises.length ? d.exercises.map(e => ({
