@@ -19,6 +19,7 @@ import MobileLeaderboard from './components/MobileLeaderboard'
 import MobileCommunicationNotes from './components/MobileCommunicationNotes'
 import MobileHR from './components/MobileHR'
 import MobileTicketing from './components/MobileTicketing'
+import MobileCoaching from './components/MobileCoaching'
 import MobilePTRoster from './components/reports/MobilePTRoster'
 import MobileCheckins from './components/reports/MobileCheckins'
 import MobilePTSessions from './components/reports/MobilePTSessions'
@@ -627,6 +628,10 @@ export default function MobileApp() {
         return <MobileCommunicationNotes user={user} />
       case 'hr':
         return <MobileHR user={user} />
+      case 'coaching':
+        // Messaging only. Tiers and program authoring stay on desktop, where
+        // there is a keyboard.
+        return <MobileCoaching />
       case 'ticketing':
         // Native ticketing (maker board + handler queue). Any lead+ can open it;
         // handler controls appear only for the ticket type's handlers.
