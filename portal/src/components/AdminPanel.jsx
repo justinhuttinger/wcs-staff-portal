@@ -48,6 +48,7 @@ import BlogAutomationView from './BlogAutomationView'
 import AdminPrintDevicesTab from './admin/AdminPrintDevicesTab'
 import AdminPrintAutomationsTab from './admin/AdminPrintAutomationsTab'
 import DayOneProgramsAdmin from './admin/DayOneProgramsAdmin'
+import MemberAppAdmin from './admin/MemberAppAdmin'
 import FormsAdmin from './admin/FormsAdmin'
 import TillSettingsAdmin from './admin/TillSettingsAdmin'
 import LapsedCheckins from './admin/LapsedCheckins'
@@ -115,6 +116,7 @@ const TECHNICAL_TILES = [
 // Experimental Tools — admin-only sandbox for in-progress features
 const EXPERIMENTAL_TILES = [
   { key: 'pt-scheduler', label: 'PT Scheduler', desc: 'Trainer Calendar (Beta)', icon: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5' },
+  { key: 'member-app', label: 'Member App', desc: 'Tiers, Programs, Messages, Notifications (Beta)', icon: 'M10.5 1.5H8.25A2.25 2.25 0 0 0 6 3.75v16.5a2.25 2.25 0 0 0 2.25 2.25h7.5A2.25 2.25 0 0 0 18 20.25V3.75a2.25 2.25 0 0 0-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3' },
   { key: 'university-enroll', label: 'University Enrollment', desc: 'Enroll Trainees (Beta)', icon: 'M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342M6.75 15a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm0 0v-3.675A55.378 55.378 0 0 1 12 8.443m-7.007 11.55A5.981 5.981 0 0 0 6.75 15.75v-1.5' },
 ]
 
@@ -130,7 +132,7 @@ const CATEGORIES = [
   { title: 'Staff & HR', keys: ['staff', 'import', 'employee-roster', 'roles-v2', 'paychex'] },
   { title: 'Portal Setup', keys: ['tiles', 'appearance', 'layouts', 'config', 'drive-folders', 'forms', 'ticketing', 'action-links', 'references', 'portal-refresh'] },
   { title: 'Reports & KPIs', keys: ['problem-thresholds', 'kpi-goals', 'report-visibility', 'trends-12mo', 'speed-to-lead-audit', 'business-hours-stl', 'revenue-backfill', 'payroll-commissions'] },
-  { title: 'Members & Sales', keys: ['online-join', 'vip-referrals', 'tour-checkin', 'membership-skip', 'referral-rewards', 'audit-toggles', 'vendor-price-list', 'till-settings', 'lapsed-checkins'] },
+  { title: 'Members & Sales', keys: ['online-join', 'vip-referrals', 'tour-checkin', 'membership-skip', 'referral-rewards', 'audit-toggles', 'vendor-price-list', 'till-settings', 'lapsed-checkins', 'member-app'] },
   { title: 'Integrations & Sync', keys: ['sync', 'abc-sync', 'club-integrations', 'club-info', 'custom-fields', 'google-connections', 'shared-credentials'] },
   { title: 'Logs & Messaging', keys: ['webhooks', 'sms', 'audit-log'] },
   { title: 'Kiosk & Devices', keys: ['kiosk-installs', 'launcher-version', 'print-devices', 'print-automations'] },
@@ -180,6 +182,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
           </button>
           <h2 className="text-xl font-bold text-text-primary">{tile?.label}</h2>
         </div>
+        {activeSection === 'member-app' && <MemberAppAdmin />}
         {activeSection === 'staff' && <AdminStaffTab />}
         {activeSection === 'import' && <BulkImportTab />}
         {activeSection === 'employee-roster' && <EmployeeRosterTab />}

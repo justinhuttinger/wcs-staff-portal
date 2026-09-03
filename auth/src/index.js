@@ -203,6 +203,7 @@ app.use('/meeting-goals', require('./routes/meetingGoals'))
 app.use('/meeting-notes', require('./routes/meetingNotes'))
 app.use('/inventory', require('./routes/inventory'))
 app.use('/till', require('./routes/till'))
+app.use('/member-app', require('./routes/memberApp'))
 app.use('/media', require('./routes/media'))
 app.use('/custom-fields', require('./routes/customFields'))
 app.use('/custom-values', require('./routes/customValues'))
@@ -409,6 +410,9 @@ app.listen(PORT, () => {
     // the first requests a deploy has to serve.
     setTimeout(runNotInterested, 60 * 1000).unref()
     setInterval(runNotInterested, 24 * 60 * 60 * 1000).unref()
+
+  // Member-app broadcasts: due rows are claimed and sent every minute.
+  require('./services/memberAppBroadcasts').startMemberAppBroadcastCron()
   }
 
   // Memory verification instrumentation (see auth memory-leak fixes): log
