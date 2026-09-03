@@ -4,6 +4,20 @@ import MobileHeader from './MobileHeader'
 
 const field = 'w-full px-3 py-3 rounded-lg border border-border bg-bg text-base'
 
+// Some programs are a rotation rather than one workout per session: Push Pull
+// Legs is 3 workouts trained 6 days a week, 5x5 alternates two across three.
+// Showing days_per_week alone makes those look like they are missing days.
+function scheduleSummary(t, workoutCount) {
+  const parts = []
+  if (workoutCount) parts.push(`${workoutCount} workout${workoutCount === 1 ? '' : 's'}`)
+  if (t.days_per_week) parts.push(`${t.days_per_week} days/week`)
+  if (workoutCount && t.days_per_week && t.days_per_week > workoutCount) {
+    parts.push('repeat the cycle')
+  }
+  return parts.join(' · ')
+}
+
+
 // Browse the template library and assign one, optionally dated so it takes
 // over later. Same endpoints as desktop; the difference is one column.
 export default function MobileTemplates({ member, onAssigned, onBack }) {
@@ -62,7 +76,7 @@ export default function MobileTemplates({ member, onAssigned, onBack }) {
       <div className="pt-4 px-4 pb-8">
         <MobileHeader title={t.name} onBack={() => setPreview(null)} />
         <p className="text-xs text-text-muted mb-1">
-          {[t.goal, t.level, t.days_per_week && `${t.days_per_week} days/week`, t.equipment]
+          {[t.goal, t.level, scheduleSummary(t, preview.days.length), t.equipment]
             .filter(Boolean).join(' · ')}
         </p>
         {t.description ? <p className="text-sm text-text-muted mb-4">{t.description}</p> : null}
@@ -134,7 +148,7 @@ export default function MobileTemplates({ member, onAssigned, onBack }) {
               >
                 <span className="block font-semibold">{t.name}</span>
                 <span className="block text-xs text-text-muted">
-                  {[t.goal, t.level, t.days_per_week && `${t.days_per_week} days/wk`]
+                  {[t.goal, t.level, scheduleSummary(t, t.workout_count)]
                     .filter(Boolean).join(' · ')}
                 </span>
               </button>

@@ -1,6 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../../lib/api'
 
+// Some programs are a rotation rather than one workout per session: Push Pull
+// Legs is 3 workouts trained 6 days a week, 5x5 alternates two across three.
+// Showing days_per_week alone makes those look like they are missing days.
+function scheduleSummary(t, workoutCount) {
+  const parts = []
+  if (workoutCount) parts.push(`${workoutCount} workout${workoutCount === 1 ? '' : 's'}`)
+  if (t.days_per_week) parts.push(`${t.days_per_week} days/week`)
+  if (workoutCount && t.days_per_week && t.days_per_week > workoutCount) {
+    parts.push('repeat the cycle')
+  }
+  return parts.join(' · ')
+}
+
+
 // Browse the template library and drop one on a member, optionally dated so it
 // takes over later.
 export default function MemberAppTemplates({ member, onAssigned, onCancel }) {
@@ -68,7 +82,7 @@ export default function MemberAppTemplates({ member, onAssigned, onCancel }) {
           <h3 className="text-lg font-bold">{preview.template.name}</h3>
           <p className="text-xs text-text-muted">
             {[preview.template.goal, preview.template.level,
-              preview.template.days_per_week && `${preview.template.days_per_week} days/week`,
+              scheduleSummary(preview.template, preview.days.length),
               preview.template.equipment].filter(Boolean).join(' · ')}
           </p>
           {preview.template.description ? (
@@ -152,7 +166,7 @@ export default function MemberAppTemplates({ member, onAssigned, onCancel }) {
               >
                 <span className="block font-semibold">{t.name}</span>
                 <span className="block text-xs text-text-muted">
-                  {[t.goal, t.level, t.days_per_week && `${t.days_per_week} days/week`, t.equipment]
+                  {[t.goal, t.level, scheduleSummary(t, t.workout_count), t.equipment]
                     .filter(Boolean).join(' · ')}
                 </span>
                 {t.description ? (
