@@ -127,7 +127,7 @@ export default function MobileHabits({ member, onBack }) {
           }))}
           className="w-full py-3 mb-2 rounded-lg border border-border bg-surface font-semibold disabled:opacity-40"
         >
-          Add {p.label.toLowerCase()}
+          + {p.label}
         </button>
       ))}
 

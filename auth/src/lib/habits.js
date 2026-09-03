@@ -5,10 +5,15 @@
 // two deployments talking to one table, so the tests below pin the shape that
 // both sides rely on.
 
+// A preset with no levels is a plain yes/no: you either logged your food today
+// or you did not, and putting a number on it would invent a target nobody set.
 const HABIT_PRESETS = [
   { kind: 'water', label: 'Water', unit: 'oz', levels: [64, 80, 100, 128], target: 100 },
   { kind: 'sleep', label: 'Sleep', unit: 'hours', levels: [6, 7, 8, 9], target: 8 },
   { kind: 'steps', label: 'Steps', unit: 'steps', levels: [5000, 7500, 10000, 12500], target: 10000 },
+  { kind: 'detox', label: 'Digital detox', unit: 'min before bed', levels: [30, 60, 90, 120], target: 60 },
+  { kind: 'journal', label: 'Journal', unit: 'min', levels: [5, 10, 15, 20], target: 10 },
+  { kind: 'food', label: 'Track food', unit: null, levels: [], target: null },
 ]
 
 // Enough to build a routine, few enough that the member's home screen stays a
@@ -33,6 +38,9 @@ function normaliseHabit(input, existing) {
   const preset = HABIT_PRESETS.find(p => p.kind === kind)
 
   if (preset) {
+    if (preset.levels.length === 0) {
+      return { value: { kind, label: preset.label, unit: null, target: null } }
+    }
     const target = Number(input.target ?? existing?.target ?? preset.target)
     if (!Number.isFinite(target) || target <= 0) return { error: 'Pick a level for this habit' }
     return { value: { kind, label: preset.label, unit: preset.unit, target } }
