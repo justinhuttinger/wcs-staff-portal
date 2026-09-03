@@ -285,6 +285,20 @@ router.get('/templates', async (req, res) => {
   const { data, error } = await query
   if (error) return fail(res, 502, error.message)
 
+  // How many distinct workouts each template actually contains. days_per_week
+  // can exceed this on purpose (a rotation), and the UI needs both numbers to
+  // avoid looking like days are missing.
+  const ids = (data || []).map(t => t.id)
+  const counts = new Map()
+  if (ids.length) {
+    const { data: dayRows } = await supabaseAdmin
+      .from('memberapp_template_days').select('template_id').in('template_id', ids)
+    for (const d of dayRows || []) {
+      counts.set(d.template_id, (counts.get(d.template_id) || 0) + 1)
+    }
+  }
+  for (const t of data || []) t.workout_count = counts.get(t.id) || 0
+
   // Filtered here rather than in PostgREST so one search box can hit the name,
   // the description, the equipment and the tags at once.
   const needle = q.toLowerCase()

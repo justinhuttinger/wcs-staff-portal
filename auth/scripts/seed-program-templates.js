@@ -89,7 +89,7 @@ const TEMPLATES = [
   {
     name: 'Push Pull Legs',
     goal: 'Hypertrophy', level: 'Advanced', days_per_week: 6, equipment: 'Full gym',
-    description: 'Six days, each muscle group twice a week. For someone already training consistently.',
+    description: 'Three workouts run twice through the week, so each muscle group is hit twice. Six sessions in total.',
     tags: ['ppl', 'push pull legs', 'six day', 'advanced', 'muscle'],
     days: [
       { name: 'Push', ex: [
@@ -118,7 +118,7 @@ const TEMPLATES = [
   {
     name: 'Strength 5x5',
     goal: 'Strength', level: 'Intermediate', days_per_week: 3, equipment: 'Barbell',
-    description: 'Classic linear progression. Add weight every session until it stops moving.',
+    description: 'Two workouts alternated across three sessions a week. Add weight every session until it stops moving.',
     tags: ['5x5', 'strength', 'barbell', 'linear progression', 'powerlifting'],
     days: [
       { name: 'Workout A', ex: [
