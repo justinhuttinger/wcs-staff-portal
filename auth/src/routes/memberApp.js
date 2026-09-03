@@ -590,6 +590,129 @@ router.delete('/nutrition/meals/:id', async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
+// Member calendar
+//
+// One call behind both the desktop grid and the staff app, so a coach opening a
+// member sees workouts, habits and food together rather than three screens.
+//
+// Habits are additive only: a day carries what was kept and nothing otherwise.
+// The member app never counts them against a total and neither does this, so a
+// coach is not handed a "2 of 5" to open a conversation with. Food is the
+// opposite - once tracking is on, every logged day gets a verdict.
+// ---------------------------------------------------------------------------
+
+const CALENDAR_MAX_DAYS = 120
+
+// GET /member-app/calendar?member_id=&club_number=&from=&to=
+router.get('/calendar', async (req, res) => {
+  const { member_id: memberId, club_number: clubNumber } = req.query
+  if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
+
+  const today = pacificDay()
+  const to = req.query.to || today
+  const asked = req.query.from || shiftDay(to, -27)
+  const floor = shiftDay(to, -CALENDAR_MAX_DAYS)
+  const from = asked < floor ? floor : asked
+
+  const club = String(clubNumber)
+  const scope = (q) => q.eq('member_id', memberId).eq('club_number', club)
+
+  const [{ data: member }, { data: habits }, { data: targets }, { data: meals }, { data: sessions }] =
+    await Promise.all([
+      scope(supabaseAdmin.from('memberapp_members').select('nutrition_enabled')).maybeSingle(),
+      scope(supabaseAdmin.from('memberapp_habits').select('id, label, kind')).eq('is_active', true),
+      scope(supabaseAdmin
+        .from('memberapp_nutrition_targets')
+        .select('calories, protein_g, carbs_g, fat_g, effective_from'))
+        .order('effective_from', { ascending: false })
+        .limit(50),
+      scope(supabaseAdmin
+        .from('memberapp_meals')
+        .select('performed_on, slot, name, calories, protein_g, carbs_g, fat_g'))
+        .gte('performed_on', from).lte('performed_on', to)
+        .order('logged_at', { ascending: true }),
+      scope(supabaseAdmin
+        .from('memberapp_workout_sessions')
+        .select('id, performed_on, completed_at, day_id'))
+        .gte('performed_on', from).lte('performed_on', to)
+        .order('performed_on', { ascending: true }),
+    ])
+
+  const nutritionEnabled = Boolean(member?.nutrition_enabled)
+
+  const habitIds = (habits || []).map(h => h.id)
+  const { data: habitLogs } = habitIds.length
+    ? await supabaseAdmin
+        .from('memberapp_habit_logs')
+        .select('habit_id, performed_on')
+        .in('habit_id', habitIds)
+        .gte('performed_on', from).lte('performed_on', to)
+    : { data: [] }
+
+  // Day names make a workout readable at a glance; without them every entry
+  // on the grid just says "workout".
+  const dayIds = [...new Set((sessions || []).map(s => s.day_id).filter(Boolean))]
+  const { data: dayRows } = dayIds.length
+    ? await supabaseAdmin
+        .from('memberapp_program_days')
+        .select('id, name')
+        .in('id', dayIds)
+    : { data: [] }
+  const dayName = new Map((dayRows || []).map(d => [d.id, d.name]))
+
+  const days = {}
+  const at = (key) => {
+    if (!days[key]) days[key] = {}
+    return days[key]
+  }
+
+  const labelOf = new Map((habits || []).map(h => [h.id, h.label]))
+  for (const log of habitLogs || []) {
+    const label = labelOf.get(log.habit_id)
+    if (!label) continue
+    const d = at(log.performed_on)
+    d.habits = d.habits || []
+    d.habits.push(label)
+  }
+
+  for (const session of sessions || []) {
+    if (!session.completed_at) continue
+    const d = at(session.performed_on)
+    d.workouts = d.workouts || []
+    d.workouts.push({ id: session.id, name: dayName.get(session.day_id) || 'Workout' })
+  }
+
+  if (nutritionEnabled) {
+    const byDay = new Map()
+    for (const meal of meals || []) {
+      if (!byDay.has(meal.performed_on)) byDay.set(meal.performed_on, [])
+      byDay.get(meal.performed_on).push(meal)
+    }
+    for (const [key, list] of byDay) {
+      const totals = totalsFor(list)
+      const target = targetOn(targets || [], key)
+      at(key).food = {
+        meals: list.map(m => ({
+          name: m.name || (m.slot ? m.slot[0].toUpperCase() + m.slot.slice(1) : 'Meal'),
+          calories: m.calories,
+          protein_g: m.protein_g,
+          carbs_g: m.carbs_g,
+          fat_g: m.fat_g,
+        })),
+        totals,
+        target,
+        over: target?.calories == null ? null : totals.calories > Number(target.calories),
+        difference: target?.calories == null
+          ? null
+          : Math.round(totals.calories - Number(target.calories)),
+      }
+    }
+  }
+
+  res.json({ from, to, today, nutritionEnabled, days })
+})
+
+// ---------------------------------------------------------------------------
 // Templates
 // ---------------------------------------------------------------------------
 

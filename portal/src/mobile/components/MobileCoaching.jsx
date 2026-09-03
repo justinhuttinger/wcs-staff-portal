@@ -4,6 +4,7 @@ import MobileHeader from './MobileHeader'
 import MobilePrograms from './MobilePrograms'
 import MobileHabits from './MobileHabits'
 import MobileNutrition from './MobileNutrition'
+import MobileMemberCalendar from './MobileMemberCalendar'
 
 // Coach-side messaging for a phone. Deliberately only the conversation: the
 // desktop Admin section owns tiers and program authoring, which need a
@@ -145,6 +146,7 @@ function MemberHub({ member, onBack }) {
   if (view === 'programs') return <MobilePrograms member={member} onBack={() => setView(null)} />
   if (view === 'habits') return <MobileHabits member={member} onBack={() => setView(null)} />
   if (view === 'nutrition') return <MobileNutrition member={member} onBack={() => setView(null)} />
+  if (view === 'calendar') return <MobileMemberCalendar member={member} onBack={() => setView(null)} />
 
   const item = 'w-full text-left border border-border rounded-xl px-4 py-4 bg-surface'
   return (
@@ -166,6 +168,10 @@ function MemberHub({ member, onBack }) {
         <button className={item} onClick={() => setView('nutrition')}>
           <span className="block font-semibold">Nutrition</span>
           <span className="block text-xs text-text-muted">Goals and what they actually eat</span>
+        </button>
+        <button className={item} onClick={() => setView('calendar')}>
+          <span className="block font-semibold">Calendar</span>
+          <span className="block text-xs text-text-muted">Workouts, habits and food by day</span>
         </button>
       </div>
     </div>
