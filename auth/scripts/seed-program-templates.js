@@ -89,47 +89,73 @@ const TEMPLATES = [
   {
     name: 'Push Pull Legs',
     goal: 'Hypertrophy', level: 'Advanced', days_per_week: 6, equipment: 'Full gym',
-    description: 'Three workouts run twice through the week, so each muscle group is hit twice. Six sessions in total.',
+    description: 'Six sessions: a heavy pass and a volume pass through push, pull and legs.',
     tags: ['ppl', 'push pull legs', 'six day', 'advanced', 'muscle'],
     days: [
-      { name: 'Push', ex: [
-        e('Bench press', '4', '6-8', '', 120),
-        e('Overhead press', '3', '8', '', 90),
+      { name: 'Push (Heavy)', ex: [
+        e('Bench press', '4', '6', '', 150),
+        e('Overhead press', '3', '8', '', 120),
         e('Incline dumbbell press', '3', '10', '', 90),
         e('Lateral raise', '4', '15', 'light', 45),
         e('Overhead triceps extension', '3', '12', '', 60),
       ] },
-      { name: 'Pull', ex: [
+      { name: 'Pull (Heavy)', ex: [
         e('Pull-up', '4', 'AMRAP', 'bodyweight', 120),
         e('Barbell row', '4', '8', '', 90),
         e('Cable row', '3', '12', '', 75),
         e('Rear delt fly', '3', '15', 'light', 45),
         e('Barbell curl', '3', '10', '', 60),
       ] },
-      { name: 'Legs', ex: [
+      { name: 'Legs (Heavy)', ex: [
         e('Back squat', '4', '6-8', '', 150),
         e('Romanian deadlift', '3', '10', '', 120),
         e('Bulgarian split squat', '3', '10 each', '', 90),
         e('Leg curl', '3', '12', '', 60),
         e('Calf raise', '4', '15', '', 45),
       ] },
+      { name: 'Push (Volume)', ex: [
+        e('Incline dumbbell press', '4', '10-12', '', 90),
+        e('Chest press machine', '3', '12', '', 75),
+        e('Dumbbell shoulder press', '3', '12', '', 75),
+        e('Cable fly', '3', '15', '', 45),
+        e('Rope pushdown', '3', '15', '', 45),
+      ] },
+      { name: 'Pull (Volume)', ex: [
+        e('Lat pulldown', '4', '12', '', 75),
+        e('Chest-supported row', '4', '12', '', 75),
+        e('Straight-arm pulldown', '3', '15', '', 45),
+        e('Face pull', '3', '20', 'rope', 45),
+        e('Hammer curl', '3', '12', '', 45),
+      ] },
+      { name: 'Legs (Volume)', ex: [
+        e('Front squat', '4', '8', '', 120),
+        e('Leg press', '4', '12', '', 90),
+        e('Walking lunge', '3', '12 each', '', 75),
+        e('Leg extension', '3', '15', '', 45),
+        e('Seated calf raise', '4', '20', '', 45),
+      ] },
     ],
   },
   {
     name: 'Strength 5x5',
     goal: 'Strength', level: 'Intermediate', days_per_week: 3, equipment: 'Barbell',
-    description: 'Two workouts alternated across three sessions a week. Add weight every session until it stops moving.',
+    description: 'Three sessions a week alternating two workouts. Add weight every session until it stops moving.',
     tags: ['5x5', 'strength', 'barbell', 'linear progression', 'powerlifting'],
     days: [
-      { name: 'Workout A', ex: [
+      { name: 'Session 1 (A)', ex: [
         e('Back squat', '5', '5', '', 180),
         e('Bench press', '5', '5', '', 180),
         e('Barbell row', '5', '5', '', 150),
       ] },
-      { name: 'Workout B', ex: [
+      { name: 'Session 2 (B)', ex: [
         e('Back squat', '5', '5', '', 180),
         e('Overhead press', '5', '5', '', 180),
         e('Deadlift', '1', '5', '', 240, 'One heavy set is enough'),
+      ] },
+      { name: 'Session 3 (A)', ex: [
+        e('Back squat', '5', '5', '', 180),
+        e('Bench press', '5', '5', '', 180),
+        e('Barbell row', '5', '5', '', 150),
       ] },
     ],
   },
@@ -443,7 +469,18 @@ async function upsertTemplate(t) {
   return { name: t.name, days: t.days.length, exercises: exRows.length }
 }
 
+// One block per session, always. A template with fewer blocks than sessions
+// leaves a member unable to tell whether they owe another round of one, which
+// is exactly the confusion this guard exists to prevent.
+function assertOneBlockPerSession() {
+  const bad = TEMPLATES.filter(t => t.days_per_week && t.days_per_week !== t.days.length)
+  if (bad.length === 0) return
+  const lines = bad.map(t => `  ${t.name}: ${t.days.length} blocks but ${t.days_per_week} sessions/week`)
+  throw new Error(`Templates must have one block per session:\n${lines.join('\n')}`)
+}
+
 async function main() {
+  assertOneBlockPerSession()
   let exercises = 0
   for (const t of TEMPLATES) {
     const r = await upsertTemplate(t)
