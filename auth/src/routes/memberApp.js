@@ -13,6 +13,9 @@ const { notifyMember } = require('../lib/memberAppPush')
 const {
   HABIT_PRESETS, MAX_HABITS, ADHERENCE_DAYS, pacificDay, shiftDay, normaliseHabit,
 } = require('../lib/habits')
+const {
+  normaliseMeal, normaliseTarget, targetOn, totalsFor, remainingFor,
+} = require('../lib/nutrition')
 
 const router = Router()
 router.use(authenticate)
@@ -384,6 +387,204 @@ router.delete('/habits/:id', async (req, res) => {
     .from('memberapp_habits')
     .update({ is_active: false, updated_at: new Date().toISOString() })
     .eq('id', req.params.id)
+  if (error) return fail(res, 502, error.message)
+  res.json({ ok: true })
+})
+
+// ---------------------------------------------------------------------------
+// Nutrition
+//
+// Not a habit: a habit answers "did you?" once a day, this answers "how much,
+// so far, against what?" all day. Off by default; a coach or the member turns
+// it on. Targets are append-only so a change does not rewrite what past days
+// were measured against.
+// ---------------------------------------------------------------------------
+
+const AVERAGE_WINDOWS = [7, 30]
+
+async function loadTargets(memberId, clubNumber) {
+  const { data } = await supabaseAdmin
+    .from('memberapp_nutrition_targets')
+    .select('id, calories, protein_g, carbs_g, fat_g, effective_from, set_by, created_at')
+    .eq('member_id', memberId)
+    .eq('club_number', String(clubNumber))
+    .order('effective_from', { ascending: false })
+    .limit(50)
+  return data || []
+}
+
+// GET /member-app/nutrition?member_id=&club_number=
+router.get('/nutrition', async (req, res) => {
+  const { member_id: memberId, club_number: clubNumber } = req.query
+  if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
+
+  const today = pacificDay()
+  const since = shiftDay(today, -Math.max(...AVERAGE_WINDOWS))
+
+  const [{ data: member }, targets, { data: meals }] = await Promise.all([
+    supabaseAdmin
+      .from('memberapp_members')
+      .select('nutrition_enabled')
+      .eq('member_id', memberId).eq('club_number', String(clubNumber))
+      .maybeSingle(),
+    loadTargets(memberId, clubNumber),
+    supabaseAdmin
+      .from('memberapp_meals')
+      .select('id, performed_on, slot, name, calories, protein_g, carbs_g, fat_g, logged_at, created_by')
+      .eq('member_id', memberId).eq('club_number', String(clubNumber))
+      .gte('performed_on', since)
+      .order('performed_on', { ascending: false })
+      .order('logged_at', { ascending: true })
+      .limit(500),
+  ])
+
+  const rows = meals || []
+  const byDay = new Map()
+  for (const meal of rows) {
+    if (!byDay.has(meal.performed_on)) byDay.set(meal.performed_on, [])
+    byDay.get(meal.performed_on).push(meal)
+  }
+
+  // Averages are over days they actually logged. Counting untouched days as
+  // zero would show a coach 900 calories for someone who logged twice.
+  const averages = {}
+  for (const window of AVERAGE_WINDOWS) {
+    const from = shiftDay(today, -(window - 1))
+    const days = [...byDay.entries()].filter(([day]) => day >= from)
+    const sums = totalsFor(days.flatMap(([, list]) => list))
+    averages[window] = {
+      days_logged: days.length,
+      calories: days.length ? Math.round(sums.calories / days.length) : null,
+      protein_g: days.length ? Math.round(sums.protein_g / days.length) : null,
+      carbs_g: days.length ? Math.round(sums.carbs_g / days.length) : null,
+      fat_g: days.length ? Math.round(sums.fat_g / days.length) : null,
+    }
+  }
+
+  const todayMeals = byDay.get(today) || []
+  const target = targetOn(targets, today)
+  const totals = totalsFor(todayMeals)
+
+  res.json({
+    enabled: Boolean(member?.nutrition_enabled),
+    today,
+    target,
+    targets,
+    totals,
+    remaining: remainingFor(totals, target),
+    meals: todayMeals,
+    days: [...byDay.entries()].map(([day, list]) => ({
+      day,
+      totals: totalsFor(list),
+      target: targetOn(targets, day),
+      meals: list.length,
+    })),
+    averages,
+  })
+})
+
+// PUT /member-app/nutrition/enabled
+router.put('/nutrition/enabled', async (req, res) => {
+  const { member_id: memberId, club_number: clubNumber, enabled } = req.body || {}
+  if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
+
+  const { error } = await supabaseAdmin
+    .from('memberapp_members')
+    .upsert({
+      member_id: memberId,
+      club_number: String(clubNumber),
+      nutrition_enabled: Boolean(enabled),
+      updated_at: new Date().toISOString(),
+      updated_by: actor(req),
+    }, { onConflict: 'member_id,club_number' })
+  if (error) return fail(res, 502, error.message)
+  res.json({ ok: true })
+})
+
+// POST /member-app/nutrition/targets - a new row, never an edit of the old one
+router.post('/nutrition/targets', async (req, res) => {
+  const { member_id: memberId, club_number: clubNumber } = req.body || {}
+  if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
+
+  const { value, error: bad } = normaliseTarget(req.body || {})
+  if (bad) return fail(res, 400, bad)
+
+  const { data, error } = await supabaseAdmin
+    .from('memberapp_nutrition_targets')
+    .insert({
+      member_id: memberId,
+      club_number: String(clubNumber),
+      effective_from: req.body?.effective_from || pacificDay(),
+      set_by: actor(req),
+      ...value,
+    })
+    .select()
+    .single()
+  if (error) return fail(res, 502, error.message)
+  res.status(201).json({ target: data })
+})
+
+// GET /member-app/nutrition/day?member_id=&club_number=&date=
+router.get('/nutrition/day', async (req, res) => {
+  const { member_id: memberId, club_number: clubNumber, date } = req.query
+  if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
+  const day = date || pacificDay()
+
+  const [targets, { data: meals, error }] = await Promise.all([
+    loadTargets(memberId, clubNumber),
+    supabaseAdmin
+      .from('memberapp_meals')
+      .select('id, performed_on, slot, name, calories, protein_g, carbs_g, fat_g, logged_at, created_by')
+      .eq('member_id', memberId).eq('club_number', String(clubNumber))
+      .eq('performed_on', day)
+      .order('logged_at', { ascending: true }),
+  ])
+  if (error) return fail(res, 502, error.message)
+
+  const target = targetOn(targets, day)
+  const totals = totalsFor(meals || [])
+  res.json({ day, target, totals, remaining: remainingFor(totals, target), meals: meals || [] })
+})
+
+// Staff-logged meals are marked as such: a member should be able to tell which
+// numbers are theirs.
+router.post('/nutrition/meals', async (req, res) => {
+  const { member_id: memberId, club_number: clubNumber } = req.body || {}
+  if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
+
+  const { value, error: bad } = normaliseMeal(req.body || {})
+  if (bad) return fail(res, 400, bad)
+
+  const { data, error } = await supabaseAdmin
+    .from('memberapp_meals')
+    .insert({
+      member_id: memberId,
+      club_number: String(clubNumber),
+      performed_on: req.body?.performed_on || pacificDay(),
+      created_by: actor(req),
+      ...value,
+    })
+    .select()
+    .single()
+  if (error) return fail(res, 502, error.message)
+  res.status(201).json({ meal: data })
+})
+
+router.put('/nutrition/meals/:id', async (req, res) => {
+  const { value, error: bad } = normaliseMeal(req.body || {})
+  if (bad) return fail(res, 400, bad)
+
+  const { error } = await supabaseAdmin
+    .from('memberapp_meals')
+    .update({ ...value, updated_at: new Date().toISOString(), updated_by: actor(req) })
+    .eq('id', req.params.id)
+  if (error) return fail(res, 502, error.message)
+  res.json({ ok: true })
+})
+
+router.delete('/nutrition/meals/:id', async (req, res) => {
+  const { error } = await supabaseAdmin
+    .from('memberapp_meals').delete().eq('id', req.params.id)
   if (error) return fail(res, 502, error.message)
   res.json({ ok: true })
 })
