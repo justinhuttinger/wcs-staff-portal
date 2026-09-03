@@ -15,9 +15,27 @@ const FIELDS = [
 const blank = { calories: '', protein_g: '', carbs_g: '', fat_g: '' }
 const show = (v, unit) => (v == null ? '—' : `${nf.format(v)}${unit}`)
 
+const shiftDay = (dayKey, days) => {
+  const d = new Date(`${dayKey}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+const prettyDay = (dayKey, today) => {
+  if (dayKey === today) return 'Today'
+  if (dayKey === shiftDay(today, -1)) return 'Yesterday'
+  return new Date(`${dayKey}T12:00:00Z`).toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC',
+  })
+}
+
+const mealLabel = (m) => (m.name || (m.slot ? m.slot[0].toUpperCase() + m.slot.slice(1) : 'Meal'))
+
 // Setting someone's goals from the floor, and checking what they actually eat.
 export default function MobileNutrition({ member, onBack }) {
   const [state, setState] = useState(null)
+  const [day, setDay] = useState(null)
+  const [dayState, setDayState] = useState(null)
   const [form, setForm] = useState(blank)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -35,6 +53,23 @@ export default function MobileNutrition({ member, onBack }) {
   }, [member])
 
   useEffect(() => { load() }, [load])
+
+  // The day the coach is looking at, which starts as today and walks back.
+  useEffect(() => { if (state?.today && !day) setDay(state.today) }, [state, day])
+
+  const loadDay = useCallback(async () => {
+    if (!day) return  // waits one tick for today to arrive from the summary
+    try {
+      setDayState(await api(
+        `/member-app/nutrition/day?member_id=${encodeURIComponent(member.member_id)}` +
+        `&club_number=${encodeURIComponent(member.club_number)}&date=${day}`
+      ))
+    } catch (err) {
+      setError(err.message)
+    }
+  }, [member, day])
+
+  useEffect(() => { loadDay() }, [loadDay])
 
   async function run(work) {
     setBusy(true); setError(null)
@@ -58,6 +93,9 @@ export default function MobileNutrition({ member, onBack }) {
       </div>
     )
   }
+
+  // Falls back to today for the one render before the effect sets it.
+  const viewDay = day || state.today
 
   return (
     <div className="pt-4 px-4 pb-8">
@@ -87,21 +125,59 @@ export default function MobileNutrition({ member, onBack }) {
       ) : (
         <>
           <div className="border border-border rounded-xl bg-surface p-4 mb-3">
-            <p className="font-bold mb-3">Today</p>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <p className="font-bold">{prettyDay(viewDay, state.today)}</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setDay(shiftDay(viewDay, -1))} aria-label="Previous day"
+                  className="px-3 py-1.5 rounded-lg border border-border"
+                >
+                  &larr;
+                </button>
+                <button
+                  onClick={() => setDay(shiftDay(viewDay, 1))} aria-label="Next day"
+                  disabled={viewDay >= state.today}
+                  className="px-3 py-1.5 rounded-lg border border-border disabled:opacity-40"
+                >
+                  &rarr;
+                </button>
+              </div>
+            </div>
+
             <ul className="space-y-2">
               {FIELDS.map(f => (
                 <li key={f.key} className="flex justify-between text-sm">
                   <span>{f.label}</span>
-                  <span className="text-text-muted">
-                    {show(state.totals[f.key], f.unit)}
-                    {state.target?.[f.key] == null ? '' : ` of ${show(state.target[f.key], f.unit)}`}
+                  <span className={dayState?.remaining?.[f.key] < 0 ? 'text-wcs-red' : 'text-text-muted'}>
+                    {show(dayState?.totals?.[f.key] ?? null, f.unit)}
+                    {dayState?.target?.[f.key] == null ? '' : ` of ${show(dayState.target[f.key], f.unit)}`}
                   </span>
                 </li>
               ))}
             </ul>
-            <p className="text-xs text-text-muted mt-3">
-              {state.meals.length} meal{state.meals.length === 1 ? '' : 's'} logged
-            </p>
+
+            {/* What they actually ate, which is what the conversation is about. */}
+            <p className="text-xs text-text-muted mt-4 mb-1">Meals</p>
+            {!dayState ? (
+              <p className="text-sm text-text-muted">Loading…</p>
+            ) : dayState.meals.length === 0 ? (
+              <p className="text-sm text-text-muted">Nothing logged this day.</p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {dayState.meals.map(m => (
+                  <li key={m.id} className="py-2">
+                    <p className="text-sm font-medium">{mealLabel(m)}</p>
+                    <p className="text-xs text-text-muted">
+                      {nf.format(m.calories ?? 0)} cal
+                      {m.protein_g == null ? '' : ` · ${nf.format(m.protein_g)}g P`}
+                      {m.carbs_g == null ? '' : ` · ${nf.format(m.carbs_g)}g C`}
+                      {m.fat_g == null ? '' : ` · ${nf.format(m.fat_g)}g F`}
+                      {m.created_by ? ` · by ${m.created_by}` : ''}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div className="border border-border rounded-xl bg-surface p-4 mb-4">

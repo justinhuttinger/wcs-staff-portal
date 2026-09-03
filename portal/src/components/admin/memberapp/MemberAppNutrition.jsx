@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../../lib/api'
+import NutritionDay from './NutritionDay.jsx'
 
 const nf = new Intl.NumberFormat('en-US')
 
@@ -21,6 +22,7 @@ export default function MemberAppNutrition({ member }) {
   const [state, setState] = useState(null)
   const [form, setForm] = useState(blank)
   const [effectiveFrom, setEffectiveFrom] = useState('')
+  const [openDay, setOpenDay] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(null)
@@ -108,27 +110,7 @@ export default function MemberAppNutrition({ member }) {
 
       {state.enabled ? (
         <>
-          <div className="border border-border rounded-lg bg-surface p-4">
-            <p className="font-semibold mb-3">Today</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {FIELDS.map(f => (
-                <div key={f.key}>
-                  <p className="text-xs text-text-muted">{f.label}</p>
-                  <p className="text-lg font-bold">{show(totals[f.key], f.unit)}</p>
-                  <p className="text-xs text-text-muted">
-                    {target?.[f.key] == null
-                      ? 'no goal'
-                      : remaining[f.key] < 0
-                        ? `${nf.format(Math.abs(remaining[f.key]))}${f.unit} over`
-                        : `${nf.format(remaining[f.key])}${f.unit} left`}
-                  </p>
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-text-muted mt-3">
-              {state.meals.length} meal{state.meals.length === 1 ? '' : 's'} logged today
-            </p>
-          </div>
+          <NutritionDay member={member} today={state.today} initialDay={openDay} />
 
           <div className="border border-border rounded-lg bg-surface p-4">
             <p className="font-semibold mb-1">Averages</p>
@@ -226,14 +208,20 @@ export default function MemberAppNutrition({ member }) {
               <p className="font-semibold mb-2">Recent days</p>
               <ul className="text-sm space-y-1">
                 {state.days.map(d => (
-                  <li key={d.day} className="flex justify-between gap-4">
-                    <span>{d.day}</span>
-                    <span className="text-text-muted">
-                      {nf.format(d.totals.calories)} cal · {nf.format(d.totals.protein_g)}g protein
-                      {d.target?.calories
-                        ? ` · goal ${nf.format(d.target.calories)}`
-                        : ''}
-                    </span>
+                  <li key={d.day}>
+                    {/* Opens that day above rather than being a dead list. */}
+                    <button
+                      onClick={() => setOpenDay(d.day)}
+                      className="w-full flex justify-between gap-4 text-left py-1 hover:text-wcs-red transition-colors"
+                    >
+                      <span>{d.day}</span>
+                      <span className="text-text-muted">
+                        {nf.format(d.totals.calories)} cal · {nf.format(d.totals.protein_g)}g protein
+                        {d.target?.calories
+                          ? ` · goal ${nf.format(d.target.calories)}`
+                          : ''}
+                      </span>
+                    </button>
                   </li>
                 ))}
               </ul>
