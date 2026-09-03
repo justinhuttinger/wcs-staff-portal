@@ -1,12 +1,27 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../../lib/api'
+import MemberAppTemplates from './MemberAppTemplates.jsx'
 
 const blankExercise = () => ({ name: '', sets: '', reps: '', weight: '', rest_seconds: '', notes: '' })
 const blankDay = () => ({ name: '', exercises: [blankExercise()] })
 
+const todayKey = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date())
+
+// A future start date means the member cannot see it yet, which is worth
+// saying plainly rather than showing it as just another program.
+function scheduleLabel(p) {
+  if (!p.is_active) return 'Inactive'
+  if (p.starts_on && p.starts_on > todayKey()) return `Scheduled for ${p.starts_on}`
+  if (p.starts_on) return `Started ${p.starts_on}`
+  return 'Active'
+}
+
 export default function MemberAppPrograms({ member }) {
   const [programs, setPrograms] = useState([])
-  const [editing, setEditing] = useState(null) // { id?, name, notes, days[] }
+  const [editing, setEditing] = useState(null) // { id?, name, notes, days[], starts_on }
+  const [browsing, setBrowsing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(null)
@@ -34,6 +49,7 @@ export default function MemberAppPrograms({ member }) {
         id: r.program.id,
         name: r.program.name,
         notes: r.program.notes || '',
+        starts_on: r.program.starts_on || '',
         days: (r.days || []).map(d => ({
           name: d.name,
           exercises: d.exercises.length ? d.exercises.map(e => ({
@@ -57,6 +73,7 @@ export default function MemberAppPrograms({ member }) {
       coach_staff_id: member.coach_staff_id || null,
       name: editing.name,
       notes: editing.notes,
+      starts_on: editing.starts_on || null,
       days: editing.days,
     }
     try {
@@ -102,14 +119,34 @@ export default function MemberAppPrograms({ member }) {
       {error ? <p className="text-sm text-wcs-red">{error}</p> : null}
       {notice ? <p className="text-sm text-green-700">{notice}</p> : null}
 
-      {!editing ? (
+      {browsing ? (
+        <MemberAppTemplates
+          member={member}
+          onCancel={() => setBrowsing(false)}
+          onAssigned={(startsOn) => {
+            setBrowsing(false)
+            setNotice(startsOn
+              ? `Assigned. It takes over on ${startsOn}.`
+              : 'Assigned. The member sees it now.')
+            load()
+          }}
+        />
+      ) : !editing ? (
         <>
-          <button
-            onClick={() => setEditing({ name: '', notes: '', days: [blankDay()] })}
-            className="px-4 py-2 rounded-lg bg-wcs-red text-white font-semibold"
-          >
-            New program
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setBrowsing(true)}
+              className="px-4 py-2 rounded-lg bg-wcs-red text-white font-semibold"
+            >
+              Start from a template
+            </button>
+            <button
+              onClick={() => setEditing({ name: '', notes: '', starts_on: '', days: [blankDay()] })}
+              className="px-4 py-2 rounded-lg border border-border bg-surface font-semibold"
+            >
+              Write from scratch
+            </button>
+          </div>
 
           {programs.length === 0 ? (
             <p className="text-sm text-text-muted">No programs for this member yet.</p>
@@ -120,7 +157,7 @@ export default function MemberAppPrograms({ member }) {
                   <div className="flex-1">
                     <div className="font-semibold">{p.name}</div>
                     <div className="text-xs text-text-muted">
-                      {p.is_active ? 'Active' : 'Inactive'} &middot; updated {String(p.updated_at).slice(0, 10)}
+                      {scheduleLabel(p)} &middot; updated {String(p.updated_at).slice(0, 10)}
                     </div>
                   </div>
                   <button onClick={() => open(p.id)} className="text-wcs-red font-semibold hover:underline">Edit</button>
@@ -148,6 +185,16 @@ export default function MemberAppPrograms({ member }) {
                 placeholder="Warm up 10 minutes before every session"
                 onChange={e => setEditing(p => ({ ...p, notes: e.target.value }))}
               />
+            </label>
+            <label className="text-sm">
+              <span className="block text-text-muted mb-1">Starts on</span>
+              <input
+                type="date" className={field} value={editing.starts_on || ''}
+                onChange={e => setEditing(p => ({ ...p, starts_on: e.target.value }))}
+              />
+              <span className="block text-xs text-text-muted mt-1">
+                Empty means it is live now. A future date keeps their current program until then.
+              </span>
             </label>
           </div>
 
