@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../../lib/api'
 
-const blankExercise = () => ({ name: '', sets: '', reps: '', weight: '', notes: '' })
+const blankExercise = () => ({ name: '', sets: '', reps: '', weight: '', rest_seconds: '', notes: '' })
 const blankDay = () => ({ name: '', exercises: [blankExercise()] })
 
 export default function MemberAppPrograms({ member, onNeedMember }) {
@@ -49,7 +49,8 @@ export default function MemberAppPrograms({ member, onNeedMember }) {
           name: d.name,
           exercises: d.exercises.length ? d.exercises.map(e => ({
             name: e.name, sets: e.sets || '', reps: e.reps || '',
-            weight: e.weight || '', notes: e.notes || '',
+            weight: e.weight || '', rest_seconds: e.rest_seconds ?? '',
+            notes: e.notes || '',
           })) : [blankExercise()],
         })),
       })
@@ -179,7 +180,7 @@ export default function MemberAppPrograms({ member, onNeedMember }) {
 
               <div className="space-y-2">
                 {day.exercises.map((ex, ei) => (
-                  <div key={ei} className="grid gap-2 sm:grid-cols-[2fr_1fr_1fr_1fr_2fr_auto] items-center">
+                  <div key={ei} className="grid gap-2 sm:grid-cols-[2fr_1fr_1fr_1fr_1fr_2fr_auto] items-center">
                     <input className={field} value={ex.name} placeholder="Exercise"
                            onChange={e => patchExercise(di, ei, { name: e.target.value })} />
                     <input className={field} value={ex.sets} placeholder="Sets"
@@ -189,6 +190,9 @@ export default function MemberAppPrograms({ member, onNeedMember }) {
                            onChange={e => patchExercise(di, ei, { reps: e.target.value })} />
                     <input className={field} value={ex.weight} placeholder="Weight"
                            onChange={e => patchExercise(di, ei, { weight: e.target.value })} />
+                    {/* Seconds, because the app counts it down. */}
+                    <input className={field} value={ex.rest_seconds} inputMode="numeric" placeholder="Rest s"
+                           onChange={e => patchExercise(di, ei, { rest_seconds: e.target.value })} />
                     <input className={field} value={ex.notes} placeholder="Notes"
                            onChange={e => patchExercise(di, ei, { notes: e.target.value })} />
                     <button

@@ -18,6 +18,13 @@ router.use(requireRole('manager'))
 const actor = (req) => req.user?.email || req.user?.id || 'unknown'
 const trim = (v, max = 2000) => (v == null ? null : String(v).trim().slice(0, max) || null)
 
+function restSeconds(v) {
+  if (v === '' || v === null || v === undefined) return null
+  const n = Number(v)
+  if (!Number.isFinite(n) || n < 0) return null
+  return Math.min(3600, Math.trunc(n))
+}
+
 function fail(res, status, message) {
   return res.status(status).json({ error: message })
 }
@@ -140,7 +147,7 @@ router.get('/programs/:id', async (req, res) => {
   const { data: exercises } = dayIds.length
     ? await supabaseAdmin
         .from('memberapp_program_exercises')
-        .select('id, day_id, position, name, sets, reps, weight, notes')
+        .select('id, day_id, position, name, sets, reps, weight, notes, rest_seconds')
         .in('day_id', dayIds)
         .order('position', { ascending: true })
     : { data: [] }
@@ -240,6 +247,9 @@ async function writeDays(programId, days) {
         reps: trim(ex.reps, 40),
         weight: trim(ex.weight, 40),
         notes: trim(ex.notes, 400),
+        // Clamped rather than trusted: the column has a check constraint and a
+        // rejected insert would lose the whole program.
+        rest_seconds: restSeconds(ex.rest_seconds),
       })
     }
   })

@@ -58,7 +58,7 @@ export default function MemberAppMembers({ selected, onSelect }) {
           value={q}
           onChange={e => setQ(e.target.value)}
           placeholder="Search members by name or email"
-          className="flex-1 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary"
+          className="flex-1 px-3 py-3 rounded-lg border border-border bg-surface text-text-primary text-base"
         />
         <button
           type="submit"
