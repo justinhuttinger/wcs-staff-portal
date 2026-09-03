@@ -132,7 +132,7 @@ export default function MemberAppHabits({ member }) {
               onClick={() => add(p.kind, { target: p.target })}
               className="px-4 py-2 rounded-lg border border-border bg-surface text-sm font-semibold hover:border-text-muted disabled:opacity-40"
             >
-              Add {p.label.toLowerCase()}
+              + {p.label}
             </button>
           ))}
         </div>
