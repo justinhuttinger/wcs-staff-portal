@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../lib/api'
 import MobileHeader from './MobileHeader'
+import MobilePrograms from './MobilePrograms'
 
 // Coach-side messaging for a phone. Deliberately only the conversation: the
 // desktop Admin section owns tiers and program authoring, which need a
@@ -135,9 +136,36 @@ function Thread({ member, onBack }) {
   )
 }
 
+function MemberHub({ member, onBack }) {
+  const [view, setView] = useState(null)
+
+  if (view === 'messages') return <Thread member={member} onBack={() => setView(null)} />
+  if (view === 'programs') return <MobilePrograms member={member} onBack={() => setView(null)} />
+
+  const item = 'w-full text-left border border-border rounded-xl px-4 py-4 bg-surface'
+  return (
+    <div className="pt-4 px-4">
+      <MobileHeader title={member.name || `${member.first_name || ''} ${member.last_name || ''}`.trim()} onBack={onBack} />
+      <div className="space-y-2">
+        <button className={item} onClick={() => setView('messages')}>
+          <span className="block font-semibold">Messages</span>
+          <span className="block text-xs text-text-muted">Talk to them in the app</span>
+        </button>
+        <button className={item} onClick={() => setView('programs')}>
+          <span className="block font-semibold">Programs</span>
+          <span className="block text-xs text-text-muted">Write, edit, or run a workout</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function MobileCoaching() {
   const [threads, setThreads] = useState(null)
   const [open, setOpen] = useState(null)
+  const [q, setQ] = useState('')
+  const [found, setFound] = useState(null)
+  const [searching, setSearching] = useState(false)
   const [error, setError] = useState(null)
 
   const load = useCallback(async () => {
@@ -151,15 +179,69 @@ export default function MobileCoaching() {
 
   useEffect(() => { load() }, [load])
 
+  async function search(e) {
+    e.preventDefault()
+    if (q.trim().length < 2) return
+    setSearching(true); setError(null)
+    try {
+      const r = await api(`/member-app/members?q=${encodeURIComponent(q.trim())}`)
+      setFound(r.members || [])
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSearching(false)
+    }
+  }
+
   if (open) {
-    return <Thread member={open} onBack={() => { setOpen(null); load() }} />
+    return <MemberHub member={open} onBack={() => { setOpen(null); setFound(null); setQ(''); load() }} />
   }
 
   return (
     <div className="pt-4 px-4">
       <MobileHeader title="Coaching" />
 
+      <form onSubmit={search} className="flex gap-2 mb-4">
+        <input
+          value={q} onChange={e => setQ(e.target.value)}
+          placeholder="Find a member"
+          className="flex-1 px-3 py-3 rounded-lg border border-border bg-bg text-base"
+        />
+        <button
+          type="submit" disabled={searching || q.trim().length < 2}
+          className="px-4 rounded-lg bg-wcs-red text-white font-semibold disabled:opacity-50"
+        >
+          {searching ? '…' : 'Find'}
+        </button>
+      </form>
+
       {error ? <p className="text-sm text-wcs-red">{error}</p> : null}
+
+      {found !== null ? (
+        <ul className="space-y-2 mb-6">
+          {found.length === 0 ? (
+            <li className="text-sm text-text-muted">No active members matched that.</li>
+          ) : found.map(m => (
+            <li key={`${m.member_id}-${m.club_number}`}>
+              <button
+                onClick={() => setOpen(m)}
+                className="w-full flex items-center gap-3 text-left border border-border rounded-xl px-4 py-3 bg-surface"
+              >
+                <span className="flex-1 min-w-0">
+                  <span className="block font-semibold">{m.first_name} {m.last_name}</span>
+                  <span className="block text-xs text-text-muted">club {m.club_number}</span>
+                </span>
+                <span className={[
+                  'text-[11px] px-2 py-1 rounded font-semibold',
+                  m.tier === 'training' ? 'bg-wcs-red text-white' : 'bg-bg text-text-muted',
+                ].join(' ')}>
+                  {m.tier === 'training' ? 'Training' : 'Basic'}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       {threads === null ? (
         <p className="text-sm text-text-muted">Loading…</p>

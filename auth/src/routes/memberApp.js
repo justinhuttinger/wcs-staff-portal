@@ -296,6 +296,86 @@ router.get('/sessions', async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
+// Running a workout with a member
+//
+// A trainer on the floor logs on the member's behalf, so these write the same
+// rows the member app writes. Sessions are keyed to the member, never to the
+// staff account, so the member sees their own history either way.
+// ---------------------------------------------------------------------------
+
+router.post('/sessions', async (req, res) => {
+  const { member_id: memberId, club_number: clubNumber, program_id: programId, day_id: dayId } = req.body || {}
+  if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
+
+  const { data, error } = await supabaseAdmin
+    .from('memberapp_workout_sessions')
+    .insert({
+      member_id: memberId,
+      club_number: String(clubNumber),
+      program_id: programId || null,
+      day_id: dayId || null,
+    })
+    .select().single()
+
+  if (error) return fail(res, 502, error.message)
+  res.status(201).json({ session: data })
+})
+
+// The session, not the request, decides whose log this is.
+async function sessionFor(id) {
+  const { data } = await supabaseAdmin
+    .from('memberapp_workout_sessions')
+    .select('id, member_id, club_number')
+    .eq('id', id)
+    .maybeSingle()
+  return data
+}
+
+router.post('/sessions/:id/sets', async (req, res) => {
+  const session = await sessionFor(req.params.id)
+  if (!session) return fail(res, 404, 'That workout does not exist.')
+
+  const { exercise_id: exerciseId, set_number: setNumber, reps, weight, note } = req.body || {}
+  const n = Number(setNumber)
+  if (!exerciseId || !Number.isFinite(n) || n < 1) return fail(res, 400, 'Which set is this?')
+
+  const toNumber = (v) => {
+    if (v === '' || v === null || v === undefined) return null
+    const parsed = Number(v)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  // Re-entering a set overwrites it; the table has a unique
+  // (session, exercise, set_number) for exactly this.
+  const { error } = await supabaseAdmin
+    .from('memberapp_set_logs')
+    .upsert({
+      session_id: req.params.id,
+      exercise_id: exerciseId,
+      set_number: Math.trunc(n),
+      reps: toNumber(reps),
+      weight: toNumber(weight),
+      note: trim(note, 200),
+    }, { onConflict: 'session_id,exercise_id,set_number' })
+
+  if (error) return fail(res, 502, error.message)
+  res.json({ ok: true })
+})
+
+router.post('/sessions/:id/finish', async (req, res) => {
+  const session = await sessionFor(req.params.id)
+  if (!session) return fail(res, 404, 'That workout does not exist.')
+
+  const { error } = await supabaseAdmin
+    .from('memberapp_workout_sessions')
+    .update({ completed_at: new Date().toISOString(), notes: trim(req.body?.notes, 1000) })
+    .eq('id', req.params.id)
+
+  if (error) return fail(res, 502, error.message)
+  res.json({ ok: true })
+})
+
+// ---------------------------------------------------------------------------
 // Messages
 // ---------------------------------------------------------------------------
 
@@ -382,7 +462,8 @@ router.post('/messages', async (req, res) => {
       memberId, clubNumber: String(clubNumber),
       title: 'Message from your coach',
       body: text.slice(0, 140),
-      url: '/',
+      // Lands the member in the thread rather than on the home screen.
+      url: '/?to=coach',
     })
   } catch (err) {
     console.error('[member-app] coach message push failed:', err.message)
