@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../lib/api'
 import MobileHeader from './MobileHeader'
 import MobilePrograms from './MobilePrograms'
+import MobileHabits from './MobileHabits'
 
 // Coach-side messaging for a phone. Deliberately only the conversation: the
 // desktop Admin section owns tiers and program authoring, which need a
@@ -141,6 +142,7 @@ function MemberHub({ member, onBack }) {
 
   if (view === 'messages') return <Thread member={member} onBack={() => setView(null)} />
   if (view === 'programs') return <MobilePrograms member={member} onBack={() => setView(null)} />
+  if (view === 'habits') return <MobileHabits member={member} onBack={() => setView(null)} />
 
   const item = 'w-full text-left border border-border rounded-xl px-4 py-4 bg-surface'
   return (
@@ -154,6 +156,10 @@ function MemberHub({ member, onBack }) {
         <button className={item} onClick={() => setView('programs')}>
           <span className="block font-semibold">Programs</span>
           <span className="block text-xs text-text-muted">Write, edit, or run a workout</span>
+        </button>
+        <button className={item} onClick={() => setView('habits')}>
+          <span className="block font-semibold">Habits</span>
+          <span className="block text-xs text-text-muted">Daily tiles on their home screen</span>
         </button>
       </div>
     </div>

@@ -10,6 +10,9 @@ const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { notifyMember } = require('../lib/memberAppPush')
+const {
+  HABIT_PRESETS, MAX_HABITS, ADHERENCE_DAYS, pacificDay, shiftDay, normaliseHabit,
+} = require('../lib/habits')
 
 const router = Router()
 router.use(authenticate)
@@ -265,6 +268,125 @@ async function writeDays(programId, days) {
   }
   return {}
 }
+
+// ---------------------------------------------------------------------------
+// Habits
+//
+// Daily tiles on the member's home screen. A coach can set one up for a member
+// they are working with; the member can do the same for themselves in the app,
+// and can change or remove either. assigned_by records who started it, which is
+// all the member is shown ("Set by your coach").
+// ---------------------------------------------------------------------------
+
+// GET /member-app/habits?member_id=&club_number=
+router.get('/habits', async (req, res) => {
+  const { member_id: memberId, club_number: clubNumber } = req.query
+  if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
+
+  const { data, error } = await supabaseAdmin
+    .from('memberapp_habits')
+    .select('id, kind, label, target, unit, position, assigned_by, created_at')
+    .eq('member_id', memberId)
+    .eq('club_number', clubNumber)
+    .eq('is_active', true)
+    .order('position', { ascending: true })
+  if (error) return fail(res, 502, error.message)
+
+  const habits = data || []
+  const today = pacificDay()
+  const since = shiftDay(today, -ADHERENCE_DAYS)
+
+  const { data: logs } = habits.length
+    ? await supabaseAdmin
+        .from('memberapp_habit_logs')
+        .select('habit_id, performed_on')
+        .in('habit_id', habits.map(h => h.id))
+        .gte('performed_on', since)
+    : { data: [] }
+
+  res.json({
+    today,
+    presets: HABIT_PRESETS,
+    habits: habits.map(h => {
+      const days = (logs || []).filter(l => l.habit_id === h.id)
+      return {
+        ...h,
+        done_today: days.some(l => l.performed_on === today),
+        // How often they actually hit it, which is the part a coach acts on.
+        days_hit: days.length,
+        window_days: ADHERENCE_DAYS,
+      }
+    }),
+  })
+})
+
+router.post('/habits', async (req, res) => {
+  const { member_id: memberId, club_number: clubNumber } = req.body || {}
+  if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
+
+  const { value, error: bad } = normaliseHabit(req.body || {})
+  if (bad) return fail(res, 400, bad)
+
+  const { data: existing } = await supabaseAdmin
+    .from('memberapp_habits')
+    .select('id, kind')
+    .eq('member_id', memberId)
+    .eq('club_number', String(clubNumber))
+    .eq('is_active', true)
+  const current = existing || []
+
+  if (current.length >= MAX_HABITS) {
+    return fail(res, 400, `A member can track ${MAX_HABITS} habits at once`)
+  }
+  if (value.kind !== 'custom' && current.some(h => h.kind === value.kind)) {
+    return fail(res, 400, `They are already tracking ${value.label.toLowerCase()}`)
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('memberapp_habits')
+    .insert({
+      member_id: memberId,
+      club_number: String(clubNumber),
+      position: current.length,
+      assigned_by: actor(req),
+      ...value,
+    })
+    .select()
+    .single()
+  if (error) return fail(res, 502, error.message)
+  res.status(201).json({ habit: data })
+})
+
+router.put('/habits/:id', async (req, res) => {
+  const { data: existing, error: readErr } = await supabaseAdmin
+    .from('memberapp_habits')
+    .select('id, kind, label, target, unit')
+    .eq('id', req.params.id)
+    .maybeSingle()
+  if (readErr) return fail(res, 502, readErr.message)
+  if (!existing) return fail(res, 404, 'Habit not found')
+
+  const { value, error: bad } = normaliseHabit(req.body || {}, existing)
+  if (bad) return fail(res, 400, bad)
+
+  const { error } = await supabaseAdmin
+    .from('memberapp_habits')
+    .update({ ...value, updated_at: new Date().toISOString() })
+    .eq('id', req.params.id)
+  if (error) return fail(res, 502, error.message)
+  res.json({ ok: true })
+})
+
+// Soft delete so the logs survive: a member who kept a habit for two months
+// should not lose that record because the coach swapped it out.
+router.delete('/habits/:id', async (req, res) => {
+  const { error } = await supabaseAdmin
+    .from('memberapp_habits')
+    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .eq('id', req.params.id)
+  if (error) return fail(res, 502, error.message)
+  res.json({ ok: true })
+})
 
 // ---------------------------------------------------------------------------
 // Templates
