@@ -1,27 +1,36 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../../lib/api'
 
-export default function MemberAppMembers({ selected, onSelect }) {
+// Landing screen for the Member App section: find a member, or pick up a
+// conversation someone is waiting on.
+export default function MemberAppMembers({ onOpen }) {
   const [q, setQ] = useState('')
   const [members, setMembers] = useState([])
-  const [coaches, setCoaches] = useState([])
+  const [threads, setThreads] = useState([])
+  const [searched, setSearched] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
-  const [notice, setNotice] = useState(null)
 
-  useEffect(() => {
-    api('/member-app/coaches')
-      .then(r => setCoaches(r.coaches || []))
-      .catch(() => setCoaches([]))
+  const loadThreads = useCallback(async () => {
+    try {
+      const r = await api('/member-app/threads')
+      setThreads(r.threads || [])
+    } catch {
+      // The list is a convenience; search still works without it.
+      setThreads([])
+    }
   }, [])
+
+  useEffect(() => { loadThreads() }, [loadThreads])
 
   async function search(e) {
     e?.preventDefault()
     if (q.trim().length < 2) return
-    setBusy(true); setError(null); setNotice(null)
+    setBusy(true); setError(null)
     try {
       const r = await api(`/member-app/members?q=${encodeURIComponent(q.trim())}`)
       setMembers(r.members || [])
+      setSearched(true)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -29,30 +38,10 @@ export default function MemberAppMembers({ selected, onSelect }) {
     }
   }
 
-  async function save(member, patch) {
-    setError(null); setNotice(null)
-    const next = { ...member, ...patch }
-    // Optimistic: the row updates immediately and reverts only if the save fails.
-    setMembers(list => list.map(m => (m.member_id === member.member_id ? next : m)))
-    try {
-      await api(`/member-app/members/${encodeURIComponent(member.member_id)}/tier`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          club_number: member.club_number,
-          tier: next.tier,
-          coach_staff_id: next.coach_staff_id || null,
-        }),
-      })
-      setNotice(`Saved ${next.first_name} ${next.last_name}.`)
-      if (selected?.member_id === member.member_id) onSelect(next)
-    } catch (err) {
-      setMembers(list => list.map(m => (m.member_id === member.member_id ? member : m)))
-      setError(err.message)
-    }
-  }
+  const waiting = threads.filter(t => t.unread > 0)
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <form onSubmit={search} className="flex gap-2">
         <input
           value={q}
@@ -70,66 +59,68 @@ export default function MemberAppMembers({ selected, onSelect }) {
       </form>
 
       {error ? <p className="text-sm text-wcs-red">{error}</p> : null}
-      {notice ? <p className="text-sm text-green-700">{notice}</p> : null}
 
-      {members.length === 0 ? (
-        <p className="text-sm text-text-muted">
-          Search for a member to set them to Training and give them a coach.
-        </p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-text-muted border-b border-border">
-                <th className="py-2 pr-3">Member</th>
-                <th className="py-2 pr-3">Club</th>
-                <th className="py-2 pr-3">Tier</th>
-                <th className="py-2 pr-3">Coach</th>
-                <th className="py-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {members.map(m => (
-                <tr key={`${m.member_id}-${m.club_number}`} className="border-b border-border">
-                  <td className="py-2 pr-3">
-                    <div className="font-semibold">{m.first_name} {m.last_name}</div>
-                    <div className="text-text-muted text-xs">{m.email || 'no email'}</div>
-                  </td>
-                  <td className="py-2 pr-3">{m.club_number}</td>
-                  <td className="py-2 pr-3">
-                    <select
-                      value={m.tier}
-                      onChange={e => save(m, { tier: e.target.value })}
-                      className="px-2 py-1 rounded border border-border bg-surface"
-                    >
-                      <option value="basic">Basic</option>
-                      <option value="training">Training</option>
-                    </select>
-                  </td>
-                  <td className="py-2 pr-3">
-                    <select
-                      value={m.coach_staff_id || ''}
-                      onChange={e => save(m, { coach_staff_id: e.target.value || null })}
-                      className="px-2 py-1 rounded border border-border bg-surface"
-                    >
-                      <option value="">No coach</option>
-                      {coaches.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </td>
-                  <td className="py-2">
-                    <button
-                      onClick={() => onSelect(m)}
-                      className="text-wcs-red font-semibold hover:underline"
-                    >
-                      Use
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {searched ? (
+        members.length === 0 ? (
+          <p className="text-sm text-text-muted">No active members matched that.</p>
+        ) : (
+          <ul className="space-y-2">
+            {members.map(m => (
+              <li key={`${m.member_id}-${m.club_number}`}>
+                <button
+                  onClick={() => onOpen(m)}
+                  className="w-full flex items-center gap-3 text-left border border-border rounded-lg px-4 py-3 bg-surface hover:border-text-muted transition-colors"
+                >
+                  <span className="flex-1">
+                    <span className="block font-semibold">{m.first_name} {m.last_name}</span>
+                    <span className="block text-xs text-text-muted">
+                      {m.email || 'no email'} &middot; club {m.club_number}
+                    </span>
+                  </span>
+                  <span className={[
+                    'text-xs px-2 py-1 rounded font-semibold',
+                    m.tier === 'training' ? 'bg-wcs-red text-white' : 'bg-bg text-text-muted',
+                  ].join(' ')}>
+                    {m.tier === 'training' ? 'Training' : 'Basic'}
+                  </span>
+                  <span className="text-wcs-red font-semibold text-sm">Open</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : null}
+
+      {waiting.length > 0 ? (
+        <div>
+          <h3 className="text-sm font-semibold text-text-muted mb-2">Waiting on a reply</h3>
+          <ul className="space-y-2">
+            {waiting.map(t => (
+              <li key={`${t.member_id}-${t.club_number}`}>
+                <button
+                  onClick={() => onOpen({
+                    member_id: t.member_id, club_number: t.club_number,
+                    first_name: t.name, last_name: '', tier: 'training',
+                  })}
+                  className="w-full flex items-center gap-3 text-left border border-border rounded-lg px-4 py-3 bg-surface hover:border-text-muted transition-colors"
+                >
+                  <span className="flex-1 min-w-0">
+                    <span className="block font-semibold">{t.name}</span>
+                    <span className="block text-xs text-text-muted truncate">{t.last_body}</span>
+                  </span>
+                  <span className="text-xs bg-wcs-red text-white rounded-full px-2 py-0.5">{t.unread}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
-      )}
+      ) : null}
+
+      {!searched && waiting.length === 0 ? (
+        <p className="text-sm text-text-muted">
+          Search for a member to open their programs and messages.
+        </p>
+      ) : null}
     </div>
   )
 }
