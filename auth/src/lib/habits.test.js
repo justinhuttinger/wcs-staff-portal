@@ -42,12 +42,31 @@ test('a long custom name is trimmed to the width the tile can hold', () => {
 
 // The member app ships its own copy of these in worker/habits.js. If one side
 // changes a unit or a level, the two deployments disagree about the same table.
-test('presets are the three the member app knows, with their units', () => {
-  assert.deepEqual(HABIT_PRESETS.map(p => [p.kind, p.unit]),
-    [['water', 'oz'], ['sleep', 'hours'], ['steps', 'steps']])
-  for (const p of HABIT_PRESETS) {
+test('presets are the ones the member app knows, with their units', () => {
+  assert.deepEqual(HABIT_PRESETS.map(p => [p.kind, p.unit]), [
+    ['water', 'oz'], ['sleep', 'hours'], ['steps', 'steps'],
+    ['detox', 'min before bed'], ['journal', 'min'], ['food', null],
+  ])
+  for (const p of HABIT_PRESETS.filter(p => p.levels.length)) {
     assert.ok(p.levels.includes(p.target), `${p.kind} default must be one of its levels`)
   }
+})
+
+test('a level-less preset is a plain yes or no', () => {
+  const { value } = normaliseHabit({ kind: 'food' })
+  assert.deepEqual(value, { kind: 'food', label: 'Track food', unit: null, target: null })
+})
+
+test('a level-less preset ignores a target it was handed', () => {
+  // Nothing in either UI can send one, but a target here would show the member
+  // a goal ("Track food 3") that nobody chose.
+  assert.equal(normaliseHabit({ kind: 'food', target: 3 }).value.target, null)
+})
+
+test('the evening cutoff and journal keep their own levels', () => {
+  assert.equal(normaliseHabit({ kind: 'detox' }).value.target, 60)
+  assert.equal(normaliseHabit({ kind: 'detox', target: 120 }).value.unit, 'min before bed')
+  assert.equal(normaliseHabit({ kind: 'journal', target: 20 }).value.target, 20)
 })
 
 test('shiftDay walks backwards across a month boundary', () => {
