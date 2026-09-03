@@ -339,7 +339,7 @@ router.post('/habits', async (req, res) => {
     return fail(res, 400, `A member can track ${MAX_HABITS} habits at once`)
   }
   if (value.kind !== 'custom' && current.some(h => h.kind === value.kind)) {
-    return fail(res, 400, `They are already tracking ${value.label.toLowerCase()}`)
+    return fail(res, 400, `${value.label} is already on their list`)
   }
 
   const { data, error } = await supabaseAdmin
