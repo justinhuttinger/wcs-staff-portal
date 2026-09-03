@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../../lib/api'
 import MemberAppPrograms from './MemberAppPrograms.jsx'
+import MemberAppHabits from './MemberAppHabits.jsx'
 import MemberAppMessages from './MemberAppMessages.jsx'
 
 const TABS = [
   { key: 'programs', label: 'Programs' },
+  // Habits are for every member, not just the coached ones.
+  { key: 'habits', label: 'Habits' },
   { key: 'messages', label: 'Messages' },
 ]
 
@@ -117,6 +120,7 @@ export default function MemberAppMemberPage({ member, onChange, onBack }) {
       </div>
 
       {tab === 'programs' && <MemberAppPrograms member={member} />}
+      {tab === 'habits' && <MemberAppHabits member={member} />}
       {tab === 'messages' && <MemberAppMessages member={member} />}
     </div>
   )
