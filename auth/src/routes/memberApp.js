@@ -118,7 +118,7 @@ router.get('/programs', async (req, res) => {
 
   const { data, error } = await supabaseAdmin
     .from('memberapp_programs')
-    .select('id, name, notes, is_active, created_at, updated_at')
+    .select('id, name, notes, is_active, starts_on, template_id, created_at, updated_at')
     .eq('member_id', memberId)
     .eq('club_number', clubNumber)
     .order('created_at', { ascending: false })
@@ -175,6 +175,7 @@ router.post('/programs', async (req, res) => {
       name: trim(name, 120),
       notes: trim(notes),
       coach_staff_id: coach || null,
+      starts_on: req.body?.starts_on || null,
       created_by: actor(req),
     })
     .select()
@@ -196,6 +197,7 @@ router.put('/programs/:id', async (req, res) => {
   if (notes !== undefined) patch.notes = trim(notes)
   if (isActive !== undefined) patch.is_active = Boolean(isActive)
   if (coach !== undefined) patch.coach_staff_id = coach || null
+  if (req.body?.starts_on !== undefined) patch.starts_on = req.body.starts_on || null
 
   const { error } = await supabaseAdmin
     .from('memberapp_programs').update(patch).eq('id', req.params.id)
@@ -261,6 +263,174 @@ async function writeDays(programId, days) {
   }
   return {}
 }
+
+// ---------------------------------------------------------------------------
+// Templates
+// ---------------------------------------------------------------------------
+
+// GET /member-app/templates?q=&goal=&level=
+router.get('/templates', async (req, res) => {
+  const q = String(req.query.q || '').trim()
+
+  let query = supabaseAdmin
+    .from('memberapp_program_templates')
+    .select('id, name, goal, level, days_per_week, equipment, description, tags')
+    .eq('is_active', true)
+    .order('name', { ascending: true })
+    .limit(200)
+
+  if (req.query.goal) query = query.eq('goal', req.query.goal)
+  if (req.query.level) query = query.eq('level', req.query.level)
+
+  const { data, error } = await query
+  if (error) return fail(res, 502, error.message)
+
+  // Filtered here rather than in PostgREST so one search box can hit the name,
+  // the description, the equipment and the tags at once.
+  const needle = q.toLowerCase()
+  const templates = !needle ? (data || []) : (data || []).filter(t =>
+    [t.name, t.goal, t.level, t.equipment, t.description, ...(t.tags || [])]
+      .filter(Boolean).some(v => String(v).toLowerCase().includes(needle))
+  )
+
+  res.json({
+    templates,
+    // Drives the filter dropdowns without a second round trip.
+    goals: [...new Set((data || []).map(t => t.goal).filter(Boolean))].sort(),
+    levels: [...new Set((data || []).map(t => t.level).filter(Boolean))].sort(),
+  })
+})
+
+router.get('/templates/:id', async (req, res) => {
+  const { data: template, error } = await supabaseAdmin
+    .from('memberapp_program_templates').select('*').eq('id', req.params.id).maybeSingle()
+  if (error) return fail(res, 502, error.message)
+  if (!template) return fail(res, 404, 'Template not found')
+
+  const { data: days } = await supabaseAdmin
+    .from('memberapp_template_days')
+    .select('id, position, name').eq('template_id', template.id)
+    .order('position', { ascending: true })
+
+  const dayIds = (days || []).map(d => d.id)
+  const { data: exercises } = dayIds.length
+    ? await supabaseAdmin
+        .from('memberapp_template_exercises')
+        .select('id, day_id, position, name, sets, reps, weight, rest_seconds, notes')
+        .in('day_id', dayIds).order('position', { ascending: true })
+    : { data: [] }
+
+  res.json({
+    template,
+    days: (days || []).map(d => ({ ...d, exercises: (exercises || []).filter(e => e.day_id === d.id) })),
+  })
+})
+
+// POST /member-app/templates/:id/assign
+// Copies the template into a real program. starts_on null means now; a future
+// date leaves the current program in place until that day arrives.
+router.post('/templates/:id/assign', async (req, res) => {
+  const { member_id: memberId, club_number: clubNumber, starts_on: startsOn, name } = req.body || {}
+  if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
+
+  const { data: template } = await supabaseAdmin
+    .from('memberapp_program_templates').select('*').eq('id', req.params.id).maybeSingle()
+  if (!template) return fail(res, 404, 'Template not found')
+
+  const { data: days } = await supabaseAdmin
+    .from('memberapp_template_days')
+    .select('id, position, name').eq('template_id', template.id)
+    .order('position', { ascending: true })
+
+  const dayIds = (days || []).map(d => d.id)
+  const { data: exercises } = dayIds.length
+    ? await supabaseAdmin
+        .from('memberapp_template_exercises')
+        .select('day_id, position, name, sets, reps, weight, rest_seconds, notes')
+        .in('day_id', dayIds).order('position', { ascending: true })
+    : { data: [] }
+
+  // The template is COPIED, not referenced: editing a template later must not
+  // rewrite a program somebody is already following.
+  const built = (days || []).map(d => ({
+    name: d.name,
+    exercises: (exercises || []).filter(e => e.day_id === d.id).map(e => ({
+      name: e.name, sets: e.sets, reps: e.reps, weight: e.weight,
+      rest_seconds: e.rest_seconds, notes: e.notes,
+    })),
+  }))
+
+  const { data: program, error } = await supabaseAdmin
+    .from('memberapp_programs')
+    .insert({
+      member_id: memberId,
+      club_number: String(clubNumber),
+      name: trim(name, 120) || template.name,
+      notes: template.description,
+      template_id: template.id,
+      starts_on: startsOn || null,
+      created_by: actor(req),
+    })
+    .select().single()
+  if (error) return fail(res, 502, error.message)
+
+  const written = await writeDays(program.id, built)
+  if (written.error) return fail(res, 502, written.error)
+
+  res.status(201).json({ program })
+})
+
+// POST /member-app/programs/:id/save-as-template — keep something that worked
+router.post('/programs/:id/save-as-template', async (req, res) => {
+  const { name, goal, level, equipment, description, tags } = req.body || {}
+  if (!trim(name, 120)) return fail(res, 400, 'Give the template a name')
+
+  const { data: days } = await supabaseAdmin
+    .from('memberapp_program_days')
+    .select('id, position, name').eq('program_id', req.params.id)
+    .order('position', { ascending: true })
+  if (!days || days.length === 0) return fail(res, 400, 'That program has no days to save')
+
+  const { data: exercises } = await supabaseAdmin
+    .from('memberapp_program_exercises')
+    .select('day_id, position, name, sets, reps, weight, rest_seconds, notes')
+    .in('day_id', days.map(d => d.id)).order('position', { ascending: true })
+
+  const { data: template, error } = await supabaseAdmin
+    .from('memberapp_program_templates')
+    .insert({
+      name: trim(name, 120), goal: trim(goal, 60), level: trim(level, 40),
+      equipment: trim(equipment, 60), description: trim(description, 500),
+      days_per_week: days.length,
+      tags: Array.isArray(tags) ? tags.slice(0, 12).map(t => String(t).slice(0, 40)) : [],
+      created_by: actor(req),
+    })
+    .select().single()
+  if (error) return fail(res, 502, error.message)
+
+  const dayRows = days.map((d, i) => ({ template_id: template.id, position: i, name: d.name }))
+  const { data: newDays, error: dayError } = await supabaseAdmin
+    .from('memberapp_template_days').insert(dayRows).select('id, position')
+  if (dayError) return fail(res, 502, dayError.message)
+
+  const byPosition = new Map(newDays.map(d => [d.position, d.id]))
+  const exRows = []
+  days.forEach((d, i) => {
+    for (const e of (exercises || []).filter(x => x.day_id === d.id)) {
+      exRows.push({
+        day_id: byPosition.get(i), position: e.position, name: e.name,
+        sets: e.sets, reps: e.reps, weight: e.weight,
+        rest_seconds: e.rest_seconds, notes: e.notes,
+      })
+    }
+  })
+  if (exRows.length) {
+    const { error: exError } = await supabaseAdmin.from('memberapp_template_exercises').insert(exRows)
+    if (exError) return fail(res, 502, exError.message)
+  }
+
+  res.status(201).json({ template })
+})
 
 // ---------------------------------------------------------------------------
 // Workout log (read-only for staff)
