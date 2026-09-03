@@ -2,17 +2,32 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import MobileHeader from './MobileHeader'
 import MobileWorkout from './MobileWorkout'
+import MobileTemplates from './MobileTemplates'
 
 const blankExercise = () => ({ name: '', sets: '', reps: '', weight: '', rest_seconds: '', notes: '' })
 const blankDay = () => ({ name: '', exercises: [blankExercise()] })
 
 const field = 'w-full px-3 py-2 rounded-lg border border-border bg-bg text-base'
 
+const todayKey = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date())
+
+// A future start date means the member cannot see it yet, which is worth
+// saying plainly rather than showing it as just another program.
+function scheduleLabel(p) {
+  if (!p.is_active) return 'Inactive'
+  if (p.starts_on && p.starts_on > todayKey()) return `Scheduled for ${p.starts_on}`
+  if (p.starts_on) return `Started ${p.starts_on}`
+  return 'Active'
+}
+
 // Editing on a phone: one day at a time, stacked rather than the desktop grid,
 // because six inputs across a 390px screen is unusable.
 function Editor({ member, existing, onDone, onCancel }) {
   const [name, setName] = useState(existing?.name || '')
   const [notes, setNotes] = useState(existing?.notes || '')
+  const [startsOn, setStartsOn] = useState(existing?.starts_on || '')
   const [days, setDays] = useState(existing?.days || [blankDay()])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -27,7 +42,7 @@ function Editor({ member, existing, onDone, onCancel }) {
     setBusy(true); setError(null)
     const payload = {
       member_id: member.member_id, club_number: member.club_number,
-      name, notes, days,
+      name, notes, days, starts_on: startsOn || null,
     }
     try {
       if (existing?.id) {
@@ -51,9 +66,16 @@ function Editor({ member, existing, onDone, onCancel }) {
         <span className="block text-text-muted mb-1">Program name</span>
         <input className={field} value={name} placeholder="Fall block" onChange={e => setName(e.target.value)} />
       </label>
-      <label className="block text-sm mb-4">
+      <label className="block text-sm mb-3">
         <span className="block text-text-muted mb-1">Notes for the member</span>
         <input className={field} value={notes} onChange={e => setNotes(e.target.value)} />
+      </label>
+      <label className="block text-sm mb-4">
+        <span className="block text-text-muted mb-1">Starts on</span>
+        <input type="date" className={field} value={startsOn} onChange={e => setStartsOn(e.target.value)} />
+        <span className="block text-xs text-text-muted mt-1">
+          Empty means live now. A future date keeps their current program until then.
+        </span>
       </label>
 
       {days.map((day, di) => (
@@ -135,6 +157,8 @@ export default function MobilePrograms({ member, onBack }) {
   const [programs, setPrograms] = useState(null)
   const [detail, setDetail] = useState(null)   // full tree of the open program
   const [editing, setEditing] = useState(null)
+  const [browsing, setBrowsing] = useState(false)
+  const [notice, setNotice] = useState(null)
   const [running, setRunning] = useState(null) // { program, day }
   const [error, setError] = useState(null)
 
@@ -159,6 +183,20 @@ export default function MobilePrograms({ member, onBack }) {
     } catch (err) {
       setError(err.message)
     }
+  }
+
+  if (browsing) {
+    return (
+      <MobileTemplates
+        member={member}
+        onBack={() => setBrowsing(false)}
+        onAssigned={(startsOn) => {
+          setBrowsing(false)
+          setNotice(startsOn ? `Assigned. It takes over on ${startsOn}.` : 'Assigned. They see it now.')
+          load()
+        }}
+      />
+    )
   }
 
   if (running) {
@@ -193,6 +231,7 @@ export default function MobilePrograms({ member, onBack }) {
             id: detail.program.id,
             name: detail.program.name,
             notes: detail.program.notes || '',
+            starts_on: detail.program.starts_on || '',
             days: detail.days.map(d => ({
               name: d.name,
               exercises: d.exercises.length ? d.exercises.map(e => ({
@@ -240,11 +279,19 @@ export default function MobilePrograms({ member, onBack }) {
 
       {error ? <p className="text-sm text-wcs-red mb-2">{error}</p> : null}
 
+      {notice ? <p className="text-sm text-green-700 mb-3">{notice}</p> : null}
+
+      <button
+        onClick={() => setBrowsing(true)}
+        className="w-full py-3 rounded-lg bg-wcs-red text-white font-semibold mb-2"
+      >
+        Start from a template
+      </button>
       <button
         onClick={() => setEditing({})}
-        className="w-full py-3 rounded-lg bg-wcs-red text-white font-semibold mb-4"
+        className="w-full py-3 rounded-lg border border-border bg-surface font-semibold mb-4"
       >
-        New program
+        Write from scratch
       </button>
 
       {programs === null ? (
@@ -261,7 +308,7 @@ export default function MobilePrograms({ member, onBack }) {
               >
                 <span className="block font-semibold">{p.name}</span>
                 <span className="block text-xs text-text-muted">
-                  {p.is_active ? 'Active' : 'Inactive'} &middot; updated {String(p.updated_at).slice(0, 10)}
+                  {scheduleLabel(p)} &middot; updated {String(p.updated_at).slice(0, 10)}
                 </span>
               </button>
             </li>
