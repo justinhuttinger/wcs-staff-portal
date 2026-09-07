@@ -1,13 +1,17 @@
 // ---------------------------------------------------------------------------
 // The two member filters shared by the Analytics reports.
 //
-// CATEGORY  all | Insurance | Temp | Dues | Other
+// CATEGORY  all | Insurance | Temp | Dues
 //   Which kind of membership to count. Mapped in abc_membership_categories
 //   (migration 194), not derived: ABC invents membership types without telling
 //   us, and a rule in code can only be changed by a deploy.
 //
-//   The three named buckets DO NOT sum to All. Other is reachable on its own so
-//   an unmapped type can be found and mapped, rather than hiding inside a total.
+//   The three named buckets DO NOT sum to All: an unmapped type counts under
+//   All and under none of the three. Other is deliberately NOT selectable —
+//   'unmapped' is a state of our configuration, not a kind of membership, and
+//   offering it as a peer of Insurance invites reading it as one. The unmapped
+//   list lives on the admin screen, where it is a job to do rather than a
+//   category to report on.
 //
 // BASIS     members | agreements
 //   Members counts people. Agreements counts primary members only, so a FAMILY
@@ -20,7 +24,7 @@
 // "we have no members", which is the worst way for a filter to fail.
 // ---------------------------------------------------------------------------
 
-const MEMBER_CATEGORIES = ['Insurance', 'Temp', 'Dues', 'Other']
+const MEMBER_CATEGORIES = ['Insurance', 'Temp', 'Dues']
 
 /** 'all', or one of MEMBER_CATEGORIES. Anything else widens to 'all'. */
 function parseCategory(value) {
@@ -60,6 +64,8 @@ function filterNote({ category, basis }) {
  */
 function matchesFilters(row, { category, basis }) {
   if (category && category !== 'all') {
+    // Unmapped rows read 'Other' and therefore match none of the three, which
+    // is the intended behaviour: they are visible under All and nowhere else.
     if ((row.membership_category || 'Other') !== category) return false
   }
   // is_primary_member true only. A null flag is a member ABC no longer returns

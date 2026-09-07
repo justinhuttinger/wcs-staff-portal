@@ -16,9 +16,10 @@ export const MEMBER_CATEGORY_OPTIONS = [
   { value: 'Insurance', label: 'Insurance' },
   { value: 'Temp', label: 'Temporary' },
   { value: 'Dues', label: 'Dues paying' },
-  // Deliberately offered. The three named buckets do not sum to All, and an
-  // unmapped membership type is only findable if it can be selected.
-  { value: 'Other', label: 'Other / unmapped' },
+  // No 'Other' option on purpose. Unmapped is a state of our configuration,
+  // not a kind of membership, and listing it beside Insurance invites reading
+  // it as one. Admin -> Membership Categories shows what is unmapped, where it
+  // is a job to do rather than something to report on.
 ]
 
 export const MEMBER_BASIS_OPTIONS = [
