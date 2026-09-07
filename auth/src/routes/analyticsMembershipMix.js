@@ -2,6 +2,7 @@ const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
+const { parseCategory, parseBasis, filterNote, matchesFilters } = require('../lib/analyticsMemberFilters')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
@@ -48,6 +49,7 @@ const FIELDS = [
   'member_id', 'club_number', 'membership_type', 'gender', 'birth_date',
   'agreement_term', 'agreement_payment_method', 'agreement_entry_source',
   'sales_person_name', 'is_primary_member', 'since_date', 'counts_as_member',
+  'membership_category',
 ].join(', ')
 
 async function loadMembers(clubNumbers) {
@@ -112,10 +114,13 @@ router.get('/', async (req, res) => {
       : 'membership_type'
     const viewBy = VIEW_BY.includes(req.query.viewBy) ? req.query.viewBy : 'club'
     const exclude = req.query.exclusion !== 'include'
+    const category = parseCategory(req.query.category)
+    const basis = parseBasis(req.query.basis)
     const clubNumbers = slugs.map(s => CLUB_BY_SLUG[s].clubNumber)
 
     const cacheKey = [
       'analytics:membership-mix', slugs.slice().sort().join('+'), breakdown, viewBy, exclude,
+      category, basis,
     ].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
@@ -128,9 +133,14 @@ router.get('/', async (req, res) => {
         needsCheckins ? loadCheckinRates(clubNumbers) : Promise.resolve(null),
       ])
 
-      const members = exclude
+      const skipped = exclude
         ? raw.filter(m => !skipList.has((m.membership_type || '').toLowerCase()))
         : raw
+      // Applied AFTER the skip list, so the two exclusions compose rather than
+      // one silently overriding the other, and using the shared rule so this
+      // report cannot disagree with the SQL-backed ones about what Insurance
+      // means.
+      const members = skipped.filter(m => matchesFilters(m, { category, basis }))
 
       const checkinRateFor = (m) => {
         if (!checkins) return undefined
@@ -155,6 +165,7 @@ router.get('/', async (req, res) => {
         breakdowns: BREAKDOWNS,
         meta: {
           clubs: slugs,
+          filter: filterNote({ category, basis }),
           exclusion: exclude ? 'exclude' : 'include',
           excludedStatuses: EXCLUDED_STATUSES,
           checkinWindowMonths: needsCheckins ? CHECKIN_WINDOW_MONTHS : null,

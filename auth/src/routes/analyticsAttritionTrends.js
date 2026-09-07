@@ -4,6 +4,7 @@ const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
+const { parseCategory, parseBasis, filterNote } = require('../lib/analyticsMemberFilters')
 const { buildAttritionTrends, METRICS } = require('../lib/attritionTrends')
 const { MEMBER_SEGMENTS } = require('../lib/analyticsSegments')
 const { CLUBS, CLUB_BY_SLUG, CLUB_BY_NUMBER } = require('../lib/salespersonPerformance')
@@ -66,12 +67,16 @@ router.get('/', async (req, res) => {
     const segment = SEGMENT_KEYS.has(String(req.query.segment)) ? String(req.query.segment) : 'club'
     const metric = String(req.query.metric || 'attrition_pct')
     const exclude = String(req.query.exclude ?? 'true') !== 'false'
+    const category = parseCategory(req.query.category)
+    const basis = parseBasis(req.query.basis)
 
     // Cached on the SHAPE of the data, not on the chosen metric: all ten come
     // out of the same four quantities, so flipping metric costs nothing.
+    // Category and basis DO belong in the key — they change the rows, not just
+    // the arithmetic over them.
     const cacheKey = [
       'analytics:attrition-trends', end, months, segment, exclude,
-      slugs.slice().sort().join('+'),
+      slugs.slice().sort().join('+'), category, basis,
     ].join('|')
 
     const rows = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () =>
@@ -83,6 +88,8 @@ router.get('/', async (req, res) => {
         p_clubs: clubNumbers,
         p_segment: segment,
         p_exclude: exclude,
+        p_category: category,
+        p_basis: basis,
       }))
     )
 
@@ -92,6 +99,7 @@ router.get('/', async (req, res) => {
       ...built,
       segments: SEGMENTS,
       meta: {
+        filter: filterNote({ category, basis }),
         end, months, segment, exclude,
         clubs: slugs,
         metrics: METRICS,

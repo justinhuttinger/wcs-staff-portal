@@ -42,6 +42,7 @@ import KpiReport from './analytics/KpiReport'
 import PtSnapshot from './analytics/PtSnapshot'
 import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 import ReportRecords from './analytics/ReportRecords'
+import MemberFilters, { MemberFilterNote, MEMBER_CATEGORY_OPTIONS } from './analytics/MemberFilters'
 
 // ---------------------------------------------------------------------------
 // Analytics — a corporate+ reporting surface, separate from ReportingView.
@@ -122,6 +123,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'membership-mix',
+    filters: ['category', 'basis'],
     records: ['new-members'],
     label: 'Membership Mix',
     desc: 'Who Our Members Are',
@@ -132,6 +134,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'past-due',
+    filters: ['category', 'basis'],
     records: ['past-due'],
     label: 'Past Due',
     desc: 'Who Owes What',
@@ -142,6 +145,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'membership-trends',
+    filters: ['category', 'basis'],
     records: ['new-members', 'lost-members'],
     label: 'Membership Trends',
     desc: 'Members & Joins by Segment',
@@ -151,6 +155,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'net-membership',
+    filters: ['category', 'basis'],
     records: ['new-members', 'lost-members'],
     label: 'Net Membership',
     desc: 'In, Out and Net',
@@ -197,6 +202,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'attrition-trends',
+    filters: ['category', 'basis'],
     records: ['lost-members'],
     label: 'Attrition Trends',
     desc: 'Losses, Dues and Revenue',
@@ -470,6 +476,11 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
   const [endDate, setEndDate] = useState(initialRange.end)
   const [activeQuick, setActiveQuick] = useState('this_month')
   const [locationSlug, setLocationSlug] = useState('all')
+  // Persist across reports the way location and dates do. A reader who has
+  // narrowed to Insurance is asking a question, not setting a per-report
+  // preference, and losing it on every click would make the control unusable.
+  const [category, setCategory] = useState('all')
+  const [basis, setBasis] = useState('members')
 
   // Per-club report visibility, set in Admin. Loaded once: it changes about
   // never, and a report list that flickers as settings arrive is worse than one
@@ -554,6 +565,22 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
   const active = ANALYTICS_REPORTS.find(r => r.key === activeReport) || null
   const showDateControls = active ? active.dates !== false : true
   const ActiveComponent = active?.Component || null
+
+  // Only for reports that actually apply the filters — otherwise a persisted
+  // Insurance selection would claim to be filtering a report it does not touch.
+  const filterBanner = useMemo(() => {
+    const wants = active?.filters || []
+    const parts = []
+    if (wants.includes('category') && category !== 'all') {
+      const label = MEMBER_CATEGORY_OPTIONS.find(o => o.value === category)?.label || category
+      parts.push(`${label} only`)
+    }
+    if (wants.includes('basis') && basis === 'agreements') {
+      parts.push('counting agreements, so a family counts once')
+    }
+    if (parts.length === 0) return null
+    return `Filtered: ${parts.join('; ')}.`
+  }, [active, category, basis])
 
   return (
     // Wider than ReportingView's max-w-7xl: these boards are deliberately
@@ -708,6 +735,13 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
               </div>
               </>
             )}
+            <MemberFilters
+              filters={active?.filters}
+              category={category}
+              basis={basis}
+              onCategory={setCategory}
+              onBasis={setBasis}
+            />
             <div id={TOOLBAR_SLOT_ID} className="flex items-center gap-2" />
           </div>
         </div>
@@ -715,6 +749,10 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
         {/* Report body */}
         {ActiveComponent ? (
           <>
+            {/* Insurance alone is 32% of the member base, so a filtered report
+                looks exactly like a collapse. Say so above the numbers, not
+                only in the dropdown that produced them. */}
+            <MemberFilterNote note={filterBanner} />
             <ActiveComponent
               user={user}
               isAdmin={isAdmin}
@@ -722,6 +760,8 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
               locationSlug={locationSlug}
               startDate={startDate}
               endDate={endDate}
+              category={category}
+              basis={basis}
             />
             {/* Collapsed until asked for, so a report carrying a large set does
                 not get slower for having one. */}

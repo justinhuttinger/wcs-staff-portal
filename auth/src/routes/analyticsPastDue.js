@@ -2,6 +2,7 @@ const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
+const { parseCategory, parseBasis, filterNote, matchesFilters } = require('../lib/analyticsMemberFilters')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
@@ -32,6 +33,7 @@ const MEMBER_FIELDS = [
   'member_status', 'is_active', 'membership_type', 'agreement_payment_method', 'agreement_term',
   'past_due_balance', 'total_past_due_balance', 'late_fee_amount', 'next_due_amount',
   'since_date', 'sales_person_name', 'counts_as_member', 'is_conditional_type',
+  'membership_category', 'is_primary_member',
 ].join(', ')
 
 async function loadPastDue(clubNumbers) {
@@ -51,11 +53,11 @@ async function loadPastDue(clubNumbers) {
 // The denominator for "% of members past due" — the same population the
 // numerator is drawn from, so the percentage is of chaseable members rather
 // than of everyone who ever held a membership.
-async function loadMemberBase(clubNumbers, skipList) {
+async function loadMemberBase(clubNumbers, skipList, filters) {
   const rows = await fetchAll(
     supabaseAdmin
       .from('abc_members_counted')
-      .select('club_number, member_status, membership_type, counts_as_member')
+      .select('club_number, member_status, membership_type, counts_as_member, membership_category, is_primary_member')
       .in('club_number', clubNumbers)
       .eq('is_active', true)
       .eq('counts_as_member', true)
@@ -65,6 +67,10 @@ async function loadMemberBase(clubNumbers, skipList) {
   for (const r of rows) {
     if (EXCLUDED_STATUSES.has(r.member_status)) continue
     if (skipList.has((r.membership_type || '').toLowerCase())) continue
+    // The category and basis filters go on the DENOMINATOR too. Filtering only
+    // the numerator would divide insurance members past due into the whole
+    // membership and report a rate that is wrong by the size of the filter.
+    if (!matchesFilters(r, filters)) continue
     totals[r.club_number] = (totals[r.club_number] || 0) + 1
   }
   return totals
@@ -80,15 +86,18 @@ router.get('/', async (req, res) => {
 
     const exclude = req.query.exclusion !== 'include'
     const viewBy = VIEW_BY.includes(req.query.viewBy) ? req.query.viewBy : 'club'
+    const category = parseCategory(req.query.category)
+    const basis = parseBasis(req.query.basis)
+    const filters = { category, basis }
     const clubNumbers = slugs.map(s => CLUB_BY_SLUG[s].clubNumber)
 
-    const cacheKey = ['analytics:past-due', slugs.slice().sort().join('+'), exclude, viewBy].join('|')
+    const cacheKey = ['analytics:past-due', slugs.slice().sort().join('+'), exclude, viewBy, category, basis].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       const skipList = await getSkipList()
       const [raw, totals] = await Promise.all([
         loadPastDue(clubNumbers),
-        loadMemberBase(clubNumbers, skipList),
+        loadMemberBase(clubNumbers, skipList, filters),
       ])
 
       // Applied to the numerator as well as the denominator. Someone who does
@@ -100,6 +109,7 @@ router.get('/', async (req, res) => {
         if (!isChaseable(m)) return false
         if (exclude && skipList.has((m.membership_type || '').toLowerCase())) return false
         if (m.counts_as_member === false) { notCounted += 1; return false }
+        if (!matchesFilters(m, filters)) return false
         return true
       })
 
@@ -130,6 +140,7 @@ router.get('/', async (req, res) => {
         ...report,
         worst,
         meta: {
+          filter: filterNote({ category, basis }),
           clubs: slugs,
           exclusion: exclude ? 'exclude' : 'include',
           excludedStatuses: [...EXCLUDED_STATUSES].sort(),
