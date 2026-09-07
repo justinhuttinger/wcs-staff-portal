@@ -21,9 +21,12 @@ test('basis defaults to members and only agreements can change it', () => {
   assert.strictEqual(parseBasis('nonsense'), 'members')
 })
 
-test('Other is selectable, because an unmapped type has to be findable', () => {
-  assert.strictEqual(parseCategory('Other'), 'Other')
-  assert.ok(MEMBER_CATEGORIES.includes('Other'))
+// Unmapped is a state of our configuration, not a kind of membership. Asking
+// for it widens to All rather than returning the unmapped rows, so nobody can
+// build a report on "Other" and treat it as a segment.
+test('Other is not a selectable category', () => {
+  assert.strictEqual(parseCategory('Other'), 'all')
+  assert.ok(!MEMBER_CATEGORIES.includes('Other'))
 })
 
 test('the note names the filter only when one is set', () => {
@@ -62,8 +65,12 @@ test('a null primary flag is not an agreement', () => {
   assert.strictEqual(matchesFilters(ghost, { category: 'all', basis: 'members' }), true)
 })
 
-test('an unmapped row reads as Other rather than falling out of every bucket', () => {
+// An unmapped member still exists: they count under All, and under none of the
+// three named buckets. That is the whole contract of the category filter.
+test('an unmapped row counts under All and under no named bucket', () => {
   const row = { membership_category: null, is_primary_member: true }
-  assert.strictEqual(matchesFilters(row, { category: 'Other', basis: 'members' }), true)
+  assert.strictEqual(matchesFilters(row, { category: 'all', basis: 'members' }), true)
   assert.strictEqual(matchesFilters(row, { category: 'Dues', basis: 'members' }), false)
+  assert.strictEqual(matchesFilters(row, { category: 'Insurance', basis: 'members' }), false)
+  assert.strictEqual(matchesFilters(row, { category: 'Temp', basis: 'members' }), false)
 })
