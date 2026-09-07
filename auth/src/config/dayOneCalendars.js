@@ -97,7 +97,47 @@ async function load(loc) {
       `Calendars in this sub-account: ${calendars.map(c => c.name).join(' | ')}`)
   }
   console.log(`[dayOneCalendars] ${loc.slug}: ${found.map(c => c.name).join(' + ')}`)
+  await register(loc, found)
   return found
+}
+
+/**
+ * Record what this allowlist resolved to, for day_one_integrity()'s
+ * phantom_calendars check (migration 192).
+ *
+ * The check used to carry its own hardcoded copy of the seven calendar ids, so
+ * the moment this file grew Clackamas' Stretch and Milwaukie's Kirstyn calendar
+ * the two lists disagreed and 61 correct rows were reported as a mis-scoped
+ * workflow trigger, every Monday. The list is resolved here, so it is recorded
+ * here, and there is one of it.
+ *
+ * Never deletes: a calendar renamed in GHL drops out of `found` (and is warned
+ * about by name above), but the Day Ones already booked on it must not turn into
+ * phantoms retroactively.
+ *
+ * Non-fatal on purpose. This is bookkeeping for a weekly report; it must never
+ * be the reason a reconcile pass fails.
+ *
+ * Supabase is required HERE rather than at the top of the file: this module is
+ * otherwise pure name-matching, and a module-level require would make merely
+ * loading it depend on SUPABASE_URL being set.
+ */
+async function register(loc, found) {
+  if (!found.length) return
+  try {
+    const { supabaseAdmin } = require('../services/supabase')
+    const { error } = await supabaseAdmin
+      .from('day_one_calendars')
+      .upsert(found.map(c => ({
+        ghl_calendar_id: c.id,
+        location_slug: loc.slug,
+        calendar_name: c.name,
+        last_seen_at: new Date().toISOString(),
+      })), { onConflict: 'ghl_calendar_id' })
+    if (error) throw new Error(error.message)
+  } catch (err) {
+    console.warn(`[dayOneCalendars] ${loc.slug}: could not record calendars: ${err.message}`)
+  }
 }
 
 function clearCache(slug) {
