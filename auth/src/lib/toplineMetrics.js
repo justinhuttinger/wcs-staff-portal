@@ -88,6 +88,17 @@ function buildTopline(payload) {
   const attritionRate = pctOf(ytdLost, num(members.now))
   const priorAttritionRate = pctOf(pyYtdLost, num(members.prior_year))
 
+  // Cards whose number is a club-level revenue sum, and so cannot be narrowed
+  // to a membership category or to primary members only. Migration 196 returns
+  // NULL for those figures and sets `filtered`; the cards are dropped rather
+  // than drawn as blanks, because three empty cards on a headline report read
+  // as an outage rather than as "this question does not apply".
+  //
+  // Driven by the FLAG, not by the values: a club that genuinely took nothing
+  // still has a revenue card, and it should read zero.
+  const filtered = payload?.filtered === true
+  const WITHHELD_WHEN_FILTERED = new Set(['revenueMtd', 'revenueYtd', 'revenuePerMember'])
+
   const cards = [
     {
       key: 'revenueMtd',
@@ -202,7 +213,7 @@ function buildTopline(payload) {
         },
       ],
     },
-  ]
+  ].filter(c => !(filtered && WITHHELD_WHEN_FILTERED.has(c.key)))
 
   return {
     cards,

@@ -156,3 +156,43 @@ test('a missing payload does not throw', () => {
   assert.equal(asOf, null)
   assert.equal(cards[0].value, null)
 })
+
+// ---------------------------------------------------------------------------
+// Cards withheld under a membership filter (migration 196).
+//
+// Revenue and PT revenue are club-level sums over abc_revenue_transactions with
+// no member join, so they cannot be narrowed to Insurance / Temp / Dues or to
+// primary members only. The SQL returns them as NULL and sets `filtered`, and
+// the three cards built on them are dropped rather than drawn as blanks.
+// ---------------------------------------------------------------------------
+
+const WITHHELD = ['revenueMtd', 'revenueYtd', 'revenuePerMember']
+const KEPT = ['newMembersMtd', 'netMemberYtd', 'totalMembers', 'checkinsLastMonth', 'attritionYtd']
+
+test('revenue cards are dropped when the payload is filtered', () => {
+  const filtered = payload({
+    filtered: true,
+    windows: Object.fromEntries(
+      Object.keys(payload().windows).map(k => [k, win({ revenue: null, pt_revenue: null, checkins: null })])
+    ),
+  })
+  const keys = buildTopline(filtered).cards.map(c => c.key)
+  for (const k of WITHHELD) assert.ok(!keys.includes(k), `${k} should be withheld`)
+  for (const k of KEPT) assert.ok(keys.includes(k), `${k} should survive the filter`)
+})
+
+test('every card is present when the payload is not filtered', () => {
+  const keys = buildTopline(payload()).cards.map(c => c.key)
+  for (const k of [...WITHHELD, ...KEPT]) assert.ok(keys.includes(k), `${k} should be present`)
+})
+
+// The flag is what decides, not the values. A club that genuinely took no money
+// still has a revenue card reading zero, which is a fact rather than a gap.
+test('a zero-revenue month keeps its cards when unfiltered', () => {
+  const zeroed = payload({
+    windows: Object.fromEntries(
+      Object.keys(payload().windows).map(k => [k, win({ revenue: 0, pt_revenue: 0 })])
+    ),
+  })
+  assert.ok(buildTopline(zeroed).cards.map(c => c.key).includes('revenueMtd'))
+})

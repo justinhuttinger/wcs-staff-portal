@@ -71,6 +71,7 @@ import MemberFilters, { MemberFilterNote, MEMBER_CATEGORY_OPTIONS } from './anal
 export const ANALYTICS_REPORTS = [
   {
     key: 'topline',
+    filters: ['category', 'basis'],
     records: ['new-members', 'lost-members', 'revenue', 'day-ones'],
     label: 'Topline',
     desc: 'Headline Numbers',

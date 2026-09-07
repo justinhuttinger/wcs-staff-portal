@@ -94,12 +94,12 @@ function Card({ card, asOf }) {
   )
 }
 
-export default function Topline({ locationSlug }) {
+export default function Topline({ locationSlug, category, basis }) {
   const [exclusion, setExclusion] = useState('exclude')
 
   const query = useMemo(
-    () => new URLSearchParams({ clubs: locationSlug || 'all', exclusion }).toString(),
-    [locationSlug, exclusion]
+    () => new URLSearchParams({ clubs: locationSlug || 'all', exclusion, category, basis }).toString(),
+    [locationSlug, exclusion, category, basis]
   )
 
   const { data, loading, error } = useCancellableFetch(
