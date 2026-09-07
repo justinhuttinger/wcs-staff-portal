@@ -52,6 +52,16 @@ async function _runAbcSync() {
   console.log(`[ABC Sync] Starting run ${runId} for ${locationsWithClub.length} locations (DRY_RUN=${process.env.DRY_RUN || 'true'})`);
   const start = Date.now();
 
+  // Ghost reconciliation runs ONCE A DAY, not every cycle, and the reason is
+  // correctness rather than cost. Deciding a member is gone needs a FULL
+  // inactive pull, and the per-cycle inactive pull is deliberately incremental
+  // (90 days) so it stays small. Reconciling against the incremental set would
+  // let a member who went inactive a year ago look absent and be archived,
+  // when what they actually need is their status corrected. Same daily window
+  // as the employee sync below.
+  const reconcileHour = new Date().getUTCHours();
+  const reconcileGhostsThisRun = reconcileHour >= 10 && reconcileHour <= 11;
+
   const locationErrors = {};
   let totalErrors = 0;
   let totalMatched = 0, totalUnmatched = 0, totalTagChanges = 0, totalFieldUpdates = 0, totalSyncErrors = 0;
@@ -98,12 +108,22 @@ async function _runAbcSync() {
       // so by the time we look, a fresh cancel is indistinguishable from any
       // other present member, which is exactly what we want. See ghostMembers.js.
       try {
-        const ghostResult = await reconcileClubGhosts({
-          clubNumber: location.clubNumber,
-          abcMemberIds: rawMembers.map(m => m.memberId),
-          cycleStartedAt: syncStart,
-        });
-        totalGhosted += ghostResult.ghosted || 0;
+        if (reconcileGhostsThisRun) {
+          // The full inactive population, not the 90-day slice above. Costly
+          // enough to be worth doing once a day, and worthless if not done at
+          // all: a member absent from a partial pull has not been shown to be
+          // absent from ABC.
+          const allInactive = await fetchAllABCMembers(location.clubNumber, { activeStatus: 'inactive' });
+          const ghostResult = await reconcileClubGhosts({
+            clubNumber: location.clubNumber,
+            abcMemberIds: [
+              ...rawMembers.map(m => m.memberId),
+              ...allInactive.map(m => m.memberId),
+            ],
+            cycleStartedAt: syncStart,
+          });
+          totalGhosted += ghostResult.ghosted || 0;
+        }
       } catch (ghostErr) {
         // Never fail the whole club over this. The members it would have
         // retired have been miscounted for months already; one more cycle is

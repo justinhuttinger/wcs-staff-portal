@@ -48,6 +48,9 @@ async function heldActive(clubNumber) {
       .select('member_id,last_sync_at,membership_type,since_date')
       .eq('club_number', clubNumber)
       .eq('member_status', 'Active')
+      // Stable sort required: range() is LIMIT/OFFSET and an unordered paged
+      // read can skip rows, which here would read as a member we do not hold.
+      .order('member_id', { ascending: true })
       .range(from, from + PAGE - 1)
     if (error) throw new Error(error.message)
     rows.push(...(data || []))

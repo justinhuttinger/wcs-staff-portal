@@ -15,6 +15,12 @@ async function fetchHeldActive(clubNumber) {
       .select('member_id,last_sync_at')
       .eq('club_number', clubNumber)
       .eq('member_status', 'Active')
+      // ORDER BY is not decoration here. range() is LIMIT/OFFSET, and without a
+      // stable sort Postgres may return rows in a different order per page, so
+      // a paged read can silently skip rows and repeat others. A skipped row
+      // reads as "we do not hold this member", which is the exact input this
+      // function turns into a delete.
+      .order('member_id', { ascending: true })
       .range(from, from + PAGE - 1)
     if (error) throw new Error(`read held-active failed: ${error.message}`)
     rows.push(...(data || []))
