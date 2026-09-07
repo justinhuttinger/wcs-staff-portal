@@ -78,7 +78,7 @@ function StackedBar({ row, colors, onHover, hovered }) {
   )
 }
 
-export default function MembershipMix({ locationSlug }) {
+export default function MembershipMix({ locationSlug, category, basis }) {
   const [breakdown, setBreakdown] = useState('membership_type')
   const [viewBy, setViewBy] = useState('club')
   const [exclusion, setExclusion] = useState('exclude')
@@ -86,7 +86,7 @@ export default function MembershipMix({ locationSlug }) {
   const [hovered, setHovered] = useState(null)
 
   const query = useMemo(
-    () => new URLSearchParams({ clubs: locationSlug || 'all', breakdown, viewBy, exclusion }).toString(),
+    () => new URLSearchParams({ clubs: locationSlug || 'all', breakdown, viewBy, exclusion, category, basis }).toString(),
     [locationSlug, breakdown, viewBy, exclusion]
   )
 

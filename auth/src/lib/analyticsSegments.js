@@ -24,6 +24,7 @@ const MEMBER_SEGMENTS = [
   { key: 'join_source', label: 'Join Source' },
   { key: 'salesperson', label: 'Salesperson' },
   { key: 'relationship', label: 'Member Relationship' },
+  { key: 'membership_category', label: 'Membership Category' },
 ]
 
 /**

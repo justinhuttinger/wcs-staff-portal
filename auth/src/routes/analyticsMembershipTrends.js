@@ -4,6 +4,7 @@ const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
+const { parseCategory, parseBasis, filterNote } = require('../lib/analyticsMemberFilters')
 const { buildMembershipTrends } = require('../lib/membershipTrends')
 const { MEMBER_SEGMENTS, isValidSegment } = require('../lib/analyticsSegments')
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
@@ -39,12 +40,14 @@ router.get('/', async (req, res) => {
       ? String(req.query.segment)
       : 'club'
     const exclude = req.query.exclusion !== 'include'
+    const category = parseCategory(req.query.category)
+    const basis = parseBasis(req.query.basis)
     const allClubs = slugs.length === CLUBS.length
     const end = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.end || ''))
       ? String(req.query.end)
       : new Date().toISOString().slice(0, 10)
 
-    const cacheKey = ['analytics:membership-trends', end, slugs.slice().sort().join('+'), segment, exclude].join('|')
+    const cacheKey = ['analytics:membership-trends', end, slugs.slice().sort().join('+'), segment, exclude, category, basis].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       // PAGED. 25 months times a high-cardinality segment runs past PostgREST's
@@ -57,6 +60,8 @@ router.get('/', async (req, res) => {
         p_clubs: allClubs ? null : slugs.map(s => CLUB_BY_SLUG[s].clubNumber),
         p_segment: segment,
         p_exclude: exclude,
+        p_category: category,
+        p_basis: basis,
       }))
 
       const built = buildMembershipTrends(data || [], {
@@ -75,6 +80,10 @@ router.get('/', async (req, res) => {
           clubs: slugs,
           exclusion: exclude ? 'exclude' : 'include',
           notes: {
+            // Named on the report itself, not just in the dropdown: Insurance
+            // alone is 32% of the base, so a filtered chart is otherwise
+            // indistinguishable from a collapse.
+            filter: filterNote({ category, basis }),
             level: 'Total Members is a level, not a running total: the headline is the latest complete month, never twelve months added together.',
             conditional: 'Members on A2 CORE and Active and Fit Limited count only if they checked in this month or last month, or joined within that window. New members never take that rule, since joining is a fact about the day it happened.',
             series: 'The chart starts at the first month the two-month rule can be answered, since check-in history reaches back only so far. Include shows more months than Exclude for that reason.',

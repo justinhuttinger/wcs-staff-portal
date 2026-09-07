@@ -58,13 +58,13 @@ function Bar({ value, max, tone, children }) {
   )
 }
 
-export default function PastDue({ locationSlug }) {
+export default function PastDue({ locationSlug, category, basis }) {
   const [viewBy, setViewBy] = useState('club')
   const [metric, setMetric] = useState('pastDue')
   const [showList, setShowList] = useState(false)
 
   const query = useMemo(
-    () => new URLSearchParams({ clubs: locationSlug || 'all', viewBy }).toString(),
+    () => new URLSearchParams({ clubs: locationSlug || 'all', viewBy, category, basis }).toString(),
     [locationSlug, viewBy]
   )
 

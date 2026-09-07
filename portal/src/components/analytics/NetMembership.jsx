@@ -90,7 +90,7 @@ function Tile({ tile }) {
   )
 }
 
-export default function NetMembership({ startDate, endDate, locationSlug }) {
+export default function NetMembership({ startDate, endDate, locationSlug, category, basis }) {
   const [segment, setSegment] = useState('club')
   const [sort, setSort] = useState('net_desc')
   const [exclusion, setExclusion] = useState('exclude')
@@ -98,7 +98,8 @@ export default function NetMembership({ startDate, endDate, locationSlug }) {
 
   const query = useMemo(() => new URLSearchParams({
     start: startDate, end: endDate, clubs: locationSlug || 'all', segment, sort, exclusion,
-  }).toString(), [startDate, endDate, locationSlug, segment, sort, exclusion])
+    category, basis,
+  }).toString(), [startDate, endDate, locationSlug, segment, sort, exclusion, category, basis])
 
   const { data, loading, error } = useCancellableFetch(
     (signal) => api(`/analytics/net-membership?${query}`, { cache: true, signal }),

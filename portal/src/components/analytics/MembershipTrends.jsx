@@ -156,13 +156,13 @@ function Tile({ tile }) {
   )
 }
 
-export default function MembershipTrends({ locationSlug }) {
+export default function MembershipTrends({ locationSlug, category, basis }) {
   const [segment, setSegment] = useState('club')
   const [exclusion, setExclusion] = useState('exclude')
   const [hovered, setHovered] = useState(null)
 
   const query = useMemo(
-    () => new URLSearchParams({ clubs: locationSlug || 'all', segment, exclusion }).toString(),
+    () => new URLSearchParams({ clubs: locationSlug || 'all', segment, exclusion, category, basis }).toString(),
     [locationSlug, segment, exclusion]
   )
 

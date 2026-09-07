@@ -345,4 +345,89 @@ router.delete('/skip-list/:type', async (req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// Membership categories (migration 194) — Insurance / Temp / Dues.
+//
+// Same shape as the skip list above, and for the same reason: ABC invents
+// membership types without telling us, and a mapping in code could only be
+// changed by a deploy. An unmapped type reads as Other, which is visible under
+// All and selectable on its own, so it can be found and mapped here.
+// ---------------------------------------------------------------------------
+
+const CATEGORIES = ['Insurance', 'Temp', 'Dues']
+
+// GET /abc-sync/membership-categories — the mapping, plus the types ABC has
+// that are NOT mapped yet. Returning the unmapped list is most of the point:
+// it is the difference between "the mapping looks fine" and "these four plans
+// are landing in Other right now".
+router.get('/membership-categories', async (req, res) => {
+  try {
+    const [{ data: mapped, error: e1 }, { data: seen, error: e2 }] = await Promise.all([
+      supabaseAdmin
+        .from('abc_membership_categories')
+        .select('membership_type, category, note, created_at')
+        .order('category').order('membership_type'),
+      supabaseAdmin
+        .from('abc_membership_type_counts')
+        .select('membership_type, active'),
+    ])
+    if (e1) return res.status(500).json({ error: e1.message })
+
+    // The view is per CLUB, so a type present at four clubs arrives as four
+    // rows. Summed here, otherwise the biggest unmapped plan would look like
+    // whichever club happened to sort first.
+    const byType = new Map()
+    for (const r of (seen || [])) {
+      if (!r.membership_type) continue
+      byType.set(r.membership_type, (byType.get(r.membership_type) || 0) + (r.active || 0))
+    }
+
+    const known = new Set((mapped || []).map(r => r.membership_type.toLowerCase()))
+    const unmapped = e2 ? [] : [...byType.entries()]
+      .filter(([type]) => !known.has(type.toLowerCase()))
+      .map(([membership_type, active_members]) => ({ membership_type, active_members }))
+      .sort((a, b) => b.active_members - a.active_members)
+
+    res.json({ items: mapped || [], unmapped, categories: CATEGORIES })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /abc-sync/membership-categories — map a type, or re-map it
+router.post('/membership-categories', async (req, res) => {
+  const membershipType = (req.body?.membership_type || '').trim()
+  const category = (req.body?.category || '').trim()
+  const note = (req.body?.note || '').trim() || null
+  if (!membershipType) return res.status(400).json({ error: 'membership_type is required' })
+  if (!CATEGORIES.includes(category)) {
+    return res.status(400).json({ error: `category must be one of ${CATEGORIES.join(', ')}` })
+  }
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('abc_membership_categories')
+      .upsert({ membership_type: membershipType, category, note, created_by: req.staff?.id || null })
+      .select()
+      .single()
+    if (error) return res.status(500).json({ error: error.message })
+    res.json({ item: data })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /abc-sync/membership-categories/:type — unmap, sending it back to Other
+router.delete('/membership-categories/:type', async (req, res) => {
+  try {
+    const { error } = await supabaseAdmin
+      .from('abc_membership_categories')
+      .delete()
+      .eq('membership_type', req.params.type)
+    if (error) return res.status(500).json({ error: error.message })
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 module.exports = router

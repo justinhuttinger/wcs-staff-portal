@@ -212,7 +212,7 @@ function Select({ label, value, onChange, options }) {
   )
 }
 
-export default function AttritionTrends({ locationSlug }) {
+export default function AttritionTrends({ locationSlug, category, basis }) {
   const [metric, setMetric] = useState('attrition_pct')
   const [segment, setSegment] = useState('club')
   const [months, setMonths] = useState(13)
@@ -225,9 +225,10 @@ export default function AttritionTrends({ locationSlug }) {
       metric, segment,
       months: String(months),
       exclude: String(exclude),
+      category, basis,
     })
     return p.toString()
-  }, [locationSlug, metric, segment, months, exclude])
+  }, [locationSlug, metric, segment, months, exclude, category, basis])
 
   const { data, loading, error } = useCancellableFetch(
     signal => api(`/analytics/attrition-trends?${query}`, { cache: true, signal }),

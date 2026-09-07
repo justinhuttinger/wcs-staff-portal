@@ -4,6 +4,7 @@ const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
+const { parseCategory, parseBasis, filterNote } = require('../lib/analyticsMemberFilters')
 const { buildNetMembership, SORTS } = require('../lib/netMembership')
 const { MEMBER_SEGMENTS, isValidSegment } = require('../lib/analyticsSegments')
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
@@ -52,11 +53,13 @@ router.get('/', async (req, res) => {
       : 'club'
     const sort = SORTS.some(s => s.key === req.query.sort) ? String(req.query.sort) : 'net_desc'
     const exclude = req.query.exclusion !== 'include'
+    const category = parseCategory(req.query.category)
+    const basis = parseBasis(req.query.basis)
     const allClubs = slugs.length === CLUBS.length
 
     // The sort is applied after the fetch, so changing it re-derives from the
     // cached counts instead of re-querying.
-    const cacheKey = ['analytics:net-membership', start, end, slugs.slice().sort().join('+'), segment, exclude].join('|')
+    const cacheKey = ['analytics:net-membership', start, end, slugs.slice().sort().join('+'), segment, exclude, category, basis].join('|')
 
     const rows = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       return fetchAll(supabaseAdmin.rpc('analytics_net_membership', {
@@ -65,6 +68,8 @@ router.get('/', async (req, res) => {
         p_clubs: allClubs ? null : slugs.map(s => CLUB_BY_SLUG[s].clubNumber),
         p_segment: segment,
         p_exclude: exclude,
+        p_category: category,
+        p_basis: basis,
       }))
     })
 
@@ -87,6 +92,10 @@ router.get('/', async (req, res) => {
         priorStart: new Date(Date.parse(start) - 31536000000).toISOString().slice(0, 10),
         priorEnd: new Date(Date.parse(end) - 31536000000).toISOString().slice(0, 10),
         notes: {
+          // Named on the report itself, not just in the dropdown: Insurance
+          // alone is 32% of the base, so a filtered chart is otherwise
+          // indistinguishable from a collapse.
+          filter: filterNote({ category, basis }),
           flow: 'New members never take the conditional membership rule — joining is a fact about the day it happened. Lost members do, so the net is not measured against a base that never contained them.',
           prior: 'The prior-year figures cover the same span one year earlier, so a part-year is never set against a full one.',
           other: built.other.length
