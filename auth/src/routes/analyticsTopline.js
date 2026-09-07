@@ -3,6 +3,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { wrapSWR } = require('../services/memoryCache')
+const { parseCategory, parseBasis, filterNote } = require('../lib/analyticsMemberFilters')
 const { buildTopline } = require('../lib/toplineMetrics')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
@@ -46,12 +47,16 @@ router.get('/', async (req, res) => {
     if (slugs.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
 
     const exclude = req.query.exclusion !== 'include'
+
+    const category = parseCategory(req.query.category)
+
+    const basis = parseBasis(req.query.basis)
     const endParam = String(req.query.end || '')
     const explicitEnd = /^\d{4}-\d{2}-\d{2}$/.test(endParam) ? endParam : null
     const end = explicitEnd || (await latestRevenueDate()) || new Date().toISOString().slice(0, 10)
 
     const allClubs = slugs.length === CLUBS.length
-    const cacheKey = ['analytics:topline', end, slugs.slice().sort().join('+'), exclude].join('|')
+    const cacheKey = ['analytics:topline', end, slugs.slice().sort().join('+'), exclude, category, basis].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       const { data, error } = await supabaseAdmin.rpc('analytics_topline', {
@@ -60,6 +65,8 @@ router.get('/', async (req, res) => {
         // read rather than matching a 7-element array against every row.
         p_clubs: allClubs ? null : slugs.map(s => CLUB_BY_SLUG[s].clubNumber),
         p_exclude: exclude,
+        p_category: category,
+        p_basis: basis,
       })
       if (error) throw new Error(error.message)
 
@@ -67,6 +74,15 @@ router.get('/', async (req, res) => {
       return {
         ...built,
         meta: {
+          filter: filterNote({ category, basis }),
+          // Three cards go blank under a filter and a reader deserves to know
+          // why rather than reading it as a failure. Revenue and PT revenue are
+          // club-level sums with no member join; the window check-in figure
+          // comes from checkins_hourly, which stores an hourly total per club
+          // and no member id at all.
+          withheld: (category !== 'all' || basis === 'agreements')
+            ? 'Revenue, PT revenue and the window check-in totals are club-wide figures that cannot be narrowed to a membership category, so they are withheld while a filter is on. Member counts, new members, lost members, new dues and the monthly check-in card all follow the filter.'
+            : undefined,
           end,
           anchoredOn: explicitEnd ? 'request' : 'latest revenue date',
           clubs: slugs,
