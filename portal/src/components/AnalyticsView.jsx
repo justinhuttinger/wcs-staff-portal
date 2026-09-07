@@ -88,6 +88,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'club-activity',
+    filters: ['category', 'basis'],
     records: ['new-members', 'lost-members', 'revenue', 'day-ones'],
     label: 'Club Activity Trends',
     desc: 'Year over Year',
@@ -98,6 +99,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'revenue-per-member',
+    filters: ['category', 'basis'],
     records: ['revenue', 'new-members'],
     label: 'Revenue Per Member',
     desc: 'Members vs Revenue',

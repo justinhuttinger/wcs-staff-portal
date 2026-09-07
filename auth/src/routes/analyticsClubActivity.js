@@ -3,6 +3,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { wrapSWR } = require('../services/memoryCache')
+const { parseCategory, parseBasis, filterNote } = require('../lib/analyticsMemberFilters')
 const { buildTrends } = require('../lib/clubActivityTrends')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
@@ -51,11 +52,15 @@ router.get('/', async (req, res) => {
     if (slugs.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
 
     const exclude = req.query.exclusion !== 'include'
+
+    const category = parseCategory(req.query.category)
+
+    const basis = parseBasis(req.query.basis)
     const endParam = String(req.query.end || '')
     const end = /^\d{4}-\d{2}-\d{2}$/.test(endParam) ? endParam : lastCompleteMonthEnd()
 
     const allClubs = slugs.length === CLUBS.length
-    const cacheKey = ['analytics:club-activity', end, slugs.slice().sort().join('+'), exclude].join('|')
+    const cacheKey = ['analytics:club-activity', end, slugs.slice().sort().join('+'), exclude, category, basis].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       const { data, error } = await supabaseAdmin.rpc('analytics_club_activity', {
@@ -66,6 +71,8 @@ router.get('/', async (req, res) => {
         // against every row.
         p_clubs: allClubs ? null : slugs.map(s => CLUB_BY_SLUG[s].clubNumber),
         p_exclude: exclude,
+        p_category: category,
+        p_basis: basis,
       })
       if (error) throw new Error(error.message)
 
@@ -73,6 +80,17 @@ router.get('/', async (req, res) => {
       return {
         ...trends,
         meta: {
+          filter: filterNote({ category, basis }),
+          // Said out loud, because four tiles disappearing is otherwise
+          // indistinguishable from a bug. This report's revenue is a
+          // club-level sum with no member join, so it cannot be narrowed to a
+          // membership category or to primary members only; showing club-wide
+          // money beside insurance-only headcounts would be worse than showing
+          // nothing. Revenue Per Member attributes revenue through the
+          // agreement and does honour both filters.
+          revenueWithheld: (category !== 'all' || basis === 'agreements')
+            ? 'Revenue tiles are hidden while a membership filter is on: this report totals revenue for the whole club and cannot attribute it to a membership category. Use Revenue Per Member for revenue that follows the filter.'
+            : undefined,
           end,
           clubs: slugs,
           exclusion: exclude ? 'exclude' : 'include',

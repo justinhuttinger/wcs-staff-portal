@@ -212,14 +212,14 @@ function TrendTile({ tile, hovered, onHover }) {
   )
 }
 
-export default function ClubActivityTrends({ locationSlug }) {
+export default function ClubActivityTrends({ locationSlug, category, basis }) {
   const [exclusion, setExclusion] = useState('exclude')
   const [hovered, setHovered] = useState(null)
 
   const query = useMemo(() => {
-    const p = new URLSearchParams({ clubs: locationSlug || 'all', exclusion })
+    const p = new URLSearchParams({ clubs: locationSlug || 'all', exclusion, category, basis })
     return p.toString()
-  }, [locationSlug, exclusion])
+  }, [locationSlug, exclusion, category, basis])
 
   const { data, loading, error } = useCancellableFetch(
     (signal) => api(`/analytics/club-activity?${query}`, { cache: true, signal }),

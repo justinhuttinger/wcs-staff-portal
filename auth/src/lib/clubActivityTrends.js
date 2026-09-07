@@ -19,13 +19,13 @@ const TILES = [
   { key: 'newMemberUnits', label: 'New Member Units', format: 'int', kind: 'sum' },
   { key: 'totalCheckins', label: 'Check-ins', format: 'int', kind: 'sum', needsCheckins: true },
   { key: 'uniqueCheckins', label: 'Members Who Visited', format: 'int', kind: 'point', needsCheckins: true },
-  { key: 'totalRevenue', label: 'Total Revenue', format: 'money', kind: 'sum' },
-  { key: 'ptRevenue', label: 'PT Revenue', format: 'money', kind: 'sum' },
+  { key: 'totalRevenue', needsRevenue: true, label: 'Total Revenue', format: 'money', kind: 'sum' },
+  { key: 'ptRevenue', needsRevenue: true, label: 'PT Revenue', format: 'money', kind: 'sum' },
   { key: 'lostMembers', label: 'Lost Members', format: 'int', kind: 'sum', negate: true },
   { key: 'netMembers', label: 'Net Members', format: 'int', kind: 'sum', signed: true },
   { key: 'avgCheckinsPerMember', label: 'Avg Check-ins Per Member', format: 'ratio', kind: 'mean', needsCheckins: true },
-  { key: 'avgRevenuePerMember', label: 'Avg Revenue Per Member', format: 'money2', kind: 'mean' },
-  { key: 'avgRevenuePerVisit', label: 'Avg Revenue Per Visit', format: 'money2', kind: 'mean', needsCheckins: true },
+  { key: 'avgRevenuePerMember', needsRevenue: true, label: 'Avg Revenue Per Member', format: 'money2', kind: 'mean' },
+  { key: 'avgRevenuePerVisit', needsRevenue: true, label: 'Avg Revenue Per Visit', format: 'money2', kind: 'mean', needsCheckins: true },
 ]
 
 function num(v) {
@@ -124,7 +124,21 @@ function buildTrends(rows, months = 13) {
   // Year to date = calendar months of the anchor's year up to and including it.
   const ytdMonths = anchor ? derived.filter(m => m.month.slice(0, 4) === anchorYear && m.month <= anchor.month) : []
 
-  const tiles = TILES.map(tile => {
+  // Club Activity's revenue is a club-level sum with no member join, so under
+  // an Insurance / Temp / Dues filter or the agreements basis migration 195
+  // returns NULL for it rather than a number describing a different population
+  // than the headcounts beside it. A tile that can only draw a blank line is
+  // worse than an absent one: it invites the reader to treat the gap as a
+  // collapse in revenue. Note this tests for null specifically — a zero month
+  // is a real fact about a club and keeps its tiles.
+  // No rows at all is NOT the filtered case: with nothing to look at we cannot
+  // tell "revenue cannot answer this" from "there is no data yet", and an empty
+  // report should keep its usual shape rather than quietly lose four tiles.
+  const revenueRows = (rows || [])
+  const revenueAvailable = revenueRows.length === 0
+    || revenueRows.some(r => r.total_revenue !== null && r.total_revenue !== undefined)
+
+  const tiles = TILES.filter(tile => !tile.needsRevenue || revenueAvailable).map(tile => {
     const series = shown.map(m => {
       const prior = priorOf(m.month)
       const value = m[tile.key]

@@ -3,6 +3,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { wrapSWR } = require('../services/memoryCache')
+const { parseCategory, parseBasis, filterNote } = require('../lib/analyticsMemberFilters')
 const { buildRevenuePerMember } = require('../lib/revenuePerMember')
 const { BREAKDOWNS } = require('../lib/membershipMix')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
@@ -50,12 +51,15 @@ router.get('/', async (req, res) => {
 
     const breakdown = SUPPORTED.has(req.query.breakdown) ? req.query.breakdown : 'membership_type'
     const exclude = req.query.exclusion !== 'include'
+    const category = parseCategory(req.query.category)
+    const basis = parseBasis(req.query.basis)
     const endParam = String(req.query.end || '')
     const end = /^\d{4}-\d{2}-\d{2}$/.test(endParam) ? endParam : lastCompleteMonthEnd()
     const allClubs = slugs.length === CLUBS.length
 
     const cacheKey = [
       'analytics:revenue-per-member', end, slugs.slice().sort().join('+'), breakdown, exclude,
+      category, basis,
     ].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
@@ -65,6 +69,8 @@ router.get('/', async (req, res) => {
         p_clubs: allClubs ? null : slugs.map(s => CLUB_BY_SLUG[s].clubNumber),
         p_breakdown: breakdown,
         p_exclude: exclude,
+        p_category: category,
+        p_basis: basis,
       })
       if (error) throw new Error(error.message)
 
@@ -75,6 +81,7 @@ router.get('/', async (req, res) => {
         breakdown,
         breakdowns: BREAKDOWNS.filter(b => SUPPORTED.has(b.key)),
         meta: {
+          filter: filterNote({ category, basis }),
           end,
           clubs: slugs,
           exclusion: exclude ? 'exclude' : 'include',
