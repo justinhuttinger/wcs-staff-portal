@@ -50,14 +50,31 @@ test('nothing outside the allowlist is a Day One calendar', () => {
 // Resolution against a sub-account's calendar list
 // ---------------------------------------------------------------------------
 
-/** Run `fn` with ghlClient stubbed to return `calendars`, then restore. */
+/**
+ * Run `fn` with ghlClient stubbed to return `calendars`, then restore.
+ *
+ * Supabase is stubbed too, and the rows the resolver registers are collected on
+ * `calls.upserts` — without this the resolver would reach for the real
+ * service-role client (migration 192) and these tests would write to prod.
+ */
 async function withCalendars(calendars, fn) {
   const load = Module._load
   const calls = []
+  calls.upserts = []
+  calls.upsertError = null
+  const supabaseStub = {
+    from: () => ({
+      upsert: async (rows) => {
+        calls.upserts.push(...rows)
+        return { error: calls.upsertError }
+      },
+    }),
+  }
   Module._load = function (request, parent, isMain) {
     if (request === '../services/ghlClient') {
       return { ghlFetch: async (path) => { calls.push(path); return { calendars } } }
     }
+    if (request === '../services/supabase') return { supabaseAdmin: supabaseStub }
     return load.apply(this, arguments)
   }
   delete require.cache[require.resolve('./dayOneCalendars')]
@@ -123,5 +140,66 @@ test('the calendar list is fetched once per club, not per lookup', async () => {
     await mod.resolveDayOneCalendars(loc)
     await mod.resolveDayOneCalendars(loc)
     assert.equal(calls.length, 1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Recording what was resolved, for day_one_integrity()
+// ---------------------------------------------------------------------------
+
+// THE REGRESSION THIS SECTION EXISTS FOR. day_one_integrity() carried its own
+// hardcoded copy of the seven calendar ids (migration 121). The moment this file
+// grew Clackamas' Stretch and Milwaukie's Kirstyn calendar the two lists
+// disagreed, and 61 correct rows were reported as a mis-scoped workflow trigger
+// every Monday for a fortnight. The list is resolved here, so it is recorded
+// here, and there is one of it.
+test('every resolved calendar is registered, extras included', async () => {
+  await withCalendars([
+    { id: 'a', name: 'Day One' },
+    { id: 'b', name: 'Stretch' },
+    { id: 'c', name: 'Gym Tours' },
+  ], async (mod, calls) => {
+    await mod.resolveDayOneCalendars(loc)
+    assert.deepEqual(calls.upserts.map(r => r.ghl_calendar_id), ['a', 'b'])
+    assert.deepEqual(calls.upserts.map(r => r.location_slug), ['clackamas', 'clackamas'])
+    assert.deepEqual(calls.upserts.map(r => r.calendar_name), ['Day One', 'Stretch'])
+  })
+})
+
+// A calendar outside the allowlist must never be registered, or the check would
+// approve the exact mis-scoped trigger it was built to catch.
+test('a calendar outside the allowlist is not registered', async () => {
+  await withCalendars([
+    { id: 'a', name: 'Day One' },
+    { id: 'tours', name: 'Gym Tours' },
+  ], async (mod, calls) => {
+    await mod.resolveDayOneCalendars(loc)
+    assert.equal(calls.upserts.some(r => r.ghl_calendar_id === 'tours'), false)
+  })
+})
+
+// Bookkeeping for a weekly report must never be the reason a reconcile pass
+// fails: the calendars still come back and the club still syncs.
+test('a failed registration warns but does not break resolution', async () => {
+  await withCalendars([{ id: 'a', name: 'Day One' }], async (mod, calls) => {
+    calls.upsertError = { message: 'connection reset' }
+    const warns = []
+    const orig = console.warn
+    console.warn = m => warns.push(String(m))
+    try {
+      const found = await mod.resolveDayOneCalendars(loc)
+      assert.deepEqual(found.map(c => c.id), ['a'])
+      assert.ok(warns.some(w => w.includes('connection reset')))
+    } finally { console.warn = orig }
+  })
+})
+
+// The resolver caches for an hour, so registration rides along with the fetch
+// rather than firing on every lookup.
+test('registration happens once per club, with the fetch', async () => {
+  await withCalendars([{ id: 'a', name: 'Day One' }], async (mod, calls) => {
+    await mod.resolveDayOneCalendars(loc)
+    await mod.resolveDayOneCalendars(loc)
+    assert.equal(calls.upserts.length, 1)
   })
 })
