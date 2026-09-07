@@ -74,3 +74,56 @@ test('an unmapped row counts under All and under no named bucket', () => {
   assert.strictEqual(matchesFilters(row, { category: 'Insurance', basis: 'members' }), false)
   assert.strictEqual(matchesFilters(row, { category: 'Temp', basis: 'members' }), false)
 })
+
+// ---------------------------------------------------------------------------
+// Resolving the category from a lookup, for reports that read abc_members
+// directly rather than through abc_members_counted.
+//
+// Salesperson Performance, Salesperson Snapshot and Attrition Analysis all
+// select named columns from abc_members in JS. Pointing them at the view to
+// pick up membership_category would add two joins to three hot queries for one
+// string, so they pass the mapping instead — 33 rows, read once.
+// ---------------------------------------------------------------------------
+
+const CATEGORY_MAP = new Map([
+  ['single', 'Dues'],
+  ['a2 core - active adult core', 'Insurance'],
+  ['temporary single', 'Temp'],
+])
+
+test('the category is resolved from membership_type when a map is given', () => {
+  const dues = { membership_type: 'SINGLE', is_primary_member: true }
+  const ins = { membership_type: 'A2 CORE - Active Adult Core', is_primary_member: true }
+  assert.strictEqual(matchesFilters(dues, { category: 'Dues', basis: 'members', categoryMap: CATEGORY_MAP }), true)
+  assert.strictEqual(matchesFilters(dues, { category: 'Insurance', basis: 'members', categoryMap: CATEGORY_MAP }), false)
+  assert.strictEqual(matchesFilters(ins, { category: 'Insurance', basis: 'members', categoryMap: CATEGORY_MAP }), true)
+})
+
+// ABC spells the same plan more than one way; the mapping is keyed on the
+// lowercased type for exactly that reason, and the row's own casing must not
+// decide whether it matches.
+test('matching the map is case-insensitive', () => {
+  const row = { membership_type: 'single', is_primary_member: true }
+  assert.strictEqual(matchesFilters(row, { category: 'Dues', basis: 'members', categoryMap: CATEGORY_MAP }), true)
+})
+
+test('an unmapped type matches none of the named categories', () => {
+  const row = { membership_type: 'CORP PREMIUM', is_primary_member: true }
+  for (const c of ['Dues', 'Insurance', 'Temp']) {
+    assert.strictEqual(matchesFilters(row, { category: c, basis: 'members', categoryMap: CATEGORY_MAP }), false)
+  }
+  assert.strictEqual(matchesFilters(row, { category: 'all', basis: 'members', categoryMap: CATEGORY_MAP }), true)
+})
+
+// The map is an override, not a requirement: rows that already carry
+// membership_category keep working, so one function serves both shapes.
+test('a row carrying membership_category still works without a map', () => {
+  const row = { membership_category: 'Insurance', is_primary_member: true }
+  assert.strictEqual(matchesFilters(row, { category: 'Insurance', basis: 'members' }), true)
+})
+
+test('the basis rule is unaffected by the map', () => {
+  const secondary = { membership_type: 'SINGLE', is_primary_member: false }
+  assert.strictEqual(matchesFilters(secondary, { category: 'all', basis: 'agreements', categoryMap: CATEGORY_MAP }), false)
+  assert.strictEqual(matchesFilters(secondary, { category: 'all', basis: 'members', categoryMap: CATEGORY_MAP }), true)
+})

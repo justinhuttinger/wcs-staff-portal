@@ -1,3 +1,4 @@
+const { matchesFilters } = require('./analyticsMemberFilters')
 // Pure aggregation for the Analytics > Salesperson Performance report.
 //
 // Deliberately free of any I/O or Supabase import: the route does the fetching
@@ -240,6 +241,20 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
       if (m.is_primary_member !== wantPrimary) return false
     }
     if (filters.ageGroup && ageGroupKey(ageOn(m.birth_date, m.since_date || m.sign_date)) !== filters.ageGroup) return false
+    // The two shared Analytics filters, applied HERE rather than to the member
+    // list before it arrives. buildMemberIndex below is built from `kept`, and
+    // Day One, VIP and tour attribution all follow that index — filtering
+    // afterwards would shrink the denominator of Day One Book % while leaving
+    // its numerator alone and inflate every rate on the report.
+    //
+    // NOTE this composes with memberRelationship above rather than replacing
+    // it: asking for the agreements basis AND secondary members is a
+    // contradiction, and it correctly returns nobody.
+    if (!matchesFilters(m, {
+      category: filters.category,
+      basis: filters.basis,
+      categoryMap: filters.categoryMap,
+    })) return false
     return true
   })
 

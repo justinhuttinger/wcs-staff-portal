@@ -138,7 +138,7 @@ function Select({ label, value, onChange, options, allLabel = 'All' }) {
   )
 }
 
-export default function SalespersonPerformance({ startDate, endDate, locationSlug }) {
+export default function SalespersonPerformance({ startDate, endDate, locationSlug, category, basis }) {
   const [exclusion, setExclusion] = useState('exclude')
   const [sortBy, setSortBy] = useState(DEFAULT_SORT.by)
   const [sortOrder, setSortOrder] = useState(DEFAULT_SORT.order)
@@ -202,8 +202,10 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
     if (paymentMethod) p.set('paymentMethod', paymentMethod)
     if (memberRelationship) p.set('memberRelationship', memberRelationship)
     p.set('viewBy', viewBy)
+    p.set('category', category)
+    p.set('basis', basis)
     return p.toString()
-  }, [startDate, endDate, locationSlug, exclusion, joinSource, membershipType, gender, ageGroup, paymentTerm, paymentMethod, memberRelationship, viewBy])
+  }, [startDate, endDate, locationSlug, exclusion, joinSource, membershipType, gender, ageGroup, paymentTerm, paymentMethod, memberRelationship, viewBy, category, basis])
 
   const { data, loading, error } = useCancellableFetch(
     (signal) => api(`/analytics/salesperson-performance?${query}`, { cache: true, signal }),
