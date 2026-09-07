@@ -5,6 +5,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
+const { buildCategoryRows } = require('../lib/membershipByCategory')
 const { buildReport } = require('../lib/salespersonPerformance')
 const { loadSalespersonWindow } = require('../lib/salespersonData')
 const { buildDailySnapshot } = require('../lib/dailySnapshot')
@@ -112,7 +113,7 @@ router.get('/', async (req, res) => {
       // the same rows as the card rather than from fourteen separate calls.
       const seriesStart = previousDay(day, SERIES_DAYS - 1)
 
-      const [current, prior, membersAtClose, series, revenueEdge, pendingRows] = await Promise.all([
+      const [current, prior, membersAtClose, series, revenueEdge, pendingRows, byCategory, byCategoryPrior] = await Promise.all([
         dayFor(day),
         dayFor(yesterday),
         supabaseAdmin.rpc('analytics_topline_members_as_of', {
@@ -130,6 +131,14 @@ router.get('/', async (req, res) => {
           .limit(1)
           .maybeSingle(),
         loadPendingDayOnes(rpcClubs, seriesStart, day),
+        // A single day's window on both sides, so "joined today" and "left
+        // today" split by category read against yesterday's same figures.
+        fetchAll(supabaseAdmin.rpc('analytics_membership_by_category', {
+          p_start: day, p_end: day, p_clubs: rpcClubs, p_exclude: true,
+        })),
+        fetchAll(supabaseAdmin.rpc('analytics_membership_by_category', {
+          p_start: yesterday, p_end: yesterday, p_clubs: rpcClubs, p_exclude: true,
+        })),
       ])
 
       if (membersAtClose.error) throw new Error(membersAtClose.error.message)
@@ -153,6 +162,8 @@ router.get('/', async (req, res) => {
         latestRevenueDay: revenueEdge?.data?.payment_date
           ? String(revenueEdge.data.payment_date).slice(0, 10)
           : null,
+        byCategory: byCategory || [],
+        byCategoryPrior: byCategoryPrior || [],
       }
     })
 
@@ -165,6 +176,9 @@ router.get('/', async (req, res) => {
 
     res.json({
       ...built,
+      // The rows the Membership block expands into. Same three rules as the
+      // block itself (migration 197), so they add up to it.
+      membershipByCategory: buildCategoryRows(payload.byCategory, payload.byCategoryPrior),
       meta: {
         day,
         priorDay: yesterday,

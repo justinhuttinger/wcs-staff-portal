@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
+import MembershipBreakdown from './MembershipBreakdown'
 import { api } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
@@ -205,6 +206,11 @@ export default function DailySnapshot({ locationSlug }) {
               </div>
             ))}
           </div>
+
+          <MembershipBreakdown
+            rows={data?.membershipByCategory}
+            comparisonLabel={data?.notes?.comparison ? 'the previous day' : null}
+          />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <DayBars title="Joined" days={days} valueKey="newMembers" format="int" selected={data.day} />

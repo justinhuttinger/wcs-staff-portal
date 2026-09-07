@@ -5,6 +5,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
+const { buildCategoryRows } = require('../lib/membershipByCategory')
 const { buildReport } = require('../lib/salespersonPerformance')
 const { loadSalespersonWindow } = require('../lib/salespersonData')
 const { buildClubSnapshot } = require('../lib/clubSnapshot')
@@ -93,7 +94,7 @@ router.get('/', async (req, res) => {
         }
       }
 
-      const [current, priorWindow, membersNow, membersPrior, series, ptSeries, pendingRows, priorPending] = await Promise.all([
+      const [current, priorWindow, membersNow, membersPrior, series, ptSeries, pendingRows, priorPending, byCategory, byCategoryPrior] = await Promise.all([
         windowFor(start, end),
         windowFor(prior.start, prior.end),
         supabaseAdmin.rpc('analytics_topline_members_as_of', {
@@ -113,6 +114,15 @@ router.get('/', async (req, res) => {
         // so the card reads as a subset of it.
         loadPendingDayOnes(rpcClubs, start, end),
         loadPendingDayOnes(rpcClubs, prior.start, prior.end),
+        // Always fetched, never gated on the toggle: it is one grouped pass
+        // over the member table, and fetching it only when asked would make
+        // switching the toggle a round trip for something already paid for.
+        fetchAll(supabaseAdmin.rpc('analytics_membership_by_category', {
+          p_start: start, p_end: end, p_clubs: rpcClubs, p_exclude: true,
+        })),
+        fetchAll(supabaseAdmin.rpc('analytics_membership_by_category', {
+          p_start: prior.start, p_end: prior.end, p_clubs: rpcClubs, p_exclude: true,
+        })),
       ])
 
       if (membersNow.error) throw new Error(membersNow.error.message)
@@ -142,6 +152,8 @@ router.get('/', async (req, res) => {
           priorTotal: (priorPending || []).length,
           list: pendingList(pendingRows),
         },
+        byCategory: byCategory || [],
+        byCategoryPrior: byCategoryPrior || [],
       }
     })
 
@@ -154,6 +166,11 @@ router.get('/', async (req, res) => {
 
     res.json({
       ...built,
+      // The membership breakdown the Membership block expands into. Sent
+      // whether or not the toggle is on, so switching it is instant; the rows
+      // sum to the block's own Members / Joined / Left by construction, since
+      // they use the same three rules (migration 197).
+      membershipByCategory: buildCategoryRows(payload.byCategory, payload.byCategoryPrior),
       meta: {
         start, end,
         priorStart: prior.start, priorEnd: prior.end,
