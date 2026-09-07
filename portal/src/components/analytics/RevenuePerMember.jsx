@@ -142,14 +142,14 @@ function LineChart({ months, series, height, yFormat, colors, hovered, onHover, 
   )
 }
 
-export default function RevenuePerMember({ locationSlug }) {
+export default function RevenuePerMember({ locationSlug, category, basis }) {
   const [breakdown, setBreakdown] = useState('membership_type')
   const [exclusion, setExclusion] = useState('exclude')
   const [hovered, setHovered] = useState(null)
 
   const query = useMemo(
-    () => new URLSearchParams({ clubs: locationSlug || 'all', breakdown, exclusion }).toString(),
-    [locationSlug, breakdown, exclusion]
+    () => new URLSearchParams({ clubs: locationSlug || 'all', breakdown, exclusion, category, basis }).toString(),
+    [locationSlug, breakdown, exclusion, category, basis]
   )
 
   const { data, loading, error } = useCancellableFetch(

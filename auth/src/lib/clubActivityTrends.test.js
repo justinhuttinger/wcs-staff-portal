@@ -178,3 +178,55 @@ test('members who visited is a level, not a flow', () => {
   // Total check-ins is genuinely additive and stays a sum.
   assert.equal(tiles.find(t => t.key === 'totalCheckins').kind, 'sum')
 })
+
+// ---------------------------------------------------------------------------
+// Revenue tiles under a member filter.
+//
+// Club Activity's revenue is a CLUB-LEVEL sum with no member join, so it cannot
+// honour the Insurance / Temp / Dues filter or the agreements basis. Migration
+// 195 has it return NULL rather than a number that would silently describe a
+// different population than the headcounts beside it.
+// ---------------------------------------------------------------------------
+
+function monthRow(month, over = {}) {
+  return {
+    month_start: `${month}-01`,
+    total_members: 100, new_member_units: 10, lost_members: 5,
+    total_checkins: 400, unique_checkins: 80,
+    total_revenue: 5000, pt_revenue: 1000,
+    has_checkin_data: true,
+    ...over,
+  }
+}
+
+test('revenue tiles are dropped when revenue is null for every month', () => {
+  const rows = ['2026-07', '2026-08', '2026-09']
+    .map(m => monthRow(m, { total_revenue: null, pt_revenue: null }))
+  const { tiles } = buildTrends(rows, 13)
+  const keys = tiles.map(t => t.key)
+  for (const gone of ['totalRevenue', 'ptRevenue', 'avgRevenuePerMember', 'avgRevenuePerVisit']) {
+    assert.ok(!keys.includes(gone), `${gone} should be dropped when revenue is unavailable`)
+  }
+  // The member tiles are the whole point of filtering, so they must survive.
+  assert.ok(keys.includes('totalMembers'))
+  assert.ok(keys.includes('newMemberUnits'))
+  assert.ok(keys.includes('totalCheckins'))
+})
+
+test('revenue tiles are kept when revenue is present', () => {
+  const rows = ['2026-07', '2026-08', '2026-09'].map(m => monthRow(m))
+  const keys = buildTrends(rows, 13).tiles.map(t => t.key)
+  for (const kept of ['totalRevenue', 'ptRevenue', 'avgRevenuePerMember', 'avgRevenuePerVisit']) {
+    assert.ok(keys.includes(kept), `${kept} should be kept`)
+  }
+})
+
+// A zero month is a real fact about a club and must not be mistaken for the
+// "cannot answer" case. Only null means unavailable.
+test('a zero revenue month keeps the tiles', () => {
+  const rows = [
+    monthRow('2026-07', { total_revenue: 0, pt_revenue: 0 }),
+    monthRow('2026-08', { total_revenue: 0, pt_revenue: 0 }),
+  ]
+  assert.ok(buildTrends(rows, 13).tiles.map(t => t.key).includes('totalRevenue'))
+})
