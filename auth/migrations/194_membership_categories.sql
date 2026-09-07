@@ -360,6 +360,12 @@ as $function$
       and (p_category = 'all' or s.seg_membership_category = p_category)
       and (p_basis <> 'agreements' or s.seg_relationship = 'Primary')
   ),
+  -- CROSS JOIN, not a comma. A comma join binds LOOSER than the LEFT JOIN that
+  -- follows, so `from mem m, bounds b left join dead_now d on ... m.club_number`
+  -- parses as `mem m, (bounds b left join dead_now d ...)` and m is not visible
+  -- in the join condition. Migration 136 shipped with the comma and was fixed
+  -- directly in prod without the file being updated, so this migration was
+  -- written from a definition that could never have run. See migration 195.
   dead_now as (
     select * from public.analytics_members_excluded_as_of(p_end)
   ),
@@ -368,7 +374,7 @@ as $function$
   ),
   lost as (
     select m.seg, count(*) as n
-    from mem m, bounds b
+    from mem m cross join bounds b
     left join dead_now d
       on p_exclude and d.club_number = m.club_number and d.member_id = m.member_id
     where m.member_status in ('Cancelled', 'Expired', 'Return For Collection')
@@ -378,7 +384,7 @@ as $function$
   ),
   lost_prior as (
     select m.seg, count(*) as n
-    from mem m, bounds b
+    from mem m cross join bounds b
     left join dead_prior d
       on p_exclude and d.club_number = m.club_number and d.member_id = m.member_id
     where m.member_status in ('Cancelled', 'Expired', 'Return For Collection')
@@ -388,13 +394,13 @@ as $function$
   ),
   gained as (
     select m.seg, count(*) as n
-    from mem m, bounds b
+    from mem m cross join bounds b
     where m.since_date between b.s and b.e
     group by 1
   ),
   gained_prior as (
     select m.seg, count(*) as n
-    from mem m, bounds b
+    from mem m cross join bounds b
     where m.since_date between b.ps and b.pe
     group by 1
   ),
