@@ -5,6 +5,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
+const { parseCategory, parseBasis, filterNote, loadCategoryMap } = require('../lib/analyticsMemberFilters')
 const { buildReport } = require('../lib/salespersonPerformance')
 const { loadSalespersonWindow } = require('../lib/salespersonData')
 const { buildSalespersonSnapshot } = require('../lib/salespersonSnapshot')
@@ -59,19 +60,30 @@ router.get('/', async (req, res) => {
     const allClubs = slugs.length === CLUBS.length
     const clubNumbers = slugs.map(s => CLUB_BY_SLUG[s].clubNumber)
 
-    const cacheKey = ['analytics:salesperson-snapshot', start, end, slugs.slice().sort().join('+')].join('|')
+    const category = parseCategory(req.query.category)
+    const basis = parseBasis(req.query.basis)
+
+    const cacheKey = [
+      'analytics:salesperson-snapshot', start, end, slugs.slice().sort().join('+'),
+      category, basis,
+    ].join('|')
 
     // Both windows and the roster are cached together and independently of the
     // chosen person, so flipping between people costs nothing.
     const base = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       const skipList = await getSkipList()
+      const categoryMap = await loadCategoryMap(supabaseAdmin)
+      // Both windows take the same filters, or a filtered current period would
+      // be compared against an unfiltered prior one and every change on the
+      // report would be wrong by the size of the filter.
+      const filters = { ...NO_FILTERS, category, basis, categoryMap }
       const [cur, prev] = await Promise.all([
         loadSalespersonWindow(clubNumbers, slugs, start, end),
         loadSalespersonWindow(clubNumbers, slugs, prior.start, prior.end),
       ])
       return {
-        current: buildReport(cur.members, cur.dayOnes, cur.contactsById, NO_FILTERS, skipList, { vips: cur.vips, tours: cur.tours }),
-        prior: buildReport(prev.members, prev.dayOnes, prev.contactsById, NO_FILTERS, skipList, { vips: prev.vips, tours: prev.tours }),
+        current: buildReport(cur.members, cur.dayOnes, cur.contactsById, filters, skipList, { vips: cur.vips, tours: cur.tours }),
+        prior: buildReport(prev.members, prev.dayOnes, prev.contactsById, filters, skipList, { vips: prev.vips, tours: prev.tours }),
       }
     })
 
@@ -119,6 +131,7 @@ router.get('/', async (req, res) => {
         ? buildSalespersonSnapshot(rowIn(base.current, compare), null, compareSeries, { person: compare }).series
         : [],
       meta: {
+        filter: filterNote({ category, basis }),
         start, end,
         priorStart: prior.start, priorEnd: prior.end,
         windowLabel: windowLabel(start, end),

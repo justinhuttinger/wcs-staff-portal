@@ -619,3 +619,81 @@ test('with no VIP data at all the whole column stays blank', () => {
   assert.equal(out.summary.vipCount, null)
   assert.equal(out.summary.vipPct, null)
 })
+
+// ---------------------------------------------------------------------------
+// Category and basis (migration 194).
+//
+// Both ride the SAME member predicate the report's own filters use, so the
+// numbers downstream stay coherent: buildMemberIndex is built from the kept
+// members, and Day One / VIP / tour attribution follows it. Filtering members
+// after the fact would shrink the denominator of Day One Book % while leaving
+// its numerator alone, and inflate every rate on the report.
+// ---------------------------------------------------------------------------
+
+const CATEGORY_MAP = new Map([
+  ['single', 'Dues'],
+  ['a2 core - active adult core', 'Insurance'],
+  ['temporary single', 'Temp'],
+])
+
+const withFilters = (over) => ({ ...NO_FILTERS, categoryMap: CATEGORY_MAP, ...over })
+
+test('category keeps only members of that category', () => {
+  const members = [
+    member({ id: 'd1', membership_type: 'SINGLE' }),
+    member({ id: 'd2', membership_type: 'SINGLE' }),
+    member({ id: 'i1', membership_type: 'A2 CORE - Active Adult Core' }),
+  ]
+  const all = buildReport(members, [], new Map(), withFilters({ category: 'all' }))
+  const dues = buildReport(members, [], new Map(), withFilters({ category: 'Dues' }))
+  const ins = buildReport(members, [], new Map(), withFilters({ category: 'Insurance' }))
+  assert.strictEqual(all.summary.newMemberUnits, 3)
+  assert.strictEqual(dues.summary.newMemberUnits, 2)
+  assert.strictEqual(ins.summary.newMemberUnits, 1)
+})
+
+test('an unmapped membership type falls out of every named category', () => {
+  const members = [member({ id: 'u1', membership_type: 'CORP PREMIUM' })]
+  assert.strictEqual(buildReport(members, [], new Map(), withFilters({ category: 'all' })).summary.newMemberUnits, 1)
+  for (const c of ['Dues', 'Insurance', 'Temp']) {
+    assert.strictEqual(buildReport(members, [], new Map(), withFilters({ category: c })).summary.newMemberUnits, 0)
+  }
+})
+
+// This is the number the report is named after: a FAMILY sign-up is one
+// agreement and three New Member Units, and the title never said which.
+test('the agreements basis counts primary members only', () => {
+  const members = [
+    member({ id: 'p1', is_primary_member: true }),
+    member({ id: 's1', is_primary_member: false }),
+    member({ id: 's2', is_primary_member: false }),
+  ]
+  assert.strictEqual(buildReport(members, [], new Map(), withFilters({ basis: 'members' })).summary.newMemberUnits, 3)
+  assert.strictEqual(buildReport(members, [], new Map(), withFilters({ basis: 'agreements' })).summary.newMemberUnits, 1)
+})
+
+// A ghost row (migration 193) has a null flag. It is not evidence of being a
+// primary member, and counting it as one would put a member ABC no longer
+// returns back into the number the basis exists to make precise.
+test('a null primary flag is not an agreement', () => {
+  const members = [member({ id: 'g1', is_primary_member: null })]
+  assert.strictEqual(buildReport(members, [], new Map(), withFilters({ basis: 'members' })).summary.newMemberUnits, 1)
+  assert.strictEqual(buildReport(members, [], new Map(), withFilters({ basis: 'agreements' })).summary.newMemberUnits, 0)
+})
+
+test('category and basis compose', () => {
+  const members = [
+    member({ id: 'a', membership_type: 'SINGLE', is_primary_member: true }),
+    member({ id: 'b', membership_type: 'SINGLE', is_primary_member: false }),
+    member({ id: 'c', membership_type: 'A2 CORE - Active Adult Core', is_primary_member: true }),
+  ]
+  const r = buildReport(members, [], new Map(), withFilters({ category: 'Dues', basis: 'agreements' }))
+  assert.strictEqual(r.summary.newMemberUnits, 1)
+})
+
+test('neither filter set leaves the report exactly as it was', () => {
+  const members = [member({ id: 'x' }), member({ id: 'y', is_primary_member: false })]
+  const before = buildReport(members, [], new Map(), NO_FILTERS)
+  const after = buildReport(members, [], new Map(), withFilters({ category: 'all', basis: 'members' }))
+  assert.strictEqual(after.summary.newMemberUnits, before.summary.newMemberUnits)
+})

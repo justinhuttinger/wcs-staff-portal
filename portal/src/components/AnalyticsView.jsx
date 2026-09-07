@@ -82,6 +82,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'salesperson-performance',
+    filters: ['category', 'basis'],
     records: ['new-members', 'day-ones', 'vips', 'tours'],
     label: 'Salesperson Performance',
     desc: 'New Member Units',
@@ -198,6 +199,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'attrition-analysis',
+    filters: ['category', 'basis'],
     records: ['cancels', 'pending-cancels'],
     label: 'Attrition Analysis',
     desc: 'Who Left and Why',
@@ -343,6 +345,7 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'salesperson-snapshot',
+    filters: ['category', 'basis'],
     records: ['new-members', 'day-ones', 'vips', 'tours'],
     label: 'Salesperson Snapshot',
     desc: 'One Salesperson at a Time',

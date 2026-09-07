@@ -49,7 +49,7 @@ const DRILL = {
 // and belongs to the trainer who ran it, not to whoever signed the member.
 // ---------------------------------------------------------------------------
 
-export default function SalespersonSnapshot({ startDate, endDate, locationSlug }) {
+export default function SalespersonSnapshot({ startDate, endDate, locationSlug, category, basis }) {
   const [person, setPerson] = useState('')
   const [compare, setCompare] = useState('')
   const [comparing, setComparing] = useState(false)
@@ -60,8 +60,10 @@ export default function SalespersonSnapshot({ startDate, endDate, locationSlug }
     if (endDate) p.set('end', endDate)
     if (person) p.set('person', person)
     if (comparing && compare) p.set('compare', compare)
+    p.set('category', category)
+    p.set('basis', basis)
     return p.toString()
-  }, [startDate, endDate, locationSlug, person, compare, comparing])
+  }, [startDate, endDate, locationSlug, person, compare, comparing, category, basis])
 
   const { data, loading, error } = useCancellableFetch(
     (signal) => api(`/analytics/salesperson-snapshot?${query}`, { cache: true, signal }),

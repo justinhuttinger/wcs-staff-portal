@@ -62,11 +62,18 @@ function filterNote({ category, basis }) {
  * Kept beside the parsers on purpose: two definitions of one filter is how the
  * numbers on two reports start disagreeing.
  */
-function matchesFilters(row, { category, basis }) {
+function matchesFilters(row, { category, basis, categoryMap }) {
   if (category && category !== 'all') {
+    // Two row shapes, one rule. Rows read through abc_members_counted carry
+    // membership_category already; rows selected straight from abc_members do
+    // not, and pass the mapping instead — pointing three hot queries at the
+    // view to pick up one string would add two joins for nothing.
+    const resolved = categoryMap
+      ? (categoryMap.get(String(row.membership_type || '').toLowerCase()) || 'Other')
+      : (row.membership_category || 'Other')
     // Unmapped rows read 'Other' and therefore match none of the three, which
     // is the intended behaviour: they are visible under All and nowhere else.
-    if ((row.membership_category || 'Other') !== category) return false
+    if (resolved !== category) return false
   }
   // is_primary_member true only. A null flag is a member ABC no longer returns
   // (migration 193), and a ghost is exactly what this basis exists to exclude.
@@ -74,4 +81,21 @@ function matchesFilters(row, { category, basis }) {
   return true
 }
 
-module.exports = { MEMBER_CATEGORIES, parseCategory, parseBasis, filterNote, matchesFilters }
+/**
+ * The membership_type -> category mapping, lowercased for lookup.
+ *
+ * Small (33 rows today) and read per request rather than cached: it is edited
+ * from Admin, and a stale map would quietly put members in the wrong bucket,
+ * which is a worse failure than one more trivial query.
+ */
+async function loadCategoryMap(supabaseAdmin) {
+  const { data, error } = await supabaseAdmin
+    .from('abc_membership_categories')
+    .select('membership_type, category')
+  if (error) throw new Error(`membership categories: ${error.message}`)
+  return new Map((data || []).map(r => [String(r.membership_type).toLowerCase(), r.category]))
+}
+
+module.exports = {
+  MEMBER_CATEGORIES, parseCategory, parseBasis, filterNote, matchesFilters, loadCategoryMap,
+}

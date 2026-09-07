@@ -5,6 +5,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
+const { parseCategory, parseBasis, filterNote, matchesFilters, loadCategoryMap } = require('../lib/analyticsMemberFilters')
 const { monthToDate, windowLabel } = require('../lib/snapshotWindow')
 const { CLUBS, CLUB_BY_SLUG, isExcludedType } = require('../lib/salespersonPerformance')
 const {
@@ -31,7 +32,9 @@ const SERIES_MONTHS = 13
 
 const MEMBER_FIELDS =
   'first_name, last_name, member_id, membership_type, agreement_number, member_status, ' +
-  'member_status_date, sales_person_name, since_date, club_number'
+  // is_primary_member is here for the agreements basis; without it the filter
+  // would silently keep everybody.
+  'member_status_date, sales_person_name, since_date, club_number, is_primary_member'
 
 /** First day of the month `back` months before `iso`. */
 function monthStart(iso, back = 0) {
@@ -57,14 +60,24 @@ router.get('/', async (req, res) => {
     const allClubs = slugs.length === CLUBS.length
     const clubNumbers = allClubs ? null : slugs.map(s => CLUB_BY_SLUG[s].clubNumber)
     const exclude = req.query.exclusion !== 'include'
+    const category = parseCategory(req.query.category)
+    const basis = parseBasis(req.query.basis)
 
     const cacheKey = [
       'analytics:attrition-analysis', start, end, slugs.slice().sort().join('+'), exclude,
+      category, basis,
     ].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       const skip = await getSkipList()
-      const keep = r => !exclude || !isExcludedType(r.membership_type, skip)
+      const categoryMap = await loadCategoryMap(supabaseAdmin)
+      // Both exclusions compose: the skip list answers "is this a member at
+      // all", the category and basis answer "is this the kind of member being
+      // asked about". Applied in one predicate so the window rows, the
+      // thirteen-month series and the pending queue can never disagree.
+      const keep = r =>
+        (!exclude || !isExcludedType(r.membership_type, skip))
+        && matchesFilters(r, { category, basis, categoryMap })
 
       const scoped = (q) => (clubNumbers ? q.in('club_number', clubNumbers) : q)
 
@@ -79,7 +92,7 @@ router.get('/', async (req, res) => {
           .gte('member_status_date', start)
           .lte('member_status_date', end))),
         fetchAll(scoped(supabaseAdmin.from('abc_members')
-          .select('membership_type, member_status_date')
+          .select('membership_type, member_status_date, is_primary_member')
           .in('member_status', LOST_STATUSES)
           .gte('member_status_date', seriesStart)
           .lte('member_status_date', end))),
@@ -121,6 +134,7 @@ router.get('/', async (req, res) => {
     res.json({
       ...built,
       meta: {
+        filter: filterNote({ category, basis }),
         start, end,
         windowLabel: windowLabel(start, end),
         clubs: slugs,

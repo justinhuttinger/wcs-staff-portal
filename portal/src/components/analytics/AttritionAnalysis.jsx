@@ -32,15 +32,17 @@ const DRILL = {
   pending:    { set: 'pending-cancels', title: 'Scheduled to cancel' },
 }
 
-export default function AttritionAnalysis({ startDate, endDate, locationSlug }) {
+export default function AttritionAnalysis({ startDate, endDate, locationSlug, category, basis }) {
   const [exclusion, setExclusion] = useState('exclude')
 
   const query = useMemo(() => {
     const p = new URLSearchParams({ clubs: locationSlug || 'all', exclusion })
     if (startDate) p.set('start', startDate)
     if (endDate) p.set('end', endDate)
+    p.set('category', category)
+    p.set('basis', basis)
     return p.toString()
-  }, [startDate, endDate, locationSlug, exclusion])
+  }, [startDate, endDate, locationSlug, exclusion, category, basis])
 
   const { data, loading, error } = useCancellableFetch(
     (signal) => api(`/analytics/attrition-analysis?${query}`, { cache: true, signal }),

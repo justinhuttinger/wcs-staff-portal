@@ -4,6 +4,7 @@ const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
+const { parseCategory, parseBasis, filterNote, loadCategoryMap } = require('../lib/analyticsMemberFilters')
 const { getSkipList } = require('../utils/membershipSkipList')
 // This route keeps its own member/Day One loaders below, but VIPs and tours are
 // taken from the shared module so the table and the snapshots that drill into
@@ -127,6 +128,8 @@ router.get('/', async (req, res) => {
         : null,
       ageGroup: req.query.ageGroup || null,
       viewBy: VIEW_BY.includes(req.query.viewBy) ? req.query.viewBy : 'club_salesperson',
+      category: parseCategory(req.query.category),
+      basis: parseBasis(req.query.basis),
     }
 
     // Cache key is bounded: the filter values all come from a closed set of
@@ -136,6 +139,7 @@ router.get('/', async (req, res) => {
       filters.exclusion, filters.joinSource, filters.membershipType,
       filters.gender, filters.paymentTerm, filters.paymentMethod,
       filters.memberRelationship, filters.ageGroup, filters.viewBy,
+      filters.category, filters.basis,
     ].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
@@ -149,11 +153,17 @@ router.get('/', async (req, res) => {
       const contacts = await loadGhlContacts(dayOnes.map(d => d.ghl_contact_id))
       const contactsById = new Map(contacts.map(c => [c.id, c]))
       const skipList = await getSkipList()
-      const report = buildReport(members, dayOnes, contactsById, filters, skipList, { vips, tours })
+      // Read per request rather than cached: the mapping is edited from Admin,
+      // and a stale copy would quietly bucket members wrongly.
+      const categoryMap = await loadCategoryMap(supabaseAdmin)
+      const report = buildReport(
+        members, dayOnes, contactsById, { ...filters, categoryMap }, skipList, { vips, tours },
+      )
       return {
         ...report,
         filterOptions: buildFilterOptions(members),
         meta: {
+          filter: filterNote({ category: filters.category, basis: filters.basis }),
           start,
           end,
           clubs: slugs,
