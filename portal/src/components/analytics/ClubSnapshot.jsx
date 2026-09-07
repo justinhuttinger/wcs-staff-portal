@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { api } from '../../lib/api'
+import MembershipBreakdown from './MembershipBreakdown'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { StatCard, TrendPanel } from './snapshotParts'
@@ -130,6 +131,11 @@ export default function ClubSnapshot({ startDate, endDate, locationSlug }) {
             startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
         ))}
       </div>
+
+      <MembershipBreakdown
+        rows={data?.membershipByCategory}
+        comparisonLabel={data?.meta?.comparisonLabel}
+      />
 
       {/* Both drawn positive: the chart scales from zero, so the net is read
           from the stat card rather than from a line crossing an axis. */}
