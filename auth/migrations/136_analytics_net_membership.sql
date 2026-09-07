@@ -69,7 +69,7 @@ as $function$
   ),
   lost as (
     select m.seg, count(*) as n
-    from mem m, bounds b
+    from mem m cross join bounds b
     left join dead_now d
       on p_exclude and d.club_number = m.club_number and d.member_id = m.member_id
     where m.member_status in ('Cancelled', 'Expired', 'Return For Collection')
@@ -79,7 +79,7 @@ as $function$
   ),
   lost_prior as (
     select m.seg, count(*) as n
-    from mem m, bounds b
+    from mem m cross join bounds b
     left join dead_prior d
       on p_exclude and d.club_number = m.club_number and d.member_id = m.member_id
     where m.member_status in ('Cancelled', 'Expired', 'Return For Collection')
@@ -89,13 +89,13 @@ as $function$
   ),
   gained as (
     select m.seg, count(*) as n
-    from mem m, bounds b
+    from mem m cross join bounds b
     where m.since_date between b.s and b.e
     group by 1
   ),
   gained_prior as (
     select m.seg, count(*) as n
-    from mem m, bounds b
+    from mem m cross join bounds b
     where m.since_date between b.ps and b.pe
     group by 1
   ),
