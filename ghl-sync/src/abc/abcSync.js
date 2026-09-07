@@ -3,6 +3,7 @@ const LOCATIONS = require('../config/locations');
 const supabase = require('../db/supabase');
 const { fetchAllABCMembers, transformABCMember } = require('./client');
 const { upsertABCMembers } = require('./upsertMembers');
+const { reconcileClubGhosts } = require('./ghostReconcile');
 const { reconcileLocation } = require('./reconcile');
 
 // Prevent concurrent sync runs (cron overlap or manual + cron)
@@ -54,6 +55,7 @@ async function _runAbcSync() {
   const locationErrors = {};
   let totalErrors = 0;
   let totalMatched = 0, totalUnmatched = 0, totalTagChanges = 0, totalFieldUpdates = 0, totalSyncErrors = 0;
+  let totalGhosted = 0;
   let clubsProcessed = 0;
 
   for (const location of locationsWithClub) {
@@ -87,6 +89,27 @@ async function _runAbcSync() {
       const transformed = rawMembers.map(m => transformABCMember(m, location.clubNumber));
       const upsertResult = await upsertABCMembers(transformed);
       console.log(`[ABC Sync] ${location.name}: ${upsertResult.upserted} members upserted to Supabase`);
+
+      // Step 2b: Retire members ABC no longer returns.
+      //
+      // Runs AFTER the upserts on purpose. A member who cancelled since the
+      // last cycle drops off the active pull but arrives on the incremental
+      // inactive pull, and the upsert above has already refreshed their row —
+      // so by the time we look, a fresh cancel is indistinguishable from any
+      // other present member, which is exactly what we want. See ghostMembers.js.
+      try {
+        const ghostResult = await reconcileClubGhosts({
+          clubNumber: location.clubNumber,
+          abcMemberIds: rawMembers.map(m => m.memberId),
+          cycleStartedAt: syncStart,
+        });
+        totalGhosted += ghostResult.ghosted || 0;
+      } catch (ghostErr) {
+        // Never fail the whole club over this. The members it would have
+        // retired have been miscounted for months already; one more cycle is
+        // not worth losing the GHL reconciliation below.
+        console.error(`[ABC Ghosts] ${location.name} failed:`, ghostErr.message);
+      }
 
       // Step 3: Reconcile against GHL contacts
       const reconcileResult = await reconcileLocation(location, runId);
@@ -161,6 +184,12 @@ async function _runAbcSync() {
 
   const duration = ((Date.now() - start) / 1000).toFixed(1);
   console.log(`[ABC Sync] Run ${runId} complete in ${duration}s`);
+  // No column on abc_sync_runs for this: abc_members_ghosted is itself the
+  // record, with a ghosted_at on every row. This line is just so a cycle's
+  // effect is visible in the Render log next to the rest of the run.
+  if (totalGhosted > 0) {
+    console.log(`[ABC Ghosts] Run ${runId}: archived ${totalGhosted} members ABC no longer returns`);
+  }
 
   // Write run summary to abc_sync_runs table
   const DRY_RUN = (process.env.DRY_RUN || 'true') === 'true';
