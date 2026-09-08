@@ -733,7 +733,10 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
           {onGroupX && (visibleTools || []).includes('groupX') && <SvgTileButton onClick={onGroupX} iconPath={TILE_ICONS.groupX} label="Group X" desc="Classes" />}
           {/* 6.45. Courts & Pool -- role/override-driven via 'facility' (seeded
               for every built-in role in migration 176). Editing is gated
-              separately by facility:schedule-edit, exactly as Group X. */}
+              separately by facility:schedule-edit, exactly as Group X. The
+              server also strips 'facility' when none of the caller's clubs has
+              courts or a pool (auth lib/featureGatedTiles), so a Eugene-only
+              member never gets a tile onto an empty screen. */}
           {onFacility && (visibleTools || []).includes('facility') && <SvgTileButton onClick={onFacility} iconPath={TILE_ICONS.facility} label="Courts & Pool" desc="Schedules" />}
           {/* 6.5. Marketing — a folder now, not a single tool. Campaigns, Ads
               Manager and Forms all sit behind it, the same way Ordering holds
