@@ -51,6 +51,9 @@ const STATS = [
   // that is empty by construction rather than by anyone's inactivity.
   { key: 'toursGiven', label: 'Tours Given', format: 'int', betterWhen: 'up' },
   { key: 'tourConversionRate', label: 'Tour Conversion', format: 'pct', betterWhen: 'up' },
+  // The count behind Tour Conversion, carried alongside it: one answers how
+  // many closed on the spot, the other what share of tours did.
+  { key: 'sameDaySales', label: 'Same Day Sales', format: 'int', betterWhen: 'up' },
   { key: 'avgDaysToConversion', label: 'Avg Days to Sign', format: 'num', betterWhen: 'down', pending: true },
 ]
 
