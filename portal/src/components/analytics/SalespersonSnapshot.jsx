@@ -31,6 +31,7 @@ const DRILL = {
   vipPct:             { set: 'vips', title: 'VIP referrals' },
   toursGiven:         { set: 'tours', title: 'Tours given' },
   tourConversionRate: { set: 'tours', title: 'Tours given' },
+  sameDaySales:       { set: 'tours', title: 'Tours given' },
   avgDaysToConversion:{ set: 'tours', title: 'Tours given' },
 }
 

@@ -697,3 +697,47 @@ test('neither filter set leaves the report exactly as it was', () => {
   const after = buildReport(members, [], new Map(), withFilters({ category: 'all', basis: 'members' }))
   assert.strictEqual(after.summary.newMemberUnits, before.summary.newMemberUnits)
 })
+
+// ---------------------------------------------------------------------------
+// Same Day Sales.
+//
+// The COUNT behind tourConversionRate, which has always been the same-day close
+// and was only ever exposed as a percentage. Surfaced as its own stat rather
+// than recomputed anywhere, so there is one rule: a completed tour whose person
+// joined on the tour date, credited to whoever GAVE the tour.
+// ---------------------------------------------------------------------------
+
+test('a same-day signup is a same day sale', () => {
+  const sameDay = member({
+    club_number: SALEM, id: 'm-sds', since_date: '2026-08-10',
+    email: 'walkin@example.com', first_name: 'Walk', last_name: 'In',
+  })
+  const out = build([], { tours: toursFor([tour()], [SALEM], [sameDay]) })
+  const row = out.rows.find(r => r.salesperson === 'Katie Castlio')
+  assert.equal(row.sameDaySales, 1)
+  assert.equal(out.summary.sameDaySales, 1)
+  // The count and the rate are the same fact; they must never disagree.
+  assert.equal(row.tourConversionRate, 100)
+})
+
+test('a signup two days later is not a same day sale', () => {
+  const later = member({
+    club_number: SALEM, id: 'm-late2', since_date: '2026-08-12',
+    email: 'walkin@example.com', first_name: 'Walk', last_name: 'In',
+  })
+  const out = build([], { tours: toursFor([tour()], [SALEM], [later]) })
+  const row = out.rows.find(r => r.salesperson === 'Katie Castlio')
+  assert.equal(row.sameDaySales, 0)
+  assert.equal(out.summary.sameDaySales, 0)
+})
+
+// The distinction that keeps the stat honest. A club that has never recorded a
+// tour reads "no tours recorded", not zero — every window before the tour
+// system went live is empty by construction, not because nobody sold on the
+// day. Same convention toursGiven already uses.
+test('a club with no tours on record reports null, not zero', () => {
+  const out = build([], { tours: toursFor([], [], []) })
+  const row = out.rows[0]
+  if (row) assert.equal(row.sameDaySales, null)
+  assert.equal(out.summary.sameDaySales, null)
+})

@@ -76,6 +76,10 @@ const STATS = [
   // report the second as the first.
   { key: 'toursGiven', label: 'Tours Given', format: 'int', betterWhen: 'up' },
   { key: 'tourConversionRate', label: 'Tour Conversion', format: 'pct', betterWhen: 'up' },
+  // The count behind Tour Conversion. Both are shown because they answer
+  // different questions: "how many did we close on the spot" and "what share of
+  // the tours we gave closed on the spot".
+  { key: 'sameDaySales', label: 'Same Day Sales', format: 'int', betterWhen: 'up' },
   // Days from a tour to that person joining. Fewer is better: it measures how
   // long somebody sat on the decision, not how many signed.
   { key: 'avgDaysToConversion', label: 'Avg Days Tour to Sale', format: 'num', betterWhen: 'down' },
@@ -145,6 +149,7 @@ function shapeTotals(window, summary, pt) {
 
     toursGiven: s.toursGiven ?? null,
     tourConversionRate: s.tourConversionRate ?? null,
+    sameDaySales: s.sameDaySales ?? null,
     avgDaysToConversion: s.avgDaysToConversion ?? null,
 
     // --- training ---------------------------------------------------------

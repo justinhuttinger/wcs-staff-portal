@@ -412,6 +412,10 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     // its own thing and is credited to whoever gave it, whatever name went on
     // the agreement.
     tourConversionRate: anyIn(row, tourClubs) ? pct(row.toursConverted, row.toursGiven) : null,
+    // The COUNT behind that rate. It has always been the same-day close; it was
+    // simply never exposed as a number, so every report that wanted "same day
+    // sales" had nothing to read. Same source, so the two can never disagree.
+    sameDaySales: anyIn(row, tourClubs) ? row.toursConverted : null,
     // Averaged over the tours that DID lead to a signup, not over all tours —
     // dividing by tours that never converted would drag this toward zero and
     // make a slow month look fast.
@@ -474,6 +478,7 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
       : null,
     toursGiven: anyTour ? totals.toursGiven : null,
     tourConversionRate: anyTour ? pct(totals.toursConverted, totals.toursGiven) : null,
+    sameDaySales: anyTour ? totals.toursConverted : null,
     avgDaysToConversion: totals.daysCount
       ? Math.round((totals.daysSum / totals.daysCount) * 10) / 10
       : null,
