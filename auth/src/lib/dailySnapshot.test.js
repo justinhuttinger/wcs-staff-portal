@@ -185,3 +185,9 @@ test('on a day inside the import nothing is greyed', () => {
   assert.ok(out.stats.every(s => !s.unavailable))
   assert.equal(out.stats.find(s => s.key === 'revenue').value, 20000)
 })
+
+// Over a one-day window the average IS the total, and two cards showing one
+// figure invites the reader to hunt for a difference that cannot exist.
+test('Daily Snapshot does not carry Avg Daily Check-ins', () => {
+  assert.ok(DROPPED_STATS.has('avgDailyCheckins'))
+})
