@@ -77,7 +77,7 @@ function withAbcId(row) {
 
 // 'Custom Pass' also writes a pass to ABC (see the trial-days route); it is a
 // real outcome as far as saving and the outbound webhook are concerned.
-const ALLOWED_OUTCOMES = ['Membership Sale', 'Started Trial', 'Started VIP Pass', 'Only Tour', 'Custom Pass']
+const ALLOWED_OUTCOMES = ['Membership Sale', 'Started Trial', 'Started VIP Pass', 'Day Pass', 'Only Tour', 'Custom Pass']
 
 // Resolve a token -> active config row (+ location). Returns null if not found.
 async function resolveToken(token) {
