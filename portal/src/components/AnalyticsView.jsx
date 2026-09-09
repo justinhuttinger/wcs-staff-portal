@@ -39,6 +39,7 @@ import LeadSources from './analytics/LeadSources'
 import ProblemAreas from './analytics/ProblemAreas'
 import MemberJourney from './analytics/MemberJourney'
 import VipAnalysis from './analytics/VipAnalysis'
+import AverageDues from './analytics/AverageDues'
 import ClubSnapshot from './analytics/ClubSnapshot'
 import KpiReport from './analytics/KpiReport'
 import PtSnapshot from './analytics/PtSnapshot'
@@ -198,6 +199,17 @@ export const ANALYTICS_REPORTS = [
     label: 'Session Frequency',
     desc: 'How Often They Train',
     Component: SessionFrequency,
+  },
+  {
+    key: 'average-dues',
+    records: ['new-members'],
+    recordsNote: 'Built from what every active member is billed today, which is a live snapshot rather than a set of records over a range.',
+    label: 'Average Monthly Dues',
+    desc: 'Dues per Paying Member',
+    Component: AverageDues,
+    // abc_members carries what a member is billed NOW and no history of it, so
+    // a date range would be accepted and ignored.
+    dates: false,
   },
   {
     key: 'vip-analysis',
@@ -410,8 +422,8 @@ export const ANALYTICS_REPORTS = [
 // it belongs in. The order of the groups themselves is still this order.
 export const REPORT_GROUPS = [
   { key: 'marketing', label: 'Marketing',     reports: ['lead-sources'] },
-  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-analysis', 'attrition-trends', 'member-journey', 'checkins', 'nps', 'vip-analysis'] },
-  { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due', 'pos-sales', 'revenue'] },
+  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-analysis', 'attrition-trends', 'member-journey', 'checkins', 'nps', 'vip-analysis', 'average-dues'] },
+  { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due', 'pos-sales', 'revenue', 'average-dues'] },
   { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase', 'pt-snapshot', 'trainer-snapshot', 'pt-roster', 'session-frequency'] },
   { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot', 'compliance', 'audits', 'till', 'payroll'] },
   { key: 'snapshots', label: 'Snapshots',     reports: ['daily-snapshot', 'club-snapshot', 'pt-snapshot', 'salesperson-snapshot', 'trainer-snapshot'] },
