@@ -355,3 +355,25 @@ test('an unreachable GHL does not take the rest of the card down', () => {
   assert.strictEqual(out.stats.find(x => x.key === 'trialConversion').value, null)
   assert.strictEqual(out.stats.find(x => x.key === 'newMembers').value, 7)
 })
+
+
+// --- stat grouping ----------------------------------------------------------
+// Cosmetic on the page, load-bearing here: a stat with no group must still
+// reach the client, or a number disappears the day somebody adds one.
+
+test('every stat declares a group the payload also declares', () => {
+  const out = buildClubSnapshot({ window: {}, summary: {} }, null, [])
+  const declared = new Set(out.statGroups.map(g => g.key))
+  for (const s of out.stats) {
+    assert.ok(s.group, `${s.key} has no group`)
+    assert.ok(declared.has(s.group), `${s.key} is in undeclared group ${s.group}`)
+  }
+})
+
+test('the groups are sent with the payload, in order', () => {
+  const out = buildClubSnapshot({ window: {}, summary: {} }, null, [])
+  assert.deepStrictEqual(
+    out.statGroups.map(g => g.key),
+    ['membership', 'revenue', 'tours', 'dayone', 'pt', 'activity'],
+  )
+})

@@ -37,31 +37,62 @@ function rate(part, whole) {
   return Math.round((part / whole) * 1000) / 10
 }
 
+/**
+ * The card grid, in sections.
+ *
+ * Twenty-seven cards in one run is a wall: nothing tells a reader where the
+ * membership numbers stop and the Day One ones start, so every visit is a
+ * scan of all of them. Grouping is cosmetic — no figure changes — but it is
+ * what turns the card from a blob into something you can read the relevant
+ * sixth of.
+ *
+ * Ordered as a manager reads a club: who is on the books, what came in, who
+ * walked through the door, what happened on their Day One, what PT did, and
+ * how busy it was.
+ *
+ * PT Revenue Collected sits under Revenue rather than Personal Training on
+ * purpose. It is money through the till against TRAINING; the PT section holds
+ * the value of PT SOLD. Putting the two beside each other is exactly the
+ * confusion the labels already work to avoid.
+ */
+const STAT_GROUPS = [
+  { key: 'membership', label: 'Membership' },
+  { key: 'revenue', label: 'Revenue' },
+  { key: 'tours', label: 'Tours, Trials & VIPs' },
+  { key: 'dayone', label: 'Day Ones' },
+  { key: 'pt', label: 'Personal Training' },
+  { key: 'activity', label: 'Check-ins' },
+]
+
 const STATS = [
-  { key: 'totalMembers', label: 'Members', format: 'int', betterWhen: 'up' },
-  { key: 'newMembers', label: 'Joined', format: 'int', betterWhen: 'up' },
-  { key: 'lostMembers', label: 'Left', format: 'int', betterWhen: 'down' },
-  { key: 'netMembers', label: 'Net Members', format: 'int', betterWhen: 'up' },
-  { key: 'newDues', label: 'New Dues', format: 'money', betterWhen: 'up' },
-  { key: 'revenue', label: 'Revenue', format: 'money', betterWhen: 'up' },
+  { key: 'totalMembers', label: 'Members', format: 'int', betterWhen: 'up', group: 'membership' },
+  { key: 'newMembers', label: 'Joined', format: 'int', betterWhen: 'up', group: 'membership' },
+  { key: 'lostMembers', label: 'Left', format: 'int', betterWhen: 'down', group: 'membership' },
+  { key: 'netMembers', label: 'Net Members', format: 'int', betterWhen: 'up', group: 'membership' },
+  { key: 'newDues', label: 'New Dues', format: 'money', betterWhen: 'up', group: 'membership' },
+  { key: 'revenue', label: 'Revenue', format: 'money', betterWhen: 'up', group: 'revenue' },
   // Money that came through the till against TRAINING, which is a different
   // thing from the value of PT sold below: one is collected, the other is
   // contracted. Labelled apart so the card never shows two "PT Revenue".
-  { key: 'ptRevenue', label: 'PT Revenue Collected', format: 'money', betterWhen: 'up' },
-  { key: 'checkins', label: 'Check-ins', format: 'int', betterWhen: 'up' },
+  { key: 'ptRevenue', label: 'PT Revenue Collected', format: 'money', betterWhen: 'up', group: 'revenue' },
+  { key: 'checkins', label: 'Check-ins', format: 'int', betterWhen: 'up', group: 'activity' },
   // Beside the total because the total is NOT comparable across windows:
   // priorMonthWindow clamps the day to the shorter month, so March against
   // February is 31 days against 28. That is a 10% handicap with nothing to do
   // with how busy the club was. Injected in buildClubSnapshot rather than
   // shaped, because shapeTotals sees the window's numbers but not its length.
-  { key: 'avgDailyCheckins', label: 'Avg Daily Check-ins', format: 'num', betterWhen: 'up' },
-  { key: 'pctOnAch', label: 'ACH %', format: 'pct', betterWhen: 'up' },
+  { key: 'avgDailyCheckins', label: 'Avg Daily Check-ins', format: 'num', betterWhen: 'up', group: 'activity' },
+  { key: 'pctOnAch', label: 'ACH %', format: 'pct', betterWhen: 'up', group: 'membership' },
   // The same Trial Conversion the KPI report scores against its goal — won
   // trials over trials started, both off opportunities raised inside the
   // window. Injected in buildClubSnapshot rather than shaped, because it comes
   // from GHL rather than from the ABC window this report is otherwise built on.
-  { key: 'trialConversion', label: 'Trial Conversion', format: 'pct', betterWhen: 'up' },
-  { key: 'avgNewDuesDraft', label: 'Avg New Dues Draft', format: 'money', betterWhen: 'up' },
+  //
+  // Grouped with the tours and VIPs rather than with membership: it measures
+  // the sales floor turning an interested person into a member, which is what
+  // that whole section is about.
+  { key: 'trialConversion', label: 'Trial Conversion', format: 'pct', betterWhen: 'up', group: 'tours' },
+  { key: 'avgNewDuesDraft', label: 'Avg New Dues Draft', format: 'money', betterWhen: 'up', group: 'membership' },
   // TWO DIFFERENT DAY ONE COUNTS LIVE ON THIS CARD, ON DIFFERENT DATE FIELDS.
   // This one counts the ACT OF BOOKING: appointments booked during the window,
   // whenever they are due. The other counts appointments DATED in the window,
@@ -72,28 +103,28 @@ const STATS = [
   // booking. Both are wanted; labelling them apart is not optional, because
   // "Day Ones Booked" beside "Day Ones" reads as one number contradicting
   // itself rather than as two measures.
-  { key: 'dayOneBookCount', label: 'Day Ones Booked', format: 'int', betterWhen: 'up' },
-  { key: 'dayOneBookPct', label: 'Day One Book %', format: 'pct', betterWhen: 'up' },
-  { key: 'bookOnJoinDatePct', label: 'Booked on Join Date %', format: 'pct', betterWhen: 'up' },
+  { key: 'dayOneBookCount', label: 'Day Ones Booked', format: 'int', betterWhen: 'up', group: 'dayone' },
+  { key: 'dayOneBookPct', label: 'Day One Book %', format: 'pct', betterWhen: 'up', group: 'dayone' },
+  { key: 'bookOnJoinDatePct', label: 'Booked on Join Date %', format: 'pct', betterWhen: 'up', group: 'dayone' },
   // VIPs against memberships sold. The denominator is buildReport's new member
   // units, which is the figure Justin means by "memberships sold" — deliberately
   // not Topline's joined count above, because a percentage has to divide by the
   // same population its numerator was credited against.
-  { key: 'vipCount', label: 'VIPs Collected', format: 'int', betterWhen: 'up' },
-  { key: 'vipPct', label: 'VIP %', format: 'pct', betterWhen: 'up' },
+  { key: 'vipCount', label: 'VIPs Collected', format: 'int', betterWhen: 'up', group: 'tours' },
+  { key: 'vipPct', label: 'VIP %', format: 'pct', betterWhen: 'up', group: 'tours' },
   // Real from 2026-08-28, when the check-in stopped deleting completed rows.
   // Null rather than zero where nothing is on record: "no tours given" and
   // "tours were not being kept yet" are different findings, and a zero would
   // report the second as the first.
-  { key: 'toursGiven', label: 'Tours Given', format: 'int', betterWhen: 'up' },
-  { key: 'tourConversionRate', label: 'Tour Conversion', format: 'pct', betterWhen: 'up' },
+  { key: 'toursGiven', label: 'Tours Given', format: 'int', betterWhen: 'up', group: 'tours' },
+  { key: 'tourConversionRate', label: 'Tour Conversion', format: 'pct', betterWhen: 'up', group: 'tours' },
   // The count behind Tour Conversion. Both are shown because they answer
   // different questions: "how many did we close on the spot" and "what share of
   // the tours we gave closed on the spot".
-  { key: 'sameDaySales', label: 'Same Day Sales', format: 'int', betterWhen: 'up' },
+  { key: 'sameDaySales', label: 'Same Day Sales', format: 'int', betterWhen: 'up', group: 'tours' },
   // Days from a tour to that person joining. Fewer is better: it measures how
   // long somebody sat on the decision, not how many signed.
-  { key: 'avgDaysToConversion', label: 'Avg Days Tour to Sale', format: 'num', betterWhen: 'down' },
+  { key: 'avgDaysToConversion', label: 'Avg Days Tour to Sale', format: 'num', betterWhen: 'down', group: 'tours' },
 
   // Training. Same definitions as PT Snapshot, read from the same function.
   //
@@ -105,20 +136,20 @@ const STATS = [
   // still-upcoming, and reusing the word for the whole cohort would collide
   // with it. "On Calendar" says the appointment fell in this window whatever
   // became of it.
-  { key: 'dayOnes', label: 'Day Ones on Calendar', format: 'int', betterWhen: 'up' },
-  { key: 'dayOneShowRate', label: 'Day One Show Rate', format: 'pct', betterWhen: 'up' },
-  { key: 'dayOneCloseRate', label: 'Day One Close Rate', format: 'pct', betterWhen: 'up' },
+  { key: 'dayOnes', label: 'Day Ones on Calendar', format: 'int', betterWhen: 'up', group: 'dayone' },
+  { key: 'dayOneShowRate', label: 'Day One Show Rate', format: 'pct', betterWhen: 'up', group: 'dayone' },
+  { key: 'dayOneCloseRate', label: 'Day One Close Rate', format: 'pct', betterWhen: 'up', group: 'dayone' },
   // Of the Day Ones on Calendar above, the ones whose date has passed with
   // nobody recording an outcome. Same cohort, same key (appointment date), so
   // it reads as a subset of the line above it rather than a new population.
   // Down is better: it is a chase list, not a result.
-  { key: 'dayOnesPending', label: 'Day Ones Pending Outcome', format: 'int', betterWhen: 'down' },
+  { key: 'dayOnesPending', label: 'Day Ones Pending Outcome', format: 'int', betterWhen: 'down', group: 'dayone' },
   // The VALUE OF PT SOLD, not money collected — see PT Revenue Collected above.
   // Lost is recurring-service deactivations only: no paid-in-full package has
   // ever carried an inactive_date, so a spent package cannot be seen from here.
-  { key: 'newPtRevenue', label: 'New PT Revenue', format: 'money', betterWhen: 'up' },
-  { key: 'lostPtRevenue', label: 'Lost PT Revenue', format: 'money', betterWhen: 'down' },
-  { key: 'netPtRevenue', label: 'Net PT Revenue', format: 'money', betterWhen: 'up' },
+  { key: 'newPtRevenue', label: 'New PT Revenue', format: 'money', betterWhen: 'up', group: 'pt' },
+  { key: 'lostPtRevenue', label: 'Lost PT Revenue', format: 'money', betterWhen: 'down', group: 'pt' },
+  { key: 'netPtRevenue', label: 'Net PT Revenue', format: 'money', betterWhen: 'up', group: 'pt' },
 ]
 
 /**
@@ -260,6 +291,10 @@ function buildClubSnapshot(current, prior, series, opts = {}) {
   return {
     hasActivity: cur.totalMembers > 0 || cur.newMembers > 0,
     comparisonLabel: opts.comparisonLabel || null,
+    // Sent with the payload rather than restated in the client, so the two
+    // surfaces and the two snapshot reports cannot disagree about what is a
+    // membership number and what is a PT one.
+    statGroups: STAT_GROUPS,
     stats,
     totals: cur,
     pending: pend && {
@@ -273,4 +308,4 @@ function buildClubSnapshot(current, prior, series, opts = {}) {
   }
 }
 
-module.exports = { buildClubSnapshot, shapeTotals, seriesRow, STATS }
+module.exports = { buildClubSnapshot, shapeTotals, seriesRow, STATS, STAT_GROUPS }
