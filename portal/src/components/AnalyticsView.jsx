@@ -325,7 +325,16 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'kpis',
-    records: ['new-members', 'lost-members', 'day-ones', 'revenue'],
+    // The sets that actually feed a KPI. `revenue` and `lost-members` were
+    // listed here and back nothing on this report - no KPI touches revenue at
+    // all, and the cancels KPI is Click2Save utilisation, which is the
+    // `cancels` set rather than the membership-loss one.
+    //
+    // Day One Attachment and VIP Collection % both divide into new members;
+    // Click2Save divides into cancels. The other four KPIs come from GHL and
+    // Operandio, which have no record view - see recordsNote.
+    records: ['new-members', 'day-ones', 'vips', 'cancels'],
+    recordsNote: 'Trial Conversion, Speed to Lead, Operational Compliance and Cleanliness are measured in GHL and Operandio, which have no record view here.',
     label: 'KPIs',
     desc: 'Goals by Club',
     Component: KpiReport,
@@ -882,6 +891,7 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
             <div className="mt-3">
               <ReportRecords
                 sets={reportByKey[activeReport]?.records}
+                note={reportByKey[activeReport]?.recordsNote}
                 params={{ start: startDate, end: endDate, clubs: locationSlug || 'all' }}
               />
             </div>
