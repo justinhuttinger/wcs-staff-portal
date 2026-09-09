@@ -13,7 +13,8 @@
  *
  * Pins are deliberately never seeded from the org default: a shortcut bar is
  * personal, and half of what is pinnable is role-gated anyway. A background
- * is just as personal, so it is never seeded from the org default either.
+ * is just as personal, so it is never seeded from the org default either, and
+ * so is a starred-reports shortlist.
  *
  * The accent is treated like the theme, not like pinned/background: a house
  * color is a reasonable thing for an admin to set for new staff, so it IS
@@ -34,6 +35,7 @@ export function resolveHydration({ remote, orgDefault, local }) {
       background: local.background,
       backgroundDim: local.backgroundDim,
       pinned: local.pinned,
+      analyticsFavorites: local.analyticsFavorites,
     },
   }
 }

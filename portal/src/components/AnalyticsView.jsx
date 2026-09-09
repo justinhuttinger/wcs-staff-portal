@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { LOCATION_OPTIONS as LOCATIONS, LOCATION_NAMES } from '../config/locations'
 import { getAppSettings } from '../lib/api'
+import { getFavorites, toggleFavorite, FAVORITES_EVENT, MAX_FAVORITES } from '../lib/analyticsFavorites'
 import { isReportVisible } from './analyticsReportCatalogue'
 import LocationMultiSelect from './LocationMultiSelect'
 import SalespersonPerformance from './analytics/SalespersonPerformance'
@@ -408,6 +409,11 @@ export const REPORT_META = ANALYTICS_REPORTS.map(r => ({ key: r.key, label: r.la
 // Pinned above the groups, in this order, outside any category.
 export const PINNED_REPORTS = ['kpis', 'problem-areas', 'topline', 'club-activity']
 
+// The Favorites section shares the collapse machinery with REPORT_GROUPS but
+// is not one of them: its contents are per-user, so it cannot be a static list
+// here. Kept distinct from any real group key so the two can never collide.
+const FAVORITES_GROUP_KEY = '__favorites'
+
 /**
  * Reports that belong in no group and are not pinned still need a way in.
  * Rather than trusting the catalogue above to stay exhaustive, anything
@@ -514,9 +520,37 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
     (key) => isReportVisible(visibility, key, scopedSlugs),
     [visibility, scopedSlugs]
   )
+  // A person's own starred reports. Held in state (not read from localStorage
+  // on every render) and refreshed off the change event, so a star clicked in
+  // the sidebar and the one in the header stay in step without either owning
+  // the other.
+  const [favorites, setFavorites] = useState(getFavorites)
+  useEffect(() => {
+    const sync = () => setFavorites(getFavorites())
+    window.addEventListener(FAVORITES_EVENT, sync)
+    // Another tab writing localStorage fires `storage`, not our own event.
+    window.addEventListener('storage', sync)
+    return () => {
+      window.removeEventListener(FAVORITES_EVENT, sync)
+      window.removeEventListener('storage', sync)
+    }
+  }, [])
+
   // Every group starts collapsed, as asked. Opening one is a per-visit choice,
   // not something worth persisting.
   const [openGroups, setOpenGroups] = useState(() => new Set())
+
+  // Favorites is the exception: somebody who has built a shortlist wants to
+  // see it, not to open it every visit. Done as an effect rather than as
+  // initial state because hydrateUiPrefs can land the server's list a moment
+  // AFTER this mounts, and seeding at mount would leave it shut. Once only,
+  // so a deliberate collapse is not reopened underneath them.
+  const favoritesAutoOpened = useRef(false)
+  useEffect(() => {
+    if (favoritesAutoOpened.current || favorites.length === 0) return
+    favoritesAutoOpened.current = true
+    setOpenGroups(prev => new Set(prev).add(FAVORITES_GROUP_KEY))
+  }, [favorites])
 
   function toggleGroup(key) {
     setOpenGroups(prev => {
@@ -568,6 +602,17 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
     if (fallback) setActiveReport(fallback)
   }, [visibility, activeReport, canSee])
 
+  // Starred order is the order they were starred in, not alphabetical: a
+  // shortlist someone built by hand should stay where they put it. Keys for
+  // retired or club-hidden reports drop out here rather than rendering a dead
+  // link, and stay in storage — a report hidden for today's club selection is
+  // not a report they unstarred.
+  const favoriteReports = useMemo(
+    () => favorites.map(k => reportByKey[k]).filter(Boolean).filter(r => canSee(r.key)),
+    [favorites, canSee],
+  )
+  const favoritesFull = favorites.length >= MAX_FAVORITES
+
   const active = ANALYTICS_REPORTS.find(r => r.key === activeReport) || null
   const showDateControls = active ? active.dates !== false : true
   const ActiveComponent = active?.Component || null
@@ -618,10 +663,76 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
               .filter(Boolean)
               .map(r => (
                 <li key={r.key}>
-                  <ReportLink report={r} active={activeReport === r.key} onSelect={navigateToReport} />
+                  <ReportLink
+                    report={r}
+                    active={activeReport === r.key}
+                    onSelect={navigateToReport}
+                    favorite={favorites.includes(r.key)}
+                    onToggleFavorite={toggleFavorite}
+                    favoritesFull={favoritesFull}
+                  />
                 </li>
               ))}
           </ul>
+
+          {/* Favorites - this person's own shortlist, at the top of the
+              collapsible sections. Rendered even when empty: a section that
+              only appears once you already know how to fill it is a section
+              nobody discovers. */}
+          {(() => {
+            const open = openGroups.has(FAVORITES_GROUP_KEY)
+            const holdsActive = favoriteReports.some(r => r.key === activeReport)
+            return (
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(FAVORITES_GROUP_KEY)}
+                  aria-expanded={open}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-sm font-bold rounded-lg transition-colors ${
+                    holdsActive && !open ? 'text-wcs-red' : 'text-text-primary hover:bg-bg'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <StarIcon filled className="w-3.5 h-3.5 flex-shrink-0 text-wcs-red" />
+                    <span className="truncate text-left">Favorites</span>
+                    {favoriteReports.length > 0 && (
+                      <span className="text-[11px] font-semibold text-text-muted">{favoriteReports.length}</span>
+                    )}
+                  </span>
+                  <svg
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                    aria-hidden="true"
+                    className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {open && (
+                  favoriteReports.length > 0 ? (
+                    <ul className="space-y-0.5 mt-0.5">
+                      {favoriteReports.map(r => (
+                        <li key={r.key}>
+                          <ReportLink
+                            report={r}
+                            active={activeReport === r.key}
+                            onSelect={navigateToReport}
+                            indented
+                            favorite
+                            onToggleFavorite={toggleFavorite}
+                            favoritesFull={favoritesFull}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="pl-6 pr-3 pb-2 text-[11px] leading-snug text-text-muted">
+                      No favorites yet. Click the star beside any report, or the one next to its title, to add it here.
+                    </p>
+                  )
+                )}
+              </div>
+            )
+          })()}
 
           {REPORT_GROUPS.map(group => {
             // Alphabetical by label WITHIN a group, sorted here rather than by
@@ -662,7 +773,15 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
                   <ul className="space-y-0.5 mt-0.5">
                     {visible.map(r => (
                       <li key={r.key}>
-                        <ReportLink report={r} active={activeReport === r.key} onSelect={navigateToReport} indented />
+                        <ReportLink
+                          report={r}
+                          active={activeReport === r.key}
+                          onSelect={navigateToReport}
+                          indented
+                          favorite={favorites.includes(r.key)}
+                          onToggleFavorite={toggleFavorite}
+                          favoritesFull={favoritesFull}
+                        />
                       </li>
                     ))}
                   </ul>
@@ -694,6 +813,17 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
               </button>
             )}
             <h2 className="text-xl font-bold text-text-primary">{active?.label || 'Analytics'}</h2>
+            {/* The second way in, for the far commoner moment: you are already
+                reading a report and decide you want it back tomorrow. */}
+            {active && (
+              <FavoriteStar
+                reportKey={active.key}
+                favorite={favorites.includes(active.key)}
+                favoritesFull={favoritesFull}
+                onToggle={toggleFavorite}
+                className="-ml-1"
+              />
+            )}
             <div className="ml-auto flex-shrink-0">
               <LocationMultiSelect
                 value={locationSlug}
@@ -791,16 +921,87 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
 
 export const reportByKey = Object.fromEntries(ANALYTICS_REPORTS.map(r => [r.key, r]))
 
-function ReportLink({ report, active, onSelect, indented = false }) {
+function StarIcon({ filled, className = '' }) {
+  return (
+    <svg
+      viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor"
+      strokeWidth="2" aria-hidden="true" className={className}
+    >
+      <path
+        strokeLinecap="round" strokeLinejoin="round"
+        d="M11.48 3.5a.56.56 0 011.04 0l2.13 4.87 5.3.48c.5.05.7.67.32 1l-4 3.5 1.18 5.2c.11.49-.42.88-.85.62L12 16.42l-4.6 2.75c-.43.26-.96-.13-.85-.62l1.18-5.2-4-3.5c-.38-.33-.18-.95.32-1l5.3-.48 2.13-4.87z"
+      />
+    </svg>
+  )
+}
+
+/**
+ * The star that adds or removes one report from Favorites.
+ *
+ * At the cap, starring a further report is refused rather than evicting the
+ * oldest one - same call as the pinned bar, and for the same reason: silently
+ * dropping something a person chose is the more surprising of the two.
+ */
+function FavoriteStar({ reportKey, favorite, favoritesFull, onToggle, className = '' }) {
+  const blocked = !favorite && favoritesFull
+  const title = favorite
+    ? 'Remove from Favorites'
+    : blocked
+      ? `Favorites is full (${MAX_FAVORITES}). Remove one first.`
+      : 'Add to Favorites'
   return (
     <button
       type="button"
-      onClick={() => onSelect(report.key)}
-      className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left ${
-        indented ? 'pl-6' : ''
-      } ${active ? 'bg-wcs-red/10 text-wcs-red' : 'text-text-primary hover:bg-bg'}`}
+      title={title}
+      aria-label={title}
+      aria-pressed={favorite}
+      disabled={blocked}
+      onClick={e => {
+        // The sidebar star sits inside a row whose other half navigates.
+        // Without this, starring a report would also open it.
+        e.stopPropagation()
+        onToggle(reportKey)
+      }}
+      className={`flex-shrink-0 p-1 rounded transition-colors ${
+        favorite ? 'text-wcs-red' : 'text-text-muted hover:text-wcs-red'
+      } ${blocked ? 'opacity-40 cursor-not-allowed hover:text-text-muted' : ''} ${className}`}
     >
-      <span className="block truncate">{report.label}</span>
+      <StarIcon filled={favorite} className="w-3.5 h-3.5" />
     </button>
+  )
+}
+
+// The row is a flex container rather than one button, because the star inside
+// it is itself a button and buttons cannot nest. The hover/active background
+// therefore lives on the wrapper, not on the label.
+function ReportLink({ report, active, onSelect, indented = false, favorite = false, onToggleFavorite, favoritesFull = false }) {
+  return (
+    <div
+      className={`group flex items-center rounded-lg transition-colors ${
+        active ? 'bg-wcs-red/10' : 'hover:bg-bg'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={() => onSelect(report.key)}
+        className={`flex-1 min-w-0 py-2 pr-1 text-sm font-medium text-left ${
+          indented ? 'pl-6' : 'pl-3'
+        } ${active ? 'text-wcs-red' : 'text-text-primary'}`}
+      >
+        <span className="block truncate">{report.label}</span>
+      </button>
+      {onToggleFavorite && (
+        <FavoriteStar
+          reportKey={report.key}
+          favorite={favorite}
+          favoritesFull={favoritesFull}
+          onToggle={onToggleFavorite}
+          // An unstarred report shows its star on hover or keyboard focus
+          // only: 30-odd permanently visible outlines would read as a column
+          // of controls rather than as a list of reports.
+          className={`mr-1.5 ${favorite ? '' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'}`}
+        />
+      )}
+    </div>
   )
 }

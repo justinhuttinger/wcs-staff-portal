@@ -8,6 +8,7 @@ const LOCAL = {
   accent: '#e53e3e',
   background: { kind: 'location', value: '' }, backgroundDim: 60,
   pinned: [],
+  analyticsFavorites: [],
 }
 
 test('a saved server row wins over everything', () => {
@@ -42,6 +43,19 @@ test('an unreadable org default is simply absent', () => {
 test('pins are never taken from the org default', () => {
   const r = resolveHydration({ remote: {}, orgDefault: { theme: 'wp', pinned: ['tool:hr'] }, local: LOCAL })
   assert.deepEqual(r.prefs.pinned, [])
+})
+
+test('starred Analytics reports are carried from the server row', () => {
+  const remote = { theme: 'classic', analyticsFavorites: ['club-snapshot', 'topline'] }
+  const r = resolveHydration({ remote, orgDefault: {}, local: LOCAL })
+  assert.deepEqual(r.prefs.analyticsFavorites, ['club-snapshot', 'topline'])
+})
+
+test('starred Analytics reports are never seeded from the org default', () => {
+  const local = { ...LOCAL, analyticsFavorites: ['topline'] }
+  const orgDefault = { theme: 'wp', analyticsFavorites: ['kpis', 'past-due'] }
+  const r = resolveHydration({ remote: {}, orgDefault, local })
+  assert.deepEqual(r.prefs.analyticsFavorites, ['topline'])
 })
 
 test('background is carried from the server row', () => {
