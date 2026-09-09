@@ -1,3 +1,5 @@
+const { formatPacific } = require('./humanTime')
+
 // Shape of the outbound webhook fired when a tour outcome is saved.
 function buildTourWebhookPayload(location, intake) {
   return {
@@ -32,7 +34,10 @@ function buildTourWebhookPayload(location, intake) {
     notes: intake.notes || null,
     referring_member_id: intake.referring_member_id || null,
     referring_member_name: intake.referring_member_name || null,
-    completed_at: intake.completed_at || null,
+    // Read in GHL by a person, and sometimes dropped straight into a message,
+    // so it goes out on the club's own clock in the shape a person writes a
+    // time: "09/09/2026 | 4:05 PM". The row keeps its exact timestamptz.
+    completed_at: formatPacific(intake.completed_at),
   }
 }
 
