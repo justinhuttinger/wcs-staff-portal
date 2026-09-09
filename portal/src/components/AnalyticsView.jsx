@@ -663,14 +663,7 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
               .filter(Boolean)
               .map(r => (
                 <li key={r.key}>
-                  <ReportLink
-                    report={r}
-                    active={activeReport === r.key}
-                    onSelect={navigateToReport}
-                    favorite={favorites.includes(r.key)}
-                    onToggleFavorite={toggleFavorite}
-                    favoritesFull={favoritesFull}
-                  />
+                  <ReportLink report={r} active={activeReport === r.key} onSelect={navigateToReport} />
                 </li>
               ))}
           </ul>
@@ -712,21 +705,13 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
                     <ul className="space-y-0.5 mt-0.5">
                       {favoriteReports.map(r => (
                         <li key={r.key}>
-                          <ReportLink
-                            report={r}
-                            active={activeReport === r.key}
-                            onSelect={navigateToReport}
-                            indented
-                            favorite
-                            onToggleFavorite={toggleFavorite}
-                            favoritesFull={favoritesFull}
-                          />
+                          <ReportLink report={r} active={activeReport === r.key} onSelect={navigateToReport} indented />
                         </li>
                       ))}
                     </ul>
                   ) : (
                     <p className="pl-6 pr-3 pb-2 text-[11px] leading-snug text-text-muted">
-                      No favorites yet. Click the star beside any report, or the one next to its title, to add it here.
+                      No favorites yet. Open a report and click the star beside its title to add it here.
                     </p>
                   )
                 )}
@@ -773,15 +758,7 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
                   <ul className="space-y-0.5 mt-0.5">
                     {visible.map(r => (
                       <li key={r.key}>
-                        <ReportLink
-                          report={r}
-                          active={activeReport === r.key}
-                          onSelect={navigateToReport}
-                          indented
-                          favorite={favorites.includes(r.key)}
-                          onToggleFavorite={toggleFavorite}
-                          favoritesFull={favoritesFull}
-                        />
+                        <ReportLink report={r} active={activeReport === r.key} onSelect={navigateToReport} indented />
                       </li>
                     ))}
                   </ul>
@@ -813,8 +790,9 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
               </button>
             )}
             <h2 className="text-xl font-bold text-text-primary">{active?.label || 'Analytics'}</h2>
-            {/* The second way in, for the far commoner moment: you are already
-                reading a report and decide you want it back tomorrow. */}
+            {/* The only way in or out of Favorites. Beside the title, because
+                that is where you are standing when you decide a report is
+                worth coming back to. */}
             {active && (
               <FavoriteStar
                 reportKey={active.key}
@@ -938,6 +916,13 @@ function StarIcon({ filled, className = '' }) {
 /**
  * The star that adds or removes one report from Favorites.
  *
+ * The ONE way in and out of the list, and it lives beside the report's title
+ * rather than on every row of the sidebar: you star a report having read it
+ * and decided it is worth coming back to, which is a judgement you cannot make
+ * from a nav list. It also keeps the sidebar a list of reports instead of a
+ * column of controls. Removing one therefore means opening it again - which is
+ * the same gesture, in the same place, so there is nothing extra to learn.
+ *
  * At the cap, starring a further report is refused rather than evicting the
  * oldest one - same call as the pinned bar, and for the same reason: silently
  * dropping something a person chose is the more surprising of the two.
@@ -956,52 +941,26 @@ function FavoriteStar({ reportKey, favorite, favoritesFull, onToggle, className 
       aria-label={title}
       aria-pressed={favorite}
       disabled={blocked}
-      onClick={e => {
-        // The sidebar star sits inside a row whose other half navigates.
-        // Without this, starring a report would also open it.
-        e.stopPropagation()
-        onToggle(reportKey)
-      }}
+      onClick={() => onToggle(reportKey)}
       className={`flex-shrink-0 p-1 rounded transition-colors ${
         favorite ? 'text-wcs-red' : 'text-text-muted hover:text-wcs-red'
       } ${blocked ? 'opacity-40 cursor-not-allowed hover:text-text-muted' : ''} ${className}`}
     >
-      <StarIcon filled={favorite} className="w-3.5 h-3.5" />
+      <StarIcon filled={favorite} className="w-[18px] h-[18px]" />
     </button>
   )
 }
 
-// The row is a flex container rather than one button, because the star inside
-// it is itself a button and buttons cannot nest. The hover/active background
-// therefore lives on the wrapper, not on the label.
-function ReportLink({ report, active, onSelect, indented = false, favorite = false, onToggleFavorite, favoritesFull = false }) {
+function ReportLink({ report, active, onSelect, indented = false }) {
   return (
-    <div
-      className={`group flex items-center rounded-lg transition-colors ${
-        active ? 'bg-wcs-red/10' : 'hover:bg-bg'
-      }`}
+    <button
+      type="button"
+      onClick={() => onSelect(report.key)}
+      className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left ${
+        indented ? 'pl-6' : ''
+      } ${active ? 'bg-wcs-red/10 text-wcs-red' : 'text-text-primary hover:bg-bg'}`}
     >
-      <button
-        type="button"
-        onClick={() => onSelect(report.key)}
-        className={`flex-1 min-w-0 py-2 pr-1 text-sm font-medium text-left ${
-          indented ? 'pl-6' : 'pl-3'
-        } ${active ? 'text-wcs-red' : 'text-text-primary'}`}
-      >
-        <span className="block truncate">{report.label}</span>
-      </button>
-      {onToggleFavorite && (
-        <FavoriteStar
-          reportKey={report.key}
-          favorite={favorite}
-          favoritesFull={favoritesFull}
-          onToggle={onToggleFavorite}
-          // An unstarred report shows its star on hover or keyboard focus
-          // only: 30-odd permanently visible outlines would read as a column
-          // of controls rather than as a list of reports.
-          className={`mr-1.5 ${favorite ? '' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'}`}
-        />
-      )}
-    </div>
+      <span className="block truncate">{report.label}</span>
+    </button>
   )
 }
