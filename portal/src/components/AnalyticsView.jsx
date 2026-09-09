@@ -38,6 +38,7 @@ import Audits from './analytics/Audits'
 import LeadSources from './analytics/LeadSources'
 import ProblemAreas from './analytics/ProblemAreas'
 import MemberJourney from './analytics/MemberJourney'
+import VipAnalysis from './analytics/VipAnalysis'
 import ClubSnapshot from './analytics/ClubSnapshot'
 import KpiReport from './analytics/KpiReport'
 import PtSnapshot from './analytics/PtSnapshot'
@@ -197,6 +198,13 @@ export const ANALYTICS_REPORTS = [
     label: 'Session Frequency',
     desc: 'How Often They Train',
     Component: SessionFrequency,
+  },
+  {
+    key: 'vip-analysis',
+    records: ['vips', 'tours', 'new-members'],
+    label: 'VIP Analysis',
+    desc: 'Referrals In and Signed',
+    Component: VipAnalysis,
   },
   {
     key: 'attrition-analysis',
@@ -399,7 +407,7 @@ export const ANALYTICS_REPORTS = [
 // it belongs in. The order of the groups themselves is still this order.
 export const REPORT_GROUPS = [
   { key: 'marketing', label: 'Marketing',     reports: ['lead-sources'] },
-  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-analysis', 'attrition-trends', 'member-journey', 'checkins', 'nps'] },
+  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-analysis', 'attrition-trends', 'member-journey', 'checkins', 'nps', 'vip-analysis'] },
   { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due', 'pos-sales', 'revenue'] },
   { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase', 'pt-snapshot', 'trainer-snapshot', 'pt-roster', 'session-frequency'] },
   { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot', 'compliance', 'audits', 'till', 'payroll'] },

@@ -143,6 +143,7 @@ app.use('/analytics/trainer-performance', require('./routes/analyticsTrainerPerf
 app.use('/analytics/salesperson-snapshot', require('./routes/analyticsSalespersonSnapshot'))
 app.use('/analytics/attrition-trends', require('./routes/analyticsAttritionTrends'))
 app.use('/analytics/attrition-analysis', require('./routes/analyticsAttritionAnalysis'))
+app.use('/analytics/vip-analysis', require('./routes/analyticsVipAnalysis'))
 app.use('/analytics/pt-roster', require('./routes/analyticsPtRoster'))
 app.use('/analytics/session-frequency', require('./routes/analyticsSessionFrequency'))
 app.use('/analytics/lead-sources', require('./routes/analyticsLeadSources'))
