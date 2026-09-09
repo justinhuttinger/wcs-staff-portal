@@ -108,6 +108,9 @@ function tally(rows, pick, empty = 'Unknown') {
 /**
  * @param rows     cancelled members in the window
  * @param pending  members sitting in Pending Cancel
+ *
+ * `opts.reasonByMember` maps member_id -> the reason they gave when they
+ * cancelled, from Click2Save. See WHY THE REASONS COVER A MINORITY below.
  * @param opts     { start, end, monthly, priorRows, comparisonLabel }
  *
  * `priorRows` is the same query over the preceding window. Passed as ROWS
@@ -129,6 +132,8 @@ function pctChange(now, before) {
 
 function buildAttritionAnalysis(rows, pending, opts = {}) {
   const all = rows || []
+  const reasonByMember = opts.reasonByMember || new Map()
+  const reasonFor = (r) => reasonByMember.get(String(r.member_id)) || null
   const membership = all.filter(r => !isInsuranceType(r.membership_type))
   const insurance = all.filter(r => isInsuranceType(r.membership_type))
 
@@ -189,12 +194,35 @@ function buildAttritionAnalysis(rows, pending, opts = {}) {
     hasActivity: all.length > 0 || (pending || []).length > 0,
     comparisonLabel: opts.comparisonLabel || null,
     stats: withComparison,
+    // How much of the population the reasons actually describe. Sent rather
+    // than inferred from the tally, so the report can say "469 of 1,733" on its
+    // face instead of leaving a reader to assume the chart covers everybody.
+    reasonCoverage: {
+      withReason: all.filter(r => reasonFor(r)).length,
+      total: all.length,
+    },
     breakdowns: {
       byStatus: tally(all, r => r.member_status),
       byType: tally(all, r => r.membership_type),
       // Who sold the membership that has now ended. Not blame — it is the only
       // way to see a plan or a person whose sales do not stick.
       bySalesperson: tally(membership, r => r.sales_person_name, UNASSIGNED_LABEL),
+      // WHY THE REASONS COVER A MINORITY OF CANCELLATIONS.
+      //
+      // A reason exists only where the member cancelled through Click2Save, the
+      // online flow. Cancel at the desk, by phone, or by letting an agreement
+      // expire and there is no event and no reason — about 27% of the last 90
+      // days' losses carry one.
+      //
+      // So this tallies only the members who HAVE a reason, and the totals
+      // beside it say how many that is out of how many. Counting the rest as
+      // 'Unspecified' would put the largest bar on the chart under a label that
+      // is not a reason anybody gave, and every real reason would read as rare
+      // next to it.
+      byReason: tally(
+        all.filter(r => reasonFor(r)),
+        r => reasonFor(r),
+      ),
       byTenure: TENURE_BUCKETS
         .map(b => ({ label: b.label, count: tenureCounts.get(b.key), agreements: 0 }))
         .concat(tenureUnknown ? [{ label: 'Unknown', count: tenureUnknown, agreements: 0 }] : []),
