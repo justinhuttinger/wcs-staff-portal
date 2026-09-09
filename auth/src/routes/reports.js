@@ -13,6 +13,7 @@ const { countVipsByTeamMember: _countVipsByTeamMember } = require('../utils/vips
 const { parseLocationSlugParam } = require('../utils/locationSlug')
 const { resolveScopedSlugs } = require('../services/locationScope')
 const { getLocationById } = require('../config/ghlLocations')
+const { countTrialConversion, locationIdsForSlugs } = require('../lib/trialConversion')
 
 const router = Router()
 router.use(authenticate)
@@ -268,42 +269,30 @@ router.get('/membership', async (req, res) => {
     const { total: totalVips, byPerson: vipsByPerson } = await countVipsByTeamMember({ startISO, endISO, locationFilter })
 
     // --- 5. Trial conversion from opportunities ---
-    // Resolve location filter into GHL location IDs (supports multi-slug).
+    // Counted in lib/trialConversion so Club Snapshot shows the same number
+    // rather than a second implementation of the same idea. The slug path now
+    // resolves through config/ghlLocations instead of matching location NAMES
+    // against '%slug%' — Milwaukie trades as East Side Athletic Club, and any
+    // club renamed in GHL used to drop out of the count silently.
     let oppLocationIds = []
     if (locationFilter) {
-      if (locationFilter.column === 'location_id') {
-        oppLocationIds = locationFilter.values
-      } else if (locationFilter.column === 'location_slug') {
-        // Build an OR-ilike pattern set so one query covers all slugs.
-        const orClauses = locationFilter.values.map(s => `name.ilike.%${s}%`).join(',')
-        const { data: locs } = await supabaseAdmin
-          .from('ghl_locations').select('id').or(orClauses)
-        oppLocationIds = (locs || []).map(l => l.id)
-      }
-    }
-
-    let oppQuery = supabaseAdmin
-      .from('ghl_opportunities_v2')
-      .select('id, status, stage_id, pipeline_id, ghl_pipeline_stages(name)')
-    if (oppLocationIds.length > 0) oppQuery = oppQuery.in('location_id', oppLocationIds)
-    if (start_date) oppQuery = oppQuery.gte('created_at_ghl', startISO)
-    if (end_date) oppQuery = oppQuery.lte('created_at_ghl', endISO)
-
-    let opps
-    try {
-      opps = await fetchAll(oppQuery)
-    } catch (e) {
-      return res.status(500).json({ error: 'Failed to fetch trial data', detail: e.message })
+      oppLocationIds = locationFilter.column === 'location_id'
+        ? locationFilter.values
+        : locationIdsForSlugs(locationFilter.values)
     }
 
     let trialStarted = 0
     let trialWon = 0
-    for (const opp of (opps || [])) {
-      const stageName = opp.ghl_pipeline_stages?.name || ''
-      if (stageName === 'Trial Started') {
-        trialStarted++
-        if (opp.status === 'won') trialWon++
-      }
+    try {
+      const counted = await countTrialConversion(supabaseAdmin, {
+        locationIds: oppLocationIds,
+        startISO: start_date ? startISO : null,
+        endISO: end_date ? endISO : null,
+      })
+      trialStarted = counted.started
+      trialWon = counted.won
+    } catch (e) {
+      return res.status(500).json({ error: 'Failed to fetch trial data', detail: e.message })
     }
 
     // --- 6. Aggregate by salesperson + by date ---
