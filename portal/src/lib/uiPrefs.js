@@ -29,6 +29,19 @@ let applyingFromServer = false
 let pushTimer = null
 let started = false
 
+// PUSHES ARE BLOCKED UNTIL THE FIRST HYDRATE RESOLVES.
+//
+// snapshot() is built from localStorage, and on a machine this person has never
+// used that is empty. A change made inside the few hundred milliseconds before
+// the server's row arrives would push that empty snapshot over the real one and
+// wipe their pinned bar and their starred reports on every other device.
+//
+// Resolved either way counts, including a failed one: an app that can never
+// reach the API must still be able to save a preference locally and push it
+// when it can, which is what shipped before this gate existed.
+let hydrated = false
+let pushDeferred = false
+
 /** The full local snapshot, in the shape the server stores. */
 function snapshot() {
   const p = getPrefs()
@@ -85,7 +98,8 @@ export async function hydrateUiPrefs() {
     }
   } catch {
     // Offline or API down: the mirror already painted, so there is nothing to
-    // do and nothing to report.
+    // do and nothing to report. Pushes are released anyway — see `hydrated`.
+    settleHydration()
     return null
   }
 
@@ -109,7 +123,17 @@ export async function hydrateUiPrefs() {
     try { await saveUiPreferences(snapshot()) } catch {}
   }
 
+  settleHydration()
   return backgroundUrl
+}
+
+/** Release the push gate, flushing anything that was waiting on it. */
+function settleHydration() {
+  hydrated = true
+  if (pushDeferred) {
+    pushDeferred = false
+    schedulePush()
+  }
 }
 
 /**
@@ -118,6 +142,9 @@ export async function hydrateUiPrefs() {
  */
 function schedulePush() {
   if (applyingFromServer) return
+  // Not dropped, deferred: the change is already in localStorage, and it is
+  // pushed as soon as hydration settles.
+  if (!hydrated) { pushDeferred = true; return }
   clearTimeout(pushTimer)
   pushTimer = setTimeout(() => {
     // Fire and forget: a failed save leaves localStorage correct, and the next

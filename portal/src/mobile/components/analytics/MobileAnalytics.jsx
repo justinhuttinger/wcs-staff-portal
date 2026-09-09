@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ANALYTICS_REPORTS, REPORT_GROUPS, CORE_REPORTS, ungroupedReports, reportByKey,
 } from '../../../components/AnalyticsView'
@@ -6,6 +6,9 @@ import { isReportVisible } from '../../../components/analyticsReportCatalogue'
 import { TOOLBAR_SLOT_ID } from '../../../components/analytics/toolbarSlot'
 import ReportRecords from '../../../components/analytics/ReportRecords'
 import { getAppSettings } from '../../../lib/api'
+import {
+  getFavorites, toggleFavorite, FAVORITES_EVENT, MAX_FAVORITES,
+} from '../../../lib/analyticsFavorites'
 import { LOCATION_NAMES } from '../../../config/locations'
 
 // ---------------------------------------------------------------------------
@@ -17,9 +20,16 @@ import { LOCATION_NAMES } from '../../../config/locations'
 // behind the first time somebody added a report and only remembered one file,
 // and there are 35 of them.
 //
-// What IS mobile-specific is the navigation: desktop has a persistent sidebar
-// with every group down the left, which does not exist on a phone. Here the
-// picker is a screen of its own and choosing a report replaces it.
+// What IS mobile-specific is the SHAPE of the navigation: desktop has a
+// persistent sidebar, which does not exist on a phone, so here the picker is a
+// screen of its own and choosing a report replaces it. The STRUCTURE is the
+// same on both — search, then the core reports flat, then Favorites, then All
+// reports holding the groups — because somebody who learns where a report
+// lives at their desk should find it in the same place on their phone.
+//
+// Favorites are the same list, not a second one: lib/analyticsFavorites keeps
+// them in localStorage and lib/uiPrefs syncs that to user_ui_preferences, so a
+// report starred on the phone is starred at the desk and the other way round.
 //
 // Per-club visibility (the report_off_* settings an admin sets) is applied here
 // too, on the same rule as desktop. A report hidden for a club must not simply
@@ -47,17 +57,65 @@ import { LOCATION_NAMES } from '../../../config/locations'
  */
 export function MobileAnalyticsHome({ locationSlug, onOpen }) {
   const [openGroups, setOpenGroups] = useState(() => new Set())
+  const [search, setSearch] = useState('')
   const visibility = useReportVisibility()
   const canSee = useCanSee(visibility, locationSlug)
+  const favorites = useFavorites()
 
-  // Desktop splits these into a core list and an All reports disclosure. Here
-  // they stay one flat run above the groups: this screen is already a single
-  // scrolling column, so a disclosure wrapping the groups would add a tap
-  // without shortening anything.
-  const top = [...CORE_REPORTS, ...ungroupedReports()]
-    .filter(canSee)
-    .map(k => reportByKey[k])
-    .filter(Boolean)
+  // The core six, flat and always visible, exactly as desktop shows them. The
+  // rest sit behind All reports.
+  const core = CORE_REPORTS.map(k => reportByKey[k]).filter(Boolean).filter(r => canSee(r.key))
+
+  // Starred order is the order they were starred in. A report hidden for this
+  // club drops out of the list but stays in storage — a club filter is not an
+  // unstar, and the phone must not quietly unstar what the desktop shows.
+  const favoriteReports = favorites
+    .map(k => reportByKey[k]).filter(Boolean).filter(r => canSee(r.key))
+
+  // Filed under no group. Above the groups inside All reports, so a report
+  // nobody categorised is the first thing seen rather than the last.
+  const unfiled = ungroupedReports().map(k => reportByKey[k]).filter(Boolean).filter(r => canSee(r.key))
+
+  const groups = REPORT_GROUPS.map(group => ({
+    ...group,
+    // Alphabetical within a group, matching desktop, and sorted here for the
+    // same reason it is sorted there: a report added to a group lands in the
+    // right place without anyone re-sorting REPORT_GROUPS.
+    reports: group.reports
+      .map(k => reportByKey[k])
+      .filter(Boolean)
+      .filter(r => canSee(r.key))
+      .sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' })),
+    // A group whose every report is hidden for this club is not an empty group,
+    // it is not a group. A header promising nothing behind it is worse than no
+    // header.
+  })).filter(g => g.reports.length > 0)
+
+  // Counted distinctly: a report filed under two groups is one report.
+  const allCount = new Set([
+    ...unfiled.map(r => r.key),
+    ...groups.flatMap(g => g.reports.map(r => r.key)),
+  ]).size
+
+  // Typing flattens the tree entirely. Thirty-seven reports is more than anyone
+  // scrolls through on a phone, and it is what makes a six-item core list safe:
+  // being wrong about the six costs three keystrokes rather than a hunt.
+  const term = search.trim().toLowerCase()
+  const results = term
+    ? ANALYTICS_REPORTS.filter(r => canSee(r.key) && r.label.toLowerCase().includes(term))
+        .sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }))
+    : null
+
+  // Somebody who has built a shortlist wants to see it, not open it every
+  // visit. Once only, and only when the list actually arrives — hydrateUiPrefs
+  // can land the server's copy after this mounts — so a deliberate collapse is
+  // not reopened underneath them.
+  const favoritesAutoOpened = useRef(false)
+  useEffect(() => {
+    if (favoritesAutoOpened.current || favorites.length === 0) return
+    favoritesAutoOpened.current = true
+    setOpenGroups(prev => new Set(prev).add(FAVORITES_KEY))
+  }, [favorites])
 
   function toggle(key) {
     setOpenGroups(prev => {
@@ -67,6 +125,9 @@ export function MobileAnalyticsHome({ locationSlug, onOpen }) {
       return next
     })
   }
+
+  const favoritesOpen = openGroups.has(FAVORITES_KEY)
+  const allOpen = openGroups.has(ALL_KEY)
 
   return (
     // No negative margin: the route gives this component the full width and
@@ -78,84 +139,223 @@ export function MobileAnalyticsHome({ locationSlug, onOpen }) {
     // one surface, so a second one here would draw a seam across the middle of
     // it and double the hairline under the club selector.
     <div className="pb-6">
-      <p className="px-4 pt-4 pb-2 text-sm font-bold text-text-primary">
-        Browse Reports
-      </p>
+      <div className="px-4 pt-4 pb-3">
+        <input
+          type="search"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search reports"
+          aria-label="Search reports"
+          // 16px, not smaller: iOS Safari zooms the whole page in on focus for
+          // anything under it, and the reader then has to pinch back out.
+          className="w-full px-3 py-2 rounded-xl text-base bg-bg border border-border text-text-primary placeholder:text-text-muted"
+        />
+      </div>
       <div className="h-px bg-border mx-4" />
 
-      {/* Pinned and unfiled reports open directly, so they carry no +/-. They
-          lead because they are the ones opened most. */}
-      {top.map(r => (
-        <ReportRow key={r.key} report={r} onOpen={onOpen} />
-      ))}
-
-      {REPORT_GROUPS.map(group => {
-        // Alphabetical within a group, matching desktop, and sorted here for the
-        // same reason it is sorted there: a report added to a group lands in the
-        // right place without anyone re-sorting REPORT_GROUPS.
-        const reports = group.reports
-          .map(k => reportByKey[k])
-          .filter(Boolean)
-          .filter(r => canSee(r.key))
-          .sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }))
-        // A group whose every report is hidden for this club is not an empty
-        // group, it is not a group. A header promising nothing behind it is
-        // worse than no header.
-        if (reports.length === 0) return null
-        const open = openGroups.has(group.key)
-
-        return (
-          <div key={group.key}>
-            <button
-              type="button"
-              onClick={() => toggle(group.key)}
-              aria-expanded={open}
-              className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left border-b border-border active:bg-bg transition-colors"
-            >
-              <span className={`text-sm text-text-primary ${open ? 'font-bold' : 'font-semibold'}`}>
-                {group.label}
-              </span>
-              {/* Drawn rather than typed: a glyph "+" and a glyph "-" are
-                  different weights and widths, so the mark jumps as it toggles.
-                  Two spans of the same bar, one rotated away, do not. */}
-              <span className="relative w-3.5 h-3.5 flex-shrink-0" aria-hidden="true">
-                <span className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-text-primary rounded-full" />
-                <span
-                  className={`absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-text-primary rounded-full transition-transform duration-200 ${
-                    open ? 'rotate-0 opacity-0' : 'rotate-90'
-                  }`}
-                />
-              </span>
-            </button>
-
-            {open && (
-              // The contrasting panel. Inset text, no per-row rules: this is a
-              // short list inside an open section, and hairlines between seven
-              // items would compete with the ones separating the groups.
-              //
-              // The class carries the Press case: that theme sets bg and surface
-              // to the SAME white, so bg-bg alone would leave an open group with
-              // no contrast at all. index.css gives it the press band instead.
-              <div className="analytics-subpanel bg-bg border-b border-border py-1">
-                {reports.map(r => (
-                  <button
-                    key={r.key}
-                    type="button"
-                    onClick={() => onOpen(r.key)}
-                    className="w-full text-left px-7 py-2.5 active:bg-surface transition-colors"
-                  >
-                    <span className="block text-sm text-text-primary">{r.label}</span>
-                    {r.desc && (
-                      <span className="block text-[11px] text-text-muted truncate">{r.desc}</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+      {results ? (
+        results.length > 0 ? (
+          results.map(r => <ReportRow key={r.key} report={r} onOpen={onOpen} />)
+        ) : (
+          <p className="px-4 py-6 text-sm text-text-muted">
+            No report matches “{search.trim()}”.
+          </p>
         )
-      })}
+      ) : (
+        <>
+          {/* The core six, opening directly, so they carry no +/-. */}
+          {core.map(r => <ReportRow key={r.key} report={r} onOpen={onOpen} />)}
+
+          {/* Favorites — the same starred list the desktop shows, off the same
+              synced preference. Rendered even when empty so the way to fill it
+              is discoverable from the phone too. */}
+          <SectionRow
+            label="Favorites"
+            count={favoriteReports.length || null}
+            open={favoritesOpen}
+            onClick={() => toggle(FAVORITES_KEY)}
+          />
+          {favoritesOpen && (
+            <div className="analytics-subpanel bg-bg border-b border-border py-1">
+              {favoriteReports.length > 0 ? (
+                favoriteReports.map(r => <SubReportRow key={r.key} report={r} onOpen={onOpen} />)
+              ) : (
+                <p className="px-7 py-2.5 text-[13px] leading-snug text-text-muted">
+                  No favorites yet. Open a report and tap the star beside its title.
+                </p>
+              )}
+            </div>
+          )}
+
+          <SectionRow
+            label="All reports"
+            count={allCount || null}
+            open={allOpen}
+            onClick={() => toggle(ALL_KEY)}
+          />
+          {allOpen && (
+            <div className="analytics-subpanel bg-bg border-b border-border py-1">
+              {unfiled.map(r => <SubReportRow key={r.key} report={r} onOpen={onOpen} />)}
+
+              {groups.map(group => {
+                const open = openGroups.has(group.key)
+                return (
+                  <div key={group.key}>
+                    <button
+                      type="button"
+                      onClick={() => toggle(group.key)}
+                      aria-expanded={open}
+                      className="w-full flex items-center justify-between gap-3 px-7 py-2.5 text-left active:bg-surface transition-colors"
+                    >
+                      <span className={`text-sm text-text-primary ${open ? 'font-bold' : 'font-semibold'}`}>
+                        {group.label}
+                      </span>
+                      <span className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-[11px] font-semibold text-text-muted">{group.reports.length}</span>
+                        <PlusMinus open={open} />
+                      </span>
+                    </button>
+                    {open && (
+                      <div className="bg-surface py-1">
+                        {group.reports.map(r => (
+                          <SubReportRow key={r.key} report={r} onOpen={onOpen} deep />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )}
     </div>
+  )
+}
+
+// Kept distinct from any real group key so the three collapse states can never
+// collide with each other.
+const FAVORITES_KEY = '__favorites'
+const ALL_KEY = '__all'
+
+/** Read the starred list and follow it as it changes. */
+function useFavorites() {
+  const [favorites, setFavorites] = useState(getFavorites)
+  useEffect(() => {
+    const sync = () => setFavorites(getFavorites())
+    window.addEventListener(FAVORITES_EVENT, sync)
+    // hydrateUiPrefs writes localStorage directly on this tab; another tab
+    // fires `storage` instead. Both have to land or the star and the list
+    // disagree.
+    window.addEventListener('storage', sync)
+    return () => {
+      window.removeEventListener(FAVORITES_EVENT, sync)
+      window.removeEventListener('storage', sync)
+    }
+  }, [])
+  return favorites
+}
+
+/**
+ * The +/- mark on a collapsible row.
+ *
+ * Drawn rather than typed: a glyph "+" and a glyph "-" are different weights
+ * and widths, so the mark jumps as it toggles. Two spans of the same bar, one
+ * rotated away, do not.
+ */
+function PlusMinus({ open }) {
+  return (
+    <span className="relative w-3.5 h-3.5 flex-shrink-0" aria-hidden="true">
+      <span className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-text-primary rounded-full" />
+      <span
+        className={`absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-text-primary rounded-full transition-transform duration-200 ${
+          open ? 'rotate-0 opacity-0' : 'rotate-90'
+        }`}
+      />
+    </span>
+  )
+}
+
+/** A top-level collapsible row: Favorites, All reports. */
+function SectionRow({ label, count, open, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left border-b border-border active:bg-bg transition-colors"
+    >
+      <span className={`text-sm text-text-primary ${open ? 'font-bold' : 'font-semibold'}`}>
+        {label}
+      </span>
+      <span className="flex items-center gap-2 flex-shrink-0">
+        {count ? <span className="text-[11px] font-semibold text-text-muted">{count}</span> : null}
+        <PlusMinus open={open} />
+      </span>
+    </button>
+  )
+}
+
+/** A report inside an open panel. `deep` is one level further in. */
+function SubReportRow({ report, onOpen, deep = false }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(report.key)}
+      className={`w-full text-left py-2.5 active:bg-surface transition-colors ${deep ? 'pl-10 pr-7' : 'px-7'}`}
+    >
+      <span className="block text-sm text-text-primary">{report.label}</span>
+      {report.desc && (
+        <span className="block text-[11px] text-text-muted truncate">{report.desc}</span>
+      )}
+    </button>
+  )
+}
+
+/**
+ * The star beside a report's title, and the ONLY way in or out of Favorites —
+ * the same call the desktop makes. You star a report having read it and decided
+ * it is worth coming back to, which is not a judgement you can make from a nav
+ * list, and it keeps the picker a list of reports rather than a column of
+ * controls.
+ *
+ * Rendered into MobileHeader's rightAction, so it sits beside the title exactly
+ * where the desktop puts it.
+ */
+export function MobileFavoriteStar({ reportKey }) {
+  const favorites = useFavorites()
+  const favorite = favorites.includes(reportKey)
+  const blocked = !favorite && favorites.length >= MAX_FAVORITES
+  const label = favorite
+    ? 'Remove from Favorites'
+    : blocked
+      ? `Favorites is full (${MAX_FAVORITES}). Remove one first.`
+      : 'Add to Favorites'
+
+  return (
+    <button
+      type="button"
+      onClick={() => toggleFavorite(reportKey)}
+      disabled={blocked}
+      aria-pressed={favorite}
+      aria-label={label}
+      title={label}
+      // A 40px box, not a 20px icon: this is a touch target beside a back
+      // button that already has one.
+      className={`flex items-center justify-center w-10 h-10 -mr-2 rounded-lg active:bg-bg transition-colors ${
+        favorite ? 'text-wcs-red' : 'text-text-muted'
+      } ${blocked ? 'opacity-40' : ''}`}
+    >
+      <svg
+        viewBox="0 0 24 24" fill={favorite ? 'currentColor' : 'none'} stroke="currentColor"
+        strokeWidth="2" aria-hidden="true" className="w-5 h-5"
+      >
+        <path
+          strokeLinecap="round" strokeLinejoin="round"
+          d="M11.48 3.5a.56.56 0 011.04 0l2.13 4.87 5.3.48c.5.05.7.67.32 1l-4 3.5 1.18 5.2c.11.49-.42.88-.85.62L12 16.42l-4.6 2.75c-.43.26-.96-.13-.85-.62l1.18-5.2-4-3.5c-.38-.33-.18-.95.32-1l5.3-.48 2.13-4.87z"
+        />
+      </svg>
+    </button>
   )
 }
 
