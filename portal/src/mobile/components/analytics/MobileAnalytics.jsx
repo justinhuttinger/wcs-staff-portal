@@ -267,6 +267,7 @@ export function MobileAnalyticsReport({ reportKey, user, startDate, endDate, loc
         <div className="mt-3">
           <ReportRecords
             sets={report.records}
+            note={report.recordsNote}
             params={{ start: startDate, end: endDate, clubs: locationSlug || 'all' }}
           />
         </div>
