@@ -26,7 +26,10 @@
 const { shapeTotals, STATS } = require('./clubSnapshot')
 
 // Measured on a single day, this is a gap between dates in different weeks.
-const DROPPED_STATS = new Set(['avgDaysToConversion'])
+// Avg Daily Check-ins goes for a blunter reason: over a one-day window it is
+// the same number as Check-ins, and two cards showing one figure invites the
+// reader to hunt for a difference that cannot exist.
+const DROPPED_STATS = new Set(['avgDaysToConversion', 'avgDailyCheckins'])
 
 // The two stats that come from abc_revenue_transactions. New Dues does NOT:
 // it is derived from the member records, which are live, so it stays real on a

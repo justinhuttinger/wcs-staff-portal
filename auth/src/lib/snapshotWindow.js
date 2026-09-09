@@ -106,7 +106,32 @@ function pctChange(now, prior) {
   return Math.round(((a - b) / b) * 1000) / 10
 }
 
+/**
+ * Days in an inclusive window, or null if it cannot be read.
+ *
+ * The denominator for Avg Daily Check-ins. INCLUSIVE of both ends: the 1st to
+ * the 8th is eight days of trading, not seven, and an off-by-one here would
+ * overstate every daily average by up to a day's worth of traffic.
+ *
+ * Parsed by hand rather than through Date for the same reason formatDateLong
+ * is: new Date('2026-08-28') is midnight UTC, and a server west of Greenwich
+ * renders it as the 27th. UTC noon sidesteps that without needing a timezone.
+ *
+ * A reversed or unparseable window returns null so the caller shows N/A rather
+ * than a negative or infinite average.
+ */
+function daysInWindow(start, end) {
+  const parse = (iso) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''))
+    return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12) : null
+  }
+  const a = parse(start)
+  const b = parse(end)
+  if (a === null || b === null || b < a) return null
+  return Math.round((b - a) / 86400000) + 1
+}
+
 module.exports = {
-  monthToDate, priorMonthWindow, pctChange, daysInMonth,
+  monthToDate, priorMonthWindow, pctChange, daysInMonth, daysInWindow,
   formatDateLong, monthName, isMonthToDate, priorLabel, windowLabel,
 }

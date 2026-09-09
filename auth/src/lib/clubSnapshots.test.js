@@ -246,3 +246,69 @@ test('the two Day One counts are labelled apart', () => {
   // name the whole cohort.
   assert.ok(!labels.some(l => /Day Ones Scheduled/.test(l)))
 })
+
+// ---------------------------------------------------------------------------
+// Avg Daily Check-ins.
+//
+// Sits beside Check-ins because the total is not comparable across windows:
+// priorMonthWindow clamps the day to the shorter month, so March against
+// February is 31 days against 28. That is a 10% handicap with nothing to do
+// with how busy the club was, and the average removes it.
+// ---------------------------------------------------------------------------
+
+const dailyStat = (out) => out.stats.find(s => s.key === 'avgDailyCheckins')
+
+test('avg daily check-ins is the total over the days in the window', () => {
+  const out = buildClubSnapshot(
+    { window: memWindow({ checkins: 4500 }), summary: memSummary }, null, [],
+    { days: 30 }
+  )
+  assert.equal(dailyStat(out).value, 150)
+})
+
+test('it is rounded to one decimal, not to a whole visit', () => {
+  const out = buildClubSnapshot(
+    { window: memWindow({ checkins: 100 }), summary: memSummary }, null, [], { days: 3 }
+  )
+  assert.equal(dailyStat(out).value, 33.3)
+})
+
+// The point of the stat. Same daily rate, different window lengths: the totals
+// look 10% apart and the averages correctly look identical.
+test('two windows of different length compare fairly', () => {
+  const out = buildClubSnapshot(
+    { window: memWindow({ checkins: 3100 }), summary: memSummary },
+    { window: memWindow({ checkins: 2800 }), summary: memSummary },
+    [], { days: 31, priorDays: 28 }
+  )
+  const s = dailyStat(out)
+  assert.equal(s.value, 100)
+  assert.equal(s.prior, 100)
+  assert.equal(s.change, 0)
+})
+
+// It must not invent traffic the check-in feed never reported.
+test('an absent check-in feed gives an absent average, not zero', () => {
+  const out = buildClubSnapshot(
+    { window: memWindow({ checkins: 0, has_checkin_data: false }), summary: memSummary },
+    null, [], { days: 30 }
+  )
+  assert.equal(dailyStat(out).value, null)
+})
+
+test('no day count means no average rather than a divide by zero', () => {
+  for (const opts of [{}, { days: 0 }, { days: null }]) {
+    const out = buildClubSnapshot(
+      { window: memWindow(), summary: memSummary }, null, [], opts
+    )
+    assert.equal(dailyStat(out).value, null, JSON.stringify(opts))
+  }
+})
+
+test('it sits immediately after Check-ins', () => {
+  const out = buildClubSnapshot(
+    { window: memWindow(), summary: memSummary }, null, [], { days: 30 }
+  )
+  const keys = out.stats.map(s => s.key)
+  assert.equal(keys[keys.indexOf('checkins') + 1], 'avgDailyCheckins')
+})

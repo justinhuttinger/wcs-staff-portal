@@ -49,6 +49,12 @@ const STATS = [
   // contracted. Labelled apart so the card never shows two "PT Revenue".
   { key: 'ptRevenue', label: 'PT Revenue Collected', format: 'money', betterWhen: 'up' },
   { key: 'checkins', label: 'Check-ins', format: 'int', betterWhen: 'up' },
+  // Beside the total because the total is NOT comparable across windows:
+  // priorMonthWindow clamps the day to the shorter month, so March against
+  // February is 31 days against 28. That is a 10% handicap with nothing to do
+  // with how busy the club was. Injected in buildClubSnapshot rather than
+  // shaped, because shapeTotals sees the window's numbers but not its length.
+  { key: 'avgDailyCheckins', label: 'Avg Daily Check-ins', format: 'num', betterWhen: 'up' },
   { key: 'pctOnAch', label: 'ACH %', format: 'pct', betterWhen: 'up' },
   { key: 'avgNewDuesDraft', label: 'Avg New Dues Draft', format: 'money', betterWhen: 'up' },
   // TWO DIFFERENT DAY ONE COUNTS LIVE ON THIS CARD, ON DIFFERENT DATE FIELDS.
@@ -216,6 +222,15 @@ function buildClubSnapshot(current, prior, series, opts = {}) {
   const pend = opts.pending || null
   cur.dayOnesPending = pend ? pend.total : null
   if (prior) was.dayOnesPending = pend && pend.priorTotal != null ? pend.priorTotal : null
+
+  // Each window divides by ITS OWN length. Reusing the current day count for
+  // both would reintroduce exactly the distortion this stat exists to remove.
+  // A null check-in feed stays null: an average of traffic we never recorded
+  // would be an invention, not an estimate.
+  const perDay = (total, days) =>
+    total === null || !days ? null : Math.round((total / days) * 10) / 10
+  cur.avgDailyCheckins = perDay(cur.checkins ?? null, opts.days)
+  if (prior) was.avgDailyCheckins = perDay(was.checkins ?? null, opts.priorDays || opts.days)
 
   const stats = STATS.map(s => {
     const now = cur[s.key] ?? null

@@ -10,7 +10,7 @@ const { buildReport } = require('../lib/salespersonPerformance')
 const { loadSalespersonWindow } = require('../lib/salespersonData')
 const { buildClubSnapshot } = require('../lib/clubSnapshot')
 const { loadPendingDayOnes, summarisePending, pendingList } = require('../lib/dayOnePending')
-const { monthToDate, priorMonthWindow, priorLabel, windowLabel } = require('../lib/snapshotWindow')
+const { monthToDate, priorMonthWindow, priorLabel, windowLabel, daysInWindow } = require('../lib/snapshotWindow')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
@@ -161,7 +161,14 @@ router.get('/', async (req, res) => {
       payload.current,
       payload.prior,
       payload.series,
-      { comparisonLabel: priorLabel(start, end), pending: payload.pending },
+      {
+        comparisonLabel: priorLabel(start, end),
+        pending: payload.pending,
+        // Each window's own length, so Avg Daily Check-ins compares a 31-day
+        // month against a 28-day one without the shorter month looking quiet.
+        days: daysInWindow(start, end),
+        priorDays: daysInWindow(prior.start, prior.end),
+      },
     )
 
     res.json({
