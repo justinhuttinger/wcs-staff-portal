@@ -163,7 +163,11 @@ export default function MembershipTrends({ locationSlug, category, basis }) {
 
   const query = useMemo(
     () => new URLSearchParams({ clubs: locationSlug || 'all', segment, exclusion, category, basis }).toString(),
-    [locationSlug, segment, exclusion]
+    // category and basis belong here BECAUSE they are in the URL above: a
+    // value read inside the memo but missing from the deps freezes the query
+    // string at whatever it was on mount, so the control moves and the report
+    // silently does not.
+    [locationSlug, segment, exclusion, category, basis]
   )
 
   const { data, loading, error } = useCancellableFetch(
