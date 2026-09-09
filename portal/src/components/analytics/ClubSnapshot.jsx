@@ -6,39 +6,11 @@ import DesktopLoading from '../DesktopLoading'
 import { StatCard, TrendPanel, groupStats, StatGroupHeading } from './snapshotParts'
 import PendingOutcomePanel from './PendingOutcomePanel'
 import Drillable from './Drillable'
+import { drillFor } from './snapshotDrills'
 
-// Club-wide, so no person filter anywhere here.
-//
-// Day Ones Booked counts on the BOOKING date (it comes from buildReport) while
-// Day Ones on Calendar counts on the appointment date (it comes from
-// analytics_pt_snapshot). Two cards on one screen, two different cohorts —
-// which is why each names its own window rather than sharing one.
-//
-// Members, Net Members, Net PT Revenue and the tour/VIP rates that have no
-// list of their own are deliberately absent: a stock or a difference of two
-// populations has no single set of rows behind it.
-const DRILL = {
-  newMembers:         { set: 'new-members', title: 'Members joined' },
-  lostMembers:        { set: 'lost-members', title: 'Members lost' },
-  newDues:            { set: 'new-members', title: 'Members joined' },
-  pctOnAch:           { set: 'new-members', filter: 'ach', title: 'Joined on ACH' },
-  avgNewDuesDraft:    { set: 'new-members', title: 'Members joined' },
-  revenue:            { set: 'revenue', title: 'Revenue collected' },
-  ptRevenue:          { set: 'revenue', filter: 'pt', title: 'PT revenue collected' },
-  dayOneBookCount:    { set: 'day-ones', window: 'booked', title: 'Day Ones booked' },
-  dayOneBookPct:      { set: 'day-ones', window: 'booked', title: 'Day Ones booked' },
-  vipCount:           { set: 'vips', title: 'VIP referrals' },
-  vipPct:             { set: 'vips', title: 'VIP referrals' },
-  toursGiven:         { set: 'tours', title: 'Tours given' },
-  sameDaySales:       { set: 'tours', title: 'Tours given' },
-  tourConversionRate: { set: 'tours', title: 'Tours given' },
-  dayOnes:            { set: 'day-ones', title: 'Day Ones' },
-  dayOneShowRate:     { set: 'day-ones', filter: 'completed', title: 'Completed Day Ones' },
-  dayOneCloseRate:    { set: 'day-ones', filter: 'sold', title: 'Day Ones sold' },
-  dayOnesPending:     { set: 'day-ones-pending', title: 'Pending outcomes' },
-  newPtRevenue:       { set: 'pt-sales', title: 'PT sold' },
-  lostPtRevenue:      { set: 'pt-losses', title: 'Deactivations' },
-}
+// Club-wide, so no person filter anywhere here. Which set sits behind each
+// stat is declared in ./snapshotDrills, shared with Daily Snapshot, because
+// both reports draw the same STATS list from the same builder.
 
 // ---------------------------------------------------------------------------
 // Club Snapshot — Analytics (admin only)
@@ -60,9 +32,10 @@ const DRILL = {
  * would bury the grid it sits in. A stat with no entry in DRILL, or with no
  * value recorded, renders exactly as it did before.
  */
-function StatCardOrDrill({ stat, drill, comparisonLabel, startDate, endDate, locationSlug }) {
+function StatCardOrDrill({ stat, comparisonLabel, startDate, endDate, locationSlug }) {
   const card = <StatCard stat={stat} comparisonLabel={comparisonLabel} />
-  if (!drill || !stat.value) return card
+  const drill = drillFor(stat)
+  if (!drill) return card
   return (
     <Drillable
       set={drill.set}
@@ -135,7 +108,7 @@ export default function ClubSnapshot({ startDate, endDate, locationSlug }) {
             <StatGroupHeading label={g.label} />
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
               {g.stats.map(s => (
-                <StatCardOrDrill key={s.key} stat={s} drill={DRILL[s.key]}
+                <StatCardOrDrill key={s.key} stat={s}
                   comparisonLabel={data?.meta?.comparisonLabel}
                   startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
               ))}
