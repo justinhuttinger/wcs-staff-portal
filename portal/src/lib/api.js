@@ -2173,3 +2173,12 @@ export async function getChildcareReport({ start, end, locationSlug } = {}, opti
   if (locationSlug) qs.set('location_slug', locationSlug)
   return api('/reports/childcare?' + qs.toString(), options)
 }
+
+// Admin-only Render infrastructure status (mobile "Render" tile). Read-only.
+export async function getRenderStatus(options = {}) {
+  return api('/render-status', options)
+}
+
+export async function getRenderServiceLogs(serviceId, options = {}) {
+  return api('/render-status/' + encodeURIComponent(serviceId) + '/logs', options)
+}

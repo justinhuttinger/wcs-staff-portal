@@ -167,6 +167,10 @@ app.use('/analytics/records', require('./routes/analyticsRecords'))
 // Express falls through from the first to the second.
 app.use('/tours', require('./routes/tourCompletion'))
 app.use('/sync-status', require('./routes/syncStatus'))
+// Admin-only Render infrastructure status for the mobile app: service health,
+// last deploy, month-to-date bandwidth against the plan cap, and error logs.
+// Read-only; it cannot restart or redeploy anything.
+app.use('/render-status', require('./routes/renderStatus'))
 app.use('/day-one-program', require('./routes/dayOneProgram'))
 app.use('/day-one-tracker', require('./routes/dayOneTracker'))
 app.use('/trainer-availability', require('./routes/trainerAvailability'))
