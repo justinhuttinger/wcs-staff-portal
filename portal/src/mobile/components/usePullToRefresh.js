@@ -10,8 +10,19 @@ import { useEffect, useRef, useState } from 'react'
 // preventDefault does nothing, so these are bound to the element directly with
 // { passive: false }.
 //
-// The gesture only starts when the scroller is already AT THE TOP. Anywhere
-// else a downward drag is an ordinary scroll and must stay one.
+// The gesture only starts when the page is already AT THE TOP. Anywhere else a
+// downward drag is an ordinary scroll and must stay one.
+//
+// WHICH ELEMENT IS "THE PAGE" IS NOT OBVIOUS, and getting it wrong is how this
+// first shipped firing from halfway down a report. The element this hook is
+// attached to has overflow-y-auto on it, which looks like the scroller — but on
+// mobile the app's real scroller is an ancestor (MobileApp's own
+// flex-1 overflow-y-auto), and the nested one never constrains its height, so
+// it never scrolls and its scrollTop reads 0 for ever. Every guard against it
+// passed, everywhere on the page.
+//
+// So the scroll position is read from whichever ancestor ACTUALLY scrolls,
+// found by walking up at the moment the finger lands rather than assumed.
 
 /** How far the finger must travel before letting go triggers a refresh. */
 const THRESHOLD = 72
@@ -24,6 +35,44 @@ const MAX_PULL = 110
  * a mechanism behind it rather than a value being assigned to a transform.
  */
 const RESISTANCE = 0.5
+
+/**
+ * The nearest ancestor that genuinely scrolls vertically, or the document.
+ *
+ * Resolved per gesture rather than cached: the layout above this component
+ * differs between the report screens, and an element that does not scroll today
+ * because its content is short may scroll tomorrow when it is not.
+ */
+function scrollParentOf(node) {
+  let el = node
+  while (el && el !== document.body && el !== document.documentElement) {
+    const style = getComputedStyle(el)
+    if (/(auto|scroll|overlay)/.test(style.overflowY) && el.scrollHeight > el.clientHeight + 1) {
+      return el
+    }
+    el = el.parentElement
+  }
+  return document.scrollingElement || document.documentElement
+}
+
+/**
+ * Is everything between the finger and the document already scrolled to the top?
+ *
+ * Every scrollable ancestor is checked, not just the nearest: a report with its
+ * own inner scroller inside the page's scroller must not arm the gesture while
+ * either of them is scrolled down.
+ */
+function atTop(node) {
+  let el = node
+  while (el && el !== document.body && el !== document.documentElement) {
+    const style = getComputedStyle(el)
+    if (/(auto|scroll|overlay)/.test(style.overflowY) && el.scrollHeight > el.clientHeight + 1) {
+      if (el.scrollTop > 0) return false
+    }
+    el = el.parentElement
+  }
+  return (document.scrollingElement || document.documentElement).scrollTop <= 0
+}
 
 /**
  * @param onRefresh  async () => void. Falsy disables the gesture entirely, so a
@@ -43,7 +92,7 @@ export function usePullToRefresh(onRefresh) {
   // value from bind time. Kept in a ref rather than read inside a state updater:
   // an updater must be pure, and React is free to run it twice, which would
   // fire the refresh twice.
-  const state = useRef({ startY: 0, tracking: false, refreshing: false, pull: 0, onRefresh })
+  const state = useRef({ startY: 0, tracking: false, refreshing: false, pull: 0, scroller: null, onRefresh })
   state.current.onRefresh = onRefresh
   state.current.refreshing = refreshing
 
@@ -56,7 +105,11 @@ export function usePullToRefresh(onRefresh) {
     const onTouchStart = (e) => {
       // Only from a standing start at the top, and only for a single finger:
       // a pinch-zoom on a wide table must not be read as a pull.
-      if (el.scrollTop > 0 || e.touches.length !== 1 || state.current.refreshing) return
+      if (e.touches.length !== 1 || state.current.refreshing) return
+      if (!atTop(e.target)) return
+      // Held for the length of the gesture so the move handler can tell when
+      // the page has scrolled out from under the finger.
+      state.current.scroller = scrollParentOf(e.target)
       state.current.startY = e.touches[0].clientY
       state.current.tracking = true
     }
@@ -65,9 +118,10 @@ export function usePullToRefresh(onRefresh) {
       if (!state.current.tracking) return
       const dy = e.touches[0].clientY - state.current.startY
 
-      // Dragging back up, or the scroller has moved off the top under us:
-      // hand the gesture back to the browser rather than half-owning it.
-      if (dy <= 0 || el.scrollTop > 0) {
+      // Dragging back up, or the page has moved off the top under us: hand the
+      // gesture back to the browser rather than half-owning it.
+      const scroller = state.current.scroller
+      if (dy <= 0 || (scroller && scroller.scrollTop > 0)) {
         state.current.tracking = false
         setPullBoth(0)
         return
