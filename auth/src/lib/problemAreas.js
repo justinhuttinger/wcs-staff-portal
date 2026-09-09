@@ -334,6 +334,11 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
       scopes: c.scopes,
       unit: c.unit,
       direction: c.direction,
+      // What the check MEANS and what it counts. The report states this once at
+      // the top rather than repeating it on every row, so a reader who has not
+      // seen the check before can tell what a number is claiming.
+      why: c.why,
+      sampleLabel: c.sampleLabel,
       threshold: thresholdFor(c, settings),
       // Off everywhere. Clubs it is off at individually are listed separately.
       off: isOff(c, settings),
