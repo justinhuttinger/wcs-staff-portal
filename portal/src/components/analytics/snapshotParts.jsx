@@ -57,13 +57,31 @@ export function groupStats(stats, groups) {
   return sections.length > 0 ? sections : [{ key: '__all', label: null, stats: list }]
 }
 
-/** The heading over one section of cards. Nothing where a section has no name. */
+/**
+ * The heading over one section of cards. Nothing where a section has no name.
+ *
+ * Set in a white pill rather than printed straight onto the page. These are the
+ * only text on this report that does not sit inside a card, and under Classic
+ * --color-text-muted is near-black navy, so on a dark backdrop image the
+ * headings disappeared entirely while every card around them stayed readable.
+ *
+ * bg-surface, not a literal white: it resolves to #ffffff under both Classic
+ * and Press, so the pill is white where the reader is looking, and any theme
+ * added later gets its own card colour instead of a white patch nobody
+ * intended. Same reasoning as the cards it sits above — see the dark-backdrop
+ * rule that every content block is wrapped in one.
+ *
+ * inline-flex inside a block, so the pill is as wide as its label rather than
+ * a full-width bar the eye reads as a divider.
+ */
 export function StatGroupHeading({ label }) {
   if (!label) return null
   return (
-    <p className="text-[11px] font-bold uppercase tracking-wide text-text-muted px-0.5">
-      {label}
-    </p>
+    <div>
+      <span className="inline-flex items-center rounded-full bg-surface border border-border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-text-muted">
+        {label}
+      </span>
+    </div>
   )
 }
 
