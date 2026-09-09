@@ -42,4 +42,45 @@ function formatPacific(value) {
   return `${p.month}/${p.day}/${p.year} | ${p.hour}:${p.minute} ${p.dayPeriod}`
 }
 
-module.exports = { formatPacific }
+const DATE_PARTS = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/Los_Angeles',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+/**
+ * The day a pass of `days` runs out, counted from `from`, as "MM-DD-YYYY".
+ *
+ * The count starts from the calendar day at the club, not from the UTC one: a
+ * tour saved after 5pm Pacific has already tipped into tomorrow in UTC, and
+ * counting from there would hand out an extra day.
+ *
+ * Returns null when there is no pass to date -- no day count, or a count of
+ * zero -- so "no pass" stays distinguishable from a pass ending today.
+ *
+ * @param {string|number|Date|null|undefined} from
+ * @param {number|string|null|undefined} days
+ * @returns {string|null}
+ */
+function passEndDate(from, days) {
+  const n = Number(days)
+  if (!Number.isFinite(n) || n < 1) return null
+
+  const start = from == null || from === '' ? new Date() : new Date(from)
+  if (Number.isNaN(start.getTime())) return null
+
+  const p = {}
+  for (const { type, value } of DATE_PARTS.formatToParts(start)) p[type] = value
+
+  // Rebuilt as a UTC midnight so the day arithmetic cannot be nudged by an
+  // offset, then read back with the UTC getters. Calendar-safe across month,
+  // year and daylight-saving boundaries.
+  const d = new Date(Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)))
+  d.setUTCDate(d.getUTCDate() + n)
+
+  const pad = v => String(v).padStart(2, '0')
+  return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}-${d.getUTCFullYear()}`
+}
+
+module.exports = { formatPacific, passEndDate }
