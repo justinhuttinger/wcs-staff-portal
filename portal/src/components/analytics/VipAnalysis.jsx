@@ -7,14 +7,20 @@ import { zebra, HOVER_TINT } from './tableTints'
 // ---------------------------------------------------------------------------
 // VIP Analysis — Analytics (corporate+)
 //
-// One question: of the VIP referrals collected, how many walked in and how many
-// joined. The drop between the three is the whole report, which is why they sit
-// on one row and the rates are printed beside the counts rather than on a chart
-// of their own.
+// One question: of the VIP referrals collected, how many got going and how many
+// joined. The drop between them is the whole report, which is why they sit on
+// one row and the rates are printed beside the counts rather than on a chart of
+// their own.
 //
-// The two rates answer different people. Came In % is a marketing number — the
-// referral was taken but the person never turned up. Joined of Visits is a
-// floor number — they turned up and nobody closed them. A single "VIP
+// CAME IN IS THE TRIAL STARTED PIPELINE STAGE. It was completed tours to begin
+// with, and that was wrong: one of September's 176 referrals had a tour on
+// record, because VIPs are worked in GHL rather than walked through the tour
+// check-in. Pass Redeemed sits beside it as its own column rather than being
+// folded in, because the two disagree by club.
+//
+// The rates answer different people. Came In % is a referral-quality number —
+// the referral was taken and the person never got going. Joined of Visits is a
+// floor number — they got going and nobody closed them. A single "VIP
 // conversion" figure would hide which of the two went wrong.
 //
 // A blank cell is never a zero here: see auth/src/lib/vipAnalysis. The report
@@ -33,6 +39,7 @@ const TILES = [
   { key: 'collected', label: 'VIPs Collected', format: 'int' },
   { key: 'cameIn', label: 'Came In', format: 'int' },
   { key: 'cameInPct', label: 'Came In %', format: 'pct' },
+  { key: 'passRedeemed', label: 'Pass Redeemed', format: 'int' },
   { key: 'signedUp', label: 'Signed Up', format: 'int' },
   { key: 'signedUpPct', label: 'Signed Up %', format: 'pct' },
   { key: 'closedOfVisitsPct', label: 'Joined of Visits', format: 'pct' },
@@ -84,6 +91,7 @@ export default function VipAnalysis({ startDate, endDate, locationSlug }) {
   const maxima = useMemo(() => ({
     collected: Math.max(0, ...rows.map(r => r.collected || 0)),
     cameIn: Math.max(0, ...rows.map(r => r.cameIn || 0)),
+    passRedeemed: Math.max(0, ...rows.map(r => r.passRedeemed || 0)),
     signedUp: Math.max(0, ...rows.map(r => r.signedUp || 0)),
   }), [rows])
 
@@ -99,7 +107,8 @@ export default function VipAnalysis({ startDate, endDate, locationSlug }) {
 
   const summary = data?.summary || {}
   const noVip = data?.meta?.unconfiguredVip || []
-  const noTours = data?.meta?.noTourHistory || []
+  const noTrial = data?.meta?.noTrialStage || []
+  const noPass = data?.meta?.noPassStage || []
 
   return (
     <div className="space-y-3">
@@ -121,9 +130,10 @@ export default function VipAnalysis({ startDate, endDate, locationSlug }) {
             </button>
           ))}
         </div>
-        <p className="text-[11px] text-text-muted ml-auto">
-          A referral counts as having come in or joined only if it happened AFTER
-          the referral, within {data?.meta?.attributionDays ?? 30} days of the window closing.
+        <p className="text-[11px] text-text-muted ml-auto max-w-[46rem] text-right">
+          Came In means the contact reached the <strong className="font-semibold">Trial Started</strong> stage
+          in GHL; Pass Redeemed is the VIP pipeline&rsquo;s own stage. Both count only if reached AFTER
+          the referral. Signing up is counted within {data?.meta?.attributionDays ?? 30} days of the window closing.
         </p>
       </div>
 
@@ -153,7 +163,7 @@ export default function VipAnalysis({ startDate, endDate, locationSlug }) {
                   <th scope="col" className="sticky left-0 top-0 z-30 bg-surface text-left font-semibold text-text-primary px-4 py-3 min-w-[200px] border-b border-border">
                     {viewBy === 'club' ? 'Club' : 'Collected By'}
                   </th>
-                  {['Collected', 'Came In', 'Signed Up'].map((label, i) => (
+                  {['Collected', 'Came In', 'Pass Redeemed', 'Signed Up'].map((label, i) => (
                     <th key={label} scope="col"
                       className={`sticky top-0 z-20 text-left font-semibold text-text-muted px-3 py-3 text-xs min-w-[170px] border-b border-border ${zebra(i)}`}>
                       {label}
@@ -177,6 +187,9 @@ export default function VipAnalysis({ startDate, endDate, locationSlug }) {
                       <FunnelCell value={r.cameIn} pctValue={r.cameInPct} max={maxima.cameIn} tone="bg-sky-500/70" />
                     </td>
                     <td className={`px-3 py-2 border-b border-border/60 ${zebra(2)} ${HOVER_TINT}`}>
+                      <FunnelCell value={r.passRedeemed} pctValue={r.passRedeemedPct} max={maxima.passRedeemed} tone="bg-amber-500/70" />
+                    </td>
+                    <td className={`px-3 py-2 border-b border-border/60 ${zebra(3)} ${HOVER_TINT}`}>
                       <FunnelCell value={r.signedUp} pctValue={r.signedUpPct} max={maxima.signedUp} tone="bg-teal-500/70" />
                     </td>
                     <td className={`px-3 py-2 border-b border-border/60 text-right ${HOVER_TINT}`}>
@@ -194,7 +207,7 @@ export default function VipAnalysis({ startDate, endDate, locationSlug }) {
 
       {/* Why a cell is blank, said out loud. An N/A the reader has to guess at
           is worse than the zero it was put there to avoid. */}
-      {(noVip.length > 0 || noTours.length > 0) && (
+      {(noVip.length > 0 || noTrial.length > 0 || noPass.length > 0) && (
         <div className="text-[11px] text-text-muted px-1 space-y-1">
           {noVip.length > 0 && (
             <p>
@@ -202,11 +215,16 @@ export default function VipAnalysis({ startDate, endDate, locationSlug }) {
               collected there. Those clubs read N/A rather than zero.
             </p>
           )}
-          {noTours.length > 0 && (
+          {noTrial.length > 0 && (
             <p>
-              No completed tour has ever been recorded at {noTours.join(', ')} — tours were
-              not stored before the check-in module kept them — so Came In is withheld
-              there rather than reported as nobody turning up.
+              No pipeline at {noTrial.join(', ')} has a Trial Started stage, so Came In is
+              withheld there rather than reported as nobody getting going.
+            </p>
+          )}
+          {noPass.length > 0 && (
+            <p>
+              No VIP pipeline at {noPass.join(', ')} has a Pass Redeemed stage. Clubs differ
+              on which of the two stages they work, which is why both are shown.
             </p>
           )}
         </div>
