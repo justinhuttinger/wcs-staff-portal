@@ -39,10 +39,10 @@ import { getReportInfo } from '../lib/reportInfo'
 import { marketingAccess } from '../config/marketingAccess'
 // Analytics reuses the desktop report registry wholesale — see MobileAnalytics.
 import {
-  MobileAnalyticsHome, MobileAnalyticsReport, reportHidesDates, reportLabel,
+  MobileAnalyticsHome, MobileAnalyticsReport, MobileFavoriteStar, reportHidesDates, reportLabel,
 } from './components/analytics/MobileAnalytics'
 import { getTheme, THEME_EVENT } from '../lib/theme'
-import { hydrateUiPrefs } from '../lib/uiPrefs'
+import { hydrateUiPrefs, startUiPrefsSync } from '../lib/uiPrefs'
 
 // Icons for bottom tab bar (Heroicons outline)
 function HomeIcon({ active }) {
@@ -156,6 +156,12 @@ export default function MobileApp() {
   // inheriting the previous person's look on a shared phone.
   useEffect(() => {
     if (!user?.staff?.id) return
+    // Started before the pull, as the desktop does. Without it this app READ
+    // the server's preferences and never wrote any back: a report starred on a
+    // phone lived in that browser's localStorage and was gone the next time
+    // hydrate overwrote it with the server's copy. Idempotent, so the
+    // re-run on a different staff id does not stack listeners.
+    startUiPrefsSync()
     hydrateUiPrefs().catch(() => {})
   }, [user?.staff?.id])
 
@@ -324,7 +330,11 @@ export default function MobileApp() {
       return (
         <div className="pt-2">
           <div className="px-4">
-            <MobileHeader title={reportLabel(reportKey)} onBack={() => navigate('analytics')} />
+            <MobileHeader
+              title={reportLabel(reportKey)}
+              onBack={() => navigate('analytics')}
+              rightAction={<MobileFavoriteStar reportKey={reportKey} />}
+            />
           </div>
           {/* hideDateRange follows the report's own `dates: false`, so the ones
               anchored on their own windows (Topline, Club Activity Trends) do
