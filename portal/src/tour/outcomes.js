@@ -9,7 +9,8 @@
 
 export const VIP_PASS = 'Started VIP Pass'
 export const CUSTOM_PASS = 'Custom Pass'
-export const OUTCOMES = ['Membership Sale', 'Started Trial', VIP_PASS, 'Only Tour', CUSTOM_PASS]
+export const DAY_PASS = 'Day Pass'
+export const OUTCOMES = ['Membership Sale', 'Started Trial', VIP_PASS, DAY_PASS, 'Only Tour', CUSTOM_PASS]
 
 // Outcomes that hand out gym access, and for how long. A trial and a VIP pass
 // are just fixed-length versions of a custom pass, so they take the same route:
@@ -19,6 +20,9 @@ export const OUTCOMES = ['Membership Sale', 'Started Trial', VIP_PASS, 'Only Tou
 export const PASS_DAYS = {
   'Started Trial': 7,
   [VIP_PASS]: 14,
+  // A day pass is one day. Its length is in its name, so unlike a custom pass
+  // there is nothing for staff to type.
+  [DAY_PASS]: 1,
 }
 
 export const grantsAPass = outcome => outcome === CUSTOM_PASS || outcome in PASS_DAYS
