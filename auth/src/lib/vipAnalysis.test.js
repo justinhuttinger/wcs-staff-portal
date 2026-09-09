@@ -26,12 +26,16 @@ const member = (over = {}) => ({
   first_name: 'Pat', last_name: 'Prospect', ...over,
 })
 
+// `reached` is contact id -> the day each pipeline stage was reached.
+const reach = (pairs) => new Map(pairs)
+
 const opts = (over = {}) => ({
   contactsById: new Map([contact('c1')]),
-  tours: [],
+  reached: new Map(),
   members: [],
   vipClubs: new Set([SALEM, KEIZER]),
-  tourClubs: new Set([SALEM, KEIZER]),
+  trialClubs: new Set([SALEM, KEIZER]),
+  passClubs: new Set([SALEM, KEIZER]),
   viewBy: 'club',
   ...over,
 })
@@ -42,9 +46,9 @@ const row = (out, key) => out.rows.find(r => r.key === key)
 // The funnel
 // ---------------------------------------------------------------------------
 
-test('a referral who toured and joined counts at all three steps', () => {
+test('a referral who started a trial and joined counts at all three steps', () => {
   const out = buildVipAnalysis([credit()], opts({
-    tours: [{ ghl_contact_id: 'c1', completed_at: '2026-08-14T18:00:00Z' }],
+    reached: reach([['c1', { trial: '2026-08-14', pass: null }]]),
     members: [member()],
   }))
   const r = row(out, 'salem')
@@ -68,11 +72,22 @@ test('a referral who never came in is collected only', () => {
 // conversion on the day they were referred, which is exactly backwards.
 // ---------------------------------------------------------------------------
 
-test('a tour BEFORE the referral is not that referral arriving', () => {
+test('a stage reached BEFORE the referral is not that referral arriving', () => {
   const out = buildVipAnalysis([credit()], opts({
-    tours: [{ ghl_contact_id: 'c1', completed_at: '2026-08-02T18:00:00Z' }],
+    reached: reach([['c1', { trial: '2026-08-02', pass: null }]]),
   }))
   assert.strictEqual(row(out, 'salem').cameIn, 0)
+})
+
+test('Pass Redeemed is counted in its own column, not folded into Came In', () => {
+  // The two disagree by club — Medford records trial starts and no redemptions,
+  // Eugene the reverse — so neither is allowed to stand in for the other.
+  const out = buildVipAnalysis([credit()], opts({
+    reached: reach([['c1', { trial: null, pass: '2026-08-14' }]]),
+  }))
+  const r = row(out, 'salem')
+  assert.strictEqual(r.cameIn, 0)
+  assert.strictEqual(r.passRedeemed, 1)
 })
 
 test('someone who joined BEFORE being referred was not converted by it', () => {
@@ -80,17 +95,6 @@ test('someone who joined BEFORE being referred was not converted by it', () => {
     members: [member({ since_date: '2026-07-01', sign_date: '2026-07-01' })],
   }))
   assert.strictEqual(row(out, 'salem').signedUp, 0)
-})
-
-test('the FIRST tour after the referral is the one that counts', () => {
-  const out = buildVipAnalysis([credit()], opts({
-    tours: [
-      { ghl_contact_id: 'c1', completed_at: '2026-08-01T18:00:00Z' },
-      { ghl_contact_id: 'c1', completed_at: '2026-08-12T18:00:00Z' },
-    ],
-  }))
-  // One person who came in once, not two visits and not zero.
-  assert.strictEqual(row(out, 'salem').cameIn, 1)
 })
 
 // ---------------------------------------------------------------------------
@@ -107,11 +111,11 @@ test('a club that has never credited a VIP is withheld, not zeroed', () => {
   assert.strictEqual(r.signedUpPct, null)
 })
 
-test('a club with no tour history withholds Came In but still reports the rest', () => {
-  // Tours were not stored at all before the check-in module kept them. Zero
-  // there would say nobody visited, which is a claim about our storage.
+test('a club whose GHL has no Trial Started stage withholds Came In', () => {
+  // Zero there would say nobody came in, which is a claim about the staff when
+  // the truth is a claim about that club's pipelines.
   const out = buildVipAnalysis([credit()], opts({
-    tourClubs: new Set([KEIZER]),
+    trialClubs: new Set([KEIZER]),
     members: [member()],
   }))
   const r = row(out, 'salem')
@@ -122,14 +126,14 @@ test('a club with no tour history withholds Came In but still reports the rest',
   assert.strictEqual(r.signedUp, 1)
 })
 
-test('the headline come-in rate divides only by clubs that keep tours', () => {
-  // Otherwise a club with no tour history drags the rate down for everyone.
+test('the headline came-in rate divides only by clubs that have the stage', () => {
+  // Otherwise a club whose GHL lacks it drags the rate down for everyone.
   const out = buildVipAnalysis(
     [credit(), credit({ club_number: KEIZER, ghl_contact_id: 'c2' })],
     opts({
       contactsById: new Map([contact('c1'), contact('c2')]),
-      tourClubs: new Set([KEIZER]),
-      tours: [{ ghl_contact_id: 'c2', completed_at: '2026-08-14T18:00:00Z' }],
+      trialClubs: new Set([KEIZER]),
+      reached: reach([['c2', { trial: '2026-08-14', pass: null }]]),
     }),
   )
   assert.strictEqual(out.summary.collected, 2)

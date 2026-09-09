@@ -201,7 +201,10 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'vip-analysis',
-    records: ['vips', 'tours', 'new-members'],
+    // Not 'tours': Came In is a GHL pipeline stage, and tours turned out to
+    // have almost nothing to do with how a VIP referral is actually worked.
+    records: ['vips', 'new-members'],
+    recordsNote: 'Came In and Pass Redeemed are GHL pipeline stages, which have no record view here.',
     label: 'VIP Analysis',
     desc: 'Referrals In and Signed',
     Component: VipAnalysis,

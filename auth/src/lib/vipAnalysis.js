@@ -2,32 +2,46 @@
 //
 // Three numbers per row, and the whole point is the drop between them:
 //
-//   Collected  a VIP credit was recorded in the window (vip_credits)
-//   Came In    that person later completed a tour  (tour_intakes, status=completed)
-//   Signed Up  that person later joined            (abc_members)
+//   Collected  a VIP credit was recorded in the window  (vip_credits)
+//   Came In    that person reached the Trial Started stage in GHL
+//   Signed Up  that person later joined                 (abc_members)
 //
-// Each step is measured on the SAME person, matched through their GHL contact
-// id, so the funnel narrows honestly instead of comparing three separately
-// counted populations that happen to sit next to each other.
+// CAME IN IS A PIPELINE STAGE, NOT A TOUR. This first shipped measuring it from
+// completed tour_intakes rows, and the answer was wrong: across September, ONE
+// of 176 VIP referrals had a completed tour against their name. VIPs are not
+// walked through the tour check-in — they are worked in GHL, so the record that
+// they came in is their opportunity moving down a pipeline.
 //
-// EVERY STEP MUST HAPPEN AFTER THE ONE BEFORE IT. A tour that predates the
-// referral is not that referral arriving, and a member who joined before being
-// referred was not converted by it. Without the ordering rule an existing
-// member who gets referred by a friend would score a conversion on the day they
-// were referred, which is exactly backwards.
+// Matched on the STAGE NAME alone, deliberately, not on stage plus pipeline.
+// 'Trial Started' exists in two pipelines — Membership Pipeline at five clubs
+// and Standard Member Pipeline at one — and it exists in no others, so the name
+// is already unambiguous. Pinning the pipeline name would silently report zero
+// at the club using the other one.
 //
-// NOT CONFIGURED IS NOT ZERO, and this report has two of them:
+// Pass Redeemed rides alongside as its own column, for the same reason it is
+// not the headline: it is the VIP Pipeline's own "they used the pass" stage,
+// and the two disagree by club. Over the last 90 days Medford recorded 20 trial
+// starts and zero redemptions while Eugene recorded zero trial starts and one
+// redemption. Neither stage alone describes every club, so the report shows
+// both rather than picking one and calling the other clubs' VIPs a failure.
+//
+// ORDERING. A stage reached before the referral is not that referral arriving,
+// so last_stage_change_at must fall on or after the credit. Two limits worth
+// knowing: an opportunity carries only its CURRENT stage, so one that moved
+// past Trial Started is no longer visible as having reached it; and
+// last_stage_change_at is when it last moved, which for a row sitting in Trial
+// Started is when it arrived there.
+//
+// NOT CONFIGURED IS NOT ZERO, and this report has three of them:
 //
 //   - Milwaukie has never recorded a VIP credit, because its GHL location has
-//     no VIP fields set up. "0 VIPs collected" makes a claim about the staff
-//     when the truth is a claim about the setup.
-//   - Completed tours have only been kept since the tour check-in module
-//     started storing them; before that the row was deleted on completion. Any
-//     window earlier than a club's first recorded tour would show every VIP
-//     failing to come in, which is a claim about our storage, not about them.
+//     no VIP fields set up.
+//   - A club whose GHL location has no pipeline containing Trial Started cannot
+//     produce that number at all.
+//   - Likewise Pass Redeemed, which only exists inside the VIP Pipeline.
 //
-// Both are judged over the LIFETIME of the table rather than the window, or a
-// club with a slow month would be branded unconfigured.
+// Each is judged on what the club's GHL account actually has, not on whether
+// the window happened to be quiet.
 
 const { buildMemberIndex, matchMember, displayName, CLUB_BY_NUMBER, pct } = require('./salespersonPerformance')
 const { UNASSIGNED_LABEL } = require('./analyticsSegments')
@@ -44,33 +58,22 @@ function dayOf(ts) {
 /**
  * @param credits          vip_credits rows: { ghl_contact_id, club_number, employee_name, credited_at }
  * @param opts.contactsById   Map of GHL contact id -> contact (email/phone/name)
- * @param opts.tours          completed tour_intakes: { ghl_contact_id, completed_at }
+ * @param opts.reached        Map of contact id -> { trial, pass } as YYYY-MM-DD
+ *                            dates the stage was reached, or null
  * @param opts.members        abc_members from the window onward, for the join
  * @param opts.vipClubs       Set of club numbers that have EVER credited a VIP
- * @param opts.tourClubs      Set of club numbers that have EVER completed a tour
+ * @param opts.trialClubs     Set of club numbers whose GHL has a Trial Started stage
+ * @param opts.passClubs      Set of club numbers whose GHL has a Pass Redeemed stage
  * @param opts.viewBy         'club' | 'collector'
  */
 function buildVipAnalysis(credits, opts = {}) {
   const viewBy = VIEW_BY.includes(opts.viewBy) ? opts.viewBy : 'club'
   const contactsById = opts.contactsById || new Map()
   const vipClubs = opts.vipClubs || new Set()
-  const tourClubs = opts.tourClubs || new Set()
+  const trialClubs = opts.trialClubs || new Set()
+  const passClubs = opts.passClubs || new Set()
 
-  // EVERY completed tour per contact, not just the earliest.
-  //
-  // Taking the earliest and then testing it against the referral date gets
-  // somebody who had toured before AND came back after exactly backwards: the
-  // earlier visit fails the test and the later one is never looked at, so a
-  // returning prospect scores as never having come in. The question is whether
-  // there is ANY tour on or after the referral, so keep them all.
-  const toursByContact = new Map()
-  for (const t of (opts.tours || [])) {
-    const d = dayOf(t.completed_at)
-    if (!t.ghl_contact_id || !d) continue
-    const list = toursByContact.get(t.ghl_contact_id) || []
-    list.push(d)
-    toursByContact.set(t.ghl_contact_id, list)
-  }
+  const reached = opts.reached || new Map()
 
   const index = buildMemberIndex(opts.members || [])
 
@@ -80,7 +83,7 @@ function buildVipAnalysis(credits, opts = {}) {
       rows.set(key, {
         key, label,
         clubNumbers: new Set(),
-        collected: 0, cameIn: 0, signedUp: 0,
+        collected: 0, cameIn: 0, passRedeemed: 0, signedUp: 0,
       })
     }
     const row = rows.get(key)
@@ -103,11 +106,10 @@ function buildVipAnalysis(credits, opts = {}) {
 
     row.collected += 1
 
-    // Counted once per referral however many times they toured: this is a
-    // count of people who came in, not of visits.
-    const cameIn = !!creditedOn
-      && (toursByContact.get(c.ghl_contact_id) || []).some(d => d >= creditedOn)
-    if (cameIn) row.cameIn += 1
+    // Counted once per referral: this is a count of people, not of stage moves.
+    const hit = reached.get(c.ghl_contact_id) || null
+    if (creditedOn && hit?.trial && hit.trial >= creditedOn) row.cameIn += 1
+    if (creditedOn && hit?.pass && hit.pass >= creditedOn) row.passRedeemed += 1
 
     const contact = contactsById.get(c.ghl_contact_id) || null
     const member = contact ? matchMember(index, contact, {}) : null
@@ -122,22 +124,25 @@ function buildVipAnalysis(credits, opts = {}) {
   const out = [...rows.values()]
     .map(r => {
       const vipOk = anyIn(r, vipClubs)
-      const tourOk = anyIn(r, tourClubs)
+      const trialOk = anyIn(r, trialClubs)
+      const passOk = anyIn(r, passClubs)
       return {
         key: r.key,
         label: r.label,
         collected: vipOk ? r.collected : null,
-        // Withheld rather than zeroed where tours were never kept: see the
-        // header. The rate goes with it — a percentage of an unknown is not a
+        // Withheld rather than zeroed where the club's GHL has no such stage:
+        // the rate goes with it, because a percentage of an unknown is not a
         // smaller number, it is not a number.
-        cameIn: vipOk && tourOk ? r.cameIn : null,
-        cameInPct: vipOk && tourOk ? pct(r.cameIn, r.collected) : null,
+        cameIn: vipOk && trialOk ? r.cameIn : null,
+        cameInPct: vipOk && trialOk ? pct(r.cameIn, r.collected) : null,
+        passRedeemed: vipOk && passOk ? r.passRedeemed : null,
+        passRedeemedPct: vipOk && passOk ? pct(r.passRedeemed, r.collected) : null,
         signedUp: vipOk ? r.signedUp : null,
         signedUpPct: vipOk ? pct(r.signedUp, r.collected) : null,
-        // Of the ones who actually walked in, how many joined. The number a
-        // manager can act on: a low come-in rate is a marketing problem, a low
-        // close-on-arrival rate is a floor problem.
-        closedOfVisitsPct: vipOk && tourOk ? pct(r.signedUp, r.cameIn) : null,
+        // Of the ones who actually got going, how many joined. The number a
+        // manager can act on: a low came-in rate is a referral-quality problem,
+        // a low close-on-arrival rate is a floor problem.
+        closedOfVisitsPct: vipOk && trialOk ? pct(r.signedUp, r.cameIn) : null,
       }
     })
     // Rows with nothing in them are dropped entirely rather than listed as
@@ -146,15 +151,18 @@ function buildVipAnalysis(credits, opts = {}) {
     .sort((a, b) => (b.collected || 0) - (a.collected || 0) || a.label.localeCompare(b.label))
 
   const summable = out.filter(r => r.collected !== null)
-  const tourable = out.filter(r => r.cameIn !== null)
+  const trialable = out.filter(r => r.cameIn !== null)
+  const passable = out.filter(r => r.passRedeemed !== null)
   const sum = (list, key) => list.reduce((a, r) => a + (r[key] || 0), 0)
 
   const collected = sum(summable, 'collected')
-  const cameIn = tourable.length > 0 ? sum(tourable, 'cameIn') : null
+  const cameIn = trialable.length > 0 ? sum(trialable, 'cameIn') : null
+  const passRedeemed = passable.length > 0 ? sum(passable, 'passRedeemed') : null
   const signedUp = sum(summable, 'signedUp')
-  // The come-in denominator is only the clubs that KEEP tours, or a club with
-  // no tour history would drag the headline rate down for everyone else.
-  const tourableCollected = sum(tourable, 'collected')
+  // Each rate divides only by the clubs that can produce its numerator, or one
+  // club whose GHL lacks the stage would drag the headline down for everyone.
+  const trialableCollected = sum(trialable, 'collected')
+  const passableCollected = sum(passable, 'collected')
 
   return {
     viewBy,
@@ -162,10 +170,12 @@ function buildVipAnalysis(credits, opts = {}) {
     summary: {
       collected,
       cameIn,
-      cameInPct: cameIn === null ? null : pct(cameIn, tourableCollected),
+      cameInPct: cameIn === null ? null : pct(cameIn, trialableCollected),
+      passRedeemed,
+      passRedeemedPct: passRedeemed === null ? null : pct(passRedeemed, passableCollected),
       signedUp,
       signedUpPct: pct(signedUp, collected),
-      closedOfVisitsPct: cameIn === null ? null : pct(sum(tourable, 'signedUp'), cameIn),
+      closedOfVisitsPct: cameIn === null ? null : pct(sum(trialable, 'signedUp'), cameIn),
     },
     hasActivity: collected > 0,
   }
