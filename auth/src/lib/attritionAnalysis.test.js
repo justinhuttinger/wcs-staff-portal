@@ -196,3 +196,50 @@ test('the comparison is named, so a card can say what it is measured against', (
   const out = buildAttritionAnalysis([cancel()], [], { comparisonLabel: 'July MTD' })
   assert.strictEqual(out.comparisonLabel, 'July MTD')
 })
+
+// --- cancellation reasons ---------------------------------------------------
+// A reason exists only where the member cancelled through Click2Save, which is
+// a minority of cancellations. The tally must describe that minority honestly
+// rather than dressing the rest up as an answer.
+
+test('reasons are tallied only for the members who have one', () => {
+  const out = buildAttritionAnalysis(
+    [
+      cancel({ member_id: 'A' }),
+      cancel({ member_id: 'B' }),
+      cancel({ member_id: 'C' }),
+    ],
+    [],
+    { reasonByMember: new Map([['A', 'Move'], ['B', 'Move']]) },
+  )
+  assert.deepStrictEqual(out.breakdowns.byReason, [
+    { label: 'Move', count: 2, agreements: 1 },
+  ])
+})
+
+test('members with no reason are NOT bucketed as Unspecified', () => {
+  // Counting them would put the biggest bar on the chart under a label nobody
+  // gave, and every real reason would read as rare beside it.
+  const out = buildAttritionAnalysis(
+    [cancel({ member_id: 'A' }), cancel({ member_id: 'B' })],
+    [],
+    { reasonByMember: new Map([['A', 'Medical']]) },
+  )
+  assert.strictEqual(out.breakdowns.byReason.length, 1)
+  assert.strictEqual(out.breakdowns.byReason[0].label, 'Medical')
+})
+
+test('coverage is reported so the panel can name its denominator', () => {
+  const out = buildAttritionAnalysis(
+    [cancel({ member_id: 'A' }), cancel({ member_id: 'B' }), cancel({ member_id: 'C' })],
+    [],
+    { reasonByMember: new Map([['A', 'Move']]) },
+  )
+  assert.deepStrictEqual(out.reasonCoverage, { withReason: 1, total: 3 })
+})
+
+test('with no reasons at all the panel is empty rather than wrong', () => {
+  const out = buildAttritionAnalysis([cancel({ member_id: 'A' })], [], {})
+  assert.deepStrictEqual(out.breakdowns.byReason, [])
+  assert.deepStrictEqual(out.reasonCoverage, { withReason: 0, total: 1 })
+})

@@ -30,6 +30,10 @@ const FRESH_MS = 5 * 60 * 1000
 const STALE_MS = 30 * 60 * 1000
 const SERIES_MONTHS = 13
 
+// PostgREST caps how long an `in` list may be, and a busy quarter of losses is
+// well past a few hundred members.
+const CHUNK = 200
+
 const MEMBER_FIELDS =
   'first_name, last_name, member_id, membership_type, agreement_number, member_status, ' +
   // is_primary_member is here for the agreements basis; without it the filter
@@ -135,16 +139,50 @@ router.get('/', async (req, res) => {
         monthly.push(byMonth.get(m) || { month: m, count: 0, insurance: 0, membership: 0 })
       }
 
+      const kept = windowRows.filter(keep)
+
+      // Why they cancelled, from Click2Save. Fetched for THESE members rather
+      // than for a date range: a member who requested cancellation in one month
+      // and ended in the next still gave their reason, and a range on the event
+      // would lose them.
+      const memberIds = [...new Set(kept.map(r => String(r.member_id)).filter(Boolean))]
+      const events = []
+      for (let i = 0; i < memberIds.length; i += CHUNK) {
+        events.push(...(await fetchAll(supabaseAdmin
+          .from('click2save_events_expanded')
+          .select('member_id, cancel_reason, cancel_code, occurred_at')
+          .eq('request_type', 'CANCEL')
+          .in('member_id', memberIds.slice(i, i + CHUNK)))))
+      }
+
+      // The most recent cancel request per member. A member who joined, left,
+      // came back and left again has two, and the one that ended the membership
+      // this report is looking at is the later one.
+      const reasons = {}
+      const seenAt = {}
+      for (const e of events) {
+        const reason = e.cancel_reason || e.cancel_code
+        if (!reason) continue
+        const at = String(e.occurred_at || '')
+        const id = String(e.member_id)
+        if (!seenAt[id] || at > seenAt[id]) {
+          seenAt[id] = at
+          reasons[id] = reason
+        }
+      }
+
       return {
-        rows: windowRows.filter(keep),
+        rows: kept,
         priorRows: priorRows.filter(keep),
         pending: pendingRows.filter(keep),
         monthly,
+        reasons,
       }
     })
 
     const built = buildAttritionAnalysis(payload.rows, payload.pending, {
       monthly: payload.monthly,
+      reasonByMember: new Map(Object.entries(payload.reasons || {})),
       priorRows: payload.priorRows,
       comparisonLabel: priorLabel(start, end),
     })

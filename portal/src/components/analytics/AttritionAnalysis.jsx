@@ -32,6 +32,18 @@ const DRILL = {
   pending:    { set: 'pending-cancels', title: 'Scheduled to cancel' },
 }
 
+/**
+ * "Why They Cancelled" with its denominator in the heading.
+ *
+ * Stated on the panel itself rather than only in the note below, because a
+ * screenshot of the chart travels without the note and would otherwise claim to
+ * explain every cancellation.
+ */
+function reasonTitle(coverage) {
+  if (!coverage?.total) return 'Why They Cancelled'
+  return `Why They Cancelled (${fmtInt(coverage.withReason)} of ${fmtInt(coverage.total)})`
+}
+
 export default function AttritionAnalysis({ startDate, endDate, locationSlug, category, basis }) {
   const [exclusion, setExclusion] = useState('exclude')
 
@@ -121,6 +133,15 @@ export default function AttritionAnalysis({ startDate, endDate, locationSlug, ca
           rows={data?.breakdowns?.byType}
           empty="Nothing ended in this range."
         />
+        {/* Why they left, where we know. The title carries the denominator
+            because this panel is the one most likely to be read as covering
+            everybody: a reason exists only where the member cancelled through
+            Click2Save, and most do not. */}
+        <BreakdownPanel
+          title={reasonTitle(data?.reasonCoverage)}
+          rows={data?.breakdowns?.byReason}
+          empty="No cancellation reasons recorded in this range."
+        />
         {/* Paying memberships only: an insurance cancellation is the provider's
             decision, not the salesperson's outcome. */}
         <BreakdownPanel
@@ -131,6 +152,18 @@ export default function AttritionAnalysis({ startDate, endDate, locationSlug, ca
       </div>
 
       <PendingQueue rows={data?.pending} params={params} />
+
+      {data?.reasonCoverage?.total > 0 && (
+        <p className="text-[11px] text-text-muted px-1 leading-snug">
+          A reason is recorded only where the member cancelled through Click2Save.
+          Cancelling at the desk, over the phone, or by letting an agreement expire
+          leaves none, which is why the reasons cover{' '}
+          {fmtInt(data.reasonCoverage.withReason)} of {fmtInt(data.reasonCoverage.total)}{' '}
+          of the memberships that ended here. The reasons that ARE recorded are a
+          controlled list, not free text, so the shares between them are comparable
+          even though they describe a minority.
+        </p>
+      )}
 
       {data?.note && (
         <p className="text-[11px] text-text-muted px-1 leading-snug">{data.note}</p>
