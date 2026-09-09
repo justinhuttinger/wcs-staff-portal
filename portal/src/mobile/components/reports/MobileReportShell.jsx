@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import LocationMultiSelect from '../../../components/LocationMultiSelect'
+import { usePullToRefresh } from '../usePullToRefresh'
+import WcsLoadingMark from '../../../components/WcsLoadingMark'
 
 const LOCATIONS = [
   { slug: 'all', label: 'All' },
@@ -44,7 +46,11 @@ function getQuickRange(key) {
  * title — the screen already has one in its header. For screens whose body is
  * edge to edge, where a floating card on top of it reads as two designs.
  */
-export default function MobileReportShell({ title, children, user, hideDateRange, flush = false }) {
+export default function MobileReportShell({ title, children, user, hideDateRange, flush = false, onRefresh }) {
+  // Pull down at the top to reload. Opt-in: a screen with nothing to refresh
+  // passes no handler and keeps ordinary scrolling.
+  const { ref: pullRef, pull, refreshing, armed } = usePullToRefresh(onRefresh)
+
   const defaultLocSlug = ['corporate', 'admin', 'director'].includes(user?.staff?.role)
     ? 'all'
     : (user?.staff?.locations?.find(l => l.is_primary)?.name || user?.staff?.locations?.[0]?.name || 'salem').toLowerCase()
@@ -140,9 +146,46 @@ export default function MobileReportShell({ title, children, user, hideDateRange
       )}
       </div>
 
-      {/* Report content */}
-      <div className="flex-1 overflow-y-auto">
-        {children({ startDate, endDate, locationSlug })}
+      {/* Report content.
+          overscroll-contain is not decoration: without it, a pull at the top
+          hands the gesture to the browser, and on an installed PWA that
+          reloads the whole app and drops the reader back where they started.
+
+          The indicator sits BEHIND the content and the content slides down off
+          it, so nothing is pushed around on a screen that is not pulling. */}
+      <div ref={pullRef} className="flex-1 overflow-y-auto relative" style={{ overscrollBehaviorY: 'contain' }}>
+        {onRefresh && (
+          <div
+            className="absolute inset-x-0 top-0 flex items-start justify-center pointer-events-none z-10"
+            style={{ height: pull, opacity: pull > 6 ? 1 : 0 }}
+            aria-hidden={!refreshing}
+          >
+            <div className="pt-2">
+              {refreshing ? (
+                <WcsLoadingMark size={22} />
+              ) : (
+                <svg
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                  className={`w-5 h-5 transition-transform ${
+                    armed ? 'rotate-180 text-wcs-red' : 'text-text-muted'
+                  }`}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                </svg>
+              )}
+            </div>
+          </div>
+        )}
+        <div
+          style={{
+            transform: pull ? `translateY(${pull}px)` : undefined,
+            // Only while settling. Following the finger has to be immediate,
+            // or the content lags behind the drag.
+            transition: refreshing || pull === 0 ? 'transform 180ms ease-out' : undefined,
+          }}
+        >
+          {children({ startDate, endDate, locationSlug })}
+        </div>
       </div>
     </div>
   )

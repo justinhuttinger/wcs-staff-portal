@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { getMe, getToken, clearToken, onAuthExpired, logout } from '../lib/api'
 import GlobalProgressBar from '../components/GlobalProgressBar'
 import LoginScreen from './components/LoginScreen'
@@ -43,6 +43,7 @@ import {
 } from './components/analytics/MobileAnalytics'
 import { getTheme, THEME_EVENT } from '../lib/theme'
 import { hydrateUiPrefs, startUiPrefsSync } from '../lib/uiPrefs'
+import { invalidate as invalidateApiCache } from '../lib/apiCache'
 
 // Icons for bottom tab bar (Heroicons outline)
 function HomeIcon({ active }) {
@@ -164,6 +165,19 @@ export default function MobileApp() {
     startUiPrefsSync()
     hydrateUiPrefs().catch(() => {})
   }, [user?.staff?.id])
+
+  // Pull-to-refresh for the Analytics reports.
+  const [analyticsNonce, setAnalyticsNonce] = useState(0)
+  const refreshAnalytics = useCallback(async () => {
+    // Only the analytics responses: clearing the whole cache would also throw
+    // away the app settings and report visibility this screen just loaded, for
+    // no benefit to the reader.
+    invalidateApiCache('/analytics')
+    setAnalyticsNonce(n => n + 1)
+    // A beat before the spinner clears, so a fast cache-warm reply does not
+    // flash the indicator in and out too quickly to read as anything.
+    await new Promise(r => setTimeout(r, 250))
+  }, [])
 
   useEffect(() => {
     function onHashChange() {
@@ -343,9 +357,17 @@ export default function MobileApp() {
             title={reportLabel(reportKey)}
             user={user}
             hideDateRange={reportHidesDates(reportKey)}
+            onRefresh={refreshAnalytics}
           >
             {({ startDate, endDate, locationSlug }) => (
               <MobileAnalyticsReport
+                // Remounting is what actually reloads it. Each of the forty
+                // report components owns its own fetch, so there is no single
+                // refetch to call — bumping this key throws the subtree away
+                // and every fetch inside runs again. The cached responses are
+                // dropped first, or the remount would serve the same numbers
+                // straight back.
+                key={analyticsNonce}
                 reportKey={reportKey}
                 user={user}
                 startDate={startDate}
