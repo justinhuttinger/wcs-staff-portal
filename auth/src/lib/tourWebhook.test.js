@@ -17,6 +17,8 @@ test('builds a flat outcome payload from location + intake', () => {
     notes: 'great', referring_member_id: null, referring_member_name: null,
     // Midnight UTC on the 27th is still the evening of the 26th at the club.
     completed_at: '06/26/2026 | 5:00 PM',
+    // A sale grants no pass, so there is no window to date.
+    pass_expiration_date: null,
   })
 })
 
@@ -32,6 +34,8 @@ test('carries the referral and pass detail a VIP outcome adds', () => {
   assert.strictEqual(payload.referring_member_name, 'Felix Reyes')
   assert.strictEqual(payload.vip_team_member, 'Lily Valentine')
   assert.strictEqual(payload.completed_at, '09/09/2026 | 4:05 PM')
+  // Fourteen days from the club's 9 Sep, not from the UTC 10th.
+  assert.strictEqual(payload.pass_expiration_date, '09-23-2026')
 })
 
 test('a pass of zero days stays 0, distinct from no pass at all', () => {
@@ -44,4 +48,13 @@ test('a pass of zero days stays 0, distinct from no pass at all', () => {
 test('an intake with no completion time sends null, not "Invalid Date"', () => {
   const payload = buildTourWebhookPayload({ id: 'l', name: 'S' }, { id: 'i' })
   assert.strictEqual(payload.completed_at, null)
+  assert.strictEqual(payload.pass_expiration_date, null)
+})
+
+test('a pass of zero days has no end date, the way it has no length', () => {
+  const payload = buildTourWebhookPayload(
+    { id: 'l', name: 'S' },
+    { id: 'i', pass_days: 0, completed_at: '2026-09-09T23:05:00Z' }
+  )
+  assert.strictEqual(payload.pass_expiration_date, null)
 })

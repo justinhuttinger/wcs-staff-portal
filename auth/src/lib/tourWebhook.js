@@ -1,4 +1,4 @@
-const { formatPacific } = require('./humanTime')
+const { formatPacific, passEndDate } = require('./humanTime')
 
 // Shape of the outbound webhook fired when a tour outcome is saved.
 function buildTourWebhookPayload(location, intake) {
@@ -38,6 +38,14 @@ function buildTourWebhookPayload(location, intake) {
     // so it goes out on the club's own clock in the shape a person writes a
     // time: "09/09/2026 | 4:05 PM". The row keeps its exact timestamptz.
     completed_at: formatPacific(intake.completed_at),
+
+    // The day the pass runs out, as MM-DD-YYYY, so a workflow can quote it
+    // without re-doing the sum. Counted from the club's calendar day, not the
+    // UTC one, which after 5pm Pacific is already tomorrow.
+    //
+    // Null on an outcome that grants nothing, matching pass_days, so "no pass"
+    // stays distinguishable from a pass that ends today.
+    pass_expiration_date: passEndDate(intake.completed_at, intake.pass_days),
   }
 }
 
