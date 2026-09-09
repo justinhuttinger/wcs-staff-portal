@@ -86,7 +86,7 @@ export default function AttritionAnalysis({ startDate, endDate, locationSlug, ca
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
         {(data?.stats || []).map(s => {
           const d = DRILL[s.key]
-          const card = <StatCard stat={s} />
+          const card = <StatCard stat={s} comparisonLabel={data?.comparisonLabel} />
           if (!d || !s.value) return <div key={s.key}>{card}</div>
           return (
             <Drillable key={s.key} set={d.set} title={d.title}

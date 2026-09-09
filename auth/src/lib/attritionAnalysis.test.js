@@ -148,3 +148,51 @@ test('a queue with no cancels still counts as activity', () => {
 test('the statuses are the three ABC uses for an ended membership', () => {
   assert.deepEqual(LOST_STATUSES, ['Cancelled', 'Expired', 'Return For Collection'])
 })
+
+// --- prior-window comparison ------------------------------------------------
+// Before this existed the stats carried no `prior` and no `change` at all, so
+// StatCard destructured undefined and every card rendered a red "undefined%".
+
+test('with no prior rows, every stat says explicitly that there is no comparison', () => {
+  const out = buildAttritionAnalysis([cancel()], [], {})
+  for (const s of out.stats) {
+    assert.strictEqual(s.prior, null, `${s.key} prior`)
+    assert.strictEqual(s.change, null, `${s.key} change`)
+  }
+})
+
+test('a prior window is measured by the same definitions and produces a change', () => {
+  const out = buildAttritionAnalysis(
+    [cancel({ agreement_number: 'A1' }), cancel({ agreement_number: 'A2' })],
+    [],
+    { priorRows: [cancel({ agreement_number: 'A9' })] },
+  )
+  assert.strictEqual(stat(out, 'total').value, 2)
+  assert.strictEqual(stat(out, 'total').prior, 1)
+  assert.strictEqual(stat(out, 'total').change, 100)
+})
+
+test('Scheduled to Cancel never gets a comparison', () => {
+  // A live queue, not something that happened inside the window: there is no
+  // prior queue to hold it against, and counting today's twice would compare
+  // a number with itself.
+  const out = buildAttritionAnalysis(
+    [cancel()],
+    [cancel({ member_status: 'Pending Cancel' })],
+    { priorRows: [cancel()] },
+  )
+  assert.strictEqual(stat(out, 'pending').value, 1)
+  assert.strictEqual(stat(out, 'pending').prior, null)
+  assert.strictEqual(stat(out, 'pending').change, null)
+})
+
+test('a prior of zero yields no percentage change rather than Infinity', () => {
+  const out = buildAttritionAnalysis([cancel()], [], { priorRows: [] })
+  assert.strictEqual(stat(out, 'total').prior, 0)
+  assert.strictEqual(stat(out, 'total').change, null)
+})
+
+test('the comparison is named, so a card can say what it is measured against', () => {
+  const out = buildAttritionAnalysis([cancel()], [], { comparisonLabel: 'July MTD' })
+  assert.strictEqual(out.comparisonLabel, 'July MTD')
+})
