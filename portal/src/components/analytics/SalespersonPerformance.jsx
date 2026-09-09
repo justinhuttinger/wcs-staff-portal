@@ -40,6 +40,33 @@ const COLUMNS = [
   { key: 'vipPct', label: 'VIP %', format: 'pct', bar: 'pct', barTone: 'teal' },
 ]
 
+// Basic vs Advanced.
+//
+// Advanced is the full board this report has always been. Basic is the five
+// numbers a manager actually reads down a list of people: how many did they
+// sell, how many tours did they give, how many closed the same day, how many
+// Day Ones did they book, how many VIPs did they collect. Everything else -
+// dues draft, ACH share, conversion rates, the percentage twins of the counts -
+// is second-order, and fifteen columns is a board you scan rather than read.
+//
+// Basic is the landing mode deliberately: the wider board is one click away,
+// and a report you can read without scrolling sideways is the better default.
+const MODES = [
+  { key: 'basic', label: 'Basic' },
+  { key: 'advanced', label: 'Advanced' },
+]
+
+// In this order, which is already the order they appear in COLUMNS.
+const BASIC_COLUMN_KEYS = ['newMemberUnits', 'toursGiven', 'sameDaySales', 'dayOneBookCount', 'vipCount']
+
+// Basic is a five-column scoreboard, so every column earns a bar - three
+// barred columns beside two bare ones reads as an oversight. Advanced leaves
+// these two plain on purpose: at fifteen columns, bars everywhere is noise.
+const BASIC_BAR_OVERRIDES = {
+  toursGiven: { bar: 'count', barTone: 'amber' },
+  sameDaySales: { bar: 'count', barTone: 'teal' },
+}
+
 const BAR_TONES = {
   blue: 'bg-sky-500/70',
   teal: 'bg-teal-500/70',
@@ -152,13 +179,52 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
   const [paymentTerm, setPaymentTerm] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('')
   const [memberRelationship, setMemberRelationship] = useState('')
-  const [viewBy, setViewBy] = useState('club_salesperson')
+  // Salesperson, not Club + Salesperson. The question this report gets opened
+  // for is "how is each person doing", and splitting one person across the two
+  // clubs they cover answered a question nobody was asking. Club + Salesperson
+  // is still one pick away in View By.
+  const [viewBy, setViewBy] = useState('salesperson')
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [mode, setMode] = useState('basic')
+
+  const basic = mode === 'basic'
+  // Basic is per-person by definition, so it pins View By rather than showing
+  // a control that would contradict the mode. Advanced keeps whatever was
+  // picked, so switching to Basic and back does not silently reset it.
+  const effectiveViewBy = basic ? 'salesperson' : viewBy
+
+  const columns = useMemo(() => (
+    basic
+      ? COLUMNS.filter(c => BASIC_COLUMN_KEYS.includes(c.key))
+          .map(c => ({ ...c, ...(BASIC_BAR_OVERRIDES[c.key] || {}) }))
+      : COLUMNS
+  ), [basic])
+
+  const summaryTiles = useMemo(() => (
+    basic ? SUMMARY_TILES.filter(t => BASIC_COLUMN_KEYS.includes(t.key)) : SUMMARY_TILES
+  ), [basic])
+
+  const sortOptions = useMemo(() => (
+    basic
+      ? SORT_OPTIONS.filter(o => o.key === 'label' || BASIC_COLUMN_KEYS.includes(o.key))
+      : SORT_OPTIONS
+  ), [basic])
 
   // Only the value filters count toward the badge; View By, sorting and the
   // average lines are display settings, not narrowing.
   const activeFilterCount = [joinSource, membershipType, gender, ageGroup, paymentTerm, paymentMethod, memberRelationship]
     .filter(Boolean).length + (exclusion === 'include' ? 1 : 0)
+
+  // Narrowing to Basic can strip the column the table is currently sorted by,
+  // which would leave it in an order nothing on screen explains. Fall back to
+  // the default sort rather than to an invisible one.
+  function changeMode(next) {
+    setMode(next)
+    if (next === 'basic' && sortBy !== 'label' && !BASIC_COLUMN_KEYS.includes(sortBy)) {
+      setSortBy(DEFAULT_SORT.by)
+      setSortOrder(DEFAULT_SORT.order)
+    }
+  }
 
   // Click a header: sort it high-to-low, again for low-to-high, again to drop
   // back to the default. Landing on a new column always starts high-to-low —
@@ -203,11 +269,11 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
     if (paymentTerm) p.set('paymentTerm', paymentTerm)
     if (paymentMethod) p.set('paymentMethod', paymentMethod)
     if (memberRelationship) p.set('memberRelationship', memberRelationship)
-    p.set('viewBy', viewBy)
+    p.set('viewBy', effectiveViewBy)
     p.set('category', category)
     p.set('basis', basis)
     return p.toString()
-  }, [startDate, endDate, locationSlug, exclusion, joinSource, membershipType, gender, ageGroup, paymentTerm, paymentMethod, memberRelationship, viewBy, category, basis])
+  }, [startDate, endDate, locationSlug, exclusion, joinSource, membershipType, gender, ageGroup, paymentTerm, paymentMethod, memberRelationship, effectiveViewBy, category, basis])
 
   const { data, loading, error } = useCancellableFetch(
     (signal) => api(`/analytics/salesperson-performance?${query}`, { cache: true, signal }),
@@ -248,7 +314,7 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
   // for "how many did you sell", so relative height is the only useful reading.
   const maxima = useMemo(() => {
     const out = {}
-    for (const col of COLUMNS) {
+    for (const col of columns) {
       if (!col.bar) continue
       out[col.key] = col.format === 'pct'
         ? 100
@@ -258,7 +324,7 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
           }, 0)
     }
     return out
-  }, [rows])
+  }, [rows, columns])
 
   const averages = data?.averages || {}
 
@@ -277,10 +343,31 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
 
   return (
     <div className="space-y-4">
+      {/* Basic / Advanced, above everything: it decides how much of the rest
+          of the page there is, so it cannot sit inside the Filters popup with
+          the controls that only narrow it. */}
+      <div className="flex items-center gap-1.5">
+        {MODES.map(m => (
+          <button
+            key={m.key}
+            type="button"
+            onClick={() => changeMode(m.key)}
+            aria-pressed={mode === m.key}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+              mode === m.key
+                ? 'bg-wcs-red text-white border-wcs-red'
+                : 'bg-bg text-text-muted border-border hover:text-text-primary'
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
       {/* Summary strip */}
       <div className="bg-surface rounded-xl border border-border overflow-x-auto">
         <div className="flex min-w-max divide-x divide-border">
-          {SUMMARY_TILES.map(tile => (
+          {summaryTiles.map(tile => (
             <div key={tile.key} className="px-5 py-4 text-center min-w-[130px] flex-1">
               <p className="text-xl font-bold text-text-primary">{fmtSummary(summary[tile.key], tile.format)}</p>
               <p className="text-[11px] text-text-muted mt-0.5 leading-tight">{tile.label}</p>
@@ -298,7 +385,11 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
         activeCount={activeFilterCount}
         onClear={clearFilters}
       >
-        <Select label="View By" value={viewBy} onChange={setViewBy} options={VIEW_BY_OPTIONS} allLabel={null} />
+        {/* Pinned to Salesperson in Basic, so the control is not offered
+            there rather than offered and ignored. */}
+        {!basic && (
+          <Select label="View By" value={viewBy} onChange={setViewBy} options={VIEW_BY_OPTIONS} allLabel={null} />
+        )}
         <Select
           label="Member Count Exclusion"
           value={exclusion}
@@ -306,7 +397,7 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
           options={[{ key: 'exclude', label: 'Exclude' }, { key: 'include', label: 'Include' }]}
           allLabel={null}
         />
-        <Select label="Sort By" value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} allLabel={null} />
+        <Select label="Sort By" value={sortBy} onChange={setSortBy} options={sortOptions} allLabel={null} />
         <Select
           label="Sort Order"
           value={sortOrder}
@@ -350,10 +441,10 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
                   className="sticky left-0 top-0 z-30 bg-surface text-left font-semibold text-text-primary px-4 py-3 min-w-[290px] border-b border-border"
                 >
                   <SortButton active={sortBy === 'label'} order={sortOrder} onClick={() => cycleSort('label')}>
-                    {ROW_LABEL[viewBy] || ROW_LABEL.club_salesperson}
+                    {ROW_LABEL[effectiveViewBy] || ROW_LABEL.club_salesperson}
                   </SortButton>
                 </th>
-                {COLUMNS.map((col, i) => (
+                {columns.map((col, i) => (
                   <th
                     key={col.key}
                     scope="col"
@@ -361,7 +452,7 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
                     className={`sticky top-0 z-20 text-left font-semibold text-text-muted px-3 py-3 text-xs min-w-[140px] border-b border-border ${zebra(i)}`}
                   >
                     <SortButton active={sortBy === col.key} order={sortOrder} onClick={() => cycleSort(col.key)}>
-                      {col.key === 'pctOfClubTotal' ? (viewBy === 'club_salesperson' ? '% of Club Total' : '% of Total') : col.label}
+                      {col.key === 'pctOfClubTotal' ? (effectiveViewBy === 'club_salesperson' ? '% of Club Total' : '% of Total') : col.label}
                     </SortButton>
                   </th>
                 ))}
@@ -373,7 +464,7 @@ export default function SalespersonPerformance({ startDate, endDate, locationSlu
                   <td className={`sticky left-0 z-10 bg-surface ${HOVER_TINT} px-4 py-2 whitespace-nowrap border-b border-border/60`}>
                     <span className="text-text-primary">{rowLabel(row)}</span>
                   </td>
-                  {COLUMNS.map((col, i) => {
+                  {columns.map((col, i) => {
                     const value = row[col.key]
                     const max = maxima[col.key] || 0
                     const rawWidth = col.bar && typeof value === 'number' && max > 0
