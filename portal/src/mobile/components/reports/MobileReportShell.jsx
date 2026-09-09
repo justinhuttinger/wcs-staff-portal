@@ -160,14 +160,26 @@ export default function MobileReportShell({ title, children, user, hideDateRange
             style={{ height: pull, opacity: pull > 6 ? 1 : 0 }}
             aria-hidden={!refreshing}
           >
-            <div className="pt-2">
+            {/* On a white disc, not bare on the page.
+                Under Classic --color-text-muted is near-black navy, and this
+                sits on the app's background — which is a photo under a 60%
+                black wash whenever somebody has set a backdrop. The arrow
+                disappeared into it completely.
+                A plain white arrow would only move the problem: with no
+                backdrop set, Classic's ground is #f4f5f7 and white would be
+                just as invisible there. The disc is bg-surface, which resolves
+                to white under both Classic and Press, so the dark arrow on it
+                reads on any ground — the same call the snapshot section
+                headings already got, and what Android's own pull-to-refresh
+                does. */}
+            <div className="mt-2 w-9 h-9 rounded-full bg-surface border border-border shadow-sm flex items-center justify-center">
               {refreshing ? (
-                <WcsLoadingMark size={22} />
+                <WcsLoadingMark size={20} />
               ) : (
                 <svg
                   viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                  className={`w-5 h-5 transition-transform ${
-                    armed ? 'rotate-180 text-wcs-red' : 'text-text-muted'
+                  className={`w-4 h-4 transition-transform ${
+                    armed ? 'rotate-180 text-wcs-red' : 'text-text-primary'
                   }`}
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
