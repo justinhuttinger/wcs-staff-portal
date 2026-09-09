@@ -14,6 +14,8 @@
 // face rather than leaving two numbers to be discovered as a contradiction.
 // ---------------------------------------------------------------------------
 
+const { UNASSIGNED_LABEL } = require('./analyticsSegments')
+
 // The three statuses ABC uses for a membership that has ended. Same list the
 // topline function counts, so at least the population agrees even where the
 // conditional rule does not.
@@ -87,10 +89,14 @@ function ranked(map) {
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
 }
 
-function tally(rows, pick) {
+// `empty` is what a missing value is called. It defaults to 'Unknown', which is
+// right for an attribute we do not hold; the salesperson tally passes the
+// person label instead, because a blank there is an unfilled field rather than
+// an uncertainty.
+function tally(rows, pick, empty = 'Unknown') {
   const map = new Map()
   for (const r of rows) {
-    const label = pick(r) || 'Unknown'
+    const label = pick(r) || empty
     const cur = map.get(label) || { count: 0, agreements: new Set() }
     cur.count += 1
     if (r.agreement_number) cur.agreements.add(r.agreement_number)
@@ -153,7 +159,7 @@ function buildAttritionAnalysis(rows, pending, opts = {}) {
       byType: tally(all, r => r.membership_type),
       // Who sold the membership that has now ended. Not blame — it is the only
       // way to see a plan or a person whose sales do not stick.
-      bySalesperson: tally(membership, r => r.sales_person_name),
+      bySalesperson: tally(membership, r => r.sales_person_name, UNASSIGNED_LABEL),
       byTenure: TENURE_BUCKETS
         .map(b => ({ label: b.label, count: tenureCounts.get(b.key), agreements: 0 }))
         .concat(tenureUnknown ? [{ label: 'Unknown', count: tenureUnknown, agreements: 0 }] : []),

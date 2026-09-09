@@ -129,10 +129,12 @@ test('a job somebody worked is attributed to them', () => {
 test('people with no usable name are dropped', () => {
   const out = build([
     trainer({ dayone_close_pct: { value: 1, sample: 40, numerator: 0 } }, 'Unknown'),
+    trainer({ dayone_close_pct: { value: 1, sample: 40, numerator: 0 } }, 'Not Assigned'),
     trainer({ dayone_close_pct: { value: 1, sample: 40, numerator: 0 } }, '   '),
     trainer({ dayone_close_pct: { value: 1, sample: 40, numerator: 0 } }, 'Real Person'),
   ])
-  // 'Unknown' on a problem list is an accusation nobody can act on.
+  // A placeholder on a problem list is an accusation nobody can act on -
+  // whichever word produced it.
   assert.deepEqual(out.problems.map(p => p.person), ['Real Person'])
 })
 

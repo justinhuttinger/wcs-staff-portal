@@ -5,7 +5,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { buildFirstPtPurchase } = require('../lib/firstPtPurchase')
-const { isValidSegment } = require('../lib/analyticsSegments')
+const { isValidSegment, segmentValueLabel } = require('../lib/analyticsSegments')
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ router.get('/', async (req, res) => {
       }))
 
       const built = buildFirstPtPurchase(data || [], {
-        labelFor: (v) => (segment === 'club' ? (clubName(v)) : v),
+        labelFor: (v) => (segment === 'club' ? clubName(v) : segmentValueLabel(segment, v)),
       })
 
       return {

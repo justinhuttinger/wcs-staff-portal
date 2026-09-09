@@ -1,3 +1,4 @@
+const { UNASSIGNED_LABEL } = require('./analyticsSegments')
 // Pure shaping for Analytics > Revenue Per Member. No I/O; the route fetches.
 //
 // Turns the (month, segment, revenue, members) rows from
@@ -104,13 +105,14 @@ function buildRevenuePerMember(rows, opts = {}) {
 
   // Segments ranked by member-months across the whole window, so a line keeps
   // its identity as the window scrolls.
-  // Unknown and the unattributed bucket are excluded from the LINES, not from
+  // Unknown (and its person-valued spelling, Not Assigned) and the
+  // unattributed bucket are excluded from the LINES, not from
   // the totals. The bucket holds revenue belonging to nobody we count, so it
   // has 0 members and no rate to draw; leaving it in would put a permanently
   // blank line on the chart. Its revenue is already in byMonth above, which is
   // what the headline rate divides.
   const ranked = [...segmentTotals.entries()]
-    .filter(([name]) => name !== 'Unknown' && name !== UNATTRIBUTED)
+    .filter(([name]) => name !== 'Unknown' && name !== UNASSIGNED_LABEL && name !== UNATTRIBUTED)
     .sort((a, b) => b[1] - a[1])
   const kept = ranked.slice(0, maxSegments).map(([name]) => name)
 

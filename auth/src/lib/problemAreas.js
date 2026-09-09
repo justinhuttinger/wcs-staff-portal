@@ -206,11 +206,14 @@ function buildProblemAreas(clubs, staff = [], settings = {}) {
   let checked = 0
 
   // A row with no name attached is not a person. Operandio and the Day One
-  // feed both leave a name blank rather than absent, and 'Unknown' on a
-  // problem list is an accusation nobody can act on.
+  // feed both leave a name blank rather than absent, and a placeholder on a
+  // problem list is an accusation nobody can act on. Both spellings are
+  // checked: 'Unknown' is what the older feeds wrote, 'Not Assigned' is what
+  // the shared label produces now, and a row that slipped through either way
+  // would name a person who does not exist.
   const named = (n) => {
-    const v = String(n || '').trim()
-    return v !== '' && v.toLowerCase() !== 'unknown'
+    const v = String(n || '').trim().toLowerCase()
+    return v !== '' && v !== 'unknown' && v !== 'not assigned'
   }
 
   const evaluate = (subject, scope) => {
