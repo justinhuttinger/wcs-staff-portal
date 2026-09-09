@@ -230,4 +230,34 @@ if (require.main === module) {
   main().catch(err => { console.error(err); process.exit(1); });
 }
 
-module.exports = { ranges, toRow, dateOnly };
+/**
+ * Keep abc_pt_services current. Called by the scheduler nightly.
+ *
+ * A TRAILING WINDOW, not the whole history. ABC returns a service under the
+ * range it was SOLD in, so a short window would miss nothing recent; the
+ * lastModifiedTimestampRange sweep inside syncClub is what catches an old
+ * package that only just went inactive, and that also only reaches back as far
+ * as the window. Ninety days is comfortably longer than the gap between runs
+ * and short enough to stay inside ABC's 180-day cap on a single range.
+ *
+ * The full history is still the job of running this script by hand with a start
+ * date — that is a backfill, and it does not belong on a nightly timer.
+ */
+async function syncRecentPtServices({ days = 90 } = {}) {
+  const to = new Date().toISOString().slice(0, 10);
+  const from = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const summary = [];
+  for (const club of CLUBS) {
+    try {
+      summary.push(await syncClub(club, from, to, false));
+    } catch (err) {
+      // One club's failure must not stop the rest: a token problem at one gym
+      // should cost that gym's numbers, not everybody's.
+      console.error(`[pt-services] ${club} failed: ${err.message}`);
+      summary.push({ club, services: 0, written: 0, error: err.message });
+    }
+  }
+  return summary;
+}
+
+module.exports = { ranges, toRow, dateOnly, syncClub, syncRecentPtServices };
