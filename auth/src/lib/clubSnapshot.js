@@ -56,6 +56,11 @@ const STATS = [
   // shaped, because shapeTotals sees the window's numbers but not its length.
   { key: 'avgDailyCheckins', label: 'Avg Daily Check-ins', format: 'num', betterWhen: 'up' },
   { key: 'pctOnAch', label: 'ACH %', format: 'pct', betterWhen: 'up' },
+  // The same Trial Conversion the KPI report scores against its goal — won
+  // trials over trials started, both off opportunities raised inside the
+  // window. Injected in buildClubSnapshot rather than shaped, because it comes
+  // from GHL rather than from the ABC window this report is otherwise built on.
+  { key: 'trialConversion', label: 'Trial Conversion', format: 'pct', betterWhen: 'up' },
   { key: 'avgNewDuesDraft', label: 'Avg New Dues Draft', format: 'money', betterWhen: 'up' },
   // TWO DIFFERENT DAY ONE COUNTS LIVE ON THIS CARD, ON DIFFERENT DATE FIELDS.
   // This one counts the ACT OF BOOKING: appointments booked during the window,
@@ -231,6 +236,12 @@ function buildClubSnapshot(current, prior, series, opts = {}) {
     total === null || !days ? null : Math.round((total / days) * 10) / 10
   cur.avgDailyCheckins = perDay(cur.checkins ?? null, opts.days)
   if (prior) was.avgDailyCheckins = perDay(was.checkins ?? null, opts.priorDays || opts.days)
+
+  // null, not zero, when no trial started in the window: zero would assert that
+  // trials ran and none converted, which is a different and much worse fact
+  // than there being none to convert.
+  cur.trialConversion = opts.trial ? opts.trial.rate : null
+  if (prior) was.trialConversion = opts.priorTrial ? opts.priorTrial.rate : null
 
   const stats = STATS.map(s => {
     const now = cur[s.key] ?? null
