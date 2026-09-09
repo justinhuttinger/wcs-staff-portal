@@ -31,6 +31,7 @@ import MobilePayroll from './components/reports/MobilePayroll'
 import MobileRevenue from './components/reports/MobileRevenue'
 import MobileMarketingTracker from './components/MobileMarketingTracker'
 import MobileInventory from './components/MobileInventory'
+import MobileRenderStatus from './components/MobileRenderStatus'
 // KPIs + Audits reuse the (responsive) desktop report components on mobile.
 import KpiReport from '../components/reports/KpiReport'
 import AuditsReport from '../components/reports/AuditsReport'
@@ -622,6 +623,11 @@ export default function MobileApp() {
         return <MobileMarketingTracker access={marketingAccess(user)} />
       case 'inventory':
         return <MobileInventory user={user} />
+      case 'render-status':
+        // Admin-only. The tile is hidden below admin and /render-status is
+        // gated with requireRole('admin') server-side, so a hand-typed route
+        // here still gets nothing back.
+        return <MobileRenderStatus />
       case 'leaderboard':
         return <MobileLeaderboard user={user} />
       case 'comm-notes':

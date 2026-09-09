@@ -101,6 +101,14 @@ function BoxIcon() {
   )
 }
 
+function ServerIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7 text-wcs-red">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 0 1-3-3m3 3a3 3 0 1 0 0 6h13.5a3 3 0 1 0 0-6m-16.5-3a3 3 0 0 1 3-3h13.5a3 3 0 0 1 3 3m-19.5 0a4.5 4.5 0 0 1 .9-2.7L5.737 5.1a3.375 3.375 0 0 1 2.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 0 1 .9 2.7m0 0a3 3 0 0 1-3 3m0 3h.008v.008h-.008v-.008Zm0-6h.008v.008h-.008v-.008Zm-3 6h.008v.008h-.008v-.008Zm0-6h.008v.008h-.008v-.008Z" />
+    </svg>
+  )
+}
+
 function LogoutIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -167,6 +175,7 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     { label: 'Tickets', icon: <TicketIcon />, route: 'ticketing', desc: 'Submit & track tickets' },
     { label: 'HR', icon: <HRIcon />, route: 'hr', desc: 'Resources & docs' },
     { label: 'Coaching', icon: <ChatIcon />, route: 'coaching', desc: 'Message your members' },
+    { label: 'Render', icon: <ServerIcon />, route: 'render-status', desc: 'Service health & usage' },
   ]
 
   const ROLE_LEVELS = { team_member: 0, lead: 1, manager: 2, corporate: 3, admin: 4 }
@@ -174,6 +183,10 @@ export default function HomeScreen({ user, navigate, onLogout }) {
   const canMarketing = marketingAccess(user).tracker
 
   const tiles = allTiles.filter(tile => {
+    // Render infrastructure status is admin-only: it exposes service health,
+    // error logs, and the workspace bandwidth bill. Matches requireRole('admin')
+    // on /render-status, so hiding the tile mirrors a real server gate.
+    if (tile.label === 'Render' && roleIdx < ROLE_LEVELS.admin) return false
     // Reports tile is manager+ (leads get Inventory, Calendar, Tickets, Leaderboard)
     if (tile.label === 'Reports' && roleIdx < ROLE_LEVELS.manager) return false
     // Tickets (native module) — role/override-driven via the 'ticketing' key,
