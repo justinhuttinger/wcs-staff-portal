@@ -6,7 +6,7 @@ const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { parseCategory, parseBasis, filterNote, matchesFilters, loadCategoryMap } = require('../lib/analyticsMemberFilters')
-const { monthToDate, windowLabel } = require('../lib/snapshotWindow')
+const { monthToDate, windowLabel, priorMonthWindow, priorLabel } = require('../lib/snapshotWindow')
 const { CLUBS, CLUB_BY_SLUG, isExcludedType } = require('../lib/salespersonPerformance')
 const {
   buildAttritionAnalysis, isInsuranceType, LOST_STATUSES,
@@ -63,6 +63,11 @@ router.get('/', async (req, res) => {
     const category = parseCategory(req.query.category)
     const basis = parseBasis(req.query.basis)
 
+    // The same window one month back, day-of-month clamped to the shorter
+    // month. Shared with the Snapshot reports so "vs last month" means the same
+    // thing everywhere it is written.
+    const prior = priorMonthWindow(start, end)
+
     const cacheKey = [
       'analytics:attrition-analysis', start, end, slugs.slice().sort().join('+'), exclude,
       category, basis,
@@ -85,12 +90,20 @@ router.get('/', async (req, res) => {
       // their own status date, so the months fall out of a single list.
       const seriesStart = monthStart(end, SERIES_MONTHS - 1)
 
-      const [windowRows, seriesRows, pendingRows] = await Promise.all([
+      const [windowRows, priorRows, seriesRows, pendingRows] = await Promise.all([
         fetchAll(scoped(supabaseAdmin.from('abc_members')
           .select(MEMBER_FIELDS)
           .in('member_status', LOST_STATUSES)
           .gte('member_status_date', start)
           .lte('member_status_date', end))),
+        // The prior window, fetched alongside rather than after: it is the same
+        // query over a shifted range, and two round trips in series would
+        // double the wait for a card that is read at a glance.
+        fetchAll(scoped(supabaseAdmin.from('abc_members')
+          .select(MEMBER_FIELDS)
+          .in('member_status', LOST_STATUSES)
+          .gte('member_status_date', prior.start)
+          .lte('member_status_date', prior.end))),
         fetchAll(scoped(supabaseAdmin.from('abc_members')
           .select('membership_type, member_status_date, is_primary_member')
           .in('member_status', LOST_STATUSES)
@@ -124,19 +137,26 @@ router.get('/', async (req, res) => {
 
       return {
         rows: windowRows.filter(keep),
+        priorRows: priorRows.filter(keep),
         pending: pendingRows.filter(keep),
         monthly,
       }
     })
 
-    const built = buildAttritionAnalysis(payload.rows, payload.pending, { monthly: payload.monthly })
+    const built = buildAttritionAnalysis(payload.rows, payload.pending, {
+      monthly: payload.monthly,
+      priorRows: payload.priorRows,
+      comparisonLabel: priorLabel(start, end),
+    })
 
     res.json({
       ...built,
       meta: {
         filter: filterNote({ category, basis }),
         start, end,
+        priorStart: prior.start, priorEnd: prior.end,
         windowLabel: windowLabel(start, end),
+        comparisonLabel: priorLabel(start, end),
         clubs: slugs,
         seriesMonths: SERIES_MONTHS,
         exclusion: exclude ? 'exclude' : 'include',
