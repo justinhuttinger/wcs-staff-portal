@@ -5,7 +5,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
-const { loadCategoryMap } = require('../lib/analyticsMemberFilters')
+const { loadCategoryMap, parseBasis } = require('../lib/analyticsMemberFilters')
 const { CLUBS, CLUB_BY_SLUG, isExcludedType, clubName } = require('../lib/salespersonPerformance')
 const { buildAverageDues } = require('../lib/averageDues')
 
@@ -39,6 +39,10 @@ router.get('/', async (req, res) => {
     if (slugs.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
 
     const viewBy = VIEW_BY.includes(String(req.query.viewBy)) ? String(req.query.viewBy) : 'club'
+    // The shared basis control. Dues are billed per AGREEMENT either way — the
+    // basis only decides what the average divides by, a membership or a person
+    // covered by one.
+    const basis = parseBasis(req.query.basis)
     const exclude = req.query.exclusion !== 'include'
     const clubNumbers = slugs.map(s => CLUB_BY_SLUG[s].clubNumber)
 
@@ -47,7 +51,10 @@ router.get('/', async (req, res) => {
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       const [rows, skip, categoryMap] = await Promise.all([
         fetchAll(supabaseAdmin.from('abc_members')
-          .select('member_id, club_number, membership_type, next_due_amount, payment_frequency')
+          // agreement_number and is_primary_member are load-bearing: a family
+          // is several rows on one agreement, each stamped with an amount, and
+          // without these the column sums to several times the real bill.
+          .select('member_id, club_number, agreement_number, is_primary_member, membership_type, next_due_amount, payment_frequency')
           .in('club_number', clubNumbers)
           .eq('is_active', true)
           .eq('member_status', 'Active')
@@ -75,7 +82,7 @@ router.get('/', async (req, res) => {
       return { dues, unmapped, activeRows: rows.length }
     })
 
-    const built = buildAverageDues(payload.dues, { viewBy, clubName })
+    const built = buildAverageDues(payload.dues, { viewBy, basis, clubName })
 
     res.json({
       ...built,
@@ -83,6 +90,7 @@ router.get('/', async (req, res) => {
         clubs: slugs,
         asOf: new Date().toISOString().slice(0, 10),
         duesMembers: payload.dues.length,
+        basis,
         unmappedTypes: payload.unmapped,
         exclusion: exclude ? 'exclude' : 'include',
       },

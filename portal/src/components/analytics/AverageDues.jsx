@@ -12,6 +12,12 @@ import { zebra, HOVER_TINT } from './tableTints'
 // cannot tell you whether it moved because pricing changed or because the base
 // did, and those are opposite problems.
 //
+// DUES ARE BILLED PER AGREEMENT. A family is several member rows sharing one
+// agreement, each stamped with an amount, so summing the column across members
+// bills a family several times over — see auth/src/lib/averageDues. The total
+// is always per agreement; the shared Basis control only decides whether the
+// AVERAGE divides by memberships or by the people they cover.
+//
 // A LIVE SNAPSHOT. abc_members carries what a member is billed NOW and no
 // history of it, so there is no date range to honour — the report is registered
 // with dates: false rather than accepting one it would quietly ignore.
@@ -28,13 +34,14 @@ const fmtMoney = v => (v === null || v === undefined
 const fmtMoney0 = v => (v === null || v === undefined ? 'N/A' : `$${Math.round(Number(v)).toLocaleString()}`)
 const fmtInt = v => (v === null || v === undefined ? 'N/A' : Number(v).toLocaleString())
 
-export default function AverageDues({ locationSlug }) {
+export default function AverageDues({ locationSlug, basis }) {
   const [viewBy, setViewBy] = useState('club')
 
   const query = useMemo(() => new URLSearchParams({
     clubs: locationSlug || 'all',
     viewBy,
-  }).toString(), [locationSlug, viewBy])
+    basis,
+  }).toString(), [locationSlug, viewBy, basis])
 
   const { data, loading, error } = useCancellableFetch(
     signal => api(`/analytics/average-dues?${query}`, { cache: true, signal }),
@@ -80,8 +87,9 @@ export default function AverageDues({ locationSlug }) {
           ))}
         </div>
         <p className="text-[11px] text-text-muted ml-auto max-w-[44rem] text-right">
-          What the base is billed today, not what was collected. Dues-category members only;
-          bi-weekly and annual charges are converted to a month before averaging.
+          What the base is billed today, not what was collected. Dues-category memberships only.
+          One charge per agreement, so a family counts once; bi-weekly and annual charges are
+          converted to a month first.
         </p>
       </div>
 
@@ -89,15 +97,21 @@ export default function AverageDues({ locationSlug }) {
         <div className="flex min-w-max divide-x divide-border">
           <div className="px-5 py-4 text-center min-w-[150px] flex-1">
             <p className="text-2xl font-bold text-text-primary">{fmtMoney(s.avgDues)}</p>
-            <p className="text-[11px] text-text-muted mt-0.5">Average Monthly Dues</p>
+            <p className="text-[11px] text-text-muted mt-0.5">
+              Average Monthly Dues {data?.basis === 'agreements' ? 'per Membership' : 'per Member'}
+            </p>
           </div>
           <div className="px-5 py-4 text-center min-w-[150px] flex-1">
             <p className="text-2xl font-bold text-text-primary">{fmtMoney0(s.totalDues)}</p>
             <p className="text-[11px] text-text-muted mt-0.5">Total Monthly Dues</p>
           </div>
           <div className="px-5 py-4 text-center min-w-[150px] flex-1">
-            <p className="text-2xl font-bold text-text-primary">{fmtInt(s.payingMembers)}</p>
-            <p className="text-[11px] text-text-muted mt-0.5">Dues-Paying Members</p>
+            <p className="text-2xl font-bold text-text-primary">{fmtInt(s.agreements)}</p>
+            <p className="text-[11px] text-text-muted mt-0.5">Dues-Paying Memberships</p>
+          </div>
+          <div className="px-5 py-4 text-center min-w-[150px] flex-1">
+            <p className="text-2xl font-bold text-text-primary">{fmtInt(s.membersCovered)}</p>
+            <p className="text-[11px] text-text-muted mt-0.5">Members Covered</p>
           </div>
         </div>
       </div>
@@ -122,7 +136,10 @@ export default function AverageDues({ locationSlug }) {
                     Total Monthly Dues
                   </th>
                   <th scope="col" className={`sticky top-0 z-20 text-right font-semibold text-text-muted px-3 py-3 text-xs min-w-[140px] border-b border-border ${zebra(2)}`}>
-                    Paying Members
+                    Memberships
+                  </th>
+                  <th scope="col" className="sticky top-0 z-20 text-right font-semibold text-text-muted px-3 py-3 text-xs min-w-[140px] border-b border-border">
+                    Members Covered
                   </th>
                   <th scope="col" className="sticky top-0 z-20 text-right font-semibold text-text-muted px-3 py-3 text-xs min-w-[130px] border-b border-border">
                     Paid Up Front
@@ -157,7 +174,10 @@ export default function AverageDues({ locationSlug }) {
                         <span className="text-xs tabular-nums text-text-primary">{fmtMoney0(r.totalDues)}</span>
                       </td>
                       <td className={`px-3 py-2 border-b border-border/60 text-right ${zebra(2)} ${HOVER_TINT}`}>
-                        <span className="text-xs tabular-nums text-text-primary">{fmtInt(r.payingMembers)}</span>
+                        <span className="text-xs tabular-nums text-text-primary">{fmtInt(r.agreements)}</span>
+                      </td>
+                      <td className={`px-3 py-2 border-b border-border/60 text-right ${HOVER_TINT}`}>
+                        <span className="text-xs tabular-nums text-text-muted">{fmtInt(r.membersCovered)}</span>
                       </td>
                       <td className={`px-3 py-2 border-b border-border/60 text-right ${HOVER_TINT}`}>
                         <span className="text-xs tabular-nums text-text-muted">{fmtInt(r.noCharge)}</span>
@@ -176,13 +196,14 @@ export default function AverageDues({ locationSlug }) {
       <div className="text-[11px] text-text-muted px-1 space-y-1">
         <p>
           As of {data?.meta?.asOf}. {fmtInt(data?.meta?.duesMembers)} active members are on a
-          dues membership; {fmtInt(s.payingMembers)} of them carry a recurring charge and are
-          what the average divides by.
-          {s.noCharge > 0 && ` ${fmtInt(s.noCharge)} paid up front and have no recurring charge, so they are counted separately rather than averaged in as zero.`}
+          dues membership, held on {fmtInt(s.agreements)} agreements that carry a recurring
+          charge and cover {fmtInt(s.membersCovered)} of them. Dues are billed per agreement,
+          so a family counts once however many people it covers.
+          {s.noCharge > 0 && ` ${fmtInt(s.noCharge)} agreements paid up front and have no recurring charge, so they are counted separately rather than averaged in as zero.`}
         </p>
         {s.unknownFrequency > 0 && (
           <p>
-            {fmtInt(s.unknownFrequency)} carry a charge with no billing frequency recorded — a
+            {fmtInt(s.unknownFrequency)} agreements carry a charge with no billing frequency recorded — a
             paid-up-front sum rather than a monthly rate — so there is no honest way to express
             them as a month and they are left out.
           </p>
