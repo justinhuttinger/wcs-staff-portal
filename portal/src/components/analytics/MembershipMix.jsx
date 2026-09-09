@@ -14,7 +14,8 @@ import { TOOLBAR_SLOT_ID } from './toolbarSlot'
 // across the WHOLE selection rather than within each row, so a colour means the
 // same thing in every bar. A ninth segment is never a generated hue — it folds
 // into "Other". Unknown is always the same grey, never a category colour,
-// because "we don't know" is not a peer of the real values.
+// because "we don't know" is not a peer of the real values. Not Assigned - the
+// same idea for a dimension whose values are people - is treated identically.
 //
 // Three of the eight hues sit below 3:1 against white, so the relief rule
 // applies: percentages are printed on the segments and a table view is always
@@ -25,8 +26,12 @@ const PALETTE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300
 const OTHER_COLOR = '#8a8f98'
 const UNKNOWN_COLOR = '#c2c6cc'
 
+// Placeholders rather than categories: they take the grey and never a palette
+// slot, whichever word the server used for the gap.
+const PLACEHOLDERS = new Set(['Unknown', 'Not Assigned'])
+
 function colorFor(name, index) {
-  if (name === 'Unknown') return UNKNOWN_COLOR
+  if (PLACEHOLDERS.has(name)) return UNKNOWN_COLOR
   if (name === 'Other') return OTHER_COLOR
   return PALETTE[index % PALETTE.length]
 }
@@ -99,7 +104,7 @@ export default function MembershipMix({ locationSlug, category, basis }) {
     const out = {}
     let slot = 0
     for (const name of (data?.segments || [])) {
-      out[name] = (name === 'Other' || name === 'Unknown') ? colorFor(name) : colorFor(name, slot++)
+      out[name] = (name === 'Other' || PLACEHOLDERS.has(name)) ? colorFor(name) : colorFor(name, slot++)
     }
     return out
   }, [data])

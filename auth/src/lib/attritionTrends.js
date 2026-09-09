@@ -5,7 +5,7 @@
 // every metric a reader can pick is derived from those here. Deriving in JS
 // rather than in SQL keeps the ten metrics from becoming ten queries.
 
-const { rankSegments, foldSegment } = require('./analyticsSegments')
+const { rankSegments, foldSegment, segmentValueLabel } = require('./analyticsSegments')
 
 function num(v) {
   if (v === null || v === undefined) return 0
@@ -159,7 +159,7 @@ function buildAttritionTrends(rows, metric, opts = {}) {
       const points = months.map(m => ({ month: m, value: metricsFor(byMonth.get(m) || {})[key] }))
       return {
         key: seg,
-        label: isClub ? nameFor(seg) : seg,
+        label: isClub ? nameFor(seg) : segmentValueLabel(opts.segment, seg),
         points,
         trend: trendLine(points),
         // Sorted by base size so the legend order matches the ranking above.

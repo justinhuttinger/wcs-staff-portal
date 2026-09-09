@@ -71,7 +71,7 @@ test('name helpers normalize ABC and Day One spellings to one key', () => {
   assert.equal(personKey('Katie Castlio'), 'katie castlio')
   assert.equal(displayName('Katie  Castlio'), 'Katie Castlio')
   assert.equal(displayName('DANIEL  JENSEN'), 'DANIEL JENSEN')
-  assert.equal(displayName(''), 'Unknown')
+  assert.equal(displayName(''), 'Not Assigned')
 })
 
 test('a sale and a booking by the same person land on one row', () => {
@@ -179,14 +179,14 @@ test('a booker who sold nothing still gets a row, with a null book %', () => {
   assert.equal(rows[0].dayOneBookPct, null)
 })
 
-test('bookings with no booker recorded collapse into one Unknown row', () => {
+test('bookings with no booker recorded collapse into one Not Assigned row', () => {
   const dayOnes = [
     dayOne({ id: 'd1', booked_by_name: null }),
     dayOne({ id: 'd2', booked_by_name: '' }),
   ]
   const { rows } = buildReport([], dayOnes, new Map(), NO_FILTERS)
   assert.equal(rows.length, 1)
-  assert.equal(rows[0].salesperson, 'Unknown')
+  assert.equal(rows[0].salesperson, 'Not Assigned')
   assert.equal(rows[0].dayOneBookCount, 2)
 })
 

@@ -97,6 +97,39 @@ function rankSegments(rows, segKey, valueKey, max = MAX_SERIES) {
   return { keep, other }
 }
 
+/**
+ * What a person-valued segment is called when nobody was recorded against the
+ * row.
+ *
+ * 'Unknown' is wrong twice over here. It says we are unsure who the salesperson
+ * was, when in fact no salesperson was ever written down - and on a list whose
+ * every other row is somebody's name, it reads as a person called Unknown.
+ * 'Not Assigned' says what actually happened, and reads as a gap in the
+ * paperwork rather than as a member of staff.
+ *
+ * Unknown stays correct everywhere it describes an ATTRIBUTE we do not hold -
+ * an unrecorded gender, a membership type ABC never set, an age we cannot
+ * compute. Only people get this label.
+ */
+const UNASSIGNED_LABEL = 'Not Assigned'
+
+/** Segments whose values are people. */
+const PERSON_SEGMENTS = new Set(['salesperson'])
+
+/**
+ * Display label for one raw segment value.
+ *
+ * The SQL view (migration 135) coalesces a blank salesperson to 'Unknown', and
+ * that value is what ranking, folding and cache keys are built on. Relabelling
+ * here rather than in the view keeps the stored value stable - and keeps this
+ * off a prod DDL change - while the reader sees the honest word.
+ */
+function segmentValueLabel(segmentKey, value) {
+  if (!PERSON_SEGMENTS.has(segmentKey)) return value
+  const v = value === null || value === undefined ? '' : String(value).trim()
+  return v === '' || v === 'Unknown' ? UNASSIGNED_LABEL : value
+}
+
 /** Map a raw segment value through the keep-set, so the tail reads as Other. */
 function foldSegment(value, keep) {
   if (value === null || value === undefined) return OTHER_LABEL
@@ -105,6 +138,6 @@ function foldSegment(value, keep) {
 
 module.exports = {
   MEMBER_SEGMENTS, REVENUE_SEGMENTS, MEMBER_ATTRIBUTED,
-  MAX_SERIES, OTHER_LABEL,
-  isValidSegment, rankSegments, foldSegment,
+  MAX_SERIES, OTHER_LABEL, UNASSIGNED_LABEL, PERSON_SEGMENTS,
+  isValidSegment, rankSegments, foldSegment, segmentValueLabel,
 }

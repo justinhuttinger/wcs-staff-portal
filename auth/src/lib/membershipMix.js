@@ -10,6 +10,8 @@
 // position is "Other" rather than a generated hue.
 const MAX_SEGMENTS = 8
 const OTHER = 'Other'
+const { UNASSIGNED_LABEL } = require('./analyticsSegments')
+
 const UNKNOWN = 'Unknown'
 
 // Generations by birth year, Pew's boundaries.
@@ -128,7 +130,9 @@ function segmentFor(member, breakdown, asOf, checkinRate) {
 
 function groupFor(member, viewBy, clubNameFor) {
   if (viewBy === 'membership_type') return nonEmpty(member.membership_type) || UNKNOWN
-  if (viewBy === 'salesperson') return nonEmpty(member.sales_person_name)?.replace(/\s+/g, ' ') || UNKNOWN
+  // A member with no salesperson recorded is not a member whose salesperson we
+  // are unsure of, so this bucket is named for the gap rather than shrugged at.
+  if (viewBy === 'salesperson') return nonEmpty(member.sales_person_name)?.replace(/\s+/g, ' ') || UNASSIGNED_LABEL
   return clubNameFor(member.club_number)
 }
 
@@ -160,6 +164,7 @@ function buildMembershipMix(members, opts = {}) {
   const kept = new Set(ranked.slice(0, MAX_SEGMENTS).map(([name]) => name))
   const folded = ranked.length > MAX_SEGMENTS
   const hasUnknown = overall.has(UNKNOWN)
+  const hasUnassigned = overall.has(UNASSIGNED_LABEL)
 
   // Legend order is the overall ranking, with Other and Unknown last, so the
   // colour assignment is stable no matter which club is on screen.
@@ -167,6 +172,7 @@ function buildMembershipMix(members, opts = {}) {
     ...ranked.slice(0, MAX_SEGMENTS).map(([name]) => name),
     ...(folded ? [OTHER] : []),
     ...(hasUnknown ? [UNKNOWN] : []),
+    ...(hasUnassigned ? [UNASSIGNED_LABEL] : []),
   ]
 
   const rowsMap = new Map()

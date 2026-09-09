@@ -96,6 +96,19 @@ test('Unknown never takes a line slot', () => {
   assert.deepEqual(segments, ['A', 'B'])
 })
 
+test('Not Assigned never takes a line slot either', () => {
+  // The person-valued spelling of Unknown, produced when a sale has no
+  // salesperson on it. A blank line permanently on the chart is no more useful
+  // under one name than the other.
+  const rows = [
+    row('2026-07', 'Not Assigned', 100, 500),
+    row('2026-07', 'A', 100, 10),
+    row('2026-07', 'B', 100, 5),
+  ]
+  const { segments } = buildRevenuePerMember(rows, { months: 24, maxSegments: 2 })
+  assert.deepEqual(segments, ['A', 'B'])
+})
+
 test('a quarter to date is compared against a whole prior quarter', () => {
   const rows = []
   // Q2 2026 complete, Q3 only July and August so far.

@@ -6,7 +6,7 @@ const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { parseCategory, parseBasis, filterNote } = require('../lib/analyticsMemberFilters')
 const { buildMembershipTrends } = require('../lib/membershipTrends')
-const { MEMBER_SEGMENTS, isValidSegment } = require('../lib/analyticsSegments')
+const { MEMBER_SEGMENTS, isValidSegment, segmentValueLabel } = require('../lib/analyticsSegments')
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
@@ -68,7 +68,7 @@ router.get('/', async (req, res) => {
         asOf: end,
         // Only the club segment carries numbers a reader cannot read; every
         // other segment is already its own label.
-        labelFor: (v) => (segment === 'club' ? (clubName(v)) : v),
+        labelFor: (v) => (segment === 'club' ? clubName(v) : segmentValueLabel(segment, v)),
       })
 
       return {

@@ -5,6 +5,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { wrapSWR } = require('../services/memoryCache')
 const { parseCategory, parseBasis, filterNote } = require('../lib/analyticsMemberFilters')
 const { buildRevenuePerMember } = require('../lib/revenuePerMember')
+const { segmentValueLabel } = require('../lib/analyticsSegments')
 const { BREAKDOWNS } = require('../lib/membershipMix')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
@@ -74,7 +75,14 @@ router.get('/', async (req, res) => {
       })
       if (error) throw new Error(error.message)
 
-      const built = buildRevenuePerMember(data || [], { months: CHART_MONTHS, maxSegments: MAX_SEGMENTS })
+      // Relabelled before shaping, not after: ranking, folding and the
+      // Unknown/unattributed exclusions all key on this value, so renaming it
+      // downstream would leave those looking for a bucket that no longer
+      // exists under that name.
+      const labelled = (data || []).map(r => (
+        r.segment === undefined ? r : { ...r, segment: segmentValueLabel(breakdown, r.segment) }
+      ))
+      const built = buildRevenuePerMember(labelled, { months: CHART_MONTHS, maxSegments: MAX_SEGMENTS })
 
       return {
         ...built,

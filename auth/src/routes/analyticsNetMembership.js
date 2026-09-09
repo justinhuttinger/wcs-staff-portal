@@ -6,7 +6,7 @@ const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
 const { parseCategory, parseBasis, filterNote } = require('../lib/analyticsMemberFilters')
 const { buildNetMembership, SORTS } = require('../lib/netMembership')
-const { MEMBER_SEGMENTS, isValidSegment } = require('../lib/analyticsSegments')
+const { MEMBER_SEGMENTS, isValidSegment, segmentValueLabel } = require('../lib/analyticsSegments')
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
@@ -75,7 +75,7 @@ router.get('/', async (req, res) => {
 
     const built = buildNetMembership(rows, {
       sort,
-      labelFor: (v) => (segment === 'club' ? (clubName(v)) : v),
+      labelFor: (v) => (segment === 'club' ? clubName(v) : segmentValueLabel(segment, v)),
     })
 
     res.json({

@@ -1,4 +1,3 @@
-const { matchesFilters } = require('./analyticsMemberFilters')
 // Pure aggregation for the Analytics > Salesperson Performance report.
 //
 // Deliberately free of any I/O or Supabase import: the route does the fetching
@@ -6,6 +5,9 @@ const { matchesFilters } = require('./analyticsMemberFilters')
 // percentages, Day One matching) testable without a database or a network.
 // See routes/analyticsSalesperson.js for what each column means and why the
 // columns with no data source return null.
+
+const { matchesFilters } = require('./analyticsMemberFilters')
+const { UNASSIGNED_LABEL } = require('./analyticsSegments')
 
 const CLUBS = [
   { slug: 'salem', clubNumber: '30935', name: 'Salem' },
@@ -53,7 +55,9 @@ function personKey(name) {
 // inconsistent inner whitespace ("Katie  Castlio"), so this only normalizes.
 function displayName(name) {
   const parts = (name || '').trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return 'Unknown'
+  // No name on the record means nobody was written down, not that we are
+  // unsure who it was. See UNASSIGNED_LABEL.
+  if (parts.length === 0) return UNASSIGNED_LABEL
   return parts.join(' ')
 }
 
@@ -279,7 +283,7 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
         // tied to one — leave the club fields off rather than pick a winner.
         clubSlug: viewBy === 'salesperson' ? null : clubSlug,
         club: viewBy === 'salesperson' ? null : (club?.name || clubSlug),
-        salesperson: viewBy === 'club' ? null : (rawName ? displayName(rawName) : 'Unknown'),
+        salesperson: viewBy === 'club' ? null : (rawName ? displayName(rawName) : UNASSIGNED_LABEL),
         newMemberUnits: 0,
         totalNewDues: 0,
         totalDownPayment: 0,
