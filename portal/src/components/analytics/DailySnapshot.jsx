@@ -4,6 +4,8 @@ import MembershipBreakdown from './MembershipBreakdown'
 import { api } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import { groupStats, StatGroupHeading } from './snapshotParts'
+import Drillable from './Drillable'
+import { drillFor } from './snapshotDrills'
 import DesktopLoading from '../DesktopLoading'
 import { fmtInt, fmtMoney, GOOD_COLOR, BAD_COLOR, colorFor } from './chartPalette'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
@@ -121,8 +123,9 @@ function DayBars({ title, days, valueKey, format, selected }) {
  * A revenue stat on a day the import has not reached is dimmed and says so: a
  * greyed "No data" cannot be mistaken for a bad day the way a confident $0 can.
  */
-function DailyStatCard({ stat: s }) {
-  return (
+function DailyStatCard({ stat: s, day, locationSlug }) {
+  const drill = drillFor(s)
+  const card = (
     <div
       className={`rounded-xl border px-3 py-2.5 ${
         s.unavailable
@@ -149,6 +152,24 @@ function DailyStatCard({ stat: s }) {
         </>
       )}
     </div>
+  )
+
+  if (!drill) return card
+
+  // One day, so the window is that day at both ends. The record sets take the
+  // same start/end/clubs the month-long version does, which is why a single
+  // day needs no separate endpoint.
+  return (
+    <Drillable
+      set={drill.set}
+      title={drill.title}
+      params={{
+        start: day, end: day, clubs: locationSlug || 'all',
+        filter: drill.filter, window: drill.window,
+      }}
+    >
+      {card}
+    </Drillable>
   )
 }
 
@@ -219,7 +240,9 @@ export default function DailySnapshot({ locationSlug }) {
               <div key={g.key} className="space-y-1.5">
                 <StatGroupHeading label={g.label} />
                 <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-2">
-                  {g.stats.map(s => <DailyStatCard key={s.key} stat={s} />)}
+                  {g.stats.map(s => (
+                    <DailyStatCard key={s.key} stat={s} day={data.day} locationSlug={locationSlug} />
+                  ))}
                 </div>
               </div>
             ))}
