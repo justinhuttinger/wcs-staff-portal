@@ -92,7 +92,7 @@ export default function MembershipMix({ locationSlug, category, basis }) {
 
   const query = useMemo(
     () => new URLSearchParams({ clubs: locationSlug || 'all', breakdown, viewBy, exclusion, category, basis }).toString(),
-    [locationSlug, breakdown, viewBy, exclusion]
+    [locationSlug, breakdown, viewBy, exclusion, category, basis]
   )
 
   const { data, loading, error } = useCancellableFetch(

@@ -65,7 +65,7 @@ export default function PastDue({ locationSlug, category, basis }) {
 
   const query = useMemo(
     () => new URLSearchParams({ clubs: locationSlug || 'all', viewBy, category, basis }).toString(),
-    [locationSlug, viewBy]
+    [locationSlug, viewBy, category, basis]
   )
 
   const { data, loading, error } = useCancellableFetch(
