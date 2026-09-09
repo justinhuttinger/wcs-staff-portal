@@ -132,6 +132,38 @@ function startScheduler() {
     }
   });
 
+  // PT services sold — nightly.
+  //
+  // abc_pt_services HAD NO REFRESH JOB. It was filled by hand on 2026-08-26 by
+  // running scripts/sync-pt-services.js, and then stood still: by 2026-09-09 it
+  // held no sale later than 2026-08-25, so PT Snapshot reported 0 new clients
+  // for September while the clubs were plainly selling, and August was
+  // truncated at 73 sales against July's 116.
+  //
+  // Everything PT reads this table — PT Snapshot, PT Penetration, PT Roster,
+  // Trainer Performance and Trainer Snapshot, and the PT boxes on Club and
+  // Daily Snapshot — so all of them were quietly two weeks stale. Same failure
+  // as the check-in months below: a table backfilled by hand and never given a
+  // job to keep it that way.
+  //
+  // Runs before the check-in refresh and after the ABC sync, on a trailing
+  // window; see syncRecentPtServices for why 90 days.
+  const ptServicesHour = Number(process.env.PT_SERVICES_SYNC_HOUR || 5); // PST
+  const ptServicesHourUTC = (ptServicesHour + 8) % 24;
+  cron.schedule(`0 ${ptServicesHourUTC} * * *`, async () => {
+    console.log('[Scheduler] Starting PT services sync...');
+    try {
+      const { syncRecentPtServices } = require('../scripts/sync-pt-services');
+      const summary = await syncRecentPtServices({ days: 90 });
+      const written = summary.reduce((a, r) => a + (r.written || 0), 0);
+      const failed = summary.filter(r => r.error).map(r => r.club);
+      console.log(`[Scheduler] PT services sync done — ${written} rows${failed.length ? `, failed at ${failed.join(', ')}` : ''}`);
+    } catch (err) {
+      console.error('[Scheduler] PT services sync failed:', err.message);
+      await alertSyncFailed(err).catch(() => {});
+    }
+  });
+
   // Member check-in months — nightly. This table is what the conditional
   // membership rule reads (A2 CORE and Active and Fit Limited count only if
   // they visited in the last two months), and what the check-in charts on Club
