@@ -23,7 +23,7 @@
 // shows $0 collected. Without a warning the report tells whoever opens it each
 // morning that the club took nothing yesterday.
 
-const { shapeTotals, STATS } = require('./clubSnapshot')
+const { shapeTotals, STATS, STAT_GROUPS } = require('./clubSnapshot')
 
 // Measured on a single day, this is a gap between dates in different weeks.
 // Avg Daily Check-ins goes for a blunter reason: over a one-day window it is
@@ -119,6 +119,7 @@ function buildDailySnapshot(current, prior, series, opts = {}) {
 
   return {
     day: chosenDay,
+    statGroups: STAT_GROUPS,
     stats,
     today,
     yesterday,

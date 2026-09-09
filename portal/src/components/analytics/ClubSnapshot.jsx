@@ -3,7 +3,7 @@ import { api } from '../../lib/api'
 import MembershipBreakdown from './MembershipBreakdown'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
-import { StatCard, TrendPanel } from './snapshotParts'
+import { StatCard, TrendPanel, groupStats, StatGroupHeading } from './snapshotParts'
 import PendingOutcomePanel from './PendingOutcomePanel'
 import Drillable from './Drillable'
 
@@ -125,11 +125,22 @@ export default function ClubSnapshot({ startDate, endDate, locationSlug }) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
-        {(data?.stats || []).map(s => (
-          <StatCardOrDrill key={s.key} stat={s} drill={DRILL[s.key]}
-            comparisonLabel={data?.meta?.comparisonLabel}
-            startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+      {/* One grid per section rather than one grid of everything: twenty-seven
+          cards in a single run gives a reader nothing to navigate by. The
+          sections and their order come from the payload, so this report and
+          Daily Snapshot cannot disagree about what counts as a PT number. */}
+      <div className="space-y-3">
+        {groupStats(data?.stats, data?.statGroups).map(g => (
+          <div key={g.key} className="space-y-1.5">
+            <StatGroupHeading label={g.label} />
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
+              {g.stats.map(s => (
+                <StatCardOrDrill key={s.key} stat={s} drill={DRILL[s.key]}
+                  comparisonLabel={data?.meta?.comparisonLabel}
+                  startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
 

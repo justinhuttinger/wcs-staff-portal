@@ -28,6 +28,45 @@ export function fmtStat(v, format) {
  * The arrow and the sign both carry direction, so the colour is never the only
  * thing saying which way it went.
  */
+/**
+ * Split a flat stat list into the sections the server declared.
+ *
+ * Returns [{ key, label, stats }] in the server's order, dropping sections
+ * nothing landed in — a heading over no cards is a promise of something that
+ * is not there.
+ *
+ * Anything carrying no group, or a group the payload does not declare, is
+ * collected into a final unlabelled section rather than dropped. A stat added
+ * to STATS without a group must still appear: losing a number quietly is far
+ * worse than showing it under no heading.
+ */
+export function groupStats(stats, groups) {
+  const list = stats || []
+  const declared = groups || []
+  const known = new Set(declared.map(g => g.key))
+
+  const sections = declared
+    .map(g => ({ ...g, stats: list.filter(s => s.group === g.key) }))
+    .filter(g => g.stats.length > 0)
+
+  const ungrouped = list.filter(s => !s.group || !known.has(s.group))
+  if (ungrouped.length > 0) sections.push({ key: '__other', label: null, stats: ungrouped })
+
+  // No groups declared at all (an older payload): one unlabelled section, which
+  // renders exactly as the grid did before any of this existed.
+  return sections.length > 0 ? sections : [{ key: '__all', label: null, stats: list }]
+}
+
+/** The heading over one section of cards. Nothing where a section has no name. */
+export function StatGroupHeading({ label }) {
+  if (!label) return null
+  return (
+    <p className="text-[11px] font-bold uppercase tracking-wide text-text-muted px-0.5">
+      {label}
+    </p>
+  )
+}
+
 export function StatCard({ stat, comparisonLabel }) {
   const { value, prior, change, betterWhen, label, format } = stat
   const good = change === null || betterWhen === 'flat'
