@@ -3,6 +3,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { tourDayStart } = require('../lib/tourDay')
 const { clubNumberForLocationName } = require('../config/clubMap')
 const { buildTourWebhookPayload } = require('../lib/tourWebhook')
+const { queueCompletionError } = require('../lib/queueCompletion')
 const { getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
 const { readReferral, writeReferral } = require('../lib/vipReferral')
@@ -228,9 +229,11 @@ router.patch('/:token/intake/:id', async (req, res) => {
       referred_by_full_name, referred_by_abc_id, vip_team_member,
     } = req.body || {}
     const cancelled = status === 'cancelled'
-    if (!cancelled && !ALLOWED_OUTCOMES.includes(outcome)) {
-      return res.status(400).json({ error: 'invalid outcome' })
-    }
+    const invalid = queueCompletionError(
+      { outcome, tourMember: tour_member, cancelled },
+      ALLOWED_OUTCOMES,
+    )
+    if (invalid) return res.status(400).json(invalid)
 
     // Confirm the intake belongs to this token's location before mutating.
     const { data: existing } = await supabaseAdmin

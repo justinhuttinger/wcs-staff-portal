@@ -548,7 +548,19 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
       </div>
 
       <div className="border-t border-gray-200 p-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}>
-        <button onClick={save} disabled={saving || !outcome}
+        {/* Staff work this screen fast, and a button that is simply dead is the
+            worst way to introduce a required field. Say which answer is still
+            missing rather than leaving them to guess. */}
+        {!saving && (!tourMember || !outcome) && (
+          <p className="mb-2 text-center text-sm text-gray-500">
+            {!tourMember && !outcome
+              ? 'Choose who gave the tour and how it went.'
+              : !tourMember
+                ? 'Choose who gave the tour.'
+                : 'Choose how the tour went.'}
+          </p>
+        )}
+        <button onClick={save} disabled={saving || !outcome || !tourMember}
           className="w-full py-3.5 rounded-xl bg-red-600 text-white font-semibold disabled:opacity-50 active:scale-[0.99]">
           {saving ? 'Saving…' : 'Save & complete tour'}
         </button>
