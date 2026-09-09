@@ -68,7 +68,13 @@ export function StatGroupHeading({ label }) {
 }
 
 export function StatCard({ stat, comparisonLabel }) {
-  const { value, prior, change, betterWhen, label, format } = stat
+  const { value, prior, betterWhen, label, format } = stat
+  // A report that ships no comparison at all sends `change` as undefined, not
+  // null. Every guard below used to test `=== null` only, so undefined fell
+  // through to the arithmetic and the card rendered a red "undefined%".
+  // Normalised once here: a missing comparison is a missing comparison,
+  // however it arrived.
+  const change = stat.change === undefined ? null : stat.change
   const good = change === null || betterWhen === 'flat'
     ? null
     : betterWhen === 'down' ? change < 0 : change > 0

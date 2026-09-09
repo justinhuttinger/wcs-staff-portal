@@ -108,8 +108,25 @@ function tally(rows, pick, empty = 'Unknown') {
 /**
  * @param rows     cancelled members in the window
  * @param pending  members sitting in Pending Cancel
- * @param opts     { start, end, monthly: [{month, count, insurance}] }
+ * @param opts     { start, end, monthly, priorRows, comparisonLabel }
+ *
+ * `priorRows` is the same query over the preceding window. Passed as ROWS
+ * rather than as pre-computed numbers so both windows go through the identical
+ * stat definitions below — a prior built anywhere else would drift from the
+ * current one the first time a definition changed.
  */
+/**
+ * Percentage change, or null where the question does not arise.
+ *
+ * A prior of zero has no percentage change - everything is infinitely more
+ * than nothing - so it returns null rather than Infinity or a fake 100%.
+ */
+function pctChange(now, before) {
+  if (now === null || now === undefined) return null
+  if (before === null || before === undefined || before === 0) return null
+  return Math.round(((now - before) / before) * 1000) / 10
+}
+
 function buildAttritionAnalysis(rows, pending, opts = {}) {
   const all = rows || []
   const membership = all.filter(r => !isInsuranceType(r.membership_type))
@@ -148,12 +165,30 @@ function buildAttritionAnalysis(rows, pending, opts = {}) {
     // Up is better here and nowhere else on the card: a member who stayed three
     // years before leaving is a different outcome from one who left in a month.
     { key: 'avgTenure', label: 'Avg Months Before Leaving', format: 'num', value: avgTenure, betterWhen: 'up' },
-    { key: 'pending', label: 'Scheduled to Cancel', format: 'int', value: (pending || []).length, betterWhen: 'down' },
+    // NO PRIOR, deliberately. This is a live queue of people currently sitting
+    // in Pending Cancel, not something that happened inside the window. There
+    // is no "last month's queue" to hold it against, and inventing one by
+    // counting today's queue twice would compare a number with itself.
+    { key: 'pending', label: 'Scheduled to Cancel', format: 'int', value: (pending || []).length, betterWhen: 'down', noComparison: true },
   ]
+
+  // Recursion of exactly one level: the prior window is measured by this same
+  // function with no prior of its own, so every definition is shared and the
+  // comparison cannot drift from the thing it compares.
+  const priorStats = opts.priorRows
+    ? buildAttritionAnalysis(opts.priorRows, [], {}).stats
+    : null
+
+  const withComparison = stats.map(s => {
+    if (!priorStats || s.noComparison) return { ...s, prior: null, change: null }
+    const before = priorStats.find(p => p.key === s.key)?.value ?? null
+    return { ...s, prior: before, change: pctChange(s.value, before) }
+  })
 
   return {
     hasActivity: all.length > 0 || (pending || []).length > 0,
-    stats,
+    comparisonLabel: opts.comparisonLabel || null,
+    stats: withComparison,
     breakdowns: {
       byStatus: tally(all, r => r.member_status),
       byType: tally(all, r => r.membership_type),

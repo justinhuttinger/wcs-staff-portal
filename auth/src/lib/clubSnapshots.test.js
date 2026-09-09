@@ -313,6 +313,50 @@ test('it sits immediately after Check-ins', () => {
   assert.equal(keys[keys.indexOf('checkins') + 1], 'avgDailyCheckins')
 })
 
+// --- Trial Conversion -------------------------------------------------------
+// The same number the KPI report scores against its goal, carried onto the
+// snapshot card. Counted in lib/trialConversion; injected here.
+
+test('trial conversion is carried onto the card with its prior', () => {
+  const out = buildClubSnapshot(
+    { window: {}, summary: {} },
+    { window: {}, summary: {} },
+    [],
+    { trial: { started: 20, won: 5, rate: 25 }, priorTrial: { started: 10, won: 4, rate: 40 } },
+  )
+  const s = out.stats.find(x => x.key === 'trialConversion')
+  assert.strictEqual(s.value, 25)
+  assert.strictEqual(s.prior, 40)
+})
+
+test('no trials in the window reads as no answer, not as 0%', () => {
+  // Zero would assert that trials ran and none converted. That is a different
+  // and much worse fact than there being none to convert.
+  const out = buildClubSnapshot(
+    { window: {}, summary: {} },
+    { window: {}, summary: {} },
+    [],
+    { trial: { started: 0, won: 0, rate: null }, priorTrial: null },
+  )
+  const s = out.stats.find(x => x.key === 'trialConversion')
+  assert.strictEqual(s.value, null)
+  assert.strictEqual(s.prior, null)
+})
+
+test('an unreachable GHL does not take the rest of the card down', () => {
+  // The route catches a failed trial count into null. Every other stat must
+  // still be there.
+  const out = buildClubSnapshot(
+    { window: { new_members: 7 }, summary: {} },
+    { window: {}, summary: {} },
+    [],
+    { trial: null, priorTrial: null },
+  )
+  assert.strictEqual(out.stats.find(x => x.key === 'trialConversion').value, null)
+  assert.strictEqual(out.stats.find(x => x.key === 'newMembers').value, 7)
+})
+
+
 // --- stat grouping ----------------------------------------------------------
 // Cosmetic on the page, load-bearing here: a stat with no group must still
 // reach the client, or a number disappears the day somebody adds one.

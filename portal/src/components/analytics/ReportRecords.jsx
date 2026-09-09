@@ -142,7 +142,7 @@ function RecordTable({ set, params }) {
  * @param sets   record-set keys this report is built from, in reading order
  * @param params the filters currently on screen — window, clubs
  */
-export default function ReportRecords({ sets, params }) {
+export default function ReportRecords({ sets, params, note }) {
   const list = (sets || []).filter(Boolean)
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(list[0] || null)
@@ -160,7 +160,10 @@ export default function ReportRecords({ sets, params }) {
         <span>
           <span className="block text-sm font-bold text-text-primary">The Data</span>
           <span className="block text-[11px] text-text-muted">
-            Every record this report is built from
+            {/* Only claim completeness where it is true. A report whose figures
+                partly come from somewhere with no record view says so, rather
+                than presenting four tables as though they explained all of it. */}
+            {note ? 'The records behind this report' : 'Every record this report is built from'}
           </span>
         </span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
@@ -172,6 +175,9 @@ export default function ReportRecords({ sets, params }) {
 
       {open && (
         <div className="border-t border-border">
+          {note && (
+            <p className="px-4 pt-3 text-[11px] leading-snug text-text-muted">{note}</p>
+          )}
           {/* One tab per set. A report built from three tables shows three
               lists rather than an interleaved one nobody could read. */}
           {list.length > 1 && (

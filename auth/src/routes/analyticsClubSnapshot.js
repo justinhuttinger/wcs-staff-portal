@@ -11,6 +11,7 @@ const { loadSalespersonWindow } = require('../lib/salespersonData')
 const { buildClubSnapshot } = require('../lib/clubSnapshot')
 const { loadPendingDayOnes, summarisePending, pendingList } = require('../lib/dayOnePending')
 const { monthToDate, priorMonthWindow, priorLabel, windowLabel, daysInWindow } = require('../lib/snapshotWindow')
+const { countTrialConversion, locationIdsForSlugs } = require('../lib/trialConversion')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
@@ -94,7 +95,11 @@ router.get('/', async (req, res) => {
         }
       }
 
-      const [current, priorWindow, membersNow, membersPrior, series, ptSeries, pendingRows, priorPending, byCategory, byCategoryPrior] = await Promise.all([
+      // Trials live in GHL, not in the ABC window everything else here comes
+      // from, so they are counted per club id rather than per club number.
+      const trialLocationIds = locationIdsForSlugs(slugs)
+
+      const [current, priorWindow, membersNow, membersPrior, series, ptSeries, pendingRows, priorPending, byCategory, byCategoryPrior, trial, priorTrial] = await Promise.all([
         windowFor(start, end),
         windowFor(prior.start, prior.end),
         supabaseAdmin.rpc('analytics_topline_members_as_of', {
@@ -123,6 +128,16 @@ router.get('/', async (req, res) => {
         fetchAll(supabaseAdmin.rpc('analytics_membership_by_category', {
           p_start: prior.start, p_end: prior.end, p_clubs: rpcClubs, p_exclude: true,
         })),
+        // Both windows, alongside everything else rather than after it. A
+        // failure here must not take the whole card down: the rest of this
+        // report has nothing to do with GHL, and losing eighteen stats because
+        // one integration is unreachable is the wrong trade.
+        countTrialConversion(supabaseAdmin, {
+          locationIds: trialLocationIds, startISO: start, endISO: end,
+        }).catch(() => null),
+        countTrialConversion(supabaseAdmin, {
+          locationIds: trialLocationIds, startISO: prior.start, endISO: prior.end,
+        }).catch(() => null),
       ])
 
       if (membersNow.error) throw new Error(membersNow.error.message)
@@ -154,6 +169,8 @@ router.get('/', async (req, res) => {
         },
         byCategory: byCategory || [],
         byCategoryPrior: byCategoryPrior || [],
+        trial,
+        priorTrial,
       }
     })
 
@@ -164,6 +181,8 @@ router.get('/', async (req, res) => {
       {
         comparisonLabel: priorLabel(start, end),
         pending: payload.pending,
+        trial: payload.trial,
+        priorTrial: payload.priorTrial,
         // Each window's own length, so Avg Daily Check-ins compares a 31-day
         // month against a 28-day one without the shorter month looking quiet.
         days: daysInWindow(start, end),

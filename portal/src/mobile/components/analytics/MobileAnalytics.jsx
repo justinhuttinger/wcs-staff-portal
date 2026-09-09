@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  ANALYTICS_REPORTS, REPORT_GROUPS, PINNED_REPORTS, ungroupedReports, reportByKey,
+  ANALYTICS_REPORTS, REPORT_GROUPS, CORE_REPORTS, ungroupedReports, reportByKey,
 } from '../../../components/AnalyticsView'
 import { isReportVisible } from '../../../components/analyticsReportCatalogue'
 import { TOOLBAR_SLOT_ID } from '../../../components/analytics/toolbarSlot'
@@ -50,7 +50,11 @@ export function MobileAnalyticsHome({ locationSlug, onOpen }) {
   const visibility = useReportVisibility()
   const canSee = useCanSee(visibility, locationSlug)
 
-  const top = [...PINNED_REPORTS, ...ungroupedReports()]
+  // Desktop splits these into a core list and an All reports disclosure. Here
+  // they stay one flat run above the groups: this screen is already a single
+  // scrolling column, so a disclosure wrapping the groups would add a tap
+  // without shortening anything.
+  const top = [...CORE_REPORTS, ...ungroupedReports()]
     .filter(canSee)
     .map(k => reportByKey[k])
     .filter(Boolean)
@@ -263,6 +267,7 @@ export function MobileAnalyticsReport({ reportKey, user, startDate, endDate, loc
         <div className="mt-3">
           <ReportRecords
             sets={report.records}
+            note={report.recordsNote}
             params={{ start: startDate, end: endDate, clubs: locationSlug || 'all' }}
           />
         </div>

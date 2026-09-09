@@ -25,6 +25,55 @@ function fmtValue(v, unit) {
   return unit === 'pct' ? `${v}%` : Number(v).toLocaleString()
 }
 
+/**
+ * What the number was measured on: "12 of 40 new members".
+ *
+ * A bare 30% is not something anybody can act on, and 30% of four is a
+ * different conversation from 30% of forty.
+ */
+function basisText(p) {
+  if (!p.sample) return null
+  if (p.unit === 'pct' && p.numerator !== null && p.numerator !== undefined) {
+    return `${p.numerator} of ${p.sample} ${p.sampleLabel}`
+  }
+  return `of ${p.sample} ${p.sampleLabel}`
+}
+
+/**
+ * What it would take to clear the line, in whole units of the thing itself.
+ *
+ * This is the column that turns the report from a scoreboard into a to-do
+ * list. `shortBy` is already computed server-side for the percentage checks
+ * (how many more successes reach the threshold at this sample size); the count
+ * checks just need the overshoot.
+ *
+ * Deliberately unit-free wording. For Day One Booking %, `shortBy` is a number
+ * of BOOKINGS while sampleLabel is "new members", so "4 more new members" would
+ * be flatly wrong - "4 to clear" is the honest phrasing for both directions.
+ */
+function toClear(p) {
+  if (p.direction === 'below') {
+    return p.shortBy > 0 ? p.shortBy : null
+  }
+  if (p.value === null || p.value === undefined || p.threshold === null) return null
+  const over = p.value - p.threshold
+  return over > 0 ? over : null
+}
+
+/** How a check fires, in words, for the explanation line under the chips. */
+function firesText(check) {
+  if (!check) return null
+  const unit = check.unit === 'pct' ? '%' : ''
+  if (check.direction === 'above') {
+    // A threshold of zero is not "above 0", it is "any at all" — which is the
+    // whole point of those two checks and reads as a typo otherwise.
+    return check.threshold === 0
+      ? 'Fires on any at all.'
+      : `Fires above ${check.threshold}${unit}.`
+  }
+  return `Fires below ${check.threshold}${unit}${check.minSample ? `, once there are ${check.minSample} to judge` : ''}.`
+}
+
 // One colour per KIND of problem, fixed by its position in the check list so a
 // colour always means the same thing. Scanning a long list, the eye finds three
 // of the same pill far faster than it reads three identical labels — which is
@@ -54,6 +103,7 @@ function fmtDate(d) {
 function ProblemRow({ p, checks }) {
   const [open, setOpen] = useState(false)
   const hasDetail = Array.isArray(p.details) && p.details.length > 0
+  const clear = toClear(p)
 
   const line = (
     <>
@@ -77,24 +127,30 @@ function ProblemRow({ p, checks }) {
         {p.label}
       </span>
 
-      <span className="ml-auto flex items-baseline gap-2 flex-shrink-0 tabular-nums">
-        {/* The numbers behind the percentage, on the same line: a bare "30%"
-            tells a manager nothing they can act on. */}
-        {p.numerator !== null && p.numerator !== undefined && p.unit === 'pct' && (
-          <span className="text-[11px] text-text-muted hidden sm:inline">
-            {p.numerator}/{p.sample} {p.sampleLabel}
-          </span>
-        )}
-        {p.target !== null && p.target !== undefined && (
-          <span className="text-[11px] text-text-muted hidden md:inline">needs {p.target}</span>
-        )}
-        {p.unit === 'count' && (
-          <span className="text-[11px] text-text-muted hidden sm:inline">
-            of {p.sample} {p.sampleLabel}
-          </span>
-        )}
-        <span className="text-xs font-bold text-wcs-red">{fmtValue(p.value, p.unit)}</span>
-        <span className="text-[11px] text-text-muted">vs {fmtValue(p.threshold, p.unit)}</span>
+      {/* Three fixed-width columns rather than a run of numbers, so they line
+          up down the list and the header above says what each one is. The old
+          row read "12/40 new members  needs 16  30%  vs 40%" — four fragments,
+          no labels, and "needs 16" sitting beside "vs 40%" invited reading 16
+          as a percentage. */}
+      <span className="ml-auto flex items-center gap-3 flex-shrink-0 tabular-nums">
+        <span className="hidden lg:block w-40 text-right text-[11px] text-text-muted truncate">
+          {basisText(p)}
+        </span>
+
+        <span className="w-24 text-right whitespace-nowrap">
+          <span className="text-xs font-bold text-wcs-red">{fmtValue(p.value, p.unit)}</span>
+          <span className="text-[11px] text-text-muted"> / {fmtValue(p.threshold, p.unit)}</span>
+        </span>
+
+        {/* Green because it is the way out, not another thing that is wrong.
+            Red here would make the row read as two problems. */}
+        <span className="w-[4.5rem] text-right">
+          {clear !== null && (
+            <span className="text-[10px] font-semibold rounded-full px-2 py-0.5 border border-emerald-500/40 bg-emerald-500/10 text-emerald-600">
+              +{clear}
+            </span>
+          )}
+        </span>
       </span>
     </>
   )
@@ -120,7 +176,15 @@ function ProblemRow({ p, checks }) {
       )}
 
       {open && hasDetail && (
-        <ul className="mt-1.5 ml-6 space-y-0.5 border-l border-border pl-3">
+        <>
+        {/* Said here as well as in the strip at the top: by the time somebody
+            has opened a row they are looking at one person's specifics, and
+            scrolling back up to remember what the check measures is exactly
+            the friction this report exists to remove. */}
+        {p.why && (
+          <p className="mt-1.5 ml-6 pl-3 text-[11px] leading-snug text-text-muted">{p.why}</p>
+        )}
+        <ul className="mt-1 ml-6 space-y-0.5 border-l border-border pl-3">
           {p.details.map((d, i) => (
             <li key={`${d.name}-${d.date}-${i}`} className="flex items-center gap-2 text-[11px]">
               <span className="text-text-muted tabular-nums w-10 flex-shrink-0">{fmtDate(d.date)}</span>
@@ -153,14 +217,39 @@ function ProblemRow({ p, checks }) {
             </li>
           ))}
         </ul>
+        </>
       )}
     </li>
+  )
+}
+
+/**
+ * One kind of problem, as a filter chip carrying its own count.
+ *
+ * Takes the same colour the row pills use, so a chip and the rows it selects
+ * are visibly the same thing.
+ */
+function KindChip({ label, count, active, onClick, style }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      style={active ? style : undefined}
+      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+        active ? '' : 'border-border bg-bg text-text-muted hover:text-text-primary'
+      }`}
+    >
+      <span>{label}</span>
+      <span className={active ? 'opacity-70' : 'text-text-muted'}>{count}</span>
+    </button>
   )
 }
 
 export default function ProblemAreas({ locationSlug }) {
   const [days, setDays] = useState(30)
   const [dept, setDept] = useState('all')
+  const [kind, setKind] = useState('all')
 
   const query = useMemo(() => new URLSearchParams({
     clubs: locationSlug || 'all',
@@ -173,9 +262,30 @@ export default function ProblemAreas({ locationSlug }) {
   )
 
   const all = data?.problems || []
-  const problems = all.filter(p => dept === 'all' || p.department === dept)
   // Filtered client-side: the payload is small, so switching department costs
   // nothing rather than a round trip per click.
+  const byDept = all.filter(p => dept === 'all' || p.department === dept)
+
+  // One chip per KIND of problem actually firing, with how many rows it
+  // accounts for. A check that fired for nobody is not offered: a chip reading
+  // 0 is a filter whose only outcome is an empty list.
+  const kinds = useMemo(() => (
+    (data?.checks || [])
+      .map(c => ({ ...c, count: byDept.filter(p => p.key === c.key).length }))
+      .filter(c => c.count > 0)
+  ), [byDept, data])
+
+  // A department change can strip the kind that was selected. Resolved by
+  // DERIVING the effective kind rather than correcting the state: a chip that
+  // no longer exists falls back to All on its own, with no effect to fire, no
+  // extra render, and no window in which the list is empty for a reason
+  // nothing on screen explains.
+  const activeKindKey = kind === 'all' || kinds.some(k => k.key === kind) ? kind : 'all'
+  const activeKind = activeKindKey === 'all'
+    ? null
+    : (data?.checks || []).find(c => c.key === activeKindKey)
+
+  const problems = byDept.filter(p => activeKindKey === 'all' || p.key === activeKindKey)
   const peopleCount = new Set(problems.map(p => `${p.clubSlug}|${p.person}`)).size
 
   return (
@@ -233,6 +343,37 @@ export default function ProblemAreas({ locationSlug }) {
             </div>
           )}
 
+          {/* What each kind of problem MEANS, stated once at the top instead of
+              repeated down every row. Doubles as the filter, because "show me
+              only this" is the next thing asked after "what is this". */}
+          {kinds.length > 0 && (
+            <div className="bg-surface rounded-xl border border-border p-3">
+              <div className="flex flex-wrap gap-1.5">
+                <KindChip
+                  label="All problems"
+                  count={byDept.length}
+                  active={activeKindKey === 'all'}
+                  onClick={() => setKind('all')}
+                />
+                {kinds.map(k => (
+                  <KindChip
+                    key={k.key}
+                    label={k.label}
+                    count={k.count}
+                    active={activeKindKey === k.key}
+                    onClick={() => setKind(activeKindKey === k.key ? 'all' : k.key)}
+                    style={pillStyle(data.checks, k.key)}
+                  />
+                ))}
+              </div>
+              <p className="text-[11px] leading-snug text-text-muted mt-2">
+                {activeKind
+                  ? <>{activeKind.why} <span className="text-text-muted/80">{firesText(activeKind)}</span></>
+                  : 'Every row is one person over the line on one check. Pick a kind to see what it measures.'}
+              </p>
+            </div>
+          )}
+
           {problems.length > 0 && (
             <div className="bg-surface rounded-xl border border-border px-4 py-2">
               <div className="flex items-baseline justify-between gap-3 py-2">
@@ -243,6 +384,19 @@ export default function ProblemAreas({ locationSlug }) {
                 {/* Ordered by how far past the line, not alphabetically: the
                     worst thing should be the first thing read. */}
                 <p className="text-[11px] text-text-muted">Worst first</p>
+              </div>
+
+              {/* Names the three right-hand columns once, so no row has to
+                  carry its own labels. Same widths and gap as ProblemRow. */}
+              <div className="flex items-center gap-2 pb-1.5 border-b border-border">
+                <span className="w-1 flex-shrink-0" aria-hidden="true" />
+                <span className="w-3 flex-shrink-0" aria-hidden="true" />
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">Who</span>
+                <span className="ml-auto flex items-center gap-3 flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                  <span className="hidden lg:block w-40 text-right">Measured on</span>
+                  <span className="w-24 text-right">Now / target</span>
+                  <span className="w-[4.5rem] text-right">To clear</span>
+                </span>
               </div>
               <ul className="divide-y divide-border">
                 {problems.map(p => (
