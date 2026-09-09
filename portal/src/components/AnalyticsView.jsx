@@ -202,6 +202,9 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'average-dues',
+    // Basis only, no category: this report IS the dues category, so a category
+    // control here could only ever narrow it to nothing.
+    filters: ['basis'],
     records: ['new-members'],
     recordsNote: 'Built from what every active member is billed today, which is a live snapshot rather than a set of records over a range.',
     label: 'Average Monthly Dues',
