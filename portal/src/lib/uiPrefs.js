@@ -1,5 +1,6 @@
-// Keeps per-user UI preferences (appearance + pinned shortcuts) in step between
-// the server and this browser's localStorage.
+// Keeps per-user UI preferences (appearance, pinned shortcuts and starred
+// Analytics reports) in step between the server and this browser's
+// localStorage.
 //
 // The server is the source of truth, so the theme and the pinned bar follow a
 // person from the front desk machine to their laptop. localStorage stays as a
@@ -16,6 +17,7 @@
 
 import { getPrefs, setPrefs, THEME_EVENT, getBackgroundPrefs, setBackgroundPrefs } from './theme'
 import { getPinned, setPinned, PINNED_EVENT } from './pinnedTabs'
+import { getFavorites, setFavorites, FAVORITES_EVENT } from './analyticsFavorites'
 import { getUiPreferences, saveUiPreferences, getAppSettings } from './api'
 import { resolveHydration } from './uiPrefsResolve'
 
@@ -36,6 +38,10 @@ function snapshot() {
     accent: p.accent,
     background: b.background, backgroundDim: b.backgroundDim,
     pinned: getPinned(),
+    // Must be in the snapshot even though nothing but Analytics reads it:
+    // PUT /ui-preferences replaces the row whole, so a key left out here is a
+    // key the next theme change silently deletes off the server.
+    analyticsFavorites: getFavorites(),
   }
 }
 
@@ -92,6 +98,7 @@ export async function hydrateUiPrefs() {
     setPrefs({ theme: prefs.theme, accent: prefs.accent })
     setBackgroundPrefs({ background: prefs.background, backgroundDim: prefs.backgroundDim })
     setPinned(Array.isArray(prefs.pinned) ? prefs.pinned : [])
+    setFavorites(Array.isArray(prefs.analyticsFavorites) ? prefs.analyticsFavorites : [])
   } finally {
     applyingFromServer = false
   }
@@ -128,4 +135,5 @@ export function startUiPrefsSync() {
   started = true
   window.addEventListener(THEME_EVENT, schedulePush)
   window.addEventListener(PINNED_EVENT, schedulePush)
+  window.addEventListener(FAVORITES_EVENT, schedulePush)
 }
