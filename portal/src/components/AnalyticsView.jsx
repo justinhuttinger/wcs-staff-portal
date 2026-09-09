@@ -406,22 +406,49 @@ export const REPORT_GROUPS = [
  */
 export const REPORT_META = ANALYTICS_REPORTS.map(r => ({ key: r.key, label: r.label }))
 
-// Pinned above the groups, in this order, outside any category.
-export const PINNED_REPORTS = ['kpis', 'problem-areas', 'topline', 'club-activity']
+// The reports that get opened daily, flat at the top of the sidebar and outside
+// any category, in this order.
+//
+// The list is deliberately SHORT and hand-picked. Thirty-seven reports filed by
+// topic put the six that carry the week at exactly the same depth as First
+// Purchases by Join Month, and the tail is what a reader ends up scanning past.
+// Everything not named here still exists, one click down under All reports, in
+// the same group it has always been in.
+//
+// A core report keeps its place in its topic group as well as appearing here -
+// the same call Past Due already gets by sitting under both Member Counts and
+// Revenue. Somebody browsing Member Counts should not find Club Snapshot
+// missing because it was promoted.
+export const CORE_REPORTS = [
+  'kpis',
+  'club-snapshot',
+  'daily-snapshot',
+  'salesperson-performance',
+  'attrition-analysis',
+  'revenue',
+]
 
 // The Favorites section shares the collapse machinery with REPORT_GROUPS but
 // is not one of them: its contents are per-user, so it cannot be a static list
 // here. Kept distinct from any real group key so the two can never collide.
 const FAVORITES_GROUP_KEY = '__favorites'
 
+// The disclosure holding everything that is not core. Same collapse machinery,
+// same reason it cannot be a REPORT_GROUPS entry: it contains the groups rather
+// than sitting beside them.
+const ALL_REPORTS_KEY = '__all'
+
 /**
- * Reports that belong in no group and are not pinned still need a way in.
+ * Reports that belong in no group and are not core still need a way in.
  * Rather than trusting the catalogue above to stay exhaustive, anything
- * unclaimed is listed alongside Topline — adding a report can therefore never
- * make it unreachable, only mis-filed.
+ * unclaimed is listed at the top of All reports, above the groups — adding a
+ * report can therefore never make it unreachable, only mis-filed.
+ *
+ * Today this holds Topline, Club Activity Trends and Problem Areas, which used
+ * to be pinned and are in no group.
  */
 export function ungroupedReports() {
-  const claimed = new Set([...PINNED_REPORTS, ...REPORT_GROUPS.flatMap(g => g.reports)])
+  const claimed = new Set([...CORE_REPORTS, ...REPORT_GROUPS.flatMap(g => g.reports)])
   return ANALYTICS_REPORTS.filter(r => !claimed.has(r.key)).map(r => r.key)
 }
 
@@ -545,6 +572,12 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
   // initial state because hydrateUiPrefs can land the server's list a moment
   // AFTER this mounts, and seeding at mount would leave it shut. Once only,
   // so a deliberate collapse is not reopened underneath them.
+  // Typing here flattens the tree entirely. At thirty-seven reports, somebody
+  // who knows the name should not have to remember which group it was filed
+  // under - and it is what makes a short core list safe, because being wrong
+  // about the six costs three keystrokes rather than a hunt.
+  const [search, setSearch] = useState('')
+
   const favoritesAutoOpened = useRef(false)
   useEffect(() => {
     if (favoritesAutoOpened.current || favorites.length === 0) return
@@ -593,12 +626,30 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
     else setEndDate(value)
   }
 
+  // Landing on a tail report - a deep link, or the fallback below - must not
+  // leave the nav pointing at nothing, so the disclosure and the group holding
+  // it are opened. Keyed on the report CHANGING, so collapsing a group while
+  // sitting inside it stays collapsed rather than springing back open.
+  const lastRevealed = useRef(null)
+  useEffect(() => {
+    if (!activeReport || lastRevealed.current === activeReport) return
+    lastRevealed.current = activeReport
+    if (CORE_REPORTS.includes(activeReport)) return
+    const holders = REPORT_GROUPS.filter(g => g.reports.includes(activeReport)).map(g => g.key)
+    setOpenGroups(prev => {
+      const next = new Set(prev)
+      next.add(ALL_REPORTS_KEY)
+      for (const k of holders) next.add(k)
+      return next
+    })
+  }, [activeReport])
+
   // A report hidden by a club change must not leave a blank pane behind: fall
   // back to the default rather than rendering nothing and looking broken.
   useEffect(() => {
     if (!visibility || !activeReport) return
     if (canSee(activeReport)) return
-    const fallback = [...PINNED_REPORTS, ...ANALYTICS_REPORTS.map(r => r.key)].find(canSee)
+    const fallback = [...CORE_REPORTS, ...ANALYTICS_REPORTS.map(r => r.key)].find(canSee)
     if (fallback) setActiveReport(fallback)
   }, [visibility, activeReport, canSee])
 
@@ -612,6 +663,37 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
     [favorites, canSee],
   )
   const favoritesFull = favorites.length >= MAX_FAVORITES
+
+  const coreReports = useMemo(
+    () => CORE_REPORTS.map(k => reportByKey[k]).filter(Boolean).filter(r => canSee(r.key)),
+    [canSee],
+  )
+
+  // Everything behind the All reports disclosure: the unclaimed reports first,
+  // then the groups. Counted DISTINCTLY - a report filed under two groups is
+  // one report, and a count that said 38 of 37 would be its own small bug.
+  const tailReports = useMemo(
+    () => ungroupedReports().map(k => reportByKey[k]).filter(Boolean).filter(r => canSee(r.key)),
+    [canSee],
+  )
+  const tailCount = useMemo(() => {
+    const keys = new Set(tailReports.map(r => r.key))
+    for (const g of REPORT_GROUPS) for (const k of g.reports) {
+      if (reportByKey[k] && canSee(k)) keys.add(k)
+    }
+    return keys.size
+  }, [tailReports, canSee])
+
+  // Search runs over every report a reader can see, core and tail alike, and
+  // ignores where it is filed. Matching on label only: the description is not
+  // on screen, so a hit no visible text explains reads as a bug.
+  const searchTerm = search.trim().toLowerCase()
+  const searchResults = useMemo(() => {
+    if (!searchTerm) return null
+    return ANALYTICS_REPORTS
+      .filter(r => canSee(r.key) && r.label.toLowerCase().includes(searchTerm))
+      .sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }))
+  }, [searchTerm, canSee])
 
   const active = ANALYTICS_REPORTS.find(r => r.key === activeReport) || null
   const showDateControls = active ? active.dates !== false : true
@@ -656,116 +738,173 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
             <span className="text-lg font-bold text-text-primary">Analytics</span>
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-wcs-red/10 text-wcs-red">Admin</span>
           </div>
-          {/* Topline first, then anything not filed under a group. */}
-          <ul className="space-y-0.5">
-            {[...PINNED_REPORTS, ...ungroupedReports()].filter(canSee)
-              .map(key => reportByKey[key])
-              .filter(Boolean)
-              .map(r => (
-                <li key={r.key}>
-                  <ReportLink report={r} active={activeReport === r.key} onSelect={navigateToReport} />
-                </li>
-              ))}
-          </ul>
+          {/* Search flattens everything: while there is a term, the tree is
+              replaced by one flat list of matches rather than shown beside
+              them, which would leave two answers to the same question on
+              screen at once. */}
+          <div className="px-1 pb-2">
+            <div className="relative">
+              <svg
+                viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                aria-hidden="true"
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted pointer-events-none"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z" />
+              </svg>
+              <input
+                type="search"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Escape') setSearch('') }}
+                placeholder="Search reports"
+                aria-label="Search reports"
+                className="w-full pl-8 pr-2 py-1.5 rounded-lg text-xs bg-bg border border-border text-text-primary placeholder:text-text-muted"
+              />
+            </div>
+          </div>
 
-          {/* Favorites - this person's own shortlist, at the top of the
-              collapsible sections. Rendered even when empty: a section that
-              only appears once you already know how to fill it is a section
-              nobody discovers. */}
-          {(() => {
-            const open = openGroups.has(FAVORITES_GROUP_KEY)
-            const holdsActive = favoriteReports.some(r => r.key === activeReport)
-            return (
-              <div className="mt-2">
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(FAVORITES_GROUP_KEY)}
-                  aria-expanded={open}
-                  className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-sm font-bold rounded-lg transition-colors ${
-                    holdsActive && !open ? 'text-wcs-red' : 'text-text-primary hover:bg-bg'
-                  }`}
-                >
-                  <span className="flex items-center gap-1.5 min-w-0">
-                    <StarIcon filled className="w-3.5 h-3.5 flex-shrink-0 text-wcs-red" />
-                    <span className="truncate text-left">Favorites</span>
-                    {favoriteReports.length > 0 && (
-                      <span className="text-[11px] font-semibold text-text-muted">{favoriteReports.length}</span>
+          {searchResults ? (
+            searchResults.length > 0 ? (
+              <ul className="space-y-0.5">
+                {searchResults.map(r => (
+                  <li key={r.key}>
+                    <ReportLink report={r} active={activeReport === r.key} onSelect={navigateToReport} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="px-3 py-2 text-[11px] leading-snug text-text-muted">
+                No report matches “{search.trim()}”.
+              </p>
+            )
+          ) : (
+            <>
+              {/* Core: the daily six, flat and always open. No disclosure,
+                  because a list this short costs nothing to leave showing and
+                  a triangle over six links is a control that earns nothing. */}
+              <ul className="space-y-0.5">
+                {coreReports.map(r => (
+                  <li key={r.key}>
+                    <ReportLink report={r} active={activeReport === r.key} onSelect={navigateToReport} />
+                  </li>
+                ))}
+              </ul>
+
+              {/* Favorites — this person's own shortlist, between the org's
+                  core list and the full catalogue. Rendered even when empty: a
+                  section that only appears once you already know how to fill it
+                  is a section nobody discovers. */}
+              {(() => {
+                const open = openGroups.has(FAVORITES_GROUP_KEY)
+                const holdsActive = favoriteReports.some(r => r.key === activeReport)
+                return (
+                  <div className="mt-2">
+                    <SectionHeader
+                      label="Favorites"
+                      open={open}
+                      holdsActive={holdsActive}
+                      count={favoriteReports.length || null}
+                      onClick={() => toggleGroup(FAVORITES_GROUP_KEY)}
+                      icon={<StarIcon filled className="w-3.5 h-3.5 flex-shrink-0 text-wcs-red" />}
+                    />
+                    {open && (
+                      favoriteReports.length > 0 ? (
+                        <ul className="space-y-0.5 mt-0.5">
+                          {favoriteReports.map(r => (
+                            <li key={r.key}>
+                              <ReportLink report={r} active={activeReport === r.key} onSelect={navigateToReport} indented />
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="pl-6 pr-3 pb-2 text-[11px] leading-snug text-text-muted">
+                          No favorites yet. Open a report and click the star beside its title to add it here.
+                        </p>
+                      )
                     )}
-                  </span>
-                  <svg
-                    viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                    aria-hidden="true"
-                    className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                {open && (
-                  favoriteReports.length > 0 ? (
-                    <ul className="space-y-0.5 mt-0.5">
-                      {favoriteReports.map(r => (
-                        <li key={r.key}>
-                          <ReportLink report={r} active={activeReport === r.key} onSelect={navigateToReport} indented />
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="pl-6 pr-3 pb-2 text-[11px] leading-snug text-text-muted">
-                      No favorites yet. Open a report and click the star beside its title to add it here.
-                    </p>
-                  )
-                )}
-              </div>
-            )
-          })()}
+                  </div>
+                )
+              })()}
 
-          {REPORT_GROUPS.map(group => {
-            // Alphabetical by label WITHIN a group, sorted here rather than by
-            // hand in REPORT_GROUPS above, so a report added to a group lands in
-            // the right place without anyone having to re-sort the list. The
-            // pinned/ungrouped block above keeps its deliberate order.
-            const reports = group.reports
-              .map(k => reportByKey[k]).filter(Boolean)
-              .sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }))
-            if (reports.length === 0) return null
-            const open = openGroups.has(group.key)
-            const visible = reports.filter(r => canSee(r.key))
-            // A section whose every report is hidden for these clubs is not an
-            // empty section, it is not a section — rendering the header would
-            // promise something behind it.
-            if (visible.length === 0) return null
-            const holdsActive = visible.some(r => r.key === activeReport)
-            return (
-              <div key={group.key} className="mt-2">
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(group.key)}
-                  aria-expanded={open}
-                  className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-sm font-bold rounded-lg transition-colors ${
-                    holdsActive && !open ? 'text-wcs-red' : 'text-text-primary hover:bg-bg'
-                  }`}
-                >
-                  <span className="truncate text-left">{group.label}</span>
-                  <svg
-                    viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                    aria-hidden="true"
-                    className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                {open && (
-                  <ul className="space-y-0.5 mt-0.5">
-                    {visible.map(r => (
-                      <li key={r.key}>
-                        <ReportLink report={r} active={activeReport === r.key} onSelect={navigateToReport} indented />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )
-          })}
+              {/* All reports: the same seven groups as before, one level down.
+                  Nothing was refiled - only the depth changed. */}
+              {(() => {
+                const open = openGroups.has(ALL_REPORTS_KEY)
+                const holdsActive = !CORE_REPORTS.includes(activeReport)
+                return (
+                  <div className="mt-2">
+                    <SectionHeader
+                      label="All reports"
+                      open={open}
+                      holdsActive={holdsActive}
+                      count={tailCount || null}
+                      onClick={() => toggleGroup(ALL_REPORTS_KEY)}
+                    />
+                    {open && (
+                      <div className="mt-0.5">
+                        {/* Filed under no group. Above the groups rather than
+                            below them, so a report nobody categorised is the
+                            first thing seen rather than the last. */}
+                        {tailReports.length > 0 && (
+                          <ul className="space-y-0.5">
+                            {tailReports.map(r => (
+                              <li key={r.key}>
+                                <ReportLink report={r} active={activeReport === r.key} onSelect={navigateToReport} indented />
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+
+                        {REPORT_GROUPS.map(group => {
+                          // Alphabetical by label WITHIN a group, sorted here
+                          // rather than by hand in REPORT_GROUPS above, so a
+                          // report added to a group lands in the right place
+                          // without anyone having to re-sort the list.
+                          const reports = group.reports
+                            .map(k => reportByKey[k]).filter(Boolean)
+                            .sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }))
+                          if (reports.length === 0) return null
+                          const groupOpen = openGroups.has(group.key)
+                          const visible = reports.filter(r => canSee(r.key))
+                          // A section whose every report is hidden for these
+                          // clubs is not an empty section, it is not a section —
+                          // rendering the header would promise something behind it.
+                          if (visible.length === 0) return null
+                          return (
+                            <div key={group.key} className="mt-1">
+                              <SectionHeader
+                                label={group.label}
+                                open={groupOpen}
+                                holdsActive={visible.some(r => r.key === activeReport)}
+                                count={visible.length}
+                                onClick={() => toggleGroup(group.key)}
+                                indented
+                              />
+                              {groupOpen && (
+                                <ul className="space-y-0.5 mt-0.5">
+                                  {visible.map(r => (
+                                    <li key={r.key}>
+                                      <ReportLink
+                                        report={r}
+                                        active={activeReport === r.key}
+                                        onSelect={navigateToReport}
+                                        indented
+                                        className="pl-9"
+                                      />
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+            </>
+          )}
         </div>
       </aside>
 
@@ -951,16 +1090,53 @@ function FavoriteStar({ reportKey, favorite, favoritesFull, onToggle, className 
   )
 }
 
-function ReportLink({ report, active, onSelect, indented = false }) {
+// `className` exists for one thing: the indent. A report inside a group inside
+// All reports is two levels deep, and pl-6 no longer says which.
+function ReportLink({ report, active, onSelect, indented = false, className = '' }) {
   return (
     <button
       type="button"
       onClick={() => onSelect(report.key)}
       className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left ${
         indented ? 'pl-6' : ''
-      } ${active ? 'bg-wcs-red/10 text-wcs-red' : 'text-text-primary hover:bg-bg'}`}
+      } ${className} ${active ? 'bg-wcs-red/10 text-wcs-red' : 'text-text-primary hover:bg-bg'}`}
     >
       <span className="block truncate">{report.label}</span>
+    </button>
+  )
+}
+
+/**
+ * A collapsible section heading: Favorites, All reports, and each group inside
+ * it. One component rather than three copies of the same button, so the three
+ * depths cannot drift apart.
+ *
+ * `holdsActive` colours the header when it is shut over the current report -
+ * closed nav that gives no sign where you are is how a deep link reads as
+ * broken.
+ */
+function SectionHeader({ label, open, holdsActive, count, onClick, icon = null, indented = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      className={`w-full flex items-center justify-between gap-2 pr-3 py-2 rounded-lg transition-colors ${
+        indented ? 'pl-6 text-[13px] font-semibold' : 'pl-3 text-sm font-bold'
+      } ${holdsActive && !open ? 'text-wcs-red' : 'text-text-primary hover:bg-bg'}`}
+    >
+      <span className="flex items-center gap-1.5 min-w-0">
+        {icon}
+        <span className="truncate text-left">{label}</span>
+        {count ? <span className="text-[11px] font-semibold text-text-muted">{count}</span> : null}
+      </span>
+      <svg
+        viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+        aria-hidden="true"
+        className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+      </svg>
     </button>
   )
 }
