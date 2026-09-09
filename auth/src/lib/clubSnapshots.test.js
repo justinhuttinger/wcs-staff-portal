@@ -377,3 +377,42 @@ test('the groups are sent with the payload, in order', () => {
     ['membership', 'revenue', 'tours', 'dayone', 'pt', 'activity'],
   )
 })
+
+// --- counts beside the rates ------------------------------------------------
+// A rate on its own cannot be acted on: 50% is two of four or forty of eighty.
+
+test('the Day One counts behind the rates are reported, not just the rates', () => {
+  const out = buildClubSnapshot(
+    { window: {}, summary: {}, pt: { day_ones: 120, day_ones_completed: 54, day_ones_sold: 15, day_ones_no_show: 17, day_ones_cancelled: 16 } },
+    null, [],
+  )
+  const stat = k => out.stats.find(s => s.key === k)
+  assert.strictEqual(stat('dayOnes').value, 120)
+  assert.strictEqual(stat('dayOnesShowed').value, 54)
+  assert.strictEqual(stat('dayOnesSold').value, 15)
+  // The rates still divide by what they always did: showed over what was meant
+  // to happen, sold over what happened.
+  // 54 of the 87 that were meant to happen; 15 of the 54 that did.
+  assert.strictEqual(stat('dayOneShowRate').value, 62.1)
+  assert.strictEqual(stat('dayOneCloseRate').value, 27.8)
+})
+
+test('New PT Clients reads the same field PT Snapshot reads', () => {
+  // Both take new_clients off analytics_pt_snapshot, so the two reports cannot
+  // disagree about what a new PT client is.
+  const out = buildClubSnapshot(
+    { window: {}, summary: {}, pt: { new_clients: 31, new_value: 18000 } },
+    null, [],
+  )
+  assert.strictEqual(out.stats.find(s => s.key === 'newPtClients').value, 31)
+  assert.strictEqual(out.stats.find(s => s.key === 'newPtRevenue').value, 18000)
+})
+
+test('the new counts are in a declared group like every other stat', () => {
+  const out = buildClubSnapshot({ window: {}, summary: {} }, null, [])
+  const declared = new Set(out.statGroups.map(g => g.key))
+  for (const key of ['dayOnesShowed', 'dayOnesSold', 'newPtClients']) {
+    const s = out.stats.find(x => x.key === key)
+    assert.ok(declared.has(s.group), `${key} is in undeclared group ${s.group}`)
+  }
+})

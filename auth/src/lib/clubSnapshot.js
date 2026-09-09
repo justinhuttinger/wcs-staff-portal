@@ -137,7 +137,13 @@ const STATS = [
   // with it. "On Calendar" says the appointment fell in this window whatever
   // became of it.
   { key: 'dayOnes', label: 'Day Ones on Calendar', format: 'int', betterWhen: 'up', group: 'dayone' },
+  // The counts sit BEFORE their rates, and both are shown. A rate on its own
+  // cannot be acted on: 50% is two of four or forty of eighty, and those are
+  // different weeks. The rates keep their place because they are what compares
+  // across clubs of different sizes.
+  { key: 'dayOnesShowed', label: 'Day Ones Showed', format: 'int', betterWhen: 'up', group: 'dayone' },
   { key: 'dayOneShowRate', label: 'Day One Show Rate', format: 'pct', betterWhen: 'up', group: 'dayone' },
+  { key: 'dayOnesSold', label: 'Day Ones Sold', format: 'int', betterWhen: 'up', group: 'dayone' },
   { key: 'dayOneCloseRate', label: 'Day One Close Rate', format: 'pct', betterWhen: 'up', group: 'dayone' },
   // Of the Day Ones on Calendar above, the ones whose date has passed with
   // nobody recording an outcome. Same cohort, same key (appointment date), so
@@ -147,6 +153,11 @@ const STATS = [
   // The VALUE OF PT SOLD, not money collected — see PT Revenue Collected above.
   // Lost is recurring-service deactivations only: no paid-in-full package has
   // ever carried an inactive_date, so a spent package cannot be seen from here.
+  // PT sold as a COUNT, the same New Clients figure PT Snapshot reports: a
+  // member who did not have a recurring service and now does, whether they
+  // bought RS or PIF. Beside the revenue rather than instead of it — one big
+  // package and five small ones are the same money and a very different month.
+  { key: 'newPtClients', label: 'New PT Clients', format: 'int', betterWhen: 'up', group: 'pt' },
   { key: 'newPtRevenue', label: 'New PT Revenue', format: 'money', betterWhen: 'up', group: 'pt' },
   { key: 'lostPtRevenue', label: 'Lost PT Revenue', format: 'money', betterWhen: 'down', group: 'pt' },
   { key: 'netPtRevenue', label: 'Net PT Revenue', format: 'money', betterWhen: 'up', group: 'pt' },
@@ -196,6 +207,13 @@ function shapeTotals(window, summary, pt) {
 
     // --- training ---------------------------------------------------------
     dayOnes: num(p.day_ones),
+    // The count behind the show rate, and the count behind the close rate.
+    dayOnesShowed: num(p.day_ones_completed),
+    dayOnesSold: num(p.day_ones_sold),
+    // Members who did not have a recurring service before this window and do
+    // now. The same field PT Snapshot's New Clients reads, so the two reports
+    // cannot disagree about what a new PT client is.
+    newPtClients: num(p.new_clients),
     // Of the Day Ones that were MEANT to happen, how many did. Still-scheduled
     // ones are excluded: a Day One in the future has not failed to happen yet,
     // and counting it would make every show rate sag as a month filled up.

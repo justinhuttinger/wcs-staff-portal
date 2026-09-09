@@ -30,9 +30,12 @@ export const STAT_DRILLS = {
   sameDaySales:       { set: 'tours', title: 'Tours given' },
   tourConversionRate: { set: 'tours', title: 'Tours given' },
   dayOnes:            { set: 'day-ones', title: 'Day Ones' },
+  dayOnesShowed:      { set: 'day-ones', filter: 'completed', title: 'Completed Day Ones' },
+  dayOnesSold:        { set: 'day-ones', filter: 'sold', title: 'Day Ones sold' },
   dayOneShowRate:     { set: 'day-ones', filter: 'completed', title: 'Completed Day Ones' },
   dayOneCloseRate:    { set: 'day-ones', filter: 'sold', title: 'Day Ones sold' },
   dayOnesPending:     { set: 'day-ones-pending', title: 'Pending outcomes' },
+  newPtClients:       { set: 'pt-sales', title: 'PT sold' },
   newPtRevenue:       { set: 'pt-sales', title: 'PT sold' },
   lostPtRevenue:      { set: 'pt-losses', title: 'Deactivations' },
 }
