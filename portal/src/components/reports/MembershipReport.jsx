@@ -195,6 +195,7 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
   const allRows = Object.entries(data.by_salesperson || {})
   const totalSales = allRows.reduce((sum, [, s]) => sum + (s.total_sales || 0), 0)
   const totalRowVips = allRows.reduce((sum, [, s]) => sum + (s.vips || 0), 0)
+  const totalRowTours = allRows.reduce((sum, [, s]) => sum + (s.tours || 0), 0)
   const totalDayOne = allRows.reduce((sum, [, s]) => sum + (s.day_one_booked || 0), 0)
   const totalSameDay = allRows.reduce((sum, [, s]) => sum + (s.same_day_sale || 0), 0)
 
@@ -204,9 +205,9 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
 
   function handleExportCSV() {
     const csvRows = [
-      ['Salesperson', 'Total Sales', 'VIPs', 'Day One', 'Same Day Sale'],
-      ...rows.map(([name, s]) => [displayName(name), s.total_sales || 0, s.vips || 0, s.day_one_booked || 0, s.same_day_sale || 0]),
-      ['Total', totalSales, totalRowVips, totalDayOne, totalSameDay],
+      ['Salesperson', 'Total Sales', 'Tours', 'VIPs', 'Day One', 'Same Day Sale'],
+      ...rows.map(([name, s]) => [displayName(name), s.total_sales || 0, s.tours || 0, s.vips || 0, s.day_one_booked || 0, s.same_day_sale || 0]),
+      ['Total', totalSales, totalRowTours, totalRowVips, totalDayOne, totalSameDay],
     ]
     exportCSV(csvRows, `membership-report-${startDate}-${endDate}`)
   }
@@ -272,6 +273,9 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
             <tr className="border-b border-border bg-bg">
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Salesperson</th>
               <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Total Sales</th>
+              {/* Tours GIVEN, ahead of the things that follow a tour, so the
+                  columns read in the order the day happens. */}
+              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Tours</th>
               <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">VIPs</th>
               <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Day One</th>
               <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Same Day Sale</th>
@@ -291,13 +295,14 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
                     {displayName(name)}
                   </td>
                   <td className="px-4 py-3 text-center text-wcs-red font-semibold">{stats.total_sales || 0}</td>
+                  <td className="px-4 py-3 text-center text-text-primary">{stats.tours || 0}</td>
                   <td className="px-4 py-3 text-center text-text-primary">{stats.vips || 0}</td>
                   <td className="px-4 py-3 text-center text-green-600">{stats.day_one_booked || 0}</td>
                   <td className="px-4 py-3 text-center text-green-600">{stats.same_day_sale || 0}</td>
                 </tr>
                 {expanded === name && stats.members && stats.members.length > 0 && (
                   <tr>
-                    <td colSpan={5} className="px-0 py-0">
+                    <td colSpan={6} className="px-0 py-0">
                       <div className="bg-bg/50 border-b border-border">
                         <table className="w-full text-xs">
                           <thead>
@@ -331,13 +336,14 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-text-muted text-sm">No data for this period</td>
+                <td colSpan={6} className="px-4 py-8 text-center text-text-muted text-sm">No data for this period</td>
               </tr>
             )}
             {rows.length > 0 && (
               <tr className="border-t-2 border-border font-bold bg-bg/30">
                 <td className="px-4 py-3 text-text-primary pl-9">Total</td>
                 <td className="px-4 py-3 text-center text-wcs-red">{totalSales}</td>
+                <td className="px-4 py-3 text-center text-text-primary">{totalRowTours}</td>
                 <td className="px-4 py-3 text-center text-text-primary">{totalRowVips}</td>
                 <td className="px-4 py-3 text-center text-green-600">{totalDayOne}</td>
                 <td className="px-4 py-3 text-center text-green-600">{totalSameDay}</td>
