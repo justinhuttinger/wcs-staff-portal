@@ -3,6 +3,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
+const { loadCategoryMap } = require('../lib/analyticsMemberFilters')
 const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { buildCategoryRows } = require('../lib/membershipByCategory')
@@ -68,6 +69,9 @@ router.get('/', async (req, res) => {
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       const skipList = await getSkipList()
+      // Read per request rather than cached: the mapping is edited from Admin,
+      // and a stale copy would quietly move what counts toward ACH %.
+      const categoryMap = await loadCategoryMap(supabaseAdmin)
 
       const windowFor = async (s, e) => {
         // Tours and VIPs come through buildReport with everything else rather
@@ -91,7 +95,11 @@ router.get('/', async (req, res) => {
             // separately at the window's end.
             total_members: null,
           },
-          summary: buildReport(sales.members, sales.dayOnes, sales.contactsById, NO_FILTERS, skipList, { vips: sales.vips, tours: sales.tours }).summary,
+          summary: buildReport(sales.members, sales.dayOnes, sales.contactsById,
+            // The map is what keeps ACH % off insurance plans. Without it the
+            // rule falls back to matching type NAMES, which cannot know about
+            // an insurance product that is not called one.
+            { ...NO_FILTERS, categoryMap }, skipList, { vips: sales.vips, tours: sales.tours }).summary,
         }
       }
 
