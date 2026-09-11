@@ -12,6 +12,7 @@ const { searchMembersByName } = require('../lib/memberLookup')
 const { resolveAbcId } = require('../lib/resolveAbcId')
 const { resolveEmployeeId, employeeIdMap, normalize: normalizeName } = require('../lib/resolveEmployeeId')
 const { pushConfigured } = require('../lib/tourPush')
+const { loadOutcomeRules, outcomesForLocation } = require('../lib/tourOutcomeRules')
 
 const router = Router()
 
@@ -78,7 +79,22 @@ function withAbcId(row) {
 
 // 'Custom Pass' also writes a pass to ABC (see the trial-days route); it is a
 // real outcome as far as saving and the outbound webhook are concerned.
+//
+// Only the fallback now. Each club's list comes from tour_outcomes, which is
+// how NLPT and Swim appear at Milwaukie and Clackamas and nowhere else.
 const ALLOWED_OUTCOMES = ['Membership Sale', 'Started Trial', 'Started VIP Pass', 'Day Pass', 'Only Tour', 'Custom Pass']
+
+// This club's outcomes, or null when the table cannot be read (callers then
+// use ALLOWED_OUTCOMES, the list every club had before).
+async function outcomesFor(location) {
+  try {
+    const list = outcomesForLocation(await loadOutcomeRules(), location.name)
+    return list.length ? list : null
+  } catch (err) {
+    console.error('[public-tour] outcome rules failed, using the built-in list:', err.message)
+    return null
+  }
+}
 
 // Resolve a token -> active config row (+ location). Returns null if not found.
 async function resolveToken(token) {
@@ -163,6 +179,7 @@ router.get('/:token', async (req, res) => {
       // an iPad to subscribe and show alerts as on, so without this the app
       // reports notifications working while nothing can ever deliver one.
       push_configured: pushConfigured(),
+      outcomes: await outcomesFor(ctx.location),
       ready: (ready || []).map(withAbcId),
     })
   } catch (err) {
@@ -231,7 +248,7 @@ router.patch('/:token/intake/:id', async (req, res) => {
     const cancelled = status === 'cancelled'
     const invalid = queueCompletionError(
       { outcome, tourMember: tour_member, cancelled },
-      ALLOWED_OUTCOMES,
+      (await outcomesFor(ctx.location)) || ALLOWED_OUTCOMES,
     )
     if (invalid) return res.status(400).json(invalid)
 
