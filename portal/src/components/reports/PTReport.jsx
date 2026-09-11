@@ -204,10 +204,20 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
   return (
     <div className="space-y-6">
       {/* Stat Cards — Set / Show / Close */}
-      <StatBlock cols={3}>
+      <StatBlock cols={4}>
         <StatCell label="Set" value={totalDayOnes} sub="Total Day Ones" />
         <StatCell label="Show" value={totalCompleted} sub={`${completionRate}% of ${totalDayOnes} set`} />
         <StatCell label="Close" value={totalSales} sub={`${closeRate}% of ${totalCompleted} shown`} />
+        {/* The number that says how much to trust the two beside it. A Day One
+            whose date has passed with no outcome recorded counts as neither
+            held nor missed, so Show and Close are measured on an incomplete
+            picture until it is closed out. Same figure PT Snapshot calls
+            Pending Outcome. */}
+        <StatCell
+          label="Pending Outcome"
+          value={data.pending_outcome ?? '—'}
+          sub="Passed, nothing recorded"
+        />
       </StatBlock>
 
       {/* Trainer Summary Table */}

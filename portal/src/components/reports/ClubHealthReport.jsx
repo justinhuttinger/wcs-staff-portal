@@ -263,6 +263,35 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
           <StatCell label="Members" value={totalMemberships} />
           <StatCell label="Total VIPs" value={data.total_vips} />
           <StatCell label="Same Day Sales" value={data.total_same_day_sales} />
+          {/* From the Analytics definitions, so this and Club Snapshot cannot
+              disagree about the same month. New Dues is what was written, not
+              what was collected. */}
+          <StatCell
+            label="New Dues"
+            value={data.new_dues != null ? `$${Math.round(data.new_dues).toLocaleString()}` : '—'}
+            sub="Written this period"
+          />
+          {/* Insurance and temp plans are out of this: neither can be on ACH at
+              all, so counting them would score product mix, not selling. */}
+          <StatCell
+            label="ACH %"
+            value={data.pct_on_ach != null ? `${data.pct_on_ach}%` : 'N/A'}
+            sub="Dues plans only"
+          />
+          {/* N/A rather than 0 where no club in view has ever recorded a tour —
+              they were not stored before the check-in module kept them. */}
+          <StatCell
+            label="Tours Given"
+            value={data.tours_unavailable ? 'N/A' : (data.total_tours ?? 0)}
+            sub={data.tours_unavailable ? 'Not recorded at these clubs' : undefined}
+          />
+          {/* The caveat on every Day One rate below: passed, nothing recorded,
+              so it counts as neither held nor missed. */}
+          <StatCell
+            label="Day Ones Pending"
+            value={data.pending_outcome ?? '—'}
+            sub="Passed, no outcome"
+          />
         </StatBlock>
       </div>
 

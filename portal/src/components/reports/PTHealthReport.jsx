@@ -85,6 +85,11 @@ export default function PTHealthReport({ startDate, endDate, locationSlug }) {
             ['Set', t.dayOnes.set],
             [`Show (${pct(t.dayOnes.show, t.dayOnes.set)})`, t.dayOnes.show],
             [`Close (${pct(t.dayOnes.close, t.dayOnes.show)} of show)`, t.dayOnes.close],
+            // Last, and only when there are any: it is not a funnel step but a
+            // caveat on the two above it. A Day One whose date has passed with
+            // nothing recorded is neither held nor missed, so Show and Close
+            // are measured on an incomplete picture until it is closed out.
+            ...(t.dayOnes.pending ? [['Pending outcome', t.dayOnes.pending]] : []),
           ]}
           tone="blue"
         />

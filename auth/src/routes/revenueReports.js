@@ -104,6 +104,35 @@ async function fetchSummary(startDate, endDate, locationFilter) {
   const mtTotal = out.by_membership_type.reduce((s, m) => s + m.total, 0) || 1
   out.by_membership_type.forEach(m => { m.pct_of_total = m.total / mtTotal })
   out.by_day.sort((a, b) => a.date.localeCompare(b.date))
+
+  // Dues & Fees against Discretionary, from abc_profit_center_groups — the same
+  // mapping Revenue Analysis splits by. Two very different kinds of money sit
+  // in one total: dues are contracted and predictable, discretionary is sold
+  // again every month, and a total that moved tells you nothing about which one
+  // did.
+  //
+  // Folded from the profit centres already fetched rather than queried again,
+  // so the halves always sum to the total on screen. An unmapped centre lands
+  // in Other rather than being dropped, or the two halves would quietly stop
+  // adding up.
+  try {
+    const { data: groups } = await supabaseAdmin
+      .from('abc_profit_center_groups')
+      .select('profit_center, revenue_class')
+    const classOf = new Map((groups || []).map(g => [String(g.profit_center).toLowerCase(), g.revenue_class]))
+    const byClass = new Map()
+    for (const p of out.by_profit_center) {
+      const cls = classOf.get(String(p.name).toLowerCase()) || 'Other'
+      byClass.set(cls, (byClass.get(cls) || 0) + p.total)
+    }
+    out.by_revenue_class = [...byClass.entries()]
+      .map(([name, total]) => ({ name, total, pct_of_total: total / pcTotal }))
+      .sort((a, b) => b.total - a.total)
+  } catch (err) {
+    // The rest of the report is independent of this split.
+    console.warn('[revenue] revenue class split unavailable:', err.message)
+    out.by_revenue_class = null
+  }
   return out
 }
 

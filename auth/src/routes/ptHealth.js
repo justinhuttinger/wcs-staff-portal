@@ -363,6 +363,22 @@ async function buildPtHealthPayload({ start_date, end_date, location_slug }) {
         totals.netClients = totals.newPT.count - totals.deactivated.count
         totals.netRevenue = totals.newPT.revenue - totals.deactivated.value
 
+        // Day Ones past their date with nothing recorded — PT Snapshot's
+        // Pending Outcome, from the same loader, so the two agree. Every rate
+        // on this dashboard divides by completed Day Ones, and one left open is
+        // neither held nor missed: without this the reader cannot tell a real
+        // close rate from a half-finished one.
+        try {
+          const { loadPendingDayOnes, summarisePending } = require('../lib/dayOnePending')
+          const clubNumbers = targetClubs.map(c => c.clubNumber)
+          const pendingRows = await loadPendingDayOnes(clubNumbers, start_date, end_date)
+          totals.dayOnes.pending = summarisePending(pendingRows).total
+        } catch (err) {
+          // Never at the cost of the rest of the dashboard.
+          console.warn('[PT Health] pending Day Ones unavailable:', err.message)
+          totals.dayOnes.pending = null
+        }
+
         return {
           period: { start: start_date, end: end_date },
           totals,

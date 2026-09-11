@@ -297,6 +297,37 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
         </div>
       )}
 
+      {/* Dues & Fees against Discretionary. Two very different kinds of money
+          sit in the one total above — dues are contracted and predictable,
+          discretionary is sold again every month — and a total that moved tells
+          you nothing about which one did. Above the profit-centre table because
+          it is the shape of the month; the table is where you go once you know
+          which half to look at. */}
+      {data.by_revenue_class?.length > 0 && (
+        <div className="bg-surface rounded-xl border border-border p-4">
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Dues vs Discretionary</p>
+          <div className="space-y-2">
+            {data.by_revenue_class.map(c => (
+              <div key={c.name} className="flex items-center gap-3 text-sm">
+                <span className="text-text-primary w-40 flex-shrink-0 truncate" title={c.name}>{c.name}</span>
+                <span className="flex-1 h-2.5 rounded-full bg-bg overflow-hidden min-w-[3rem]">
+                  <span
+                    className="block h-full rounded-full bg-wcs-red/70"
+                    style={{ width: `${Math.max(2, (c.pct_of_total || 0) * 100)}%` }}
+                  />
+                </span>
+                <span className="font-semibold text-text-primary tabular-nums w-28 text-right">
+                  ${Math.round(c.total).toLocaleString()}
+                </span>
+                <span className="text-xs text-text-muted tabular-nums w-12 text-right">
+                  {Math.round((c.pct_of_total || 0) * 100)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="bg-surface rounded-xl border border-border p-4">
         <div className="flex items-center justify-between mb-3">
           <div>
