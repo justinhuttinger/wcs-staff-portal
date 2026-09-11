@@ -7,6 +7,7 @@
 
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('./supabaseFetchAll')
+const { loadOutcomeRulesOrNone, onlyTours } = require('./tourOutcomeRules')
 
 // Kept in step with TOUR_ATTRIBUTION_DAYS in salespersonPerformance: this
 // decides how far past the window joiners are loaded, that one decides how far
@@ -107,7 +108,8 @@ async function loadVipCredits(clubNumbers, start, end) {
  * on record is reported as pending, not as zero.
  *
  * Only `completed` counts. A row still at `ready` is a check-in nobody closed
- * out, not a tour that happened.
+ * out, not a tour that happened. Nor does an outcome tour_outcomes marks as not
+ * a tour (Day Pass, NLPT, Swim).
  *
  * The outcome the desk picked is deliberately NOT what decides a conversion —
  * see daysToSign in salespersonPerformance. It is loaded only so the row can be
@@ -121,7 +123,7 @@ async function loadTourCompletions(clubNumbers, start, end) {
   const joinerEnd = new Date(Date.parse(end + 'T00:00:00Z') + TOUR_ATTRIBUTION_DAYS * 86400000)
     .toISOString().slice(0, 10)
 
-  const [tours, everRows, joiners] = await Promise.all([
+  const [tours, everRows, joiners, rules] = await Promise.all([
     fetchAll(
       supabaseAdmin
         .from('tour_intakes')
@@ -145,9 +147,10 @@ async function loadTourCompletions(clubNumbers, start, end) {
         .lte('since_date', joinerEnd)
         .order('id', { ascending: true })
     ),
+    loadOutcomeRulesOrNone('salesperson/tours'),
   ])
   return {
-    tours,
+    tours: onlyTours(tours, rules),
     joiners,
     configuredClubs: new Set(everRows.map(r => r.club_number)),
   }

@@ -322,6 +322,9 @@ export default function TourCheckinApp({ token }) {
           token={token}
           intake={selected}
           dayOneBaseUrl={data.day_one_base_url}
+          // The club's own list from the server (NLPT and Swim only exist at
+          // some clubs); the built-in list if an older server sent none.
+          outcomes={data.outcomes?.length ? data.outcomes : OUTCOMES}
           onClose={() => setSelected(null)}
           onSaved={(id) => {
             // The server already deleted the row on save — drop the card from
@@ -338,7 +341,7 @@ export default function TourCheckinApp({ token }) {
   )
 }
 
-function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
+function OutcomeModal({ token, intake, dayOneBaseUrl, outcomes, onClose, onSaved }) {
   const [employees, setEmployees] = useState([])
   const [tourMember, setTourMember] = useState('')        // asked every tour
   const [outcome, setOutcome] = useState(intake.outcome || '')
@@ -469,7 +472,7 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, onClose, onSaved }) {
         <div>
           <label className="block text-sm font-semibold text-gray-900 mb-2">Tour outcome</label>
           <div className="grid grid-cols-2 gap-2">
-            {OUTCOMES.map(o => (
+            {outcomes.map(o => (
               // No longer gated on a linked ABC profile: the server looks the
               // person up by phone or email when the card has no id, which is
               // every card the GHL survey raises. Greying it out meant Custom

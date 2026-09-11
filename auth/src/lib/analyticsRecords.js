@@ -4,6 +4,7 @@ const {
 const { isChaseable } = require('./pastDueReport')
 const { isInsuranceType, tenureMonths } = require('./attritionAnalysis')
 const { classifyCalendarEvent, KIND, KIND_LABEL } = require('./calendarEventKind')
+const { loadOutcomeRulesOrNone, onlyTours } = require('./tourOutcomeRules')
 
 // ---------------------------------------------------------------------------
 // The rows behind the numbers.
@@ -615,7 +616,8 @@ const SETS = {
       { key: 'outcome', label: 'Outcome', format: T.text },
     ],
     // Completed only: a row still at 'ready' is a check-in nobody closed out,
-    // not a tour that happened.
+    // not a tour that happened. Day Pass, NLPT and Swim are left out too: the
+    // same numbers Tours Given counts.
     async load({ start, end, clubNumbers, person }) {
       const q = lazySupabase()
         .from('tour_intakes')
@@ -624,8 +626,8 @@ const SETS = {
         .gte('completed_at', `${start}T00:00:00Z`)
         .lte('completed_at', `${end}T23:59:59.999Z`)
       if (clubNumbers) q.in('club_number', clubNumbers)
-      const rows = await fetchAllRows(q)
-      return rows
+      const [rows, rules] = await Promise.all([fetchAllRows(q), loadOutcomeRulesOrNone('records/tours')])
+      return onlyTours(rows, rules)
         .filter(r => matchesPerson(r.given_by_name, person))
         .map(r => ({
           member: r.contact_name || 'Unnamed prospect',

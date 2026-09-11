@@ -10,6 +10,8 @@
 export const VIP_PASS = 'Started VIP Pass'
 export const CUSTOM_PASS = 'Custom Pass'
 export const DAY_PASS = 'Day Pass'
+// The fallback. The server sends each club's own list from tour_outcomes, which
+// is how NLPT and Swim show at Milwaukie and Clackamas and nowhere else.
 export const OUTCOMES = ['Membership Sale', 'Started Trial', VIP_PASS, DAY_PASS, 'Only Tour', CUSTOM_PASS]
 
 // Outcomes that hand out gym access, and for how long. A trial and a VIP pass
