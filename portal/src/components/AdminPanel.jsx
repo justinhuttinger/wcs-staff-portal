@@ -39,7 +39,6 @@ import VendorPriceListAdmin from './admin/VendorPriceListAdmin'
 import Trends12moExportTab from './admin/Trends12moExportTab'
 import ReferralRewardsAdmin from './admin/ReferralRewardsAdmin'
 import KpiGoalsAdmin from './admin/KpiGoalsAdmin'
-import ProblemThresholdsAdmin from './admin/ProblemThresholdsAdmin'
 import AuditTogglesAdmin from './admin/AuditTogglesAdmin'
 import ReportVisibilityAdmin from './admin/ReportVisibilityAdmin'
 import SpeedToLeadAudit from './admin/SpeedToLeadAudit'
@@ -77,7 +76,6 @@ const SETUP_TILES = [
   { key: 'online-join', label: 'Online Join', desc: 'Membership Signup Admin', icon: 'M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z' },
   { key: 'vip-referrals', label: 'VIP Referrals', desc: 'Referral Submissions + Webhook Config', icon: 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z' },
   { key: 'tour-checkin', label: 'Tour Check-In', desc: 'Check-In App per Location', icon: 'M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z' },
-  { key: 'problem-thresholds', label: 'Problem Thresholds', desc: 'What Counts as a Problem', icon: 'M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z' },
   { key: 'report-visibility', label: 'Report Visibility', desc: 'Reports per Club', icon: 'M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z' },
   { key: 'kpi-goals', label: 'KPI Goals', desc: 'Report Targets', icon: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z' },
   { key: 'nps', label: 'Feedback', desc: 'Member Surveys', icon: 'M8 10.5h8m-8 3h5m-5 6.5 -3 2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8z' },
@@ -135,7 +133,7 @@ const TILE_BY_KEY = Object.fromEntries(ALL_TILES.map(t => [t.key, t]))
 const CATEGORIES = [
   { title: 'Staff & HR', keys: ['staff', 'import', 'employee-roster', 'roles-v2', 'paychex'] },
   { title: 'Portal Setup', keys: ['tiles', 'appearance', 'layouts', 'config', 'drive-folders', 'forms', 'ticketing', 'action-links', 'references', 'portal-refresh'] },
-  { title: 'Reports & KPIs', keys: ['problem-thresholds', 'kpi-goals', 'report-visibility', 'trends-12mo', 'speed-to-lead-audit', 'business-hours-stl', 'revenue-backfill', 'payroll-commissions'] },
+  { title: 'Reports & KPIs', keys: ['kpi-goals', 'report-visibility', 'trends-12mo', 'speed-to-lead-audit', 'business-hours-stl', 'revenue-backfill', 'payroll-commissions'] },
   { title: 'Members & Sales', keys: ['online-join', 'vip-referrals', 'tour-checkin', 'membership-skip', 'membership-categories', 'referral-rewards', 'audit-toggles', 'vendor-price-list', 'till-settings', 'lapsed-checkins', 'member-app', 'member-notifications'] },
   { title: 'Integrations & Sync', keys: ['sync', 'abc-sync', 'club-integrations', 'club-info', 'custom-fields', 'google-connections', 'shared-credentials'] },
   { title: 'Logs & Messaging', keys: ['webhooks', 'sms', 'audit-log'] },
@@ -228,7 +226,6 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'club-integrations' && <ClubIntegrations />}
         {activeSection === 'club-info' && <ClubInfo />}
         {activeSection === 'kpi-goals' && <KpiGoalsAdmin />}
-        {activeSection === 'problem-thresholds' && <ProblemThresholdsAdmin />}
         {activeSection === 'audit-toggles' && <AuditTogglesAdmin />}
         {activeSection === 'report-visibility' && <ReportVisibilityAdmin />}
         {activeSection === 'speed-to-lead-audit' && <SpeedToLeadAudit />}
