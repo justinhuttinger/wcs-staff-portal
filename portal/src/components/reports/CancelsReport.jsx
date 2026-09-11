@@ -13,32 +13,78 @@ const STATUS_COLORS = {
 
 const STATUS_ORDER = ['Cancelled', 'Expired', 'Return For Collection']
 
+/**
+ * By Status, as a pie.
+ *
+ * Three slices at most, and the question is "what share of the leaving was a
+ * real cancellation rather than an expiry" — a whole-of-something question,
+ * which is the one shape a pie answers better than bars. The legend keeps the
+ * counts and percentages, because a pie alone cannot be read to a number.
+ *
+ * Drawn as SVG arcs rather than pulled from a chart library: three slices do
+ * not justify a dependency, and the Reporting view has none today.
+ */
 function StatusBreakdown({ counts, flush = false }) {
   const counts_ = counts || {}
-  const total = Object.values(counts_).reduce((s, v) => s + (v || 0), 0)
-  // Show in fixed order; tack on any unexpected statuses at the end
   const ordered = [
     ...STATUS_ORDER.filter(s => counts_[s] > 0),
     ...Object.keys(counts_).filter(s => !STATUS_ORDER.includes(s) && counts_[s] > 0),
   ]
+  const total = ordered.reduce((sum, k) => sum + (counts_[k] || 0), 0)
+
+  // Cumulative angle as we walk the slices, so each arc starts where the last
+  // one ended.
+  let angle = -Math.PI / 2  // from twelve o'clock, the way a pie is read
+  const R = 52
+  const CX = 60
+  const CY = 60
+
+  const slices = ordered.map(status => {
+    const count = counts_[status] || 0
+    const share = count / total
+    const sweep = share * Math.PI * 2
+    const x1 = CX + R * Math.cos(angle)
+    const y1 = CY + R * Math.sin(angle)
+    angle += sweep
+    const x2 = CX + R * Math.cos(angle)
+    const y2 = CY + R * Math.sin(angle)
+    // A slice of more than half the circle needs the large-arc flag, or SVG
+    // draws the short way round and the chart silently inverts.
+    const large = sweep > Math.PI ? 1 : 0
+    // One status accounting for everything is a full circle, which an arc
+    // cannot express — the start and end points coincide and nothing is drawn.
+    const d = share >= 0.999
+      ? `M ${CX} ${CY - R} A ${R} ${R} 0 1 1 ${CX - 0.01} ${CY - R} Z`
+      : `M ${CX} ${CY} L ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2} Z`
+    return { status, count, share, d, color: STATUS_COLORS[status] || '#a8722c' }
+  })
+
   return (
     <div className={flush ? 'bg-surface p-6' : 'bg-surface rounded-xl border border-border p-6'}>
       <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">By Status</p>
       {total === 0 ? (
         <p className="text-sm text-text-muted py-4 text-center">No data</p>
       ) : (
-        <div className="space-y-2">
-          {ordered.map(status => {
-            const count = counts_[status] || 0
-            return (
-              <div key={status} className="flex items-center gap-3 text-sm">
-                <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: STATUS_COLORS[status] || '#a8722c' }} />
-                <span className="text-text-primary flex-1">{status}</span>
-                <span className="font-semibold text-text-primary tabular-nums">{count}</span>
-                <span className="text-xs text-text-muted tabular-nums">({Math.round((count / total) * 100)}%)</span>
+        <div className="flex items-center gap-5 flex-wrap">
+          <svg viewBox="0 0 120 120" className="w-28 h-28 flex-shrink-0" role="img" aria-label="Cancellations by status">
+            {slices.map(sl => (
+              <path key={sl.status} d={sl.d} fill={sl.color}>
+                <title>{`${sl.status}: ${sl.count} (${Math.round(sl.share * 100)}%)`}</title>
+              </path>
+            ))}
+          </svg>
+          {/* The legend carries the numbers. Colour alone is not an answer, and
+              on a chart this small the slices cannot be measured by eye. */}
+          <div className="space-y-2 flex-1 min-w-[12rem]">
+            {slices.map(sl => (
+              <div key={sl.status} className="flex items-center gap-3 text-sm">
+                <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: sl.color }} />
+                <span className="text-text-primary flex-1">{sl.status}</span>
+                <span className="font-semibold text-text-primary tabular-nums">{sl.count}</span>
+                <span className="text-xs text-text-muted tabular-nums">({Math.round(sl.share * 100)}%)</span>
               </div>
-            )
-          })}
+            ))}
+          </div>
         </div>
       )}
     </div>

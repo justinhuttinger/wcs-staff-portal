@@ -1,9 +1,85 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { getPTReport } from '../../lib/api'
 import { exportCSV, exportPDF } from '../../lib/export'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { StatBlock, StatCell } from './StatBlock'
+
+/**
+ * One key for a person however their name was typed.
+ *
+ * The pending rows come from analytics_day_one_pending and the table's rows
+ * from the Day One feed; the same trainer reaches them with different
+ * whitespace and casing, and an unnormalised lookup leaves the column empty for
+ * somebody who plainly has open forms.
+ */
+function normaliseName(name) {
+  return String(name || '').toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * The open Day Ones for one trainer, and a way to close them out.
+ *
+ * Each row links to the outcome form the trainer already gets sent — the same
+ * public page, addressed by GHL contact — so this is a route into the existing
+ * form rather than a second place to record an outcome. A row whose
+ * appointment carries no contact id still shows, with the link withheld: the
+ * chase is still worth making by hand, and hiding the row would make the count
+ * above disagree with the list under it.
+ *
+ * Opens in a new tab so the report keeps its place; the reader is working
+ * through a list and will be back.
+ */
+function PendingList({ rows }) {
+  if (!rows || rows.length === 0) {
+    return (
+      <div className="bg-bg/50 border-b border-border px-6 py-4 text-xs text-text-muted">
+        Nothing open for this trainer in this range.
+      </div>
+    )
+  }
+  return (
+    <div className="bg-bg/50 border-b border-border">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-border">
+            <th className="text-left px-6 py-2 text-text-muted uppercase font-semibold">Member</th>
+            <th className="text-left px-4 py-2 text-text-muted uppercase font-semibold">Day One</th>
+            <th className="text-left px-4 py-2 text-text-muted uppercase font-semibold">Overdue</th>
+            <th className="text-right px-6 py-2 text-text-muted uppercase font-semibold">Outcome</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.id} className="border-b border-border/60 last:border-0">
+              <td className="px-6 py-2 text-text-primary">{r.member || 'Unnamed'}</td>
+              <td className="px-4 py-2 text-text-muted tabular-nums">{r.date}</td>
+              <td className="px-4 py-2 tabular-nums">
+                <span className={r.daysOverdue >= 14 ? 'text-wcs-red font-semibold' : 'text-text-muted'}>
+                  {r.daysOverdue}d
+                </span>
+              </td>
+              <td className="px-6 py-2 text-right">
+                {r.contactId ? (
+                  <a
+                    href={`/day-one/outcome?c=${encodeURIComponent(r.contactId)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2 py-1 rounded-lg border border-border text-text-primary hover:bg-surface hover:text-wcs-red transition-colors font-semibold"
+                  >
+                    Record
+                  </a>
+                ) : (
+                  <span className="text-text-muted" title="No GHL contact on this appointment">—</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
 
 function capitalize(str) {
   if (!str) return ''
@@ -175,6 +251,17 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
   const totalCompleted = byStatus['Completed'] || 0
   const totalSales = Object.values(data.by_trainer || {}).reduce((sum, t) => sum + (t.sales || 0), 0)
 
+  // Which trainer's open Day Ones are expanded, if any.
+  const [pendingFor, setPendingFor] = useState(null)
+
+  // The per-trainer pending counts, keyed the way the table's own names are, so
+  // a doubled space or a case difference does not leave the column empty for
+  // somebody who plainly has open forms.
+  const pendingByTrainer = {}
+  for (const [who, n] of Object.entries(data.pending?.byTrainer || {})) {
+    pendingByTrainer[normaliseName(who)] = (pendingByTrainer[normaliseName(who)] || 0) + n
+  }
+
   const trainerEntries = Object.entries(data.by_trainer || {})
   const trainerRows = (() => {
     if (!trainerSort.key || !TRAINER_SORT[trainerSort.key]) {
@@ -235,6 +322,9 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
                 { key: 'no_show', label: 'No Show', align: 'center' },
                 { key: 'sales', label: 'Sales', align: 'center' },
                 { key: 'no_sale', label: 'No Sale', align: 'center' },
+                // Between the outcomes and the rates, because it is what says
+                // how much of the outcome is actually known yet.
+                { key: 'pending', label: 'Pending', align: 'center' },
                 { key: 'show_pct', label: 'Show %', align: 'center' },
                 { key: 'close_pct', label: 'Close %', align: 'center' },
               ].map(col => (
@@ -258,8 +348,10 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
               const rowNoSales = stats.no_sales || 0
               const showPct = rowTotal > 0 ? Math.round((rowCompleted / rowTotal) * 100) : 0
               const closePct = rowCompleted > 0 ? Math.round((rowSales / rowCompleted) * 100) : 0
+              const rowPending = pendingByTrainer[normaliseName(name)] || 0
               return (
-                <tr key={name} className="border-b border-border hover:bg-bg/50 transition-colors">
+                <React.Fragment key={name}>
+                <tr className="border-b border-border hover:bg-bg/50 transition-colors">
                   <td className="px-4 py-3 font-medium text-text-primary">{name}</td>
                   <td className="px-4 py-3 text-center font-semibold text-text-primary">{rowTotal}</td>
                   <td className="px-4 py-3 text-center">
@@ -270,14 +362,38 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
                   </td>
                   <td className="px-4 py-3 text-center text-wcs-red font-semibold">{rowSales}</td>
                   <td className="px-4 py-3 text-center text-text-muted">{rowNoSales}</td>
+                  <td className="px-4 py-3 text-center">
+                    {rowPending > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setPendingFor(pendingFor === name ? null : name)}
+                        className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs border border-amber-200 font-semibold hover:bg-amber-100 transition-colors"
+                        title="See which Day Ones are open, and record them"
+                      >
+                        {rowPending}
+                      </button>
+                    ) : (
+                      <span className="text-text-muted text-xs">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-center text-text-primary font-medium">{showPct}%</td>
                   <td className="px-4 py-3 text-center text-text-primary font-medium">{closePct}%</td>
                 </tr>
+                {pendingFor === name && (
+                  <tr>
+                    <td colSpan={9} className="px-0 py-0">
+                      <PendingList
+                        rows={(data.pending?.list || []).filter(r => normaliseName(r.trainer) === normaliseName(name))}
+                      />
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               )
             })}
             {trainerRows.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-text-muted text-sm">No data for this period</td>
+                <td colSpan={9} className="px-4 py-8 text-center text-text-muted text-sm">No data for this period</td>
               </tr>
             )}
             {trainerRows.length > 0 && (
@@ -288,6 +404,7 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
                 <td className="px-4 py-3 text-center text-red-500">{totals.no_show}</td>
                 <td className="px-4 py-3 text-center text-wcs-red">{totals.sales}</td>
                 <td className="px-4 py-3 text-center text-text-muted">{totals.no_sales}</td>
+                <td className="px-4 py-3 text-center text-amber-700">{data.pending?.total ?? 0}</td>
                 <td className="px-4 py-3 text-center">{totals.total > 0 ? Math.round((totals.completed / totals.total) * 100) : 0}%</td>
                 <td className="px-4 py-3 text-center">{totals.completed > 0 ? Math.round((totals.sales / totals.completed) * 100) : 0}%</td>
               </tr>

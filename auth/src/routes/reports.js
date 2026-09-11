@@ -401,6 +401,15 @@ router.get('/membership', async (req, res) => {
     // Performance counts, rather than a second query that could disagree.
     const tours = await countToursGiven(locationFilter, start_date, end_date)
 
+    // Tours onto the salesperson rows. A name that gave tours but sold nothing
+    // still gets a row: leaving them out would make the column look like it
+    // only applies to closers, when giving tours and not converting them is
+    // exactly what it is there to show.
+    for (const [who, count] of Object.entries(tours.byPerson || {})) {
+      const key = resolveSpKey(who)
+      bySalesperson[key].tours = (bySalesperson[key].tours || 0) + count
+    }
+
     res.json({
       total_memberships: filteredMembers.length,
       trial_conversion: { trial_started: trialStarted, won: trialWon, rate: conversionRate },
@@ -445,19 +454,35 @@ router.get('/salesperson-stats', (req, res) => {
 // unavailable so the report can withhold the figure instead of printing a zero
 // that reads as nobody working.
 async function countToursGiven(locationFilter, startDate, endDate) {
-  if (!startDate || !endDate) return { total: null, unavailable: true }
+  if (!startDate || !endDate) return { total: null, unavailable: true, byPerson: {} }
   try {
     const { loadTourCompletions } = require('../lib/salespersonData')
+    const { displayName } = require('../lib/salespersonPerformance')
     const slugs = dayOneSlugsFor(locationFilter)
     const clubNumbers = slugs && slugs.length
       ? slugs.map(sl => SLUG_CLUB_MAP[sl]).filter(Boolean)
       : Object.values(SLUG_CLUB_MAP)
     const { tours, configuredClubs } = await loadTourCompletions(clubNumbers, startDate, endDate)
     const anyConfigured = clubNumbers.some(n => configuredClubs.has(n))
-    return { total: anyConfigured ? tours.length : null, unavailable: !anyConfigured }
+
+    // Credited to whoever GAVE the tour, normalised through displayName so
+    // "Katie  Castlio" and "Katie Castlio" are one person — the same key the
+    // salesperson table is built on, or the column would never line up.
+    const byPerson = {}
+    for (const t of tours) {
+      const who = t.given_by_name ? displayName(t.given_by_name) : null
+      if (!who) continue
+      byPerson[who] = (byPerson[who] || 0) + 1
+    }
+
+    return {
+      total: anyConfigured ? tours.length : null,
+      unavailable: !anyConfigured,
+      byPerson: anyConfigured ? byPerson : {},
+    }
   } catch (err) {
     console.warn('[reports] tours given unavailable:', err.message)
-    return { total: null, unavailable: true }
+    return { total: null, unavailable: true, byPerson: {} }
   }
 }
 
@@ -465,15 +490,52 @@ async function countToursGiven(locationFilter, startDate, endDate) {
 // is scoped to. A helper because two reports in this file want it and the club
 // resolution is the fiddly half.
 async function countPendingOutcomes(locationFilter, startDate, endDate) {
+  return (await loadPendingOutcomes(locationFilter, startDate, endDate))?.total ?? null
+}
+
+/**
+ * The pending Day Ones themselves: the count, the per-trainer split, and the
+ * chase list with a link target for each row.
+ *
+ * THE CONTACT ID IS FETCHED SEPARATELY. The outcome form is addressed by GHL
+ * contact (/day-one/outcome?c=...) and analytics_day_one_pending does not
+ * return one, so the ids are looked up from day_one_appointments by the
+ * appointment ids the list already carries. A lookup rather than a migration:
+ * the RPC is read by four reports and changing its signature to serve one link
+ * would be the larger change.
+ */
+async function loadPendingOutcomes(locationFilter, startDate, endDate) {
   if (!startDate || !endDate) return null
   try {
-    const { loadPendingDayOnes, summarisePending } = require('../lib/dayOnePending')
+    const { loadPendingDayOnes, summarisePending, pendingList } = require('../lib/dayOnePending')
     const slugs = dayOneSlugsFor(locationFilter)
     const clubNumbers = slugs && slugs.length
       ? slugs.map(sl => SLUG_CLUB_MAP[sl]).filter(Boolean)
       : null
     const rows = await loadPendingDayOnes(clubNumbers, startDate, endDate)
-    return summarisePending(rows).total
+    const summary = summarisePending(rows)
+    const list = pendingList(rows, 200)
+
+    // Oldest first is already the order; the ids come back in one query.
+    const ids = list.map(r => r.id).filter(Boolean)
+    const contactById = new Map()
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data } = await supabaseAdmin
+        .from('day_one_appointments')
+        .select('id, ghl_contact_id')
+        .in('id', ids.slice(i, i + 200))
+      for (const r of data || []) contactById.set(r.id, r.ghl_contact_id)
+    }
+
+    return {
+      total: summary.total,
+      oldestDays: summary.oldestDays,
+      byTrainer: summary.byTrainer,
+      // contactId is what makes the row actionable. Null where the appointment
+      // has no GHL contact on it: the row still shows, it just cannot deep-link
+      // to a form that is addressed by contact.
+      list: list.map(r => ({ ...r, contactId: contactById.get(r.id) || null })),
+    }
   } catch (err) {
     // A missing pending figure must not take a whole report down: every other
     // number on it is independent of this one.
@@ -577,7 +639,7 @@ router.get('/pt', async (req, res) => {
 
     // From lib/dayOnePending, the same loader Club Snapshot and PT Snapshot
     // use, so "pending" means one thing across every report that shows it.
-    const pendingOutcome = await countPendingOutcomes(locationFilter, start_date, end_date)
+    const pending = await loadPendingOutcomes(locationFilter, start_date, end_date)
 
     res.json({
       total_day_ones: total,
@@ -591,7 +653,10 @@ router.get('/pt', async (req, res) => {
       // appointment counts as neither held nor missed, so the two rates above
       // are measured on an incomplete picture. The report now says how
       // incomplete rather than leaving it to be discovered.
-      pending_outcome: pendingOutcome,
+      pending_outcome: pending?.total ?? null,
+      // The rows behind that number, so the column can break down per trainer
+      // and each one can be opened and filled in.
+      pending: pending || null,
     })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -898,6 +963,21 @@ router.get('/club-health', async (req, res) => {
       countPendingOutcomes(locationFilter, start_date, end_date),
     ])
 
+    // Members as Analytics counts them, at the end of the window. Falls back to
+    // the roster scan if the RPC is unavailable rather than showing nothing:
+    // a slightly different total is better than an empty headline.
+    let toplineMembers = null
+    try {
+      const { data: tm, error: tmErr } = await supabaseAdmin.rpc('analytics_topline_members_as_of', {
+        p_at: end_date || new Date().toISOString().slice(0, 10),
+        p_clubs: clubNumbers2.length > 0 ? clubNumbers2 : null,
+        p_exclude: true,
+      })
+      if (!tmErr && tm != null) toplineMembers = Number(tm) || 0
+    } catch (err) {
+      console.warn('[club-health] analytics member count unavailable:', err.message)
+    }
+
     res.json({
       total_memberships: filteredMembers.length,
       total_agreements: uniqueAgreements,
@@ -911,7 +991,20 @@ router.get('/club-health', async (req, res) => {
       top_trainers: topTrainers,
       by_date: byDate,
       by_membership_type: byMembershipType,
-      active_members_total: activeFiltered.length,
+      // The count Club Snapshot shows. The roster scan below it counts every
+      // is_active row less the skip list; the Analytics figure also applies the
+      // conditional-membership rule — A2 CORE and Active and Fit Limited count
+      // only where the member checked in within 60 days — and drops the stale
+      // Active rows that never got archived. Two defensible counts, but two
+      // different ones, and a reader moving between the reports saw them
+      // disagree with no way to tell which was which.
+      //
+      // The roster total is kept beside it as active_members_roster, because
+      // the membership-type table below still sums to that and a headline that
+      // did not match the table under it would be its own problem.
+      active_members_total: toplineMembers ?? activeFiltered.length,
+      active_members_roster: activeFiltered.length,
+      active_members_source: toplineMembers != null ? 'analytics' : 'roster',
       active_agreements_total: activeAgreementsTotal,
       active_by_membership_type: activeByMembershipType,
       cancels_members: cancelsInPeriodMembers,
