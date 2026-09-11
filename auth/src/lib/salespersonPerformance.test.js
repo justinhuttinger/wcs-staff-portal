@@ -742,9 +742,10 @@ test('a club with no tours on record reports null, not zero', () => {
   assert.equal(out.summary.sameDaySales, null)
 })
 
-// --- ACH % excludes insurance -----------------------------------------------
-// Insurance bills through a provider and can never be on ACH. In the
-// denominator it measures product mix, not how the desk sold.
+// --- ACH % excludes the plans that cannot be on ACH --------------------------
+// Insurance bills through a provider and temp is paid up front, so neither
+// could ever have been on ACH. In the denominator they measure product mix,
+// not how the desk sold.
 
 const achMember = (over = {}) => ({
   id: `x${Math.random()}`, club_number: '30935', sales_person_name: 'Sam Seller',
@@ -754,6 +755,38 @@ const achMember = (over = {}) => ({
 
 const achOf = (members, filters = {}) =>
   buildReport(members, [], new Map(), { viewBy: 'club', ...filters }, new Set()).summary.pctOnAch
+
+test('a temp plan is out of the ACH denominator too', () => {
+  // 0 of 38 temp joins in August were on ACH, and they dragged the rate harder
+  // than insurance did.
+  const categoryMap = new Map([['single', 'Dues'], ['7 day pass', 'Temp']])
+  const pct = achOf([
+    achMember({ membership_type: 'SINGLE', agreement_payment_method: 'EFT' }),
+    achMember({ membership_type: '7 DAY PASS', agreement_payment_method: 'Cash' }),
+  ], { categoryMap })
+  assert.equal(pct, 100)
+})
+
+test('a temp plan needs the MAP: no name test can spot one', () => {
+  // Stated as a test because it is the one gap in the fallback. Every caller
+  // that builds an ACH rate passes the map, and this is what breaks if one
+  // stops.
+  const pct = achOf([
+    achMember({ agreement_payment_method: 'EFT' }),
+    achMember({ membership_type: '7 DAY PASS', agreement_payment_method: 'Cash' }),
+  ])
+  assert.equal(pct, 50)
+})
+
+test('a dues plan that could have been on ACH and was not still counts', () => {
+  // The whole point of the rate. Only plans that CANNOT be on ACH come out.
+  const categoryMap = new Map([['single', 'Dues']])
+  const pct = achOf([
+    achMember({ agreement_payment_method: 'EFT' }),
+    achMember({ agreement_payment_method: 'Credit Card' }),
+  ], { categoryMap })
+  assert.equal(pct, 50)
+})
 
 test('an insurance plan is out of the ACH denominator, by the mapping table', () => {
   const categoryMap = new Map([['single', 'Dues'], ['gold plan', 'Insurance']])
