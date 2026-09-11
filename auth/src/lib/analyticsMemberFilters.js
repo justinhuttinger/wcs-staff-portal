@@ -89,31 +89,44 @@ function matchesFilters(row, { category, basis, categoryMap }) {
  * which is a worse failure than one more trivial query.
  */
 /**
- * Is this member on an insurance plan?
+ * Is this member on a plan that CANNOT be on ACH?
  *
- * Insurance bills through a provider rather than off the member's own account,
- * so these plans cannot be on ACH at all. Counting them in an ACH rate measures
- * the product mix, not how the desk sold — 44 insurance joins in August carried
- * 25% ACH against 49.6% on the dues plans, and mixing them pulled the headline
- * down to 42% for a reason no salesperson could act on.
+ * Two categories qualify, for the same underlying reason: the money does not
+ * come off the member's own account on a recurring schedule.
  *
- * The MAPPING TABLE is the answer where we have it: abc_membership_categories
- * is curated in Admin, so a new insurance product starts being handled the day
- * somebody maps it rather than the day a developer notices.
+ *   Insurance  bills through the provider
+ *   Temp       is paid up front for a fixed spell, with nothing recurring
  *
- * The name heuristic is the fallback for callers with no map to hand — A2 CORE,
- * A2 EXEC, A2 RECIP USE and the Active and Fit variants, which is what ABC
- * actually sends. It is deliberately second: it cannot know about an insurance
- * plan that is not named like one.
+ * Neither could have been sold on ACH, so counting them in an ACH rate measures
+ * the product mix rather than how the desk sold. August 2026 new members: dues
+ * plans ran 49.6% on ACH, insurance 25.0%, and temp 0 of 38. Mixed together the
+ * headline read 42.0%; with both out it reads 46.2%.
+ *
+ * A plan that COULD have been on ACH and was not stays in the denominator —
+ * that is precisely what this rate exists to catch.
+ *
+ * THE MAPPING TABLE IS THE ANSWER where we have it: abc_membership_categories
+ * is curated in Admin, so a new product of either kind starts being handled the
+ * day somebody maps it rather than the day a developer notices.
+ *
+ * The name test is a fallback for callers with no map to hand, and it can only
+ * recognise INSURANCE — A2 CORE, A2 EXEC, A2 RECIP USE and the Active and Fit
+ * variants, which is what ABC actually sends. There is no name pattern that
+ * identifies a temp plan, so without the map a temp member stays in the
+ * denominator. Every caller that builds an ACH rate passes the map; the
+ * fallback is there so the insurance half of the rule still holds if one ever
+ * stops.
  */
-function isInsuranceMember(row, categoryMap) {
+const NO_ACH_CATEGORIES = new Set(['Insurance', 'Temp'])
+
+function cannotUseAch(row, categoryMap) {
   const type = String(row?.membership_type || '')
   if (categoryMap) {
     const mapped = categoryMap.get(type.toLowerCase())
     // Only trust the map when it HAS an answer. An unmapped type falls through
-    // to the name test rather than being declared not-insurance, or a product
-    // nobody has categorised yet would quietly rejoin the ACH denominator.
-    if (mapped) return mapped === 'Insurance'
+    // to the name test rather than being declared ordinary, or a product nobody
+    // has categorised yet would quietly rejoin the ACH denominator.
+    if (mapped) return NO_ACH_CATEGORIES.has(mapped)
   }
   const t = type.toLowerCase()
   return t.startsWith('a2') || t.includes('active and fit')
@@ -129,5 +142,5 @@ async function loadCategoryMap(supabaseAdmin) {
 
 module.exports = {
   MEMBER_CATEGORIES, parseCategory, parseBasis, filterNote, matchesFilters, loadCategoryMap,
-  isInsuranceMember,
+  cannotUseAch,
 }

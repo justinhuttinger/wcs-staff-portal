@@ -6,7 +6,7 @@
 // See routes/analyticsSalesperson.js for what each column means and why the
 // columns with no data source return null.
 
-const { matchesFilters, isInsuranceMember } = require('./analyticsMemberFilters')
+const { matchesFilters, cannotUseAch } = require('./analyticsMemberFilters')
 const { UNASSIGNED_LABEL } = require('./analyticsSegments')
 
 const CLUBS = [
@@ -320,11 +320,12 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
       // breakdown of what was written, and narrowing it would leave two
       // different populations on one row.
       row.paymentMix[method] = (row.paymentMix[method] || 0) + 1
-      // The ACH RATE is a different question, and insurance is not part of it.
-      // An insurance plan bills through the provider, so it can never be on
-      // ACH; leaving it in the denominator scores the desk on product mix
-      // rather than on how they sold. See isInsuranceMember.
-      if (!isInsuranceMember(m, filters.categoryMap)) {
+      // The ACH RATE is a different question, and the plans that cannot be on
+      // ACH at all are not part of it. Insurance bills through the provider and
+      // temp is paid up front, so neither could have been sold on ACH; leaving
+      // them in the denominator scores the desk on product mix rather than on
+      // how they sold. See cannotUseAch.
+      if (!cannotUseAch(m, filters.categoryMap)) {
         row.achKnownUnits += 1
         if (method === ACH_PAYMENT_METHOD) row.achUnits += 1
       }
