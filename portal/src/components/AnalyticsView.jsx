@@ -4,6 +4,7 @@ import { getAppSettings } from '../lib/api'
 import { getFavorites, toggleFavorite, FAVORITES_EVENT, MAX_FAVORITES } from '../lib/analyticsFavorites'
 import { isReportVisible } from './analyticsReportCatalogue'
 import LocationMultiSelect from './LocationMultiSelect'
+import SurfaceToggle from './SurfaceToggle'
 import SalespersonPerformance from './analytics/SalespersonPerformance'
 import Topline from './analytics/Topline'
 import PastDue from './analytics/PastDue'
@@ -520,7 +521,7 @@ function parseHash() {
   return ANALYTICS_REPORTS.some(r => r.key === slug) ? slug : null
 }
 
-export default function AnalyticsView({ user, onBack, location, isAdmin, canAnalytics }) {
+export default function AnalyticsView({ user, onBack, location, isAdmin, canAnalytics, onReporting }) {
   // KPIs is the landing report. Topline only held the spot because it happened
   // to be first in the registry, which meant the default silently moved
   // whenever the list was reordered. Named explicitly, with a fallback so
@@ -758,8 +759,10 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
               Back to Portal
             </button>
           )}
+          {/* The same control Reporting carries, so the two surfaces read as
+              two halves of one thing rather than two destinations. */}
           <div className="flex items-center gap-2 px-3 pt-1 pb-3">
-            <span className="text-lg font-bold text-text-primary">Analytics</span>
+            <SurfaceToggle active="analytics" onReports={onReporting} onAnalytics={null} />
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-wcs-red/10 text-wcs-red">Admin</span>
           </div>
           {/* Search flattens everything: while there is a term, the tree is
