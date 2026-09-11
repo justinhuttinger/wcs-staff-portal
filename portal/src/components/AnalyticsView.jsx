@@ -36,7 +36,6 @@ import Nps from './analytics/Nps'
 import Till from './analytics/Till'
 import Audits from './analytics/Audits'
 import LeadSources from './analytics/LeadSources'
-import ProblemAreas from './analytics/ProblemAreas'
 import MemberJourney from './analytics/MemberJourney'
 import VipAnalysis from './analytics/VipAnalysis'
 import AverageDues from './analytics/AverageDues'
@@ -241,16 +240,6 @@ export const ANALYTICS_REPORTS = [
     Component: AttritionTrends,
     // The report picks its own trailing month range, so the shared date
     // controls would only be a second answer to the same question.
-    dates: false,
-  },
-  {
-    key: 'problem-areas',
-    records: ['day-ones-pending'],
-    label: 'Problem Areas',
-    desc: 'What Needs Attention',
-    Component: ProblemAreas,
-    // Its own trailing window, chosen in the report: month-to-date would judge
-    // every club on two days of data on the 2nd of the month.
     dates: false,
   },
   {
@@ -479,8 +468,8 @@ const ALL_REPORTS_KEY = '__all'
  * unclaimed is listed at the top of All reports, above the groups — adding a
  * report can therefore never make it unreachable, only mis-filed.
  *
- * Today this holds Topline, Club Activity Trends and Problem Areas, which used
- * to be pinned and are in no group.
+ * Today this holds Topline and Club Activity Trends, which used to be pinned
+ * and are in no group.
  */
 export function ungroupedReports() {
   const claimed = new Set([...CORE_REPORTS, ...REPORT_GROUPS.flatMap(g => g.reports)])
