@@ -761,9 +761,8 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
           )}
           {/* The same control Reporting carries, so the two surfaces read as
               two halves of one thing rather than two destinations. */}
-          <div className="flex items-center gap-2 px-3 pt-1 pb-3">
+          <div className="px-3 pt-1 pb-3">
             <SurfaceToggle active="analytics" onReports={onReporting} onAnalytics={null} />
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-wcs-red/10 text-wcs-red">Admin</span>
           </div>
           {/* Search flattens everything: while there is a term, the tree is
               replaced by one flat list of matches rather than shown beside
