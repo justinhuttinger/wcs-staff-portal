@@ -10,6 +10,7 @@ const {
 } = require('../lib/dayOneReporting')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { buildAttritionAnalysis } = require('../lib/attritionAnalysis')
+const { cannotUseAch, loadCategoryMap } = require('../lib/analyticsMemberFilters')
 const { countVipsByTeamMember: _countVipsByTeamMember } = require('../utils/vipsByTeamMember')
 const { parseLocationSlugParam } = require('../utils/locationSlug')
 const { resolveScopedSlugs } = require('../services/locationScope')
@@ -395,11 +396,27 @@ router.get('/membership', async (req, res) => {
       }
     })
 
+
+    // Tours given, from lib/salespersonData — the same rows Salesperson
+    // Performance counts, rather than a second query that could disagree.
+    const tours = await countToursGiven(locationFilter, start_date, end_date)
+
     res.json({
       total_memberships: filteredMembers.length,
       trial_conversion: { trial_started: trialStarted, won: trialWon, rate: conversionRate },
       total_day_one_booked: totalDayOneBooked,
       total_vips: totalVips || 0,
+      // Tours actually given in the window, from the same loader Salesperson
+      // Performance and Club Snapshot use, so a tour means one thing
+      // everywhere: a tour_intakes row that was CLOSED OUT as completed. A row
+      // still at 'ready' is a check-in nobody finished, not a tour that
+      // happened.
+      total_tours: tours.total,
+      // Null, not zero, at a club that has never recorded one. Tours were not
+      // stored at all before the check-in module kept them, so a zero would
+      // claim nobody gave a tour when the truth is that nobody was writing
+      // them down.
+      tours_unavailable: tours.unavailable,
       by_date: byDateArr,
       by_salesperson: bySalesperson,
       contacts,
@@ -419,6 +436,52 @@ router.get('/salesperson-stats', (req, res) => {
 // GET /reports/pt
 // Query params: start_date, end_date, location_id, location_slug
 // ---------------------------------------------------------------------------
+// Completed tours in a window for the clubs this request is scoped to, plus
+// whether the clubs asked about record tours AT ALL.
+//
+// The second half is the point: tours were not stored before the check-in
+// module started keeping them, so an empty window at a club with no history is
+// a gap in our records rather than a quiet month on the floor. Reported as
+// unavailable so the report can withhold the figure instead of printing a zero
+// that reads as nobody working.
+async function countToursGiven(locationFilter, startDate, endDate) {
+  if (!startDate || !endDate) return { total: null, unavailable: true }
+  try {
+    const { loadTourCompletions } = require('../lib/salespersonData')
+    const slugs = dayOneSlugsFor(locationFilter)
+    const clubNumbers = slugs && slugs.length
+      ? slugs.map(sl => SLUG_CLUB_MAP[sl]).filter(Boolean)
+      : Object.values(SLUG_CLUB_MAP)
+    const { tours, configuredClubs } = await loadTourCompletions(clubNumbers, startDate, endDate)
+    const anyConfigured = clubNumbers.some(n => configuredClubs.has(n))
+    return { total: anyConfigured ? tours.length : null, unavailable: !anyConfigured }
+  } catch (err) {
+    console.warn('[reports] tours given unavailable:', err.message)
+    return { total: null, unavailable: true }
+  }
+}
+
+// Day Ones past their date with no outcome recorded, for the clubs this request
+// is scoped to. A helper because two reports in this file want it and the club
+// resolution is the fiddly half.
+async function countPendingOutcomes(locationFilter, startDate, endDate) {
+  if (!startDate || !endDate) return null
+  try {
+    const { loadPendingDayOnes, summarisePending } = require('../lib/dayOnePending')
+    const slugs = dayOneSlugsFor(locationFilter)
+    const clubNumbers = slugs && slugs.length
+      ? slugs.map(sl => SLUG_CLUB_MAP[sl]).filter(Boolean)
+      : null
+    const rows = await loadPendingDayOnes(clubNumbers, startDate, endDate)
+    return summarisePending(rows).total
+  } catch (err) {
+    // A missing pending figure must not take a whole report down: every other
+    // number on it is independent of this one.
+    console.warn('[reports] pending Day One outcomes unavailable:', err.message)
+    return null
+  }
+}
+
 router.get('/pt', async (req, res) => {
   const { start_date, end_date } = req.query
 
@@ -512,6 +575,10 @@ router.get('/pt', async (req, res) => {
     const completionRate = total > 0 ? Math.round((totalCompleted / total) * 100) : 0
     const closeRate = totalCompleted > 0 ? Math.round((totalSales / totalCompleted) * 100) : 0
 
+    // From lib/dayOnePending, the same loader Club Snapshot and PT Snapshot
+    // use, so "pending" means one thing across every report that shows it.
+    const pendingOutcome = await countPendingOutcomes(locationFilter, start_date, end_date)
+
     res.json({
       total_day_ones: total,
       by_status: byStatus,
@@ -519,6 +586,12 @@ router.get('/pt', async (req, res) => {
       close_rate: closeRate,
       by_trainer: byTrainer,
       contacts,
+      // Day Ones whose date has passed with no outcome recorded — what PT
+      // Snapshot calls Pending Outcome. Until the form is closed out the
+      // appointment counts as neither held nor missed, so the two rates above
+      // are measured on an incomplete picture. The report now says how
+      // incomplete rather than leaving it to be discovered.
+      pending_outcome: pendingOutcome,
     })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -552,7 +625,7 @@ router.get('/club-health', async (req, res) => {
 
     let abcQuery = supabaseAdmin
       .from('abc_members')
-      .select('sales_person_name, email, membership_type, agreement_number, sign_date, since_date')
+      .select('sales_person_name, email, membership_type, agreement_number, sign_date, since_date, next_due_amount, agreement_payment_method')
       .eq('is_active', true)
       .not('sign_date', 'is', null)
     if (start_date) abcQuery = abcQuery.gte('sign_date', start_date)
@@ -804,6 +877,27 @@ router.get('/club-health', async (req, res) => {
       cancelsInPeriodAgreements = new Set(cancelFiltered.map(m => m.agreement_number).filter(Boolean)).size
     }
 
+    // New dues written in the window, and the share of it on ACH. Both come
+    // off rows this handler already has; the ACH rule is the shared one so the
+    // figure matches Salesperson Performance and the Snapshots.
+    const categoryMapCH = await loadCategoryMap(supabaseAdmin).catch(() => null)
+    let newDues = 0
+    let achUnits = 0
+    let achKnown = 0
+    for (const m of filteredMembers) {
+      newDues += Number(m.next_due_amount) || 0
+      const method = m.agreement_payment_method || null
+      if (!method || cannotUseAch(m, categoryMapCH)) continue
+      achKnown += 1
+      if (method === 'EFT') achUnits += 1
+    }
+    newDues = Math.round(newDues * 100) / 100
+
+    const [clubTours, clubPending] = await Promise.all([
+      countToursGiven(locationFilter, start_date, end_date),
+      countPendingOutcomes(locationFilter, start_date, end_date),
+    ])
+
     res.json({
       total_memberships: filteredMembers.length,
       total_agreements: uniqueAgreements,
@@ -824,6 +918,16 @@ router.get('/club-health', async (req, res) => {
       cancels_agreements: cancelsInPeriodAgreements,
       net_change_members: filteredMembers.length - cancelsInPeriodMembers,
       net_change_agreements: uniqueAgreements - cancelsInPeriodAgreements,
+      // --- from the Analytics definitions, so Club Health and Club Snapshot
+      // cannot disagree about the same month ---
+      new_dues: newDues,
+      // Insurance and temp plans are OUT of this, using the shared cannotUseAch
+      // rule: neither can be on ACH at all, and counting them scores the desk
+      // on product mix rather than on how they sold.
+      pct_on_ach: achKnown > 0 ? Math.round((achUnits / achKnown) * 1000) / 10 : null,
+      total_tours: clubTours.total,
+      tours_unavailable: clubTours.unavailable,
+      pending_outcome: clubPending,
     })
   } catch (err) {
     res.status(500).json({ error: err.message })

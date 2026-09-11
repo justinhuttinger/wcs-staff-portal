@@ -214,9 +214,19 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
   return (
     <div className="space-y-6">
       {/* Stat Cards */}
-      <StatBlock cols={5}>
+      <StatBlock cols={6}>
         <StatCell label="Total Sales" value={totalMemberships} />
         <StatCell label="Trial Conversion" value={`${trialRate}%`} />
+        {/* Tours actually GIVEN — a tour_intakes row closed out as completed,
+            the same rule Salesperson Performance counts by. N/A rather than 0
+            where no club in view has ever recorded one: tours were not stored
+            before the check-in module kept them, and a zero would claim nobody
+            gave a tour when nobody was writing them down. */}
+        <StatCell
+          label="Tours Given"
+          value={data.tours_unavailable ? 'N/A' : (data.total_tours ?? 0)}
+          sub={data.tours_unavailable ? 'Not recorded at these clubs' : undefined}
+        />
         <StatCell label="Day One Booked" value={dayOneBooked} />
         <StatCell label="Total VIPs" value={totalVips} />
         <StatCell label="Same Day Sales" value={totalSameDay} />
