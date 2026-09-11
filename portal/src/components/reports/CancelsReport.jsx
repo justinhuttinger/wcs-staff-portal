@@ -136,6 +136,51 @@ function Click2SaveSection({ saveCount, cancelReasons, saveOptions, error }) {
   )
 }
 
+/**
+ * A labelled count list with a bar, in this report's plain style.
+ *
+ * Deliberately not the Analytics BreakdownPanel: that one carries hover values,
+ * its own card chrome and a total line, and dropping it in here would make this
+ * report look like the Analytics one it is meant to stay simpler than.
+ *
+ * `limit` exists for the salesperson list, which runs to forty-odd names. The
+ * tail is counted rather than dropped silently — a list that stops without
+ * saying so reads as the whole answer.
+ */
+function CountRows({ title, rows, empty, limit }) {
+  const all = (rows || []).filter(r => r.count > 0)
+  const shown = limit ? all.slice(0, limit) : all
+  const rest = all.length - shown.length
+  const max = shown.reduce((m, r) => Math.max(m, r.count), 0)
+
+  return (
+    <div className="bg-surface p-6">
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-4">{title}</p>
+      {shown.length === 0 ? (
+        <p className="text-sm text-text-muted py-4 text-center">{empty}</p>
+      ) : (
+        <div className="space-y-2">
+          {shown.map(r => (
+            <div key={r.label} className="flex items-center gap-3 text-sm">
+              <span className="text-text-primary flex-1 truncate" title={r.label}>{r.label}</span>
+              <span className="w-24 h-2 rounded-full bg-bg overflow-hidden hidden sm:block">
+                <span
+                  className="block h-full rounded-full bg-wcs-red/70"
+                  style={{ width: `${max ? Math.max(4, (r.count / max) * 100) : 0}%` }}
+                />
+              </span>
+              <span className="font-semibold text-text-primary tabular-nums w-8 text-right">{r.count}</span>
+            </div>
+          ))}
+          {rest > 0 && (
+            <p className="text-xs text-text-muted pt-1">and {rest} more</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function CancelsReport({ startDate, endDate, locationSlug, planType = 'all' }) {
   const { data, loading, error } = useCancellableFetch(
     (signal) => {
@@ -180,6 +225,30 @@ export default function CancelsReport({ startDate, endDate, locationSlug, planTy
         <StatusBreakdown counts={view.by_status} flush />
         <div className="bg-surface p-6">
           <MembershipTypeTable title="Cancels by Membership Type" rows={view.by_membership_type} flush />
+        </div>
+      </div>
+
+      {/* ---------- HOW LONG THEY STAYED ---------- */}
+      {/* From the same lib Attrition Analysis is built on, so the two reports
+          cannot disagree about tenure or about who sold a membership that
+          ended. Presented as plain rows rather than as the Analytics panels:
+          the point of this report is that it stays readable at a glance. */}
+      <div>
+        <Heading>How Long They Stayed</Heading>
+        <StatBlock cols={2} flush>
+          <StatCell
+            label="Avg Months Before Leaving"
+            value={data.avg_tenure_months ?? '—'}
+          />
+          <StatCell
+            label="Scheduled to Cancel"
+            value={data.pending_cancel_count ?? 0}
+            sub="Still active, already queued to end"
+          />
+        </StatBlock>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-border">
+          <CountRows title="By Tenure" rows={data.by_tenure} empty="No tenure on record for these." />
+          <CountRows title="Who Sold the Membership" rows={data.by_salesperson} empty="No salesperson on record." limit={8} />
         </div>
       </div>
 

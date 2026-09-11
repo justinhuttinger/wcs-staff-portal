@@ -9,6 +9,7 @@ const {
   statusLabel,
 } = require('../lib/dayOneReporting')
 const { getSkipList } = require('../utils/membershipSkipList')
+const { buildAttritionAnalysis } = require('../lib/attritionAnalysis')
 const { countVipsByTeamMember: _countVipsByTeamMember } = require('../utils/vipsByTeamMember')
 const { parseLocationSlugParam } = require('../utils/locationSlug')
 const { resolveScopedSlugs } = require('../services/locationScope')
@@ -911,6 +912,17 @@ router.get('/cancels', async (req, res) => {
       }
     }
 
+    // The Analytics view of the same cancellations, built from the SAME lib
+    // Attrition Analysis uses. Reporting keeps its simple layout and shows a
+    // few of these figures; both surfaces therefore answer "how long did they
+    // stay" and "who sold them" with one definition rather than two.
+    //
+    // Built here rather than fetched from /analytics/attrition-analysis on
+    // purpose: that route is corporate-only and this report is open to leads
+    // and managers. Calling it would have 403'd for exactly the people this
+    // report exists for. One lib, two routes, two gates.
+    const attrition = buildAttritionAnalysis(cancelFiltered, [], {})
+
     const allAgg = aggregateCancels(cancelFiltered)
     const membershipAgg = aggregateCancels(membershipCancels)
     const insuranceAgg = aggregateCancels(insuranceCancels)
@@ -1088,6 +1100,11 @@ router.get('/cancels', async (req, res) => {
         },
       },
       pending_cancel_count: pendingFiltered.length,
+      // From lib/attritionAnalysis, so these read the same as the Analytics
+      // report rather than being a second calculation that drifts.
+      avg_tenure_months: attrition.stats.find(x => x.key === 'avgTenure')?.value ?? null,
+      by_tenure: attrition.breakdowns.byTenure,
+      by_salesperson: attrition.breakdowns.bySalesperson,
       pending_cancel_agreements: new Set(pendingFiltered.map(m => m.agreement_number).filter(Boolean)).size,
       pending_cancels: pendingFiltered.slice(0, 200).map(m => ({
         name: [m.first_name, m.last_name].filter(Boolean).join(' '),
