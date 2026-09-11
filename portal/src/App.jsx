@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback} from 'react'
 import ToolGrid from './components/ToolGrid'
 import LoginScreen from './components/LoginScreen'
 import AdminPanel from './components/AdminPanel'
@@ -298,6 +298,25 @@ export default function App() {
           .catch(() => {})
       }
     })
+  }, [])
+
+  // Moving between Reporting and Analytics.
+  //
+  // They are two views of one thing now — Analytics lost its board tile, and
+  // the only way in is the toggle on Reporting — so the hash, the two flags and
+  // the browser history have to agree. Setting the hash alone would not do it:
+  // the hashchange listener below only fires for a CHANGE, and clicking
+  // Analytics from Reporting while already on #reporting/<report> needs both
+  // flags moved in the same tick to avoid a frame with neither view mounted.
+  const openAnalytics = useCallback(() => {
+    window.location.hash = '#analytics'
+    setShowReporting(false)
+    setShowAnalytics(true)
+  }, [])
+  const openReporting = useCallback(() => {
+    window.location.hash = '#reporting'
+    setShowAnalytics(false)
+    setShowReporting(true)
   }, [])
 
   useEffect(() => {
@@ -735,7 +754,16 @@ export default function App() {
       ) : showLeaderboard ? (
         <LeaderboardView user={user} onBack={() => setShowLeaderboard(false)} location={location} />
       ) : showReporting ? (
-        <ReportingView user={user} onBack={() => { window.location.hash = ''; setShowReporting(false) }} location={location} isAdmin={isAdmin} />
+        <ReportingView
+          user={user}
+          onBack={() => { window.location.hash = ''; setShowReporting(false) }}
+          location={location}
+          isAdmin={isAdmin}
+          // Null below corporate, which is what hides the toggle entirely: a
+          // manager must not be shown a surface their own board would never
+          // have offered them.
+          onAnalytics={canAnalytics ? openAnalytics : null}
+        />
       ) : showMarketingTracker ? (
         <MarketingTrackerView access={mAccess} onBack={() => setShowMarketingTracker(false)} />
       ) : showInventory ? (
@@ -747,12 +775,19 @@ export default function App() {
       ) : showNps ? (
         <NpsView onBack={handleBackToPortal} />
       ) : showAnalytics && canAnalytics ? (
-        <AnalyticsView user={user} onBack={() => { window.location.hash = ''; setShowAnalytics(false) }} location={location} isAdmin={isAdmin} canAnalytics={canAnalytics} />
+        <AnalyticsView
+          user={user}
+          onBack={() => { window.location.hash = ''; setShowAnalytics(false) }}
+          location={location}
+          isAdmin={isAdmin}
+          canAnalytics={canAnalytics}
+          onReporting={openReporting}
+        />
       ) : showAdsManager && isAdmin ? (
         <AdsManagerView onBack={() => setShowAdsManager(false)} />
       ) : (
         <main className={`flex-1 flex items-start pt-1 pb-12${press ? ' press-single' : ''}`}>
-          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onNps={() => setShowNps(true)} onGroupX={() => setShowGroupX(true)} onFacility={() => setShowFacility(true)} onTill={() => setShowTill(true)} onAdsManager={() => setShowAdsManager(true)} onAnalytics={() => { window.location.hash = '#analytics'; setShowAnalytics(true) }} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
+          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onNps={() => setShowNps(true)} onGroupX={() => setShowGroupX(true)} onFacility={() => setShowFacility(true)} onTill={() => setShowTill(true)} onAdsManager={() => setShowAdsManager(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>

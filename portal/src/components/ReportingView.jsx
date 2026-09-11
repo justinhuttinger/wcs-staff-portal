@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import SurfaceToggle from './SurfaceToggle'
 import MembershipReport from './reports/MembershipReport'
 import PTReport from './reports/PTReport'
 import ClubHealthReport from './reports/ClubHealthReport'
@@ -192,7 +193,7 @@ function parseHash() {
   return { group: findGroupForReport(slug)?.key || null, report: slug }
 }
 
-export default function ReportingView({ user, onBack, location, isAdmin }) {
+export default function ReportingView({ user, onBack, location, isAdmin, onAnalytics }) {
   const userRole = user?.staff?.role || 'team_member'
   const REPORT_TILES = getReportTilesForRole(userRole, user?.staff?.custom_reports, user?.visible_tools)
   const VISIBLE_REPORT_KEYS = new Set(REPORT_TILES.map(t => t.key))
@@ -365,13 +366,16 @@ export default function ReportingView({ user, onBack, location, isAdmin }) {
               Back to Portal
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => defaultReportKey && navigateToReport(defaultReportKey)}
-            className="w-full text-left px-3 pt-1 pb-3 text-lg font-bold text-text-primary hover:text-wcs-red transition-colors"
-          >
-            Reports
-          </button>
+          {/* Reports / Analytics. Replaces the plain "Reports" title, which
+              jumped to the default report — the Reports half still does that,
+              so nothing was traded away for the toggle. */}
+          <div className="px-3 pt-1 pb-3">
+            <SurfaceToggle
+              active="reports"
+              onReports={() => defaultReportKey && navigateToReport(defaultReportKey)}
+              onAnalytics={onAnalytics}
+            />
+          </div>
           {/* Standalone reports (e.g. KPIs) lead the list — no group header. */}
           {visibleStandalone.length > 0 && (
             <ul className="space-y-0.5 mb-1">

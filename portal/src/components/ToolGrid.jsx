@@ -111,7 +111,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onNps, onAdsManager, onAnalytics, onGroupX, onFacility, onTill, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
+export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onNps, onAdsManager, onGroupX, onFacility, onTill, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
   // DECLARED HERE, ABOVE EVERY READER. It used to sit ~200 lines further down,
   // next to the leaderboard score card that first needed it, which was fine
   // until marketingCells started reading it from further up: a `const` is in
@@ -756,7 +756,6 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
           {/* 6.9. Analytics — corporate+ (corporate, director, marketing tier,
               admin). Deliberately outside the roles grid so it can never be
               granted below that tier. */}
-          {onAnalytics && roleIdx >= ROLE_LEVELS.corporate && <SvgTileButton onClick={onAnalytics} iconPath={TILE_ICONS.analytics} label="Analytics" desc="Company Reports" />}
           {/* 7-9. Reporting, Tickets + remaining custom tiles
               (Marketing now lives inside Reporting — no standalone tile) */}
           {toolCustomTiles.filter((tile) => {
