@@ -88,6 +88,37 @@ function matchesFilters(row, { category, basis, categoryMap }) {
  * from Admin, and a stale map would quietly put members in the wrong bucket,
  * which is a worse failure than one more trivial query.
  */
+/**
+ * Is this member on an insurance plan?
+ *
+ * Insurance bills through a provider rather than off the member's own account,
+ * so these plans cannot be on ACH at all. Counting them in an ACH rate measures
+ * the product mix, not how the desk sold — 44 insurance joins in August carried
+ * 25% ACH against 49.6% on the dues plans, and mixing them pulled the headline
+ * down to 42% for a reason no salesperson could act on.
+ *
+ * The MAPPING TABLE is the answer where we have it: abc_membership_categories
+ * is curated in Admin, so a new insurance product starts being handled the day
+ * somebody maps it rather than the day a developer notices.
+ *
+ * The name heuristic is the fallback for callers with no map to hand — A2 CORE,
+ * A2 EXEC, A2 RECIP USE and the Active and Fit variants, which is what ABC
+ * actually sends. It is deliberately second: it cannot know about an insurance
+ * plan that is not named like one.
+ */
+function isInsuranceMember(row, categoryMap) {
+  const type = String(row?.membership_type || '')
+  if (categoryMap) {
+    const mapped = categoryMap.get(type.toLowerCase())
+    // Only trust the map when it HAS an answer. An unmapped type falls through
+    // to the name test rather than being declared not-insurance, or a product
+    // nobody has categorised yet would quietly rejoin the ACH denominator.
+    if (mapped) return mapped === 'Insurance'
+  }
+  const t = type.toLowerCase()
+  return t.startsWith('a2') || t.includes('active and fit')
+}
+
 async function loadCategoryMap(supabaseAdmin) {
   const { data, error } = await supabaseAdmin
     .from('abc_membership_categories')
@@ -98,4 +129,5 @@ async function loadCategoryMap(supabaseAdmin) {
 
 module.exports = {
   MEMBER_CATEGORIES, parseCategory, parseBasis, filterNote, matchesFilters, loadCategoryMap,
+  isInsuranceMember,
 }

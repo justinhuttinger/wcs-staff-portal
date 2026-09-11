@@ -3,6 +3,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
+const { loadCategoryMap } = require('../lib/analyticsMemberFilters')
 const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { buildCategoryRows } = require('../lib/membershipByCategory')
@@ -86,6 +87,9 @@ router.get('/', async (req, res) => {
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, async () => {
       const skipList = await getSkipList()
+      // Read per request rather than cached: the mapping is edited from Admin,
+      // and a stale copy would quietly move what counts toward ACH %.
+      const categoryMap = await loadCategoryMap(supabaseAdmin)
 
       // Start and end are the SAME date. Everything downstream then treats the
       // day as a one-day window, which is what it is.
@@ -103,7 +107,8 @@ router.get('/', async (req, res) => {
           pt: firstRow(pt),
           window: { ...(firstRow(w) || {}), total_members: null },
           summary: buildReport(
-            sales.members, sales.dayOnes, sales.contactsById, NO_FILTERS, skipList,
+            // The map is what keeps ACH % off insurance plans; see Club Snapshot.
+            sales.members, sales.dayOnes, sales.contactsById, { ...NO_FILTERS, categoryMap }, skipList,
             { vips: sales.vips, tours: sales.tours }
           ).summary,
         }

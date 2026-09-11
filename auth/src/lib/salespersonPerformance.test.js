@@ -741,3 +741,60 @@ test('a club with no tours on record reports null, not zero', () => {
   if (row) assert.equal(row.sameDaySales, null)
   assert.equal(out.summary.sameDaySales, null)
 })
+
+// --- ACH % excludes insurance -----------------------------------------------
+// Insurance bills through a provider and can never be on ACH. In the
+// denominator it measures product mix, not how the desk sold.
+
+const achMember = (over = {}) => ({
+  id: `x${Math.random()}`, club_number: '30935', sales_person_name: 'Sam Seller',
+  membership_type: 'SINGLE', since_date: '2026-08-10', sign_date: '2026-08-10',
+  agreement_payment_method: 'EFT', is_primary_member: true, ...over,
+})
+
+const achOf = (members, filters = {}) =>
+  buildReport(members, [], new Map(), { viewBy: 'club', ...filters }, new Set()).summary.pctOnAch
+
+test('an insurance plan is out of the ACH denominator, by the mapping table', () => {
+  const categoryMap = new Map([['single', 'Dues'], ['gold plan', 'Insurance']])
+  // One dues member on ACH, one insurance member not: 100%, not 50%.
+  const pct = achOf([
+    achMember({ membership_type: 'SINGLE', agreement_payment_method: 'EFT' }),
+    achMember({ membership_type: 'GOLD PLAN', agreement_payment_method: 'Statement' }),
+  ], { categoryMap })
+  assert.equal(pct, 100)
+})
+
+test('with no mapping table the name still catches A2 and Active and Fit', () => {
+  // The fallback exists for callers with no map to hand; it must not leave
+  // insurance in the denominator just because nobody passed one.
+  for (const type of ['A2 CORE', 'A2 EXEC', 'Active and Fit Limited']) {
+    const pct = achOf([
+      achMember({ agreement_payment_method: 'EFT' }),
+      achMember({ membership_type: type, agreement_payment_method: 'Statement' }),
+    ])
+    assert.equal(pct, 100, `${type} should be excluded`)
+  }
+})
+
+test('an unmapped type falls through to the name test, not to "not insurance"', () => {
+  // A map that answers for some types and not others must not declare the rest
+  // ordinary — a new insurance product would quietly rejoin the denominator.
+  const categoryMap = new Map([['single', 'Dues']])
+  const pct = achOf([
+    achMember({ agreement_payment_method: 'EFT' }),
+    achMember({ membership_type: 'A2 RECIP USE', agreement_payment_method: 'Cash' }),
+  ], { categoryMap })
+  assert.equal(pct, 100)
+})
+
+test('paymentMix still counts every method, insurance included', () => {
+  // It is the raw breakdown of what was written. Narrowing it would put two
+  // different populations on one row.
+  const out = buildReport([
+    achMember({ agreement_payment_method: 'EFT' }),
+    achMember({ membership_type: 'A2 CORE', agreement_payment_method: 'Statement' }),
+  ], [], new Map(), { viewBy: 'club' }, new Set())
+  assert.deepEqual(out.rows[0].paymentMix, { EFT: 1, Statement: 1 })
+  assert.equal(out.rows[0].achKnownUnits, 1)
+})

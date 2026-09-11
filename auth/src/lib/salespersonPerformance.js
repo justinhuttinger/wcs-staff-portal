@@ -6,7 +6,7 @@
 // See routes/analyticsSalesperson.js for what each column means and why the
 // columns with no data source return null.
 
-const { matchesFilters } = require('./analyticsMemberFilters')
+const { matchesFilters, isInsuranceMember } = require('./analyticsMemberFilters')
 const { UNASSIGNED_LABEL } = require('./analyticsSegments')
 
 const CLUBS = [
@@ -316,9 +316,18 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     row.memberIds.push(m.id)
     const method = m.agreement_payment_method || null
     if (method) {
-      row.achKnownUnits += 1
+      // paymentMix keeps every method, insurance included: it is the raw
+      // breakdown of what was written, and narrowing it would leave two
+      // different populations on one row.
       row.paymentMix[method] = (row.paymentMix[method] || 0) + 1
-      if (method === ACH_PAYMENT_METHOD) row.achUnits += 1
+      // The ACH RATE is a different question, and insurance is not part of it.
+      // An insurance plan bills through the provider, so it can never be on
+      // ACH; leaving it in the denominator scores the desk on product mix
+      // rather than on how they sold. See isInsuranceMember.
+      if (!isInsuranceMember(m, filters.categoryMap)) {
+        row.achKnownUnits += 1
+        if (method === ACH_PAYMENT_METHOD) row.achUnits += 1
+      }
     }
   }
 
