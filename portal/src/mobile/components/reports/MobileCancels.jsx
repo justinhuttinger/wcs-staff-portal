@@ -70,29 +70,89 @@ const STATUS_ORDER = ['Cancelled', 'Expired', 'Return For Collection']
 
 function StatusBreakdown({ counts }) {
   const counts_ = counts || {}
-  const total = Object.values(counts_).reduce((s, v) => s + (v || 0), 0)
   const ordered = [
     ...STATUS_ORDER.filter(s => counts_[s] > 0),
     ...Object.keys(counts_).filter(s => !STATUS_ORDER.includes(s) && counts_[s] > 0),
   ]
+  const total = ordered.reduce((sum, k) => sum + (counts_[k] || 0), 0)
+
+  // conic-gradient rather than SVG arcs, which is what the other mobile pies
+  // use: no arc maths, and a single status filling the circle needs no special
+  // case because 0-360deg is simply the whole gradient.
+  let cumulative = 0
+  const stops = ordered.map(status => {
+    const start = cumulative
+    cumulative += ((counts_[status] || 0) / total) * 360
+    return `${STATUS_COLORS[status] || '#a8722c'} ${start}deg ${cumulative}deg`
+  })
+
   return (
     <div className="bg-surface rounded-2xl border border-border p-4">
       <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">By Status</p>
       {total === 0 ? (
         <p className="text-sm text-text-muted py-2 text-center">No data</p>
       ) : (
+        <div className="flex items-center gap-4">
+          <div
+            className="w-24 h-24 rounded-full flex-shrink-0"
+            style={{ background: `conic-gradient(${stops.join(', ')})` }}
+            role="img"
+            aria-label="Cancellations by status"
+          />
+          {/* The legend carries the numbers: a pie this size cannot be read to
+              one, and colour alone is not an answer. */}
+          <div className="space-y-1.5 min-w-0 flex-1">
+            {ordered.map(status => {
+              const count = counts_[status] || 0
+              return (
+                <div key={status} className="flex items-center gap-2 text-xs">
+                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: STATUS_COLORS[status] || '#a8722c' }} />
+                  <span className="text-text-primary flex-1 truncate">{status}</span>
+                  <span className="font-semibold text-text-primary tabular-nums">{count}</span>
+                  <span className="text-text-muted tabular-nums">({Math.round((count / total) * 100)}%)</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A labelled count list, the mobile twin of the desktop report's CountRows.
+ *
+ * `limit` exists for the salesperson list, which runs long; the tail is counted
+ * rather than dropped, because a list that stops without saying so reads as the
+ * whole answer.
+ */
+function CountRows({ title, rows, empty, limit }) {
+  const all = (rows || []).filter(r => r.count > 0)
+  const shown = limit ? all.slice(0, limit) : all
+  const rest = all.length - shown.length
+  const max = shown.reduce((m, r) => Math.max(m, r.count), 0)
+
+  return (
+    <div className="bg-surface rounded-2xl border border-border p-4">
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">{title}</p>
+      {shown.length === 0 ? (
+        <p className="text-sm text-text-muted py-2 text-center">{empty}</p>
+      ) : (
         <div className="space-y-2">
-          {ordered.map(status => {
-            const count = counts_[status] || 0
-            return (
-              <div key={status} className="flex items-center gap-2 text-xs">
-                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: STATUS_COLORS[status] || '#a8722c' }} />
-                <span className="text-text-primary flex-1 truncate">{status}</span>
-                <span className="font-semibold text-text-primary tabular-nums">{count}</span>
-                <span className="text-text-muted tabular-nums">({Math.round((count / total) * 100)}%)</span>
-              </div>
-            )
-          })}
+          {shown.map(r => (
+            <div key={r.label} className="flex items-center gap-2 text-xs">
+              <span className="text-text-primary flex-1 truncate" title={r.label}>{r.label}</span>
+              <span className="w-16 h-2 rounded-full bg-bg overflow-hidden flex-shrink-0">
+                <span
+                  className="block h-full rounded-full bg-wcs-red/70"
+                  style={{ width: `${max ? Math.max(4, (r.count / max) * 100) : 0}%` }}
+                />
+              </span>
+              <span className="font-semibold text-text-primary tabular-nums w-6 text-right">{r.count}</span>
+            </div>
+          ))}
+          {rest > 0 && <p className="text-[11px] text-text-muted pt-0.5">and {rest} more</p>}
         </div>
       )}
     </div>
@@ -161,6 +221,16 @@ export default function MobileCancels({ startDate, endDate, locationSlug }) {
       </div>
 
       <StatusBreakdown counts={view.by_status} />
+
+      {/* The Attrition Analysis figures desktop gained, from the same payload.
+          Two cards then two lists: on a phone these stack, so the order is the
+          order they are read in. */}
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard label="Avg Months" value={data.avg_tenure_months ?? '—'} />
+        <StatCard label="Scheduled to Cancel" value={data.pending_cancel_count ?? 0} />
+      </div>
+      <CountRows title="By Tenure" rows={data.by_tenure} empty="No tenure on record." />
+      <CountRows title="Who Sold the Membership" rows={data.by_salesperson} empty="No salesperson on record." limit={8} />
 
       <MembershipTypeTable title="Cancels by Membership Type" rows={view.by_membership_type} />
 

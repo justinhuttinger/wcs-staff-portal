@@ -235,6 +235,9 @@ export default function MobilePTHealth({ startDate, endDate, locationSlug }) {
           ['Set', t.dayOnes.set],
           [`Show (${pct(t.dayOnes.show, t.dayOnes.set)})`, t.dayOnes.show],
           [`Close (${pct(t.dayOnes.close, t.dayOnes.show)} of show)`, t.dayOnes.close],
+          // Last, and only when there are any: a caveat on the two rates above
+          // rather than a step in the funnel.
+          ...(t.dayOnes.pending ? [['Pending outcome', t.dayOnes.pending]] : []),
         ]}
         tone="blue"
       />

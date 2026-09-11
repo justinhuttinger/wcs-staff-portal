@@ -231,6 +231,26 @@ export default function MobileClubHealth({ startDate, endDate, locationSlug }) {
         <StatCard label="Members" value={totalMemberships} />
         <StatCard label="Total VIPs" value={data.total_vips || 0} />
         <StatCard label="Same Day Sales" value={data.total_same_day_sales || 0} />
+        {/* The four Analytics figures desktop gained, in the same order. New
+            Dues is what was written, not collected; ACH % leaves out insurance
+            and temp because neither can be on ACH at all; Tours and Day Ones
+            Pending read N/A where the figure cannot be known rather than 0. */}
+        <StatCard
+          label="New Dues"
+          value={data.new_dues != null ? `$${Math.round(data.new_dues).toLocaleString()}` : '—'}
+        />
+        <StatCard
+          label="ACH %"
+          value={data.pct_on_ach != null ? `${data.pct_on_ach}%` : 'N/A'}
+        />
+        <StatCard
+          label="Tours Given"
+          value={data.tours_unavailable ? 'N/A' : (data.total_tours ?? 0)}
+        />
+        <StatCard
+          label="Day Ones Pending"
+          value={data.pending_outcome ?? '—'}
+        />
       </div>
 
       <TopPerformers title="Top 3 Salespeople" units="pts" performers={data.top_salespeople} />

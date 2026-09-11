@@ -21,6 +21,51 @@ function statusPillClass(status) {
   return 'bg-gray-50 text-gray-500 border-gray-200'
 }
 
+/** One key for a person however their name was typed. */
+function normaliseName(name) {
+  return String(name || '').toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * A trainer's open Day Ones, each linking to the outcome form they already get
+ * sent — the same public page, addressed by GHL contact, so this is a route
+ * into the existing form rather than a second place to record an outcome.
+ *
+ * A row whose appointment carries no contact id still shows with the link
+ * withheld: hiding it would make the count on the pill disagree with the list
+ * under it, and the chase is still worth making by hand.
+ */
+function PendingList({ rows }) {
+  if (!rows || rows.length === 0) {
+    return <p className="mt-2 text-[11px] text-text-muted">Nothing open for this trainer in this range.</p>
+  }
+  return (
+    <div className="mt-2 space-y-1.5 border-t border-border pt-2">
+      {rows.map(r => (
+        <div key={r.id} className="flex items-center gap-2 text-[11px]">
+          <span className="text-text-primary flex-1 truncate">{r.member || 'Unnamed'}</span>
+          <span className="text-text-muted tabular-nums">{r.date}</span>
+          <span className={`tabular-nums ${r.daysOverdue >= 14 ? 'text-wcs-red font-semibold' : 'text-text-muted'}`}>
+            {r.daysOverdue}d
+          </span>
+          {r.contactId ? (
+            <a
+              href={`/day-one/outcome?c=${encodeURIComponent(r.contactId)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2 py-0.5 rounded-lg border border-border text-text-primary font-semibold"
+            >
+              Record
+            </a>
+          ) : (
+            <span className="text-text-muted" title="No GHL contact on this appointment">—</span>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function MobilePTReport({ startDate, endDate, locationSlug }) {
   const [selectedContact, setSelectedContact] = useState(null)
 
@@ -47,6 +92,17 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
       no_sales: stats.no_sales || 0,
     })).sort((a, b) => b.total - a.total)
   }, [data?.by_trainer])
+
+  // Which trainer's open Day Ones are expanded, if any.
+  const [pendingFor, setPendingFor] = useState(null)
+
+  // Keyed the way the trainer names are, so a doubled space or a case
+  // difference does not leave the pill missing for somebody who plainly has
+  // open forms.
+  const pendingByTrainer = {}
+  for (const [who, n] of Object.entries(data?.pending?.byTrainer || {})) {
+    pendingByTrainer[normaliseName(who)] = (pendingByTrainer[normaliseName(who)] || 0) + n
+  }
 
   const totalDayOnes = data?.total_day_ones || 0
   const completionRate = data?.completion_rate || 0
@@ -76,7 +132,7 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
   return (
     <div className="p-4 space-y-3">
       {/* Top stat cards */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <div className="bg-surface rounded-2xl border border-border p-4 text-center">
           <p className="text-3xl font-bold text-text-primary">{totalDayOnes}</p>
           <p className="text-xs text-text-muted uppercase mt-1">Set</p>
@@ -91,6 +147,14 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
           <p className="text-xs text-text-muted uppercase mt-1">Close</p>
           <p className="text-[10px] text-text-secondary">{closeRate}% of shown</p>
         </div>
+        {/* The card that says how far to trust the two above it: a Day One
+            whose date has passed with nothing recorded is neither held nor
+            missed, so Show and Close are measured on an incomplete picture. */}
+        <div className="bg-surface rounded-2xl border border-border p-4 text-center">
+          <p className="text-3xl font-bold text-text-primary">{data?.pending_outcome ?? '—'}</p>
+          <p className="text-xs text-text-muted uppercase mt-1">Pending</p>
+          <p className="text-[10px] text-text-secondary">Passed, no outcome</p>
+        </div>
       </div>
 
       {/* Trainer cards */}
@@ -99,6 +163,9 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
         {trainers.map(trainer => {
           const tShowPct = trainer.total > 0 ? Math.round((trainer.completed / trainer.total) * 100) : 0
           const tClosePct = trainer.completed > 0 ? Math.round((trainer.sales / trainer.completed) * 100) : 0
+          const tPending = pendingByTrainer[normaliseName(trainer.name)] || 0
+          const tPendingRows = (data?.pending?.list || [])
+            .filter(r => normaliseName(r.trainer) === normaliseName(trainer.name))
 
           return (
             <div key={trainer.name} className="bg-surface rounded-2xl border border-border p-4">
@@ -116,7 +183,17 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-50 text-green-700 border border-green-200">
                   Close {tClosePct}%
                 </span>
+                {tPending > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPendingFor(pendingFor === trainer.name ? null : trainer.name)}
+                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                  >
+                    Pending {tPending}
+                  </button>
+                )}
               </div>
+              {pendingFor === trainer.name && <PendingList rows={tPendingRows} />}
             </div>
           )
         })}
