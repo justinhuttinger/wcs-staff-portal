@@ -83,6 +83,7 @@ export default function MobileMembership({ startDate, endDate, locationSlug }) {
     return Object.entries(data?.by_salesperson || {}).map(([name, stats]) => ({
       name,
       total_sales: stats.total_sales || 0,
+      tours: stats.tours || 0,
       vips: stats.vips || 0,
       day_one_booked: stats.day_one_booked || 0,
       same_day_sale: stats.same_day_sale || 0,
@@ -135,6 +136,12 @@ export default function MobileMembership({ startDate, endDate, locationSlug }) {
         <div className="flex gap-3 min-w-max">
           <StatCard label="Total Sales" value={totals.total_sales} />
           <StatCard label="Trial Conversion" value={`${totals.trial_rate}%`} />
+          {/* N/A rather than 0 where no club in view has ever recorded a tour:
+              they were not stored before the check-in module kept them. */}
+          <StatCard
+            label="Tours Given"
+            value={data?.tours_unavailable ? 'N/A' : (data?.total_tours ?? 0)}
+          />
           <StatCard label="Day One Booked" value={totals.day_one_booked} />
           <StatCard label="Total VIPs" value={totals.vips} />
           <StatCard label="Same Day Sales" value={totals.same_day_sale} />
@@ -180,6 +187,11 @@ export default function MobileMembership({ startDate, endDate, locationSlug }) {
             <div className="flex flex-wrap gap-2">
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-wcs-red border border-red-200">
                 Sales: {sp.total_sales}
+              </span>
+              {/* Tours GIVEN, before the pills for things that follow a tour,
+                   so they read in the order the day happens. */}
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-sky-50 text-sky-700 border border-sky-200">
+                Tours: {sp.tours}
               </span>
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
                 VIPs: {sp.vips}

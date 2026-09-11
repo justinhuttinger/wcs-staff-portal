@@ -316,6 +316,36 @@ export default function MobileRevenue({ startDate, endDate, locationSlug }) {
         <ClubBars byClub={data.by_club} total={data.total} />
       )}
 
+      {/* Dues vs Discretionary. Two very different kinds of money sit in the
+          one total above — dues are contracted and predictable, discretionary
+          is sold again every month — and a total that moved says nothing about
+          which one did. Above the profit centres because it is the shape of the
+          month; the list is where you go once you know which half to look at. */}
+      {data.by_revenue_class?.length > 0 && (
+        <div className="bg-surface rounded-2xl border border-border p-4">
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Dues vs Discretionary</p>
+          <div className="space-y-2">
+            {data.by_revenue_class.map(c => (
+              <div key={c.name} className="flex items-center gap-2 text-xs">
+                <span className="text-text-primary flex-1 truncate" title={c.name}>{c.name}</span>
+                <span className="w-16 h-2 rounded-full bg-bg overflow-hidden flex-shrink-0">
+                  <span
+                    className="block h-full rounded-full bg-wcs-red/70"
+                    style={{ width: `${Math.max(4, (c.pct_of_total || 0) * 100)}%` }}
+                  />
+                </span>
+                <span className="font-semibold text-text-primary tabular-nums">
+                  ${Math.round(c.total).toLocaleString()}
+                </span>
+                <span className="text-text-muted tabular-nums w-9 text-right">
+                  {Math.round((c.pct_of_total || 0) * 100)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Profit Center Breakdown — tap to expand 12-month MTD trend */}
       {data.by_profit_center && data.by_profit_center.length > 0 && (
         <ProfitCenterList
