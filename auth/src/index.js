@@ -121,6 +121,7 @@ app.use('/reports/fb-roas', require('./routes/fbRoas'))
 app.use('/reports/revenue', require('./routes/revenueReports'))
 app.use('/reports/website-submissions', require('./routes/websiteSubmissions'))
 app.use('/reports/daily-snapshot', require('./routes/dailySnapshot'))
+app.use('/reports/training', require('./routes/training'))
 app.use('/reports/compliance', require('./routes/compliance'))
 app.use('/reports/childcare', require('./routes/childcare'))
 app.use('/reports', require('./routes/reports'))
@@ -362,6 +363,21 @@ app.listen(PORT, () => {
   } catch (err) {
     console.error('[kpiSnapshot] failed to start:', err.message)
   }
+
+  // Operandio training sweep - the roster plus every assignment, hourly.
+
+  // Dark unless OPERANDIO_TRAINING_SYNC_ENABLED=true.
+
+  try {
+
+    require('./services/operandioTrainingSync').start()
+
+  } catch (err) {
+
+    console.error('[OperandioTraining] failed to start:', err.message)
+
+  }
+
 
   // Nightly membership snapshot — records what the membership actually was
   // that day, because abc_members is current-state only and a re-join rewrites

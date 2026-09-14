@@ -1782,6 +1782,24 @@ export async function getCompliancePeople(params = {}, options = {}) {
   return api('/reports/compliance/people' + complianceQs(params), options)
 }
 
+// ---- Training report (Operandio training sync) ----
+//
+// Deliberately NOT date-ranged. "Is this person caught up" is a question about
+// right now: an assignment that went overdue in August is still overdue today.
+// The filters that apply are club, course and status.
+
+export async function getTrainingSummary(params = {}, options = {}) {
+  return api('/reports/training/summary' + complianceQs(params), options)
+}
+
+export async function getTrainingPeople(params = {}, options = {}) {
+  return api('/reports/training/people' + complianceQs(params), options)
+}
+
+export async function getTrainingCourses(params = {}, options = {}) {
+  return api('/reports/training/courses' + complianceQs(params), options)
+}
+
 // Task-level detail for a single job instance (drill-down)
 export async function getOperandioJobInstance(params = {}, options = {}) {
   const cleaned = {}

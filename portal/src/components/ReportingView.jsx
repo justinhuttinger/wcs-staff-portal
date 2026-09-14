@@ -23,6 +23,7 @@ import EmailMarketingReport from './reports/EmailMarketingReport'
 import MarketingEngagementReport from './reports/MarketingEngagementReport'
 import KpiReport from './reports/KpiReport'
 import AuditsReport from './reports/AuditsReport'
+import TrainingReport from './reports/TrainingReport'
 import ReportInfoButton from './ReportInfoButton'
 import DataFreshnessStamp from './reports/DataFreshnessStamp'
 import ReportDetailView from './reports/ReportDetailView'
@@ -57,6 +58,7 @@ const REPORT_ICONS = {
   'email-marketing': 'M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75',
   'marketing-engagement': 'M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z',
   kpis: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z',
+  training: 'M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342M6.75 15a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm0 0v-3.675A55.378 55.378 0 0 1 12 8.443m-7.007 11.55A5.981 5.981 0 0 0 6.75 15.75v-1.5',
   audits: 'M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V19.5a2.25 2.25 0 0 0 2.25 2.25h7.5a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08M15.75 18.75h-7.5m7.5-3h-7.5m-4.5-9v12.75c0 .621.504 1.125 1.125 1.125h.375',
 }
 
@@ -84,6 +86,7 @@ const ALL_REPORT_TILES = [
   { key: 'marketing-engagement', label: 'Marketing Engagement', desc: 'Email + SMS Performance' },
   { key: 'kpis', label: 'KPIs', desc: 'Goals vs. Actuals' },
   { key: 'audits', label: 'Audits', desc: 'Operandio Scores' },
+  { key: 'training', label: 'Training', desc: 'Who Is Caught Up' },
 ]
 
 // Reports that sit at the very top of the nav as standalone items — no group
@@ -99,7 +102,7 @@ const REPORT_GROUPS = [
     label: 'Club Health',
     desc: 'Health, Activity & Compliance',
     iconPath: REPORT_ICONS['club-health'],
-    reports: ['club-health', 'membership', 'cancels', 'compliance', 'audits', 'checkins', 'payroll', 'revenue', 'pos-sales', 'till'],
+    reports: ['club-health', 'membership', 'cancels', 'compliance', 'audits', 'training', 'checkins', 'payroll', 'revenue', 'pos-sales', 'till'],
   },
   {
     key: 'training',
@@ -421,7 +424,7 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
       {/* Header card */}
       <div className="relative z-20 bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
         {(() => {
-          const showDateControls = activeReport !== 'pt-roster' && activeReport !== 'compliance' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing' && activeReport !== 'audits'
+          const showDateControls = activeReport !== 'pt-roster' && activeReport !== 'compliance' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing' && activeReport !== 'audits' && activeReport !== 'training'
           const showLocation = hasMultipleReportLocations
           return (
             <>
@@ -493,7 +496,7 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
                 <div className="ml-auto flex-shrink-0">
                   {/* KPIs, Audits, Compliance, and Till use location pills
                       below instead of this dropdown. */}
-                  {['kpis', 'audits', 'compliance', 'till'].includes(activeReport) ? null : showLocation ? (
+                  {['kpis', 'audits', 'compliance', 'till', 'training'].includes(activeReport) ? null : showLocation ? (
                     <LocationMultiSelect
                       value={locationSlug}
                       onChange={setLocationSlug}
@@ -548,7 +551,7 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
               {/* KPIs, Audits, Compliance, Till: single-select location pills for
                   quick club-to-club navigation. Audits and Till have no All
                   option — they're strictly one club at a time. */}
-              {['kpis', 'audits', 'compliance', 'till'].includes(activeReport) && showLocation && (
+              {['kpis', 'audits', 'compliance', 'till', 'training'].includes(activeReport) && showLocation && (
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {[...(!['audits', 'till'].includes(activeReport) ? [{ slug: 'all', label: 'All' }] : []), ...(isAdmin
                     ? LOCATIONS.filter(l => l.slug !== 'all')
@@ -636,6 +639,9 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
           )}
           {activeReport === 'compliance' && (
             <ComplianceReport locationSlug={locationSlug} />
+          )}
+          {activeReport === 'training' && (
+            <TrainingReport locationSlug={locationSlug} />
           )}
           {activeReport === 'revenue' && (
             <RevenueReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
