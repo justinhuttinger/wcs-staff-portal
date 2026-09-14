@@ -4,6 +4,7 @@ import { exportCSV, exportPDF } from '../../lib/export'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { StatBlock, StatCell } from './StatBlock'
+import DrillNumber from './DrillNumber'
 
 const LINE_COLORS = { memberships: '#e53e3e', vips: '#805ad5', day_ones: '#38a169' }
 
@@ -142,10 +143,29 @@ function LineChart({ points }) {
   )
 }
 
-export default function MembershipReport({ startDate, endDate, locationSlug }) {
+// Which rows sit behind each column of the salesperson table.
+//
+// EVERY ONE OF THESE WAS CHECKED AGAINST THIS REPORT'S OWN HANDLER, not assumed
+// from the column name. Total Sales and Same Day count ABC members on
+// sign_date with since_date >= sign_date, which is club-health-sales and NOT
+// Analytics' new-members (that counts on since_date). VIPs is the GHL
+// vip_team_member field, so club-health-vips rather than the vip_credits set.
+// Day One counts on the BOOKING date and is credited to whoever booked it,
+// which is why it carries both window and personField.
+//
+// The person is the row, so a click opens that salesperson's own rows rather
+// than the club's.
+const COLUMN_DRILLS = {
+  total_sales:    { set: 'club-health-sales', title: 'Memberships sold' },
+  tours:          { set: 'tours', title: 'Tours given' },
+  vips:           { set: 'club-health-vips', title: 'VIP referrals' },
+  day_one_booked: { set: 'day-ones', window: 'booked', personField: 'bookedBy', title: 'Day Ones booked' },
+  same_day_sale:  { set: 'club-health-sales', filter: 'same-day', title: 'Same day sales' },
+}
+
+export default function MembershipReport({ startDate, endDate, locationSlug, canDrill = false }) {
   const [sortBy, setSortBy] = useState('alpha')
   const [search, setSearch] = useState('')
-  const [expanded, setExpanded] = useState(null)
 
   const { data, loading, error } = useCancellableFetch(
     (signal) => {
@@ -282,58 +302,37 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map(([name, stats]) => (
-              <React.Fragment key={name}>
-                <tr
-                  onClick={() => setExpanded(expanded === name ? null : name)}
-                  className="border-b border-border hover:bg-bg/50 transition-colors cursor-pointer"
-                >
-                  <td className="px-4 py-3 font-medium text-text-primary flex items-center gap-2">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`w-3 h-3 text-text-muted transition-transform flex-shrink-0 ${expanded === name ? 'rotate-90' : ''}`}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                    </svg>
-                    {displayName(name)}
-                  </td>
-                  <td className="px-4 py-3 text-center text-wcs-red font-semibold">{stats.total_sales || 0}</td>
-                  <td className="px-4 py-3 text-center text-text-primary">{stats.tours || 0}</td>
-                  <td className="px-4 py-3 text-center text-text-primary">{stats.vips || 0}</td>
-                  <td className="px-4 py-3 text-center text-green-600">{stats.day_one_booked || 0}</td>
-                  <td className="px-4 py-3 text-center text-green-600">{stats.same_day_sale || 0}</td>
+            {rows.map(([name, stats]) => {
+              // Unassigned is the online-join bucket, not a person, so it has
+              // no per-person list to open.
+              const person = name === 'Unassigned' ? null : name
+              const cell = (key, extraClass) => {
+                const d = COLUMN_DRILLS[key]
+                return (
+                  <DrillNumber
+                    value={stats[key] || 0}
+                    enabled={canDrill && !!person}
+                    set={d.set}
+                    title={`${displayName(name)} \u2014 ${d.title}`}
+                    className={extraClass}
+                    params={{
+                      start: startDate, end: endDate, clubs: locationSlug || 'all',
+                      person, personField: d.personField, filter: d.filter, window: d.window,
+                    }}
+                  />
+                )
+              }
+              return (
+                <tr key={name} className="border-b border-border last:border-0 hover:bg-bg/50 transition-colors">
+                  <td className="px-4 py-3 font-medium text-text-primary">{displayName(name)}</td>
+                  <td className="px-4 py-3 text-center">{cell('total_sales', 'text-wcs-red font-semibold')}</td>
+                  <td className="px-4 py-3 text-center">{cell('tours', 'text-text-primary')}</td>
+                  <td className="px-4 py-3 text-center">{cell('vips', 'text-text-primary')}</td>
+                  <td className="px-4 py-3 text-center">{cell('day_one_booked', 'text-green-600')}</td>
+                  <td className="px-4 py-3 text-center">{cell('same_day_sale', 'text-green-600')}</td>
                 </tr>
-                {expanded === name && stats.members && stats.members.length > 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-0 py-0">
-                      <div className="bg-bg/50 border-b border-border">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="border-b border-border">
-                              <th className="text-left px-6 py-2 text-text-muted uppercase font-semibold">Name</th>
-                              <th className="text-left px-4 py-2 text-text-muted uppercase font-semibold">Type</th>
-                              <th className="text-left px-4 py-2 text-text-muted uppercase font-semibold">Sign Date</th>
-                              <th className="text-center px-4 py-2 text-text-muted uppercase font-semibold">Day One</th>
-                              <th className="text-center px-4 py-2 text-text-muted uppercase font-semibold">VIPs</th>
-                              <th className="text-center px-4 py-2 text-text-muted uppercase font-semibold">Same Day</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {stats.members.map((m, i) => (
-                              <tr key={i} className="border-b border-border last:border-0">
-                                <td className="px-6 py-2 text-text-primary">{m.name}</td>
-                                <td className="px-4 py-2 text-text-muted">{m.membership_type}</td>
-                                <td className="px-4 py-2 text-text-muted">{m.since_date}</td>
-                                <td className="px-4 py-2 text-center">{m.day_one_booked ? <span className="text-green-500">Yes</span> : <span className="text-text-muted">-</span>}</td>
-                                <td className="px-4 py-2 text-center text-text-primary">{m.vip_count || '-'}</td>
-                                <td className="px-4 py-2 text-center">{m.same_day_sale ? <span className="text-green-500">Yes</span> : <span className="text-text-muted">-</span>}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
+              )
+            })}
             {rows.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-text-muted text-sm">No data for this period</td>
@@ -341,7 +340,7 @@ export default function MembershipReport({ startDate, endDate, locationSlug }) {
             )}
             {rows.length > 0 && (
               <tr className="border-t-2 border-border font-bold bg-bg/30">
-                <td className="px-4 py-3 text-text-primary pl-9">Total</td>
+                <td className="px-4 py-3 text-text-primary">Total</td>
                 <td className="px-4 py-3 text-center text-wcs-red">{totalSales}</td>
                 <td className="px-4 py-3 text-center text-text-primary">{totalRowTours}</td>
                 <td className="px-4 py-3 text-center text-text-primary">{totalRowVips}</td>

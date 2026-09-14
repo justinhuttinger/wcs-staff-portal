@@ -4,6 +4,8 @@ import { exportCSV, exportPDF } from '../../lib/export'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { StatBlock, StatCell } from './StatBlock'
+import DrillNumber from './DrillNumber'
+import Drillable from '../analytics/Drillable'
 
 /**
  * One key for a person however their name was typed.
@@ -197,7 +199,26 @@ function DetailModal({ contact, onClose }) {
   )
 }
 
-export default function PTReport({ startDate, endDate, locationSlug }) {
+// Which rows sit behind each figure.
+//
+// This report reads day_one_appointments SCHEDULED in the window and credits
+// each one to its TRAINER, so every drill here carries window 'scheduled' (the
+// default) and personField 'trainer'. Day Ones BOOKED in the window are a
+// different cohort, credited to the booker -- that is what Membership's Day One
+// column opens, and mixing the two would open the wrong list under the right
+// number.
+//
+// The statuses match the handler's own: Completed, No Show, and a sale decided
+// only on a completed appointment.
+const DRILLS = {
+  set:       { title: 'Day Ones' },
+  completed: { filter: 'completed', title: 'Completed Day Ones' },
+  no_show:   { filter: 'no-show', title: 'No shows' },
+  sales:     { filter: 'sold', title: 'Day Ones sold' },
+  no_sales:  { filter: 'no-sale', title: 'Day Ones not sold' },
+}
+
+export default function PTReport({ startDate, endDate, locationSlug, canDrill = false }) {
   const [expandedTrainer, setExpandedTrainer] = useState(null)
   const [detailContact, setDetailContact] = useState(null)
   const [sort, setSort] = useState({ key: null, dir: null })          // Day One Breakdown sort
@@ -235,6 +256,14 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
   if (loading) return <DesktopLoading variant="report" />
   if (error) return <p className="text-wcs-red text-sm py-4">{error.message || String(error)}</p>
   if (!data) return null
+
+  // Shared by every drill on this report, so no figure can open a list for a
+  // different window or club than the one on screen.
+  const drillParams = (key, person) => ({
+    start: startDate, end: endDate, clubs: locationSlug || 'all',
+    person: person || undefined, personField: person ? 'trainer' : undefined,
+    filter: DRILLS[key]?.filter,
+  })
 
   const totalDayOnes = data.total_day_ones || 0
   const completionRate = data.completion_rate || 0
@@ -298,15 +327,21 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
     <div className="space-y-6">
       {/* Stat Cards — Set / Show / Close */}
       <StatBlock cols={4}>
-        <StatCell label="Set" value={totalDayOnes} sub="Total Day Ones" />
-        <StatCell label="Show" value={totalCompleted} sub={`${completionRate}% of ${totalDayOnes} set`} />
-        <StatCell label="Close" value={totalSales} sub={`${closeRate}% of ${totalCompleted} shown`} />
+        <HeadlineCell drill="set" canDrill={canDrill} params={drillParams('set')}
+          label="Set" value={totalDayOnes} sub="Total Day Ones" />
+        <HeadlineCell drill="completed" canDrill={canDrill} params={drillParams('completed')}
+          label="Show" value={totalCompleted} sub={`${completionRate}% of ${totalDayOnes} set`} />
+        <HeadlineCell drill="sales" canDrill={canDrill} params={drillParams('sales')}
+          label="Close" value={totalSales} sub={`${closeRate}% of ${totalCompleted} shown`} />
         {/* The number that says how much to trust the two beside it. A Day One
             whose date has passed with no outcome recorded counts as neither
             held nor missed, so Show and Close are measured on an incomplete
             picture until it is closed out. Same figure PT Snapshot calls
             Pending Outcome. */}
-        <StatCell
+        <HeadlineCell
+          drill="pending"
+          canDrill={canDrill && data.pending_outcome != null}
+          params={{ start: startDate, end: endDate, clubs: locationSlug || 'all' }}
           label="Pending Outcome"
           value={data.pending_outcome ?? '—'}
           sub="Passed, nothing recorded"
@@ -359,15 +394,26 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
                 <React.Fragment key={name}>
                 <tr className="border-b border-border hover:bg-bg/50 transition-colors">
                   <td className="px-4 py-3 font-medium text-text-primary">{name}</td>
-                  <td className="px-4 py-3 text-center font-semibold text-text-primary">{rowTotal}</td>
                   <td className="px-4 py-3 text-center">
-                    <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs border border-green-200">{rowCompleted}</span>
+                    <TrainerCell k="set" v={rowTotal} name={name} canDrill={canDrill} p={drillParams}
+                      className="font-semibold text-text-primary" />
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-500 text-xs border border-red-200">{rowNoShow}</span>
+                    <TrainerCell k="completed" v={rowCompleted} name={name} canDrill={canDrill} p={drillParams}
+                      className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs border border-green-200" />
                   </td>
-                  <td className="px-4 py-3 text-center text-wcs-red font-semibold">{rowSales}</td>
-                  <td className="px-4 py-3 text-center text-text-muted">{rowNoSales}</td>
+                  <td className="px-4 py-3 text-center">
+                    <TrainerCell k="no_show" v={rowNoShow} name={name} canDrill={canDrill} p={drillParams}
+                      className="px-2 py-0.5 rounded-full bg-red-50 text-red-500 text-xs border border-red-200" />
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <TrainerCell k="sales" v={rowSales} name={name} canDrill={canDrill} p={drillParams}
+                      className="text-wcs-red font-semibold" />
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <TrainerCell k="no_sales" v={rowNoSales} name={name} canDrill={canDrill} p={drillParams}
+                      className="text-text-muted" />
+                  </td>
                   <td className="px-4 py-3 text-center">
                     {rowPending > 0 ? (
                       <button
@@ -382,8 +428,16 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
                       <span className="text-text-muted text-xs">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-center text-text-primary font-medium">{showPct}%</td>
-                  <td className="px-4 py-3 text-center text-text-primary font-medium">{closePct}%</td>
+                  {/* A rate opens the list its NUMERATOR came from: Show % is
+                      the completed ones, Close % the sold ones. */}
+                  <td className="px-4 py-3 text-center">
+                    <TrainerCell k="completed" v={rowCompleted} name={name} canDrill={canDrill} p={drillParams}
+                      display={`${showPct}%`} className="text-text-primary font-medium" />
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <TrainerCell k="sales" v={rowSales} name={name} canDrill={canDrill} p={drillParams}
+                      display={`${closePct}%`} className="text-text-primary font-medium" />
+                  </td>
                 </tr>
                 {pendingFor === name && (
                   <tr>
@@ -405,11 +459,11 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
             {trainerRows.length > 0 && (
               <tr className="border-t-2 border-border font-bold bg-bg/30">
                 <td className="px-4 py-3 text-text-primary">Total</td>
-                <td className="px-4 py-3 text-center text-text-primary">{totals.total}</td>
-                <td className="px-4 py-3 text-center text-green-700">{totals.completed}</td>
-                <td className="px-4 py-3 text-center text-red-500">{totals.no_show}</td>
-                <td className="px-4 py-3 text-center text-wcs-red">{totals.sales}</td>
-                <td className="px-4 py-3 text-center text-text-muted">{totals.no_sales}</td>
+                <td className="px-4 py-3 text-center"><TrainerCell k="set" v={totals.total} canDrill={canDrill} p={drillParams} className="text-text-primary" /></td>
+                <td className="px-4 py-3 text-center"><TrainerCell k="completed" v={totals.completed} canDrill={canDrill} p={drillParams} className="text-green-700" /></td>
+                <td className="px-4 py-3 text-center"><TrainerCell k="no_show" v={totals.no_show} canDrill={canDrill} p={drillParams} className="text-red-500" /></td>
+                <td className="px-4 py-3 text-center"><TrainerCell k="sales" v={totals.sales} canDrill={canDrill} p={drillParams} className="text-wcs-red" /></td>
+                <td className="px-4 py-3 text-center"><TrainerCell k="no_sales" v={totals.no_sales} canDrill={canDrill} p={drillParams} className="text-text-muted" /></td>
                 <td className="px-4 py-3 text-center text-amber-700">{data.pending?.total ?? 0}</td>
                 <td className="px-4 py-3 text-center">{totals.total > 0 ? Math.round((totals.completed / totals.total) * 100) : 0}%</td>
                 <td className="px-4 py-3 text-center">{totals.completed > 0 ? Math.round((totals.sales / totals.completed) * 100) : 0}%</td>
@@ -507,3 +561,43 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
     </div>
   )
 }
+
+/**
+ * A headline card, clickable where there are rows behind it.
+ *
+ * Pending Outcome uses its own set rather than a filter on day-ones: "passed
+ * with no outcome" is defined once, in SQL, and the drill reads that same
+ * function instead of re-deriving it here.
+ */
+function HeadlineCell({ drill, canDrill, params, ...cell }) {
+  const card = <StatCell {...cell} />
+  if (!canDrill || !cell.value) return card
+  const set = drill === 'pending' ? 'day-ones-pending' : 'day-ones'
+  return (
+    <Drillable set={set} title={drill === 'pending' ? 'Pending outcomes' : DRILLS[drill].title}
+      params={params} rounded="rounded-none">
+      {card}
+    </Drillable>
+  )
+}
+
+/**
+ * One trainer's figure in the stats table.
+ *
+ * `name` omitted means the totals row, which is the same list without a person
+ * filter. `display` lets a rate show its percentage while opening the list its
+ * numerator came from.
+ */
+function TrainerCell({ k, v, name, canDrill, p, display, className }) {
+  return (
+    <DrillNumber
+      value={display ?? v}
+      enabled={canDrill && Number(v) > 0}
+      set="day-ones"
+      title={name ? `${name} \u2014 ${DRILLS[k].title}` : DRILLS[k].title}
+      params={p(k, name)}
+      className={className}
+    />
+  )
+}
+

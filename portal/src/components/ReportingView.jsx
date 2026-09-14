@@ -209,6 +209,11 @@ function parseHash() {
 export default function ReportingView({ user, onBack, location, isAdmin, onAnalytics }) {
   const userRole = user?.staff?.role || 'team_member'
   const REPORT_TILES = getReportTilesForRole(userRole, user?.staff?.custom_reports, user?.visible_tools)
+  // May this viewer open the rows behind a number? The records endpoint is
+  // manager and above, so anyone below sees the figures exactly as before
+  // rather than a click that 403s. One definition, shared by every report that
+  // drills, so they cannot disagree about who gets it.
+  const canDrill = roleAtLeast(userRole, 'manager')
   // Training rides inside the Operandio tile, so its grant is checked here
   // rather than by having a tile of its own.
   const canSeeTraining = hasReportGrant('training', userRole, user?.staff?.custom_reports, user?.visible_tools)
@@ -611,16 +616,16 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
         {!(reportHasDetail && detailView) && (
         <>
         {activeReport === 'club-health' && (
-            <ClubHealthReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} canDrill={roleAtLeast(userRole, 'manager')} />
+            <ClubHealthReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} canDrill={canDrill} />
           )}
           {activeReport === 'membership' && (
-            <MembershipReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+            <MembershipReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} canDrill={canDrill} />
           )}
           {activeReport === 'cancels' && (
             <CancelsReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} planType={cancelsPlanType} />
           )}
           {activeReport === 'pt' && (
-            <PTReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+            <PTReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} canDrill={canDrill} />
           )}
           {activeReport === 'pt-roster' && (
             <PTRosterReport locationSlug={locationSlug} />

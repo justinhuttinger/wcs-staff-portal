@@ -377,10 +377,24 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug, can
       {/* ---------- PT / DAY ONE ---------- */}
       <div>
         <Heading>PT / Day One</Heading>
-        <StatBlock cols={3} flush>
+        <StatBlock cols={4} flush>
           <DrillCell {...drillScope} drill="dayOneSet" label="Set" value={dayOneSet} sub="Day Ones Booked" />
           <DrillCell {...drillScope} drill="dayOneShow" label="Show" value={dayOneShow} sub={`${showRate}% of set`} />
           <DrillCell {...drillScope} drill="dayOneClose" label="Close" value={dayOneClose} sub={`${closeRate}% of shown`} />
+          {/* The caveat on the two rates beside it: a Day One whose date has
+              passed with nothing recorded is neither held nor missed, so Show
+              and Close are measured on an incomplete picture until somebody
+              closes it out. Same figure as the card up in Membership; it is
+              repeated here because this is the block where the funnel is read
+              and a caveat nobody sees is not a caveat. */}
+          <DrillCell
+            {...drillScope}
+            drill="pending"
+            available={data.pending_outcome != null}
+            label="Unanswered"
+            value={data.pending_outcome ?? '—'}
+            sub="Passed, no outcome"
+          />
         </StatBlock>
       </div>
 
