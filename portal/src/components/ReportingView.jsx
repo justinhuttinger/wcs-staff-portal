@@ -257,7 +257,6 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
   const [locationSlug, setLocationSlug] = useState(defaultSlug)
   const [activeQuick, setActiveQuick] = useState('this_month')
   // Cancels report: All / Membership / Insurance plan-type filter
-  const [cancelsPlanType, setCancelsPlanType] = useState('all')
   // Summary vs. line-by-line "See Detail" view for the active report.
   const [detailView, setDetailView] = useState(false)
   // Which half of the Operandio tile is showing. Lives here rather than in
@@ -510,32 +509,6 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
                 {activeReport === 'kpis' && (
                   <DataFreshnessStamp refreshKey={`${locationSlug}|${startDate}|${endDate}`} />
                 )}
-                {/* Cancels: All / Membership / Insurance plan-type pills */}
-                {activeReport === 'cancels' && (
-                  <div className="flex items-center gap-1.5">
-                    {[
-                      { key: 'all', label: 'All' },
-                      { key: 'membership', label: 'Membership' },
-                      { key: 'insurance', label: 'Insurance' },
-                    ].map(opt => {
-                      const active = cancelsPlanType === opt.key
-                      return (
-                        <button
-                          key={opt.key}
-                          type="button"
-                          onClick={() => setCancelsPlanType(opt.key)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${
-                            active
-                              ? 'bg-wcs-red text-white border-wcs-red'
-                              : 'bg-bg text-text-muted border-border hover:text-text-primary'
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
                 <div className="ml-auto flex-shrink-0">
                   {/* KPIs, Audits, Compliance, and Till use location pills
                       below instead of this dropdown. */}
@@ -648,7 +621,7 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
             <MembershipReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} canDrill={canDrill} excludedCategories={excludedCategories} />
           )}
           {activeReport === 'cancels' && (
-            <CancelsReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} planType={cancelsPlanType}  excludedCategories={excludedCategories}/>
+            <CancelsReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} excludedCategories={excludedCategories} />
           )}
           {activeReport === 'pt' && (
             <PTReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} canDrill={canDrill} />
