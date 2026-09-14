@@ -6,6 +6,8 @@ const { buildMtdMonthWindows } = require('../services/revenueMtdWindows')
 const { capRevenueEndDate } = require('../services/revenueEndCap')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { parseLocationSlugParam, intersectWithAllowed } = require('../utils/locationSlug')
+const { buildRevenueAnalysis } = require('../lib/revenueAnalysisReport')
+const { CLUBS } = require('../lib/salespersonPerformance')
 
 const LOCATION_LABELS = {
   salem: 'Salem',
@@ -282,6 +284,43 @@ router.get('/profit-center-mtd-trend', authenticate, requireReportAccess('manage
 // ---------------------------------------------------------------------------
 // GET /reports/revenue/imports — last N import audit rows (admin Backfill UI)
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// GET /revenue/analysis
+//
+// The same payload Analytics' Revenue Analysis draws: every profit center
+// folded into its priority category, against the same span a month ago and a
+// year ago, with six months of history per category for the row drill-down.
+//
+// ONE BUILDER, TWO GATES. The arithmetic is lib/revenueAnalysisReport, shared
+// with GET /analytics/revenue, because the two reports are allowed to have
+// different audiences but are not allowed to disagree about what a month of
+// Dues was. What this route adds is the Revenue report's own gate and its own
+// club scoping, so a manager sees their clubs and nothing else — the analytics
+// route's club handling lets a corporate caller ask for any club, which is
+// correct there and would not be here.
+// ---------------------------------------------------------------------------
+router.get('/analysis', authenticate, requireReportAccess('manager', ['revenue']), async (req, res) => {
+  try {
+    // null = every club, which is what an all-locations role asking for "all"
+    // resolves to. A restricted role always comes back as an explicit list, and
+    // an empty list means they asked only for clubs they cannot see.
+    const scoped = await resolveLocationFilter(req)
+    if (Array.isArray(scoped) && scoped.length === 0) {
+      return res.status(403).json({ error: 'no access to the requested clubs' })
+    }
+
+    res.json(await buildRevenueAnalysis({
+      start: req.query.start_date,
+      end: req.query.end_date,
+      slugs: scoped || CLUBS.map(c => c.slug),
+    }))
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message })
+    console.error('[revenue] /analysis error:', err.message)
+    res.status(500).json({ error: 'Failed to build revenue analysis' })
+  }
+})
+
 router.get('/imports', authenticate, requireRole('admin'), async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 20, 100)
