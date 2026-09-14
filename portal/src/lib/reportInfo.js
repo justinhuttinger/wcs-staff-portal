@@ -363,68 +363,21 @@ const REPORT_INFO = {
     ],
   },
 
-  training: {
-    title: 'Training',
-    sections: [
-      {
-        heading: 'What this is',
-        body:
-          'Where every member of staff stands on their Operandio training right now: what they have finished, what they have not, when it was due, and when it was handed to them. By Club is the roll-up; By Person is the chase list, and clicking a name opens their courses.',
-      },
-      {
-        heading: 'There is no date range, on purpose',
-        body:
-          'Every other report here answers "what happened between these dates". This one answers "where do we stand today" — something that went overdue in August is still overdue now and still needs doing, so a date picker would wrongly suggest old misses stop counting.',
-      },
-      {
-        heading: 'Statuses',
-        body: [
-          'Complete — finished, however late it was.',
-          'Overdue — the due date has passed and it is not finished. Overdue wins over progress: 71% done and a week late still reads overdue, and the bar shows how far they got.',
-          'In Progress — started, not finished, still has time.',
-          'Not Started — assigned, untouched, still has time.',
-        ],
-      },
-      {
-        heading: 'The three states a person can be in',
-        body: [
-          'Caught up — nothing overdue. Untouched courses that are not due yet still count as caught up; they have not missed anything.',
-          'Behind — at least one assignment past its due date.',
-          'Nothing assigned — no training has been given to them at all. This is deliberately NOT counted as caught up, because a club that has never been given a course would otherwise score a perfect 100%.',
-        ],
-      },
-      {
-        heading: '% of Due Work',
-        body:
-          'Finished assignments against the ones whose due date has passed. Work that is not due yet is left out of both halves, so assigning a course to everybody does not make the number fall on the spot. A club with nothing due shows a dash rather than a score.',
-      },
-      {
-        heading: 'Where the assigned date comes from',
-        body:
-          'Operandio does not report one. It is decoded from the id on the assignment itself, which carries a creation timestamp — checked against live data, where it sits exactly seven days before every due date on the course in use. It is marked with an asterisk wherever it appears because it is derived rather than reported.',
-      },
-      {
-        heading: 'Filters',
-        body: [
-          'Club — the pills at the top. A person assigned to several clubs appears under each of them.',
-          'Course — one course, or all of them.',
-          'Status — narrow to just the overdue work, or just what is unfinished.',
-          'Include retired courses — off by default, since an archived course is not work anyone is expected to do.',
-        ],
-      },
-    ],
-  },
-
   compliance: {
-    title: 'Compliance',
+    title: 'Operandio',
     sections: [
       {
-        heading: 'What this is',
+        heading: 'Two reports, one tile',
+        body:
+          'Compliance and Training both come out of Operandio and get looked at in the same conversation, so they share a tile. The switch at the top picks between them; Compliance is what it opens on, because it is the daily number.',
+      },
+      {
+        heading: 'Compliance — what this is',
         body:
           'Every Operandio job at every club, pulled straight from the Operandio API: what got done on time, what was late, what was missed entirely, and who completed each step. Expand any job to see step-by-step detail with names, timestamps, responses, and notes.',
       },
       {
-        heading: 'Statuses',
+        heading: 'Compliance — statuses',
         body: [
           'On Time — completed before the due time.',
           'Late — completed, but after the due time.',
@@ -441,6 +394,43 @@ const REPORT_INFO = {
           'Location — one club, or All Locations.',
           'Data refreshes from Operandio about every 15 minutes.',
         ],
+      },
+      {
+        heading: 'Training — what this is',
+        body:
+          'Where every member of staff stands on their Operandio training right now: what they have finished, what they have not, when it was due, and when it was handed to them. By Club is the roll-up; By Person is the chase list, and clicking a name opens their courses.',
+      },
+      {
+        heading: 'Training has no date range, on purpose',
+        body:
+          'Compliance answers "what happened between these dates". Training answers "where do we stand today" — something that went overdue in August is still overdue now and still needs doing, so a date picker would wrongly suggest old misses stop counting.',
+      },
+      {
+        heading: 'Training — statuses',
+        body: [
+          'Complete — finished, however late it was.',
+          'Overdue — the due date has passed and it is not finished. Overdue wins over progress: 71% done and a week late still reads overdue, and the bar shows how far they got.',
+          'In Progress — started, not finished, still has time.',
+          'Not Started — assigned, untouched, still has time.',
+        ],
+      },
+      {
+        heading: 'Training — the three states a person can be in',
+        body: [
+          'Caught up — nothing overdue. Untouched courses that are not due yet still count as caught up; they have not missed anything.',
+          'Behind — at least one assignment past its due date.',
+          'Nothing assigned — no training has been given to them at all. This is deliberately NOT counted as caught up, because a club that has never been given a course would otherwise score a perfect 100%.',
+        ],
+      },
+      {
+        heading: 'Training — % of Due Work',
+        body:
+          'Finished assignments against the ones whose due date has passed. Work that is not due yet is left out of both halves, so assigning a course to everybody does not make the number fall on the spot. A club with nothing due shows a dash rather than a score.',
+      },
+      {
+        heading: 'Training — where the assigned date comes from',
+        body:
+          'Operandio does not report one. It is decoded from the id on the assignment itself, which carries a creation timestamp — checked against live data, where it sits exactly seven days before every due date on the course in use. It is marked with an asterisk wherever it appears because it is derived rather than reported.',
       },
     ],
   },
