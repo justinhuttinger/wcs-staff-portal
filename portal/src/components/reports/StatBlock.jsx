@@ -35,10 +35,39 @@ export function StatBlock({ cols = 4, children, className = '', flush = false })
   )
 }
 
+// THE LABEL NEVER WRAPS. At six columns "Trial Conversion" broke onto a second
+// line while its neighbours stayed on one, which pushed that card's number down
+// and left the row of headline figures visibly out of step.
+//
+// So it is sized to fit instead. The cell is a container query container, and
+// the label asks for the largest size at which its own text still fits the
+// column: 12px wherever there is room, less only where the label is long and
+// the column is narrow. Sizing every label the same would shrink "Members"
+// to make room for "Cancel Reasons Captured" two reports away, which is a
+// worse trade than a long label being a point smaller than a short one.
+//
+// The estimate is deliberately pessimistic — 0.68em per character against a
+// real ~0.64em for uppercase system sans with tracking-wide — so the result
+// errs a little small rather than clipping.
+const LABEL_EM_PER_CHAR = 0.68
+
+/** The largest of 12px / 7px / "as wide as the cell" at which `label` fits one line. */
+function labelFontSize(label) {
+  const len = String(label ?? '').length
+  if (!len) return undefined
+  const cqi = 100 / (LABEL_EM_PER_CHAR * len)
+  return `clamp(7px, ${cqi.toFixed(2)}cqi, 12px)`
+}
+
 export function StatCell({ label, value, sub, valueClassName = '', className = '' }) {
   return (
-    <div className={`bg-surface p-6 text-center ${className}`}>
-      <p className="text-xs text-text-muted uppercase tracking-wide">{label}</p>
+    <div className={`@container bg-surface p-6 text-center ${className}`}>
+      <p
+        className="leading-tight text-text-muted uppercase tracking-wide whitespace-nowrap"
+        style={{ fontSize: labelFontSize(label) }}
+      >
+        {label}
+      </p>
       <p className={`text-4xl font-bold text-text-primary mt-2 ${valueClassName}`}>{value}</p>
       {sub && <p className="text-[11px] text-text-muted mt-1">{sub}</p>}
     </div>
