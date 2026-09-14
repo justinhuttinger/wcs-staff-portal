@@ -202,6 +202,15 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
   const [detailContact, setDetailContact] = useState(null)
   const [sort, setSort] = useState({ key: null, dir: null })          // Day One Breakdown sort
   const [trainerSort, setTrainerSort] = useState({ key: null, dir: null }) // Trainer Stats sort
+  // Which trainer's open Day Ones are expanded, if any.
+  //
+  // UP HERE WITH THE OTHER HOOKS, NOT DOWN BESIDE THE TABLE THAT USES IT. It
+  // sat below the `if (loading)` / `if (!data)` guards, so the first render
+  // called four hooks and the render after the data landed called five. React
+  // treats that as a corrupt component and unmounts the tree, which is why this
+  // report went white the moment it finished loading rather than failing to
+  // load at all.
+  const [pendingFor, setPendingFor] = useState(null)
 
   // Click a header: new column → desc, then desc → asc, then back to unsorted.
   function cycle(prev, key) {
@@ -250,9 +259,6 @@ export default function PTReport({ startDate, endDate, locationSlug }) {
   const byStatus = data.by_status || {}
   const totalCompleted = byStatus['Completed'] || 0
   const totalSales = Object.values(data.by_trainer || {}).reduce((sum, t) => sum + (t.sales || 0), 0)
-
-  // Which trainer's open Day Ones are expanded, if any.
-  const [pendingFor, setPendingFor] = useState(null)
 
   // The per-trainer pending counts, keyed the way the table's own names are, so
   // a doubled space or a case difference does not leave the column empty for
