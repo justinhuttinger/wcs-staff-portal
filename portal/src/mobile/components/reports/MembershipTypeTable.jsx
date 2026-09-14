@@ -1,56 +1,17 @@
-import { useState } from 'react'
-
 // Shared mobile horizontal-bar breakdown for membership-type tables.
-// When `collapsible` is true the component renders as a compact pill
-// until tapped, then expands to the full breakdown card.
-export default function MembershipTypeTable({ title, rows, collapsible = false }) {
-  const [open, setOpen] = useState(!collapsible)
+//
+// Always open. It could collapse for Club Health, which showed two of these
+// behind a pill; those two are gone, and the one caller left (Cancels) never
+// collapsed, so the toggle was a branch nothing could reach.
+export default function MembershipTypeTable({ title, rows }) {
   const list = rows || []
   const totalMembers = list.reduce((s, r) => s + (r.members || 0), 0)
   const totalAgreements = list.reduce((s, r) => s + (r.agreements || 0), 0)
   const max = list.reduce((m, r) => Math.max(m, r.members || 0), 0)
 
-  // Compact bubble — collapsed state (mobile)
-  if (collapsible && !open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-expanded={false}
-        className="inline-flex items-center gap-2 px-3 py-1.5 bg-surface rounded-full border border-border active:bg-bg/40 transition-colors"
-      >
-        <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wide">
-          {title}
-        </span>
-        <span className="flex items-center justify-center w-5 h-5 rounded-full bg-bg border border-border text-text-muted">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-          </svg>
-        </span>
-      </button>
-    )
-  }
-
-  // Expanded card — full breakdown
   return (
     <div className="bg-surface rounded-2xl border border-border p-4">
-      {collapsible ? (
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          aria-expanded={true}
-          className="flex items-center justify-between w-full text-left mb-3 group"
-        >
-          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">{title}</p>
-          <span className="flex items-center justify-center w-5 h-5 rounded-full bg-bg border border-border text-text-muted">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3 rotate-180">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-            </svg>
-          </span>
-        </button>
-      ) : (
-        <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">{title}</p>
-      )}
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">{title}</p>
       {list.length === 0 || totalMembers === 0 ? (
         <p className="text-sm text-text-muted py-2 text-center">No data</p>
       ) : (

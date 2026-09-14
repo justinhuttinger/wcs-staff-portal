@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { getClubHealthReport } from '../../lib/api'
-import MembershipTypeTable from './MembershipTypeTable'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { StatBlock, StatCell, ReportBlock } from './StatBlock'
@@ -251,10 +250,6 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
         </StatBlock>
       </div>
 
-      <div className="px-5 sm:px-6 py-5">
-        <MembershipTypeTable title="Active Members by Membership Type" rows={data.active_by_membership_type} collapsible flush />
-      </div>
-
       {/* ---------- MEMBERSHIP (date-filtered new sales) ---------- */}
       <div>
         <Heading>Membership</Heading>
@@ -300,10 +295,6 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-border">
         <PieChart title="Same Day Sales to Memberships" data={sameDayRatio} colorMap={{ 'Same Day': '#38a169', 'Other': '#e2e8f0' }} flush />
         <BarChart title="Memberships by Day" points={buildDailyPoints(data.by_date, startDate, endDate)} flush />
-      </div>
-
-      <div className="px-5 sm:px-6 py-5">
-        <MembershipTypeTable title="Sales by Membership Type" rows={data.by_membership_type} collapsible flush />
       </div>
 
       <StatBlock cols={4} flush>

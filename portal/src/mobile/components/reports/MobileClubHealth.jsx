@@ -1,7 +1,6 @@
 import React from 'react'
 import { getClubHealthReport } from '../../../lib/api'
 import MobileLoading from '../MobileLoading'
-import MembershipTypeTable from './MembershipTypeTable'
 import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
 
 const PIE_COLORS = ['#e53e3e', '#38a169', '#3182ce', '#d69e2e', '#805ad5', '#dd6b20', '#319795']
@@ -221,8 +220,6 @@ export default function MobileClubHealth({ startDate, endDate, locationSlug }) {
         <StatCard label="Total Agreements" value={data.active_agreements_total ?? 0} />
       </div>
 
-      <MembershipTypeTable title="Active Members by Membership Type" rows={data.active_by_membership_type} collapsible />
-
       {/* ---------- MEMBERSHIP (date-filtered new sales) ---------- */}
       <SectionHeader title="Membership" />
 
@@ -262,8 +259,6 @@ export default function MobileClubHealth({ startDate, endDate, locationSlug }) {
       />
 
       <BarChart title="Memberships by Day" points={buildDailyPoints(data.by_date, startDate, endDate)} />
-
-      <MembershipTypeTable title="Sales by Membership Type" rows={data.by_membership_type} collapsible />
 
       <div className="grid grid-cols-2 gap-3">
         <StatCard label="Cancels (Members)" value={data.cancels_members ?? 0} />
