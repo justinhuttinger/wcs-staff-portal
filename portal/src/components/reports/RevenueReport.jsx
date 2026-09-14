@@ -1,8 +1,11 @@
-import React, { useEffect, useState } from 'react'
-import { getRevenueSummary, getRevenueProfitCenterMtdTrend } from '../../lib/api'
+import { useState } from 'react'
+import { api, getRevenueSummary } from '../../lib/api'
 import { exportCSV } from '../../lib/export'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
+import { CategoryTable } from '../analytics/revenueCategoryTable'
+import { MultiTrend } from '../analytics/charts'
+import { fmtMoney as fmtMoneyShared, GOOD_COLOR, BAD_COLOR } from '../analytics/chartPalette'
 
 const STACK_COLORS = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#d69e2e', '#319795', '#a0aec0']
 
@@ -90,115 +93,149 @@ function DeltaChip({ current, prior }) {
 // (oldest-left, newest-right) along the x-axis, MTD totals on the y. Highlights
 // the most recent month and the previous month with circles + labels so the
 // reader can see "vs last MTD" at a glance.
-function MtdTrendChart({ series }) {
-  if (!series || series.length === 0) {
-    return <p className="text-xs text-text-muted">No transactions in the trailing 12 months.</p>
-  }
-  const w = 560
-  const h = 140
-  const padL = 50
-  const padR = 16
-  const padT = 12
-  const padB = 28
-  const chartW = w - padL - padR
-  const chartH = h - padT - padB
-  const max = Math.max(1, ...series.map(s => s.mtd_total))
-  const toX = i => padL + (series.length > 1 ? (i / (series.length - 1)) * chartW : chartW / 2)
-  const toY = v => padT + chartH - (v / max) * chartH
-  const linePath = series.map((s, i) => `${i === 0 ? 'M' : 'L'}${toX(i).toFixed(1)},${toY(s.mtd_total).toFixed(1)}`).join(' ')
-  const areaPath = `${linePath} L${toX(series.length - 1).toFixed(1)},${(padT + chartH).toFixed(1)} L${toX(0).toFixed(1)},${(padT + chartH).toFixed(1)} Z`
-  const last = series[series.length - 1]
-  const prev = series[series.length - 2]
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ maxHeight: '170px' }}>
-      <path d={areaPath} fill={STACK_COLORS[0]} opacity="0.15" />
-      <path d={linePath} fill="none" stroke={STACK_COLORS[0]} strokeWidth="1.5" />
-      {prev && (
-        <circle cx={toX(series.length - 2)} cy={toY(prev.mtd_total)} r="3.5" fill="#fff" stroke={STACK_COLORS[0]} strokeWidth="1.5" />
-      )}
-      <circle cx={toX(series.length - 1)} cy={toY(last.mtd_total)} r="4.5" fill={STACK_COLORS[0]} />
-      {series.map((s, i) => (
-        <title key={i}>{`${s.month}: ${fmtMoney(s.mtd_total)} (through ${s.period_end})`}</title>
-      ))}
-      <text x={padL - 4} y={padT + 8} textAnchor="end" className="fill-gray-400" style={{ fontSize: '9px' }}>{fmtMoney(max)}</text>
-      <text x={padL - 4} y={padT + chartH + 3} textAnchor="end" className="fill-gray-400" style={{ fontSize: '9px' }}>$0</text>
-      <text x={padL} y={h - 6} className="fill-gray-400" style={{ fontSize: '9px' }}>{series[0].month}</text>
-      <text x={padL + chartW} y={h - 6} textAnchor="end" className="fill-gray-400" style={{ fontSize: '9px' }}>{last.month}</text>
-    </svg>
-  )
-}
+// ---------------------------------------------------------------------------
+// Revenue Analysis, as Analytics draws it.
+//
+// The profit-centre table this report used to end with listed ABC's raw centre
+// codes: DUES next to A2EXECDUES next to GYMSTRDUES, three names for the same
+// money, and sixty-odd rows in no order a manager reads by. Analytics already
+// folds those into priority categories — Dues first — against the same span a
+// month and a year ago, and opens any row into its last six months.
+//
+// So this draws that, from the same builder: GET /revenue/analysis is
+// lib/revenueAnalysisReport, the same code behind GET /analytics/revenue, with
+// this report's gate and this report's club scoping in front of it. Two
+// audiences, one definition of what a month of Dues was.
+//
+// IT LOADS SEPARATELY from the summary above it. The summary is one query and
+// arrives fast; the analysis is five, across three windows and twenty-five
+// months. Making the whole report wait on the slower half would have made the
+// fast half feel broken.
+// ---------------------------------------------------------------------------
+function RevenueAnalysis({ startDate, endDate, locationSlug }) {
+  // One open row across BOTH tables. A category appears in Priority and again
+  // in All, and opening it in one while it sat open in the other showed the
+  // same six months twice.
+  const [openKey, setOpenKey] = useState(null)
 
-function ProfitCenterExpansion({ name, series, loading }) {
-  if (loading) {
+  const { data, loading, error } = useCancellableFetch(
+    (signal) => {
+      const p = new URLSearchParams()
+      if (startDate) p.set('start_date', startDate)
+      if (endDate) p.set('end_date', endDate)
+      if (locationSlug) p.set('location_slug', locationSlug)
+      return api(`/revenue/analysis?${p.toString()}`, { cache: true, signal })
+    },
+    [startDate, endDate, locationSlug]
+  )
+
+  if (loading) return <DesktopLoading variant="report" />
+  // A failure here must not take the summary above it down with it, so it says
+  // so and stops rather than throwing.
+  if (error) {
     return (
-      <div className="px-4 py-6 text-xs text-text-muted">Loading {name} trend…</div>
+      <div className="bg-surface rounded-xl border border-border p-6 text-center">
+        <p className="text-sm text-wcs-red font-semibold">Could not load the profit-centre analysis</p>
+        <p className="text-xs text-text-muted mt-1">{String(error.message || error)}</p>
+      </div>
     )
   }
-  if (!series) return null
+  if (!data) return null
 
-  const last = series[series.length - 1]
-  const prev = series[series.length - 2]
-  const recent3 = series.slice(-4, -1) // 3 months before the current one
-  const avg3 = recent3.length ? recent3.reduce((s, m) => s + m.mtd_total, 0) / recent3.length : 0
+  const s = data.summary || {}
+  const headline = data.headline || []
+  const all = data.all || []
+  const sparklines = data.sparklines || {}
 
   return (
-    <div className="bg-bg/60 px-4 py-4 border-t border-border">
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-4">
-        <div className="space-y-2">
-          <div>
-            <p className="text-[10px] uppercase tracking-wide text-text-muted">This MTD</p>
-            <p className="text-lg font-bold text-text-primary">{fmtMoney(last?.mtd_total || 0)}</p>
-            <p className="text-[10px] text-text-muted">{last?.period_start} → {last?.period_end}</p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wide text-text-muted">vs Last Month MTD</p>
-            <p className="text-sm font-semibold text-text-primary">
-              <DeltaChip current={last?.mtd_total || 0} prior={prev?.mtd_total || 0} />
-            </p>
-            <p className="text-[10px] text-text-muted">last month was {fmtMoney(prev?.mtd_total || 0)}</p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wide text-text-muted">vs 3-Mo Avg MTD</p>
-            <p className="text-sm font-semibold text-text-primary">
-              <DeltaChip current={last?.mtd_total || 0} prior={avg3} />
-            </p>
-            <p className="text-[10px] text-text-muted">avg was {fmtMoney(avg3)}</p>
-          </div>
+    <div className="space-y-3">
+      {/* Above the numbers: a window shorter than the one asked for is not
+          something to discover afterwards. */}
+      {data.notes?.dataEdge && (
+        <div className="bg-surface rounded-xl border border-amber-500/40 p-3">
+          <p className="text-[11px] text-amber-600">{data.notes.dataEdge}</p>
         </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-wide text-text-muted mb-1">12-Month MTD Trend</p>
-          <MtdTrendChart series={series} />
+      )}
+
+      <div className="bg-surface rounded-xl border border-border overflow-x-auto">
+        <div className="flex min-w-max divide-x divide-border">
+          {[
+            { label: 'Gross Revenue', value: fmtMoneyShared(s.gross) },
+            {
+              label: 'vs Last Month',
+              value: s.grossMom === null || s.grossMom === undefined
+                ? '—' : `${s.grossMom > 0 ? '+' : ''}${s.grossMom}%`,
+              tone: s.grossMom,
+            },
+            {
+              label: 'vs Last Year',
+              value: s.grossYoy === null || s.grossYoy === undefined
+                ? '—' : `${s.grossYoy > 0 ? '+' : ''}${s.grossYoy}%`,
+              tone: s.grossYoy,
+            },
+            { label: 'Refunds', value: fmtMoneyShared(s.refunds), muted: true },
+            { label: 'Net', value: fmtMoneyShared(s.net), muted: true },
+            { label: 'Profit Centers', value: s.categories ?? '—', muted: true },
+          ].map(t => (
+            <div key={t.label} className="px-5 py-4 text-center min-w-[130px] flex-1">
+              <p
+                className={`text-xl font-bold tabular-nums ${t.muted ? 'text-text-muted' : 'text-text-primary'}`}
+                style={t.tone !== undefined && t.tone !== null && t.tone !== 0
+                  ? { color: t.tone > 0 ? GOOD_COLOR : BAD_COLOR } : undefined}
+              >
+                {t.value}
+              </p>
+              <p className="text-[11px] text-text-muted mt-0.5 leading-tight">{t.label}</p>
+            </div>
+          ))}
         </div>
       </div>
-    </div>
-  )
-}
 
-function ComparisonCard({ label, current, comparison }) {
-  if (!comparison) return <StatCard label={label} value="—" sub="no data" />
-  const delta = current - (comparison.total || 0)
-  const positive = delta >= 0
-  return (
-    <div className="bg-surface rounded-xl border border-border p-4">
-      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${positive ? 'text-green-600' : 'text-red-600'}`}>
-        {positive ? '+' : '−'}{fmtMoney(Math.abs(delta))}
-      </p>
-      <p className="text-xs text-text-muted mt-1">
-        {comparison.period?.start} → {comparison.period?.end}
-      </p>
-      <p className="text-xs text-text-muted">
-        was {fmtMoney(comparison.total)} · <DeltaChip current={current} prior={comparison.total} />
-      </p>
+      {/* The windows being compared, stated plainly. A percentage against an
+          unnamed period is a number nobody can check. */}
+      <div className="bg-surface rounded-xl border border-border p-3">
+        <p className="text-[11px] text-text-muted">
+          {data.meta?.spanDays} days ending {data.meta?.end}, against{' '}
+          {data.meta?.lastMonthStart} to {data.meta?.lastMonthEnd} and{' '}
+          {data.meta?.lastYearStart} to {data.meta?.lastYearEnd} — the same number of days each
+          time, so a short month cannot read as a decline. {data.notes?.totals}
+        </p>
+      </div>
+
+      <MultiTrend
+        title="Revenue by Priority Profit Center"
+        months={data.trendMonths || []}
+        series={data.trendSeries || []}
+        format="int"
+        subtitle={`${(data.trendSeries || []).length} centers`}
+      />
+
+      <CategoryTable
+        title="Priority Profit Centers"
+        subtitle="click a row for its last six months"
+        rows={headline}
+        sparklines={sparklines}
+        meta={data.meta}
+        openKey={openKey}
+        setOpenKey={setOpenKey}
+      />
+
+      <CategoryTable
+        title="All Profit Centers"
+        subtitle={`every center, A to Z — ${all.length} in total`}
+        rows={all}
+        sparklines={sparklines}
+        meta={data.meta}
+        openKey={openKey}
+        setOpenKey={setOpenKey}
+      />
+
+      <p className="text-[11px] text-text-muted px-1">{data.notes?.mapping}</p>
     </div>
   )
 }
 
 export default function RevenueReport({ startDate, endDate, locationSlug }) {
-  const [activeProfitCenter, setActiveProfitCenter] = useState(null)
-  const [pcSeries, setPcSeries] = useState(null)
-  const [pcLoading, setPcLoading] = useState(false)
-
   const { data, loading, error } = useCancellableFetch(
     (signal) => getRevenueSummary(
       { start_date: startDate, end_date: endDate, location_slug: locationSlug },
@@ -206,35 +243,6 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
     ),
     [startDate, endDate, locationSlug]
   )
-
-  // Reset profit-center drill-down whenever the top-level params change —
-  // the 12-month MTD chart anchors on end_date, so changing dates invalidates
-  // the currently-open expansion.
-  useEffect(() => {
-    setActiveProfitCenter(null)
-    setPcSeries(null)
-    setPcLoading(false)
-  }, [startDate, endDate, locationSlug])
-
-  function selectProfitCenter(pc) {
-    if (activeProfitCenter === pc) {
-      setActiveProfitCenter(null)
-      setPcSeries(null)
-      setPcLoading(false)
-      return
-    }
-    setActiveProfitCenter(pc)
-    setPcSeries(null)
-    setPcLoading(true)
-    getRevenueProfitCenterMtdTrend(
-      // Anchor the MTD trend on the capped end (yesterday) the summary used, so
-      // the drilldown's "This MTD" matches the totals above it.
-      { end_date: data?.period?.end || endDate, location_slug: locationSlug, profit_center: pc },
-      { cache: true }
-    )
-      .then(d => { setPcSeries(d.series); setPcLoading(false) })
-      .catch(() => { setPcSeries([]); setPcLoading(false) })
-  }
 
   function handleExportCsv() {
     if (!data) return
@@ -328,60 +336,22 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
         </div>
       )}
 
-      <div className="bg-surface rounded-xl border border-border p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Profit Center Breakdown</p>
-            <p className="text-[10px] text-text-muted mt-0.5">Click a row to see its 12-month MTD trend.</p>
-          </div>
-          <button onClick={handleExportCsv} className="text-xs px-2 py-1 rounded border border-border hover:bg-bg">
-            Export CSV
-          </button>
-        </div>
-        <table className="w-full text-sm">
-          <thead className="text-xs uppercase tracking-wide text-text-muted">
-            <tr>
-              <th className="text-left py-2 w-6"></th>
-              <th className="text-left py-2">Profit Center</th>
-              <th className="text-right">Total</th>
-              <th className="text-right">% of Total</th>
-              <th className="text-right">Δ vs Prior</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.by_profit_center.map(p => {
-              const priorPc = data.compare?.by_profit_center?.find(x => x.name === p.name)
-              const isActive = p.name === activeProfitCenter
-              return (
-                <React.Fragment key={p.name}>
-                  <tr
-                    onClick={() => selectProfitCenter(p.name)}
-                    className={`cursor-pointer border-t border-border ${isActive ? 'bg-wcs-red/5' : 'hover:bg-bg'}`}
-                  >
-                    <td className="py-2 text-text-muted">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                        className={`w-3 h-3 transition-transform ${isActive ? 'rotate-90' : ''}`}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                      </svg>
-                    </td>
-                    <td className="py-2">{p.name}</td>
-                    <td className="text-right font-semibold">{fmtMoney(p.total)}</td>
-                    <td className="text-right text-text-muted">{fmtPct(p.pct_of_total)}</td>
-                    <td className="text-right"><DeltaChip current={p.total} prior={priorPc?.total} /></td>
-                  </tr>
-                  {isActive && (
-                    <tr>
-                      <td colSpan={5} className="p-0">
-                        <ProfitCenterExpansion name={p.name} series={pcSeries} loading={pcLoading} />
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              )
-            })}
-          </tbody>
-        </table>
+      {/* The profit centres, folded into their priority categories and drawn
+          the way Analytics draws them. Replaces a flat list of ABC's raw centre
+          codes — DUES beside A2EXECDUES beside GYMSTRDUES, three names for the
+          same money — in sixty-odd rows with no order a manager reads by.
+
+          Its own component because it loads separately: the summary above is
+          one query, this is five across three windows and twenty-five months,
+          and making the fast half wait on the slow one made the fast half feel
+          broken. */}
+      <div className="flex items-center justify-end">
+        <button onClick={handleExportCsv} className="text-xs px-2 py-1 rounded border border-border hover:bg-bg">
+          Export CSV
+        </button>
       </div>
+
+      <RevenueAnalysis startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
 
       {data.by_membership_type && data.by_membership_type.length > 0 && (
         <div className="bg-surface rounded-xl border border-border p-4">
