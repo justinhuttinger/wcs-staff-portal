@@ -33,6 +33,52 @@ function parseCategory(value) {
   return MEMBER_CATEGORIES.find(c => c.toLowerCase() === v) || 'all'
 }
 
+/**
+ * Categories to LEAVE OUT, from a comma-separated list.
+ *
+ * EXCLUSION, NOT AN ALLOW-LIST, and the distinction is the whole design. The
+ * reports offer a tick box per category with everything ticked, so the default
+ * has to mean "filter nothing" -- byte-identical to the numbers before the
+ * filter existed. An allow-list cannot do that: the named categories do not sum
+ * to the whole. A membership type nobody has mapped yet belongs to no category,
+ * so "include Dues, Insurance and Temp" would silently drop it, and every
+ * figure would move the day this shipped for a reason nobody could see.
+ *
+ * Read as exclusion, unticking Insurance removes Insurance and touches nothing
+ * else. Unmapped types stay in, because they are not Insurance -- which is also
+ * the honest answer, since we do not know what they are.
+ *
+ * Anything unrecognised is dropped rather than honoured: a typo must widen the
+ * result, never narrow it. A filter that fails closed reads as "we have no
+ * members", which is the worst way for one to fail.
+ */
+function parseExcludedCategories(value) {
+  const raw = Array.isArray(value) ? value : String(value || '').split(',')
+  const out = []
+  for (const item of raw) {
+    const hit = MEMBER_CATEGORIES.find(c => c.toLowerCase() === String(item).trim().toLowerCase())
+    if (hit && !out.includes(hit)) out.push(hit)
+  }
+  return out
+}
+
+/**
+ * The category a member's type maps to, or null when nobody has mapped it.
+ *
+ * Null is a real answer here and is never excluded by a tick box: see above.
+ */
+function categoryOf(row, categoryMap) {
+  if (!categoryMap) return null
+  return categoryMap.get(String(row?.membership_type || '').toLowerCase()) || null
+}
+
+/** Should this row be left out, given the unticked categories? */
+function isCategoryExcluded(row, categoryMap, excluded) {
+  if (!excluded || excluded.length === 0) return false
+  const cat = categoryOf(row, categoryMap)
+  return cat != null && excluded.includes(cat)
+}
+
 /** 'members' (default) or 'agreements'. */
 function parseBasis(value) {
   return String(value || '').trim().toLowerCase() === 'agreements' ? 'agreements' : 'members'
@@ -45,9 +91,14 @@ function parseBasis(value) {
  * on its face: a screenshot of one is otherwise indistinguishable from a
  * collapse.
  */
-function filterNote({ category, basis }) {
+function filterNote({ category, basis, excludedCategories }) {
   const parts = []
   if (category && category !== 'all') parts.push(`${category} memberships only`)
+  // Insurance alone is 32% of the member base. A report with it unticked has to
+  // say so on its face or it is indistinguishable from a collapse.
+  if (excludedCategories && excludedCategories.length) {
+    parts.push(`${excludedCategories.join(' and ')} left out`)
+  }
   if (basis === 'agreements') {
     parts.push('counting agreements rather than people, so a family counts once')
   }
@@ -142,5 +193,6 @@ async function loadCategoryMap(supabaseAdmin) {
 
 module.exports = {
   MEMBER_CATEGORIES, parseCategory, parseBasis, filterNote, matchesFilters, loadCategoryMap,
+  parseExcludedCategories, categoryOf, isCategoryExcluded,
   cannotUseAch,
 }
