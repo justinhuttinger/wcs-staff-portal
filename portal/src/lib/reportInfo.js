@@ -367,9 +367,9 @@ const REPORT_INFO = {
     title: 'Operandio',
     sections: [
       {
-        heading: 'Two reports, one tile',
+        heading: 'Three reports, one tile',
         body:
-          'Compliance and Training both come out of Operandio and get looked at in the same conversation, so they share a tile. The switch at the top picks between them; Compliance is what it opens on, because it is the daily number.',
+          'Compliance, Training and Audits all come out of Operandio and get looked at in the same conversation, so they share a tile. The switch at the top picks between them; Compliance is what it opens on, because it is the daily number. Audits is scored per club, so selecting it drops the All Locations pill.',
       },
       {
         heading: 'Compliance — what this is',
@@ -388,7 +388,7 @@ const REPORT_INFO = {
         ],
       },
       {
-        heading: 'How filters work',
+        heading: 'Compliance — how filters work',
         body: [
           'Date range — by each job\'s due date (Pacific).',
           'Location — one club, or All Locations.',
@@ -432,6 +432,25 @@ const REPORT_INFO = {
         body:
           'Operandio does not report one. It is decoded from the id on the assignment itself, which carries a creation timestamp — checked against live data, where it sits exactly seven days before every due date on the course in use. It is marked with an asterisk wherever it appears because it is derived rather than reported.',
       },
+
+      {
+        heading: 'Audits — what this is',
+        body:
+          'Every Operandio job with "Audit" in its name (PT Audit, Membership Coordinator Audit, ...), roughly one per club per department per month. One row per audit with its most recent score.',
+      },
+      {
+        heading: 'Audits — how it works',
+        body: [
+          'Audits arrive automatically: when one is submitted in Operandio, its notification email is parsed and the audit appears here.',
+          'Location pills — this report is strictly one club at a time; pick the club with the pills under the title.',
+          'Click a row to expand the change-over-time chart and every submission, each with a View Report link that opens the full scored breakdown in a new window, printable to PDF.',
+          'Audits are infrequent, so the full history always shows (no date range).',
+          'Admin → Audits toggles which audits each club does — off audits are hidden from that club\'s view.',
+        ],
+      },
+    ],
+    notes: [
+      'Experimental report. QA-Cleaning is not an audit — it\'s the hyper-specific job behind the Cleanliness - Quality Assessment KPI and is excluded here. Other scored jobs are collected in the background for future reporting.',
     ],
   },
 
@@ -519,29 +538,6 @@ const REPORT_INFO = {
     ],
   },
 
-  audits: {
-    title: 'Audits',
-    sections: [
-      {
-        heading: 'What this is',
-        body:
-          'Every Operandio job with "Audit" in its name (PT Audit, Membership Coordinator Audit, ...), roughly one per club per department per month. One row per audit with its most recent score.',
-      },
-      {
-        heading: 'How it works',
-        body: [
-          'Audits arrive automatically: when one is submitted in Operandio, its notification email is parsed and the audit appears here.',
-          'Location pills — this report is strictly one club at a time; pick the club with the pills under the title.',
-          'Click a row to expand the change-over-time chart and every submission, each with a View Report link that opens the full scored breakdown in a new window, printable to PDF.',
-          'Audits are infrequent, so the full history always shows (no date range).',
-          'Admin → Audits toggles which audits each club does — off audits are hidden from that club\'s view.',
-        ],
-      },
-    ],
-    notes: [
-      'Experimental report. QA-Cleaning is not an audit — it\'s the hyper-specific job behind the Cleanliness - Quality Assessment KPI and is excluded here. Other scored jobs are collected in the background for future reporting.',
-    ],
-  },
 
 }
 

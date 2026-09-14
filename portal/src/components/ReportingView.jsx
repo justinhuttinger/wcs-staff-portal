@@ -21,8 +21,7 @@ import GoogleMarketingView from './GoogleMarketingView'
 import EmailMarketingReport from './reports/EmailMarketingReport'
 import MarketingEngagementReport from './reports/MarketingEngagementReport'
 import KpiReport from './reports/KpiReport'
-import AuditsReport from './reports/AuditsReport'
-import OperandioReport from './reports/OperandioReport'
+import OperandioReport, { OPERANDIO_SINGLE_CLUB_VIEWS } from './reports/OperandioReport'
 import ReportInfoButton from './ReportInfoButton'
 import DataFreshnessStamp from './reports/DataFreshnessStamp'
 import ReportDetailView from './reports/ReportDetailView'
@@ -57,7 +56,6 @@ const REPORT_ICONS = {
   'email-marketing': 'M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75',
   'marketing-engagement': 'M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z',
   kpis: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z',
-  audits: 'M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V19.5a2.25 2.25 0 0 0 2.25 2.25h7.5a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08M15.75 18.75h-7.5m7.5-3h-7.5m-4.5-9v12.75c0 .621.504 1.125 1.125 1.125h.375',
 }
 
 const ALL_REPORT_TILES = [
@@ -83,7 +81,6 @@ const ALL_REPORT_TILES = [
   { key: 'email-marketing', label: 'Email Marketing', desc: 'Campaign Performance' },
   { key: 'marketing-engagement', label: 'Marketing Engagement', desc: 'Email + SMS Performance' },
   { key: 'kpis', label: 'KPIs', desc: 'Goals vs. Actuals' },
-  { key: 'audits', label: 'Audits', desc: 'Operandio Scores' },
 ]
 
 // Reports that sit at the very top of the nav as standalone items — no group
@@ -99,7 +96,7 @@ const REPORT_GROUPS = [
     label: 'Club Health',
     desc: 'Health, Activity & Compliance',
     iconPath: REPORT_ICONS['club-health'],
-    reports: ['club-health', 'membership', 'cancels', 'compliance', 'audits', 'checkins', 'payroll', 'revenue', 'pos-sales', 'till'],
+    reports: ['club-health', 'membership', 'cancels', 'compliance', 'checkins', 'payroll', 'revenue', 'pos-sales', 'till'],
   },
   {
     key: 'training',
@@ -217,6 +214,7 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
   // Training rides inside the Operandio tile, so its grant is checked here
   // rather than by having a tile of its own.
   const canSeeTraining = hasReportGrant('training', userRole, user?.staff?.custom_reports, user?.visible_tools)
+  const canSeeAudits = hasReportGrant('audits', userRole, user?.staff?.custom_reports, user?.visible_tools)
   const VISIBLE_REPORT_KEYS = new Set(REPORT_TILES.map(t => t.key))
 
   // Only show groups that contain at least one report the user can see.
@@ -261,23 +259,34 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
   const [cancelsPlanType, setCancelsPlanType] = useState('all')
   // Summary vs. line-by-line "See Detail" view for the active report.
   const [detailView, setDetailView] = useState(false)
+  // Which half of the Operandio tile is showing. Lives here rather than in
+  // OperandioReport because Audits is per-club and the location bar below has
+  // to know.
+  const [operandioView, setOperandioView] = useState('compliance')
   const reportHasDetail = hasReportDetail(activeReport)
 
   // Always land on the summary when switching reports; not every report has a
   // detail tab, and the detail grid is report-specific.
+  // Reports with no all-clubs view. Audits is scored per club; inside the
+  // Operandio tile that depends on which view is showing, not on the report key.
+  const singleClubOnly = activeReport === 'till'
+    || (activeReport === 'compliance' && OPERANDIO_SINGLE_CLUB_VIEWS.includes(operandioView))
+
   useEffect(() => {
     setDetailView(false)
+    setOperandioView('compliance')
   }, [activeReport])
 
-  // Audits and Till are strictly per-club (no All pill) — snap to the first club
-  // when arriving on one with the all-locations selection.
+  // Till, and Operandio's Audits view, are strictly per-club (no All pill) —
+  // snap to the first club when arriving on one with the all-locations
+  // selection.
   useEffect(() => {
-    if (!['audits', 'till'].includes(activeReport) || locationSlug !== 'all') return
+    if (!singleClubOnly || locationSlug !== 'all') return
     const first = isAdmin
       ? LOCATIONS.find(l => l.slug !== 'all')?.slug
       : reportLocations[0]?.name?.toLowerCase()
     if (first) setLocationSlug(first)
-  }, [activeReport, locationSlug]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [singleClubOnly, locationSlug]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     // Make sure the URL hash matches the resolved initial report so refreshes
@@ -441,7 +450,7 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
       {/* Header card */}
       <div className="relative z-20 bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
         {(() => {
-          const showDateControls = activeReport !== 'pt-roster' && activeReport !== 'compliance' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing' && activeReport !== 'audits'
+          const showDateControls = activeReport !== 'pt-roster' && activeReport !== 'compliance' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing'
           const showLocation = hasMultipleReportLocations
           return (
             <>
@@ -513,7 +522,7 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
                 <div className="ml-auto flex-shrink-0">
                   {/* KPIs, Audits, Compliance, and Till use location pills
                       below instead of this dropdown. */}
-                  {['kpis', 'audits', 'compliance', 'till'].includes(activeReport) ? null : showLocation ? (
+                  {['kpis', 'compliance', 'till'].includes(activeReport) ? null : showLocation ? (
                     <LocationMultiSelect
                       value={locationSlug}
                       onChange={setLocationSlug}
@@ -568,9 +577,9 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
               {/* KPIs, Audits, Compliance, Till: single-select location pills for
                   quick club-to-club navigation. Audits and Till have no All
                   option — they're strictly one club at a time. */}
-              {['kpis', 'audits', 'compliance', 'till'].includes(activeReport) && showLocation && (
+              {['kpis', 'compliance', 'till'].includes(activeReport) && showLocation && (
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {[...(!['audits', 'till'].includes(activeReport) ? [{ slug: 'all', label: 'All' }] : []), ...(isAdmin
+                  {[...(!singleClubOnly ? [{ slug: 'all', label: 'All' }] : []), ...(isAdmin
                     ? LOCATIONS.filter(l => l.slug !== 'all')
                     : reportLocations.map(l => ({ slug: l.name.toLowerCase(), label: l.name }))
                   )].map(opt => {
@@ -655,7 +664,13 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
             <PayrollReport locationSlug={locationSlug} />
           )}
           {activeReport === 'compliance' && (
-            <OperandioReport locationSlug={locationSlug} canSeeTraining={canSeeTraining} />
+            <OperandioReport
+              locationSlug={locationSlug}
+              view={operandioView}
+              onViewChange={setOperandioView}
+              canSeeTraining={canSeeTraining}
+              canSeeAudits={canSeeAudits}
+            />
           )}
           {activeReport === 'revenue' && (
             <RevenueReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
@@ -680,9 +695,6 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
           )}
           {activeReport === 'kpis' && (
             <KpiReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
-          )}
-          {activeReport === 'audits' && (
-            <AuditsReport locationSlug={locationSlug} />
           )}
         </>
         )}
